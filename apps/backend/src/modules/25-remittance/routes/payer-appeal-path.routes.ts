@@ -1,3 +1,4 @@
+import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/payer-appeal-path.routes.ts - M25 milestone 12a-1 routes: the organization's
 // payer appeal PATHS (data a person writes from a contract; nothing is seeded). Reads gate on `payer_appeal_path.read`, a
 // draft is written on `payer_appeal_path.manage`, and a SECOND person activates it on `payer_appeal_path.verify`. Every
@@ -13,7 +14,6 @@ import {
   ROLLS,
   WHO_FILES,
 } from "../domain";
-import { NotFoundError } from "@chartwarden/types";
 import { actorOf, writeActorOf } from "./actor";
 import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { P } from "./guards";
@@ -30,7 +30,9 @@ const NULLABLE_STRING = Type.Union([Type.String(), Type.Null()]);
 const NULLABLE_INT = Type.Union([Type.Integer(), Type.Null()]);
 const literals = <T extends string>(values: readonly T[]) =>
   Type.Union(values.map((v) => Type.Literal(v)));
-const optionalNullable = <T extends ReturnType<typeof Type.String> | ReturnType<typeof Type.Integer>>(
+const optionalNullable = <
+  T extends ReturnType<typeof Type.String> | ReturnType<typeof Type.Integer>,
+>(
   t: T,
 ) => Type.Optional(Type.Union([t, Type.Null()]));
 
@@ -101,7 +103,9 @@ export const PayerAppealPathViewSchema = Type.Object({
   version: Type.Integer(),
   levels: Type.Array(PathLevelViewSchema),
 });
-export const PayerAppealPathPageSchema = Type.Object({ items: Type.Array(PayerAppealPathViewSchema) });
+export const PayerAppealPathPageSchema = Type.Object({
+  items: Type.Array(PayerAppealPathViewSchema),
+});
 export const PayerAppealPathListQuerySchema = Type.Object({
   payerId: Type.Optional(Type.String()),
   status: Type.Optional(Type.String()),
@@ -178,13 +182,17 @@ export function registerPayerAppealPathRoutes(
     "/api/v1/payer-appeal-paths/:id/verify",
     { preHandler: [VERIFY, IDEMPOTENT] },
     async (request, reply) =>
-      reply.send(await svc.verifyPath(writeActorOf(request), pathId(request), ifMatchVersion(request))),
+      reply.send(
+        await svc.verifyPath(writeActorOf(request), pathId(request), ifMatchVersion(request)),
+      ),
   );
 
   app.post(
     "/api/v1/payer-appeal-paths/:id/retire",
     { preHandler: [MANAGE, IDEMPOTENT] },
     async (request, reply) =>
-      reply.send(await svc.retirePath(writeActorOf(request), pathId(request), ifMatchVersion(request))),
+      reply.send(
+        await svc.retirePath(writeActorOf(request), pathId(request), ifMatchVersion(request)),
+      ),
   );
 }

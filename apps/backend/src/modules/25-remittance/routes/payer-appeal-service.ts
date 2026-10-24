@@ -13,9 +13,9 @@ import {
   type LevelWindow,
   type PayerAppealState,
   type PayerDeadlineState,
+  type PayerDecisionRefusal,
   type PayerKindRefusal,
   type PayerOpenRefusal,
-  type PayerDecisionRefusal,
   canTransitionDenial,
   canTransitionPayerAppeal,
   checkPayerDecision,
@@ -97,22 +97,20 @@ export interface PayerAppealDenialView {
   readonly refusal: PayerKindRefusal | null;
   /** Medicare Advantage coverage hint: hospice for MA enrollees is paid by Original Medicare through the MAC. */
   readonly maHint: boolean;
-  readonly path:
-    | {
-        readonly id: string;
-        readonly status: string;
-        readonly verified: boolean;
-        readonly revision: number;
-        readonly program: string;
-        readonly levels: {
-          readonly ordinal: number;
-          readonly levelKind: string;
-          readonly levelLabel: string;
-          readonly whoFiles: string;
-          readonly windowComplete: boolean;
-        }[];
-      }
-    | null;
+  readonly path: {
+    readonly id: string;
+    readonly status: string;
+    readonly verified: boolean;
+    readonly revision: number;
+    readonly program: string;
+    readonly levels: {
+      readonly ordinal: number;
+      readonly levelKind: string;
+      readonly levelLabel: string;
+      readonly whoFiles: string;
+      readonly windowComplete: boolean;
+    }[];
+  } | null;
   readonly pathPrompt: string | null;
   readonly cases: PayerAppealCaseView[];
 }
@@ -170,9 +168,11 @@ const unprocessable = (code: string, message: string) => new ChartWardenError(co
 const conflict = (code: string, message: string) => new ChartWardenError(code, message, 409);
 
 const KIND_MESSAGES: Readonly<Record<PayerKindRefusal, string>> = {
-  MEDICARE_PAYER: "this denial is from Medicare; it takes the Medicare appeal tiers, not a payer appeal",
+  MEDICARE_PAYER:
+    "this denial is from Medicare; it takes the Medicare appeal tiers, not a payer appeal",
   MEDICAID_PAYER: "Medicaid appeals are not handled here",
-  NO_PAYER_ADVICE: "this denial has no remittance advice naming a payer, so a payer appeal cannot be opened",
+  NO_PAYER_ADVICE:
+    "this denial has no remittance advice naming a payer, so a payer appeal cannot be opened",
 };
 const OPEN_MESSAGES: Readonly<Record<PayerOpenRefusal, string>> = {
   LEVEL_LABEL_REQUIRED: "no appeal path is recorded for this payer: name the level you are filing",
@@ -215,7 +215,9 @@ export function buildDrizzlePayerAppealService(
 
   async function zonesFor(tx: Tx, providerEntityId: string): Promise<readonly string[]> {
     const zones = (
-      ports.providerZones ? await ports.providerZones(tx as unknown as DbClient, providerEntityId) : []
+      ports.providerZones
+        ? await ports.providerZones(tx as unknown as DbClient, providerEntityId)
+        : []
     ).filter(isKnownZone);
     return zones.length > 0 ? zones : [DEFAULT_DEADLINE_ZONE];
   }
@@ -335,7 +337,9 @@ export function buildDrizzlePayerAppealService(
     const rows = await tx
       .select()
       .from(PC)
-      .where(scope ? and(eq(PC.denialCaseId, denialCaseId), scope) : eq(PC.denialCaseId, denialCaseId))
+      .where(
+        scope ? and(eq(PC.denialCaseId, denialCaseId), scope) : eq(PC.denialCaseId, denialCaseId),
+      )
       .orderBy(asc(PC.createdAt));
     const recorded =
       rows.length > 0
@@ -360,7 +364,13 @@ export function buildDrizzlePayerAppealService(
     );
   }
 
-  async function event(tx: Tx, actor: M25WriteActor, caseId: string, eventKind: string, payload?: object) {
+  async function event(
+    tx: Tx,
+    actor: M25WriteActor,
+    caseId: string,
+    eventKind: string,
+    payload?: object,
+  ) {
     await tx.insert(PE).values({
       organizationId: actor.organizationId,
       payerAppealCaseId: caseId,
@@ -426,7 +436,11 @@ export function buildDrizzlePayerAppealService(
           .where(scope ? and(eq(PC.id, id), scope) : eq(PC.id, id))
           .limit(1);
         if (!rows[0]) return null;
-        const recorded = await tx.select().from(RD).where(eq(RD.payerAppealCaseId, id)).orderBy(asc(RD.dueOn));
+        const recorded = await tx
+          .select()
+          .from(RD)
+          .where(eq(RD.payerAppealCaseId, id))
+          .orderBy(asc(RD.dueOn));
         return caseView(rows[0], recorded, new Date());
       });
     },
@@ -434,7 +448,10 @@ export function buildDrizzlePayerAppealService(
     async open(actor, denialCaseId, input) {
       const day = input.noticeDate;
       if (day !== undefined && (!isRealDay(day) || day > noticeDayOf(new Date()))) {
-        throw unprocessable("NOTICE_DATE_INVALID", "the notice date must be a real date, not in the future");
+        throw unprocessable(
+          "NOTICE_DATE_INVALID",
+          "the notice date must be a real date, not in the future",
+        );
       }
       try {
         return await withOrgContext(db, actor, async (tx) => {
@@ -442,27 +459,52 @@ export function buildDrizzlePayerAppealService(
           const advice = await adviceOf(tx, denial.remittanceLineId);
           const kindRefusal = checkPayerKind(advice?.payerKind);
           if (kindRefusal || !advice) {
-            throw conflict(kindRefusal ?? "NO_PAYER_ADVICE", KIND_MESSAGES[kindRefusal ?? "NO_PAYER_ADVICE"]);
+            throw conflict(
+              kindRefusal ?? "NO_PAYER_ADVICE",
+              KIND_MESSAGES[kindRefusal ?? "NO_PAYER_ADVICE"],
+            );
           }
           const seamPayer = await payers.resolve(actor.organizationId, advice.payerId);
           const program =
-            input.program ?? (seamPayer?.kind === "medicare_advantage" ? "medicare_advantage" : "commercial");
+            input.program ??
+            (seamPayer?.kind === "medicare_advantage" ? "medicare_advantage" : "commercial");
           if (program !== "commercial" && program !== "medicare_advantage") {
-            throw unprocessable("PROGRAM_INVALID", "the program must be commercial or medicare_advantage");
+            throw unprocessable(
+              "PROGRAM_INVALID",
+              "the program must be commercial or medicare_advantage",
+            );
           }
           let prior: typeof PC.$inferSelect | undefined;
           if (input.priorLevelCaseId) {
-            prior = (await tx.select().from(PC).where(eq(PC.id, input.priorLevelCaseId)).limit(1))[0];
-            if (!prior || prior.denialCaseId !== denialCaseId) throw new NotFoundError("prior payer appeal level");
+            prior = (
+              await tx.select().from(PC).where(eq(PC.id, input.priorLevelCaseId)).limit(1)
+            )[0];
+            if (!prior || prior.denialCaseId !== denialCaseId)
+              throw new NotFoundError("prior payer appeal level");
             if (prior.state !== "decided" && prior.state !== "closed") {
-              throw conflict("PRIOR_LEVEL_OPEN", "the prior level must be decided before the next level opens");
+              throw conflict(
+                "PRIOR_LEVEL_OPEN",
+                "the prior level must be decided before the next level opens",
+              );
             }
           }
-          const { resolution, levels } = await pathFor(tx, advice.payerId, program, clean(input.contractLabel));
-          const wantedOrdinal = input.levelOrdinal ?? (prior?.levelOrdinal != null ? prior.levelOrdinal + 1 : 1);
-          const pathLevel = resolution.kind === "path" ? levels.find((l) => l.ordinal === wantedOrdinal) : undefined;
+          const { resolution, levels } = await pathFor(
+            tx,
+            advice.payerId,
+            program,
+            clean(input.contractLabel),
+          );
+          const wantedOrdinal =
+            input.levelOrdinal ?? (prior?.levelOrdinal != null ? prior.levelOrdinal + 1 : 1);
+          const pathLevel =
+            resolution.kind === "path"
+              ? levels.find((l) => l.ordinal === wantedOrdinal)
+              : undefined;
           if (resolution.kind === "path" && !pathLevel && input.levelLabel === undefined) {
-            throw unprocessable("LEVEL_NOT_IN_PATH", "the recorded path has no such level; name the level you are filing");
+            throw unprocessable(
+              "LEVEL_NOT_IN_PATH",
+              "the recorded path has no such level; name the level you are filing",
+            );
           }
           const openRefusal = checkPayerOpen({
             hasPathLevel: pathLevel !== undefined,
@@ -472,7 +514,11 @@ export function buildDrizzlePayerAppealService(
           if (openRefusal) throw unprocessable(openRefusal, OPEN_MESSAGES[openRefusal]);
 
           const window = pathLevel ? levelWindow(pathLevel as never) : null;
-          const derived = derivePayerLevelDeadline(window, day ?? null, await zonesFor(tx, denial.providerEntityId));
+          const derived = derivePayerLevelDeadline(
+            window,
+            day ?? null,
+            await zonesFor(tx, denial.providerEntityId),
+          );
           const inserted = await tx
             .insert(PC)
             .values({
@@ -483,7 +529,10 @@ export function buildDrizzlePayerAppealService(
               payerId: advice.payerId,
               program,
               pathId: pathLevel && resolution.kind === "path" ? resolution.path.id : null,
-              pathRevision: pathLevel && resolution.kind === "path" ? (resolution.path as { revision: number }).revision : null,
+              pathRevision:
+                pathLevel && resolution.kind === "path"
+                  ? (resolution.path as { revision: number }).revision
+                  : null,
               levelOrdinal: pathLevel ? pathLevel.ordinal : null,
               levelKind: pathLevel ? pathLevel.levelKind : (input.levelKind as string),
               levelLabel: (pathLevel ? pathLevel.levelLabel : (input.levelLabel as string)).trim(),
@@ -504,7 +553,10 @@ export function buildDrizzlePayerAppealService(
             })
             .returning({ id: PC.id, version: PC.version, deadlineSource: PC.deadlineSource });
           const id = inserted[0]!.id;
-          await event(tx, actor, id, "created", { levelOrdinal: pathLevel?.ordinal ?? null, deadlineSource: inserted[0]!.deadlineSource });
+          await event(tx, actor, id, "created", {
+            levelOrdinal: pathLevel?.ordinal ?? null,
+            deadlineSource: inserted[0]!.deadlineSource,
+          });
           if (canTransitionDenial(denial.state, "appealed")) {
             await tx
               .update(DC)
@@ -515,7 +567,10 @@ export function buildDrizzlePayerAppealService(
         });
       } catch (e) {
         if (isUniqueViolation(e)) {
-          throw conflict("PAYER_APPEAL_IN_FLIGHT", "a level of this denial's payer appeal is already in progress");
+          throw conflict(
+            "PAYER_APPEAL_IN_FLIGHT",
+            "a level of this denial's payer appeal is already in progress",
+          );
         }
         throw e;
       }
@@ -523,33 +578,61 @@ export function buildDrizzlePayerAppealService(
 
     async recordNotice(actor, id, noticeDate, ifMatch) {
       if (!isRealDay(noticeDate) || noticeDate > noticeDayOf(new Date())) {
-        throw unprocessable("NOTICE_DATE_INVALID", "the notice date must be a real date, not in the future");
+        throw unprocessable(
+          "NOTICE_DATE_INVALID",
+          "the notice date must be a real date, not in the future",
+        );
       }
       return withOrgContext(db, actor, async (tx) => {
         const scope = providerEntityScopeCondition(PC.providerEntityId, actor.providerEntityScope);
         const cur = (
-          await tx.select().from(PC).where(scope ? and(eq(PC.id, id), scope) : eq(PC.id, id)).limit(1)
+          await tx
+            .select()
+            .from(PC)
+            .where(scope ? and(eq(PC.id, id), scope) : eq(PC.id, id))
+            .limit(1)
         )[0];
         if (!cur) throw new NotFoundError("payer appeal case");
-        if (cur.state !== "draft") throw conflict("INVALID_STATE", "the notice date can be recorded only on a draft level");
+        if (cur.state !== "draft")
+          throw conflict("INVALID_STATE", "the notice date can be recorded only on a draft level");
         if (cur.deadlineSource === "path_rule") {
-          throw conflict("DEADLINE_FROZEN", "this level's deadline is already computed and cannot move");
+          throw conflict(
+            "DEADLINE_FROZEN",
+            "this level's deadline is already computed and cannot move",
+          );
         }
-        const derived = derivePayerLevelDeadline(windowOf(cur), noticeDate, await zonesFor(tx, cur.providerEntityId));
+        const derived = derivePayerLevelDeadline(
+          windowOf(cur),
+          noticeDate,
+          await zonesFor(tx, cur.providerEntityId),
+        );
         const updated = await tx
           .update(PC)
           .set({
             noticeDatedOn: noticeDate,
             ...(derived
-              ? { deadlineAt: derived.deadlineAt, deadlineZone: derived.zone, deadlineSource: "path_rule" }
+              ? {
+                  deadlineAt: derived.deadlineAt,
+                  deadlineZone: derived.zone,
+                  deadlineSource: "path_rule",
+                }
               : {}),
             version: sql`${PC.version} + 1`,
             updatedAt: new Date(),
           })
-          .where(and(eq(PC.id, id), eq(PC.version, ifMatch), eq(PC.state, "draft"), eq(PC.deadlineSource, "none")))
+          .where(
+            and(
+              eq(PC.id, id),
+              eq(PC.version, ifMatch),
+              eq(PC.state, "draft"),
+              eq(PC.deadlineSource, "none"),
+            ),
+          )
           .returning({ id: PC.id, version: PC.version, deadlineSource: PC.deadlineSource });
         if (!updated[0]) throw new VersionConflictError(cur.version);
-        await event(tx, actor, id, "notice_recorded", { deadlineSource: updated[0].deadlineSource });
+        await event(tx, actor, id, "notice_recorded", {
+          deadlineSource: updated[0].deadlineSource,
+        });
         return updated[0];
       });
     },
@@ -563,7 +646,11 @@ export function buildDrizzlePayerAppealService(
       return withOrgContext(db, actor, async (tx) => {
         const scope = providerEntityScopeCondition(PC.providerEntityId, actor.providerEntityScope);
         const cur = (
-          await tx.select().from(PC).where(scope ? and(eq(PC.id, id), scope) : eq(PC.id, id)).limit(1)
+          await tx
+            .select()
+            .from(PC)
+            .where(scope ? and(eq(PC.id, id), scope) : eq(PC.id, id))
+            .limit(1)
         )[0];
         if (!cur) throw new NotFoundError("payer appeal case");
         if (!canTransitionPayerAppeal(cur.state as PayerAppealState, to)) {
@@ -571,14 +658,19 @@ export function buildDrizzlePayerAppealService(
         }
         const reviewer = clean(input.externalReviewerName);
         if (reviewer && cur.levelKind !== "external_review") {
-          throw unprocessable("REVIEWER_NOT_EXTERNAL", "a reviewer name belongs only on an external review level");
+          throw unprocessable(
+            "REVIEWER_NOT_EXTERNAL",
+            "a reviewer name belongs only on an external review level",
+          );
         }
         const now = new Date();
         const updated = await tx
           .update(PC)
           .set({
             state: to,
-            ...(input.payerReference !== undefined ? { payerReference: clean(input.payerReference) } : {}),
+            ...(input.payerReference !== undefined
+              ? { payerReference: clean(input.payerReference) }
+              : {}),
             ...(reviewer ? { externalReviewerName: reviewer } : {}),
             ...(move === "submit" ? { submittedAt: now } : {}),
             ...(move === "decide"

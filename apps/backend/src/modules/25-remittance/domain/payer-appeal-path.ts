@@ -103,7 +103,8 @@ export type PathVerifyRefusal = "VERIFIER_IS_AUTHOR" | "NOT_DRAFT" | "NO_LEVELS"
 
 const inSet = <T extends string>(set: readonly T[], v: unknown): v is T =>
   typeof v === "string" && (set as readonly string[]).includes(v);
-const blank = (s: string | null | undefined): boolean => s === null || s === undefined || s.trim() === "";
+const blank = (s: string | null | undefined): boolean =>
+  s === null || s === undefined || s.trim() === "";
 const wholeBetween = (n: number, min: number, max: number): boolean =>
   Number.isInteger(n) && n >= min && n <= max;
 
@@ -137,12 +138,21 @@ function checkLevel(l: PathLevelInput): PathRefusal | null {
   if (blank(l.sourceNote)) return "LEVEL_SOURCE_NOTE_REQUIRED";
   const texts = [l.levelLabel, l.formLabel, l.channelNote, l.sourceNote];
   if (texts.some((t) => (t?.length ?? 0) > PATH_BOUNDS.noteMax)) return "TEXT_TOO_LONG";
-  const anyWindow = [l.filingWindowDays, l.anchorKind, l.dayBasis, l.roll, l.receiptPresumptionDays];
+  const anyWindow = [
+    l.filingWindowDays,
+    l.anchorKind,
+    l.dayBasis,
+    l.roll,
+    l.receiptPresumptionDays,
+  ];
   const stated = anyWindow.some((v) => v !== null);
   if (stated && (l.filingWindowDays === null || l.anchorKind === null || l.dayBasis === null)) {
     return "WINDOW_INCOMPLETE";
   }
-  if (l.filingWindowDays !== null && !wholeBetween(l.filingWindowDays, 1, PATH_BOUNDS.windowDaysMax)) {
+  if (
+    l.filingWindowDays !== null &&
+    !wholeBetween(l.filingWindowDays, 1, PATH_BOUNDS.windowDaysMax)
+  ) {
     return "WINDOW_OUT_OF_RANGE";
   }
   if (l.anchorKind !== null && !inSet(ANCHOR_KINDS, l.anchorKind)) return "ANCHOR_INVALID";
@@ -153,7 +163,10 @@ function checkLevel(l: PathLevelInput): PathRefusal | null {
   } else if (l.roll !== null) {
     return "ROLL_NOT_ALLOWED";
   }
-  if (l.receiptPresumptionDays !== null && !wholeBetween(l.receiptPresumptionDays, 0, PATH_BOUNDS.receiptDaysMax)) {
+  if (
+    l.receiptPresumptionDays !== null &&
+    !wholeBetween(l.receiptPresumptionDays, 0, PATH_BOUNDS.receiptDaysMax)
+  ) {
     return "RECEIPT_OUT_OF_RANGE";
   }
   if (l.decisionDays !== null && !wholeBetween(l.decisionDays, 1, PATH_BOUNDS.decisionDaysMax)) {

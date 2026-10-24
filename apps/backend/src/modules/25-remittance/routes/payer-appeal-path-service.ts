@@ -57,9 +57,20 @@ export interface PayerAppealPathService {
     filter: { payerId?: string; status?: string },
   ): Promise<{ items: PathView[] }>;
   getPath(actor: M25ReadActor, id: string): Promise<PathView | null>;
-  createPath(actor: M25WriteActor, input: PathCreateInput): Promise<{ id: string; version: number }>;
-  verifyPath(actor: M25WriteActor, id: string, ifMatch: number): Promise<{ id: string; version: number }>;
-  retirePath(actor: M25WriteActor, id: string, ifMatch: number): Promise<{ id: string; version: number }>;
+  createPath(
+    actor: M25WriteActor,
+    input: PathCreateInput,
+  ): Promise<{ id: string; version: number }>;
+  verifyPath(
+    actor: M25WriteActor,
+    id: string,
+    ifMatch: number,
+  ): Promise<{ id: string; version: number }>;
+  retirePath(
+    actor: M25WriteActor,
+    id: string,
+    ifMatch: number,
+  ): Promise<{ id: string; version: number }>;
 }
 
 export interface PayerAppealPathPorts {
@@ -78,7 +89,8 @@ const PATH_MESSAGES: Readonly<Record<PathRefusal, string>> = {
   LEVEL_LABEL_REQUIRED: "name each level as the contract names it",
   WHO_FILES_INVALID: "who files must be provider, member, either or unknown",
   LEVEL_SOURCE_NOTE_REQUIRED: "say where each level came from",
-  WINDOW_INCOMPLETE: "a filing window needs its days, anchor and day basis together, or none of them",
+  WINDOW_INCOMPLETE:
+    "a filing window needs its days, anchor and day basis together, or none of them",
   WINDOW_OUT_OF_RANGE: "the filing window must be a whole number of days within the allowed range",
   ANCHOR_INVALID: "the anchor is not one of the allowed kinds",
   BASIS_INVALID: "the day basis is not one of the allowed kinds",

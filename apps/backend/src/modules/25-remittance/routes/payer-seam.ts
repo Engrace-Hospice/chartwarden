@@ -32,7 +32,11 @@ export function buildSeamPayerSeam(): PayerSeam {
       try {
         const provider = getSeam("MdmEntityProvider") as MdmPayerProviderView;
         const found = await provider.resolvePayer(organizationId, payerId);
-        if (!found || typeof found.canonical.name !== "string" || found.canonical.name.trim() === "") {
+        if (
+          !found ||
+          typeof found.canonical.name !== "string" ||
+          found.canonical.name.trim() === ""
+        ) {
           return null;
         }
         return {

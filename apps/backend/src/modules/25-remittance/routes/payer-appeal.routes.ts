@@ -69,7 +69,10 @@ export const PayerAppealOpenedSchema = Type.Object({
   version: Type.Integer(),
   deadlineSource: Type.String(),
 });
-export const PayerAppealVersionedSchema = Type.Object({ id: Type.String(), version: Type.Integer() });
+export const PayerAppealVersionedSchema = Type.Object({
+  id: Type.String(),
+  version: Type.Integer(),
+});
 
 export const PayerAppealCaseViewSchema = Type.Object({
   id: Type.String(),
@@ -88,7 +91,11 @@ export const PayerAppealCaseViewSchema = Type.Object({
   deadlineAt: NULLABLE_STRING,
   deadlineZone: NULLABLE_STRING,
   deadlineSource: Type.String(),
-  deadlineState: Type.Union([Type.Literal("computed"), Type.Literal("recorded"), Type.Literal("none")]),
+  deadlineState: Type.Union([
+    Type.Literal("computed"),
+    Type.Literal("recorded"),
+    Type.Literal("none"),
+  ]),
   windowVerified: Type.Boolean(),
   derivation: Type.Union([
     Type.Object({
@@ -196,7 +203,12 @@ export function registerPayerAppealRoutes(app: FastifyInstance, deps: PayerAppea
     async (request, reply) => {
       const body = parse(PayerAppealNoticeRequestSchema, request.body);
       return reply.send(
-        await svc.recordNotice(writeActorOf(request), caseId(request), body.noticeDate, ifMatchVersion(request)),
+        await svc.recordNotice(
+          writeActorOf(request),
+          caseId(request),
+          body.noticeDate,
+          ifMatchVersion(request),
+        ),
       );
     },
   );
@@ -207,7 +219,13 @@ export function registerPayerAppealRoutes(app: FastifyInstance, deps: PayerAppea
     async (request, reply) => {
       const { move, ...input } = parse(PayerAppealMoveRequestSchema, request.body);
       return reply.send(
-        await svc.move(writeActorOf(request), caseId(request), move, input, ifMatchVersion(request)),
+        await svc.move(
+          writeActorOf(request),
+          caseId(request),
+          move,
+          input,
+          ifMatchVersion(request),
+        ),
       );
     },
   );
@@ -241,7 +259,9 @@ export function registerPayerAppealRoutes(app: FastifyInstance, deps: PayerAppea
       const body = parse(RecordedDeadlineRequestSchema, request.body);
       return reply
         .code(201)
-        .send(await laterTierService.createDeadline(writeActorOf(request), subjectOf(request), body));
+        .send(
+          await laterTierService.createDeadline(writeActorOf(request), subjectOf(request), body),
+        );
     },
   );
   app.patch(

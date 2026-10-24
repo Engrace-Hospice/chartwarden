@@ -12,7 +12,9 @@ type ReqBody<Op> = Op extends { requestBody?: infer RB } ? Json<RB> : never;
 export type DenialCaseView = Ok<operations["getApiV1DenialsByDenialCaseIdCaseview"]>;
 export type PayerAppealDenialView = Ok<operations["getApiV1DenialsByDenialCaseIdPayerappeals"]>;
 export type PayerAppealCase = PayerAppealDenialView["cases"][number];
-export type PayerAppealOpenInput = ReqBody<operations["postApiV1DenialsByDenialCaseIdPayerappeals"]>;
+export type PayerAppealOpenInput = ReqBody<
+  operations["postApiV1DenialsByDenialCaseIdPayerappeals"]
+>;
 export type PayerAppealOpened = Ok201<operations["postApiV1DenialsByDenialCaseIdPayerappeals"]>;
 export type PayerAppealMoveInput = ReqBody<operations["postApiV1PayerappealsByIdState"]>;
 export type PayerAppealVersioned = Ok<operations["postApiV1PayerappealsByIdState"]>;
@@ -40,10 +42,9 @@ export async function loadDenialCaseView(
   denialCaseId: string,
 ): Promise<WriteResult<DenialCaseView>> {
   return guarded(async () => {
-    const { data, error, response } = await client.GET(
-      "/api/v1/denials/{denialCaseId}/case-view",
-      { params: { path: { denialCaseId } } },
-    );
+    const { data, error, response } = await client.GET("/api/v1/denials/{denialCaseId}/case-view", {
+      params: { path: { denialCaseId } },
+    });
     return error || !data ? failure(response?.status, error) : ok(data);
   });
 }

@@ -169,7 +169,9 @@ describe("shouldAlertPayerNoDeadline", () => {
     expect(shouldAlertPayerNoDeadline(row(), now)).toBe(true);
   });
   it("does not alert a fresh one, one with a deadline, or one already alerted", () => {
-    expect(shouldAlertPayerNoDeadline(row({ createdAt: new Date("2026-03-10T00:00:00Z") }), now)).toBe(false);
+    expect(
+      shouldAlertPayerNoDeadline(row({ createdAt: new Date("2026-03-10T00:00:00Z") }), now),
+    ).toBe(false);
     expect(shouldAlertPayerNoDeadline(row({ hasDeadline: true }), now)).toBe(false);
     expect(shouldAlertPayerNoDeadline(row({ alreadyAlerted: true }), now)).toBe(false);
   });
@@ -180,9 +182,15 @@ describe("shouldAlertPayerNoDeadline", () => {
 
 describe("checkPayerOpen", () => {
   it("needs a level label and kind when no path level is chosen", () => {
-    expect(checkPayerOpen({ hasPathLevel: false, levelLabel: "", levelKind: "internal" })).toBe("LEVEL_LABEL_REQUIRED");
-    expect(checkPayerOpen({ hasPathLevel: false, levelLabel: "L1", levelKind: "x" })).toBe("LEVEL_KIND_INVALID");
-    expect(checkPayerOpen({ hasPathLevel: false, levelLabel: "L1", levelKind: "other" })).toBeNull();
+    expect(checkPayerOpen({ hasPathLevel: false, levelLabel: "", levelKind: "internal" })).toBe(
+      "LEVEL_LABEL_REQUIRED",
+    );
+    expect(checkPayerOpen({ hasPathLevel: false, levelLabel: "L1", levelKind: "x" })).toBe(
+      "LEVEL_KIND_INVALID",
+    );
+    expect(
+      checkPayerOpen({ hasPathLevel: false, levelLabel: "L1", levelKind: "other" }),
+    ).toBeNull();
   });
   it("takes label and kind from the path level when one is chosen", () => {
     expect(checkPayerOpen({ hasPathLevel: true })).toBeNull();
@@ -195,8 +203,12 @@ describe("checkPayerDecision", () => {
     expect(checkPayerDecision({ outcome: "maybe" })).toBe("OUTCOME_REQUIRED");
   });
   it("a disposition of 'other' needs a note, and a note needs a kind", () => {
-    expect(checkPayerDecision({ outcome: "unfavorable", dispositionKind: "other" })).toBe("DISPOSITION_NOTE_REQUIRED");
-    expect(checkPayerDecision({ outcome: "unfavorable", dispositionNote: "n" })).toBe("DISPOSITION_KIND_REQUIRED");
+    expect(checkPayerDecision({ outcome: "unfavorable", dispositionKind: "other" })).toBe(
+      "DISPOSITION_NOTE_REQUIRED",
+    );
+    expect(checkPayerDecision({ outcome: "unfavorable", dispositionNote: "n" })).toBe(
+      "DISPOSITION_KIND_REQUIRED",
+    );
     expect(checkPayerDecision({ outcome: "unfavorable", dispositionKind: "remand" })).toBeNull();
   });
 });

@@ -18,7 +18,15 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { MdmEntityLookupField } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
-import { ActionModal, ButtonRow, ErrorAlert, FormButtons, Hint, PhiNotice, WarningAlert } from "./action-ui";
+import {
+  ActionModal,
+  ButtonRow,
+  ErrorAlert,
+  FormButtons,
+  Hint,
+  PhiNotice,
+  WarningAlert,
+} from "./action-ui";
 import {
   ANCHOR_KINDS,
   DAY_BASES,
@@ -135,7 +143,12 @@ function LevelFields(props: {
       <SelectField
         label="Day basis"
         value={d.dayBasis}
-        onChange={(e) => set({ dayBasis: e.target.value, roll: e.target.value === "business_us_federal" ? d.roll : "" })}
+        onChange={(e) =>
+          set({
+            dayBasis: e.target.value,
+            roll: e.target.value === "business_us_federal" ? d.roll : "",
+          })
+        }
         options={opts(DAY_BASES, "Not stated")}
       />
       {d.dayBasis === "business_us_federal" ? (
@@ -180,12 +193,16 @@ function levelBlocker(d: LevelDraft): string | null {
   if (d.levelLabel.trim() === "") return "Name every level.";
   if (d.sourceNote.trim() === "") return "Say where every level came from.";
   const stated = [d.filingWindowDays, d.anchorKind, d.dayBasis].filter((v) => v !== "").length;
-  if (stated > 0 && stated < 3) return "A filing window needs its days, anchor and day basis together.";
+  if (stated > 0 && stated < 3)
+    return "A filing window needs its days, anchor and day basis together.";
   if (d.dayBasis === "business_us_federal" && d.roll === "") return "Choose the roll direction.";
   return null;
 }
 
-function PathModal(props: { readonly onClose: () => void; readonly onSaved: () => void }): JSX.Element {
+function PathModal(props: {
+  readonly onClose: () => void;
+  readonly onSaved: () => void;
+}): JSX.Element {
   const client = useApiClient();
   const [payerId, setPayerId] = useState("");
   const [program, setProgram] = useState("commercial");
@@ -256,7 +273,11 @@ function PathModal(props: { readonly onClose: () => void; readonly onSaved: () =
           index={i}
           draft={d}
           onChange={(next) => setLevels(levels.map((x, j) => (j === i ? next : x)))}
-          onRemove={levels.length > 1 && i === levels.length - 1 ? () => setLevels(levels.slice(0, -1)) : null}
+          onRemove={
+            levels.length > 1 && i === levels.length - 1
+              ? () => setLevels(levels.slice(0, -1))
+              : null
+          }
         />
       ))}
       <ButtonRow>
@@ -297,12 +318,14 @@ function PathRow(props: {
   const client = useApiClient();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const isAuthor = props.myMembershipId !== undefined && props.myMembershipId === p.authoredByMembershipId;
+  const isAuthor =
+    props.myMembershipId !== undefined && props.myMembershipId === p.authoredByMembershipId;
 
   async function run(kind: "verify" | "retire"): Promise<void> {
     setBusy(true);
     setError(null);
-    const res = kind === "verify" ? await verifyPayerPath(client, p) : await retirePayerPath(client, p);
+    const res =
+      kind === "verify" ? await verifyPayerPath(client, p) : await retirePayerPath(client, p);
     setBusy(false);
     if (!res.ok) {
       setError(res.message);
@@ -327,7 +350,8 @@ function PathRow(props: {
       <ol className="wx-action-hint wx-action-list">
         {p.levels.map((l) => (
           <li key={l.id}>
-            {l.levelLabel} · {humanize(l.levelKind)} · files: {humanize(l.whoFiles)} · {windowText(l)}
+            {l.levelLabel} · {humanize(l.levelKind)} · files: {humanize(l.whoFiles)} ·{" "}
+            {windowText(l)}
           </li>
         ))}
       </ol>

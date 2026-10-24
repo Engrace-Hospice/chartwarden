@@ -1,3 +1,4 @@
+import { APPEAL_TRANSITIONS } from "./appeal-machine";
 // M25 milestone 12a-1 - the PAYER APPEAL CASE (hospice ADR/TPE/QIC PRD, milestone 12). PURE.
 //
 // One case per level of a payer's own path. A deadline is computed ONLY from a complete level window (the path row, as a
@@ -13,9 +14,8 @@ import {
   parseNoticeDay,
   previousBusinessDay,
 } from "./deadline";
-import { APPEAL_TRANSITIONS } from "./appeal-machine";
 import { DISPOSITION_KINDS } from "./later-tier";
-import { type LevelWindow, LEVEL_KINDS } from "./payer-appeal-path";
+import { LEVEL_KINDS, type LevelWindow } from "./payer-appeal-path";
 import { deriveRecordedDeadline } from "./recorded-deadline";
 import type { AppealState } from "./types";
 
@@ -93,7 +93,10 @@ export function derivePayerLevelDeadline(
       : window.roll === "forward"
         ? nextBusinessDay(calendarLastMs)
         : calendarLastMs;
-  const end = deriveRecordedDeadline(isoDay(lastMs), zones.length > 0 ? zones : [DEFAULT_DEADLINE_ZONE]);
+  const end = deriveRecordedDeadline(
+    isoDay(lastMs),
+    zones.length > 0 ? zones : [DEFAULT_DEADLINE_ZONE],
+  );
   return {
     anchorDay,
     presumedReceiptOn: presumption === null ? null : isoDay(receiptMs),
@@ -143,7 +146,9 @@ export function shouldAlertPayerNoDeadline(
   now: Date,
 ): boolean {
   if (row.hasDeadline || row.alreadyAlerted || row.state !== "draft") return false;
-  return now.getTime() - row.createdAt.getTime() >= PAYER_APPEAL_NO_DEADLINE_ALERT_DAYS * MS_PER_DAY;
+  return (
+    now.getTime() - row.createdAt.getTime() >= PAYER_APPEAL_NO_DEADLINE_ALERT_DAYS * MS_PER_DAY
+  );
 }
 
 export type PayerOpenRefusal = "LEVEL_LABEL_REQUIRED" | "LEVEL_KIND_INVALID";
@@ -156,7 +161,8 @@ export function checkPayerOpen(input: {
 }): PayerOpenRefusal | null {
   if (input.hasPathLevel) return null;
   if ((input.levelLabel ?? "").trim() === "") return "LEVEL_LABEL_REQUIRED";
-  if (!(LEVEL_KINDS as readonly string[]).includes(input.levelKind ?? "")) return "LEVEL_KIND_INVALID";
+  if (!(LEVEL_KINDS as readonly string[]).includes(input.levelKind ?? ""))
+    return "LEVEL_KIND_INVALID";
   return null;
 }
 

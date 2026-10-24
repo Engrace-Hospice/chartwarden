@@ -89,7 +89,11 @@ describe("checkPathInput", () => {
     ["BASIS_INVALID", header, [level({ dayBasis: "lunar" as never })]],
     ["ROLL_REQUIRED", header, [level({ dayBasis: "business_us_federal", roll: null })]],
     ["ROLL_NOT_ALLOWED", header, [level({ dayBasis: "calendar", roll: "back" })]],
-    ["ROLL_INVALID", header, [level({ dayBasis: "business_us_federal", roll: "sideways" as never })]],
+    [
+      "ROLL_INVALID",
+      header,
+      [level({ dayBasis: "business_us_federal", roll: "sideways" as never })],
+    ],
     ["RECEIPT_OUT_OF_RANGE", header, [level({ receiptPresumptionDays: -1 })]],
     ["DECISION_DAYS_OUT_OF_RANGE", header, [level({ decisionDays: 0 })]],
     ["TEXT_TOO_LONG", header, [level({ levelLabel: "x".repeat(501) })]],
@@ -164,22 +168,42 @@ describe("resolvePayerPath", () => {
 describe("checkPathVerify", () => {
   it("refuses the author verifying their own path", () => {
     expect(
-      checkPathVerify({ status: "draft", authorMembershipId: "a", verifierMembershipId: "a", levelCount: 1 }),
+      checkPathVerify({
+        status: "draft",
+        authorMembershipId: "a",
+        verifierMembershipId: "a",
+        levelCount: 1,
+      }),
     ).toBe("VERIFIER_IS_AUTHOR");
   });
   it("refuses a path that is not a draft", () => {
     expect(
-      checkPathVerify({ status: "active", authorMembershipId: "a", verifierMembershipId: "b", levelCount: 1 }),
+      checkPathVerify({
+        status: "active",
+        authorMembershipId: "a",
+        verifierMembershipId: "b",
+        levelCount: 1,
+      }),
     ).toBe("NOT_DRAFT");
   });
   it("refuses a path with no levels", () => {
     expect(
-      checkPathVerify({ status: "draft", authorMembershipId: "a", verifierMembershipId: "b", levelCount: 0 }),
+      checkPathVerify({
+        status: "draft",
+        authorMembershipId: "a",
+        verifierMembershipId: "b",
+        levelCount: 0,
+      }),
     ).toBe("NO_LEVELS");
   });
   it("accepts a second person", () => {
     expect(
-      checkPathVerify({ status: "draft", authorMembershipId: "a", verifierMembershipId: "b", levelCount: 2 }),
+      checkPathVerify({
+        status: "draft",
+        authorMembershipId: "a",
+        verifierMembershipId: "b",
+        levelCount: 2,
+      }),
     ).toBeNull();
   });
 });

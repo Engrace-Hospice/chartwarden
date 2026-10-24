@@ -17,7 +17,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
 import { ButtonRow, ErrorAlert, Facts, Hint, NoticeAlert, WarningAlert } from "./action-ui";
-import { RecordedDeadlines } from "./recorded-deadlines";
 import {
   LEVEL_KINDS,
   type PayerAppealCase,
@@ -27,6 +26,7 @@ import {
   openPayerAppeal,
   recordPayerNotice,
 } from "./payer-appeal-api";
+import { RecordedDeadlines } from "./recorded-deadlines";
 import { APPEAL_STATE_TONE, formatDay, humanize, toneOf } from "./remittance-status";
 
 export const MA_HINT =
@@ -228,7 +228,11 @@ function CaseCard(props: {
               <ButtonRow>
                 <Button
                   size="sm"
-                  disabled={busy || outcome === "" || (dispositionKind === "other" && !dispositionNote.trim())}
+                  disabled={
+                    busy ||
+                    outcome === "" ||
+                    (dispositionKind === "other" && !dispositionNote.trim())
+                  }
                   onClick={() => void move("decide")}
                 >
                   Record decision
@@ -246,22 +250,42 @@ function CaseCard(props: {
                 </Button>
               ) : null}
               {c.state === "submitted" ? (
-                <Button size="sm" tone="secondary" disabled={busy} onClick={() => void move("begin_review")}>
+                <Button
+                  size="sm"
+                  tone="secondary"
+                  disabled={busy}
+                  onClick={() => void move("begin_review")}
+                >
                   Mark under review
                 </Button>
               ) : null}
               {c.state === "under_review" ? (
-                <Button size="sm" tone="secondary" disabled={busy} onClick={() => setDeciding(true)}>
+                <Button
+                  size="sm"
+                  tone="secondary"
+                  disabled={busy}
+                  onClick={() => setDeciding(true)}
+                >
                   Record decision
                 </Button>
               ) : null}
               {c.state === "decided" ? (
-                <Button size="sm" tone="secondary" disabled={busy} onClick={() => void move("close")}>
+                <Button
+                  size="sm"
+                  tone="secondary"
+                  disabled={busy}
+                  onClick={() => void move("close")}
+                >
                   Close level
                 </Button>
               ) : null}
               {c.state !== "decided" ? (
-                <Button size="sm" tone="tertiary" disabled={busy} onClick={() => void move("withdraw")}>
+                <Button
+                  size="sm"
+                  tone="tertiary"
+                  disabled={busy}
+                  onClick={() => void move("withdraw")}
+                >
                   Withdraw
                 </Button>
               ) : null}
@@ -297,7 +321,10 @@ function OpenForm(props: {
     setError(null);
     const res = await openPayerAppeal(client, props.denialId, {
       ...(named
-        ? { levelLabel: levelLabel.trim(), levelKind: levelKind as "internal" | "external_review" | "other" }
+        ? {
+            levelLabel: levelLabel.trim(),
+            levelKind: levelKind as "internal" | "external_review" | "other",
+          }
         : { levelOrdinal: Number(ordinal) }),
       ...(noticeDate ? { noticeDate } : {}),
       ...(props.priorId ? { priorLevelCaseId: props.priorId } : {}),
@@ -389,7 +416,11 @@ export function PayerAppealPanel(props: PayerAppealPanelProps): JSX.Element | nu
   };
 
   if (!view) {
-    return error ? <ErrorAlert message={`Payer appeals unavailable: ${error}`} /> : <LoadingSpinner />;
+    return error ? (
+      <ErrorAlert message={`Payer appeals unavailable: ${error}`} />
+    ) : (
+      <LoadingSpinner />
+    );
   }
   // A Medicare, Medicaid or advice-less denial has no payer appeal; its own work is elsewhere on this rail.
   if (view.refusal !== null && view.cases.length === 0) return null;
@@ -429,7 +460,9 @@ export function PayerAppealPanel(props: PayerAppealPanelProps): JSX.Element | nu
       ) : view.pathPrompt ? (
         <WarningAlert>
           {view.pathPrompt}.{" "}
-          {props.canManagePaths ? <Link to="/remittance/payer-appeal-paths">Add a path</Link> : null}
+          {props.canManagePaths ? (
+            <Link to="/remittance/payer-appeal-paths">Add a path</Link>
+          ) : null}
         </WarningAlert>
       ) : null}
       {view.cases.map((c) => (
@@ -440,7 +473,9 @@ export function PayerAppealPanel(props: PayerAppealPanelProps): JSX.Element | nu
           key={view.cases.length}
           view={view}
           denialId={props.denialId}
-          priorId={last && (last.state === "decided" || last.state === "closed") ? last.id : undefined}
+          priorId={
+            last && (last.state === "decided" || last.state === "closed") ? last.id : undefined
+          }
           onOpened={() => {
             setNotice("Payer appeal level opened.");
             changed();

@@ -8,8 +8,8 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
 import { CaseViewPanel } from "./case-view-panel";
-import { PayerAppealPaths } from "./payer-appeal-paths";
 import { PayerAppealPanel } from "./payer-appeal-panel";
+import { PayerAppealPaths } from "./payer-appeal-paths";
 
 const DENIAL = "dddddddd-4444-4444-8444-dddddddddddd";
 const ME = "mmmmmmmm-4444-4444-8444-mmmmmmmmmmmm";
@@ -60,7 +60,8 @@ const denialView = (over: Record<string, unknown> = {}) => ({
   refusal: null,
   maHint: false,
   path: null,
-  pathPrompt: "No appeal path recorded for this payer - add it from your contract or the payer's denial notice",
+  pathPrompt:
+    "No appeal path recorded for this payer - add it from your contract or the payer's denial notice",
   cases: [],
   ...over,
 });
@@ -122,9 +123,7 @@ afterEach(() => cleanup());
 
 describe("PayerAppealPanel", () => {
   it("with no recorded path shows the absence prompt and a link to add one (for a path manager)", async () => {
-    mount(
-      <PayerAppealPanel denialId={DENIAL} canManage canManagePaths />,
-    );
+    mount(<PayerAppealPanel denialId={DENIAL} canManage canManagePaths />);
     expect(await screen.findByText(/No appeal path recorded for this payer/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Add a path" }).getAttribute("href")).toBe(
       "/remittance/payer-appeal-paths",
@@ -153,7 +152,11 @@ describe("PayerAppealPanel", () => {
           deadlineState: "computed",
           windowVerified: false,
           prompt: null,
-          derivation: { presumedReceiptOn: null, calendarLastDay: "2026-03-12", lastFilingDay: "2026-03-12" },
+          derivation: {
+            presumedReceiptOn: null,
+            calendarLastDay: "2026-03-12",
+            lastFilingDay: "2026-03-12",
+          },
         }),
       ],
     });
@@ -243,7 +246,9 @@ const pathRow = (over: Record<string, unknown> = {}) => ({
 describe("PayerAppealPaths", () => {
   it("with no paths says none are recorded and nothing is built in", async () => {
     mount(<PayerAppealPaths />, ["payer_appeal_path.read", "payer_appeal_path.manage"]);
-    expect(await screen.findByText(/No appeal path recorded - add it from your contract/)).toBeTruthy();
+    expect(
+      await screen.findByText(/No appeal path recorded - add it from your contract/),
+    ).toBeTruthy();
     expect(screen.getByText(/Nothing is built in/)).toBeTruthy();
   });
 
@@ -255,13 +260,17 @@ describe("PayerAppealPaths", () => {
     cleanup();
     paths = { items: [pathRow({ authoredByMembershipId: ME })] };
     mount(<PayerAppealPaths />, ["payer_appeal_path.read", "payer_appeal_path.verify"]);
-    expect(await screen.findByText(/You wrote this path; a second person must verify it/)).toBeTruthy();
+    expect(
+      await screen.findByText(/You wrote this path; a second person must verify it/),
+    ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Verify and activate" })).toBeNull();
   });
 
   it("will not save a path without its source note", async () => {
     mount(<PayerAppealPaths />, ["payer_appeal_path.read", "payer_appeal_path.manage"]);
-    fireEvent.click((await screen.findAllByRole("button", { name: "Write a path" }))[0] as HTMLElement);
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "Write a path" }))[0] as HTMLElement,
+    );
     const save = await screen.findByRole("button", { name: "Save draft path" });
     expect((save as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText("Choose the payer.")).toBeTruthy();
