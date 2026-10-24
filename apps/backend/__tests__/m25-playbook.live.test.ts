@@ -61,6 +61,9 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
   let userA2: string;
   const svc = () => buildDrizzlePlaybookService(fx.handle.db);
   const A = () => fx.actor();
+  let memberA3: string;
+  let userA3: string;
+  const A3 = () => ({ ...fx.actor(), userId: userA3, membershipId: memberA3 });
   const A2 = () => ({ ...fx.actor(), userId: userA2, membershipId: memberA2 });
   const B = () => fx.actor(ORG_B);
 
@@ -161,6 +164,14 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
       await fx.admin.query(
         `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
         [userA2, ORG],
+      )
+    ).rows[0].id as string;
+    userA3 = (await fx.admin.query(`INSERT INTO "user" (email) VALUES ('m25-pb-a3@x.test') RETURNING id`))
+      .rows[0].id as string;
+    memberA3 = (
+      await fx.admin.query(
+        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+        [userA3, ORG],
       )
     ).rows[0].id as string;
   }, 300_000);
@@ -308,6 +319,53 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
         ])
       ).rows[0];
       expect(row.status).toBe("draft");
+    });
+
+    it("refuses the last editor approving: someone who rewrote the draft cannot publish it, even retrying", async () => {
+      const created = await svc().createPlaybook(A(), {
+        codeKind: "carc",
+        code: "102",
+        title: "CARC 102",
+        ...content(),
+      } as never);
+      const edited = await svc().updateDraft(A2(), created.versionId, content({ summary: "Rewritten by member 2" }), 1);
+      const row = (
+        await fx.admin.query("SELECT authored_by_membership_id AS a, last_edited_by_membership_id AS e FROM denial_playbook_version WHERE id=$1", [created.versionId])
+      ).rows[0];
+      expect(row).toEqual({ a: fx.memberA, e: memberA2 });
+      for (let attempt = 0; attempt < 2; attempt++) {
+        expect(await fx.refused(svc().publishVersion(A2(), created.versionId, edited.rowVersion))).toMatchObject({
+          code: "PLAYBOOK_REVIEWER_IS_AUTHOR",
+          statusCode: 409,
+        });
+        expect(await fx.refused(svc().publishVersion(A(), created.versionId, edited.rowVersion))).toMatchObject({
+          code: "PLAYBOOK_REVIEWER_IS_AUTHOR",
+        });
+      }
+      // Past the service, the CHECK refuses the editor (or the author) as reviewer.
+      const msg = await fx.dbMessage(
+        fx.admin.query(
+          `UPDATE denial_playbook_version SET status='published', reviewed_by_membership_id=last_edited_by_membership_id,
+             published_at=now(), effective_from=CURRENT_DATE WHERE id=$1`,
+          [created.versionId],
+        ) as never,
+      );
+      expect(msg).toMatch(/denial_playbook_version_published_reviewed/);
+      // The app role cannot reach the author column, and the editor column freezes once published.
+      expect(
+        await fx.dbMessage(
+          fx.asApp((tx) => tx.execute(sql`UPDATE denial_playbook_version SET authored_by_membership_id=${memberA2}`)),
+        ),
+      ).toMatch(/permission denied/i);
+      const ok = await svc().publishVersion(A3(), created.versionId, edited.rowVersion);
+      expect(ok.rowVersion).toBe(edited.rowVersion + 1);
+      expect(
+        await fx.dbMessage(
+          fx.admin.query("UPDATE denial_playbook_version SET last_edited_by_membership_id=reviewed_by_membership_id WHERE id=$1", [
+            created.versionId,
+          ]) as never,
+        ),
+      ).toMatch(/M25_PLAYBOOK_PUBLISHED_IMMUTABLE/);
     });
 
     it("lets a different person publish; the published version is frozen and cannot be edited", async () => {

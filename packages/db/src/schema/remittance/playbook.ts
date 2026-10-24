@@ -60,6 +60,7 @@ export const denialPlaybookVersion = pgTable(
     sourceNote: text("source_note").notNull(), // denylisted
     sourceDocumentId: uuid("source_document_id"), // logical FK -> M22 document
     authoredByMembershipId: uuid("authored_by_membership_id").notNull(),
+    lastEditedByMembershipId: uuid("last_edited_by_membership_id").notNull(),
     reviewedByMembershipId: uuid("reviewed_by_membership_id"),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     retiredAt: timestamp("retired_at", { withTimezone: true }),

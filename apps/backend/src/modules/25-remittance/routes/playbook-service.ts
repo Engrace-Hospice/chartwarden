@@ -13,7 +13,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ne, sql } from "drizzle-orm";
 import {
   PLAYBOOK_CODE_KINDS,
   type PlaybookCodeKind,
@@ -407,6 +407,7 @@ export function buildDrizzlePlaybookService(db: DbClient): PlaybookService {
               playbookId,
               versionNo: 1,
               authoredByMembershipId: actor.membershipId,
+              lastEditedByMembershipId: actor.membershipId,
               ...content,
             })
             .returning({ id: PV.id });
@@ -444,6 +445,7 @@ export function buildDrizzlePlaybookService(db: DbClient): PlaybookService {
               playbookId,
               versionNo,
               authoredByMembershipId: actor.membershipId,
+              lastEditedByMembershipId: actor.membershipId,
               ...content,
             })
             .returning({ id: PV.id, versionNo: PV.versionNo, rowVersion: PV.rowVersion });
@@ -474,7 +476,11 @@ export function buildDrizzlePlaybookService(db: DbClient): PlaybookService {
         if (cur.rowVersion !== ifMatch) throw new VersionConflictError(cur.rowVersion);
         const updated = await tx
           .update(PV)
-          .set({ ...content, rowVersion: sql`${PV.rowVersion} + 1` })
+          .set({
+            ...content,
+            lastEditedByMembershipId: actor.membershipId,
+            rowVersion: sql`${PV.rowVersion} + 1`,
+          })
           .where(and(eq(PV.id, versionId), eq(PV.rowVersion, ifMatch)))
           .returning({ id: PV.id, rowVersion: PV.rowVersion });
         if (!updated[0]) throw new VersionConflictError(cur.rowVersion);
@@ -489,6 +495,7 @@ export function buildDrizzlePlaybookService(db: DbClient): PlaybookService {
         const refusal = checkPublish({
           status: cur.status as PlaybookVersionStatus,
           authorMembershipId: cur.authoredByMembershipId,
+          lastEditorMembershipId: cur.lastEditedByMembershipId,
           publisherMembershipId: actor.membershipId,
         });
         if (refusal === "NOT_A_DRAFT") {
@@ -519,7 +526,18 @@ export function buildDrizzlePlaybookService(db: DbClient): PlaybookService {
             effectiveFrom,
             rowVersion: sql`${PV.rowVersion} + 1`,
           })
-          .where(and(eq(PV.id, versionId), eq(PV.rowVersion, ifMatch)))
+          // Separation of duties holds IN the statement, not only in the check above: the row is a draft and the actor
+          // (from the authenticated context) is neither its author nor its last editor. The database CHECK and the
+          // guard trigger back this up.
+          .where(
+            and(
+              eq(PV.id, versionId),
+              eq(PV.rowVersion, ifMatch),
+              eq(PV.status, "draft"),
+              ne(PV.authoredByMembershipId, actor.membershipId),
+              ne(PV.lastEditedByMembershipId, actor.membershipId),
+            ),
+          )
           .returning({ id: PV.id, rowVersion: PV.rowVersion });
         if (!published[0]) throw new VersionConflictError(cur.rowVersion);
         return { ...published[0], effectiveFrom };

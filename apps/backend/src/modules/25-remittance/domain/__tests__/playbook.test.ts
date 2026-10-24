@@ -79,20 +79,25 @@ describe("validatePlaybookVersion", () => {
 describe("checkPublish", () => {
   it("refuses the author publishing their own draft", () => {
     expect(
-      checkPublish({ status: "draft", authorMembershipId: "m1", publisherMembershipId: "m1" }),
+      checkPublish({ status: "draft", authorMembershipId: "m1", lastEditorMembershipId: "m1", publisherMembershipId: "m1" }),
     ).toBe("REVIEWER_IS_AUTHOR");
   });
   it("refuses anything that is not a draft", () => {
     expect(
-      checkPublish({ status: "published", authorMembershipId: "m1", publisherMembershipId: "m2" }),
+      checkPublish({ status: "published", authorMembershipId: "m1", lastEditorMembershipId: "m1", publisherMembershipId: "m2" }),
     ).toBe("NOT_A_DRAFT");
     expect(
-      checkPublish({ status: "retired", authorMembershipId: "m1", publisherMembershipId: "m2" }),
+      checkPublish({ status: "retired", authorMembershipId: "m1", lastEditorMembershipId: "m1", publisherMembershipId: "m2" }),
     ).toBe("NOT_A_DRAFT");
+  });
+  it("refuses the last editor too: a second person cannot rewrite a draft and then approve it", () => {
+    const base = { status: "draft", authorMembershipId: "m1", lastEditorMembershipId: "m2" } as const;
+    expect(checkPublish({ ...base, publisherMembershipId: "m2" })).toBe("REVIEWER_IS_AUTHOR");
+    expect(checkPublish({ ...base, publisherMembershipId: "m3" })).toBeNull();
   });
   it("allows a different person to publish a draft", () => {
     expect(
-      checkPublish({ status: "draft", authorMembershipId: "m1", publisherMembershipId: "m2" }),
+      checkPublish({ status: "draft", authorMembershipId: "m1", lastEditorMembershipId: "m1", publisherMembershipId: "m2" }),
     ).toBeNull();
   });
 });

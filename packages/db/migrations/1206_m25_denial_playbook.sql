@@ -43,6 +43,9 @@ CREATE TABLE IF NOT EXISTS "denial_playbook_version" (
   -- Logical FK to an M22 document (the source the author used); not enforced here.
   "source_document_id" uuid,
   "authored_by_membership_id" uuid NOT NULL,
+  -- Whoever last changed the content: the author at creation, then anyone who edits the draft. A reviewer must be neither
+  -- the author nor the last editor, so a second person cannot rewrite a draft and then approve their own words.
+  "last_edited_by_membership_id" uuid NOT NULL,
   "reviewed_by_membership_id" uuid,
   "published_at" timestamptz,
   "retired_at" timestamptz,
@@ -55,6 +58,7 @@ CREATE TABLE IF NOT EXISTS "denial_playbook_version" (
     OR ("reviewed_by_membership_id" IS NULL AND "published_at" IS NULL AND "effective_from" IS NULL AND "retired_at" IS NULL)),
   CONSTRAINT "denial_playbook_version_published_reviewed" CHECK ("status" = 'draft'
     OR ("reviewed_by_membership_id" IS NOT NULL AND "reviewed_by_membership_id" <> "authored_by_membership_id"
+        AND "reviewed_by_membership_id" <> "last_edited_by_membership_id"
         AND "published_at" IS NOT NULL AND "effective_from" IS NOT NULL)),
   CONSTRAINT "denial_playbook_version_retired_has_time" CHECK (("status" = 'retired') = ("retired_at" IS NOT NULL))
 );--> statement-breakpoint
@@ -104,7 +108,7 @@ CREATE POLICY "denial_playbook_case_step_org" ON "denial_playbook_case_step" FOR
 GRANT SELECT, INSERT ON "denial_playbook" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "denial_playbook" TO chartwarden_admin;--> statement-breakpoint
 GRANT SELECT, INSERT ON "denial_playbook_version" TO chartwarden_app;--> statement-breakpoint
-GRANT UPDATE ("status", "summary", "steps", "source_note", "source_document_id", "reviewed_by_membership_id",
+GRANT UPDATE ("status", "summary", "steps", "source_note", "source_document_id", "last_edited_by_membership_id", "reviewed_by_membership_id",
   "published_at", "retired_at", "effective_from", "row_version") ON "denial_playbook_version" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "denial_playbook_version" TO chartwarden_admin;--> statement-breakpoint
 GRANT SELECT, INSERT ON "denial_playbook_case_step" TO chartwarden_app;--> statement-breakpoint
@@ -190,6 +194,7 @@ BEGIN
     OR NEW.steps IS DISTINCT FROM OLD.steps
     OR NEW.source_note IS DISTINCT FROM OLD.source_note
     OR NEW.source_document_id IS DISTINCT FROM OLD.source_document_id
+    OR NEW.last_edited_by_membership_id IS DISTINCT FROM OLD.last_edited_by_membership_id
     OR NEW.reviewed_by_membership_id IS DISTINCT FROM OLD.reviewed_by_membership_id
     OR NEW.published_at IS DISTINCT FROM OLD.published_at
     OR NEW.effective_from IS DISTINCT FROM OLD.effective_from) THEN

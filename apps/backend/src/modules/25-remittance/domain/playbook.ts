@@ -105,10 +105,17 @@ export type PlaybookPublishRefusal = "NOT_A_DRAFT" | "REVIEWER_IS_AUTHOR";
 export function checkPublish(input: {
   readonly status: PlaybookVersionStatus;
   readonly authorMembershipId: string;
+  /** Whoever last changed the draft's content (the author unless someone else edited it). */
+  readonly lastEditorMembershipId: string;
   readonly publisherMembershipId: string;
 }): PlaybookPublishRefusal | null {
   if (input.status !== "draft") return "NOT_A_DRAFT";
-  if (input.publisherMembershipId === input.authorMembershipId) return "REVIEWER_IS_AUTHOR";
+  if (
+    input.publisherMembershipId === input.authorMembershipId ||
+    input.publisherMembershipId === input.lastEditorMembershipId
+  ) {
+    return "REVIEWER_IS_AUTHOR";
+  }
   return null;
 }
 
