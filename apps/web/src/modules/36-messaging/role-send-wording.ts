@@ -36,6 +36,9 @@ export const NOT_CONFIGURED_TEXT =
   "No on-call schedule is set up for this role. Nothing was sent. Use the agency telephone procedure.";
 export const NAMES_UNAVAILABLE_TEXT =
   "Someone is on call but their name could not be shown, so they cannot be confirmed. Nothing was sent. Use the agency telephone procedure.";
+/** ADR-0082 (PROPOSED): shown before the sender confirms, while after-hours triage is on. A request, never a confirmed call. */
+export const AFTERHOURS_INDICATOR_TEXT =
+  "This will also ask the on-call team to open an after-hours triage call. It is a request: the thread shows whether a call was confirmed.";
 export const CHANGED_TEXT =
   "Who is on call changed. Nothing was sent. Check the name below and confirm again.";
 export const LOOKUP_FAILED_TEXT =
@@ -86,6 +89,7 @@ export const sendLabel = (name: string): string => `Send urgent message to ${nam
 export function refusalText(status: string): string {
   if (status === "roster_not_connected") return NOT_CONNECTED_TEXT;
   if (status === "not_configured") return NOT_CONFIGURED_TEXT;
+  if (status === "lookup_failed") return LOOKUP_FAILED_TEXT;
   return NO_COVERAGE_TEXT;
 }
 
@@ -101,6 +105,7 @@ const ERRORS: Readonly<Record<string, string>> = {
   [ROLE_SEND_ERROR_CODES.noCoverage]: NO_COVERAGE_TEXT,
   [ROLE_SEND_ERROR_CODES.resolutionChanged]: CHANGED_TEXT,
   [ROLE_SEND_ERROR_CODES.unavailable]: UNTRACKED_TEXT,
+  [ROLE_SEND_ERROR_CODES.lookupFailed]: LOOKUP_FAILED_TEXT,
   [ROLE_SEND_ERROR_CODES.clientIdReused]:
     "That message id was already used for a different message. Nothing was sent. Close this and start a new message.",
 };
