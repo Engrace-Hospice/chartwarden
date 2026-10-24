@@ -262,9 +262,11 @@ export function createDbMembershipRepository(
 
     // One advisory lock per org, held for the duration of `fn` (count + write). `fn` uses its own
     // connections and commits before the lock releases, so the next waiter counts committed state.
-    // ponytail: holds one pool connection while `fn` needs another; revisit if pool size <= concurrent admin ops per org.
+    // ponytail: holds one pool connection while `fn` needs another. The bounded lock_timeout makes a waiter fail
+    // (55P03) and free its connection instead of starving the pool; upgrade path is to run `fn` on `tx` itself.
     withAdminLock: (organizationId, fn) =>
       db.transaction(async (tx) => {
+        await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(hashtextextended(${`m2:last-admin:${organizationId}`}, 0))`,
         );
