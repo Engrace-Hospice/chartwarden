@@ -8,7 +8,14 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { NotFoundError } from "@chartwarden/types";
 import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
-import { type TimelineItem, nextDeadline, sortTimeline, windowUnconfirmed } from "../domain";
+import {
+  type TimelineItem,
+  nextDeadline,
+  noticeDayOf,
+  representativeFlag,
+  sortTimeline,
+  windowUnconfirmed,
+} from "../domain";
 import type { AppealTier } from "../domain";
 import type { M25ReadActor } from "./actor";
 import { viewRecordedDeadline } from "./recorded-deadline-view";
@@ -25,6 +32,8 @@ export interface CaseViewOptions {
   readonly includeAudits: boolean;
   /** Payer (commercial / Medicare Advantage) appeal levels, only when the actor holds `payer_appeal.read`. */
   readonly includePayerAppeals?: boolean;
+  /** Beneficiary-filed appeals, only when the actor holds `beneficiary_appeal.read` (milestone 13a). */
+  readonly includeBeneficiaryAppeals?: boolean;
 }
 
 export interface DenialCaseView {
@@ -115,6 +124,79 @@ async function payerAppealItems(
     };
   });
   return { items: [...cases, ...deadlines], truncated: recorded.length > CASE_VIEW_ITEM_CAP };
+}
+
+/**
+ * Timeline items for beneficiary-filed appeals and their recorded deadlines. A beneficiary appeal carries NO computed deadline:
+ * only what a person typed from a notice shows, and the representative-status badge is derived from typed dates. The label is
+ * the tier as the notice names it, never a name or a note.
+ */
+async function beneficiaryAppealItems(
+  tx: CaseViewTx,
+  rows: (typeof schema.beneficiaryAppeal.$inferSelect)[],
+  now: Date,
+): Promise<TimelineItem[]> {
+  if (rows.length === 0) return [];
+  const RD = schema.recordedDeadline;
+  const RA = schema.representativeAppointment;
+  const apptIds = [
+    ...new Set(
+      rows.flatMap((r) => (r.representativeAppointmentId ? [r.representativeAppointmentId] : [])),
+    ),
+  ];
+  const appts = apptIds.length > 0 ? await tx.select().from(RA).where(inArray(RA.id, apptIds)) : [];
+  const recorded = await tx
+    .select()
+    .from(RD)
+    .where(
+      inArray(
+        RD.beneficiaryAppealId,
+        rows.map((r) => r.id),
+      ),
+    )
+    .orderBy(asc(RD.dueOn))
+    .limit(CASE_VIEW_ITEM_CAP + 1);
+  const today = noticeDayOf(now);
+  const appeals: TimelineItem[] = rows.map((r) => {
+    const appt = appts.find((a) => a.id === r.representativeAppointmentId);
+    return {
+      id: r.id,
+      kind: "beneficiary_appeal",
+      at: iso(r.createdAt),
+      label: `Beneficiary appeal - ${r.tierLabel}`,
+      state: r.state,
+      tier: null,
+      relatedId: r.denialCaseId,
+      deadlineAt: null,
+      deadlineSource: null,
+      windowConfirmed: true,
+      flags: {
+        representativeStatus: representativeFlag(
+          {
+            filerKind: r.filerKind,
+            appointment: appt ? { state: appt.state, validThroughOn: appt.validThroughOn } : null,
+          },
+          today,
+        ),
+      },
+    };
+  });
+  const deadlines: TimelineItem[] = recorded.slice(0, CASE_VIEW_ITEM_CAP).map((d) => {
+    const view = viewRecordedDeadline(d, now);
+    return {
+      id: d.id,
+      kind: "recorded_deadline",
+      at: iso(d.createdAt),
+      label: d.label,
+      state: view.status,
+      tier: null,
+      relatedId: d.beneficiaryAppealId,
+      deadlineAt: d.satisfiedOn === null ? view.dueAt : null,
+      deadlineSource: d.satisfiedOn === null ? "recorded" : null,
+      windowConfirmed: true,
+    };
+  });
+  return [...appeals, ...deadlines];
 }
 
 export function buildDrizzleCaseViewService(
@@ -345,6 +427,20 @@ export function buildDrizzleCaseViewService(
           const built = await payerAppealItems(tx, payer, now);
           items.push(...built.items);
           if (built.truncated) truncated = true;
+        }
+
+        if (options.includeBeneficiaryAppeals) {
+          const BA = schema.beneficiaryAppeal;
+          const sc = scoped(BA.providerEntityId);
+          const beneficiary = cap(
+            await tx
+              .select()
+              .from(BA)
+              .where(and(eq(BA.claimId, claimId), ...(sc ? [sc] : [])))
+              .orderBy(asc(BA.createdAt))
+              .limit(CASE_VIEW_ITEM_CAP + 1),
+          );
+          items.push(...(await beneficiaryAppealItems(tx, beneficiary, now)));
         }
 
         return {

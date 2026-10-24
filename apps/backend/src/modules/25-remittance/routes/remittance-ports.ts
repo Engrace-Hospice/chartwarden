@@ -21,6 +21,8 @@ export interface ClaimFacts {
   readonly id: string;
   readonly providerEntityId: string;
   readonly patientId: string;
+  /** The claim's admission (a document linked to an admission must be this one); absent on a stub. */
+  readonly admissionId?: string;
   /** The claim control number (for display); absent on a stub. */
   readonly claimControlNumber?: string;
 }
@@ -52,6 +54,7 @@ export const m23ClaimFactsPort: ClaimFactsPort = {
           id: claim.id,
           providerEntityId: claim.providerEntityId,
           patientId: claim.patientId,
+          admissionId: claim.admissionId,
           claimControlNumber: claim.claimControlNumber,
         }
       : null;

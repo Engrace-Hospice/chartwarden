@@ -738,6 +738,8 @@ jobs:
           - { name: "M25 ADR readiness", scripts: "test:m25:adr-readiness:live" }
           # Milestone 12a-1 - payer (commercial / Medicare Advantage) appeal paths written by a person and verified by a second one, a payer appeal case per level on a claim-less denial, deadlines computed only from a complete path row, the denial-keyed case view.
           - { name: "M25 payer appeals", scripts: "test:m25:payer-appeal:live" }
+          # Milestone 13a - beneficiary-filed appeals and appointments of representative (record-keeping only): a second person with step-up activates an appointment (the database refuses recorder = activator), signed documents are validated against the M22 active version, no computed beneficiary deadline, no portal / consent / caregiver side effects.
+          - { name: "M25 beneficiary and representative", scripts: "test:m25:beneficiary-representative:live" }
           # F-158 (#248) — the `handlers-unbound` denial-worklist seed: m23.claim.rejected +
           # m18.evv.aggregator_rejected.
           - {

@@ -30,3 +30,5 @@ export * from "./case-timeline";
 export * from "./readiness";
 export * from "./payer-appeal-path";
 export * from "./payer-appeal";
+export * from "./representative";
+export * from "./beneficiary-appeal";
