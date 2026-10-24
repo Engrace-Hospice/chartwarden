@@ -295,7 +295,7 @@ import {
   embedderUnavailable,
   licensedSourceDenyStub,
 } from "@chartwarden/terminology-loader";
-import { buildActivePermissionHolderCounter } from "./bootstrap/active-permission-holders";
+import { buildActivePermissionHolderIds } from "./bootstrap/active-permission-holders";
 import {
   ACK_PICKER_RATE_LIMIT_KEY_PREFIX,
   buildAckRateLimit,
@@ -5216,7 +5216,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   (await featureFlagReader?.forOrg(organizationId))?.[
                     REDACTION_SINGLE_OFFICER_FLAG_KEY
                   ] === true,
-                eligibleApprovers: buildActivePermissionHolderCounter(
+                eligibleApprovers: buildActivePermissionHolderIds(
                   createMembershipsHoldingPermissionReader(dbHandle.db),
                 ),
               },
