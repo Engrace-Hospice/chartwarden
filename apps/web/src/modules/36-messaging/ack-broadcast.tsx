@@ -194,6 +194,8 @@ function PersonRow({ person }: { readonly person: AckBroadcastPerson }): JSX.Ele
   );
 }
 
+const BUSY_STYLE = { opacity: 0.72, cursor: "not-allowed" } as const;
+
 function WithdrawDialog({
   busy,
   failed,
@@ -217,10 +219,11 @@ function WithdrawDialog({
           </p>
         ) : null}
         <div className="wx-bc-dialog-actions">
-          <Button type="button" tone="secondary" size="lg" disabled={busy} onClick={onCancel}>
+          {/* aria-disabled, not disabled: a disabled button would drop focus out of the dialog while the request runs. */}
+          <Button type="button" tone="secondary" size="lg" aria-disabled={busy || undefined} style={busy ? BUSY_STYLE : undefined} onClick={busy ? undefined : onCancel}>
             {WITHDRAW_CANCEL}
           </Button>
-          <Button type="button" size="lg" disabled={busy} onClick={onConfirm}>
+          <Button type="button" size="lg" aria-disabled={busy || undefined} aria-busy={busy || undefined} style={busy ? BUSY_STYLE : undefined} onClick={busy ? undefined : onConfirm}>
             {WITHDRAW_CONFIRM}
           </Button>
         </div>
@@ -257,6 +260,13 @@ function DetailPanel({
   const [confirming, setConfirming] = useState(false);
   const { view, more, moreState, reload } = useBroadcastDetail(broadcast.messageId, filter);
   const headingId = useId();
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const c = broadcast.counts;
   return (
     <section className="wx-bc-detail" aria-labelledby={headingId}>
@@ -269,7 +279,10 @@ function DetailPanel({
         <p className="wx-bc-sub">{WITHDRAWN_NOTE}</p>
       ) : (
         <div className="wx-bc-withdraw">
-          <Button type="button" tone="secondary" size="lg" onClick={() => setConfirming(true)}>
+          <Button type="button" tone="secondary" size="lg" onClick={() => {
+            controls.clearError();
+            setConfirming(true);
+          }}>
             {WITHDRAW_LABEL}
           </Button>
         </div>
@@ -284,7 +297,7 @@ function DetailPanel({
           }}
           onConfirm={() => {
             void controls.withdraw(broadcast.messageId).then((ok) => {
-              if (ok) setConfirming(false);
+              if (ok && mounted.current) setConfirming(false);
             });
           }}
         />

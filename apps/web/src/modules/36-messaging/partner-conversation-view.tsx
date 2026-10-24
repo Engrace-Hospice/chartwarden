@@ -4,7 +4,8 @@
 // console or URL.
 import type { PartnerMessageDto } from "@chartwarden/types";
 import { Button, t } from "@chartwarden/ui";
-import type { CSSProperties, JSX } from "react";
+import { useId } from "react";
+import type { CSSProperties, JSX, Ref } from "react";
 
 export interface PartnerConversationViewProps {
   readonly partnerName: string;
@@ -16,6 +17,8 @@ export interface PartnerConversationViewProps {
   readonly onRefresh?: () => void;
   readonly refreshing?: boolean;
   readonly refreshFailed?: boolean;
+  /** The page moves focus here when the conversation opens. */
+  readonly headingRef?: Ref<HTMLHeadingElement>;
 }
 
 const timeText = (iso: string): string => {
@@ -31,11 +34,13 @@ export function PartnerConversationView({
   onRefresh,
   refreshing = false,
   refreshFailed = false,
+  headingRef,
 }: PartnerConversationViewProps): JSX.Element {
   const Heading = example ? "h3" : "h1";
+  const headingId = useId();
   return (
-    <section aria-labelledby="partner-heading" style={wrap}>
-      <Heading id="partner-heading" style={title}>
+    <section aria-labelledby={headingId} style={wrap}>
+      <Heading id={headingId} ref={headingRef} tabIndex={-1} style={title}>
         {example ? "Example: " : ""}Shared conversation for {partnerName}
       </Heading>
       <p style={muted}>
@@ -72,11 +77,12 @@ export function PartnerConversationView({
           type="button"
           size="lg"
           tone="secondary"
-          loading={refreshing}
-          onClick={onRefresh}
+          aria-disabled={refreshing || undefined}
+          aria-busy={refreshing || undefined}
+          onClick={refreshing ? undefined : onRefresh}
           style={{ minHeight: "2.75rem", alignSelf: "flex-start" }}
         >
-          Refresh
+          {refreshing ? "Refreshing" : "Refresh"}
         </Button>
       ) : null}
     </section>

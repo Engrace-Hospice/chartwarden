@@ -69,10 +69,10 @@ export const redeemInvitation = (organizationId: string, token: string) =>
   call<PartnerRedeemed>("/redeem", { method: "POST", body: { organizationId, token } });
 
 export const readPartnerState = (bearer: string, shareId: string, signal?: AbortSignal) =>
-  call<PartnerShareStateDto>(`/shares/${shareId}`, { method: "GET", bearer }, signal);
+  call<PartnerShareStateDto>(`/shares/${encodeURIComponent(shareId)}`, { method: "GET", bearer }, signal);
 
 export const verifyPartnerCode = (bearer: string, shareId: string, code: string) =>
-  call<PartnerVerifiedDto>(`/shares/${shareId}/verify`, {
+  call<PartnerVerifiedDto>(`/shares/${encodeURIComponent(shareId)}/verify`, {
     method: "POST",
     bearer,
     body: { code },
@@ -89,7 +89,7 @@ export async function readPartnerConversation(
   for (let page = 0; page < PARTNER_MAX_PAGES; page += 1) {
     const query: string = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
     const r: PartnerResult<PartnerMessagesDto> = await call<PartnerMessagesDto>(
-      `/shares/${shareId}/messages${query}`,
+      `/shares/${encodeURIComponent(shareId)}/messages${query}`,
       { method: "GET", bearer },
       signal,
     );

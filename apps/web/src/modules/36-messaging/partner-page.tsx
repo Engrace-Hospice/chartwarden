@@ -31,7 +31,17 @@ export const PARTNER_POLL_MS = 15_000;
 const WATCH_MS = 10_000;
 const PAGE_TITLE = "Secure message";
 const CODE_PATTERN = /^\d{8}$/;
-const INPUT_EVENTS = ["pointerdown", "keydown", "touchstart", "wheel"] as const;
+const INPUT_EVENTS = [
+  "pointerdown",
+  "pointermove",
+  "keydown",
+  "touchstart",
+  "wheel",
+  "scroll",
+] as const;
+/** The polite "ends soon" notice appears this long before the idle end. */
+const IDLE_WARN_MS = 2 * 60_000;
+const IDLE_WARN_MINUTES = IDLE_WARN_MS / 60_000;
 
 type Phase = "ready" | "redeeming" | "code" | "verifying" | "reading" | "ended";
 type EndReason = "neutral" | "idle";
@@ -39,7 +49,8 @@ type EndReason = "neutral" | "idle";
 const NEUTRAL =
   "This link is not available. It may have ended, been replaced, or never worked. If you were expecting access, ask the person who sent it to you.";
 const IDLE =
-  "This session ended after 30 minutes of inactivity and the messages were cleared from this page. Ask the person who sent you the link for a new one.";
+  `This session ended after ${EXTERNAL_SESSION_IDLE_MINUTES} minutes of inactivity and the messages were cleared from this page. Ask the person who sent you the link for a new one.`;
+const IDLE_WARNING = `This session ends in ${IDLE_WARN_MINUTES} minutes unless you press a key or tap.`;
 
 interface Held {
   bearer: string;
@@ -81,7 +92,13 @@ export function PartnerPage(): JSX.Element {
   const [code, setCode] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
+  const [idleWarning, setIdleWarning] = useState(false);
   const held = useRef<Held | null>(null);
+  /** Bumped when a session ends or the page unmounts, so a late network answer can never revive it. */
+  const sessionGen = useRef(0);
+  /** Bumped per read; only the newest read may write messages (an overlapping older one is dropped). */
+  const refreshSeq = useRef(0);
+  const idleWarningRef = useRef(false);
   const lastInput = useRef(Date.now());
   const headingRef = useRef<HTMLHeadingElement>(null);
 
@@ -102,6 +119,11 @@ export function PartnerPage(): JSX.Element {
   /** Drop the bearer and every message from memory. The only way out of a session. */
   const end = useCallback((why: EndReason) => {
     held.current = null;
+    sessionGen.current += 1;
+    refreshSeq.current += 1;
+    idleWarningRef.current = false;
+    setIdleWarning(false);
+    setRefreshing(false);
     setMessages([]);
     setCode("");
     setNotice(null);
@@ -116,8 +138,12 @@ export function PartnerPage(): JSX.Element {
         end("neutral");
         return;
       }
-      if (r.kind === "limited") setNotice("Too many attempts. Wait a minute and try again.");
-      else if (r.kind === "bad-code")
+      if (r.kind === "limited") {
+        if (whileReading) {
+          setRefreshFailed(true);
+          setNotice(null);
+        } else setNotice("Too many attempts. Wait a minute and try again.");
+      } else if (r.kind === "bad-code")
         setNotice("That code is not correct. Check it with the person who gave it to you.");
       else if (whileReading) setRefreshFailed(true);
       else setNotice("We could not reach the service. Check your connection and try again.");
@@ -126,12 +152,15 @@ export function PartnerPage(): JSX.Element {
   );
 
   const refresh = useCallback(
-    async (signal?: AbortSignal): Promise<void> => {
+    async (opts: { signal?: AbortSignal; manual?: boolean } = {}): Promise<void> => {
+      const { signal, manual = false } = opts;
       const h = held.current;
       if (!h) return;
-      setRefreshing(true);
+      const seq = ++refreshSeq.current;
+      // Only a manual refresh shows busy: a background poll must not toggle the button.
+      if (manual) setRefreshing(true);
       const r = await readPartnerConversation(h.bearer, h.shareId, signal);
-      if (signal?.aborted || held.current !== h) return;
+      if (signal?.aborted || held.current !== h || seq !== refreshSeq.current) return;
       setRefreshing(false);
       if (r.kind === "ok") {
         setMessages(r.data);
@@ -143,9 +172,11 @@ export function PartnerPage(): JSX.Element {
 
   async function open(): Promise<void> {
     if (!invitation) return;
+    const gen = sessionGen.current;
     setPhase("redeeming");
     setNotice(null);
     const r = await redeemInvitation(invitation.organizationId, invitation.token);
+    if (sessionGen.current !== gen) return; // ended or unmounted meanwhile: do not resurrect it
     if (r.kind !== "ok") {
       if (r.kind === "gone") return end("neutral");
       setNotice(
@@ -170,9 +201,11 @@ export function PartnerPage(): JSX.Element {
       setNotice("Enter the 8-digit code exactly as you were given it.");
       return;
     }
+    const gen = sessionGen.current;
     setPhase("verifying");
     setNotice(null);
     const r = await verifyPartnerCode(h.bearer, h.shareId, code);
+    if (sessionGen.current !== gen) return; // ended or unmounted meanwhile: do not resurrect it
     if (r.kind !== "ok") {
       if (r.kind !== "gone") setPhase("code");
       refuse(r, false);
@@ -184,34 +217,63 @@ export function PartnerPage(): JSX.Element {
     setExpiresAt(r.data.expiresAt);
     setCode("");
     setPhase("reading");
-    void refresh();
+    void refresh({ manual: false });
   }
 
   // Input resets the page's idle clock. Polling does not (it would keep the server's clock alive forever).
   useEffect(() => {
     const mark = (): void => {
       lastInput.current = Date.now();
+      if (idleWarningRef.current) {
+        idleWarningRef.current = false;
+        setIdleWarning(false);
+      }
     };
-    for (const e of INPUT_EVENTS) window.addEventListener(e, mark, { passive: true });
+    // Capture: a scroll inside an element does not bubble to the window.
+    for (const e of INPUT_EVENTS) window.addEventListener(e, mark, { passive: true, capture: true });
     return () => {
-      for (const e of INPUT_EVENTS) window.removeEventListener(e, mark);
+      for (const e of INPUT_EVENTS) window.removeEventListener(e, mark, { capture: true });
     };
   }, []);
+
+  // An unmount ends every in-flight answer's right to write.
+  useEffect(
+    () => () => {
+      sessionGen.current += 1;
+    },
+    [],
+  );
 
   // While a session is held: enforce the idle and absolute limits, and (reading only) poll while the tab is visible.
   useEffect(() => {
     if (phase !== "code" && phase !== "verifying" && phase !== "reading") return;
-    const watch = setInterval(() => {
+    /** True when a limit passed and the session was ended. Also raises the polite warning shortly before the idle end. */
+    const limitsPassed = (): boolean => {
       const h = held.current;
-      if (!h) return;
+      if (!h) return true;
       const now = Date.now();
-      if (now - h.startedAt >= PARTNER_ABSOLUTE_MS) end("neutral");
-      else if (now - lastInput.current >= PARTNER_IDLE_MS) end("idle");
-    }, WATCH_MS);
+      if (now - h.startedAt >= PARTNER_ABSOLUTE_MS) {
+        end("neutral");
+        return true;
+      }
+      const idleFor = now - lastInput.current;
+      if (idleFor >= PARTNER_IDLE_MS) {
+        end("idle");
+        return true;
+      }
+      const warn = idleFor >= PARTNER_IDLE_MS - IDLE_WARN_MS;
+      if (warn !== idleWarningRef.current) {
+        idleWarningRef.current = warn;
+        setIdleWarning(warn);
+      }
+      return false;
+    };
+    const watch = setInterval(limitsPassed, WATCH_MS);
     if (phase !== "reading") return () => clearInterval(watch);
     const controller = new AbortController();
     const poll = (): void => {
-      if (!document.hidden) void refresh(controller.signal);
+      if (document.hidden || limitsPassed()) return;
+      void refresh({ signal: controller.signal });
     };
     const timer = setInterval(poll, PARTNER_POLL_MS);
     document.addEventListener("visibilitychange", poll);
@@ -240,15 +302,26 @@ export function PartnerPage(): JSX.Element {
     );
   }
 
+  const expiry = new Date(expiresAt);
+  const accessEndsText = Number.isNaN(expiry.getTime()) ? "your access ends" : expiry.toLocaleString();
+  // Always mounted while a session is held, so a screen reader announces the text when it appears.
+  const idleNotice = (
+    <div role="status" style={mutedStyle}>
+      {idleWarning ? IDLE_WARNING : ""}
+    </div>
+  );
+
   if (phase === "reading") {
     return (
       <main style={readingWrap}>
         <BrandLockup />
+        {idleNotice}
         <PartnerConversationView
           partnerName={partnerName}
           messages={messages}
-          accessEndsText={new Date(expiresAt).toLocaleString()}
-          onRefresh={() => void refresh()}
+          accessEndsText={accessEndsText}
+          headingRef={headingRef}
+          onRefresh={() => void refresh({ manual: true })}
           refreshing={refreshing}
           refreshFailed={refreshFailed}
         />
@@ -276,7 +349,8 @@ export function PartnerPage(): JSX.Element {
               : "You have been given time-limited, read-only access to one conversation. The link works once. Next you will enter a code you were given separately."}
           </p>
         </div>
-        {notice ? <InlineAlert tone="error">{notice}</InlineAlert> : null}
+        {gate ? idleNotice : null}
+        {notice && !gate ? <InlineAlert tone="error">{notice}</InlineAlert> : null}
         {gate ? (
           <TextField
             id="partner-code"
@@ -284,6 +358,7 @@ export function PartnerPage(): JSX.Element {
             inputMode="numeric"
             autoComplete="one-time-code"
             maxLength={8}
+            error={notice}
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\s/g, ""))}
             style={{ minHeight: "2.75rem" }}

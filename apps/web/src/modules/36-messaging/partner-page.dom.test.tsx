@@ -176,7 +176,10 @@ describe("PartnerPage", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("not correct");
     expect(alert.textContent).not.toMatch(/\d+ (tries|attempts)/);
-    expect(screen.getByLabelText("Verification code")).toBeTruthy();
+    // The error is tied to the input (invalid + described by), which also puts it in the field's accessible name.
+    const field = screen.getByRole("textbox");
+    expect(field.getAttribute("aria-invalid")).toBe("true");
+    expect(field.getAttribute("aria-describedby")).toBe(alert.id);
   });
 
   it("the code field rejects anything but eight digits before any request", async () => {
@@ -223,6 +226,90 @@ describe("PartnerPage", () => {
     });
     expect((await screen.findByRole("alert")).textContent).toContain("inactivity");
     expect(screen.queryByText(SECRET_BODY)).toBeNull();
+  });
+
+  /** A fetch whose answer for the URL suffix is held until `release()`; everything else answers as `happy`. */
+  function holdFetch(suffix: string) {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit = {}) => {
+        calls.push({ url, init });
+        if (url.endsWith(suffix)) await gate;
+        const r = happy(url);
+        return json(r.status, r.body);
+      }),
+    );
+    return release;
+  }
+
+  it("a verify answer that arrives after the session ended cannot bring it back or leave the ended state", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    mount();
+    await user.click(await screen.findByRole("button", { name: "Open the conversation" }));
+    await user.type(await screen.findByLabelText("Verification code"), "12345678");
+    const release = holdFetch("/verify");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await act(async () => {
+      vi.advanceTimersByTime(PARTNER_IDLE_MS + 1000);
+    });
+    expect((await screen.findByRole("alert")).textContent).toContain("inactivity");
+    await act(async () => {
+      release();
+    });
+    expect((await screen.findByRole("alert")).textContent).toContain("inactivity");
+    expect(screen.queryByText(SECRET_BODY)).toBeNull();
+    expect(screen.queryByLabelText("Verification code")).toBeNull();
+    expect(calls.filter((c) => c.url.includes("/messages"))).toHaveLength(0);
+  });
+
+  it("a redeem answer that arrives after the page unmounted does nothing", async () => {
+    const user = userEvent.setup();
+    const view = mount();
+    const release = holdFetch("/redeem");
+    await user.click(await screen.findByRole("button", { name: "Open the conversation" }));
+    view.unmount();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await act(async () => {
+      release();
+    });
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  it("moves focus to the conversation heading when reading begins", async () => {
+    const user = userEvent.setup();
+    mount();
+    await openAndVerify(user);
+    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1 }));
+  });
+
+  it("a rate-limited read while reading is shown as a failed refresh", async () => {
+    const user = userEvent.setup();
+    mount();
+    await openAndVerify(user);
+    handler = () => ({ status: 429 });
+    await user.click(await screen.findByRole("button", { name: "Refresh" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("could not refresh");
+  });
+
+  it("warns politely two minutes before the idle end, and a scroll counts as activity", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    mount();
+    await openAndVerify(user);
+    await act(async () => {
+      vi.advanceTimersByTime(PARTNER_IDLE_MS - 90_000);
+    });
+    expect((await screen.findByRole("status")).textContent).toContain("ends in 2 minutes");
+    await act(async () => {
+      window.dispatchEvent(new Event("scroll"));
+    });
+    expect(screen.getByRole("status").textContent).toBe("");
   });
 
   it("polls for new messages while visible and stops polling after the session ended", async () => {

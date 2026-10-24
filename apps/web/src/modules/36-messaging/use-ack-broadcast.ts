@@ -36,6 +36,7 @@ export function useAckBroadcast() {
   const hasData = useRef(false);
   const ackInFlight = useRef(false);
   const withdrawInFlight = useRef(false);
+  const mounted = useRef(true);
   const [withdrawState, setWithdrawState] = useState<"idle" | "busy" | "failed">("idle");
 
   const load = useCallback(async () => {
@@ -101,6 +102,12 @@ export function useAckBroadcast() {
       latest.current += 1;
     };
   }, [load]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   /** The caller's own explicit acknowledgment. Returns the record or null (and says so) on failure. */
   const acknowledge = useCallback(
@@ -150,6 +157,7 @@ export function useAckBroadcast() {
         const res = await client.POST("/api/v1/messaging/announcements/{messageId}/ack-broadcast/withdraw", {
           params: { path: { messageId } },
         });
+        if (!mounted.current) return false;
         if (!res.data) {
           setWithdrawState("failed");
           return false;
@@ -169,7 +177,7 @@ export function useAckBroadcast() {
         await load();
         return true;
       } catch {
-        setWithdrawState("failed");
+        if (mounted.current) setWithdrawState("failed");
         return false;
       } finally {
         withdrawInFlight.current = false;

@@ -290,7 +290,9 @@ describe("AckBroadcast: deadline and withdrawal (ADR-0097 D13-D14)", () => {
     fireEvent.click(confirm);
     expect(POST).toHaveBeenCalledTimes(1);
     expect(POST).toHaveBeenCalledWith(WITHDRAW, { params: { path: { messageId: "m1" } } });
-    expect((confirm as HTMLButtonElement).disabled).toBe(true);
+    // aria-disabled, not disabled: focus must stay inside the dialog while the request runs.
+    expect(confirm.getAttribute("aria-disabled")).toBe("true");
+    expect((confirm as HTMLButtonElement).disabled).toBe(false);
     withdrawn = true;
     release({ data: { ...summary, withdrawnAt: WITHDRAWN_AT, already: false } });
     const status = await screen.findByText("Requirement withdrawn. People are no longer asked.");
