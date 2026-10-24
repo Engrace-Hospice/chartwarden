@@ -523,6 +523,7 @@ export function mountIdentityRoutes(
     ...(invite?.appOriginFor ? { appOriginFor: invite.appOriginFor } : {}),
     ...(invite?.roleAttacher ? { roleAttacher: invite.roleAttacher } : {}),
     ...(invite?.proposedRoleGuard ? { proposedRoleGuard: invite.proposedRoleGuard } : {}),
+    ...(invite?.validateLocations ? { validateLocations: invite.validateLocations } : {}),
     // GAP-009 — always bound on a db mount: accept refuses without it (fail closed).
     userIdentity: _dbUserIdentity(db),
     ...(invite?.dashboardSeeder ? { dashboardSeeder: invite.dashboardSeeder } : {}),

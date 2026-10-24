@@ -231,6 +231,12 @@ export interface MembershipRepository {
   removeProvisioned(membershipId: string): Promise<void> | void;
   /** Count of `active` memberships carrying `org_admin` (last-admin lockout guard). */
   activeAdminCount(organizationId: string): Promise<number> | number;
+  /**
+   * Run `fn` while holding the org's admin-roster lock. Every route that can remove an active admin
+   * (suspend, revoke, deactivate) does its last-admin count AND its write inside this scope, so two
+   * concurrent removals serialize instead of both passing the count (check-then-act).
+   */
+  withAdminLock<T>(organizationId: string, fn: () => Promise<T>): Promise<T>;
 }
 
 /** The org binding written by `select-organization` (server-bound, spec §4.2). */
@@ -395,7 +401,8 @@ export interface InvitationStore {
    * call `consume` through (TASK-030). Throws the same LinkError kinds as `consume`.
    */
   peek(token: string): Promise<InvitationDetail> | InvitationDetail;
-  rescind(invitationId: string): Promise<boolean> | boolean;
+  /** Rescind a still-pending invitation that belongs to `organizationId` (false for any other org's). */
+  rescind(invitationId: string, organizationId: string): Promise<boolean> | boolean;
 }
 
 /** Whether a patient of an org is deceased — the one M5 fact the funeral-home link needs. */
@@ -640,6 +647,15 @@ export interface IdentityRouteDeps {
   invitations: InvitationStore;
   collaborators: CollaboratorLinkStore;
   /**
+   * M1's `FoundationSiteReader.allLocationsOpenInOrg`, org-explicit (M2 reads no M1 table). Gates every
+   * location id an admin writes into a member scope or an invite. Unbound + non-empty ids -> 503
+   * `LOCATION_VALIDATION_UNAVAILABLE` (fail closed).
+   */
+  validateLocations?: (
+    organizationId: string,
+    locationIds: readonly string[],
+  ) => Promise<boolean> | boolean;
+  /**
    * GAP-115 — M5's deceased-status fact, injected as a local port (M2 may not read M5). Unbound ->
    * `POST /funeral/invite` refuses 503 `DECEASED_STATUS_UNAVAILABLE` (fail closed).
    */
@@ -768,6 +784,16 @@ export function createInMemoryMembershipRepository(seed: MembershipRecord[] = []
   all(): MembershipRecord[];
 } {
   const rows = new Map<string, MembershipRecord>(seed.map((r) => [r.membershipId, { ...r }]));
+  // Per-org FIFO mutex: the in-memory stand-in for the DB advisory lock behind `withAdminLock`.
+  const tails = new Map<string, Promise<unknown>>();
+  const adminMutex = <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+    const run = (tails.get(key) ?? Promise.resolve()).then(fn, fn);
+    tails.set(
+      key,
+      run.catch(() => undefined),
+    );
+    return run;
+  };
   const repo: MembershipRepository = {
     listForUser: (userId) => [...rows.values()].filter((r) => r.userId === userId),
     findActive: (userId, organizationId) =>
@@ -817,6 +843,7 @@ export function createInMemoryMembershipRepository(seed: MembershipRecord[] = []
       [...rows.values()].filter(
         (r) => r.organizationId === organizationId && r.status === "active" && r.isAdmin,
       ).length,
+    withAdminLock: (organizationId, fn) => adminMutex(organizationId, fn),
   };
   return { repo, all: () => [...rows.values()] };
 }
@@ -974,9 +1001,9 @@ export function createInMemoryInvitationStore(
         inviterId: p.inviterId ?? null,
       };
     },
-    rescind(invitationId) {
+    rescind(invitationId, organizationId) {
       const p = pending.get(invitationId);
-      if (!p || p.status !== "pending") return false;
+      if (!p || p.organizationId !== organizationId || p.status !== "pending") return false;
       p.status = "revoked";
       return true;
     },
