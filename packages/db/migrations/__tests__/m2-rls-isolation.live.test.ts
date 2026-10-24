@@ -54,12 +54,33 @@ type SeedIds = {
 /** NOLOGIN definer-owner roles whose `FOR SELECT … USING (true)` policy is deliberate (migrations 0231, 0324):
  * the app role does not inherit them and reaches the rows only through a SECURITY DEFINER lookup keyed by a
  * capability (token hash / own user id). Named, never pattern-matched: a new entry needs a reason here. */
-const DEFINER_READER_ROLES: Record<string, string> = {
-  invitation_token_reader:
-    "0324 m2_find_invitation_by_token — pre-org invite accept, keyed by the token hash",
-  membership_picker_reader:
-    "0231 m2_list_own_memberships — pre-org picker, keyed by the caller's own user id",
+const DEFINER_READER_ROLES: Record<string, { reason: string; tables: string[] }> = {
+  invitation_token_reader: {
+    reason: "0324 m2_find_invitation_by_token — pre-org invite accept, keyed by the token hash",
+    tables: ["organization_invitation"],
+  },
+  membership_picker_reader: {
+    reason: "0231 m2_list_own_memberships — pre-org picker, keyed by the caller's own user id",
+    tables: [],
+  },
 };
+
+/** The roles a policy names, or null if the TO clause cannot be read (scanned as a tenant policy). */
+function policyRoles(block: string): string[] | null {
+  const list = /\bTO\s+([^()]*?)\s+(?:USING|WITH\s+CHECK)\b/i.exec(block)?.[1];
+  return list ? list.split(",").map((r) => r.trim().replace(/^"|"$/g, "").toLowerCase()) : null;
+}
+
+/** A definer-reader policy is exempt only if EVERY named role is listed for this table, it is a
+ * read-only FOR SELECT, and it has no WITH CHECK. A role list that also names another role is not. */
+function isDefinerReaderPolicy(block: string, table: string): boolean {
+  const roles = policyRoles(block);
+  return (
+    roles?.every((r) => DEFINER_READER_ROLES[r]?.tables.includes(table)) === true &&
+    /FOR\s+SELECT/i.test(block) &&
+    !/WITH\s+CHECK/i.test(block)
+  );
+}
 
 const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "organization_invitation", key: "organizationInvitation" },
@@ -202,22 +223,24 @@ describe.skipIf(!DB_URL)(
       const policyBlocks = (rls.match(/CREATE POLICY[^;]*;/g) ?? []).filter((b) =>
         COVERED.some((t) => b.includes(`"${t.table}"`)),
       );
+      // Definer-reader policies (named roles only) are not tenant policies: they never count towards
+      // "this table has a tenant policy" and are not held to the app.org_id rule.
+      const tenantBlocks = policyBlocks.filter(
+        (block) =>
+          !COVERED.some(
+            (t) => block.includes(`"${t.table}"`) && isDefinerReaderPolicy(block, t.table),
+          ),
+      );
       // Per-table, not an exact block COUNT. Scanning every migration means a policy DROPped and
       // re-CREATEd by a later migration contributes more than one block for the same table, so an
       // equality check would fail for a remediation that is entirely correct. What must hold is that
-      // each covered table HAS a policy and that every block found obeys the rule.
+      // each covered table HAS a tenant policy and that every block found obeys the rule.
       for (const { table } of COVERED) {
         expect(
-          policyBlocks.filter((b) => b.includes(`"${table}"`)).length,
-          `${table} has no CREATE POLICY block in any migration`,
+          tenantBlocks.filter((b) => b.includes(`"${table}"`)).length,
+          `${table} has no tenant CREATE POLICY block in any migration`,
         ).toBeGreaterThan(0);
       }
-      const tenantBlocks = policyBlocks.filter((block) => {
-        const role = /\bTO\s+"?(\w+)"?/i.exec(block)?.[1]?.toLowerCase();
-        if (!role || !(role in DEFINER_READER_ROLES)) return true;
-        expect(block, `${role} policy must be read-only`).toMatch(/FOR\s+SELECT/i);
-        return false;
-      });
       for (const block of tenantBlocks) {
         const vars = [...block.matchAll(/current_setting\(\s*'([^']+)'/g)].map((m) => m[1]);
         expect(new Set(vars)).toEqual(new Set(["app.org_id"]));
