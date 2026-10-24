@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1755,
-    "coveredRoutes": 1755,
-    "directRoutesReferenced": 1628
+    "routes": 1822,
+    "coveredRoutes": 1822,
+    "directRoutesReferenced": 1689
   },
   "modules": [
     {
@@ -110,7 +110,7 @@
     },
     {
       "module": "06-admission",
-      "routes": 88,
+      "routes": 98,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-certification.test.ts",
@@ -125,11 +125,12 @@
         "apps/backend/__tests__/election-addendum-upload-routes.test.ts",
         "apps/backend/__tests__/m2-link-redemption.live.test.ts",
         "apps/backend/__tests__/m36-promotion-targets.live.test.ts",
+        "apps/backend/__tests__/m6-nomnc-expedited.live.test.ts",
         "apps/backend/__tests__/m6-physician-authority.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/readmission-routes.test.ts"
       ],
-      "directRoutesReferenced": 88
+      "directRoutesReferenced": 98
     },
     {
       "module": "07-care-plan",
@@ -286,7 +287,7 @@
     },
     {
       "module": "17-scheduling",
-      "routes": 38,
+      "routes": 39,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
@@ -296,7 +297,7 @@
         "apps/backend/__tests__/scheduling-inject.test.ts",
         "apps/backend/__tests__/scheduling-own-vs-any.test.ts"
       ],
-      "directRoutesReferenced": 33
+      "directRoutesReferenced": 34
     },
     {
       "module": "18-evv",
@@ -354,9 +355,11 @@
         "apps/backend/__tests__/f238-records-request.test.ts",
         "apps/backend/__tests__/m22-doclens-sud-gate.test.ts",
         "apps/backend/__tests__/m25-audit-response.live.test.ts",
+        "apps/backend/__tests__/m25-beneficiary-representative.live.test.ts",
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
+        "apps/backend/__tests__/m6-nomnc-expedited.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 54
@@ -383,7 +386,9 @@
         "apps/backend/__tests__/m23-wage-index-routes.test.ts",
         "apps/backend/__tests__/m25-audit-request.live.test.ts",
         "apps/backend/__tests__/m25-audit-response.live.test.ts",
+        "apps/backend/__tests__/m25-beneficiary-representative.live.test.ts",
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",
+        "apps/backend/__tests__/m25-payer-appeal.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
@@ -395,27 +400,34 @@
       "routes": 39,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/billing-medicaid-inject.test.ts"
+        "apps/backend/__tests__/billing-medicaid-inject.test.ts",
+        "apps/backend/__tests__/m25-later-tiers.live.test.ts",
+        "apps/backend/__tests__/m25-payer-guard.live.test.ts"
       ],
       "directRoutesReferenced": 39
     },
     {
       "module": "25-remittance",
-      "routes": 111,
+      "routes": 158,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-adr-readiness.live.test.ts",
         "apps/backend/__tests__/m25-audit-request.live.test.ts",
         "apps/backend/__tests__/m25-audit-response.live.test.ts",
+        "apps/backend/__tests__/m25-beneficiary-representative.live.test.ts",
         "apps/backend/__tests__/m25-denial-version.live.test.ts",
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",
+        "apps/backend/__tests__/m25-medical-review-report.live.test.ts",
+        "apps/backend/__tests__/m25-payer-appeal.live.test.ts",
+        "apps/backend/__tests__/m25-payer-guard.live.test.ts",
+        "apps/backend/__tests__/m25-playbook.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m25-tpe.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
-      "directRoutesReferenced": 95
+      "directRoutesReferenced": 138
     },
     {
       "module": "26-cap",
@@ -488,7 +500,8 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/ai-platform-inject.test.ts",
-        "apps/backend/__tests__/auth.live.test.ts"
+        "apps/backend/__tests__/auth.live.test.ts",
+        "apps/backend/__tests__/m36-ai.live.test.ts"
       ],
       "directRoutesReferenced": 32
     },
@@ -526,7 +539,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 178,
+      "routes": 187,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -539,6 +552,9 @@
         "apps/backend/__tests__/m36-ack-supervisor-reassign.live.test.ts",
         "apps/backend/__tests__/m36-admin-alert-deliveries.test.ts",
         "apps/backend/__tests__/m36-afterhours-triage-routes.test.ts",
+        "apps/backend/__tests__/m36-ai.live.test.ts",
+        "apps/backend/__tests__/m36-alarm-ingest-routes.test.ts",
+        "apps/backend/__tests__/m36-alarm-ingest.live.test.ts",
         "apps/backend/__tests__/m36-announcements.live.test.ts",
         "apps/backend/__tests__/m36-announcements.test.ts",
         "apps/backend/__tests__/m36-attachments.live.test.ts",
@@ -610,7 +626,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 147
+      "directRoutesReferenced": 154
     },
     {
       "module": "37-ipu",

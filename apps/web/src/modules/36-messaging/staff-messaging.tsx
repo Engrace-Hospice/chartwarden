@@ -30,6 +30,7 @@ import "./thread.css";
 import "./message-list.css";
 import { useLiveAnnouncement } from "./use-live-announcement";
 import "./patient-context.css";
+import "./ai-summary.css";
 import "./composer.css";
 import "./new-conversation.css";
 import "./messaging-responsive.css";

@@ -71,6 +71,7 @@ import { AI_FULL_FLAG } from "@chartwarden/types";
 import type { AiTenantConsentStore } from "../governance/store";
 import type {
   AiBackendRegistryStore,
+  AiHitlOutcomeGuard,
   AiInvocationInsert,
   AiInvocationLedgerStore,
   AiRoutingOverrideStore,
@@ -250,6 +251,7 @@ export interface AiInvocationPipeline {
     invocationId: string,
     invokedAt: string,
     outcome: AiInvocationHitlOutcome,
+    guard?: AiHitlOutcomeGuard,
   ): Promise<void>;
 }
 
@@ -275,8 +277,8 @@ export function createAiInvocationPipeline(deps: AiInvocationPipelineDeps): AiIn
   }
 
   return {
-    recordHitlOutcome: (organizationId, invocationId, invokedAt, outcome) =>
-      deps.ledger.recordHitlOutcome(organizationId, invocationId, invokedAt, outcome),
+    recordHitlOutcome: (organizationId, invocationId, invokedAt, outcome, guard) =>
+      deps.ledger.recordHitlOutcome(organizationId, invocationId, invokedAt, outcome, guard),
 
     async invoke(request: AiInvokeRequest): Promise<AiInvocationOutcome> {
       // ── gate 0, short-circuited ─────────────────────────────────────────────────────────────────

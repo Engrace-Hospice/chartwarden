@@ -1,12 +1,12 @@
 {
-  "documentedSpecs": 113,
+  "documentedSpecs": 115,
   "byCategory": {
     "admin": 16,
     "core": 11,
     "clinical": 39,
     "platform": 5,
     "portal": 11,
-    "revenue": 14,
+    "revenue": 16,
     "compliance": 11,
     "staffing": 3,
     "mobile": 1,
@@ -1935,6 +1935,38 @@
       "app": "web",
       "module": "25-remittance",
       "moduleId": 25,
+      "id": "remittance.playbooks",
+      "path": "/remittance/playbooks",
+      "permission": "playbook.read"
+    },
+    {
+      "app": "web",
+      "module": "25-remittance",
+      "moduleId": 25,
+      "id": "remittance.report",
+      "path": "/remittance/report",
+      "permission": "medical_review.report.read"
+    },
+    {
+      "app": "web",
+      "module": "25-remittance",
+      "moduleId": 25,
+      "id": "remittance.payer-appeal-paths",
+      "path": "/remittance/payer-appeal-paths",
+      "permission": "payer_appeal_path.read"
+    },
+    {
+      "app": "web",
+      "module": "25-remittance",
+      "moduleId": 25,
+      "id": "remittance.representative-forms",
+      "path": "/remittance/representative-forms",
+      "permission": "representative_form.configure"
+    },
+    {
+      "app": "web",
+      "module": "25-remittance",
+      "moduleId": 25,
       "id": "remittance.taxonomy",
       "path": "/remittance/taxonomy",
       "permission": "taxonomy.read"
@@ -2370,6 +2402,14 @@
       "id": "messaging.partners",
       "path": "/messaging/partners",
       "permission": "messaging.share.manage"
+    },
+    {
+      "app": "web",
+      "module": "36-messaging",
+      "moduleId": 36,
+      "id": "messaging.alarm-sources",
+      "path": "/messaging/alarm-sources",
+      "permission": "messaging.alarm_ingest.manage"
     },
     {
       "app": "web",

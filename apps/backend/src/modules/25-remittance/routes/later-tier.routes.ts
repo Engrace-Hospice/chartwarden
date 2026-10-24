@@ -65,7 +65,12 @@ export const RecordedDeadlineSatisfyRequestSchema = Type.Object({
 
 export const RecordedDeadlineViewSchema = Type.Object({
   id: Type.String(),
-  subjectKind: Type.Union([Type.Literal("appeal"), Type.Literal("audit_request")]),
+  subjectKind: Type.Union([
+    Type.Literal("appeal"),
+    Type.Literal("audit_request"),
+    Type.Literal("payer_appeal"),
+    Type.Literal("beneficiary_appeal"),
+  ]),
   subjectId: Type.String(),
   label: Type.String(),
   dueOn: Type.String(),
@@ -84,6 +89,8 @@ export const RecordedDeadlineViewSchema = Type.Object({
 });
 export const RecordedDeadlinePageSchema = Type.Object({
   patientId: NULLABLE_STRING,
+  /** `unattributed` = no single patient could be named: the read is audited against the resource only. */
+  patientAttribution: Type.Union([Type.Literal("claim"), Type.Literal("unattributed")]),
   items: Type.Array(RecordedDeadlineViewSchema),
 });
 export const RecordedDeadlineResultSchema = Type.Object({

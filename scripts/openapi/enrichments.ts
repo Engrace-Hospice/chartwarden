@@ -12,26 +12,6 @@ import {
   ClaimVoidRequest,
   ManualValidateRequest,
 } from "@chartwarden/billing";
-/**
- * ChartWarden — OpenAPI enrichment registry (F0-T01, ADR-0032)
- * --------------------------------------------------------
- * Layers request/response schema detail onto the auto-discovered routes
- * (scan-routes.ts). Keyed by `METHOD /path` (exactly as written in source).
- *
- * Routes are discovered automatically, so COVERAGE never depends on this file —
- * an unlisted route still appears in the contract (params auto-derived from the
- * path). This registry only ADDS the request body / typed response, reusing the
- * SAME exported TypeBox schemas the route handlers validate against, so the
- * contract cannot drift from the validator.
- *
- * As of F0-T01 only the M5 Patient routes are enriched (proves the schema-embed
- * path end-to-end). Wiring the remaining modules' bodies/responses is the
- * deferred backend follow-up in docs/plans/FRONTEND_INTEGRATION_PLAN.md.
- */
-import {
-  ResponseAnalyticsQuerySchema as M36ResponseAnalyticsQuerySchema,
-  ResponseAnalyticsResponseSchema as M36ResponseAnalyticsResponseSchema,
-} from "../../apps/backend/src/modules/33-reporting/routes/messaging-response-analytics-typebox";
 import { type TSchema, Type } from "@sinclair/typebox";
 import {
   HealthResponseSchema as M1HealthResponseSchema,
@@ -231,6 +211,21 @@ import {
   ElectionAddendumUploadedSignatureSchema as M6ElectionAddendumUploadedSignatureSchema,
   ElectionAddendumViewSchema as M6ElectionAddendumViewSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/election-addendum-typebox";
+import {
+  AddDeadlineSchema as M6NomncAddDeadlineSchema,
+  DeadlineViewSchema as M6NomncDeadlineViewSchema,
+  NoticeViewSchema as M6NomncNoticeViewSchema,
+  NomncOverviewQuerySchema as M6NomncOverviewQuerySchema,
+  NomncOverviewSchema as M6NomncOverviewSchema,
+  OpenReviewSchema as M6NomncOpenReviewSchema,
+  PatchDeadlineSchema as M6NomncPatchDeadlineSchema,
+  PatchNoticeSchema as M6NomncPatchNoticeSchema,
+  PatchReviewSchema as M6NomncPatchReviewSchema,
+  RecordNoticeSchema as M6NomncRecordNoticeSchema,
+  ReviewViewSchema as M6NomncReviewViewSchema,
+  WithdrawNoticeSchema as M6NomncWithdrawNoticeSchema,
+  WithdrawReviewSchema as M6NomncWithdrawReviewSchema,
+} from "../../apps/backend/src/modules/06-admission/routes/nomnc-typebox";
 import {
   BenefitPeriodPlanQuerySchema,
   BenefitPeriodPlanSchema,
@@ -573,6 +568,12 @@ import {
   VoidClaimBody as M24VoidClaimBody,
 } from "../../apps/backend/src/modules/24-billing-medicaid/routes/m24-typebox";
 import {
+  AdrReadinessDispositionRequestSchema as M25AdrReadinessDispositionRequestSchema,
+  AdrReadinessDispositionResultSchema as M25AdrReadinessDispositionResultSchema,
+  AdrReadinessRequestResultSchema as M25AdrReadinessRequestResultSchema,
+  AdrReadinessViewSchema as M25AdrReadinessViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/adr-readiness.routes";
+import {
   AdrAttachDocumentRequestSchema as M25AdrAttachDocumentRequestSchema,
   AdrChecklistRequestSchema as M25AdrChecklistRequestSchema,
   AdrCreateRequestSchema as M25AdrCreateRequestSchema,
@@ -584,22 +585,6 @@ import {
   MacRulePageSchema as M25MacRulePageSchema,
   MacRuleRequestSchema as M25MacRuleRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/adr.routes";
-import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
-import {
-  CitedEvidenceRequestSchema as M25CitedEvidenceRequestSchema,
-  EscalationConfirmRequestSchema as M25EscalationConfirmRequestSchema,
-  EscalationRequestSchema as M25EscalationRequestSchema,
-  QicClockRequestSchema as M25QicClockRequestSchema,
-  QicEscalationConfirmedSchema as M25QicEscalationConfirmedSchema,
-  QicVersionedResultSchema as M25QicVersionedResultSchema,
-  QicViewSchema as M25QicViewSchema,
-} from "../../apps/backend/src/modules/25-remittance/routes/qic.routes";
-import {
-  AdrReadinessDispositionRequestSchema as M25AdrReadinessDispositionRequestSchema,
-  AdrReadinessDispositionResultSchema as M25AdrReadinessDispositionResultSchema,
-  AdrReadinessRequestResultSchema as M25AdrReadinessRequestResultSchema,
-  AdrReadinessViewSchema as M25AdrReadinessViewSchema,
-} from "../../apps/backend/src/modules/25-remittance/routes/adr-readiness.routes";
 import {
   AuditClaimRequestSchema as M25AuditClaimRequestSchema,
   AuditCreateRequestSchema as M25AuditCreateRequestSchema,
@@ -618,6 +603,47 @@ import {
 } from "../../apps/backend/src/modules/25-remittance/routes/audit-response.routes";
 import { CaseViewSchema as M25CaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
 import {
+  DenialCaseViewSchema as M25DenialCaseViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
+import {
+  PayerAppealPathListQuerySchema as M25PayerAppealPathListQuerySchema,
+  PayerAppealPathPageSchema as M25PayerAppealPathPageSchema,
+  PayerAppealPathRequestSchema as M25PayerAppealPathRequestSchema,
+  PayerAppealPathViewSchema as M25PayerAppealPathViewSchema,
+  PayerAppealVersionedResultSchema as M25PayerAppealPathVersionedResultSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/payer-appeal-path.routes";
+import {
+  PayerAppealCaseViewSchema as M25PayerAppealCaseViewSchema,
+  PayerAppealDenialViewSchema as M25PayerAppealDenialViewSchema,
+  PayerAppealMoveRequestSchema as M25PayerAppealMoveRequestSchema,
+  PayerAppealNoticeRequestSchema as M25PayerAppealNoticeRequestSchema,
+  PayerAppealOpenRequestSchema as M25PayerAppealOpenRequestSchema,
+  PayerAppealOpenedSchema as M25PayerAppealOpenedSchema,
+  PayerAppealVersionedSchema as M25PayerAppealVersionedSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/payer-appeal.routes";
+import {
+  BeneficiaryAppealDocumentRequestSchema as M25BeneficiaryAppealDocumentRequestSchema,
+  BeneficiaryAppealIntakeRequestSchema as M25BeneficiaryAppealIntakeRequestSchema,
+  BeneficiaryAppealMoveRequestSchema as M25BeneficiaryAppealMoveRequestSchema,
+  BeneficiaryAppealPatchRequestSchema as M25BeneficiaryAppealPatchRequestSchema,
+  BeneficiaryAppealVersionedSchema as M25BeneficiaryAppealVersionedSchema,
+  BeneficiaryAppealViewSchema as M25BeneficiaryAppealViewSchema,
+  ClaimBeneficiaryAppealsSchema as M25ClaimBeneficiaryAppealsSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/beneficiary-appeal.routes";
+import {
+  AppointmentActivatedSchema as M25AppointmentActivatedSchema,
+  AppointmentDocumentRequestSchema as M25AppointmentDocumentRequestSchema,
+  AppointmentDraftRequestSchema as M25AppointmentDraftRequestSchema,
+  AppointmentElementsRequestSchema as M25AppointmentElementsRequestSchema,
+  AppointmentPatchRequestSchema as M25AppointmentPatchRequestSchema,
+  AppointmentRevokeRequestSchema as M25AppointmentRevokeRequestSchema,
+  AppointmentViewSchema as M25AppointmentViewSchema,
+  ClaimAppointmentsSchema as M25ClaimAppointmentsSchema,
+  RepresentativeFormVersionPageSchema as M25RepresentativeFormVersionPageSchema,
+  RepresentativeFormVersionRequestSchema as M25RepresentativeFormVersionRequestSchema,
+  RepresentativeVersionedResultSchema as M25RepresentativeVersionedResultSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/representative.routes";
+import {
   LaterTierViewSchema as M25LaterTierViewSchema,
   RecordedDeadlinePageSchema as M25RecordedDeadlinePageSchema,
   RecordedDeadlinePatchSchema as M25RecordedDeadlinePatchSchema,
@@ -626,6 +652,33 @@ import {
   RecordedDeadlineSatisfyRequestSchema as M25RecordedDeadlineSatisfyRequestSchema,
   TierDetailRequestSchema as M25TierDetailRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/later-tier.routes";
+import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
+import {
+  MedicalReviewReportQuerySchema as M25MedicalReviewReportQuerySchema,
+  MedicalReviewReportSchema as M25MedicalReviewReportSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/medical-review-report.routes";
+import {
+  DenialPlaybookViewSchema as M25DenialPlaybookViewSchema,
+  PlaybookContentRequestSchema as M25PlaybookContentRequestSchema,
+  PlaybookCreateRequestSchema as M25PlaybookCreateRequestSchema,
+  PlaybookCreatedSchema as M25PlaybookCreatedSchema,
+  PlaybookDetailSchema as M25PlaybookDetailSchema,
+  PlaybookDraftCreatedSchema as M25PlaybookDraftCreatedSchema,
+  PlaybookListSchema as M25PlaybookListSchema,
+  PlaybookPublishResultSchema as M25PlaybookPublishResultSchema,
+  PlaybookStepRequestSchema as M25PlaybookStepRequestSchema,
+  PlaybookStepResultSchema as M25PlaybookStepResultSchema,
+  PlaybookVersionResultSchema as M25PlaybookVersionResultSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/playbook.routes";
+import {
+  CitedEvidenceRequestSchema as M25CitedEvidenceRequestSchema,
+  EscalationConfirmRequestSchema as M25EscalationConfirmRequestSchema,
+  EscalationRequestSchema as M25EscalationRequestSchema,
+  QicClockRequestSchema as M25QicClockRequestSchema,
+  QicEscalationConfirmedSchema as M25QicEscalationConfirmedSchema,
+  QicVersionedResultSchema as M25QicVersionedResultSchema,
+  QicViewSchema as M25QicViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/qic.routes";
 import {
   DenialRouteSchema as M25DenialRouteSchema,
   MacReasonCodeRequestSchema as M25MacReasonCodeRequestSchema,
@@ -806,6 +859,26 @@ import {
   TransitionCapabilityBody as M32TransitionCapabilityBody,
   TriageHallucinationReportBody as M32TriageHallucinationReportBody,
 } from "../../apps/backend/src/modules/32-ai-platform/routes/m32-typebox";
+/**
+ * ChartWarden — OpenAPI enrichment registry (F0-T01, ADR-0032)
+ * --------------------------------------------------------
+ * Layers request/response schema detail onto the auto-discovered routes
+ * (scan-routes.ts). Keyed by `METHOD /path` (exactly as written in source).
+ *
+ * Routes are discovered automatically, so COVERAGE never depends on this file —
+ * an unlisted route still appears in the contract (params auto-derived from the
+ * path). This registry only ADDS the request body / typed response, reusing the
+ * SAME exported TypeBox schemas the route handlers validate against, so the
+ * contract cannot drift from the validator.
+ *
+ * As of F0-T01 only the M5 Patient routes are enriched (proves the schema-embed
+ * path end-to-end). Wiring the remaining modules' bodies/responses is the
+ * deferred backend follow-up in docs/plans/FRONTEND_INTEGRATION_PLAN.md.
+ */
+import {
+  ResponseAnalyticsQuerySchema as M36ResponseAnalyticsQuerySchema,
+  ResponseAnalyticsResponseSchema as M36ResponseAnalyticsResponseSchema,
+} from "../../apps/backend/src/modules/33-reporting/routes/messaging-response-analytics-typebox";
 import {
   PresenceHeartbeatBodySchema as M36PresenceHeartbeatBodySchema,
   PresenceResponseSchema as M36PresenceResponseSchema,
@@ -1365,6 +1438,14 @@ import {
   VerifyEmailAckSchema as M34VerifyEmailAckSchema,
 } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/typebox";
 
+import { AckBroadcastAcknowledgedSchema as M36AckBroadcastAcknowledgedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastCreateBodySchema as M36AckBroadcastCreateBodySchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastCreatedSchema as M36AckBroadcastCreatedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastWithdrawnSchema as M36AckBroadcastWithdrawnSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastDetailQuerySchema as M36AckBroadcastDetailQuerySchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastDetailSchema as M36AckBroadcastDetailSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastListSchema as M36AckBroadcastListSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastMineSchema as M36AckBroadcastMineSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
 // M36 WP 4.2 acknowledgment requests.
 import {
   AckChannelListResponseSchema as M36AckChannelListResponseSchema,
@@ -1392,15 +1473,16 @@ import {
   ReviewListResponseSchema as M36BreakGlassReviewListResponseSchema,
   ListReviewsQuerySchema as M36BreakGlassReviewsQuerySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/break-glass-typebox";
-import { AckBroadcastAcknowledgedSchema as M36AckBroadcastAcknowledgedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastCreateBodySchema as M36AckBroadcastCreateBodySchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastCreatedSchema as M36AckBroadcastCreatedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastWithdrawnSchema as M36AckBroadcastWithdrawnSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastDetailQuerySchema as M36AckBroadcastDetailQuerySchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastDetailSchema as M36AckBroadcastDetailSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastListSchema as M36AckBroadcastListSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastMineSchema as M36AckBroadcastMineSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
 import { ClinicalLinkResolveResponseSchema as M36ClinicalLinkResolveResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/clinical-link-typebox";
+// M36 WP 6.9 death-event coordination board (ADR-0098, PROPOSED).
+import {
+  DeathBoardHistoryResponseSchema as M36DeathBoardHistoryResponseSchema,
+  DeathBoardItemResponseSchema as M36DeathBoardItemResponseSchema,
+  DeathBoardListResponseSchema as M36DeathBoardListResponseSchema,
+  DeathBoardResponseSchema as M36DeathBoardResponseSchema,
+  ListDeathBoardsQuerySchema as M36ListDeathBoardsQuerySchema,
+  ReassignDeathBoardItemBodySchema as M36ReassignDeathBoardItemBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/death-board-typebox";
 // M36 WP 4.8 deep-link resolver.
 import { DeliveryTargetResponseSchema as M36DeliveryTargetResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/delivery-target-typebox";
 import {
@@ -1415,15 +1497,23 @@ import {
   ExportDetailResponseSchema as M36ExportDetailResponseSchema,
   ExportListResponseSchema as M36ExportListResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/export-typebox";
-// M36 WP 6.9 death-event coordination board (ADR-0098, PROPOSED).
+// M36 WP 6.5 AI summaries and reply drafts (ADR-0095, PROPOSED).
 import {
-  DeathBoardHistoryResponseSchema as M36DeathBoardHistoryResponseSchema,
-  DeathBoardItemResponseSchema as M36DeathBoardItemResponseSchema,
-  DeathBoardListResponseSchema as M36DeathBoardListResponseSchema,
-  DeathBoardResponseSchema as M36DeathBoardResponseSchema,
-  ListDeathBoardsQuerySchema as M36ListDeathBoardsQuerySchema,
-  ReassignDeathBoardItemBodySchema as M36ReassignDeathBoardItemBodySchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/death-board-typebox";
+  AiDraftResponseSchema as M36AiDraftResponseSchema,
+  AiOutcomeBodySchema as M36AiOutcomeBodySchema,
+  AiRequestBodySchema as M36AiRequestBodySchema,
+  AiStatusResponseSchema as M36AiStatusResponseSchema,
+  AiSummaryResponseSchema as M36AiSummaryResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/ai-typebox";
+// M36 WP 6.10 alarm ingest, watch only (ADR-0102, PROPOSED).
+import {
+  AlarmEventBodySchema as M36AlarmEventBodySchema,
+  AlarmIngestAcceptedResponseSchema as M36AlarmAcceptedResponseSchema,
+  AlarmSourceCredentialResponseSchema as M36AlarmCredentialResponseSchema,
+  AlarmSourceListResponseSchema as M36AlarmSourceListResponseSchema,
+  AlarmSourceResponseSchema as M36AlarmSourceResponseSchema,
+  CreateAlarmSourceBodySchema as M36AlarmCreateBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/alarm-ingest-typebox";
 // M36 WP 6.6 external partner share (ADR-0096, PROPOSED).
 import {
   CreateExternalShareBodySchema as M36ExtShareCreateBodySchema,
@@ -1466,6 +1556,11 @@ import {
   IdgDiscussionListResponseSchema as M36IdgDiscussionListResponseSchema,
   IdgDiscussionQuerySchema as M36IdgDiscussionQuerySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/idg-discussion-typebox";
+// M36 WP 6.1 smart work inbox.
+import {
+  InboxQuerySchema as M36InboxQuerySchema,
+  InboxResponseSchema as M36InboxResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/inbox-typebox";
 // M36 WP 3.10 medication questions.
 import {
   AskMedicationQuestionBodySchema as M36AskMedicationQuestionBodySchema,
@@ -1624,11 +1719,6 @@ import {
   TemplateViewSchema as M36TemplateViewSchema,
   UpdateTemplateBodySchema as M36UpdateTemplateBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/template-typebox";
-// M36 WP 6.1 smart work inbox.
-import {
-  InboxQuerySchema as M36InboxQuerySchema,
-  InboxResponseSchema as M36InboxResponseSchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/inbox-typebox";
 // M36 WP 4.9 supervisor unacknowledged queue.
 import {
   UnacknowledgedQuerySchema as M36UnacknowledgedQuerySchema,
@@ -2110,6 +2200,7 @@ import {
   RevokeCredentialRequest as M17RevokeCredentialRequest,
   RouteEfficiencyQuerySchema as M17RouteEfficiencyQuerySchema,
   RouteEfficiencyResponseSchema as M17RouteEfficiencyResponseSchema,
+  SchedulingContextResponseSchema as M17SchedulingContextResponseSchema,
   SchedulingStaffResponseSchema as M17SchedulingStaffResponseSchema,
   StartVisitRequest as M17StartVisitRequest,
   TimeOffListQuerySchema as M17TimeOffListQuerySchema,
@@ -4410,6 +4501,63 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Sign the election statement",
     body: ElectionSignSchema,
   },
+  // Milestone 10a — NOMNC delivery + BFCC-QIO expedited review record-keeping (typed facts, typed deadlines).
+  "GET /api/v1/admissions/:id/nomnc": {
+    summary:
+      "NOMNC delivery record, history, QIO review, typed deadlines and the prompts for what is missing",
+    query: M6NomncOverviewQuerySchema,
+    response: M6NomncOverviewSchema,
+  },
+  "POST /api/v1/admissions/:id/nomnc": {
+    summary:
+      "Record a NOMNC delivery as typed (date AND time, source note); supersedes the active record when asked",
+    body: M6NomncRecordNoticeSchema,
+    response: M6NomncNoticeViewSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/admissions/:id/nomnc/:noticeId": {
+    summary: "Record the acknowledgement, attach the copy, or amend the delivery note",
+    body: M6NomncPatchNoticeSchema,
+    response: M6NomncNoticeViewSchema,
+  },
+  "POST /api/v1/admissions/:id/nomnc/:noticeId/withdraw": {
+    summary: "Withdraw an active NOMNC record (reason required)",
+    body: M6NomncWithdrawNoticeSchema,
+    response: M6NomncNoticeViewSchema,
+  },
+  "POST /api/v1/admissions/:id/nomnc/:noticeId/expedited-review": {
+    summary: "Open the BFCC-QIO expedited review for a NOMNC (care team and compliance are alerted)",
+    body: M6NomncOpenReviewSchema,
+    response: M6NomncReviewViewSchema,
+    status: 201,
+  },
+  "POST /api/v1/admissions/:id/nomnc/:noticeId/deadlines": {
+    summary: "Type a deadline from the notice (date AND time, mandatory source note)",
+    body: M6NomncAddDeadlineSchema,
+    response: M6NomncDeadlineViewSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/admissions/:id/expedited-reviews/:reviewId": {
+    summary: "Record the DENC / records-sent facts or the QIO decision",
+    body: M6NomncPatchReviewSchema,
+    response: M6NomncReviewViewSchema,
+  },
+  "POST /api/v1/admissions/:id/expedited-reviews/:reviewId/withdraw": {
+    summary: "Withdraw an open QIO review",
+    body: M6NomncWithdrawReviewSchema,
+    response: M6NomncReviewViewSchema,
+  },
+  "POST /api/v1/admissions/:id/expedited-reviews/:reviewId/deadlines": {
+    summary: "Type a DENC / records / decision deadline from the QIO's call (date AND time, source note)",
+    body: M6NomncAddDeadlineSchema,
+    response: M6NomncDeadlineViewSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/admissions/:id/expedited-deadlines/:deadlineId": {
+    summary: "Edit a typed deadline or mark it met",
+    body: M6NomncPatchDeadlineSchema,
+    response: M6NomncDeadlineViewSchema,
+  },
   // FY2027 — the 42 CFR 418.24(c)/(d) election statement addendum.
   "GET /api/v1/admissions/:id/election-addendum": {
     summary: "Election statement addendum: current version, history and open 418.24(d) windows",
@@ -4635,7 +4783,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/discharges/worklist": {
     summary:
-      "End-of-episode worklist, one bucket per call: admissions ready for a discharge / transfer-out / revocation / death, stay-ending records missing a claim detail, and for-cause discharges awaiting cosign (the last needs discharge.cosign_for_cause)",
+      "End-of-episode worklist, one bucket per call: admissions ready for a discharge / transfer-out / revocation / death, stay-ending records missing a claim detail, and for-cause discharges awaiting cosign (the last needs discharge.cosign_for_cause); milestone 10a adds the open QIO reviews and the NOMNC records with no appeal-request deadline typed (both need nomnc.read)",
     query: DischargeWorklistQuerySchema,
     response: DischargeWorklistResponseSchema,
   },
@@ -6071,6 +6219,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Minimal scheduling staff directory — membership id, display name, clinical discipline",
     response: M17SchedulingStaffResponseSchema,
+  },
+  "GET /api/v1/scheduling/context": {
+    summary: "Organization service timezone for authorized scheduling forms",
+    response: M17SchedulingContextResponseSchema,
   },
   "GET /api/v1/memberships/:membershipId/credentials": {
     summary: "GAP-093: a membership's clinical-license/certification roster",
@@ -8361,13 +8513,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/denials/:id/appeals": {
     summary:
-      "Open an appeal against a denial case (§4.1); refused with 409 ROUTE_IS_REOPENING when the routing rules send the denial to a MAC reopening",
+      "Open an appeal against a denial case (§4.1); refused with 409 ROUTE_IS_REOPENING when the routing rules send the denial to a MAC reopening, and with 422 PAYER_IS_MEDICAID when the denied remittance is Medicaid (Medicare tiers do not apply)",
     body: M25AppealCreateRequestSchema,
     response: M25VersionedResultSchema,
   },
   "POST /api/v1/denials/:id/appeals/override": {
     summary:
-      "Appeal a denial the routing rules send to a MAC reopening, with an audited reason (milestone 3)",
+      "Appeal a denial the routing rules send to a MAC reopening, with an audited reason (milestone 3); a Medicaid denial is still refused with 422 PAYER_IS_MEDICAID",
     body: M25AppealOverrideRequestSchema,
     response: M25VersionedResultSchema,
     status: 201,
@@ -8487,6 +8639,60 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M25AdrReadinessDispositionRequestSchema,
     response: M25AdrReadinessDispositionResultSchema,
   },
+  // ── medical-review-report.routes.ts (hospice ADR/TPE/QIC PRD, milestone 9a-2; figures only, no target or benchmark) ──
+  "GET /api/v1/medical-review/report": {
+    summary:
+      "Leadership medical-review report for a window: ADR, denial, appeal, reopening, TPE, audit and playbook-coverage figures with change against the previous equal period",
+    query: M25MedicalReviewReportQuerySchema,
+    response: M25MedicalReviewReportSchema,
+  },
+  // ── playbook.routes.ts (hospice ADR/TPE/QIC PRD, milestone 9a-1; organization-authored guidance, gates nothing) ──
+  "GET /api/v1/playbooks": {
+    summary: "The organization's denial playbooks and which version is published (none are seeded)",
+    response: M25PlaybookListSchema,
+  },
+  "GET /api/v1/playbooks/:id": {
+    summary: "One playbook with every version, newest first",
+    response: M25PlaybookDetailSchema,
+  },
+  "POST /api/v1/playbooks": {
+    summary:
+      "Write a playbook for one denial reason (code kind, code, optional MAC) as its first draft; a source note is required",
+    body: M25PlaybookCreateRequestSchema,
+    response: M25PlaybookCreatedSchema,
+    status: 201,
+  },
+  "POST /api/v1/playbooks/:id/versions": {
+    summary: "Start a new draft version of a playbook (one draft at a time)",
+    body: M25PlaybookContentRequestSchema,
+    response: M25PlaybookDraftCreatedSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/playbook-versions/:id": {
+    summary: "Edit a draft version (If-Match); a published version is never edited",
+    body: M25PlaybookContentRequestSchema,
+    response: M25PlaybookVersionResultSchema,
+  },
+  "POST /api/v1/playbook-versions/:id/publish": {
+    summary:
+      "Publish a draft (If-Match); someone other than the author must publish, and the previous version is retired",
+    response: M25PlaybookPublishResultSchema,
+  },
+  "POST /api/v1/playbook-versions/:id/retire": {
+    summary: "Retire a published version (If-Match)",
+    response: M25PlaybookVersionResultSchema,
+  },
+  "GET /api/v1/denials/:id/playbook": {
+    summary:
+      "The published playbook that applies to this denial with its step ticks, or playbook null when the organization has not written one",
+    response: M25DenialPlaybookViewSchema,
+  },
+  "PUT /api/v1/denials/:id/playbook-steps/:stepKey": {
+    summary:
+      "Tick a playbook step on this denial (advisory; changes no case state); versionId must be the version now in force (409 otherwise)",
+    body: M25PlaybookStepRequestSchema,
+    response: M25PlaybookStepResultSchema,
+  },
   // ── audit-request.routes.ts / later-tier.routes.ts / case-view.routes.ts (hospice ADR/TPE/QIC PRD, milestone 7a-1) ──
   "GET /api/v1/audit-requests": {
     summary: "RAC / UPIC / SMRC audit request worklist, newest first",
@@ -8516,7 +8722,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     status: 201,
   },
   "DELETE /api/v1/audit-requests/:id/claims/:claimId": {
-    summary: "Remove a claim from an open audit request (If-Match; the removal is kept in the trail)",
+    summary:
+      "Remove a claim from an open audit request (If-Match; the removal is kept in the trail)",
     response: M25AuditVersionedResultSchema,
   },
   "POST /api/v1/audit-requests/:id/state": {
@@ -8579,8 +8786,199 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/claims/:claimId/case-view": {
     summary:
-      "The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim, with the next deadline",
+      "The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim (Medicare or Medicaid), with the next deadline",
     response: M25CaseViewSchema,
+  },
+  "GET /api/v1/denials/:denialCaseId/case-view": {
+    summary:
+      "The one case view keyed on the denial, so a claim-less commercial denial has one: payer appeal levels, recorded deadlines and (with a claim) the claim timeline, with the next deadline",
+    response: M25DenialCaseViewSchema,
+  },
+  // ── payer-appeal-path.routes.ts / payer-appeal.routes.ts (hospice ADR/TPE/QIC PRD, milestone 12a-1) ──
+  "GET /api/v1/payer-appeal-paths": {
+    summary: "The organization's payer appeal paths (written by a person; none are seeded)",
+    query: M25PayerAppealPathListQuerySchema,
+    response: M25PayerAppealPathPageSchema,
+  },
+  "GET /api/v1/payer-appeal-paths/:id": {
+    summary: "One payer appeal path with its levels, source notes and verification",
+    response: M25PayerAppealPathViewSchema,
+  },
+  "POST /api/v1/payer-appeal-paths": {
+    summary:
+      "Write a draft payer appeal path from a contract or notice (source note required); a second person verifies it",
+    body: M25PayerAppealPathRequestSchema,
+    response: M25PayerAppealPathVersionedResultSchema,
+    status: 201,
+  },
+  "POST /api/v1/payer-appeal-paths/:id/verify": {
+    summary:
+      "Verify a draft path as a person other than its author; it becomes active and frozen (If-Match)",
+    response: M25PayerAppealPathVersionedResultSchema,
+  },
+  "POST /api/v1/payer-appeal-paths/:id/retire": {
+    summary: "Retire a draft or active path; cases opened under it keep their snapshot (If-Match)",
+    response: M25PayerAppealPathVersionedResultSchema,
+  },
+  "GET /api/v1/denials/:denialCaseId/payer-appeals": {
+    summary:
+      "A denial's payer appeal levels, the payer's recorded path (or the no-path prompt) and whether a payer appeal may be opened",
+    response: M25PayerAppealDenialViewSchema,
+  },
+  "POST /api/v1/denials/:denialCaseId/payer-appeals": {
+    summary:
+      "Open a payer appeal level on a non-Medicare denial; a deadline is computed only from a complete path row and a typed notice date",
+    body: M25PayerAppealOpenRequestSchema,
+    response: M25PayerAppealOpenedSchema,
+    status: 201,
+  },
+  "GET /api/v1/payer-appeals/:id": {
+    summary: "One payer appeal level with its deadline derivation, recorded deadlines and decision",
+    response: M25PayerAppealCaseViewSchema,
+  },
+  "PUT /api/v1/payer-appeals/:id/notice": {
+    summary: "Type the date printed on the notice a level's clock runs from (If-Match); computes the deadline once",
+    body: M25PayerAppealNoticeRequestSchema,
+    response: M25PayerAppealOpenedSchema,
+  },
+  "POST /api/v1/payer-appeals/:id/state": {
+    summary: "Record that a level was submitted, is under review, was decided, closed or withdrawn (If-Match)",
+    body: M25PayerAppealMoveRequestSchema,
+    response: M25PayerAppealVersionedSchema,
+  },
+  "GET /api/v1/payer-appeals/:id/recorded-deadlines": {
+    summary: "Deadlines typed from a notice for this payer appeal level, each with its source note",
+    response: M25RecordedDeadlinePageSchema,
+  },
+  "POST /api/v1/payer-appeals/:id/recorded-deadlines": {
+    summary: "Record a due date typed from a payer notice (the source note is required)",
+    body: M25RecordedDeadlineRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/payer-appeals/:id/recorded-deadlines/:deadlineId": {
+    summary: "Correct a recorded deadline until it is satisfied (If-Match)",
+    body: M25RecordedDeadlinePatchSchema,
+    response: M25RecordedDeadlineResultSchema,
+  },
+  "POST /api/v1/payer-appeals/:id/recorded-deadlines/:deadlineId/satisfy": {
+    summary: "Mark a recorded deadline satisfied (If-Match)",
+    body: M25RecordedDeadlineSatisfyRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
+  },
+  // ── representative.routes.ts / beneficiary-appeal.routes.ts (hospice ADR/TPE/QIC PRD, milestone 13a) ──
+  "GET /api/v1/representative-form-versions": {
+    summary:
+      "The organization's own appointment form versions (typed by a person with a source note; none are seeded)",
+    response: M25RepresentativeFormVersionPageSchema,
+  },
+  "POST /api/v1/representative-form-versions": {
+    summary:
+      "Enter an appointment form version exactly as compliance supplies it (source note required; frozen once written)",
+    body: M25RepresentativeFormVersionRequestSchema,
+    response: M25RepresentativeVersionedResultSchema,
+    status: 201,
+  },
+  "POST /api/v1/representative-form-versions/:id/retire": {
+    summary: "Retire a form version so new drafts cannot use it; existing appointments keep their checklist (If-Match)",
+    response: M25RepresentativeVersionedResultSchema,
+  },
+  "GET /api/v1/claims/:claimId/representative-appointments": {
+    summary:
+      "The appointments of representative recorded for the claim's patient, each with a status derived from typed dates only",
+    response: M25ClaimAppointmentsSchema,
+  },
+  "POST /api/v1/claims/:claimId/representative-appointments": {
+    summary:
+      "Record an appointment of representative as a draft from a claim (patient and provider entity come from the claim); a second person activates it",
+    body: M25AppointmentDraftRequestSchema,
+    response: M25RepresentativeVersionedResultSchema,
+    status: 201,
+  },
+  "GET /api/v1/representative-appointments/:id": {
+    summary: "One appointment of representative with its element checklist, signed document and activation record",
+    response: M25AppointmentViewSchema,
+  },
+  "PATCH /api/v1/representative-appointments/:id": {
+    summary: "Edit a draft appointment (If-Match); an active appointment can only be revoked",
+    body: M25AppointmentPatchRequestSchema,
+    response: M25RepresentativeVersionedResultSchema,
+  },
+  "PUT /api/v1/representative-appointments/:id/document": {
+    summary:
+      "Attach the signed appointment document: validated against the patient and M22's active version, and the validated version id is stored (If-Match)",
+    body: M25AppointmentDocumentRequestSchema,
+    response: M25RepresentativeVersionedResultSchema,
+  },
+  "PUT /api/v1/representative-appointments/:id/elements": {
+    summary: "Confirm which of the form version's required elements are present on the signed document (If-Match)",
+    body: M25AppointmentElementsRequestSchema,
+    response: M25RepresentativeVersionedResultSchema,
+  },
+  "POST /api/v1/representative-appointments/:id/activate": {
+    summary:
+      "Activate a draft as a person other than the one who recorded it, with a fresh step-up; needs the signed document and every element confirmed (If-Match)",
+    response: M25AppointmentActivatedSchema,
+  },
+  "POST /api/v1/representative-appointments/:id/revoke": {
+    summary: "Record a revocation (typed date and note); needs a step-up but never a second person (If-Match)",
+    body: M25AppointmentRevokeRequestSchema,
+    response: M25RepresentativeVersionedResultSchema,
+  },
+  "GET /api/v1/claims/:claimId/beneficiary-appeals": {
+    summary: "Appeals the beneficiary or their representative filed on this claim, as recorded by the hospice",
+    response: M25ClaimBeneficiaryAppealsSchema,
+  },
+  "POST /api/v1/claims/:claimId/beneficiary-appeals": {
+    summary:
+      "Record a beneficiary-filed appeal (ChartWarden records it; it computes no deadline and files nothing)",
+    body: M25BeneficiaryAppealIntakeRequestSchema,
+    response: M25BeneficiaryAppealVersionedSchema,
+    status: 201,
+  },
+  "GET /api/v1/beneficiary-appeals/:id": {
+    summary: "One beneficiary appeal with its representative status, documents and recorded deadlines",
+    response: M25BeneficiaryAppealViewSchema,
+  },
+  "PATCH /api/v1/beneficiary-appeals/:id": {
+    summary: "Correct a beneficiary appeal record until it is closed or withdrawn (If-Match)",
+    body: M25BeneficiaryAppealPatchRequestSchema,
+    response: M25BeneficiaryAppealVersionedSchema,
+  },
+  "POST /api/v1/beneficiary-appeals/:id/state": {
+    summary: "Record that the hospice is supporting the appeal, that it was decided, closed or withdrawn (If-Match)",
+    body: M25BeneficiaryAppealMoveRequestSchema,
+    response: M25BeneficiaryAppealVersionedSchema,
+  },
+  "POST /api/v1/beneficiary-appeals/:id/documents": {
+    summary: "Attach a document, validated against the claim's patient and admission and M22's active version (If-Match)",
+    body: M25BeneficiaryAppealDocumentRequestSchema,
+    response: M25BeneficiaryAppealVersionedSchema,
+    status: 201,
+  },
+  "POST /api/v1/beneficiary-appeals/:id/documents/:documentId/remove": {
+    summary: "Detach a document from a beneficiary appeal (If-Match)",
+    response: M25BeneficiaryAppealVersionedSchema,
+  },
+  "GET /api/v1/beneficiary-appeals/:id/recorded-deadlines": {
+    summary: "Deadlines typed from a notice for this beneficiary appeal, each with its source note",
+    response: M25RecordedDeadlinePageSchema,
+  },
+  "POST /api/v1/beneficiary-appeals/:id/recorded-deadlines": {
+    summary: "Record a due date typed from a notice (the source note is required; none is computed)",
+    body: M25RecordedDeadlineRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/beneficiary-appeals/:id/recorded-deadlines/:deadlineId": {
+    summary: "Correct a recorded deadline until it is satisfied (If-Match)",
+    body: M25RecordedDeadlinePatchSchema,
+    response: M25RecordedDeadlineResultSchema,
+  },
+  "POST /api/v1/beneficiary-appeals/:id/recorded-deadlines/:deadlineId/satisfy": {
+    summary: "Mark a recorded deadline satisfied (If-Match)",
+    body: M25RecordedDeadlineSatisfyRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
   },
   // ── audit-response.routes.ts (hospice ADR/TPE/QIC PRD, milestone 7a-2) ─────────────────────────────
   "PUT /api/v1/audit-requests/:id/response-items": {
@@ -9951,7 +10349,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   // WP 1.5 attachments (scan-gated; every refusal is the 404 a random id gets)
   "POST /api/v1/messaging/attachments/uploads": {
     summary:
-      "Authorize an attachment upload: returns attachmentId + a presigned PUT (201; 415 type, 422 size/checksum/name, 410 archived, 413 ATTACHMENT_QUOTA_EXCEEDED when the user's or the organization's total stored bytes would pass the quota (details[0].message is the scope: user | organization), 409 TENANT_ERASURE_IN_PROGRESS while the organization's messaging data is being erased, 429 TOO_MANY_OPEN_UPLOADS past 20 open uploads per user; Idempotency-Key required; Cache-Control: no-store)",
+      "Authorize an attachment upload: returns attachmentId + a presigned PUT (201; 415 type (audio/webm and audio/mp4 voice notes are allowed only while the tenant flag messaging.voice_notes is on, and are capped at 8,000,000 bytes), 422 size/checksum/name, 410 archived, 413 ATTACHMENT_QUOTA_EXCEEDED when the user's or the organization's total stored bytes would pass the quota (details[0].message is the scope: user | organization), 409 TENANT_ERASURE_IN_PROGRESS while the organization's messaging data is being erased, 429 TOO_MANY_OPEN_UPLOADS past 20 open uploads per user; Idempotency-Key required; Cache-Control: no-store)",
     headers: IDEMPOTENCY_KEY_HEADER,
     body: M36AuthorizeAttachmentBodySchema,
     response: M36AuthorizeAttachmentResponseSchema,
@@ -10646,6 +11044,31 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Download the export artefact as one JSON document (messaging.export.download + a fresh step-up for `messaging.export.download`; the requester only, anyone else the same 404). Only while the job is ready and unexpired on the database clock (409 EXPORT_NOT_READY / EXPORT_EXPIRED). The trail row and the download count are written before any byte is returned; if they cannot be, nothing is. Content-Disposition: attachment, Cache-Control: no-store. Read-audited",
   },
 
+  // AI summaries and reply drafts (WP 6.5, ADR-0095 PROPOSED)
+  "GET /api/v1/messaging/ai/status": {
+    summary:
+      "Whether the AI summary panel is offered to the caller (WP 6.5, ADR-0095 PROPOSED; messaging.read): true only when the tenant flag `messaging.ai.enabled` is on AND the caller holds `messaging.ai.use`. A single boolean; any failure reads as false. It does not say whether a model is bound (a call may still answer AI unavailable). Never cached",
+    response: M36AiStatusResponseSchema,
+  },
+  "POST /api/v1/messaging/channels/:id/summaries": {
+    summary:
+      "An AI summary of the part of this conversation the caller can read (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + the channel_visibility MEMBERSHIP predicate, never the break-glass read variant; membership and permission are checked again immediately before the model is called and once more before the answer is returned). Optional `thread_root_message_id` summarises one reply thread. The input is the caller's own thread read, bounded to the newest 50 messages of the last 14 days, with redacted, deleted, legally held, system and unreadable messages EXCLUDED (the model sees only the placeholder; `withheld_count` is a bare count), senders replaced by a role token and alias, the patient by [PATIENT], times relative, identifiers masked. ONLY a patient's care-team channel is eligible (any other kind may name other patients in free text and is refused as AI_NOT_AVAILABLE_FOR_CHANNEL). A pending (requested, not approved) redaction also withholds a message; `withheld_count` leaves legally held messages out (a hold's existence is not for readers). Fewer than 3 includable messages, or a model that says so, is `status: insufficient_context` with no points (the model is not called for the former). Every point has `confidence` and `sources` mapped server-side from opaque refs to message ids of THIS conversation that were sent (an invented or withheld ref is dropped and the point demoted; a point with no valid source is discarded); text is plain (links, markup and images are stripped); an answer that states a dose, order or diagnosis is refused with 422 AI_OUTPUT_REFUSED. 404 AI_NOT_ENABLED while the tenant flag is off; 422 AI_NOT_AVAILABLE_FOR_CHANNEL for a Part 2 patient (generic; the model is never called); 429 over the limits (10 per user per hour, 3 per channel per 10 minutes; a quota store outage refuses); 503 AI_UNAVAILABLE for every other refusal (M32 gates, no BAA-covered backend, vendor error, invalid answer twice). Nothing is stored by M36; the only server copy is M32's encrypted ai_invocation row. Writes one m36.ai.summary_viewed audit row (ids and counts). Never cached; no Idempotency-Key",
+    body: M36AiRequestBodySchema,
+    response: M36AiSummaryResponseSchema,
+  },
+  "POST /api/v1/messaging/channels/:id/draft-replies": {
+    summary:
+      "Up to two AI draft replies for the COMPOSER (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + messaging.send + the channel_visibility membership predicate; not for an archived channel). Same input rules, gates, limits (20 per user per hour) and refusals as summaries. The draft is returned in the response only: it is never written to the message store or the drafts store and never queued or sent; a human edits it and sends through the normal send path. Plain text only; no attachments, mentions or orders. Never cached",
+    body: M36AiRequestBodySchema,
+    response: M36AiDraftResponseSchema,
+  },
+  "POST /api/v1/messaging/channels/:id/ai-outcomes": {
+    summary:
+      "Record what the person did with an AI answer (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + channel_visibility): accepted, edited or rejected, on the M32 ai_invocation row. Only the actor's own call, about THIS channel, by a messaging capability, and only while the outcome is still open (pending, or accepted which may be refined to edited): anything else, including an unknown id, is the same 404. 204",
+    body: M36AiOutcomeBodySchema,
+    status: 204,
+  },
+
   // death-event coordination board (WP 6.9, ADR-0098 PROPOSED)
   "GET /api/v1/messaging/death-boards": {
     summary:
@@ -10719,6 +11142,37 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "PARTNER (Authorization: Bearer, active stage only): the shared conversation, oldest first, only messages posted after the share and without attachments, clinical links, patient or staff references, redaction rows, urgent or targeted messages, acknowledgment requests, legal holds, or a high-signal identifier in the text (withheld, never masked; names are NOT detected). The session dies after 30 idle minutes or 12 hours. Keyset cursor, at most 50 per page, 60 reads a minute per share (429). Every read leaves a trail row before any byte is returned",
     response: M36PartnerMessagesResponseSchema,
+  },
+
+  // alarm ingest, watch only (ADR-0102, PROPOSED)
+  "GET /api/v1/messaging/alarm-sources": {
+    summary:
+      "The tenant's alarm sources (messaging.alarm_ingest.manage; never depends on the flag): ids, a staff-chosen name, state, secret version, the alarm-code mappings with their severity ceilings, the last accepted instant and the last 24 hours' outcome counts (alerted, nobody to alert, unmapped, waiting). No secret, cipher or alarm detail",
+    response: M36AlarmSourceListResponseSchema,
+  },
+  "POST /api/v1/messaging/alarm-sources": {
+    summary:
+      "Create an alarm source (messaging.alarm_ingest.manage + a fresh step-up; 404 while the tenant flag is off; 503 ALARM_INGEST_UNAVAILABLE without trusted proxy configuration; 409 at 20 enabled sources). Each mapping sends a sender alarm code to one alarm_ingest.* catalog alert type with a severity ceiling of info or warn (never critical). The credential (`keyId` and `secret`) is returned ONCE; the secret is stored sealed under the tenant key",
+    body: M36AlarmCreateBodySchema,
+    response: M36AlarmCredentialResponseSchema,
+    status: 201,
+  },
+  "POST /api/v1/messaging/alarm-sources/:id/rotate-secret": {
+    summary:
+      "Replace a source's secret (messaging.alarm_ingest.manage + a fresh step-up; 404 while the flag is off or the source is unknown or disabled). The old secret stops verifying at once; the new credential is returned ONCE",
+    response: M36AlarmCredentialResponseSchema,
+  },
+  "POST /api/v1/messaging/alarm-sources/:id/disable": {
+    summary:
+      "Disable a source for good (messaging.alarm_ingest.manage + a fresh step-up; never depends on the flag). One way: create a new source to resume. Idempotent",
+    response: M36AlarmSourceResponseSchema,
+  },
+  "POST /api/v1/messaging/alarm-ingest/events": {
+    summary:
+      "INBOUND, no user session. A third-party alarm becomes an ordinary in-app alert (never a response request, never routed or paged by this route). Headers x-wx-key-id (`<organizationId>.<sourceId>`), x-wx-timestamp (epoch seconds, within 300 s) and x-wx-signature (`v1=` + hex HMAC-SHA256 of `<timestamp>.<keyId>.<raw body>` under the source secret). Every refusal up to a wrong signature is the same 401. Body at most 1 KiB, no free text. `eventId` is the idempotency key (a replay is 202 duplicate; the same id with a different body is 409). The effective severity is the requested one capped at the mapping's ceiling (info or warn). 422 ALARM_KIND_UNMAPPED when the code is not mapped (recorded and counted); 503 ALARM_NOT_ALERTED when the alert could not be raised (retry with the same eventId); 429 over budget",
+    body: M36AlarmEventBodySchema,
+    response: M36AlarmAcceptedResponseSchema,
+    status: 202,
   },
 
   // alerts (§4.2)

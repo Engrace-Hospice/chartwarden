@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1766,
-    "enriched": 1766,
+    "routes": 1833,
+    "enriched": 1833,
     "deficit": 0,
-    "mutating": 998,
+    "mutating": 1045,
     "mutatingNoBody": 1,
-    "gets": 716,
+    "gets": 736,
     "getsNoResponse": 9
   },
   "modules": [
@@ -51,12 +51,12 @@
     },
     {
       "module": "06-admission",
-      "routes": 88,
-      "enriched": 88,
+      "routes": 98,
+      "enriched": 98,
       "deficit": 0,
-      "mutating": 63,
+      "mutating": 72,
       "mutatingNoBody": 0,
-      "gets": 25,
+      "gets": 26,
       "getsNoResponse": 0
     },
     {
@@ -161,12 +161,12 @@
     },
     {
       "module": "17-scheduling",
-      "routes": 38,
-      "enriched": 38,
+      "routes": 39,
+      "enriched": 39,
       "deficit": 0,
       "mutating": 20,
       "mutatingNoBody": 0,
-      "gets": 16,
+      "gets": 17,
       "getsNoResponse": 0
     },
     {
@@ -241,12 +241,12 @@
     },
     {
       "module": "25-remittance",
-      "routes": 111,
-      "enriched": 111,
+      "routes": 158,
+      "enriched": 158,
       "deficit": 0,
-      "mutating": 73,
+      "mutating": 104,
       "mutatingNoBody": 0,
-      "gets": 35,
+      "gets": 51,
       "getsNoResponse": 0
     },
     {
@@ -351,12 +351,12 @@
     },
     {
       "module": "36-messaging",
-      "routes": 178,
-      "enriched": 178,
+      "routes": 187,
+      "enriched": 187,
       "deficit": 0,
-      "mutating": 84,
+      "mutating": 91,
       "mutatingNoBody": 0,
-      "gets": 77,
+      "gets": 79,
       "getsNoResponse": 1
     },
     {

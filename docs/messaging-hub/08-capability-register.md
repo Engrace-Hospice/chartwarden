@@ -11,7 +11,7 @@
 |---|---|---|---|---|---|---|
 | ME-01 | Rich-text formatting | P1 | 2 | CONV | 2.1 | new (markdown kind exists) |
 | ME-02 | File & image attachments | P0 | 1 | CONV | 1.5 | part (schema + M22 ref) |
-| ME-03 | Voice notes | P2 | 6 | CONV | 6.3 | new |
+| ME-03 | Voice notes | P2 | 6 | CONV | 6.3 | built behind flag `messaging.voice_notes` (default off; ADR-0094) |
 | ME-04 | Reply to message / threads | P1 | 2 | CONV | 2.2 | part (columns; same-channel guard done) |
 | ME-05 | Edit with history; controlled deletion | P1 | 1 | CONV | 1.3 | part (edit/tombstone, no revisions) |
 | ME-06 | Reactions & emojis | P2 | 2 | COLLAB | 2.4 | new |
@@ -120,11 +120,16 @@
 | AW-03 | Response-time analytics | P2 | 6 | AI | 6.2 | new |
 | AW-04 | Unacknowledged urgent queue | P0 | 4 | ESC | 4.9 | new |
 | AW-05 | Cross-discipline collaboration metrics | P2 | 6 | AI | 6.2 | new |
-| AW-06 | AI thread summaries | P2 | 6 | AI | 6.5 | new |
-| AW-07 | AI message drafting | P2 | 6 | AI | 6.5 | new |
+| AW-06 | AI thread summaries | P2 | 6 | AI | 6.5 | built, flag off (ADR-0095, proposed; M36 side; capability `messaging_summarize` PROPOSED, no backend or BAA chosen, so every call answers "AI unavailable"; sign-off open) |
+| AW-07 | AI message drafting | P2 | 6 | AI | 6.5 | built, flag off (ADR-0095, proposed; drafts go to the composer only, a human sends; capability `messaging_draft_reply` PROPOSED; GA scope open) |
 | AW-08 | Multilingual UI & templates | P2 | 6 | UX | 6.4 | new |
-| AW-09 | Voice dictation | P2 | 6 | UX | 6.3 | new |
+| AW-09 | Voice dictation | P2 | 6 | UX | 6.3 | new (NOT built: browser speech rejected; server-side needs an M32 speech backend and a BAA; ADR-0094) |
 | AW-10 | Approved external partners | P2 | 6 | GOV | 6.6 | new |
+
+## Proposed beyond the 88 (not counted above)
+| ID | Capability | Pri | Ph | Ctx | WP | Status |
+|---|---|---|---|---|---|---|
+| X-6.10 | Third-party alarm ingest as alerts (watch only; never a response request, escalation or page; not a nurse-call replacement) | P3 | 6 | NOTIF | 6.10 | built flag-off (ADR-0102, Proposed); no customer need recorded |
 
 **Total: 88** (14 + 12 + 10 + 10 + 10 + 12 + 10 + 10). Items marked "have / prove" exist per the M36 spec; Phase 0 must verify them in code and
 attach test evidence before they are counted as done. Add `owner`, `test_ids`, `evidence_links` columns as work packages are cut.

@@ -1,3 +1,4 @@
+import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/17-scheduling/routes/scheduling-typebox.ts — M17-T07 TypeBox route schemas (§4.2).
 // Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import
 // for a Drizzle one, and so the OpenAPI route scanner skips it. Validation runs through TypeBox `Value` → M1's
@@ -8,7 +9,6 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@chartwarden/types";
 import type {
   AvailabilityView as ServiceAvailabilityView,
   ProposalView as ServiceProposalView,
@@ -298,6 +298,7 @@ export const VisitViewSchema = Type.Object({
   patientAddressId: Nullable(Type.String({ format: "uuid" })),
   externalFacilityId: Nullable(Type.String({ format: "uuid" })),
   rescheduledIntoVisitId: Nullable(Type.String({ format: "uuid" })),
+  cancellationReasonCode: Nullable(Type.String()),
 });
 export const VisitListResponseSchema = Type.Array(VisitViewSchema);
 
@@ -308,6 +309,11 @@ export const ProposalViewSchema = Type.Object({
   admissionId: Type.String({ format: "uuid" }),
   proposedVisitPurpose: VISIT_PURPOSE,
   proposedForDate: Type.String({ format: "date" }),
+  source: Type.Optional(Type.String()),
+  suggestedMembershipId: Type.Optional(Nullable(Type.String({ format: "uuid" }))),
+  proposedStartedAt: Type.Optional(Type.String({ format: "date-time" })),
+  proposedEndedAt: Type.Optional(Type.String({ format: "date-time" })),
+  publishedAsVisitId: Type.Optional(Nullable(Type.String({ format: "uuid" }))),
   status: Type.Union([
     Type.Literal("pending"),
     Type.Literal("published"),
@@ -325,6 +331,14 @@ export const RecurringViewSchema = Type.Object({
   visitPurpose: VISIT_PURPOSE,
   rrule: Type.String(),
   status: Type.Union([Type.Literal("active"), Type.Literal("discontinued")]),
+  admissionId: Type.Optional(Type.String({ format: "uuid" })),
+  visitSetting: Type.Optional(VISIT_SETTING),
+  patientAddressId: Type.Optional(Nullable(Type.String({ format: "uuid" }))),
+  timeOfDayStart: Type.Optional(Type.String()),
+  timeOfDayEnd: Type.Optional(Type.String()),
+  timeZone: Type.Optional(Type.String()),
+  startDate: Type.Optional(Type.String({ format: "date" })),
+  count: Type.Optional(Nullable(Type.Integer())),
 });
 export const RecurringListResponseSchema = Type.Array(RecurringViewSchema);
 
@@ -405,6 +419,7 @@ export const SchedulingStaffViewSchema = Type.Object({
   discipline: Nullable(CREDENTIAL_DISCIPLINE),
 });
 export const SchedulingStaffResponseSchema = Type.Array(SchedulingStaffViewSchema);
+export const SchedulingContextResponseSchema = Type.Object({ timeZone: Type.String() });
 export const GrantCredentialRequest = Type.Object({
   credentialType: CREDENTIAL_DISCIPLINE,
   effectiveAt: Type.String({ format: "date" }),

@@ -95,7 +95,7 @@ type Versioned = { id: string; version: number };
 export interface TpeService {
   listPrograms(
     actor: M25ReadActor,
-    filter: { state?: string },
+    filter: { state?: string; providerEntityId?: string },
     limit: number,
   ): Promise<{ items: TpeProgramSummary[] }>;
   getProgram(actor: M25ReadActor, id: string): Promise<TpeProgramDetail | null>;
@@ -280,7 +280,11 @@ export function buildDrizzleTpeService(db: DbClient, ports: TpeServicePorts): Tp
     async listPrograms(actor, filter, limit) {
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
-          providerEntityScopeCondition(PG.providerEntityId, actor.providerEntityScope),
+          providerEntityScopeCondition(
+            PG.providerEntityId,
+            actor.providerEntityScope,
+            filter.providerEntityId,
+          ),
           filter.state ? eq(PG.state, filter.state) : undefined,
         ].filter((c) => c !== undefined);
         const programs = await tx

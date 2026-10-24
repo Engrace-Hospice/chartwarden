@@ -13,20 +13,31 @@ import { registerAdrRoutes } from "./adr.routes";
 import { registerAppealRoutes } from "./appeals.routes";
 import { registerAuditRequestRoutes } from "./audit-request.routes";
 import { registerAuditResponseRoutes } from "./audit-response.routes";
+import { registerBeneficiaryAppealRoutes } from "./beneficiary-appeal.routes";
 import { registerCaseViewRoutes } from "./case-view.routes";
 import { registerDenialRoutes } from "./denials.routes";
 import type { M25RouteServices } from "./index";
 import { registerInternalRoutes } from "./internal.routes";
 import { registerLaterTierRoutes } from "./later-tier.routes";
+import { registerMedicalReviewReportRoutes } from "./medical-review-report.routes";
+import { registerPlaybookRoutes } from "./playbook.routes";
+import { registerPayerAppealPathRoutes } from "./payer-appeal-path.routes";
+import { registerPayerAppealRoutes } from "./payer-appeal.routes";
 import { registerQicRoutes } from "./qic.routes";
 import { registerRemittanceRoutes } from "./remittance.routes";
 import { registerReopeningRoutes } from "./reopening.routes";
+import { registerRepresentativeRoutes } from "./representative.routes";
 import { registerSubmissionRoutes } from "./submission.routes";
 import { registerTaxonomyRoutes } from "./taxonomy.routes";
 import { registerTpeRoutes } from "./tpe.routes";
 
 export { registerAdrRoutes, type AdrRouteDeps } from "./adr.routes";
 export { registerAdrReadinessRoutes, type AdrReadinessRouteDeps } from "./adr-readiness.routes";
+export {
+  registerMedicalReviewReportRoutes,
+  type MedicalReviewReportRouteDeps,
+} from "./medical-review-report.routes";
+export { registerPlaybookRoutes, type PlaybookRouteDeps } from "./playbook.routes";
 export { registerReopeningRoutes, type ReopeningRouteDeps } from "./reopening.routes";
 export { registerTpeRoutes, type TpeRouteDeps } from "./tpe.routes";
 export { registerQicRoutes, type QicRouteDeps } from "./qic.routes";
@@ -40,6 +51,19 @@ export { registerAuditRequestRoutes, type AuditRequestRouteDeps } from "./audit-
 export { registerAuditResponseRoutes, type AuditResponseRouteDeps } from "./audit-response.routes";
 export { registerLaterTierRoutes, type LaterTierRouteDeps } from "./later-tier.routes";
 export { registerCaseViewRoutes, type CaseViewRouteDeps } from "./case-view.routes";
+export {
+  registerPayerAppealPathRoutes,
+  type PayerAppealPathRouteDeps,
+} from "./payer-appeal-path.routes";
+export { registerPayerAppealRoutes, type PayerAppealRouteDeps } from "./payer-appeal.routes";
+export {
+  registerRepresentativeRoutes,
+  type RepresentativeRouteDeps,
+} from "./representative.routes";
+export {
+  registerBeneficiaryAppealRoutes,
+  type BeneficiaryAppealRouteDeps,
+} from "./beneficiary-appeal.routes";
 
 /** Mount every M25 §4.1 route plugin over the Drizzle-backed (or in-memory slice) read + write services. */
 export function mountM25Routes(app: FastifyInstance, services: M25RouteServices): void {
@@ -74,8 +98,41 @@ export function mountM25Routes(app: FastifyInstance, services: M25RouteServices)
   if (services.caseViewService) {
     registerCaseViewRoutes(app, { caseViewService: services.caseViewService });
   }
+  // Milestone 12a-1: the organization's payer appeal paths, and payer appeal cases keyed on the denial.
+  if (services.payerAppealPathService) {
+    registerPayerAppealPathRoutes(app, { payerAppealPathService: services.payerAppealPathService });
+  }
+  if (services.payerAppealService) {
+    registerPayerAppealRoutes(app, {
+      payerAppealService: services.payerAppealService,
+      ...(services.laterTierService ? { laterTierService: services.laterTierService } : {}),
+    });
+  }
+  // Milestone 13a: the organization's appointment form versions and appointments of representative, and beneficiary-filed appeals.
+  if (services.representativeService) {
+    registerRepresentativeRoutes(app, { representativeService: services.representativeService });
+  }
+  if (services.beneficiaryAppealService) {
+    registerBeneficiaryAppealRoutes(app, {
+      beneficiaryAppealService: services.beneficiaryAppealService,
+      ...(services.laterTierService ? { laterTierService: services.laterTierService } : {}),
+    });
+  }
   // Milestone 8a-1: advisory documentation readiness (deterministic gaps + a deny-stubbed assistant port).
   if (services.adrReadinessService) {
     registerAdrReadinessRoutes(app, { adrReadinessService: services.adrReadinessService });
+  }
+  // Milestone 9a-1: the denial-reason playbook library and the per-denial panel (organization-authored; nothing seeded).
+  if (services.playbookService) {
+    registerPlaybookRoutes(app, { playbookService: services.playbookService });
+  }
+  // Milestone 9a-2: the leadership medical-review report (figures only, computed live; no table, no target).
+  if (services.medicalReviewReportService) {
+    registerMedicalReviewReportRoutes(app, {
+      medicalReviewReportService: services.medicalReviewReportService,
+      ...(services.medicalReviewReportRateLimit
+        ? { rateLimit: services.medicalReviewReportRateLimit as never }
+        : {}),
+    });
   }
 }

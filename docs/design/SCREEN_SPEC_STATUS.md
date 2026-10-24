@@ -97,6 +97,8 @@
 | `screens/revenue/CHARTWARDEN_UI_MEDICAID_RB_ARRANGEMENT.md` | built | `web/24-billing-medicaid` | rb-arrangements |
 | `screens/revenue/CHARTWARDEN_UI_MEDICAID_ELIGIBILITY_MCO.md` | built | `web/24-billing-medicaid` | eligibility |
 | `screens/revenue/CHARTWARDEN_UI_MEDICAID_TRADING_PARTNER_CREDS.md` | built | `web/24-billing-medicaid` | trading-partners |
+| `screens/revenue/CHARTWARDEN_UI_PAYER_APPEAL_PATHS.md` | built | `web/25-remittance` | payer-appeal-paths (milestone 12a-1); the payer appeal section of the denial rail is in the denial panel. Write, verify and retire only; no draft edit (retire and rewrite). |
+| `screens/revenue/CHARTWARDEN_UI_APPOINTMENT_FORMS.md` | built | `web/25-remittance` | representative-forms (milestone 13a); the beneficiary appeal and appointment sections of the claim rail |
 | `screens/revenue/CHARTWARDEN_UI_MEDICAID_VALIDATION_OVERRIDE.md` | built | `web/24-billing-medicaid` | validation-worklist, overrides |
 | `screens/revenue/CHARTWARDEN_UI_CAP_SETTLEMENT.md` | built | `web/26-cap` | settlement (read) |
 | `screens/clinical/CHARTWARDEN_UI_CERTIFICATION_RECERT_LIFECYCLE.md` | built | `web/06-admission` | patient-election-cert |

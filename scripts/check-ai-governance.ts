@@ -45,6 +45,8 @@ const REQUIRED = [
   "denial-outcome-prediction",
   "level-of-care-prediction",
   "adr-documentation-readiness",
+  "messaging-summarize",
+  "messaging-draft-reply",
 ] as const;
 
 interface CatalogEntry {

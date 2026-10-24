@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 113 documented screen specs · 44 module screen-sets registered · 363 screens wired across web/portal/admin.
+**Coverage:** 115 documented screen specs · 44 module screen-sets registered · 368 screens wired across web/portal/admin.
 - **admin**: 39 screen(s)
 - **portal**: 18 screen(s)
-- **web**: 306 screen(s)
+- **web**: 311 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -22,7 +22,7 @@
 - **mobile**: 1 spec(s)
 - **platform**: 5 spec(s)
 - **portal**: 11 spec(s)
-- **revenue**: 14 spec(s)
+- **revenue**: 16 spec(s)
 - **staffing**: 3 spec(s)
 
 ## Implemented surface (registered screens)
@@ -263,6 +263,10 @@
 | web | 25-remittance | `remittance.audits` | `/remittance/audits` | `audit_request.read` | ✅ |
 | web | 25-remittance | `remittance.appeals` | `/remittance/appeals` | `appeal.read` | ✅ |
 | web | 25-remittance | `remittance.tpe` | `/remittance/tpe` | `tpe.read` | ✅ |
+| web | 25-remittance | `remittance.playbooks` | `/remittance/playbooks` | `playbook.read` | ✅ |
+| web | 25-remittance | `remittance.report` | `/remittance/report` | `medical_review.report.read` | ✅ |
+| web | 25-remittance | `remittance.payer-appeal-paths` | `/remittance/payer-appeal-paths` | `payer_appeal_path.read` | ✅ |
+| web | 25-remittance | `remittance.representative-forms` | `/remittance/representative-forms` | `representative_form.configure` | ✅ |
 | web | 25-remittance | `remittance.taxonomy` | `/remittance/taxonomy` | `taxonomy.read` | ✅ |
 | web | 26-cap | `cap.dashboard` | `/cap` | `cap.projection.read` | ✅ |
 | web | 26-cap | `cap.periods` | `/cap/periods` | `cap.period.read` | ✅ |
@@ -318,6 +322,7 @@
 | web | 36-messaging | `messaging.export-approvals` | `/messaging/governance/export-approvals` | `messaging.export.approve` | ✅ |
 | web | 36-messaging | `messaging.death-board` | `/messaging/death-board` | `messaging.read` | ✅ |
 | web | 36-messaging | `messaging.partners` | `/messaging/partners` | `messaging.share.manage` | ✅ |
+| web | 36-messaging | `messaging.alarm-sources` | `/messaging/alarm-sources` | `messaging.alarm_ingest.manage` | ✅ |
 | web | 36-messaging | `messaging.partner-share` | `/partner/share` | `(none)` | ✅ |
 | web | 36-messaging | `messaging.saved-replies` | `/messaging/saved-replies` | `messaging.send` | ✅ |
 | web | 36-messaging | `messaging.global-search-settings` | `/messaging/search-settings` | `messaging.global_search.manage` | ✅ |

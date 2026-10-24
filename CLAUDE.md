@@ -1,7 +1,7 @@
 # ChartWarden — Repository Guide
 
 Multi-tenant hospice EHR SaaS. This repo is the **specification corpus + architecture-fitness kit +
-staged implementation monorepo**. All 40 modules have real implementation on `main`; the generated
+staged implementation monorepo**. Every module except the M41 commercial-billing placeholder ([ADR-0100](./docs/adr/ADR-0100-commercial-billing-module-41.md)) has real implementation on `main`; the generated
 **implementation-status matrix** is the per-module truth (`bun run status:matrix` →
 `audit/implementation-status/IMPLEMENTATION_STATUS.md`). **Do not restate counts here** (routes,
 tables, pairs, suites) — read the generated reports under `audit/` instead; a hand-maintained mirror of

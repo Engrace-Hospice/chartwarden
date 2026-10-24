@@ -18,6 +18,11 @@ export {
   buildDrizzleDenialRouteService,
   type DenialRouteService,
 } from "./denial-route-service";
+export { buildDrizzlePlaybookService, type PlaybookService } from "./playbook-service";
+export {
+  buildMedicalReviewReportService,
+  type MedicalReviewReportService,
+} from "./medical-review-report-service";
 export { buildDrizzleReopeningService, type ReopeningService } from "./reopening-service";
 export { buildDrizzleTpeService, type TpeService } from "./tpe-service";
 export { buildDrizzleQicService, type QicService } from "./qic-service";
@@ -28,6 +33,19 @@ export {
 export { buildDrizzleLaterTierService, type LaterTierService } from "./later-tier-service";
 export { buildDrizzleCaseViewService, type CaseViewService } from "./case-view-service";
 export {
+  buildDrizzlePayerAppealPathService,
+  type PayerAppealPathService,
+} from "./payer-appeal-path-service";
+export { buildDrizzlePayerAppealService, type PayerAppealService } from "./payer-appeal-service";
+export {
+  buildDrizzleRepresentativeService,
+  type RepresentativeService,
+} from "./representative-service";
+export {
+  buildDrizzleBeneficiaryAppealService,
+  type BeneficiaryAppealService,
+} from "./beneficiary-appeal-service";
+export {
   buildDrizzleSubmissionService,
   type SubmissionService,
 } from "./submission-service";
@@ -36,12 +54,18 @@ import type { M25IngestService } from "../ingest/service";
 import type { AdrReadinessService } from "./adr-readiness-service";
 import type { AdrService } from "./adr-service";
 import type { AuditRequestService } from "./audit-request-service";
+import type { BeneficiaryAppealService } from "./beneficiary-appeal-service";
 import type { CaseViewService } from "./case-view-service";
 import type { DenialRouteService } from "./denial-route-service";
 import type { LaterTierService } from "./later-tier-service";
+import type { MedicalReviewReportService } from "./medical-review-report-service";
+import type { PlaybookService } from "./playbook-service";
+import type { PayerAppealPathService } from "./payer-appeal-path-service";
+import type { PayerAppealService } from "./payer-appeal-service";
 import type { QicService } from "./qic-service";
 import type { M25ReadService } from "./read-service";
 import type { ReopeningService } from "./reopening-service";
+import type { RepresentativeService } from "./representative-service";
 import type { SubmissionService } from "./submission-service";
 import type { TpeService } from "./tpe-service";
 import type { M25WriteService } from "./write-service";
@@ -73,6 +97,20 @@ export interface M25RouteServices {
   readonly laterTierService?: LaterTierService;
   /** The one claim-keyed case view (milestone 7a-1); the route mounts only when supplied. */
   readonly caseViewService?: CaseViewService;
+  /** The organization's payer appeal paths (milestone 12a-1); the routes mount only when supplied. */
+  readonly payerAppealPathService?: PayerAppealPathService;
+  /** Payer appeal cases keyed on the denial (milestone 12a-1); the routes mount only when supplied. */
+  readonly payerAppealService?: PayerAppealService;
+  /** The organization's appointment form versions and appointments of representative (milestone 13a); the routes mount only when supplied. */
+  readonly representativeService?: RepresentativeService;
+  /** Beneficiary-filed appeals keyed on the claim (milestone 13a); the routes mount only when supplied. */
+  readonly beneficiaryAppealService?: BeneficiaryAppealService;
   /** Advisory ADR documentation readiness (milestone 8a-1); the routes mount only when supplied. */
   readonly adrReadinessService?: AdrReadinessService;
+  /** The denial-reason playbook library and the per-denial panel (milestone 9a-1); the routes mount only when supplied. */
+  readonly playbookService?: PlaybookService;
+  /** The leadership medical-review report (milestone 9a-2); the route mounts only when supplied. */
+  readonly medicalReviewReportService?: MedicalReviewReportService;
+  /** Optional per-route rate limit for the report (built in the composition root from the shared store). */
+  readonly medicalReviewReportRateLimit?: (request: never, reply: never) => Promise<void>;
 }

@@ -104,6 +104,7 @@ export interface SeededPayerCanonical {
   readonly identifierValue: string | null;
   readonly displayName: string;
   readonly x12PayerId: string | null;
+  readonly kind: PayerKind;
 }
 
 /**
@@ -118,5 +119,6 @@ export function toPayerCanonicalSeed(): readonly SeededPayerCanonical[] {
     identifierValue: p.x12PayerId,
     displayName: p.name,
     x12PayerId: p.x12PayerId,
+    kind: p.kind,
   }));
 }

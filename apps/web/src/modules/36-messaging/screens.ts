@@ -50,6 +50,9 @@ const DeathBoard = lazy(() => import("./death-board").then((m) => ({ default: m.
 const ExternalPartners = lazy(() =>
   import("./partners").then((m) => ({ default: m.ExternalPartners })),
 );
+const AlarmSources = lazy(() =>
+  import("./alarm-sources").then((m) => ({ default: m.AlarmSources })),
+);
 const PartnerPage = lazy(() => import("./partner-page").then((m) => ({ default: m.PartnerPage })));
 const ExportApprovals = lazy(() =>
   import("./export-approvals").then((m) => ({ default: m.ExportApprovals })),
@@ -205,6 +208,16 @@ export const messagingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "messaging.share.manage",
       screen: ExternalPartners,
+    },
+    {
+      // WP 6.10 (ADR-0102, proposed): a READ-ONLY list of the outside systems allowed to send an alarm notice (watch only: an alert, never a call for
+      // help). Creating, rotating and disabling a source are API calls with a fresh step-up. Needs messaging.alarm_ingest.manage.
+      id: "messaging.alarm-sources",
+      path: "/messaging/alarm-sources",
+      title: "Alarm sources",
+      navGroup: "Admin",
+      requiredPermission: "messaging.alarm_ingest.manage",
+      screen: AlarmSources,
     },
     {
       // WP 6.6 (ADR-0096 D19, proposed): the PARTNER's page, outside the staff shell like /auditor/redeem. The invitation rides the URL fragment; no staff

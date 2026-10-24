@@ -47,6 +47,14 @@ export const ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT: RouteRateLimit = {
   failMode: "open",
 };
 
+/** M25 `GET /medical-review/report` (a live aggregate over six tables): 12/min/user and 60/min/org. Fail-open: an availability control. */
+export const MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 12,
+  perOrg: 60,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
 /** M36 WP 6.8 (ADR-0097): the acknowledge-required broadcast routes, 20/min/user and 200/min/org. Fail-open: an availability control. */
 export const ACK_BROADCAST_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perUser: 20,
@@ -59,6 +67,14 @@ export const ACK_BROADCAST_ROUTE_RATE_LIMIT: RouteRateLimit = {
 export const AFTERHOURS_TRIAGE_LINES_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perUser: 60,
   perOrg: 600,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
+/** M36 WP 6.5 (ADR-0095): the AI summary / draft / outcome routes, 30/min/user and 300/min/org. Fail-open: an availability control; the per-user, per-channel hourly quotas in the service are the cost and disclosure controls and fail CLOSED. */
+export const AI_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 30,
+  perOrg: 300,
   windowMs: 60_000,
   failMode: "open",
 };

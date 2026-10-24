@@ -182,6 +182,7 @@ type VisitRow = {
   patientAddressId: string | null;
   externalFacilityId: string | null;
   rescheduledIntoVisitId: string | null;
+  cancellationReasonCode: string | null;
 };
 
 const toVisitView = (r: VisitRow, timezone: string): VisitView => {
@@ -201,6 +202,7 @@ const toVisitView = (r: VisitRow, timezone: string): VisitView => {
     patientAddressId: r.patientAddressId,
     externalFacilityId: r.externalFacilityId,
     rescheduledIntoVisitId: r.rescheduledIntoVisitId,
+    cancellationReasonCode: r.cancellationReasonCode,
   };
 };
 
@@ -218,6 +220,7 @@ const VISIT_COLS = {
   patientAddressId: V.patientAddressId,
   externalFacilityId: V.externalFacilityId,
   rescheduledIntoVisitId: V.rescheduledIntoVisitId,
+  cancellationReasonCode: V.cancellationReasonCode,
 } as const;
 
 /** The write-path load: everything a transition needs (siting for the history row + the machine facts). */
@@ -758,6 +761,7 @@ export function createDbSchedulingBackend(
         patientAddressId: input.patientAddressId,
         externalFacilityId: input.externalFacilityId,
         rescheduledIntoVisitId: null,
+        cancellationReasonCode: null,
       },
       timezone,
     );
@@ -1134,6 +1138,7 @@ export function createDbSchedulingBackend(
       userId: string,
       visitId: string,
       reason: string,
+      reasonCode = "operational",
     ): Promise<VisitView> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
@@ -1155,7 +1160,7 @@ export function createDbSchedulingBackend(
             cancelledByMembershipId: userId || null,
             cancelledAt: new Date(),
             cancellationReason: reason,
-            cancellationReasonCode: "operational",
+            cancellationReasonCode: reasonCode,
             version: (v.version as number) + 1,
             updatedAt: new Date(),
           })
@@ -1170,7 +1175,7 @@ export function createDbSchedulingBackend(
           visitId,
           cancelledBy: userId,
           reason,
-          reasonCode: "operational",
+          reasonCode,
         });
         const [row] = await tx.select(VISIT_COLS).from(V).where(eq(V.id, visitId)).limit(1);
         return toVisitView(row as VisitRow, await organizationTimezone(tx, orgId));
@@ -1376,6 +1381,9 @@ export function createDbSchedulingBackend(
             admissionId: VP.admissionId,
             proposedVisitPurpose: VP.proposedVisitPurpose,
             proposedForDate: VP.proposedForDate,
+            source: VP.source,
+            suggestedMembershipId: VP.suggestedMembershipId,
+            publishedAsVisitId: VP.publishedAsVisitId,
             status: VP.status,
           })
           .from(VP)
@@ -1388,6 +1396,11 @@ export function createDbSchedulingBackend(
           admissionId: r.admissionId,
           proposedVisitPurpose: r.proposedVisitPurpose as VisitPurpose,
           proposedForDate: r.proposedForDate,
+          source: r.source,
+          suggestedMembershipId: r.suggestedMembershipId,
+          proposedStartedAt: `${r.proposedForDate}T13:00:00.000Z`,
+          proposedEndedAt: `${r.proposedForDate}T14:00:00.000Z`,
+          publishedAsVisitId: r.publishedAsVisitId,
           status: r.status as ProposalView["status"],
         }));
       });
@@ -1501,6 +1514,14 @@ export function createDbSchedulingBackend(
             visitPurpose: RV.visitPurpose,
             rrule: RV.rrule,
             status: RV.status,
+            admissionId: RV.admissionId,
+            visitSetting: RV.visitSetting,
+            patientAddressId: RV.patientAddressId,
+            timeOfDayStart: RV.timeOfDayStart,
+            timeOfDayEnd: RV.timeOfDayEnd,
+            timeZone: RV.timeZone,
+            startDate: RV.startDate,
+            count: RV.count,
           })
           .from(RV)
           .where(eq(RV.patientId, patientId));
@@ -1511,6 +1532,14 @@ export function createDbSchedulingBackend(
           visitPurpose: r.visitPurpose as VisitPurpose,
           rrule: r.rrule,
           status: r.status as RecurringView["status"],
+          admissionId: r.admissionId,
+          visitSetting: r.visitSetting as VisitSetting,
+          patientAddressId: r.patientAddressId,
+          timeOfDayStart: r.timeOfDayStart,
+          timeOfDayEnd: r.timeOfDayEnd,
+          timeZone: r.timeZone,
+          startDate: r.startDate,
+          count: r.count,
         }));
       });
     },
@@ -1550,6 +1579,14 @@ export function createDbSchedulingBackend(
           visitPurpose: input.visitPurpose,
           rrule: input.rrule,
           status: "active",
+          admissionId: input.admissionId,
+          visitSetting: input.visitSetting,
+          patientAddressId: input.patientAddressId ?? null,
+          timeOfDayStart: input.timeOfDayStart,
+          timeOfDayEnd: input.timeOfDayEnd,
+          timeZone: input.timeZone,
+          startDate: input.startDate,
+          count: input.count ?? null,
         };
       });
     },

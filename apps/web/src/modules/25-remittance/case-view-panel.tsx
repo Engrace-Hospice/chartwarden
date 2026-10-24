@@ -6,9 +6,10 @@ import { LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { ErrorAlert, Hint, RetryAlert } from "./action-ui";
-import { type CaseView, type TimelineItem, loadCaseView } from "./audit-api";
+import { type TimelineItem, loadCaseView } from "./audit-api";
+import { loadDenialCaseView } from "./payer-appeal-api";
 import { NOT_COMPUTED, NoDueDateAlert } from "./recorded-deadlines";
-import { formatDay, humanize } from "./remittance-status";
+import { REPRESENTATIVE_STATUS_TONE, formatDay, humanize, toneOf } from "./remittance-status";
 
 const UNCONFIRMED = "Window not SME-confirmed";
 
@@ -23,6 +24,15 @@ function Row({ item }: { readonly item: TimelineItem }): JSX.Element {
     <li>
       <strong>{humanize(item.kind)}</strong> · {item.label} · {humanize(item.state)}
       {item.tier ? ` · ${humanize(item.tier)}` : ""} · {formatDay(item.at)}
+      {item.flags?.representativeStatus ? (
+        <>
+          {" "}
+          <StatusPill
+            label={`Representative: ${humanize(item.flags.representativeStatus)}`}
+            tone={toneOf(REPRESENTATIVE_STATUS_TONE, item.flags.representativeStatus)}
+          />
+        </>
+      ) : null}
       {item.deadlineAt ? ` · due ${deadlineText(item)}` : ""}
       {item.deadlineAt && !item.windowConfirmed ? (
         <>
@@ -34,31 +44,42 @@ function Row({ item }: { readonly item: TimelineItem }): JSX.Element {
   );
 }
 
-export interface CaseViewPanelProps {
-  readonly claimId: string;
+/** Keyed on the claim (the Medicare/ADR chain), or on the DENIAL when it has no claim (a commercial denial). */
+export type CaseViewPanelProps = (
+  | { readonly claimId: string; readonly denialId?: undefined }
+  | { readonly denialId: string; readonly claimId?: undefined }
+) & {
   /**
    * Changes whenever something on this claim was written (a version, a counter): the timeline is read again and
    * the last good timeline stays on screen while it does.
    */
   readonly refreshKey?: string | number;
+};
+
+interface Timeline {
+  readonly nextDeadline: TimelineItem | null;
+  readonly items: TimelineItem[];
+  readonly truncated: boolean;
 }
 
-export function CaseViewPanel({ claimId, refreshKey }: CaseViewPanelProps): JSX.Element {
+export function CaseViewPanel({ claimId, denialId, refreshKey }: CaseViewPanelProps): JSX.Element {
   const client = useApiClient();
-  const [view, setView] = useState<CaseView | null>(null);
+  const [view, setView] = useState<Timeline | null>(null);
   const [error, setError] = useState<string | null>(null);
   const latest = useRef(0);
 
   const load = useCallback(async () => {
     latest.current += 1;
     const seq = latest.current;
-    const res = await loadCaseView(client, claimId);
+    const res = denialId
+      ? await loadDenialCaseView(client, denialId)
+      : await loadCaseView(client, claimId as string);
     if (seq !== latest.current) return; // a newer read (or unmount) superseded this one
     if (res.ok && Array.isArray(res.value.items)) {
       setView(res.value);
       setError(null);
     } else setError(res.ok ? "unexpected response" : res.message);
-  }, [client, claimId]);
+  }, [client, claimId, denialId]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is the explicit "read again" trigger
   useEffect(() => {
@@ -98,7 +119,7 @@ export function CaseViewPanel({ claimId, refreshKey }: CaseViewPanelProps): JSX.
       )}
       <Hint>{NOT_COMPUTED}</Hint>
       {view.items.length === 0 ? (
-        <Hint>Nothing has been recorded against this claim yet.</Hint>
+        <Hint>Nothing has been recorded for this case yet.</Hint>
       ) : (
         <ul className="wx-action-hint wx-action-list">
           {view.items.map((item) => (

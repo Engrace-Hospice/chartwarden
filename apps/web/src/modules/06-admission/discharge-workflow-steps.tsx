@@ -16,15 +16,19 @@ import {
   type RevocationReason,
 } from "./discharge-workflow-model";
 import { ChoiceRows, Field, Section } from "./end-of-episode-ui";
+import { NomncPromptStrip } from "./nomnc-panel";
 
 type Update = <K extends keyof FormState>(key: K, value: FormState[K]) => void;
 
 export function ReasonStep({
+  admissionId,
   reason,
   can,
   showError,
   onChoose,
 }: {
+  /** Milestone 10a: the NOMNC prompts (non-blocking) for this admission and the reason being chosen. */
+  admissionId?: string;
   reason: EndReason | null;
   can: (permission: string) => boolean;
   showError: boolean;
@@ -76,6 +80,9 @@ export function ReasonStep({
         <p className="wx-hope-field-msg wx-hope-field-msg-error" role="alert">
           Choose a reason to continue.
         </p>
+      ) : null}
+      {admissionId ? (
+        <NomncPromptStrip admissionId={admissionId} {...(reason ? { dischargeReason: reason } : {})} />
       ) : null}
       {reason === "moved_out_of_service_area" ? (
         <MovedGuidance

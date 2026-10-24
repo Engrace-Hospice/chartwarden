@@ -9,6 +9,8 @@ export const TIMELINE_KINDS = [
   "recorded_deadline",
   "audit_request",
   "submission",
+  "payer_appeal",
+  "beneficiary_appeal",
 ] as const;
 export type TimelineKind = (typeof TIMELINE_KINDS)[number];
 
@@ -28,6 +30,8 @@ export interface TimelineItem {
   readonly deadlineSource: "computed" | "recorded" | null;
   /** False when the deadline comes from a window that is not SME-confirmed. */
   readonly windowConfirmed: boolean;
+  /** Optional per-kind flags. A beneficiary appeal carries the representative-status badge (derived from typed dates). */
+  readonly flags?: { readonly representativeStatus: string | null };
 }
 
 const KIND_ORDER = new Map<TimelineKind, number>(TIMELINE_KINDS.map((k, i) => [k, i]));
