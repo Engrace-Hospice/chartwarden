@@ -40088,6 +40088,10 @@
                               {
                                 "const": "audit_request",
                                 "type": "string"
+                              },
+                              {
+                                "const": "payer_appeal",
+                                "type": "string"
                               }
                             ]
                           },
@@ -40740,6 +40744,10 @@
                               },
                               {
                                 "const": "audit_request",
+                                "type": "string"
+                              },
+                              {
+                                "const": "payer_appeal",
                                 "type": "string"
                               }
                             ]
@@ -42498,6 +42506,10 @@
                               {
                                 "const": "audit_request",
                                 "type": "string"
+                              },
+                              {
+                                "const": "payer_appeal",
+                                "type": "string"
                               }
                             ]
                           },
@@ -43251,6 +43263,10 @@
                               },
                               {
                                 "const": "audit_request",
+                                "type": "string"
+                              },
+                              {
+                                "const": "payer_appeal",
                                 "type": "string"
                               }
                             ]
@@ -85301,6 +85317,10 @@
                                 {
                                   "const": "submission",
                                   "type": "string"
+                                },
+                                {
+                                  "const": "payer_appeal",
+                                  "type": "string"
                                 }
                               ]
                             },
@@ -85411,6 +85431,10 @@
                               },
                               {
                                 "const": "submission",
+                                "type": "string"
+                              },
+                              {
+                                "const": "payer_appeal",
                                 "type": "string"
                               }
                             ]
@@ -101865,6 +101889,1018 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/denials/{denialCaseId}/case-view": {
+      "get": {
+        "operationId": "getApiV1DenialsByDenialCaseIdCaseview",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "The one case view keyed on the denial, so a claim-less commercial denial has one: payer appeal levels, recorded deadlines and (with a claim) the claim timeline, with the next deadline",
+        "parameters": [
+          {
+            "name": "denialCaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "denialCaseId",
+                    "claimId",
+                    "patientId",
+                    "generatedAt",
+                    "nextDeadline",
+                    "items",
+                    "truncated"
+                  ],
+                  "properties": {
+                    "denialCaseId": {
+                      "type": "string"
+                    },
+                    "claimId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "generatedAt": {
+                      "type": "string"
+                    },
+                    "nextDeadline": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "kind",
+                            "at",
+                            "label",
+                            "state",
+                            "tier",
+                            "deadlineAt",
+                            "deadlineSource",
+                            "windowConfirmed"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "anyOf": [
+                                {
+                                  "const": "appeal",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "adr",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "reopening",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "recorded_deadline",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "audit_request",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "submission",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "payer_appeal",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "at": {
+                              "type": "string"
+                            },
+                            "label": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            },
+                            "tier": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "relatedId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "deadlineAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "deadlineSource": {
+                              "anyOf": [
+                                {
+                                  "const": "computed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "recorded",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "windowConfirmed": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "kind",
+                          "at",
+                          "label",
+                          "state",
+                          "tier",
+                          "deadlineAt",
+                          "deadlineSource",
+                          "windowConfirmed"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "const": "appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "adr",
+                                "type": "string"
+                              },
+                              {
+                                "const": "reopening",
+                                "type": "string"
+                              },
+                              {
+                                "const": "recorded_deadline",
+                                "type": "string"
+                              },
+                              {
+                                "const": "audit_request",
+                                "type": "string"
+                              },
+                              {
+                                "const": "submission",
+                                "type": "string"
+                              },
+                              {
+                                "const": "payer_appeal",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "at": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "tier": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "relatedId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "deadlineAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "deadlineSource": {
+                            "anyOf": [
+                              {
+                                "const": "computed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "recorded",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "windowConfirmed": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    },
+                    "truncated": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/denials/{denialCaseId}/payer-appeals": {
+      "get": {
+        "operationId": "getApiV1DenialsByDenialCaseIdPayerappeals",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "A denial's payer appeal levels, the payer's recorded path (or the no-path prompt) and whether a payer appeal may be opened",
+        "parameters": [
+          {
+            "name": "denialCaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "denialCaseId",
+                    "payerId",
+                    "payerName",
+                    "payerKind",
+                    "adviceKind",
+                    "refusal",
+                    "maHint",
+                    "path",
+                    "pathPrompt",
+                    "cases"
+                  ],
+                  "properties": {
+                    "denialCaseId": {
+                      "type": "string"
+                    },
+                    "payerId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "payerName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "payerKind": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "adviceKind": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "refusal": {
+                      "anyOf": [
+                        {
+                          "const": "MEDICARE_PAYER",
+                          "type": "string"
+                        },
+                        {
+                          "const": "MEDICAID_PAYER",
+                          "type": "string"
+                        },
+                        {
+                          "const": "NO_PAYER_ADVICE",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "maHint": {
+                      "type": "boolean"
+                    },
+                    "path": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "status",
+                            "verified",
+                            "revision",
+                            "program",
+                            "levels"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "type": "string"
+                            },
+                            "verified": {
+                              "type": "boolean"
+                            },
+                            "revision": {
+                              "type": "integer"
+                            },
+                            "program": {
+                              "type": "string"
+                            },
+                            "levels": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "ordinal",
+                                  "levelKind",
+                                  "levelLabel",
+                                  "whoFiles",
+                                  "windowComplete"
+                                ],
+                                "properties": {
+                                  "ordinal": {
+                                    "type": "integer"
+                                  },
+                                  "levelKind": {
+                                    "type": "string"
+                                  },
+                                  "levelLabel": {
+                                    "type": "string"
+                                  },
+                                  "whoFiles": {
+                                    "type": "string"
+                                  },
+                                  "windowComplete": {
+                                    "type": "boolean"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pathPrompt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cases": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "denialCaseId",
+                          "claimId",
+                          "payerId",
+                          "program",
+                          "pathId",
+                          "pathRevision",
+                          "levelOrdinal",
+                          "levelKind",
+                          "levelLabel",
+                          "priorLevelCaseId",
+                          "state",
+                          "noticeDatedOn",
+                          "deadlineAt",
+                          "deadlineZone",
+                          "deadlineSource",
+                          "deadlineState",
+                          "windowVerified",
+                          "derivation",
+                          "prompt",
+                          "payerReference",
+                          "externalReviewerName",
+                          "decisionOutcome",
+                          "dispositionKind",
+                          "dispositionNote",
+                          "needsManualReview",
+                          "decisionOverdue",
+                          "submittedAt",
+                          "decidedAt",
+                          "closedAt",
+                          "version",
+                          "deadlines"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "denialCaseId": {
+                            "type": "string"
+                          },
+                          "claimId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "payerId": {
+                            "type": "string"
+                          },
+                          "program": {
+                            "type": "string"
+                          },
+                          "pathId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "pathRevision": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "levelOrdinal": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "levelKind": {
+                            "type": "string"
+                          },
+                          "levelLabel": {
+                            "type": "string"
+                          },
+                          "priorLevelCaseId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "noticeDatedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "deadlineAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "deadlineZone": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "deadlineSource": {
+                            "type": "string"
+                          },
+                          "deadlineState": {
+                            "anyOf": [
+                              {
+                                "const": "computed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "recorded",
+                                "type": "string"
+                              },
+                              {
+                                "const": "none",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "windowVerified": {
+                            "type": "boolean"
+                          },
+                          "derivation": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "presumedReceiptOn",
+                                  "calendarLastDay",
+                                  "lastFilingDay"
+                                ],
+                                "properties": {
+                                  "presumedReceiptOn": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "calendarLastDay": {
+                                    "type": "string"
+                                  },
+                                  "lastFilingDay": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "prompt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "payerReference": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "externalReviewerName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "decisionOutcome": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dispositionKind": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dispositionNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "needsManualReview": {
+                            "type": "boolean"
+                          },
+                          "decisionOverdue": {
+                            "type": "boolean"
+                          },
+                          "submittedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "decidedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "closedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "deadlines": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "subjectKind",
+                                "subjectId",
+                                "label",
+                                "dueOn",
+                                "zone",
+                                "dueAt",
+                                "sourceNote",
+                                "noticeDocumentId",
+                                "satisfiedOn",
+                                "status",
+                                "version"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "subjectKind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "appeal",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "audit_request",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "payer_appeal",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "subjectId": {
+                                  "type": "string"
+                                },
+                                "label": {
+                                  "type": "string"
+                                },
+                                "dueOn": {
+                                  "type": "string"
+                                },
+                                "zone": {
+                                  "type": "string"
+                                },
+                                "dueAt": {
+                                  "type": "string"
+                                },
+                                "sourceNote": {
+                                  "type": "string"
+                                },
+                                "noticeDocumentId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "satisfiedOn": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "status": {
+                                  "anyOf": [
+                                    {
+                                      "const": "open",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "due_soon",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "past",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "satisfied",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "version": {
+                                  "type": "integer"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1DenialsByDenialCaseIdPayerappeals",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Open a payer appeal level on a non-Medicare denial; a deadline is computed only from a complete path row and a typed notice date",
+        "parameters": [
+          {
+            "name": "denialCaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version",
+                    "deadlineSource"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "deadlineSource": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "program": {
+                    "anyOf": [
+                      {
+                        "const": "commercial",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medicare_advantage",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "contractLabel": {
+                    "anyOf": [
+                      {
+                        "maxLength": 120,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "levelOrdinal": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "levelLabel": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "levelKind": {
+                    "anyOf": [
+                      {
+                        "const": "internal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "external_review",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "noticeDate": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "priorLevelCaseId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -225434,6 +226470,2023 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/payer-appeal-paths": {
+      "get": {
+        "operationId": "getApiV1Payerappealpaths",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "The organization's payer appeal paths (written by a person; none are seeded)",
+        "parameters": [
+          {
+            "name": "payerId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "payerId",
+                          "payerName",
+                          "program",
+                          "contractLabel",
+                          "status",
+                          "effectiveFrom",
+                          "sourceNote",
+                          "sourceDocumentId",
+                          "authoredByMembershipId",
+                          "verifiedOn",
+                          "verifiedByMembershipId",
+                          "supersedesPathId",
+                          "revision",
+                          "version",
+                          "levels"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "payerId": {
+                            "type": "string"
+                          },
+                          "payerName": {
+                            "type": "string"
+                          },
+                          "program": {
+                            "type": "string"
+                          },
+                          "contractLabel": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "effectiveFrom": {
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "type": "string"
+                          },
+                          "sourceDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "authoredByMembershipId": {
+                            "type": "string"
+                          },
+                          "verifiedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "verifiedByMembershipId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "supersedesPathId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "revision": {
+                            "type": "integer"
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "levels": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "ordinal",
+                                "levelKind",
+                                "levelLabel",
+                                "whoFiles",
+                                "filingWindowDays",
+                                "anchorKind",
+                                "receiptPresumptionDays",
+                                "dayBasis",
+                                "roll",
+                                "decisionDays",
+                                "formLabel",
+                                "channelNote",
+                                "sourceNote"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "ordinal": {
+                                  "type": "integer"
+                                },
+                                "levelKind": {
+                                  "type": "string"
+                                },
+                                "levelLabel": {
+                                  "type": "string"
+                                },
+                                "whoFiles": {
+                                  "type": "string"
+                                },
+                                "filingWindowDays": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "anchorKind": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "receiptPresumptionDays": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "dayBasis": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "roll": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "decisionDays": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "formLabel": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "channelNote": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "sourceNote": {
+                                  "type": "string"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1Payerappealpaths",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Write a draft payer appeal path from a contract or notice (source note required); a second person verifies it",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "payerId",
+                  "program",
+                  "effectiveFrom",
+                  "sourceNote",
+                  "levels"
+                ],
+                "properties": {
+                  "payerId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "program": {
+                    "anyOf": [
+                      {
+                        "const": "commercial",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medicare_advantage",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "contractLabel": {
+                    "anyOf": [
+                      {
+                        "maxLength": 120,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "effectiveFrom": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "sourceNote": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "sourceDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "supersedesPathId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "levels": {
+                    "minItems": 1,
+                    "maxItems": 12,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "levelKind",
+                        "levelLabel",
+                        "sourceNote"
+                      ],
+                      "properties": {
+                        "levelKind": {
+                          "anyOf": [
+                            {
+                              "const": "internal",
+                              "type": "string"
+                            },
+                            {
+                              "const": "external_review",
+                              "type": "string"
+                            },
+                            {
+                              "const": "other",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "levelLabel": {
+                          "minLength": 1,
+                          "maxLength": 120,
+                          "type": "string"
+                        },
+                        "whoFiles": {
+                          "anyOf": [
+                            {
+                              "const": "provider",
+                              "type": "string"
+                            },
+                            {
+                              "const": "member",
+                              "type": "string"
+                            },
+                            {
+                              "const": "either",
+                              "type": "string"
+                            },
+                            {
+                              "const": "unknown",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "filingWindowDays": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "anchorKind": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "notice_date",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "notice_receipt",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "remittance_date",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "prior_decision_date",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "other_typed",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "receiptPresumptionDays": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "dayBasis": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "calendar",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "business_us_federal",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "roll": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "none",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "back",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "forward",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "decisionDays": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "formLabel": {
+                          "anyOf": [
+                            {
+                              "maxLength": 120,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "channelNote": {
+                          "anyOf": [
+                            {
+                              "maxLength": 500,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "sourceNote": {
+                          "minLength": 1,
+                          "maxLength": 500,
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payer-appeal-paths/{id}": {
+      "get": {
+        "operationId": "getApiV1PayerappealpathsById",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "One payer appeal path with its levels, source notes and verification",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "payerId",
+                    "payerName",
+                    "program",
+                    "contractLabel",
+                    "status",
+                    "effectiveFrom",
+                    "sourceNote",
+                    "sourceDocumentId",
+                    "authoredByMembershipId",
+                    "verifiedOn",
+                    "verifiedByMembershipId",
+                    "supersedesPathId",
+                    "revision",
+                    "version",
+                    "levels"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "payerId": {
+                      "type": "string"
+                    },
+                    "payerName": {
+                      "type": "string"
+                    },
+                    "program": {
+                      "type": "string"
+                    },
+                    "contractLabel": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "sourceNote": {
+                      "type": "string"
+                    },
+                    "sourceDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "authoredByMembershipId": {
+                      "type": "string"
+                    },
+                    "verifiedOn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "verifiedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersedesPathId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "revision": {
+                      "type": "integer"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "levels": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "ordinal",
+                          "levelKind",
+                          "levelLabel",
+                          "whoFiles",
+                          "filingWindowDays",
+                          "anchorKind",
+                          "receiptPresumptionDays",
+                          "dayBasis",
+                          "roll",
+                          "decisionDays",
+                          "formLabel",
+                          "channelNote",
+                          "sourceNote"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "ordinal": {
+                            "type": "integer"
+                          },
+                          "levelKind": {
+                            "type": "string"
+                          },
+                          "levelLabel": {
+                            "type": "string"
+                          },
+                          "whoFiles": {
+                            "type": "string"
+                          },
+                          "filingWindowDays": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "anchorKind": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "receiptPresumptionDays": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dayBasis": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "roll": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "decisionDays": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "formLabel": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "channelNote": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sourceNote": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/payer-appeal-paths/{id}/retire": {
+      "post": {
+        "operationId": "postApiV1PayerappealpathsByIdRetire",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Retire a draft or active path; cases opened under it keep their snapshot (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/payer-appeal-paths/{id}/verify": {
+      "post": {
+        "operationId": "postApiV1PayerappealpathsByIdVerify",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Verify a draft path as a person other than its author; it becomes active and frozen (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/payer-appeals/{id}": {
+      "get": {
+        "operationId": "getApiV1PayerappealsById",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "One payer appeal level with its deadline derivation, recorded deadlines and decision",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "denialCaseId",
+                    "claimId",
+                    "payerId",
+                    "program",
+                    "pathId",
+                    "pathRevision",
+                    "levelOrdinal",
+                    "levelKind",
+                    "levelLabel",
+                    "priorLevelCaseId",
+                    "state",
+                    "noticeDatedOn",
+                    "deadlineAt",
+                    "deadlineZone",
+                    "deadlineSource",
+                    "deadlineState",
+                    "windowVerified",
+                    "derivation",
+                    "prompt",
+                    "payerReference",
+                    "externalReviewerName",
+                    "decisionOutcome",
+                    "dispositionKind",
+                    "dispositionNote",
+                    "needsManualReview",
+                    "decisionOverdue",
+                    "submittedAt",
+                    "decidedAt",
+                    "closedAt",
+                    "version",
+                    "deadlines"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "denialCaseId": {
+                      "type": "string"
+                    },
+                    "claimId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "payerId": {
+                      "type": "string"
+                    },
+                    "program": {
+                      "type": "string"
+                    },
+                    "pathId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pathRevision": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "levelOrdinal": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "levelKind": {
+                      "type": "string"
+                    },
+                    "levelLabel": {
+                      "type": "string"
+                    },
+                    "priorLevelCaseId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "noticeDatedOn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deadlineAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deadlineZone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deadlineSource": {
+                      "type": "string"
+                    },
+                    "deadlineState": {
+                      "anyOf": [
+                        {
+                          "const": "computed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "recorded",
+                          "type": "string"
+                        },
+                        {
+                          "const": "none",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "windowVerified": {
+                      "type": "boolean"
+                    },
+                    "derivation": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "presumedReceiptOn",
+                            "calendarLastDay",
+                            "lastFilingDay"
+                          ],
+                          "properties": {
+                            "presumedReceiptOn": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "calendarLastDay": {
+                              "type": "string"
+                            },
+                            "lastFilingDay": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "prompt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "payerReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "externalReviewerName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decisionOutcome": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dispositionKind": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dispositionNote": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "needsManualReview": {
+                      "type": "boolean"
+                    },
+                    "decisionOverdue": {
+                      "type": "boolean"
+                    },
+                    "submittedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "decidedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "closedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "deadlines": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "subjectKind",
+                          "subjectId",
+                          "label",
+                          "dueOn",
+                          "zone",
+                          "dueAt",
+                          "sourceNote",
+                          "noticeDocumentId",
+                          "satisfiedOn",
+                          "status",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "subjectKind": {
+                            "anyOf": [
+                              {
+                                "const": "appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "audit_request",
+                                "type": "string"
+                              },
+                              {
+                                "const": "payer_appeal",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "subjectId": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "dueOn": {
+                            "type": "string"
+                          },
+                          "zone": {
+                            "type": "string"
+                          },
+                          "dueAt": {
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "type": "string"
+                          },
+                          "noticeDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "satisfiedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "due_soon",
+                                "type": "string"
+                              },
+                              {
+                                "const": "past",
+                                "type": "string"
+                              },
+                              {
+                                "const": "satisfied",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/payer-appeals/{id}/notice": {
+      "put": {
+        "operationId": "putApiV1PayerappealsByIdNotice",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Type the date printed on the notice a level's clock runs from (If-Match); computes the deadline once",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version",
+                    "deadlineSource"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "deadlineSource": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "noticeDate"
+                ],
+                "properties": {
+                  "noticeDate": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payer-appeals/{id}/recorded-deadlines": {
+      "get": {
+        "operationId": "getApiV1PayerappealsByIdRecordeddeadlines",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Deadlines typed from a notice for this payer appeal level, each with its source note",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "patientId",
+                    "items"
+                  ],
+                  "properties": {
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "subjectKind",
+                          "subjectId",
+                          "label",
+                          "dueOn",
+                          "zone",
+                          "dueAt",
+                          "sourceNote",
+                          "noticeDocumentId",
+                          "satisfiedOn",
+                          "status",
+                          "version"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "subjectKind": {
+                            "anyOf": [
+                              {
+                                "const": "appeal",
+                                "type": "string"
+                              },
+                              {
+                                "const": "audit_request",
+                                "type": "string"
+                              },
+                              {
+                                "const": "payer_appeal",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "subjectId": {
+                            "type": "string"
+                          },
+                          "label": {
+                            "type": "string"
+                          },
+                          "dueOn": {
+                            "type": "string"
+                          },
+                          "zone": {
+                            "type": "string"
+                          },
+                          "dueAt": {
+                            "type": "string"
+                          },
+                          "sourceNote": {
+                            "type": "string"
+                          },
+                          "noticeDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "satisfiedOn": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "due_soon",
+                                "type": "string"
+                              },
+                              {
+                                "const": "past",
+                                "type": "string"
+                              },
+                              {
+                                "const": "satisfied",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PayerappealsByIdRecordeddeadlines",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record a due date typed from a payer notice (the source note is required)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "label",
+                  "dueOn",
+                  "sourceNote"
+                ],
+                "properties": {
+                  "label": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "dueOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "sourceNote": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "noticeDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "noticeClaimId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payer-appeals/{id}/recorded-deadlines/{deadlineId}": {
+      "patch": {
+        "operationId": "patchApiV1PayerappealsByIdRecordeddeadlinesByDeadlineId",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Correct a recorded deadline until it is satisfied (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deadlineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "minLength": 1,
+                    "maxLength": 120,
+                    "type": "string"
+                  },
+                  "dueOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "sourceNote": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "noticeDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "noticeClaimId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payer-appeals/{id}/recorded-deadlines/{deadlineId}/satisfy": {
+      "post": {
+        "operationId": "postApiV1PayerappealsByIdRecordeddeadlinesByDeadlineIdSatisfy",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Mark a recorded deadline satisfied (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "deadlineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "satisfiedOn": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/payer-appeals/{id}/state": {
+      "post": {
+        "operationId": "postApiV1PayerappealsByIdState",
+        "tags": [
+          "25-remittance"
+        ],
+        "summary": "Record that a level was submitted, is under review, was decided, closed or withdrawn (If-Match)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "version"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "move"
+                ],
+                "properties": {
+                  "move": {
+                    "anyOf": [
+                      {
+                        "const": "submit",
+                        "type": "string"
+                      },
+                      {
+                        "const": "begin_review",
+                        "type": "string"
+                      },
+                      {
+                        "const": "decide",
+                        "type": "string"
+                      },
+                      {
+                        "const": "close",
+                        "type": "string"
+                      },
+                      {
+                        "const": "withdraw",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "payerReference": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "externalReviewerName": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "outcome": {
+                    "anyOf": [
+                      {
+                        "const": "favorable",
+                        "type": "string"
+                      },
+                      {
+                        "const": "partial",
+                        "type": "string"
+                      },
+                      {
+                        "const": "unfavorable",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "dispositionKind": {
+                    "anyOf": [
+                      {
+                        "const": "decision",
+                        "type": "string"
+                      },
+                      {
+                        "const": "remand",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dismissal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "other",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "dispositionNote": {
+                    "anyOf": [
+                      {
+                        "maxLength": 500,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }

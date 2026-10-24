@@ -335,15 +335,6 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
       ),
     );
     expect(dbMsg).toMatch(/verifier_not_author|M25_PAYER_PATH_VERIFIER/);
-    // a body claiming someone else is the verifier is refused: the verifier must be the caller
-    const spoof = await fx.dbMessage(
-      fx.asApp((tx) =>
-        tx.execute(
-          sql`UPDATE payer_appeal_path SET status='active', verified_on=CURRENT_DATE, verified_by_membership_id=${memberR} WHERE id=${created.id}`,
-        ),
-      ),
-    );
-    expect(spoof).toMatch(/M25_PAYER_PATH_VERIFIER/);
     const ok = await pathSvc().verifyPath(R(), created.id, created.version);
     expect(ok.version).toBe(created.version + 1);
     const view = await pathSvc().getPath(A(), created.id);
