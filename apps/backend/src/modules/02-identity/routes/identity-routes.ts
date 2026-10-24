@@ -965,6 +965,11 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
 
     const orgId = request.context.organizationId;
     if (!orgId) throw new ChartWardenError("NOT_FOUND", "user not found", 404);
+    // Same last-admin guard as the suspend and revoke routes (§6): offboarding the only active admin would lock the org out.
+    const target = await deps.memberships.findActive(userId, orgId);
+    if (target?.isAdmin && (await deps.memberships.activeAdminCount(orgId)) <= 1) {
+      throw lastAdminLockout();
+    }
     const outcome = await deps.users.deactivateFromOrg({ userId, organizationId: orgId, reason });
     if (outcome === "not_member") throw new ChartWardenError("NOT_FOUND", "user not found", 404);
     if (outcome === "member_elsewhere") {
