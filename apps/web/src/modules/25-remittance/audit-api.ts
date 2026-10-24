@@ -22,7 +22,9 @@ export type RecordedDeadlinePatch = ReqBody<
 export type AuditRequestSummary = Ok<operations["getApiV1Auditrequests"]>["items"][number];
 export type AuditRequestDetail = Ok<operations["getApiV1AuditrequestsById"]>;
 /** The looser (audit detail) shape; the later-tier view's narrower enums are assignable to it. */
-export type RecordedDeadlineView = AuditRequestDetail["deadlines"][number];
+export type RecordedDeadlineView = Ok<
+  operations["getApiV1AppealsByIdRecordeddeadlines"]
+>["items"][number];
 export type AuditRequestInput = ReqBody<operations["postApiV1Auditrequests"]>;
 export type AuditRequestPatch = ReqBody<operations["patchApiV1AuditrequestsById"]>;
 export type AuditRequestState = ReqBody<operations["postApiV1AuditrequestsByIdState"]>["to"];

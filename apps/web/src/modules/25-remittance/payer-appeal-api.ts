@@ -16,6 +16,7 @@ export type PayerAppealOpenInput = ReqBody<
   operations["postApiV1DenialsByDenialCaseIdPayerappeals"]
 >;
 export type PayerAppealOpened = Ok201<operations["postApiV1DenialsByDenialCaseIdPayerappeals"]>;
+export type PayerAppealNoticed = Ok<operations["putApiV1PayerappealsByIdNotice"]>;
 export type PayerAppealMoveInput = ReqBody<operations["postApiV1PayerappealsByIdState"]>;
 export type PayerAppealVersioned = Ok<operations["postApiV1PayerappealsByIdState"]>;
 export type PayerPathsPage = Ok<operations["getApiV1Payerappealpaths"]>;
@@ -80,7 +81,7 @@ export async function recordPayerNotice(
   client: ApiClient,
   c: Pick<PayerAppealCase, "id" | "version">,
   noticeDate: string,
-): Promise<WriteResult<PayerAppealOpened>> {
+): Promise<WriteResult<PayerAppealNoticed>> {
   return guarded(async () => {
     const { data, error, response } = await client.PUT("/api/v1/payer-appeals/{id}/notice", {
       params: { path: { id: c.id } },

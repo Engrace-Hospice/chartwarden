@@ -36796,6 +36796,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
                         items: {
                             id: string;
                             subjectKind: "appeal" | "audit_request" | "payer_appeal";
@@ -37630,6 +37631,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
                         items: {
                             id: string;
                             subjectKind: "appeal" | "audit_request" | "payer_appeal";
@@ -50851,6 +50853,7 @@ export interface operations {
                         denialCaseId: string;
                         claimId: string | null;
                         patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
                         generatedAt: string;
                         nextDeadline: {
                             id: string;
@@ -50909,6 +50912,9 @@ export interface operations {
                         adviceKind: string | null;
                         refusal: "MEDICARE_PAYER" | "MEDICAID_PAYER" | "NO_PAYER_ADVICE" | null;
                         maHint: boolean;
+                        payerUnresolved: boolean;
+                        patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
                         path: {
                             id: string;
                             status: string;
@@ -50949,6 +50955,9 @@ export interface operations {
                                 lastFilingDay: string;
                             } | null;
                             prompt: string | null;
+                            pathAwaitingVerification: boolean;
+                            patientId: string | null;
+                            patientAttribution: "claim" | "unattributed";
                             payerReference: string | null;
                             externalReviewerName: string | null;
                             decisionOutcome: string | null;
@@ -82348,7 +82357,7 @@ export interface operations {
         parameters: {
             query?: {
                 payerId?: string;
-                status?: string;
+                status?: "draft" | "active" | "retired";
             };
             header?: never;
             path?: never;
@@ -82607,6 +82616,9 @@ export interface operations {
                             lastFilingDay: string;
                         } | null;
                         prompt: string | null;
+                        pathAwaitingVerification: boolean;
+                        patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
                         payerReference: string | null;
                         externalReviewerName: string | null;
                         decisionOutcome: string | null;
@@ -82692,6 +82704,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
                         items: {
                             id: string;
                             subjectKind: "appeal" | "audit_request" | "payer_appeal";

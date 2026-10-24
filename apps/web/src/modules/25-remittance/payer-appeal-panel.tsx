@@ -10,13 +10,23 @@ import {
 // Medicare Advantage plan) payer's own appeal levels, one chain per denial, shown beside the Medicare work and never in
 // place of it. Nothing is built in: the levels come from the path YOUR organization recorded from its contract (a payer
 // with none reads "No appeal path recorded for this payer" and links to where to add it), a deadline is computed only
-// from a complete path row and the notice date you typed (badged "Window not verified" until a second person verified
-// the path), and a level with no due date says so loudly. Nothing is filed or sent from here: you record what you did.
-// The server owns every rule and its refusal is shown verbatim (ADR-0030).
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { JSX } from "react";
+// from a complete VERIFIED path row and the notice date you typed (a draft path reads "awaiting verification" and computes
+// nothing), and a level with no due date says so loudly. Nothing is filed or sent from here: you record what you did.
+// The server owns every rule and its refusal is shown verbatim (ADR-0030). A failed refresh keeps the last good data on
+// screen with a Retry; a conflict reloads and keeps what you typed.
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import type { FormEvent, JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { ButtonRow, ErrorAlert, Facts, Hint, NoticeAlert, WarningAlert } from "./action-ui";
+import {
+  BlockedReason,
+  ButtonRow,
+  ErrorAlert,
+  Facts,
+  Hint,
+  NoticeAlert,
+  RetryAlert,
+  WarningAlert,
+} from "./action-ui";
 import {
   LEVEL_KINDS,
   type PayerAppealCase,
@@ -28,10 +38,14 @@ import {
 } from "./payer-appeal-api";
 import { RecordedDeadlines } from "./recorded-deadlines";
 import { APPEAL_STATE_TONE, formatDay, humanize, toneOf } from "./remittance-status";
+import { useGuardedLoad } from "./use-guarded-load";
 
 export const MA_HINT =
   "This patient has Medicare Advantage coverage. Hospice for Medicare Advantage enrollees is generally paid by Original Medicare through the MAC, so check that this denial belongs to a plan before using a plan appeal path. This is not legal advice.";
 const TERMINAL = new Set(["closed", "withdrawn"]);
+const IN_FLIGHT = new Set(["draft", "submitted", "under_review"]);
+
+type Reload = () => Promise<void>;
 
 export interface PayerAppealPanelProps {
   readonly denialId: string;
@@ -39,7 +53,9 @@ export interface PayerAppealPanelProps {
   readonly canManage: boolean;
   /** Holds payer_appeal_path.manage: gets the link to add a missing path. */
   readonly canManagePaths: boolean;
+  /** Changes when something on this denial was written elsewhere: the panel reads again. */
   readonly refreshKey?: string | number;
+  /** Called after this panel changed something and re-read it (the parent refreshes its own sections). */
   readonly onChanged?: () => void;
 }
 
@@ -56,10 +72,51 @@ function DeadlineLine({ c }: { readonly c: PayerAppealCase }): JSX.Element | nul
   return c.prompt ? <output className="wx-action-hint is-alert">{c.prompt}</output> : null;
 }
 
+/** A small inline form: Enter submits, a disabled submit says why. */
+function InlineForm(props: {
+  readonly label: string;
+  readonly submitLabel: string;
+  readonly busy: boolean;
+  readonly blockedReason: string | null;
+  readonly onSubmit: () => void;
+  readonly onCancel?: () => void;
+  readonly children: ReactNode;
+}): JSX.Element {
+  const reasonId = useId();
+  const blocked = props.blockedReason !== null;
+  function submit(e: FormEvent): void {
+    e.preventDefault();
+    if (!blocked && !props.busy) props.onSubmit();
+  }
+  return (
+    <form aria-label={props.label} onSubmit={submit} noValidate>
+      {props.children}
+      {blocked ? <BlockedReason id={reasonId}>{props.blockedReason}</BlockedReason> : null}
+      <ButtonRow>
+        <Button
+          type="submit"
+          size="sm"
+          disabled={props.busy || blocked}
+          aria-describedby={blocked ? reasonId : undefined}
+        >
+          {props.busy ? "Working…" : props.submitLabel}
+        </Button>
+        {props.onCancel ? (
+          <Button size="sm" tone="tertiary" disabled={props.busy} onClick={props.onCancel}>
+            Cancel
+          </Button>
+        ) : null}
+      </ButtonRow>
+    </form>
+  );
+}
+
 function CaseCard(props: {
   readonly c: PayerAppealCase;
   readonly canManage: boolean;
-  readonly onChanged: () => void;
+  /** Re-reads the panel and resolves once the new data is on screen. */
+  readonly reload: Reload;
+  readonly onWrite: () => void;
 }): JSX.Element {
   const { c } = props;
   const client = useApiClient();
@@ -72,52 +129,76 @@ function CaseCard(props: {
   const [dispositionKind, setDispositionKind] = useState("");
   const [dispositionNote, setDispositionNote] = useState("");
   const [deciding, setDeciding] = useState(false);
+  const mounted = useRef(true);
   const editable = props.canManage && !TERMINAL.has(c.state);
 
-  async function move(
-    move: "submit" | "begin_review" | "decide" | "close" | "withdraw",
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // The record moved (a state change, a reload after a conflict): a half-filled decision no longer describes it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: state and version are the explicit reset triggers
+  useEffect(() => {
+    setDeciding(false);
+    setOutcome("");
+    setDispositionKind("");
+    setDispositionNote("");
+  }, [c.state, c.version]);
+
+  /** Runs one write; on a conflict the panel reloads (typed values stay) and the server's message is shown. */
+  async function run(
+    write: () => Promise<{ ok: true } | { ok: false; message: string; status: number | null }>,
   ): Promise<void> {
     setBusy(true);
     setError(null);
-    const res = await movePayerAppeal(client, c, {
-      move,
-      ...(payerReference.trim() ? { payerReference: payerReference.trim() } : {}),
-      ...(reviewer.trim() ? { externalReviewerName: reviewer.trim() } : {}),
-      ...(move === "decide"
-        ? {
-            outcome: outcome as "favorable" | "partial" | "unfavorable",
-            ...(dispositionKind
-              ? {
-                  dispositionKind: dispositionKind as "decision" | "remand" | "dismissal" | "other",
-                  ...(dispositionNote.trim() ? { dispositionNote: dispositionNote.trim() } : {}),
-                }
-              : {}),
-          }
-        : {}),
-    });
+    props.onWrite();
+    const res = await write();
+    if (res.ok || res.status === 409) await props.reload();
+    if (!mounted.current) return;
     setBusy(false);
-    if (!res.ok) {
-      setError(res.message);
-      if (res.status === 409) props.onChanged();
-      return;
-    }
-    setDeciding(false);
-    props.onChanged();
+    if (!res.ok) setError(res.message);
   }
 
-  async function saveNotice(): Promise<void> {
-    setBusy(true);
-    setError(null);
-    const res = await recordPayerNotice(client, c, noticeDate);
-    setBusy(false);
-    if (!res.ok) {
-      setError(res.message);
-      if (res.status === 409) props.onChanged();
-      return;
-    }
-    setNoticeDate("");
-    props.onChanged();
-  }
+  const move = (kind: "submit" | "begin_review" | "decide" | "close" | "withdraw"): Promise<void> =>
+    run(() =>
+      movePayerAppeal(client, c, {
+        move: kind,
+        ...(payerReference.trim() ? { payerReference: payerReference.trim() } : {}),
+        ...(reviewer.trim() ? { externalReviewerName: reviewer.trim() } : {}),
+        ...(kind === "decide"
+          ? {
+              outcome: outcome as "favorable" | "partial" | "unfavorable",
+              ...(dispositionKind
+                ? {
+                    dispositionKind: dispositionKind as
+                      | "decision"
+                      | "remand"
+                      | "dismissal"
+                      | "other",
+                    ...(dispositionNote.trim() ? { dispositionNote: dispositionNote.trim() } : {}),
+                  }
+                : {}),
+            }
+          : {}),
+      }),
+    );
+
+  const saveNotice = (): Promise<void> =>
+    run(async () => {
+      const res = await recordPayerNotice(client, c, noticeDate);
+      if (res.ok) setNoticeDate("");
+      return res;
+    });
+
+  const decisionBlocked =
+    outcome === ""
+      ? "Choose the outcome."
+      : dispositionKind === "other" && !dispositionNote.trim()
+        ? "Describe the disposition when it is 'other'."
+        : null;
 
   return (
     <section aria-label={`Payer appeal level ${c.levelLabel}`}>
@@ -152,29 +233,28 @@ function CaseCard(props: {
         </WarningAlert>
       ) : null}
       {editable && c.state === "draft" && c.deadlineSource === "none" ? (
-        <ButtonRow>
+        <InlineForm
+          label="Record the notice date"
+          submitLabel="Save notice date"
+          busy={busy}
+          blockedReason={noticeDate === "" ? "Enter the date printed on the notice." : null}
+          onSubmit={() => void saveNotice()}
+        >
           <TextField
             label="Notice date (printed on the notice)"
             type="date"
+            required
             value={noticeDate}
             onChange={(e) => setNoticeDate(e.target.value)}
           />
-          <Button
-            size="sm"
-            tone="secondary"
-            disabled={busy || noticeDate === ""}
-            onClick={() => void saveNotice()}
-          >
-            Save notice date
-          </Button>
-        </ButtonRow>
+        </InlineForm>
       ) : null}
       <RecordedDeadlines
         subject={{ kind: "payer_appeal", id: c.id }}
-        deadlines={c.deadlines as never}
+        deadlines={c.deadlines}
         allowNoticeDocument={false}
         editable={editable}
-        onChanged={props.onChanged}
+        onChanged={() => void props.reload()}
       />
       {editable ? (
         <>
@@ -193,9 +273,17 @@ function CaseCard(props: {
             />
           ) : null}
           {deciding ? (
-            <>
+            <InlineForm
+              label="Record the decision"
+              submitLabel="Record decision"
+              busy={busy}
+              blockedReason={decisionBlocked}
+              onSubmit={() => void move("decide")}
+              onCancel={() => setDeciding(false)}
+            >
               <SelectField
                 label="Outcome"
+                required
                 value={outcome}
                 onChange={(e) => setOutcome(e.target.value)}
                 options={[
@@ -220,28 +308,13 @@ function CaseCard(props: {
               {dispositionKind ? (
                 <TextField
                   label="Disposition note"
+                  required={dispositionKind === "other"}
                   value={dispositionNote}
                   onChange={(e) => setDispositionNote(e.target.value)}
                   maxLength={500}
                 />
               ) : null}
-              <ButtonRow>
-                <Button
-                  size="sm"
-                  disabled={
-                    busy ||
-                    outcome === "" ||
-                    (dispositionKind === "other" && !dispositionNote.trim())
-                  }
-                  onClick={() => void move("decide")}
-                >
-                  Record decision
-                </Button>
-                <Button size="sm" tone="tertiary" onClick={() => setDeciding(false)}>
-                  Cancel
-                </Button>
-              </ButtonRow>
-            </>
+            </InlineForm>
           ) : (
             <ButtonRow>
               {c.state === "draft" ? (
@@ -303,6 +376,7 @@ function OpenForm(props: {
   readonly view: PayerAppealDenialView;
   readonly denialId: string;
   readonly priorId: string | undefined;
+  readonly reload: Reload;
   readonly onOpened: () => void;
 }): JSX.Element {
   const { view } = props;
@@ -314,6 +388,13 @@ function OpenForm(props: {
   const [noticeDate, setNoticeDate] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const named = levels.length === 0;
 
   async function open(): Promise<void> {
@@ -329,95 +410,119 @@ function OpenForm(props: {
       ...(noticeDate ? { noticeDate } : {}),
       ...(props.priorId ? { priorLevelCaseId: props.priorId } : {}),
     });
+    // A conflict (the denial or path moved under us) reloads and keeps what was typed; success reloads and closes the form.
+    if (res.ok || res.status === 409) await props.reload();
+    // The form is replaced once the new level lands (its key changes), so the notice is raised before the mounted check.
+    if (res.ok) props.onOpened();
+    if (!mounted.current) return;
     setBusy(false);
     if (!res.ok) setError(res.message);
-    else props.onOpened();
   }
+
+  const blockedReason = named
+    ? levelLabel.trim() === ""
+      ? "Name the level you are filing."
+      : null
+    : ordinal === ""
+      ? "Choose the level."
+      : null;
 
   return (
     <section aria-label="Open a payer appeal level">
       <h4 className="wx-action-title">Open a payer appeal level</h4>
-      {named ? (
-        <>
+      <InlineForm
+        label="Open a payer appeal level"
+        submitLabel="Open level"
+        busy={busy}
+        blockedReason={blockedReason}
+        onSubmit={() => void open()}
+      >
+        {named ? (
           <TextField
             label="Level (as the payer's notice names it)"
+            required
             value={levelLabel}
             onChange={(e) => setLevelLabel(e.target.value)}
             maxLength={120}
           />
+        ) : (
+          <SelectField
+            label="Level"
+            required
+            value={ordinal}
+            onChange={(e) => setOrdinal(e.target.value)}
+            options={levels.map((l) => ({
+              value: String(l.ordinal),
+              label: `${l.ordinal}. ${l.levelLabel}`,
+            }))}
+          />
+        )}
+        {named ? (
           <SelectField
             label="Kind"
             value={levelKind}
             onChange={(e) => setLevelKind(e.target.value)}
             options={LEVEL_KINDS.map((k) => ({ value: k, label: humanize(k) }))}
           />
-        </>
-      ) : (
-        <SelectField
-          label="Level"
-          value={ordinal}
-          onChange={(e) => setOrdinal(e.target.value)}
-          options={levels.map((l) => ({
-            value: String(l.ordinal),
-            label: `${l.ordinal}. ${l.levelLabel}`,
-          }))}
+        ) : null}
+        <TextField
+          label="Notice date (printed on the notice this level's clock runs from)"
+          type="date"
+          value={noticeDate}
+          onChange={(e) => setNoticeDate(e.target.value)}
         />
-      )}
-      <TextField
-        label="Notice date (printed on the notice this level's clock runs from)"
-        type="date"
-        value={noticeDate}
-        onChange={(e) => setNoticeDate(e.target.value)}
-      />
-      <Hint>Without a notice date, or a complete window on the path, no due date is computed.</Hint>
+        <Hint>
+          Without a notice date, or a complete window on a verified path, no due date is computed.
+        </Hint>
+      </InlineForm>
       <ErrorAlert message={error} />
-      <ButtonRow>
-        <Button
-          size="sm"
-          disabled={busy || (named ? levelLabel.trim() === "" : ordinal === "")}
-          onClick={() => void open()}
-        >
-          {busy ? "Working…" : "Open level"}
-        </Button>
-      </ButtonRow>
     </section>
   );
 }
 
 export function PayerAppealPanel(props: PayerAppealPanelProps): JSX.Element | null {
   const client = useApiClient();
-  const [view, setView] = useState<PayerAppealDenialView | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const fetcher = useCallback(
+    () => loadPayerAppeals(client, props.denialId),
+    [client, props.denialId],
+  );
+  const { data: view, error, load } = useGuardedLoad(fetcher);
   const [notice, setNotice] = useState<string | null>(null);
-  const latest = useRef(0);
+  const [clearedFor, setClearedFor] = useState(props.denialId);
+  const firstRender = useRef(true);
+  const ownBump = useRef(false);
 
-  const load = useCallback(async () => {
-    latest.current += 1;
-    const seq = latest.current;
-    const res = await loadPayerAppeals(client, props.denialId);
-    if (seq !== latest.current) return;
-    if (res.ok) {
-      setView(res.value);
-      setError(null);
-    } else setError(res.message);
-  }, [client, props.denialId]);
+  // Another denial: nothing typed or noticed for the last one carries over.
+  if (clearedFor !== props.denialId) {
+    setClearedFor(props.denialId);
+    setNotice(null);
+  }
 
+  // A refreshKey bump from the parent re-reads, except the bump this panel itself caused (it already re-read).
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is the explicit "read again" trigger
   useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    if (ownBump.current) {
+      ownBump.current = false;
+      return;
+    }
     void load();
-    return () => {
-      latest.current += 1;
-    };
-  }, [load, props.refreshKey]);
+  }, [props.refreshKey]);
 
-  const changed = (): void => {
-    void load();
-    props.onChanged?.();
-  };
+  const reload: Reload = useCallback(async () => {
+    await load();
+    if (props.onChanged) {
+      ownBump.current = true;
+      props.onChanged();
+    }
+  }, [load, props.onChanged]);
 
   if (!view) {
     return error ? (
-      <ErrorAlert message={`Payer appeals unavailable: ${error}`} />
+      <RetryAlert message={`Payer appeals unavailable: ${error}`} onRetry={() => void load()} />
     ) : (
       <LoadingSpinner />
     );
@@ -425,11 +530,17 @@ export function PayerAppealPanel(props: PayerAppealPanelProps): JSX.Element | nu
   // A Medicare, Medicaid or advice-less denial has no payer appeal; its own work is elsewhere on this rail.
   if (view.refusal !== null && view.cases.length === 0) return null;
 
-  const inFlight = view.cases.some((c) => ["draft", "submitted", "under_review"].includes(c.state));
+  const inFlight = view.cases.some((c) => IN_FLIGHT.has(c.state));
   const last = view.cases[view.cases.length - 1];
   return (
     <section aria-label="Payer appeal">
       <h3 className="wx-action-title">Payer appeal</h3>
+      {error ? (
+        <RetryAlert
+          message={`Payer appeals could not be refreshed: ${error}`}
+          onRetry={() => void load()}
+        />
+      ) : null}
       <Facts
         items={[
           ["Payer", view.payerName ?? "Payer not resolved"],
@@ -457,29 +568,37 @@ export function PayerAppealPanel(props: PayerAppealPanelProps): JSX.Element | nu
             ))}
           </ol>
         </section>
-      ) : view.pathPrompt ? (
+      ) : null}
+      {view.pathPrompt ? (
         <WarningAlert>
-          {view.pathPrompt}.{" "}
-          {props.canManagePaths ? (
-            <Link to="/remittance/payer-appeal-paths">Add a path</Link>
+          {view.pathPrompt}
+          {view.path === null && !view.payerUnresolved && props.canManagePaths ? (
+            <>
+              {". "}
+              <Link to="/remittance/payer-appeal-paths">Add a path</Link>
+            </>
           ) : null}
         </WarningAlert>
       ) : null}
       {view.cases.map((c) => (
-        <CaseCard key={c.id} c={c} canManage={props.canManage} onChanged={changed} />
+        <CaseCard
+          key={c.id}
+          c={c}
+          canManage={props.canManage}
+          reload={reload}
+          onWrite={() => setNotice(null)}
+        />
       ))}
-      {props.canManage && view.refusal === null && !inFlight ? (
+      {props.canManage && view.refusal === null && !view.payerUnresolved && !inFlight ? (
         <OpenForm
-          key={view.cases.length}
+          key={`${view.path?.id ?? "none"}:${view.path?.revision ?? 0}:${view.cases.length}`}
           view={view}
           denialId={props.denialId}
           priorId={
             last && (last.state === "decided" || last.state === "closed") ? last.id : undefined
           }
-          onOpened={() => {
-            setNotice("Payer appeal level opened.");
-            changed();
-          }}
+          reload={reload}
+          onOpened={() => setNotice("Payer appeal level opened.")}
         />
       ) : null}
     </section>

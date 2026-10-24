@@ -40701,6 +40701,7 @@
                   "type": "object",
                   "required": [
                     "patientId",
+                    "patientAttribution",
                     "items"
                   ],
                   "properties": {
@@ -40711,6 +40712,18 @@
                         },
                         {
                           "type": "null"
+                        }
+                      ]
+                    },
+                    "patientAttribution": {
+                      "anyOf": [
+                        {
+                          "const": "claim",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unattributed",
+                          "type": "string"
                         }
                       ]
                     },
@@ -43220,6 +43233,7 @@
                   "type": "object",
                   "required": [
                     "patientId",
+                    "patientAttribution",
                     "items"
                   ],
                   "properties": {
@@ -43230,6 +43244,18 @@
                         },
                         {
                           "type": "null"
+                        }
+                      ]
+                    },
+                    "patientAttribution": {
+                      "anyOf": [
+                        {
+                          "const": "claim",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unattributed",
+                          "type": "string"
                         }
                       ]
                     },
@@ -101921,6 +101947,7 @@
                     "denialCaseId",
                     "claimId",
                     "patientId",
+                    "patientAttribution",
                     "generatedAt",
                     "nextDeadline",
                     "items",
@@ -101947,6 +101974,18 @@
                         },
                         {
                           "type": "null"
+                        }
+                      ]
+                    },
+                    "patientAttribution": {
+                      "anyOf": [
+                        {
+                          "const": "claim",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unattributed",
+                          "type": "string"
                         }
                       ]
                     },
@@ -102228,6 +102267,9 @@
                     "adviceKind",
                     "refusal",
                     "maHint",
+                    "payerUnresolved",
+                    "patientId",
+                    "patientAttribution",
                     "path",
                     "pathPrompt",
                     "cases"
@@ -102297,6 +102339,31 @@
                     },
                     "maHint": {
                       "type": "boolean"
+                    },
+                    "payerUnresolved": {
+                      "type": "boolean"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patientAttribution": {
+                      "anyOf": [
+                        {
+                          "const": "claim",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unattributed",
+                          "type": "string"
+                        }
+                      ]
                     },
                     "path": {
                       "anyOf": [
@@ -102398,6 +102465,9 @@
                           "windowVerified",
                           "derivation",
                           "prompt",
+                          "pathAwaitingVerification",
+                          "patientId",
+                          "patientAttribution",
                           "payerReference",
                           "externalReviewerName",
                           "decisionOutcome",
@@ -102575,6 +102645,31 @@
                               },
                               {
                                 "type": "null"
+                              }
+                            ]
+                          },
+                          "pathAwaitingVerification": {
+                            "type": "boolean"
+                          },
+                          "patientId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "patientAttribution": {
+                            "anyOf": [
+                              {
+                                "const": "claim",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unattributed",
+                                "type": "string"
                               }
                             ]
                           },
@@ -226487,6 +226582,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "format": "uuid",
               "type": "string"
             }
           },
@@ -226495,7 +226591,20 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "const": "draft",
+                  "type": "string"
+                },
+                {
+                  "const": "active",
+                  "type": "string"
+                },
+                {
+                  "const": "retired",
+                  "type": "string"
+                }
+              ]
             }
           }
         ],
@@ -227455,6 +227564,9 @@
                     "windowVerified",
                     "derivation",
                     "prompt",
+                    "pathAwaitingVerification",
+                    "patientId",
+                    "patientAttribution",
                     "payerReference",
                     "externalReviewerName",
                     "decisionOutcome",
@@ -227632,6 +227744,31 @@
                         },
                         {
                           "type": "null"
+                        }
+                      ]
+                    },
+                    "pathAwaitingVerification": {
+                      "type": "boolean"
+                    },
+                    "patientId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patientAttribution": {
+                      "anyOf": [
+                        {
+                          "const": "claim",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unattributed",
+                          "type": "string"
                         }
                       ]
                     },
@@ -227938,6 +228075,7 @@
                   "type": "object",
                   "required": [
                     "patientId",
+                    "patientAttribution",
                     "items"
                   ],
                   "properties": {
@@ -227948,6 +228086,18 @@
                         },
                         {
                           "type": "null"
+                        }
+                      ]
+                    },
+                    "patientAttribution": {
+                      "anyOf": [
+                        {
+                          "const": "claim",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unattributed",
+                          "type": "string"
                         }
                       ]
                     },

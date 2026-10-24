@@ -924,11 +924,11 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
     expect(
       (await app.inject({ method: "GET", url: "/api/v1/payer-appeal-paths?payerId=nope" }))
         .statusCode,
-    ).toBe(400);
+    ).toBe(422);
     expect(
       (await app.inject({ method: "GET", url: "/api/v1/payer-appeal-paths?status=bogus" }))
         .statusCode,
-    ).toBe(400);
+    ).toBe(422);
     expect(
       (
         await app.inject({

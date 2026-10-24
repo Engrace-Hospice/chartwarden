@@ -110,7 +110,7 @@ export function CaseViewPanel({ claimId, denialId, refreshKey }: CaseViewPanelPr
       )}
       <Hint>{NOT_COMPUTED}</Hint>
       {view.items.length === 0 ? (
-        <Hint>Nothing has been recorded against this claim yet.</Hint>
+        <Hint>Nothing has been recorded for this case yet.</Hint>
       ) : (
         <ul className="wx-action-hint wx-action-list">
           {view.items.map((item) => (

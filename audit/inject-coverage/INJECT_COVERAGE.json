@@ -4,7 +4,7 @@
     "covered": 39,
     "routes": 1770,
     "coveredRoutes": 1770,
-    "directRoutesReferenced": 1633
+    "directRoutesReferenced": 1640
   },
   "modules": [
     {
@@ -384,6 +384,7 @@
         "apps/backend/__tests__/m25-audit-request.live.test.ts",
         "apps/backend/__tests__/m25-audit-response.live.test.ts",
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",
+        "apps/backend/__tests__/m25-payer-appeal.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
@@ -416,7 +417,7 @@
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
-      "directRoutesReferenced": 100
+      "directRoutesReferenced": 107
     },
     {
       "module": "26-cap",
