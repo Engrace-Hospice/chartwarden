@@ -81,8 +81,27 @@
 }
 
 .wx-bc-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
   color: var(--color-primary);
   font-size: 0.875rem;
+}
+
+.wx-bc-status {
+  margin: 0;
+  color: var(--color-on-surface);
+  font-size: 0.875rem;
+}
+
+.wx-bc-status:empty {
+  display: none;
+}
+
+.wx-bc-more {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
 }
 
 .wx-bc-split {
@@ -102,6 +121,7 @@
   display: grid;
   width: 100%;
   gap: 0.15rem;
+  min-height: 2.75rem;
   padding: 0.75rem 1rem;
   border: none;
   border-bottom: 1px solid var(--color-card-border);

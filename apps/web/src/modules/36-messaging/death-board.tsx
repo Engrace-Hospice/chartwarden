@@ -2,23 +2,26 @@
 // one flat row per checklist item with ONE named owner, a state that is a word (never colour alone), and two actions the SERVER says the caller may
 // take: the owner marks an item complete, the owner or a supervisor reassigns it. The board is coordination only: nothing here writes to the chart,
 // and the item wording is fixed by the platform template. While the tenant flag is off the list says so and the screen says "not turned on".
-// Known limits: a new owner is entered as a user id (no picker yet); the item history route exists but has no screen.
+// Known limit: the item history route exists but has no screen. A new owner is chosen from the active-staff lookup.
 import type { DeathBoardDto, DeathBoardItemDto } from "@chartwarden/types";
-import { Button, EmptyState, Modal, PageHeader, StatusPill, TextField } from "@chartwarden/ui";
-import { useRef, useState } from "react";
+import {
+  Button,
+  EmptyState,
+  EntityLookupField,
+  type EntityLookupLoadInput,
+  type EntityLookupLoadResult,
+  Modal,
+  PageHeader,
+  StatusPill,
+  useApiClient,
+} from "@chartwarden/ui";
+import { useCallback, useRef, useState } from "react";
 import type { JSX } from "react";
 import { LoadGate, formatTime, useFailureText } from "./export-common";
 import { useOnlineStatus } from "./offline-banner";
 import { useDeathBoardActions, useDeathBoards } from "./use-death-board";
 import type { ExportResult } from "./use-export";
 import "./export.css";
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** The first thing wrong with the new owner entry, or null when it can be sent. */
-export function validateOwnerEntry(value: string): string | null {
-  return UUID.test(value.trim()) ? null : "Enter the new owner's user id as a UUID.";
-}
 
 type Tone = "success" | "error" | "warning" | "neutral";
 /** One word per state; "No owner" outranks "Overdue" because it needs a supervisor now. */
@@ -55,46 +58,79 @@ function useActionFailureText(): (result: ExportResult<unknown>) => string | nul
   };
 }
 
+const NEEDS_COLLEAGUE = "Choose a colleague to take this item.";
+
 function ReassignDialog({
   busy,
   error,
+  currentOwnerId,
   onCancel,
   onSubmit,
 }: {
   readonly busy: boolean;
   readonly error: string | null;
+  readonly currentOwnerId: string | null;
   readonly onCancel: () => void;
   readonly onSubmit: (userId: string) => void;
 }): JSX.Element {
-  const [value, setValue] = useState("");
+  const client = useApiClient();
+  const [userId, setUserId] = useState("");
+  const [label, setLabel] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
+  // Same active-staff lookup as the handoff picker; the server still decides who may take the item (422).
+  const loadOptions = useCallback(
+    async ({ query }: EntityLookupLoadInput): Promise<EntityLookupLoadResult> => {
+      const { data } = await client.GET("/api/v1/messaging/dm/staff", {
+        params: { query: { q: query.trim() || undefined } },
+      });
+      if (!data) throw new Error("staff lookup failed");
+      return {
+        options: data.staff
+          .filter((person) => person.userId !== currentOwnerId)
+          .map((person) => ({
+            id: person.userId,
+            label: person.displayName,
+            searchLabel: person.displayName,
+          })),
+      };
+    },
+    [client, currentOwnerId],
+  );
   return (
     <Modal
       open
       ariaLabel="Reassign checklist item"
       onClose={busy ? undefined : onCancel}
+      dismissOnScrim={userId === ""}
       width="32rem"
     >
       <form
         className="wx-export-dialog"
         onSubmit={(e) => {
           e.preventDefault();
-          const found = validateOwnerEntry(value);
-          setProblem(found);
-          if (!found && !busy) onSubmit(value.trim());
+          if (!userId) {
+            setProblem(NEEDS_COLLEAGUE);
+            return;
+          }
+          if (!busy) onSubmit(userId);
         }}
       >
         <h2>Reassign checklist item</h2>
         <p>The new owner is told in their inbox. The change is recorded with your name.</p>
-        <TextField
-          id="death-board-new-owner"
-          label="New owner (user id)"
+        <EntityLookupField
+          label="New owner"
+          value={userId}
+          valueLabel={label || undefined}
+          placeholder="Search colleagues"
+          appearance="modal"
+          disabled={busy}
           error={problem ?? undefined}
-          value={value}
-          onChange={(e) => {
+          onChange={(value, option) => {
             setProblem(null);
-            setValue(e.target.value);
+            setUserId(value);
+            setLabel(option ? option.searchLabel : "");
           }}
+          loadOptions={loadOptions}
         />
         {error ? (
           <p className="wx-export-error" role="alert">
@@ -212,6 +248,11 @@ function BoardSection(props: {
   );
 }
 
+type RunOutcome =
+  | { readonly kind: "skipped" }
+  | { readonly kind: "done" }
+  | { readonly kind: "failed"; readonly error: string };
+
 export function DeathBoard(): JSX.Element {
   const { view, reload, refreshFailed } = useDeathBoards();
   const actions = useDeathBoardActions();
@@ -227,11 +268,12 @@ export function DeathBoard(): JSX.Element {
   });
   const say = (text: string | null): void => setMessage((m) => ({ text, seq: m.seq + 1 }));
 
+  /** "skipped" = another action was still in flight, so nothing was sent and nothing about the dialog or message changes. */
   const run = async (
     work: () => Promise<ExportResult<unknown>>,
     done: string,
-  ): Promise<string | null> => {
-    if (inFlight.current) return null; // two fast clicks before the disabled state paints send one request
+  ): Promise<RunOutcome> => {
+    if (inFlight.current) return { kind: "skipped" }; // two fast clicks before the disabled state paints send one request
     inFlight.current = true;
     setBusy(true);
     say(null);
@@ -241,15 +283,16 @@ export function DeathBoard(): JSX.Element {
     if (result.kind === "ok") {
       say(done);
       reload();
-      return null;
+      return { kind: "done" };
     }
     if (result.kind === "conflict" || result.kind === "not_available") reload();
-    return failureText(result);
+    return { kind: "failed", error: failureText(result) ?? "The change could not be saved." };
   };
 
   const complete = (item: DeathBoardItemDto): void => {
-    void run(() => actions.complete(item.id), `“${item.label}” marked complete.`).then((error) => {
-      if (error) say(error);
+    void run(() => actions.complete(item.id), `“${item.label}” marked complete.`).then((out) => {
+      if (out.kind === "skipped") return;
+      if (out.kind === "failed") say(out.error);
       statusRef.current?.focus();
     });
   };
@@ -259,9 +302,10 @@ export function DeathBoard(): JSX.Element {
     if (!item) return;
     setDialogError(null);
     void run(() => actions.reassign(item.id, userId), `“${item.label}” reassigned.`).then(
-      (error) => {
-        if (error) {
-          setDialogError(error);
+      (out) => {
+        if (out.kind === "skipped") return;
+        if (out.kind === "failed") {
+          setDialogError(out.error);
           return;
         }
         setReassigning(null);
@@ -331,6 +375,7 @@ export function DeathBoard(): JSX.Element {
         <ReassignDialog
           busy={busy}
           error={dialogError}
+          currentOwnerId={reassigning.owner_user_id}
           onCancel={() => !busy && setReassigning(null)}
           onSubmit={reassign}
         />

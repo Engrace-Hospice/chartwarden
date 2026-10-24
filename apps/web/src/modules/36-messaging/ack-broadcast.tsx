@@ -10,11 +10,14 @@ import {
   type AckBroadcastSummary,
 } from "@chartwarden/types";
 import { Button, EmptyState, LoadingSpinner, PageHeader, StatusPill } from "@chartwarden/ui";
-import { type JSX, useState } from "react";
+import { type JSX, useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ACK_FAILED,
   ACK_LABEL,
+  ACK_REFRESH_FAILED,
+  ACKNOWLEDGED_ANNOUNCEMENT,
+  LOAD_MORE_FAILED,
   BROADCAST_BREADCRUMB,
   BROADCAST_DENIED,
   BROADCAST_LOAD_FAILED,
@@ -53,7 +56,7 @@ function Problem({ text, retry }: { readonly text: string; readonly retry?: () =
     <div className="wx-bc-problem" role="alert">
       <p>{text}</p>
       {retry ? (
-        <Button type="button" tone="secondary" size="sm" onClick={retry}>
+        <Button type="button" tone="secondary" size="lg" onClick={retry}>
           {BROADCAST_RETRY}
         </Button>
       ) : null}
@@ -63,23 +66,34 @@ function Problem({ text, retry }: { readonly text: string; readonly retry?: () =
 
 function MineRow({
   item,
+  position,
+  total,
   busy,
   onAck,
-}: { readonly item: AckBroadcastMine; readonly busy: boolean; readonly onAck: () => void }): JSX.Element {
+}: {
+  readonly item: AckBroadcastMine;
+  readonly position: number;
+  readonly total: number;
+  readonly busy: boolean;
+  readonly onAck: () => void;
+}): JSX.Element {
+  const describedBy = useId();
+  // The API sends no author or channel name, so the sent time (to the minute) and the place in the list are all that tell rows apart.
   return (
     <li className="wx-bc-row">
       <div className="wx-bc-main">
         <p className="wx-bc-title">{sentLabel(item.createdAt)}</p>
         {item.acknowledgedAt ? <p className="wx-bc-sub">Acknowledged {when(item.acknowledgedAt)}</p> : null}
+        <span id={describedBy} className="sr-only">
+          {sentLabel(item.createdAt)}, {position} of {total}
+        </span>
       </div>
-      <Link className="wx-bc-link" to={channelPath(item.channelId)}>
+      <Link className="wx-bc-link" to={channelPath(item.channelId)} aria-describedby={describedBy}>
         {OPEN_LABEL}
-        <span className="sr-only"> {sentLabel(item.createdAt)}</span>
       </Link>
       {item.acknowledgedAt ? null : (
-        <Button type="button" size="sm" disabled={busy} onClick={onAck}>
+        <Button type="button" size="lg" disabled={busy} aria-describedby={describedBy} onClick={onAck}>
           {ACK_LABEL}
-          <span className="sr-only"> {sentLabel(item.createdAt)}</span>
         </Button>
       )}
     </li>
@@ -87,12 +101,14 @@ function MineRow({
 }
 
 function MineSection({
+  headingBase,
   view,
   busy,
   ackError,
   onAck,
   retry,
 }: {
+  readonly headingBase: string;
   readonly view: MineView;
   readonly busy: string | null;
   readonly ackError: boolean;
@@ -103,33 +119,42 @@ function MineSection({
   if (view.status === "off") return <EmptyState title={BROADCAST_OFF_TITLE} description={BROADCAST_OFF_TEXT} />;
   if (view.status === "denied") return <Problem text={BROADCAST_DENIED} />;
   if (view.status === "error") return <Problem text={BROADCAST_LOAD_FAILED} retry={retry} />;
+  const waitingId = `${headingBase}-waiting`;
+  const doneId = `${headingBase}-done`;
   const waiting = view.items.filter((i) => !i.acknowledgedAt);
   const done = view.items.filter((i) => i.acknowledgedAt);
   return (
     <>
       {ackError ? <Problem text={ACK_FAILED} /> : null}
-      <section className="wx-bc-group" aria-label={MINE_HEADING}>
-        <h2 className="wx-bc-heading">
+      <section className="wx-bc-group" aria-labelledby={waitingId}>
+        <h2 id={waitingId} className="wx-bc-heading">
           {MINE_HEADING} <span>{waiting.length}</span>
         </h2>
         {waiting.length === 0 ? (
           <EmptyState title={MINE_EMPTY_TITLE} description={MINE_EMPTY_TEXT} />
         ) : (
           <ul className="wx-bc-rows">
-            {waiting.map((item) => (
-              <MineRow key={item.messageId} item={item} busy={busy === item.messageId} onAck={() => onAck(item.messageId)} />
+            {waiting.map((item, i) => (
+              <MineRow
+                key={item.messageId}
+                item={item}
+                position={i + 1}
+                total={waiting.length}
+                busy={busy === item.messageId}
+                onAck={() => onAck(item.messageId)}
+              />
             ))}
           </ul>
         )}
       </section>
       {done.length > 0 ? (
-        <section className="wx-bc-group" aria-label={DONE_HEADING}>
-          <h2 className="wx-bc-heading">
+        <section className="wx-bc-group" aria-labelledby={doneId}>
+          <h2 id={doneId} className="wx-bc-heading">
             {DONE_HEADING} <span>{done.length}</span>
           </h2>
           <ul className="wx-bc-rows">
-            {done.map((item) => (
-              <MineRow key={item.messageId} item={item} busy={false} onAck={() => undefined} />
+            {done.map((item, i) => (
+              <MineRow key={item.messageId} item={item} position={i + 1} total={done.length} busy={false} onAck={() => undefined} />
             ))}
           </ul>
         </section>
@@ -159,11 +184,12 @@ function PersonRow({ person }: { readonly person: AckBroadcastPerson }): JSX.Ele
 
 function DetailPanel({ broadcast }: { readonly broadcast: AckBroadcastSummary }): JSX.Element {
   const [filter, setFilter] = useState<AckBroadcastFilter>("pending");
-  const { view, more } = useBroadcastDetail(broadcast.messageId, filter);
+  const { view, more, moreState, reload } = useBroadcastDetail(broadcast.messageId, filter);
+  const headingId = useId();
   const c = broadcast.counts;
   return (
-    <section className="wx-bc-detail" aria-label={sentLabel(broadcast.createdAt)}>
-      <h3 className="wx-bc-heading">{sentLabel(broadcast.createdAt)}</h3>
+    <section className="wx-bc-detail" aria-labelledby={headingId}>
+      <h3 id={headingId} className="wx-bc-heading">{sentLabel(broadcast.createdAt)}</h3>
       <p className="wx-bc-sub" aria-live="polite">
         {progressLabel(c.acknowledged, c.audience)}. {c.pending} still to acknowledge ({c.notOpened} not opened).
         {c.ineligible > 0 ? ` ${c.ineligible} no longer active.` : ""}
@@ -171,13 +197,13 @@ function DetailPanel({ broadcast }: { readonly broadcast: AckBroadcastSummary })
       {c.outsideAudience > 0 ? <p className="wx-bc-sub">{OUTSIDE_NOTE(c.outsideAudience)}</p> : null}
       <div className="wx-bc-filters" role="group" aria-label="Show">
         {ACK_BROADCAST_FILTERS.map((f) => (
-          <Button key={f} type="button" size="sm" tone={f === filter ? "primary" : "secondary"} aria-pressed={f === filter} onClick={() => setFilter(f)}>
+          <Button key={f} type="button" size="lg" tone={f === filter ? "primary" : "secondary"} aria-pressed={f === filter} onClick={() => setFilter(f)}>
             {FILTER_LABELS[f]}
           </Button>
         ))}
       </div>
       {view.status === "loading" ? <LoadingSpinner /> : null}
-      {view.status === "error" ? <Problem text={DETAIL_LOAD_FAILED} /> : null}
+      {view.status === "error" ? <Problem text={DETAIL_LOAD_FAILED} retry={reload} /> : null}
       {view.status === "ready" ? (
         <>
           {view.detail.people.length === 0 ? (
@@ -200,9 +226,12 @@ function DetailPanel({ broadcast }: { readonly broadcast: AckBroadcastSummary })
             </table>
           )}
           {view.detail.hasMore ? (
-            <Button type="button" tone="secondary" size="sm" onClick={() => void more()}>
-              {LOAD_MORE}
-            </Button>
+            <div className="wx-bc-more">
+              {moreState === "failed" ? <Problem text={LOAD_MORE_FAILED} /> : null}
+              <Button type="button" tone="secondary" size="lg" disabled={moreState === "busy"} onClick={() => void more()}>
+                {moreState === "failed" ? BROADCAST_RETRY : LOAD_MORE}
+              </Button>
+            </div>
           ) : null}
         </>
       ) : null}
@@ -210,22 +239,23 @@ function DetailPanel({ broadcast }: { readonly broadcast: AckBroadcastSummary })
   );
 }
 
-function OverseeSection({ view }: { readonly view: OverseeView }): JSX.Element | null {
+function OverseeSection({ view, retry }: { readonly view: OverseeView; readonly retry: () => void }): JSX.Element | null {
   const [selected, setSelected] = useState<string | null>(null);
+  const headingId = useId();
   if (view.status === "hidden") return null;
   if (view.status === "loading") return <LoadingSpinner />;
-  if (view.status === "error") return <Problem text={BROADCAST_LOAD_FAILED} />;
+  if (view.status === "error") return <Problem text={BROADCAST_LOAD_FAILED} retry={retry} />;
   const chosen = view.broadcasts.find((b) => b.messageId === selected) ?? view.broadcasts[0];
   return (
-    <section className="wx-bc-group" aria-label={SUPERVISE_HEADING}>
-      <h2 className="wx-bc-heading">
+    <section className="wx-bc-group" aria-labelledby={headingId}>
+      <h2 id={headingId} className="wx-bc-heading">
         {SUPERVISE_HEADING} <span>{view.broadcasts.length}</span>
       </h2>
       {!chosen ? (
         <p className="wx-bc-sub">{SUPERVISE_EMPTY}</p>
       ) : (
         <div className="wx-bc-split">
-          <ul className="wx-bc-rail" aria-label={SUPERVISE_HEADING}>
+          <ul className="wx-bc-rail">
             {view.broadcasts.map((b) => (
               <li key={b.messageId}>
                 <button
@@ -248,15 +278,31 @@ function OverseeSection({ view }: { readonly view: OverseeView }): JSX.Element |
 }
 
 export function AckBroadcast(): JSX.Element {
-  const { mine, oversee, ackError, busy, acknowledge, reload } = useAckBroadcast();
+  const { mine, oversee, ackError, refreshFailed, busy, acknowledge, reload } = useAckBroadcast();
+  const headingBase = useId();
+  const statusRef = useRef<HTMLParagraphElement>(null);
+  const [acked, setAcked] = useState(0);
+  // After Acknowledge the row leaves the waiting list and takes focus with it: move focus to the status line, which says what happened.
+  useEffect(() => {
+    if (acked > 0) statusRef.current?.focus();
+  }, [acked]);
+  const onAck = (id: string): void => {
+    void acknowledge(id).then((record) => {
+      if (record) setAcked((n) => n + 1);
+    });
+  };
   return (
     <>
       <PageHeader title={BROADCAST_TITLE} breadcrumb={BROADCAST_BREADCRUMB}>
-        <p className="wx-bc-sub">{BROADCAST_NOTICE}</p>
+        {mine.status === "off" ? null : <p className="wx-bc-sub">{BROADCAST_NOTICE}</p>}
       </PageHeader>
-      <div className="wx-bc" aria-label={BROADCAST_TITLE}>
-        <MineSection view={mine} busy={busy} ackError={ackError} onAck={(id) => void acknowledge(id)} retry={() => void reload()} />
-        {mine.status === "off" ? null : <OverseeSection view={oversee} />}
+      <div className="wx-bc">
+        <p key={acked} ref={statusRef} role="status" tabIndex={-1} className="wx-bc-status">
+          {acked > 0 ? ACKNOWLEDGED_ANNOUNCEMENT : null}
+        </p>
+        {refreshFailed ? <Problem text={ACK_REFRESH_FAILED} retry={() => void reload()} /> : null}
+        <MineSection headingBase={headingBase} view={mine} busy={busy} ackError={ackError} onAck={onAck} retry={() => void reload()} />
+        {mine.status === "off" ? null : <OverseeSection view={oversee} retry={() => void reload()} />}
       </div>
     </>
   );

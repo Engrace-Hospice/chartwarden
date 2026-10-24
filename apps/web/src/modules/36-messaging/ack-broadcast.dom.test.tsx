@@ -134,6 +134,86 @@ describe("AckBroadcast", () => {
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
   });
 
+  it("Show more is busy while a page loads: a double click sends one request", async () => {
+    let release!: (r: Reply) => void;
+    const held = new Promise<Reply>((r) => {
+      release = r;
+    });
+    let page = 0;
+    const { GET } = mount({
+      [MINE]: () => ({ data: { items: [] } }),
+      [LIST]: () => ({ data: { broadcasts: [summary] } }),
+      [DETAIL]: () => (page++ === 0 ? { data: detail({ hasMore: true }) } : (held as unknown as Reply)),
+    });
+    const button = await screen.findByRole("button", { name: "Show more" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(true));
+    expect(GET.mock.calls.filter((c) => c[0] === DETAIL)).toHaveLength(2);
+    release({ data: detail({ offset: 2, people: [] }) });
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Show more" })).toBeNull());
+  });
+
+  it("a failed Show more keeps the loaded pages and offers an inline retry", async () => {
+    let page = 0;
+    mount({
+      [MINE]: () => ({ data: { items: [] } }),
+      [LIST]: () => ({ data: { broadcasts: [summary] } }),
+      [DETAIL]: () => {
+        page += 1;
+        if (page === 1) return { data: detail({ hasMore: true }) };
+        if (page === 2) return { error: {}, response: { status: 500 } };
+        return { data: detail({ offset: 2, people: [{ userId: "u3", displayName: "Cara Third", state: "not_opened", openedAt: null, acknowledgedAt: null }] }) };
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
+    expect(await screen.findByText(/could not be loaded\. The ones already shown are kept/)).toBeTruthy();
+    expect(screen.getByText("Alice Opened")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Cara Third")).toBeTruthy();
+    expect(screen.getByText("Alice Opened")).toBeTruthy();
+  });
+
+  it("moves focus to a status line that says Acknowledged after the row leaves the list", async () => {
+    let acked = false;
+    mount(
+      {
+        [MINE]: () => ({ data: { items: [{ messageId: "m1", channelId: "c1", createdAt: summary.createdAt, acknowledgedAt: acked ? "2026-10-23T12:00:00.000Z" : null }] } }),
+        [LIST]: () => ({ error: {}, response: { status: 403 } }),
+      },
+      () => {
+        acked = true;
+        return { data: { messageId: "m1", acknowledgedAt: "2026-10-23T12:00:00.000Z", already: false } };
+      },
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Acknowledge/ }));
+    const status = await screen.findByText("Acknowledged.");
+    expect(status.getAttribute("role")).toBe("status");
+    await waitFor(() => expect(document.activeElement).toBe(status));
+  });
+
+  it("keeps the list and says the refresh failed when the reload after an acknowledgment fails", async () => {
+    let calls = 0;
+    mount(
+      {
+        [MINE]: () =>
+          ++calls === 1
+            ? { data: { items: [{ messageId: "m1", channelId: "c1", createdAt: summary.createdAt, acknowledgedAt: null }] } }
+            : { error: {}, response: { status: 500 } },
+        [LIST]: () => ({ error: {}, response: { status: 403 } }),
+      },
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Acknowledge/ }));
+    expect(await screen.findByText(/could not be refreshed/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Open announcement/ })).toBeTruthy();
+  });
+
+  it("hides the notice when the feature is off", async () => {
+    mount({ [MINE]: () => ({ error: {}, response: { status: 404 } }) });
+    await screen.findByText(BROADCAST_OFF_TITLE);
+    expect(screen.queryByText(/Opening an announcement does not acknowledge it/)).toBeNull();
+  });
+
   it("has no axe violations with both sections shown", async () => {
     const { container } = mount({
       [MINE]: () => ({ data: { items: [{ messageId: "m1", channelId: "c1", createdAt: summary.createdAt, acknowledgedAt: null }] } }),

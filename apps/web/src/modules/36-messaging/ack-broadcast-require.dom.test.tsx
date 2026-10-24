@@ -12,12 +12,15 @@ function open(post: () => Reply) {
     data: { recipientCount: 0, readCount: 0, readers: [], unread: [], truncated: false },
   }));
   const POST = vi.fn(async () => post());
-  render(
-    <ApiClientProvider client={{ GET, POST } as unknown as ApiClient}>
-      <AnnouncementReceiptsDialog messageId="m1" onClose={() => undefined} />
-    </ApiClientProvider>,
+  const client = { GET, POST } as unknown as ApiClient;
+  const ui = (id: string) => (
+    <ApiClientProvider client={client}>
+      <AnnouncementReceiptsDialog messageId={id} onClose={() => undefined} />
+    </ApiClientProvider>
   );
-  return POST;
+  const view = render(ui("m1"));
+  Object.assign(POST, { switchTo: (id: string) => view.rerender(ui(id)) });
+  return POST as typeof POST & { switchTo: (id: string) => void };
 }
 
 afterEach(() => {
@@ -36,7 +39,43 @@ describe("Require acknowledgment", () => {
   it("says the likelier cause on a 404 (flag off or not the author)", async () => {
     open(() => ({ error: {}, response: { status: 404 } }));
     fireEvent.click(await screen.findByRole("button", { name: "Require acknowledgment" }));
-    expect(await screen.findByText(/not turned on for your organization/)).toBeTruthy();
+    expect(await screen.findByText(/only the author of this announcement can require acknowledgment/)).toBeTruthy();
+  });
+
+  it("says to try again on a server or network failure, not that only the author can do this", async () => {
+    open(() => ({ error: {}, response: { status: 503 } }));
+    fireEvent.click(await screen.findByRole("button", { name: "Require acknowledgment" }));
+    expect(await screen.findByText(/Try again\./)).toBeTruthy();
+    expect(screen.queryByText(/only the author/)).toBeNull();
+  });
+
+  it("posts once on a double click", async () => {
+    let release!: (r: Reply) => void;
+    const held = new Promise<Reply>((r) => {
+      release = r;
+    });
+    const POST = open(() => held as unknown as Reply);
+    const button = await screen.findByRole("button", { name: "Require acknowledgment" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(POST).toHaveBeenCalledTimes(1);
+    release({ data: { created: true } });
+    expect(await screen.findByText(/Acknowledgment is now required/)).toBeTruthy();
+  });
+
+  it("drops a late answer for an earlier announcement after the dialog moves to another", async () => {
+    let release!: (r: Reply) => void;
+    const held = new Promise<Reply>((r) => {
+      release = r;
+    });
+    const POST = open(() => held as unknown as Reply);
+    fireEvent.click(await screen.findByRole("button", { name: "Require acknowledgment" }));
+    POST.switchTo("m2");
+    release({ data: { created: true } });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(screen.queryByText(/Acknowledgment is now required/)).toBeNull();
+    expect((screen.getByRole("button", { name: "Require acknowledgment" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("does not post anything until clicked", async () => {

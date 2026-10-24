@@ -3,13 +3,13 @@
 // check, the exact body, a refusal shown in the dialog), the refresh-failed alert, and axe.
 import type { DeathBoardDto, DeathBoardItemDto } from "@chartwarden/types";
 import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
-import { DeathBoard, itemState, validateOwnerEntry } from "./death-board";
+import { DeathBoard, itemState } from "./death-board";
 
 const ORG = "33333333-3333-4333-8333-333333333333";
 const ITEM = "11111111-1111-4111-8111-111111111111";
@@ -50,8 +50,12 @@ interface Routes {
 }
 function mount(routes: Routes = {}) {
   const GET = vi.fn(
-    (): Promise<Reply> =>
-      Promise.resolve(routes.list?.() ?? ok({ enabled: true, boards: [board()] })),
+    (path: string): Promise<Reply> =>
+      Promise.resolve(
+        path === "/api/v1/messaging/dm/staff"
+          ? ok({ staff: [{ userId: TARGET, displayName: "Tina Target" }] })
+          : (routes.list?.() ?? ok({ enabled: true, boards: [board()] })),
+      ),
   );
   const POST = vi.fn(
     (path: string, init?: { body?: unknown }): Promise<Reply> =>
@@ -84,10 +88,6 @@ describe("helpers", () => {
     expect(itemState(item({ overdue: true })).label).toBe("Overdue");
     expect(itemState(item({ overdue: true, needs_owner: true })).label).toBe("No owner");
     expect(itemState(item({ status: "done" })).label).toBe("Done");
-  });
-  it("the owner entry must be a uuid", () => {
-    expect(validateOwnerEntry(TARGET)).toBeNull();
-    expect(validateOwnerEntry(" nope ")).toMatch(/UUID/);
   });
 });
 
@@ -145,21 +145,61 @@ describe("DeathBoard screen", () => {
     expect(await screen.findByText(/marked complete/)).toBeTruthy();
   });
 
-  it("reassigns: rejects a non-uuid without a request, sends the exact body, and shows a refusal in the dialog", async () => {
+  async function pickColleague(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) {
+    await user.click(within(dialog).getByRole("combobox"));
+    await user.click(await within(dialog).findByRole("option", { name: /Tina Target/ }));
+  }
+
+  it("reassigns through the staff picker: needs a choice, sends the exact body, shows a refusal in the dialog", async () => {
     const user = userEvent.setup();
     const t = mount({ post: () => fail(422) });
     await user.click(await screen.findByRole("button", { name: "Reassign" }));
     const dialog = await screen.findByRole("dialog");
-    await user.type(within(dialog).getByRole("textbox"), "nope");
+    expect(within(dialog).queryByText(/user id/i)).toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "Reassign" }));
     expect(t.POST).not.toHaveBeenCalled();
-    expect(within(dialog).getByText(/UUID/)).toBeTruthy();
-    await user.clear(within(dialog).getByRole("textbox"));
-    await user.type(within(dialog).getByRole("textbox"), TARGET);
+    expect(within(dialog).getByText(/Choose a colleague/)).toBeTruthy();
+    await pickColleague(user, dialog);
     await user.click(within(dialog).getByRole("button", { name: "Reassign" }));
     await waitFor(() => expect(t.POST).toHaveBeenCalledTimes(1));
     expect(t.POST.mock.calls[0]?.[1]).toMatchObject({ body: { to_user_id: TARGET } });
     expect(await within(dialog).findByText(/cannot take this item/)).toBeTruthy();
+  });
+
+  it("a scrim click does not close the dialog once a colleague is chosen, but does while it is empty", async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(await screen.findByRole("button", { name: "Reassign" }));
+    const dialog = await screen.findByRole("dialog");
+    const scrim = () =>
+      screen.getAllByRole("button", { name: "Close" }).find((b) => b.tabIndex === -1) as HTMLElement;
+    await pickColleague(user, dialog);
+    await user.click(scrim());
+    expect(screen.queryByRole("dialog")).not.toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Clear selection" }));
+    await user.click(scrim());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("a skipped second submit neither closes the dialog nor loses the real failure", async () => {
+    const user = userEvent.setup();
+    let release!: (r: Reply) => void;
+    const held = new Promise<Reply>((r) => {
+      release = r;
+    });
+    const t = mount({ post: () => held });
+    await user.click(await screen.findByRole("button", { name: "Reassign" }));
+    const dialog = await screen.findByRole("dialog");
+    await pickColleague(user, dialog);
+    const form = dialog.querySelector("form") as HTMLFormElement;
+    fireEvent.submit(form);
+    fireEvent.submit(form); // same tick: the button has not painted disabled yet
+    expect(t.POST).toHaveBeenCalledTimes(1);
+    await Promise.resolve();
+    expect(screen.queryByRole("dialog")).not.toBeNull();
+    release(fail(422));
+    expect(await within(dialog).findByText(/cannot take this item/)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).not.toBeNull();
   });
 
   it("shows a refresh-failed alert with the data kept", async () => {
