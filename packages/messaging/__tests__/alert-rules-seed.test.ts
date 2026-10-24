@@ -137,6 +137,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "submission.proof_missing",
       "deadline.recorded_approaching",
       "audit.no_deadline_recorded",
+      "payer_appeal.deadline_approaching",
+      "payer_appeal.no_deadline",
       "m26.cap.agency_watch_90",
       "m26.cap.agency_warn_95",
       "m26.cap.agency_breach_100",
