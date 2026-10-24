@@ -14,7 +14,7 @@ export type DeadlineKind =
   | "other";
 export type DecisionOutcome = "discharge_upheld" | "discharge_reversed" | "other";
 export type RequestedByKind = "beneficiary" | "representative" | "unknown";
-export type DeadlineStatus = "open" | "due_soon" | "past" | "satisfied";
+export type DeadlineStatus = "open" | "due_soon" | "past" | "satisfied" | "closed";
 
 /** A typed local date and time of day. Both stay empty until a person fills them: nothing is prefilled. */
 export interface TypedMoment {
@@ -163,8 +163,27 @@ export function apiMessage(error: unknown, fallback: string): string {
   return typeof msg === "string" && msg.length > 0 ? msg : fallback;
 }
 
-function unwrap<T>(res: { data?: unknown; error?: unknown }, fallback: string): T {
-  if (res.error || res.data === undefined) throw new Error(apiMessage(res.error, fallback));
+/** A refused call. `conflict` = HTTP 409: the record changed (or is no longer in the state the call needs). */
+export class NomncApiError extends Error {
+  constructor(
+    message: string,
+    readonly conflict: boolean,
+  ) {
+    super(message);
+    this.name = "NomncApiError";
+  }
+}
+
+/** True when the server answered 409: reload and rebind instead of retrying blind. */
+export const isConflict = (e: unknown): boolean => e instanceof NomncApiError && e.conflict;
+
+function unwrap<T>(
+  res: { data?: unknown; error?: unknown; response?: { status?: number } },
+  fallback: string,
+): T {
+  if (res.error || res.data === undefined) {
+    throw new NomncApiError(apiMessage(res.error, fallback), res.response?.status === 409);
+  }
   return res.data as T;
 }
 

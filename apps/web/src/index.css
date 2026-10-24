@@ -4125,6 +4125,12 @@
   display: grid;
   gap: 0.5rem;
 }
+.wx-cell-end {
+  text-align: right;
+}
+.wx-nomnc-needs {
+  margin: 0;
+}
 .wx-nomnc-form {
   display: grid;
   gap: 0.75rem;

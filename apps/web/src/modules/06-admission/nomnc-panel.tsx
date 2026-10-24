@@ -3,6 +3,9 @@
 // stepper. RECORD-KEEPING ONLY: it shows what staff typed, labelled "from your notice, not a computed CMS time", with a
 // minute-accurate countdown in the organization's zone, and loud prompts for what is MISSING (never a default value).
 // Nothing here blocks a discharge or sends anything. The server owns every rule (ADR-0030).
+//
+// Failure is visible: a failed reload keeps what is on screen and says so (with Retry); a 409 reloads, rebinds the open
+// form to the fresh record and keeps what was typed; a stale response from a previous admission / reason is dropped.
 import {
   Button,
   DataTable,
@@ -12,7 +15,7 @@ import {
   StatusPill,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSession } from "../../shell/session";
 import {
@@ -21,8 +24,9 @@ import {
   type NomncOverview,
   type Prompt,
   createNomncApi,
+  isConflict,
 } from "./nomnc-api";
-import { NomncDrawer, type NomncDrawerMode } from "./nomnc-drawer";
+import { NomncDrawer, type NomncDrawerMode, drawerTargetKey } from "./nomnc-drawer";
 import {
   ACK_LABEL,
   DEADLINE_KIND_LABEL,
@@ -39,21 +43,61 @@ import {
   typedEcho,
 } from "./nomnc-format";
 
-const TICK_MS = 30_000;
+const TICK_MS = 10_000;
+const CONFLICT_NOTICE =
+  "This record changed since you opened it. The latest version is shown — check it and try again.";
 
-/** The prompts as loud alerts: each names a missing fact, never a value. */
+/** The prompts as loud alerts: each names a missing fact, never a value. A warning is announced; info is polite. */
 export function NomncPrompts({ prompts }: { prompts: readonly Prompt[] }): JSX.Element | null {
   if (prompts.length === 0) return null;
   return (
-    <div className="wx-nomnc-prompts" role="status">
+    <div className="wx-nomnc-prompts">
       {prompts.map((p) => (
-        <InlineAlert key={p.code} tone={PROMPT_TONE[p.severity]}>
-          {p.message}
-        </InlineAlert>
+        <div key={p.code} role={p.severity === "warn" ? "alert" : "status"}>
+          <InlineAlert tone={PROMPT_TONE[p.severity]}>{p.message}</InlineAlert>
+        </div>
       ))}
     </div>
   );
 }
+
+/**
+ * Re-point an open form at the freshly loaded record with the same id (a 409 means the object it holds is stale).
+ * `null` = the record is gone or no longer in a state the form applies to: the caller closes the form.
+ */
+export function rebindMode(mode: NomncDrawerMode, ov: NomncOverview): NomncDrawerMode | null {
+  const activeNotice = ov.activeNotice;
+  const openReview = ov.review?.state === "open" ? ov.review : null;
+  switch (mode.kind) {
+    case "notice":
+      if (!mode.supersedes) return mode;
+      return activeNotice && activeNotice.id === mode.supersedes.id
+        ? { ...mode, supersedes: activeNotice }
+        : null;
+    case "acknowledgement":
+    case "withdraw_notice":
+    case "open_review":
+      return activeNotice && activeNotice.id === mode.notice.id
+        ? { ...mode, notice: activeNotice }
+        : null;
+    case "review_facts":
+    case "decision":
+      return openReview && openReview.id === mode.review.id ? { ...mode, review: openReview } : null;
+    case "add_deadline": {
+      const parent = mode.subject === "notice" ? activeNotice : openReview;
+      return parent && parent.id === mode.parent.id ? { ...mode, parent } : null;
+    }
+    case "edit_deadline": {
+      const fresh = ov.deadlines.find((d) => d.id === mode.deadline.id);
+      return fresh && !fresh.satisfiedAt && fresh.status !== "closed"
+        ? { ...mode, deadline: fresh }
+        : null;
+    }
+  }
+}
+
+const deadlineName = (d: DeadlineView): string =>
+  d.label ? `${DEADLINE_KIND_LABEL[d.kind]}: ${d.label}` : DEADLINE_KIND_LABEL[d.kind];
 
 function useNomnc(
   admissionId: string,
@@ -64,20 +108,39 @@ function useNomnc(
   const client = useApiClient();
   const api = useMemo(() => injected ?? createNomncApi(client), [injected, client]);
   const [ov, setOv] = useState<NomncOverview | null | undefined>(undefined);
-  const [error, setError] = useState<string | null>(null);
-  const load = useCallback(async () => {
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const latest = useRef(0);
+
+  /** Load the record. A response that is no longer the latest request (another admission / reason) is dropped. */
+  const load = useCallback(async (): Promise<NomncOverview | null> => {
+    const mine = ++latest.current;
     try {
-      setOv(await api.overview(admissionId, dischargeReason));
-      setError(null);
+      const o = await api.overview(admissionId, dischargeReason);
+      if (mine !== latest.current) return null;
+      setOv(o);
+      setLoadError(null);
+      return o;
     } catch (e) {
-      setOv(null);
-      setError(e instanceof Error ? e.message : "Could not load the NOMNC record.");
+      if (mine !== latest.current) return null;
+      setLoadError(e instanceof Error ? e.message : "Could not load the NOMNC record.");
+      // keep what is on screen; only a first load with nothing to show becomes the error state
+      setOv((prev) => (prev === undefined ? null : prev));
+      return null;
     }
   }, [api, admissionId, dischargeReason]);
+
   useEffect(() => {
-    if (enabled) void load();
+    if (!enabled) return;
+    // a different admission / reason: forget the old record at once, then load the new one
+    setOv(undefined);
+    setLoadError(null);
+    void load();
+    return () => {
+      latest.current += 1;
+    };
   }, [enabled, load]);
-  return { api, ov, error, load };
+
+  return { api, ov, loadError, load };
 }
 
 function useNow(): Date {
@@ -88,6 +151,9 @@ function useNow(): Date {
   }, []);
   return now;
 }
+
+const hasPermission = (perms: readonly string[] | null | undefined, key: string): boolean =>
+  perms?.includes(key) ?? false;
 
 /** Discharge stepper strip: the prompts for this admission and the reason being chosen, nothing more. */
 export function NomncPromptStrip({
@@ -100,11 +166,20 @@ export function NomncPromptStrip({
   api?: NomncApi;
 }): JSX.Element | null {
   const session = useSession();
-  const perms = session?.permissions;
-  const allowed = !perms || perms.includes("nomnc.read");
-  const { ov } = useNomnc(admissionId, injected, allowed, dischargeReason);
-  if (!allowed || !ov) return null;
-  return <NomncPrompts prompts={ov.prompts} />;
+  const allowed = hasPermission(session?.permissions, "nomnc.read");
+  const { ov, loadError } = useNomnc(admissionId, injected, allowed, dischargeReason);
+  if (!allowed) return null;
+  // fail visible, never block: the discharge can continue either way
+  if (loadError && !ov) {
+    return (
+      <div role="alert">
+        <InlineAlert tone="warning">
+          Could not check NOMNC status. You can continue; check the admission's NOMNC record.
+        </InlineAlert>
+      </div>
+    );
+  }
+  return ov ? <NomncPrompts prompts={ov.prompts} /> : null;
 }
 
 export function NomncPanel({
@@ -117,34 +192,75 @@ export function NomncPanel({
 }): JSX.Element | null {
   const session = useSession();
   const perms = session?.permissions;
-  const canRead = !perms || perms.includes("nomnc.read");
-  const canRecord = !perms || perms.includes("nomnc.record");
-  const { api, ov, error, load } = useNomnc(admissionId, injected, canRead);
+  const canRead = hasPermission(perms, "nomnc.read");
+  const canRecord = hasPermission(perms, "nomnc.record");
+  const { api, ov, loadError, load } = useNomnc(admissionId, injected, canRead);
   const [mode, setMode] = useState<NomncDrawerMode | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [confirmWithdraw, setConfirmWithdraw] = useState(false);
   const now = useNow();
-  /** An inline action (mark met, withdraw review): refresh on success, show the server's message on refusal. */
-  const act = async (op: () => Promise<unknown>): Promise<void> => {
+
+  // another admission: nothing from the previous one stays open
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the admission changes.
+  useEffect(() => {
+    setMode(null);
+    setDirty(false);
     setActionError(null);
-    try {
-      await op();
-      await load();
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : "The request failed.");
-    }
-  };
+    setConfirmWithdraw(false);
+  }, [admissionId]);
+
   if (!canRead) return null;
 
   const notice = ov?.activeNotice ?? null;
   const review = ov?.review ?? null;
   const tz = ov?.timeZone ?? "UTC";
-  const next = ov ? nextOpenDeadline(ov.deadlines) : null;
+  const next = ov ? nextOpenDeadline(ov.deadlines.filter((d) => d.status !== "closed")) : null;
+  const locked = dirty || busy;
+
+  const open = (m: NomncDrawerMode) => {
+    setActionError(null);
+    setConfirmWithdraw(false);
+    setMode(m);
+  };
+
+  /** Reload and re-point the open form at the fresh record; close it if it no longer applies. */
+  const onConflict = async (): Promise<void> => {
+    const fresh = await load();
+    if (!fresh || !mode) return;
+    const rebound = rebindMode(mode, fresh);
+    if (rebound) setMode(rebound);
+    else {
+      setMode(null);
+      setActionError(CONFLICT_NOTICE);
+    }
+  };
+
+  /** An inline action (mark met, withdraw review): busy while it runs; a 409 reloads and says the record changed. */
+  const act = async (op: () => Promise<unknown>): Promise<void> => {
+    setActionError(null);
+    setBusy(true);
+    try {
+      await op();
+      await load();
+    } catch (e) {
+      if (isConflict(e)) {
+        await load();
+        setActionError(`${CONFLICT_NOTICE} (${e instanceof Error ? e.message : ""})`);
+      } else {
+        setActionError(e instanceof Error ? e.message : "The request failed.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const deadlineColumns = [
     {
       id: "kind",
       header: "Deadline",
-      cell: (d: DeadlineView) => (d.label ? `${DEADLINE_KIND_LABEL[d.kind]}: ${d.label}` : DEADLINE_KIND_LABEL[d.kind]),
+      cell: deadlineName,
       priority: "primary" as const,
     },
     {
@@ -156,13 +272,16 @@ export function NomncPanel({
     {
       id: "left",
       header: "Time left",
-      cell: (d: DeadlineView) => (d.satisfiedAt ? "Met" : countdownLabel(d.dueAt, now)),
+      cell: (d: DeadlineView) =>
+        d.satisfiedAt ? "Met" : d.status === "closed" ? "—" : countdownLabel(d.dueAt, now),
       priority: "secondary" as const,
     },
     {
       id: "status",
       header: "Status",
-      cell: (d: DeadlineView) => <StatusPill label={STATUS_LABEL[d.status]} tone={STATUS_TONE[d.status]} />,
+      cell: (d: DeadlineView) => (
+        <StatusPill label={STATUS_LABEL[d.status]} tone={STATUS_TONE[d.status]} />
+      ),
       priority: "primary" as const,
     },
     {
@@ -175,12 +294,13 @@ export function NomncPanel({
       id: "act",
       header: "",
       cell: (d: DeadlineView) =>
-        canRecord && !d.satisfiedAt ? (
+        canRecord && !d.satisfiedAt && d.status !== "closed" ? (
           <span className="wx-action-row">
             <Button
               tone="tertiary"
               size="sm"
-              aria-label={`Mark ${DEADLINE_KIND_LABEL[d.kind]} deadline met`}
+              disabled={locked}
+              aria-label={`Mark ${deadlineName(d)} deadline due ${d.dueLocal.replace("T", " ")} met`}
               onClick={() => void act(() => api.editDeadline(admissionId, d, { satisfy: true }))}
             >
               Mark met
@@ -188,8 +308,9 @@ export function NomncPanel({
             <Button
               tone="tertiary"
               size="sm"
-              aria-label={`Edit ${DEADLINE_KIND_LABEL[d.kind]} deadline`}
-              onClick={() => setMode({ kind: "edit_deadline", deadline: d })}
+              disabled={locked}
+              aria-label={`Edit ${deadlineName(d)} deadline due ${d.dueLocal.replace("T", " ")}`}
+              onClick={() => open({ kind: "edit_deadline", deadline: d })}
             >
               Edit
             </Button>
@@ -203,10 +324,31 @@ export function NomncPanel({
   if (ov === undefined) {
     body = <LoadingSpinner />;
   } else if (ov === null) {
-    body = <InlineAlert tone="error">{error ?? "Could not load the NOMNC record."}</InlineAlert>;
+    body = (
+      <div className="wx-addendum-body">
+        <InlineAlert tone="error">{loadError ?? "Could not load the NOMNC record."}</InlineAlert>
+        <div className="wx-action-row">
+          <Button tone="secondary" onClick={() => void load()}>
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
   } else {
     body = (
       <div className="wx-addendum-body">
+        {loadError ? (
+          <>
+            <InlineAlert tone="error">
+              Could not refresh this record — what is shown may be out of date. {loadError}
+            </InlineAlert>
+            <div className="wx-action-row">
+              <Button tone="secondary" size="sm" onClick={() => void load()}>
+                Retry
+              </Button>
+            </div>
+          </>
+        ) : null}
         {actionError ? <InlineAlert tone="error">{actionError}</InlineAlert> : null}
         <NomncPrompts prompts={ov.prompts} />
         {notice ? (
@@ -247,21 +389,27 @@ export function NomncPanel({
         {canRecord ? (
           <div className="wx-action-row">
             {!notice ? (
-              <Button tone="primary" onClick={() => setMode({ kind: "notice", supersedes: null })}>
+              <Button
+                tone="primary"
+                disabled={locked}
+                onClick={() => open({ kind: "notice", supersedes: null })}
+              >
                 Record NOMNC delivery
               </Button>
             ) : (
               <>
                 <Button
                   tone="secondary"
-                  onClick={() => setMode({ kind: "acknowledgement", notice })}
+                  disabled={locked}
+                  onClick={() => open({ kind: "acknowledgement", notice })}
                 >
                   Signature or refusal
                 </Button>
                 <Button
                   tone="secondary"
+                  disabled={locked}
                   onClick={() =>
-                    setMode({
+                    open({
                       kind: "add_deadline",
                       subject: "notice",
                       parent: notice,
@@ -272,17 +420,26 @@ export function NomncPanel({
                   Type a deadline
                 </Button>
                 {!review ? (
-                  <Button tone="secondary" onClick={() => setMode({ kind: "open_review", notice })}>
+                  <Button
+                    tone="secondary"
+                    disabled={locked}
+                    onClick={() => open({ kind: "open_review", notice })}
+                  >
                     Open QIO review
                   </Button>
                 ) : null}
                 <Button
                   tone="tertiary"
-                  onClick={() => setMode({ kind: "notice", supersedes: notice })}
+                  disabled={locked}
+                  onClick={() => open({ kind: "notice", supersedes: notice })}
                 >
                   Replace record
                 </Button>
-                <Button tone="tertiary" onClick={() => setMode({ kind: "withdraw_notice", notice })}>
+                <Button
+                  tone="tertiary"
+                  disabled={locked}
+                  onClick={() => open({ kind: "withdraw_notice", notice })}
+                >
                   Withdraw
                 </Button>
               </>
@@ -295,7 +452,13 @@ export function NomncPanel({
             <h4 className="wx-addendum-subhead">
               QIO expedited review{" "}
               <StatusPill
-                label={review.state === "open" ? "Open" : review.state === "decided" ? "Decided" : "Withdrawn"}
+                label={
+                  review.state === "open"
+                    ? "Open"
+                    : review.state === "decided"
+                      ? "Decided"
+                      : "Withdrawn"
+                }
                 tone={review.state === "open" ? "warning" : "neutral"}
               />
             </h4>
@@ -325,8 +488,9 @@ export function NomncPanel({
               <div className="wx-action-row">
                 <Button
                   tone="secondary"
+                  disabled={locked}
                   onClick={() =>
-                    setMode({
+                    open({
                       kind: "add_deadline",
                       subject: "review",
                       parent: review,
@@ -336,18 +500,43 @@ export function NomncPanel({
                 >
                   Type a deadline
                 </Button>
-                <Button tone="secondary" onClick={() => setMode({ kind: "review_facts", review })}>
+                <Button
+                  tone="secondary"
+                  disabled={locked}
+                  onClick={() => open({ kind: "review_facts", review })}
+                >
                   DENC and records
                 </Button>
-                <Button tone="secondary" onClick={() => setMode({ kind: "decision", review })}>
+                <Button
+                  tone="secondary"
+                  disabled={locked}
+                  onClick={() => open({ kind: "decision", review })}
+                >
                   Record decision
                 </Button>
-                <Button
-                  tone="tertiary"
-                  onClick={() => void act(() => api.withdrawReview(admissionId, review))}
-                >
-                  Withdraw review
-                </Button>
+                {confirmWithdraw ? (
+                  <span className="wx-action-row" role="group" aria-label="Confirm withdrawing the review">
+                    <span className="wx-row-sub">Withdraw this QIO review?</span>
+                    <Button
+                      tone="danger"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => {
+                        setConfirmWithdraw(false);
+                        void act(() => api.withdrawReview(admissionId, review));
+                      }}
+                    >
+                      Confirm withdraw
+                    </Button>
+                    <Button tone="tertiary" size="sm" onClick={() => setConfirmWithdraw(false)}>
+                      Keep review
+                    </Button>
+                  </span>
+                ) : (
+                  <Button tone="tertiary" disabled={locked} onClick={() => setConfirmWithdraw(true)}>
+                    Withdraw review
+                  </Button>
+                )}
               </div>
             ) : null}
           </div>
@@ -389,11 +578,15 @@ export function NomncPanel({
       </section>
       {mode ? (
         <NomncDrawer
-          key={`${mode.kind}-${"notice" in mode ? mode.notice?.id : ""}`}
+          key={drawerTargetKey(mode)}
           admissionId={admissionId}
           mode={mode}
           api={api}
-          onChanged={() => void load()}
+          onChanged={async () => {
+            await load();
+          }}
+          onConflict={onConflict}
+          onDirty={setDirty}
           onClose={() => setMode(null)}
         />
       ) : null}

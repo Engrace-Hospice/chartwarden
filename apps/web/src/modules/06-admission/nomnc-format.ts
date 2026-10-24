@@ -58,12 +58,14 @@ export const STATUS_LABEL: Record<DeadlineStatus, string> = {
   due_soon: "Due soon",
   past: "Past due",
   satisfied: "Met",
+  closed: "Closed",
 };
 export const STATUS_TONE: Record<DeadlineStatus, StatusTone> = {
   open: "progress",
   due_soon: "warning",
   past: "error",
   satisfied: "success",
+  closed: "neutral",
 };
 
 export const PROMPT_TONE: Record<Prompt["severity"], "warning" | "info"> = {

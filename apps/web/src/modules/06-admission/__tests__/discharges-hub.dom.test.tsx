@@ -79,7 +79,7 @@ const PATIENTS: Record<string, unknown> = {
   "p-4": { id: "p-4", firstName: "Omar", lastName: "Diaz", mrn: "MRN-4004" },
 };
 
-function makeClient(opts: { failReady?: boolean } = {}) {
+function makeClient(opts: { failReady?: boolean; failNoDeadline?: boolean } = {}) {
   const GET = vi.fn(
     async (
       path: string,
@@ -93,7 +93,8 @@ function makeClient(opts: { failReady?: boolean } = {}) {
         if (bucket === "awaiting_cosign") return ok({ items: COSIGN, nextCursor: null });
         if (bucket === "recently_discharged") return ok({ items: RECENT, nextCursor: null });
         if (bucket === "qio_review_open") return ok({ items: QIO, nextCursor: null });
-        if (bucket === "nomnc_no_deadline") return ok({ items: NO_DEADLINE, nextCursor: null });
+        if (bucket === "nomnc_no_deadline")
+          return opts.failNoDeadline ? fail(500) : ok({ items: NO_DEADLINE, nextCursor: null });
       }
       if (path === "/api/v1/patients/{id}") {
         const id = init?.params?.path?.id ?? "";
@@ -255,6 +256,13 @@ describe("discharges hub screen", () => {
     expect(
       within(missing).getByRole("link", { name: "Enter the deadline" }).getAttribute("href"),
     ).toBe("/admissions/a-8");
+  });
+
+  it("a failed 'no deadline' list is visible with a retry, not silently hidden", async () => {
+    mount(["admission.read", "discharge.create", "nomnc.read"], makeClient({ failNoDeadline: true }));
+    const panel = await screen.findByText("NOMNC with no appeal-request deadline");
+    expect(panel).toBeTruthy();
+    expect((await screen.findAllByText("This list could not be loaded.")).length).toBeGreaterThan(0);
   });
 
   it("does not fetch or show the QIO buckets without nomnc.read", async () => {

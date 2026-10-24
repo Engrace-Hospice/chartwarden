@@ -17,6 +17,7 @@ import { fmtDate } from "../../shell/patient-context";
 import { useSession } from "../../shell/session";
 import { ADMISSION_TONE, stateLabel } from "./admission-status";
 import { REASONS } from "./discharge-workflow-model";
+import { formatInZone } from "./nomnc-format";
 import {
   ListState,
   PatientCell,
@@ -44,6 +45,8 @@ export function DischargesHub(): JSX.Element {
   const noDeadline = useWorklist("nomnc_no_deadline", can.nomnc);
   const today = new Date().toISOString().slice(0, 10);
   const [search, setSearch] = useState("");
+  // the hub does not know the organization zone: typed times show in the viewer's zone, with its abbreviation
+  const viewerZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const onScreen = useMemo(
     () => [
@@ -250,12 +253,12 @@ export function DischargesHub(): JSX.Element {
                         <td className="wx-nums">{mrnOf(patients, r.patientId)}</td>
                         <td className="wx-nums">
                           {r.nextDeadlineAt ? (
-                            fmtDate(r.nextDeadlineAt)
+                            formatInZone(r.nextDeadlineAt, viewerZone)
                           ) : (
                             <StatusPill label="No deadline recorded" tone="warning" />
                           )}
                         </td>
-                        <td style={{ textAlign: "right" }}>
+                        <td className="wx-cell-end">
                           <Link to={`/admissions/${r.admissionId}`} className="wx-action-link">
                             Open record
                           </Link>
@@ -269,42 +272,50 @@ export function DischargesHub(): JSX.Element {
           </Panel>
         ) : null}
 
-        {can.nomnc && noDeadline.items.length > 0 ? (
+        {can.nomnc ? (
           <Panel
             title="NOMNC with no appeal-request deadline"
             icon="alert"
             description="Active NOMNC records where nobody has typed the deadline printed on the notice."
             flush
           >
-            <div className="wx-list-table-wrap">
-              <table className="wx-list-table">
-                <caption className="wx-sr-only">NOMNC records with no deadline typed</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Patient</th>
-                    <th scope="col">MRN</th>
-                    <th scope="col">Delivered</th>
-                    <th scope="col">
-                      <span className="wx-sr-only">Actions</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {noDeadline.items.map((r) => (
-                    <tr key={r.admissionId}>
-                      <PatientCell row={r} patients={patients} />
-                      <td className="wx-nums">{mrnOf(patients, r.patientId)}</td>
-                      <td className="wx-nums">{fmtDate(r.noticeDeliveredAt ?? null)}</td>
-                      <td style={{ textAlign: "right" }}>
-                        <Link to={`/admissions/${r.admissionId}`} className="wx-action-link">
-                          Enter the deadline
-                        </Link>
-                      </td>
+            <ListState
+              list={noDeadline}
+              emptyTitle="Every NOMNC record has its deadline typed"
+              emptyText="Records waiting for an appeal-request deadline appear here."
+            >
+              <div className="wx-list-table-wrap">
+                <table className="wx-list-table">
+                  <caption className="wx-sr-only">NOMNC records with no deadline typed</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Patient</th>
+                      <th scope="col">MRN</th>
+                      <th scope="col">Delivered</th>
+                      <th scope="col">
+                        <span className="wx-sr-only">Actions</span>
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {noDeadline.items.map((r) => (
+                      <tr key={r.admissionId}>
+                        <PatientCell row={r} patients={patients} />
+                        <td className="wx-nums">{mrnOf(patients, r.patientId)}</td>
+                        <td className="wx-nums">
+                          {formatInZone(r.noticeDeliveredAt ?? null, viewerZone)}
+                        </td>
+                        <td className="wx-cell-end">
+                          <Link to={`/admissions/${r.admissionId}`} className="wx-action-link">
+                            Enter the deadline
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </ListState>
           </Panel>
         ) : null}
 
