@@ -1,6 +1,6 @@
 # Billing end-to-end implementation plan
 
-**Date:** 2026-10-23 · **Status:** proposal, nothing approved or built · **Companion:** [`SCENARIO_COVERAGE_MATRIX_20261023.md`](./SCENARIO_COVERAGE_MATRIX_20261023.md)
+**Date:** 2026-10-23 · **Status:** proposal; only the M41 skeleton (ADR-0100, Proposed) exists · **Companion:** [`SCENARIO_COVERAGE_MATRIX_20261023.md`](./SCENARIO_COVERAGE_MATRIX_20261023.md)
 · **Issues:** [`ISSUES_20261023.md`](./ISSUES_20261023.md)
 
 Authority: [ADR-0053](../../adr/ADR-0053-clearinghouse-transport-port.md) (one `ClearinghouseTransport` port, conformance is
@@ -66,9 +66,9 @@ after Track 1 step 1.2 so the port is not fitted to Stedi alone.
 
 | Step | Output |
 |---|---|
-| 4.1 Spike (written comparison) | First pass done: [`CLEARINGHOUSE_VENDOR_COMPARISON_20261023.md`](../clearinghouse-integration/CLEARINGHOUSE_VENDOR_COMPARISON_20261023.md) from vendor documentation; the written vendor answers it lists are still outstanding. Original scope: | Claim.MD vs Availity vs Office Ally vs Stedi on: hospice 837I, NOE (81A) and NOTR (81B) support; whether their route is an API or file-based; 999/277CA/835 return path; whether one platform account can serve many provider entities (Claim.MD's pages describe provider records on one account and a vendor-link setting, not a platform model; Stedi describes one integrated account per provider; both need written confirmation); BAA; sandbox; price at roughly 100-170 transactions a month per tenant. Facts from vendor documentation are unverified until the vendor confirms them |
+| 4.1 Spike (written comparison) | First pass done: [`CLEARINGHOUSE_VENDOR_COMPARISON_20261023.md`](../clearinghouse-integration/CLEARINGHOUSE_VENDOR_COMPARISON_20261023.md) from vendor documentation; the written vendor answers it lists are still outstanding. Original scope: Claim.MD vs Availity vs Office Ally vs Stedi on: hospice 837I, NOE (81A) and NOTR (81B) support; whether their route is an API or file-based; 999/277CA/835 return path; whether one platform account can serve many provider entities (Claim.MD's pages describe provider records on one account and a vendor-link setting, not a platform model; Stedi describes one integrated account per provider; both need written confirmation); BAA; sandbox; price at roughly 100-170 transactions a month per tenant. Facts from vendor documentation are unverified until the vendor confirms them |
 | 4.2 Decision | Go or no-go recorded in an ADR amendment |
-| 4.3 Adapter | `claimmd` factory in `buildClearinghouseFactories`, new `CLEARINGHOUSE_VENDOR` value, reusing `attempt-store` for durable idempotency |
+| 4.3 Adapter | Gated on written Claim.MD confirmation of hospice 837I and payer-stage visibility. `claimmd` factory in `buildClearinghouseFactories`, new `CLEARINGHOUSE_VENDOR` value, reusing `attempt-store` for durable idempotency |
 | 4.4 Conformance | Passes every `CLEARINGHOUSE_CONFORMANCE_CASES` entry with the vendor stubbed; capability-tag any case the vendor cannot meet and record why |
 | 4.5 Per-agency choice | Platform setting first; an agency-owned account can follow through the same port (ADR-0053 D3) |
 
@@ -88,7 +88,7 @@ synthetic patients. Clinical-billing and compliance review before any live send.
 3. S01 and S05 once 1.3 lands.
 4. Track 3 once 1.3 lands.
 5. Track 4 spike can run now; build after 1.2.
-6. Track 6.1 placement decision can run now; the build waits for it and for 1.3.
+6. Track 6.1 is decided in ADR-0100 (Proposed); the build waits for its ratification (issue 17) and for 1.3.
 7. Sandbox contract run and pilot after Track 5 answers arrive.
 
 Calendar estimates are deliberately omitted; re-plan after 1.3.
@@ -102,7 +102,7 @@ No commercial claim assembly or submission. M23 spec D15 rejects any claim whose
 
 | Step | Output |
 |---|---|
-| 6.1 Placement decision | New module (own `codePaths`, owned tables, manifest `.ts` and `.cjs`, scaffold) versus extending M23. Recommended: a new module so M23 stays Medicare-only and the D15 guard stays true; it reuses the M23 claim-assembly facts and the 837I builder through a seam rather than copying them. ADR records the choice and the D15/D9 amendments |
+| 6.1 Placement decision | **Decided (Proposed): ADR-0100 / M41; the skeleton exists, ratification is issue 17.** Options were: new module (own `codePaths`, owned tables, manifest `.ts` and `.cjs`, scaffold) versus extending M23. Recommended: a new module so M23 stays Medicare-only and the D15 guard stays true; it reuses the M23 claim-assembly facts and the 837I builder through a seam rather than copying them. ADR records the choice and the D15/D9 amendments |
 | 6.2 Payer and plan model | Commercial payer, plan, claim filing indicator, the payer id each clearinghouse routes on, contract and rate terms, authorization requirements. Reuse MDM payers; add only what is missing |
 | 6.3 Claim assembly and validation | 837I for hospice with payer-specific edits, pre-authorization, coordination of benefits when Medicare or Medicaid is secondary, effective-dated rules. Hard blocks and audited overrides follow the M23 pattern |
 | 6.4 Submission | Through the same `ClearinghouseTransport`; a payer the chosen clearinghouse does not route, or where the agency has no enrollment, refuses to send (fail closed) |
