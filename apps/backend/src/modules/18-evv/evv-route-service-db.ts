@@ -754,7 +754,9 @@ export function createDbEvvBackend(
       );
       const geofenceBaseline = await loadGeofenceBaseline(orgId, input.visitId);
       const sealedCoords = await sealCoords(orgId, input.coords);
-      return withOrgContext(db, { organizationId: orgId, userId }, async (txRaw) => {
+      // `userId` here is the posting MEMBERSHIP id, not an M1 user id: the audit trigger casts `app.user_id` into
+      // audit_event.actor_user_id (FK to "user"), so bind "" like every other EVV write path.
+      return withOrgContext(db, { organizationId: orgId, userId: "" }, async (txRaw) => {
         const tx = txRaw as DbClient;
         const device = await resolveCaptureDevice(tx, userId, {
           authority,
