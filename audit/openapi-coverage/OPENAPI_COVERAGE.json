@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1776,
-    "enriched": 1776,
+    "routes": 1777,
+    "enriched": 1777,
     "deficit": 0,
     "mutating": 1007,
     "mutatingNoBody": 1,
-    "gets": 717,
+    "gets": 718,
     "getsNoResponse": 9
   },
   "modules": [
@@ -161,12 +161,12 @@
     },
     {
       "module": "17-scheduling",
-      "routes": 38,
-      "enriched": 38,
+      "routes": 39,
+      "enriched": 39,
       "deficit": 0,
       "mutating": 20,
       "mutatingNoBody": 0,
-      "gets": 16,
+      "gets": 17,
       "getsNoResponse": 0
     },
     {
