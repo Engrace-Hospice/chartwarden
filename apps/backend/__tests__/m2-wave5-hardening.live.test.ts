@@ -134,22 +134,41 @@ describe.skipIf(!DB_URL)("M2 wave-5 hardening — LIVE Postgres", () => {
     await heldA;
   });
 
-  it("a waiter that cannot get the org lock within lock_timeout fails with a retryable 503", async () => {
-    let releaseA: () => void = () => undefined;
-    const holder = memberships.withAdminLock(
-      ORG_A,
-      () => new Promise<void>((resolve) => (releaseA = resolve)),
-    );
-    await new Promise((r) => setTimeout(r, 50));
-    await expect(memberships.withAdminLock(ORG_A, async () => "never")).rejects.toMatchObject({
-      code: "ADMIN_CHANGE_BUSY",
-      statusCode: 503,
-    });
-    releaseA();
-    await holder;
-    // The timed-out waiter freed its connection and the org is usable again.
+  it("a caller that cannot get the org lock within lock_timeout (held by another process) fails with a retryable 503", async () => {
+    // Another instance holds the same advisory lock: simulate it from a separate connection.
+    const other = new Client({ connectionString: DB_URL });
+    await other.connect();
+    try {
+      await other.query("BEGIN");
+      await other.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended('m2:last-admin:' || $1::text, 0))",
+        [ORG_A],
+      );
+      await expect(memberships.withAdminLock(ORG_A, async () => "never")).rejects.toMatchObject({
+        code: "ADMIN_CHANGE_BUSY",
+        statusCode: 503,
+      });
+    } finally {
+      await other.query("ROLLBACK");
+      await other.end();
+    }
+    // The timed-out caller freed its connection and the org is usable again.
     await expect(memberships.withAdminLock(ORG_A, async () => "ok")).resolves.toBe("ok");
   }, 20_000);
+
+  it("one org's queued admin changes cannot starve another org's", async () => {
+    let releaseA: () => void = () => undefined;
+    const held = Array.from({ length: 6 }, (_, i) =>
+      memberships.withAdminLock(
+        ORG_A,
+        i === 0 ? () => new Promise<void>((resolve) => (releaseA = resolve)) : async () => undefined,
+      ),
+    );
+    await new Promise((r) => setTimeout(r, 50));
+    await expect(memberships.withAdminLock(ORG_B, async () => "b-ran")).resolves.toBe("b-ran");
+    releaseA();
+    await Promise.all(held);
+  });
 
   it("withAdminLock releases on error so a failed section does not wedge the org", async () => {
     await expect(
