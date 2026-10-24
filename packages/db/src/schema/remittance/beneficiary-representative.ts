@@ -59,6 +59,7 @@ export const representativeAppointment = pgTable(
     documentVersionId: uuid("document_version_id"), // the validated ACTIVE version
     state: text("state").notNull().default("draft"), // draft | active | revoked | superseded
     recordedByMembershipId: uuid("recorded_by_membership_id").notNull(),
+    lastEditedByMembershipId: uuid("last_edited_by_membership_id").notNull(),
     verifiedByMembershipId: uuid("verified_by_membership_id"),
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
     revokedOn: date("revoked_on"),

@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS "representative_appointment" (
   "document_version_id" uuid, -- the validated ACTIVE version
   "state" text NOT NULL DEFAULT 'draft' CHECK ("state" IN ('draft','active','revoked','superseded')),
   "recorded_by_membership_id" uuid NOT NULL,
+  -- Whoever last changed the evidence (name, dates, checklist, signed document). The activator must differ from this person too.
+  "last_edited_by_membership_id" uuid NOT NULL,
   "verified_by_membership_id" uuid,
   "verified_at" timestamptz,
   "revoked_on" date,
@@ -178,7 +180,7 @@ GRANT SELECT, INSERT ON "representative_appointment" TO chartwarden_app;--> stat
 GRANT UPDATE ("instrument_note", "representative_name", "relationship_label", "representative_kind", "beneficiary_signed_on",
   "representative_signed_on", "valid_through_on", "validity_source_note", "elements_confirmed", "document_id",
   "document_version_id", "state", "verified_by_membership_id", "verified_at", "revoked_on", "revoked_by_membership_id",
-  "revocation_note", "version", "updated_at") ON "representative_appointment" TO chartwarden_app;--> statement-breakpoint
+  "revocation_note", "last_edited_by_membership_id", "version", "updated_at") ON "representative_appointment" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "representative_appointment" TO chartwarden_admin;--> statement-breakpoint
 GRANT SELECT, INSERT ON "beneficiary_appeal" TO chartwarden_app;--> statement-breakpoint
 GRANT UPDATE ("denial_case_id", "filer_kind", "representative_appointment_id", "tier_label", "filed_on", "external_reference",
@@ -290,6 +292,9 @@ BEGIN
     IF NEW.state <> 'draft' THEN
       RAISE EXCEPTION 'M25_REP_BORN_DRAFT: an appointment is recorded as a draft and activated by a second person';
     END IF;
+    IF NEW.last_edited_by_membership_id IS DISTINCT FROM NEW.recorded_by_membership_id THEN
+      RAISE EXCEPTION 'M25_REP_EDITOR: a new draft is last edited by the person who recorded it';
+    END IF;
     IF NEW.form_version_id IS NOT NULL THEN
       SELECT retired_at, jsonb_array_length(required_elements) AS n INTO v_form
         FROM representative_form_version WHERE id = NEW.form_version_id AND organization_id = NEW.organization_id;
@@ -345,6 +350,12 @@ BEGIN
        WHERE v.id = NEW.verified_by_membership_id AND v.user_id = r.user_id) THEN
       RAISE EXCEPTION 'M25_REP_VERIFIER: an appointment is activated by a different person (user) than the one who recorded it';
     END IF;
+    -- The activator also must not be the person who last changed the evidence (name, dates, checklist, signed document).
+    IF EXISTS (
+      SELECT 1 FROM membership v JOIN membership e ON e.id = NEW.last_edited_by_membership_id
+       WHERE v.id = NEW.verified_by_membership_id AND v.user_id = e.user_id) THEN
+      RAISE EXCEPTION 'M25_REP_VERIFIER: an appointment is activated by someone other than the person who last edited it';
+    END IF;
     IF NEW.document_id IS NULL OR NEW.document_version_id IS NULL THEN
       RAISE EXCEPTION 'M25_REP_NO_DOCUMENT: attach the signed appointment document before activating';
     END IF;
@@ -369,7 +380,7 @@ CREATE TRIGGER "trg_representative_appointment_guard" BEFORE INSERT OR UPDATE ON
 -- closed). A closed or withdrawn appeal is frozen. It never touches appeal_case or denial_case.
 CREATE OR REPLACE FUNCTION m25_beneficiary_appeal_guard() RETURNS trigger
 LANGUAGE plpgsql AS $$
-DECLARE v_claim uuid; v_patient uuid;
+DECLARE v_claim uuid; v_patient uuid; v_astate text;
 BEGIN
   IF TG_OP = 'UPDATE' AND OLD.state IN ('closed','withdrawn') THEN
     RAISE EXCEPTION 'M25_BENEFICIARY_APPEAL_TERMINAL_IMMUTABLE: beneficiary_appeal % is % and cannot be modified', OLD.id, OLD.state;
@@ -385,10 +396,14 @@ BEGIN
   END IF;
   IF NEW.representative_appointment_id IS NOT NULL
      AND (TG_OP = 'INSERT' OR NEW.representative_appointment_id IS DISTINCT FROM OLD.representative_appointment_id) THEN
-    SELECT patient_id INTO v_patient FROM representative_appointment
+    SELECT patient_id, state INTO v_patient, v_astate FROM representative_appointment
       WHERE id = NEW.representative_appointment_id AND organization_id = NEW.organization_id;
     IF NOT FOUND OR v_patient IS DISTINCT FROM NEW.patient_id THEN
       RAISE EXCEPTION 'M25_BENEFICIARY_APPEAL_APPOINTMENT: the appointment is not visible to this organization or is another patient''s';
+    END IF;
+    -- A NEW link needs an ACTIVE appointment (existing links keep showing their derived status).
+    IF v_astate <> 'active' THEN
+      RAISE EXCEPTION 'M25_BENEFICIARY_APPEAL_APPOINTMENT_STATE: only an active appointment can be linked to a beneficiary appeal';
     END IF;
   END IF;
   RETURN NEW;

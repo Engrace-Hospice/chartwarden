@@ -202,6 +202,7 @@ describe("checkActivation (second person, document, elements)", () => {
   const base = {
     state: "draft",
     recordedBy: "m1",
+    lastEditedBy: "m1",
     activator: "m2",
     hasDocument: true,
     elements: [{ label: "a", state: "confirmed" as const }],
@@ -211,6 +212,9 @@ describe("checkActivation (second person, document, elements)", () => {
   });
   it("refuses the recorder as the activator", () => {
     expect(checkActivation({ ...base, activator: "m1" })).toBe("ACTIVATOR_IS_RECORDER");
+  });
+  it("refuses the person who last edited the evidence as the activator", () => {
+    expect(checkActivation({ ...base, lastEditedBy: "m2" })).toBe("ACTIVATOR_IS_EDITOR");
   });
   it("refuses activation without a signed document", () => {
     expect(checkActivation({ ...base, hasDocument: false })).toBe("NO_DOCUMENT");

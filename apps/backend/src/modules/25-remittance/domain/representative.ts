@@ -206,6 +206,7 @@ export function confirmElements(
 export type ActivationRefusal =
   | "NOT_DRAFT"
   | "ACTIVATOR_IS_RECORDER"
+  | "ACTIVATOR_IS_EDITOR"
   | "NO_DOCUMENT"
   | "ELEMENTS_INCOMPLETE";
 
@@ -213,12 +214,15 @@ export type ActivationRefusal =
 export function checkActivation(input: {
   readonly state: string;
   readonly recordedBy: string;
+  /** Whoever last changed the evidence (membership id); the database also compares the people behind the ids. */
+  readonly lastEditedBy: string;
   readonly activator: string;
   readonly hasDocument: boolean;
   readonly elements: readonly ElementStatus[];
 }): ActivationRefusal | null {
   if (input.state !== "draft") return "NOT_DRAFT";
   if (input.activator === input.recordedBy) return "ACTIVATOR_IS_RECORDER";
+  if (input.activator === input.lastEditedBy) return "ACTIVATOR_IS_EDITOR";
   if (!input.hasDocument) return "NO_DOCUMENT";
   if (input.elements.some((e) => e.state !== "confirmed")) return "ELEMENTS_INCOMPLETE";
   return null;

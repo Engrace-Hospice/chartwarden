@@ -163,7 +163,7 @@ export interface RepresentativeService {
     actor: M25WriteActor,
     id: string,
     ifMatch: number,
-  ): Promise<{ id: string; version: number }>;
+  ): Promise<{ id: string; version: number; validityEndPassed: boolean }>;
   revoke(
     actor: M25WriteActor,
     id: string,
@@ -220,6 +220,8 @@ const ACTIVATION_MESSAGES: Readonly<Record<ActivationRefusal, string>> = {
   NOT_DRAFT: "only a draft appointment can be activated",
   ACTIVATOR_IS_RECORDER:
     "an appointment is activated by someone other than the person who recorded it",
+  ACTIVATOR_IS_EDITOR:
+    "an appointment is activated by someone other than the person who last edited it",
   NO_DOCUMENT: "attach the signed appointment document before activating",
   ELEMENTS_INCOMPLETE: "confirm every required element before activating",
 };
@@ -534,6 +536,7 @@ export function buildDrizzleRepresentativeService(
             elementsConfirmed: elements,
             state: "draft",
             recordedByMembershipId: actor.membershipId,
+            lastEditedByMembershipId: actor.membershipId,
           })
           .returning({ id: RA.id, version: RA.version });
         return inserted[0]!;
@@ -548,6 +551,7 @@ export function buildDrizzleRepresentativeService(
         const refusal = checkAppointmentDraft(merged, today());
         if (refusal) throw unprocessable(`APPOINTMENT_${refusal}`, DRAFT_MESSAGES[refusal]);
         return bump(tx, cur, ifMatch, ["draft"], {
+          lastEditedByMembershipId: actor.membershipId,
           representativeName: merged.representativeName.trim(),
           relationshipLabel: merged.relationshipLabel,
           representativeKind: merged.representativeKind,
@@ -572,6 +576,7 @@ export function buildDrizzleRepresentativeService(
           "appointment of representative",
         );
         return bump(tx, cur, ifMatch, ["draft"], {
+          lastEditedByMembershipId: actor.membershipId,
           documentId: valid.documentId,
           documentVersionId: valid.documentVersionId,
         });
@@ -589,7 +594,10 @@ export function buildDrizzleRepresentativeService(
             "that element is not on this appointment's checklist",
           );
         }
-        return bump(tx, cur, ifMatch, ["draft"], { elementsConfirmed: result.elements });
+        return bump(tx, cur, ifMatch, ["draft"], {
+          lastEditedByMembershipId: actor.membershipId,
+          elementsConfirmed: result.elements,
+        });
       });
     },
 
@@ -599,6 +607,7 @@ export function buildDrizzleRepresentativeService(
         const refusal = checkActivation({
           state: cur.state,
           recordedBy: cur.recordedByMembershipId,
+          lastEditedBy: cur.lastEditedByMembershipId,
           activator: actor.membershipId,
           hasDocument: cur.documentId !== null && cur.documentVersionId !== null,
           elements: elementsOf(cur.elementsConfirmed),
@@ -617,11 +626,16 @@ export function buildDrizzleRepresentativeService(
         );
         // One conditional UPDATE; the trigger re-decides recorder != activator, membership, document and elements under the row lock.
         try {
-          return await bump(tx, cur, ifMatch, ["draft"], {
+          const done = await bump(tx, cur, ifMatch, ["draft"], {
             state: "active",
             verifiedByMembershipId: actor.membershipId,
             verifiedAt: new Date(),
           });
+          // A warning, not a block: the typed validity end had already passed when this was activated.
+          return {
+            ...done,
+            validityEndPassed: cur.validThroughOn !== null && cur.validThroughOn < today(),
+          };
         } catch (e) {
           throw databaseRefusal(e) ?? e;
         }

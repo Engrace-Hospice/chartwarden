@@ -23,6 +23,7 @@ import {
 } from "../domain";
 import type { M25ReadActor, M25WriteActor } from "./actor";
 import { VersionConflictError } from "./concurrency";
+import { isUniqueViolation } from "./denial-route-service";
 import {
   type LinkedDocumentPort,
   UNBOUND_LINKED_DOCUMENTS,
@@ -290,7 +291,7 @@ export function buildDrizzleBeneficiaryAppealService(
   ) {
     const scope = providerEntityScopeCondition(RA.providerEntityId, actor.providerEntityScope);
     const rows = await tx
-      .select({ patientId: RA.patientId })
+      .select({ patientId: RA.patientId, state: RA.state })
       .from(RA)
       .where(scope ? and(eq(RA.id, appointmentId), scope) : eq(RA.id, appointmentId))
       .limit(1);
@@ -299,6 +300,12 @@ export function buildDrizzleBeneficiaryAppealService(
       throw unprocessable(
         "APPOINTMENT_PATIENT_MISMATCH",
         "that appointment belongs to a different patient than this claim's",
+      );
+    }
+    if (rows[0].state !== "active") {
+      throw unprocessable(
+        "APPOINTMENT_NOT_ACTIVE",
+        "only an active appointment can be linked; a second person activates it first",
       );
     }
   }
@@ -512,13 +519,21 @@ export function buildDrizzleBeneficiaryAppealService(
           "beneficiary appeal",
         );
         const result = await bump(tx, cur, ifMatch, {});
-        await tx.insert(DOC).values({
-          organizationId: actor.organizationId,
-          beneficiaryAppealId: id,
-          documentId: valid.documentId,
-          documentVersionId: valid.documentVersionId,
-          attachedByMembershipId: actor.membershipId,
-        });
+        try {
+          await tx.insert(DOC).values({
+            organizationId: actor.organizationId,
+            beneficiaryAppealId: id,
+            documentId: valid.documentId,
+            documentVersionId: valid.documentVersionId,
+            attachedByMembershipId: actor.membershipId,
+          });
+        } catch (e) {
+          // Two attaches of one document racing past the pre-check meet the live-unique index; the transaction rolls back.
+          if (isUniqueViolation(e)) {
+            throw conflict("BENEFICIARY_DUPLICATE_DOCUMENT", "that document is already attached");
+          }
+          throw e;
+        }
         await event(tx, actor, id, "document_attached", { documentId: valid.documentId });
         return result;
       });

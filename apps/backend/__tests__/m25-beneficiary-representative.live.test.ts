@@ -38,6 +38,7 @@ import {
 import { registerM23PublishedSeams } from "../src/modules/23-billing-medicare/cost-report-seams";
 import { runAppealDeadlineCron } from "../src/modules/25-remittance/jobs/cron-workers";
 import { buildSeamAppealSourcePorts } from "../src/modules/25-remittance/routes/appeal-packet-sources";
+import { buildDrizzleAuditRequestService } from "../src/modules/25-remittance/routes/audit-request-service";
 import { buildDrizzleBeneficiaryAppealService } from "../src/modules/25-remittance/routes/beneficiary-appeal-service";
 import { registerBeneficiaryAppealRoutes } from "../src/modules/25-remittance/routes/beneficiary-appeal.routes";
 import { buildDrizzleCaseViewService } from "../src/modules/25-remittance/routes/case-view-service";
@@ -360,7 +361,7 @@ describe.skipIf(!DB_URL)(
       }
     });
 
-    it("grants the keys to roles holding appeal.read / appeal.create / mac_rule.manage (1242) without copying an ABAC override or reaching an external_auditor role", async () => {
+    it("grants the keys to roles holding appeal.read / appeal.create / mac_rule.manage / named compliance roles (1242) without copying an ABAC override or reaching an external_auditor role", async () => {
       const mkRole = async (key: string, sources: string[]) => {
         const roleId = (
           await fx.admin.query(
@@ -377,7 +378,10 @@ describe.skipIf(!DB_URL)(
         return roleId;
       };
       const biller = await mkRole("m13a-biller", ["appeal.read", "appeal.create"]);
+      // a billing lead who edits MAC rules is NOT thereby a verifier; verify / configure are opt-in
       const lead = await mkRole("m13a-lead", ["mac_rule.manage"]);
+      const compliance = await mkRole("compliance_officer", []);
+      const admin = await mkRole("administrator", []);
       const auditor = await mkRole("m13a-external_auditor", ["audit.read"]);
       await fx.admin.query(
         readFileSync(join(fx.migrationsDir, "1242_m25_m13_role_grants.sql"), "utf8"),
@@ -395,11 +399,14 @@ describe.skipIf(!DB_URL)(
         "representative.manage",
         "representative.read",
       ]);
-      expect((await held(lead)).map((r) => r.permission_key)).toEqual([
-        "representative.read",
-        "representative.verify",
-        "representative_form.configure",
-      ]);
+      expect(await held(lead)).toEqual([]);
+      for (const named of [compliance, admin]) {
+        expect((await held(named)).map((r) => r.permission_key)).toEqual([
+          "representative.read",
+          "representative.verify",
+          "representative_form.configure",
+        ]);
+      }
       expect((await held(biller)).every((r) => r.abac_override === null)).toBe(true);
       expect(await held(auditor)).toEqual([]);
     });
@@ -684,7 +691,10 @@ describe.skipIf(!DB_URL)(
         )
       ).rows[0].id as string;
       const bySamePerson = await readyDraft(R());
-      await fx.admin.query("UPDATE representative_appointment SET recorded_by_membership_id=$2 WHERE id=$1", [bySamePerson, oldSeat]);
+      await fx.admin.query(
+        "UPDATE representative_appointment SET recorded_by_membership_id=$2 WHERE id=$1",
+        [bySamePerson, oldSeat],
+      );
       expect(await sqlActivate(memberR, bySamePerson)).toMatch(/different person \(user\)/);
       const revokedVerifier = (
         await fx.admin.query(`SELECT id FROM membership WHERE id=$1`, [oldSeat])
@@ -706,17 +716,105 @@ describe.skipIf(!DB_URL)(
       expect(await sqlActivate(memberR, half)).toMatch(/M25_REP_ELEMENTS_INCOMPLETE/);
     });
 
-    it("lets exactly one of two concurrent activations win", async () => {
+    it("lets exactly one of two concurrent activations win, one of them raw SQL so the trigger is under test", async () => {
       const id = await readyDraft();
       const v = await ver(id);
       const results = await Promise.allSettled([
         rep().activate(R(), id, v),
-        rep().activate(S(), id, v),
+        fx.asApp((tx) =>
+          tx.execute(
+            sql.raw(
+              `UPDATE representative_appointment SET state='active', verified_by_membership_id='${memberS}', verified_at=now(), version=version+1 WHERE id='${id}' AND version=${v} AND state='draft'`,
+            ),
+          ),
+        ),
       ]);
-      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-      const lost = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
-      expect((lost.reason as { code?: string }).code).toBe("VERSION_CONFLICT");
-      expect((await apptRow(id)).state).toBe("active");
+      const serviceWon = results[0].status === "fulfilled";
+      const raw = results[1];
+      const rawWon =
+        raw.status === "fulfilled" && (raw.value as unknown as { rowCount: number }).rowCount === 1;
+      expect(Number(serviceWon) + Number(rawWon)).toBe(1);
+      if (!serviceWon) {
+        expect(((results[0] as PromiseRejectedResult).reason as { code?: string }).code).toBe(
+          "VERSION_CONFLICT",
+        );
+      }
+      const row = await apptRow(id);
+      expect(row.state).toBe("active");
+      expect(row.verified_by_membership_id).toBe(serviceWon ? memberR : memberS);
+    });
+
+    it("the activator must not be the last editor of the evidence: B edits, attaches and ticks, then B cannot activate but C can", async () => {
+      const fv = await formVersion();
+      const created = await rep().createDraft(A(), fx.claim1, draftBody(fv) as never);
+      expect((await apptRow(created.id)).last_edited_by_membership_id).toBe(fx.memberA);
+      let v = (
+        await rep().updateDraft(R(), created.id, { relationshipLabel: "niece" }, created.version)
+      ).version;
+      expect((await apptRow(created.id)).last_edited_by_membership_id).toBe(memberR);
+      const doc = await seedDoc(patient1);
+      v = (
+        await rep().attachDocument(
+          S(),
+          created.id,
+          { documentId: doc.documentId, documentVersionId: doc.versionId },
+          v,
+        )
+      ).version;
+      expect((await apptRow(created.id)).last_edited_by_membership_id).toBe(memberS);
+      v = (
+        await rep().confirmElements(
+          R(),
+          created.id,
+          ["Fixture element one", "Fixture element two"],
+          v,
+        )
+      ).version;
+      expect((await apptRow(created.id)).last_edited_by_membership_id).toBe(memberR);
+      // B (R) ticked last, so B may not activate: service and database
+      expect((await fx.refused(rep().activate(R(), created.id, v)))?.code).toBe(
+        "APPOINTMENT_ACTIVATOR_IS_EDITOR",
+      );
+      const msg = await fx.dbMessage(
+        fx.asApp((tx) =>
+          tx.execute(
+            sql.raw(
+              `UPDATE representative_appointment SET state='active', verified_by_membership_id='${memberR}', verified_at=now() WHERE id='${created.id}'`,
+            ),
+          ),
+        ),
+      );
+      expect(msg).toMatch(/last edited/);
+      // the same PERSON under another membership row is still the last editor
+      const oldSeat = (
+        await fx.admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'revoked') RETURNING id`,
+          [userR, ORG],
+        )
+      ).rows[0].id as string;
+      await fx.admin.query(
+        "UPDATE representative_appointment SET last_edited_by_membership_id=$2 WHERE id=$1",
+        [created.id, oldSeat],
+      );
+      expect(
+        await fx.dbMessage(
+          fx.asApp((tx) =>
+            tx.execute(
+              sql.raw(
+                `UPDATE representative_appointment SET state='active', verified_by_membership_id='${memberR}', verified_at=now() WHERE id='${created.id}'`,
+              ),
+            ),
+          ),
+        ),
+      ).toMatch(/last edited/);
+      await fx.admin.query(
+        "UPDATE representative_appointment SET last_edited_by_membership_id=$2 WHERE id=$1",
+        [created.id, memberR],
+      );
+      // C (S) neither recorded nor last edited it
+      const ok = await rep().activate(S(), created.id, v);
+      expect(ok.validityEndPassed).toBe(false);
+      expect((await apptRow(created.id)).state).toBe("active");
     });
 
     it("freezes an active appointment except for revocation, which the recorder may do; a revoked one never changes", async () => {
@@ -795,7 +893,8 @@ describe.skipIf(!DB_URL)(
         validThroughOn: daysAgo(10),
         validitySourceNote: "signed form, section 3",
       });
-      await rep().activate(R(), id, await ver(id));
+      const activated = await rep().activate(R(), id, await ver(id));
+      expect(activated.validityEndPassed).toBe(true); // a warning, not a block
       const view = await rep().getAppointment(A(), id);
       expect(view).toMatchObject({
         state: "active",
@@ -1087,9 +1186,23 @@ describe.skipIf(!DB_URL)(
         );
         return created.id;
       })();
-      const apptSame = (
-        await rep().createDraft(A(), fx.claim1, draftBody(await formVersion()) as never)
-      ).id;
+      const apptSame = await readyDraft();
+      // a draft appointment cannot be linked (service and database); a second person activates it first
+      expect(
+        (
+          await fx.refused(
+            ben().create(
+              A(),
+              fx.claim1,
+              intake({
+                filerKind: "representative",
+                representativeAppointmentId: apptSame,
+              }) as never,
+            ),
+          )
+        )?.code,
+      ).toBe("APPOINTMENT_NOT_ACTIVE");
+      await rep().activate(R(), apptSame, await ver(apptSame));
       expect(
         (
           await fx.refused(
@@ -1135,6 +1248,19 @@ describe.skipIf(!DB_URL)(
         ),
       );
       expect(msg).toMatch(/M25_BENEFICIARY_APPEAL_DENIAL/);
+      const draftAppt = (
+        await rep().createDraft(A(), fx.claim1, draftBody(await formVersion()) as never)
+      ).id;
+      const stateMsg = await fx.dbMessage(
+        fx.asApp((tx) =>
+          tx.execute(
+            sql.raw(
+              `UPDATE beneficiary_appeal SET representative_appointment_id='${draftAppt}' WHERE id='${ok.id}'`,
+            ),
+          ),
+        ),
+      );
+      expect(stateMsg).toMatch(/M25_BENEFICIARY_APPEAL_APPOINTMENT_STATE/);
       // the denial itself is untouched
       expect(
         (await fx.admin.query("SELECT state FROM denial_case WHERE id=$1", [denialSame])).rows[0]
@@ -1310,6 +1436,51 @@ describe.skipIf(!DB_URL)(
       ).toBe(404);
     });
 
+    it("the recorded_deadline guard refuses another tenant's subject on every branch (appeal, payer appeal, audit request, beneficiary appeal)", async () => {
+      const appeal = await fx.mkAppeal({
+        claimId: fx.claim1b,
+        pe: fx.pe1,
+        tier: "redetermination",
+      });
+      const denial = await fx.mkDenial(fx.claim1, fx.pe1);
+      const payer = (
+        await fx.admin.query(
+          `INSERT INTO payer_appeal_case (organization_id, provider_entity_id, denial_case_id, payer_id, program, level_kind, level_label)
+           VALUES ($1,$2,$3,$4,'commercial','internal','L1') RETURNING id`,
+          [ORG, fx.pe1, denial, randomUUID()],
+        )
+      ).rows[0].id as string;
+      const audit = (
+        await buildDrizzleAuditRequestService(fx.handle.db, {
+          sources: buildSeamAppealSourcePorts(),
+        }).createAuditRequest(A(), {
+          authorityKind: "upic",
+          receivedOn: daysAgo(1),
+          claimIds: [fx.claim1],
+        } as never)
+      ).id;
+      const beneficiary = (await ben().create(A(), fx.claim1, intake() as never)).id;
+      for (const [column, id] of [
+        ["appeal_case_id", appeal],
+        ["payer_appeal_case_id", payer],
+        ["audit_request_id", audit],
+        ["beneficiary_appeal_id", beneficiary],
+      ] as const) {
+        const msg = await fx.dbMessage(
+          fx.asApp(
+            (tx) =>
+              tx.execute(
+                sql.raw(
+                  `INSERT INTO recorded_deadline (organization_id, provider_entity_id, ${column}, label, due_on, zone, source_note) VALUES ('${ORG_B}','${fx.peB}','${id}','l','2099-01-01','UTC','n')`,
+                ),
+              ),
+            ORG_B,
+          ),
+        );
+        expect(msg, column).toMatch(/M25_RECORDED_DEADLINE_PARENT/);
+      }
+    });
+
     // ── the one case view ───────────────────────────────────────────────────────────────────────────────
     it("shows beneficiary appeals on the one case view next to the hospice chain, with the representative-status badge derived from typed dates", async () => {
       const claim = fx.claim1b;
@@ -1331,6 +1502,34 @@ describe.skipIf(!DB_URL)(
         claim,
         draftBody(fv, { validThroughOn: daysAgo(2), validitySourceNote: "signed form" }) as never,
       );
+      // a draft cannot be linked; once a second person activates it the appeal can carry it
+      expect(
+        (
+          await fx.refused(
+            ben().create(
+              A(),
+              claim,
+              intake({
+                filerKind: "representative",
+                representativeAppointmentId: appt.id,
+              }) as never,
+            ),
+          )
+        )?.code,
+      ).toBe("APPOINTMENT_NOT_ACTIVE");
+      const doc = await seedDoc(patient1b);
+      let v = (
+        await rep().attachDocument(
+          A(),
+          appt.id,
+          { documentId: doc.documentId, documentVersionId: doc.versionId },
+          appt.version,
+        )
+      ).version;
+      v = (
+        await rep().confirmElements(A(), appt.id, ["Fixture element one", "Fixture element two"], v)
+      ).version;
+      await rep().activate(R(), appt.id, v);
       const linked = await ben().create(
         A(),
         claim,
@@ -1346,24 +1545,10 @@ describe.skipIf(!DB_URL)(
         flags: { representativeStatus: "none_on_file" },
       });
       expect(await flagOf(family.id)).toBeNull();
-      expect(await flagOf(linked.id)).toBe("draft");
       // items carry the tier label only: never the representative's name or any note
       expect(JSON.stringify(view)).not.toContain(PRIVATE_NAME);
       expect(JSON.stringify(view)).not.toContain("family telephoned the office");
-      // activate it: the typed end has passed, so the badge says so and the stored state stays active
-      const doc = await seedDoc(view.patientId);
-      let v = (
-        await rep().attachDocument(
-          A(),
-          appt.id,
-          { documentId: doc.documentId, documentVersionId: doc.versionId },
-          appt.version,
-        )
-      ).version;
-      v = (
-        await rep().confirmElements(A(), appt.id, ["Fixture element one", "Fixture element two"], v)
-      ).version;
-      await rep().activate(R(), appt.id, v);
+      // the typed end has passed, so the badge says so and the stored state stays active
       expect(await flagOf(linked.id)).toBe("validity_end_passed_as_recorded");
       expect((await apptRow(appt.id)).state).toBe("active");
       await rep().revoke(

@@ -135,6 +135,12 @@ export const ClaimAppointmentsSchema = Type.Object({
   patientId: Type.String(),
   items: Type.Array(AppointmentViewSchema),
 });
+export const AppointmentActivatedSchema = Type.Object({
+  id: Type.String(),
+  version: Type.Integer(),
+  /** A warning, not a block: the typed validity end had already passed at activation. */
+  validityEndPassed: Type.Boolean(),
+});
 export const RepresentativeVersionedResultSchema = Type.Object({
   id: Type.String(),
   version: Type.Integer(),

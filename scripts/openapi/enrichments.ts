@@ -646,6 +646,7 @@ import {
   ClaimBeneficiaryAppealsSchema as M25ClaimBeneficiaryAppealsSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/beneficiary-appeal.routes";
 import {
+  AppointmentActivatedSchema as M25AppointmentActivatedSchema,
   AppointmentDocumentRequestSchema as M25AppointmentDocumentRequestSchema,
   AppointmentDraftRequestSchema as M25AppointmentDraftRequestSchema,
   AppointmentElementsRequestSchema as M25AppointmentElementsRequestSchema,
@@ -8751,7 +8752,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/representative-appointments/:id/activate": {
     summary:
       "Activate a draft as a person other than the one who recorded it, with a fresh step-up; needs the signed document and every element confirmed (If-Match)",
-    response: M25RepresentativeVersionedResultSchema,
+    response: M25AppointmentActivatedSchema,
   },
   "POST /api/v1/representative-appointments/:id/revoke": {
     summary: "Record a revocation (typed date and note); needs a step-up but never a second person (If-Match)",
