@@ -85,7 +85,7 @@ describe.skipIf(!DB_URL)("migration 1143 — function / event-trigger rename —
   }, 900_000);
 
   afterAll(async () => {
-    await db?.end();
+    await db?.end().catch(() => undefined); // the replay test retires this connection itself
   });
 
   it("starts from the legacy catalog: all three functions bound, one event trigger", () => {
@@ -165,11 +165,24 @@ describe.skipIf(!DB_URL)("migration 1143 — function / event-trigger rename —
   });
 
   it("a fresh end-to-end replay of every migration (second database) lands in the same state", async () => {
-    const admin = new Client({ connectionString: DB_URL });
+    // Roles are cluster-global. Migration 1142 drops the wardenx_destruction alias, so a replay into a SECOND database of
+    // a cluster whose roles are already renamed would get a fresh alias that its own policies name, and 1142 would
+    // (correctly, per its multi-database caveat) refuse. Retire the database the earlier tests used, and its roles, so
+    // this replay starts from the same pre-1139 cluster production's first database did.
+    await db.end();
+    const u = new URL(DB_URL as string);
+    const firstDb = u.pathname.slice(1);
+    const maintenance = new URL(u.toString());
+    maintenance.pathname = "/postgres";
+    const admin = new Client({ connectionString: maintenance.toString() });
     await admin.connect();
+    await admin.query(`DROP DATABASE ${firstDb} WITH (FORCE)`);
+    const stale = await admin.query(
+      "SELECT rolname FROM pg_roles WHERE rolname LIKE 'chartwarden\\_%' OR rolname LIKE 'wardenx\\_%'",
+    );
+    for (const { rolname } of stale.rows) await admin.query(`DROP ROLE "${rolname}"`);
     const name = `fn_rename_replay_${Date.now()}`;
     await admin.query(`CREATE DATABASE ${name}`);
-    const u = new URL(DB_URL as string);
     u.pathname = `/${name}`;
     const fresh = new Client({ connectionString: u.toString() });
     try {
