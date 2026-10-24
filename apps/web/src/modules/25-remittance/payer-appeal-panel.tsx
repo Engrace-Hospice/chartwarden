@@ -139,14 +139,15 @@ function CaseCard(props: {
     };
   }, []);
 
-  // The record moved (a state change, a reload after a conflict): a half-filled decision no longer describes it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: state and version are the explicit reset triggers
+  // The case changed state: a half-filled decision no longer describes it. A reload after a conflict that left the state
+  // alone keeps what was typed.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: state is the explicit reset trigger
   useEffect(() => {
     setDeciding(false);
     setOutcome("");
     setDispositionKind("");
     setDispositionNote("");
-  }, [c.state, c.version]);
+  }, [c.state]);
 
   /** Runs one write; on a conflict the panel reloads (typed values stay) and the server's message is shown. */
   async function run(
@@ -221,6 +222,12 @@ function CaseCard(props: {
         ]}
       />
       <DeadlineLine c={c} />
+      {c.pathAwaitingVerification ? (
+        <Hint>
+          This level was opened under a draft path, so no window was taken from it. Once the path is
+          verified, withdraw this level and open it again to pick the window up.
+        </Hint>
+      ) : null}
       {c.decisionOverdue ? (
         <WarningAlert>
           The decision days recorded on your path have passed since this level was submitted.
@@ -382,7 +389,11 @@ function OpenForm(props: {
   const { view } = props;
   const client = useApiClient();
   const levels = view.path?.levels ?? [];
-  const [ordinal, setOrdinal] = useState(levels.length > 0 ? String(levels[0]?.ordinal ?? "") : "");
+  const [chosenOrdinal, setOrdinal] = useState("");
+  // The chosen level survives a reload that changes the path; one no longer on the path falls back to the first.
+  const ordinal = levels.some((l) => String(l.ordinal) === chosenOrdinal)
+    ? chosenOrdinal
+    : String(levels[0]?.ordinal ?? "");
   const [levelLabel, setLevelLabel] = useState("");
   const [levelKind, setLevelKind] = useState("internal");
   const [noticeDate, setNoticeDate] = useState("");
@@ -591,7 +602,7 @@ export function PayerAppealPanel(props: PayerAppealPanelProps): JSX.Element | nu
       ))}
       {props.canManage && view.refusal === null && !view.payerUnresolved && !inFlight ? (
         <OpenForm
-          key={`${view.path?.id ?? "none"}:${view.path?.revision ?? 0}:${view.cases.length}`}
+          key={view.cases.length}
           view={view}
           denialId={props.denialId}
           priorId={

@@ -267,6 +267,9 @@ export function buildDrizzlePayerAppealPathService(
     },
 
     async verifyPath(actor, id, ifMatch) {
+      // The payer directory is read before the transaction opens (a slow seam must not hold row locks).
+      const head = await withOrgContext(db, actor, (tx) => loadPath(tx, id));
+      if (!(await payers.resolve(actor.organizationId, head.payerId))) throw payerUnresolved();
       return withOrgContext(db, actor, async (tx) => {
         const cur = await loadPath(tx, id);
         const levelCount = (await tx.select({ id: L.id }).from(L).where(eq(L.pathId, id))).length;
@@ -294,7 +297,6 @@ export function buildDrizzlePayerAppealPathService(
             409,
           );
         }
-        if (!(await payers.resolve(actor.organizationId, cur.payerId))) throw payerUnresolved();
         // One conditional UPDATE: the version and draft status are checked in the statement itself, and the
         // database trigger re-checks the verifier and the levels under the row lock.
         const updated = await tx

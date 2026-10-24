@@ -870,6 +870,49 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
     ).toBe(1);
   });
 
+  it("two overlapping cron ticks send the payer deadline alert once", async () => {
+    const pid = randomUUID();
+    known.set(pid, { id: pid, name: "Payer Eight", kind: "commercial" });
+    await activePath({ payerId: pid });
+    const denial = await mkDenial("commercial", { payer: pid });
+    const opened = await appealSvc().open(A(), denial, { noticeDate: daysAgo(4) });
+    const [t1, t2] = await Promise.all([cron(), cron()]);
+    const mine = [...t1, ...t2].filter(
+      (a) =>
+        a.alertCode === "payer_appeal.deadline_approaching" &&
+        a.payload.payerAppealCaseId === opened.id,
+    );
+    expect(mine).toHaveLength(1);
+    expect(
+      (
+        await fx.admin.query(
+          "SELECT count(*)::int AS n FROM payer_appeal_case_event WHERE payer_appeal_case_id=$1 AND event_kind='deadline_alerted'",
+          [opened.id],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+  });
+
+  it("a draft path cannot be given a verifier or a verification day without being activated", async () => {
+    const created = await pathSvc().createPath(
+      A(),
+      pathInput({
+        payerId: payerId2,
+        contractLabel: "draft-edit",
+        effectiveFrom: "2020-06-01",
+      }) as never,
+    );
+    for (const set of [`verified_by_membership_id='${memberR}'`, "verified_on=CURRENT_DATE"]) {
+      expect(
+        await fx.dbMessage(
+          fx.asApp((tx) =>
+            tx.execute(sql.raw(`UPDATE payer_appeal_path SET ${set} WHERE id='${created.id}'`)),
+          ),
+        ),
+      ).toMatch(/verification fields change only when the path is activated|verified_pair/);
+    }
+  });
+
   it("read events land on every payer-appeal read, with the claim's patient when there is one and an explicit unattributed marker when there is none", async () => {
     const claimless = await mkDenial("commercial");
     const withClaim = await mkDenial("commercial", { claimId: fx.claim1b });

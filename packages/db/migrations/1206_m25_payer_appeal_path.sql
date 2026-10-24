@@ -156,6 +156,11 @@ BEGIN
     OR NEW.verified_by_membership_id IS DISTINCT FROM OLD.verified_by_membership_id) THEN
     RAISE EXCEPTION 'M25_PAYER_PATH_FROZEN: payer_appeal_path % is active; only retiring it is allowed', OLD.id;
   END IF;
+  -- Verification fields change only by activation: a draft (or a draft being retired) cannot be given a verifier or a day.
+  IF NEW.status <> 'active' AND (NEW.verified_on IS DISTINCT FROM OLD.verified_on
+       OR NEW.verified_by_membership_id IS DISTINCT FROM OLD.verified_by_membership_id) THEN
+    RAISE EXCEPTION 'M25_PAYER_PATH_VERIFIER: verification fields change only when the path is activated';
+  END IF;
   -- Activation is decided here, atomically with the UPDATE (the row is locked by it). Separation of duties compares PEOPLE,
   -- not membership ids: the verifier's membership must be an ACTIVE one of this organization and its user must differ from
   -- the author's membership's user (a second membership of the same person is refused). The verification day is set here,

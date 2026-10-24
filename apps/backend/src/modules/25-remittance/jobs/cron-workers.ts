@@ -155,6 +155,7 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
   const alerts = alertsOf(deps);
   for (const { organizationId } of orgs) {
+    let payerDispatchError: unknown;
     await withOrgContext(deps.db, systemOrgContext(organizationId), async (tx) => {
       const AC = schema.appealCase;
       const store: AppealDeadlineStore = {
@@ -375,6 +376,11 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
       // alerts ONCE (an event row marks it, so the nightly tick never repeats it).
       const PC = schema.payerAppealCase;
       const PE = schema.payerAppealCaseEvent;
+      // One payer-appeal watch per organization at a time: an overlapping tick waits here until the first has committed its
+      // marks, then reads them, so "once per boundary" is serialised rather than raced. (Held to the end of this transaction.)
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`m25:payer_appeal_watch:${organizationId}`}, 0))`,
+      );
       const payerDeadlineStore: PayerAppealDeadlineStore = {
         async draftsWithComputedDeadline() {
           const rows = await tx
@@ -426,29 +432,42 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
       };
       const payerDeadline = await runPayerAppealDeadlineWatch(payerDeadlineStore, now);
       const payerNoDeadline = await runPayerAppealNoDeadlineWatch(payerNoDeadlineStore, now);
-      // Dispatch first, then mark (the same transaction): a dispatch that throws rolls the marks back and the next tick retries.
-      for (const a of [...payerDeadline.alerts, ...payerNoDeadline.alerts]) {
-        await alerts.dispatch({
-          alertCode: a.kind,
-          severity: "warn",
-          organizationId,
-          payload: a.detail,
-        });
-      }
-      for (const m of payerDeadline.marks) {
-        await tx.insert(PE).values({
-          organizationId,
-          payerAppealCaseId: m.id,
-          eventKind: "deadline_alerted",
-          eventPayload: { boundary: m.boundary },
-        });
-      }
-      for (const id of payerNoDeadline.alertedIds) {
-        await tx
-          .insert(PE)
-          .values({ organizationId, payerAppealCaseId: id, eventKind: "no_deadline_alerted" });
+      // Each alert is marked right after it is dispatched, inside the lock window. A dispatch that throws stops the loop,
+      // the marks of the alerts already sent are still committed (they are not re-sent), and the error is raised after the
+      // commit so the tick fails and the rest retries on the next one.
+      const pending = [
+        ...payerDeadline.alerts.map((a, i) => ({
+          a,
+          mark: {
+            payerAppealCaseId: payerDeadline.marks[i]?.id as string,
+            eventKind: "deadline_alerted",
+            eventPayload: { boundary: payerDeadline.marks[i]?.boundary },
+          },
+        })),
+        ...payerNoDeadline.alerts.map((a, i) => ({
+          a,
+          mark: {
+            payerAppealCaseId: payerNoDeadline.alertedIds[i] as string,
+            eventKind: "no_deadline_alerted",
+          },
+        })),
+      ];
+      for (const { a, mark } of pending) {
+        try {
+          await alerts.dispatch({
+            alertCode: a.kind,
+            severity: "warn",
+            organizationId,
+            payload: a.detail,
+          });
+        } catch (e) {
+          payerDispatchError = e;
+          break;
+        }
+        await tx.insert(PE).values({ organizationId, ...mark });
       }
     });
+    if (payerDispatchError !== undefined) throw payerDispatchError;
   }
 }
 

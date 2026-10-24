@@ -264,8 +264,8 @@ export function DenialDetailPanel({
               claimId={denial.claimId}
               refreshKey={refreshToken}
             />
-          ) : canReadPayerAppeals ? (
-            // A commercial denial has no claim: its timeline is keyed on the denial.
+          ) : hasPermission("appeal.read") ? (
+            // A commercial denial has no claim: its timeline is keyed on the denial (the route needs appeal.read).
             <CaseViewPanel key={denialId} denialId={denialId} refreshKey={refreshToken} />
           ) : null}
           {canReadPayerAppeals ? (

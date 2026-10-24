@@ -400,15 +400,16 @@ describe("PayerAppealPanel writes", () => {
     expect(put?.body).toEqual({ noticeDate: "2026-03-02" });
   });
 
-  it("the decision form says why it is disabled, and resets when the case moves", async () => {
+  it("the decision form says why it is disabled, keeps what was typed through a conflict reload, and resets only when the case changes state", async () => {
     let version = 3;
+    let state = "under_review";
     handlers[`GET ${viewPath()}`] = () =>
-      json(200, denialView({ cases: [caseRow({ state: "under_review", version, prompt: null })] }));
+      json(200, denialView({ cases: [caseRow({ state, version, prompt: null })] }));
     handlers["POST /api/v1/payer-appeals/c1/state"] = () => {
       version = 4;
       return json(409, { error: { code: "VERSION_CONFLICT", message: "changed" } });
     };
-    mount(panelAt());
+    const { rerenderWith } = mount(panelAt());
     await userEvent.click(await screen.findByRole("button", { name: "Record decision" }));
     const form = screen.getByRole("form", { name: "Record the decision" });
     expect(
@@ -417,14 +418,87 @@ describe("PayerAppealPanel writes", () => {
     expect(within(form).getByText("Choose the outcome.")).toBeTruthy();
     await userEvent.selectOptions(within(form).getByLabelText(/Outcome/), "unfavorable");
     await userEvent.click(within(form).getByRole("button", { name: "Record decision" }));
-    // the conflict reloaded a newer version: the half-filled form was dropped
-    await waitFor(() =>
-      expect(screen.queryByRole("form", { name: "Record the decision" })).toBeNull(),
-    );
+    // the conflict reloaded a newer version of the SAME state: the form and its outcome are still there
+    expect(await screen.findByText("changed")).toBeTruthy();
+    await waitFor(() => expect(gets(viewPath())).toBe(2));
+    const kept = screen.getByRole("form", { name: "Record the decision" });
+    expect((within(kept).getByLabelText(/Outcome/) as HTMLSelectElement).value).toBe("unfavorable");
     expect(log.find((r) => r.key === "POST /api/v1/payer-appeals/c1/state")?.body).toMatchObject({
       move: "decide",
       outcome: "unfavorable",
     });
+    // a reload that shows the case in another state drops the half-filled decision
+    state = "decided";
+    version = 5;
+    rerenderWith(panelAt(DENIAL, { refreshKey: 1 }));
+    await waitFor(() =>
+      expect(screen.queryByRole("form", { name: "Record the decision" })).toBeNull(),
+    );
+  });
+
+  it("keeps the typed notice date when a conflict reload changes the path under the open form", async () => {
+    let reads = 0;
+    handlers[`GET ${viewPath()}`] = () =>
+      ++reads === 1
+        ? json(200, denialView())
+        : json(
+            200,
+            denialView({
+              pathPrompt: null,
+              path: {
+                id: "pp1",
+                status: "active",
+                verified: true,
+                revision: 1,
+                program: "commercial",
+                levels: [
+                  {
+                    ordinal: 1,
+                    levelKind: "internal",
+                    levelLabel: "First level",
+                    whoFiles: "provider",
+                    windowComplete: true,
+                  },
+                ],
+              },
+            }),
+          );
+    handlers[`POST ${viewPath()}`] = () =>
+      json(409, { error: { code: "PAYER_CHANGED", message: "the denial's payer changed" } });
+    mount(panelAt());
+    await userEvent.type(
+      await screen.findByLabelText(/Level \(as the payer's notice names it\)/),
+      "Appeal",
+    );
+    await userEvent.type(
+      screen.getByLabelText(/Notice date \(printed on the notice this level/),
+      "2026-03-02",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Open level" }));
+    expect(await screen.findByText("the denial's payer changed")).toBeTruthy();
+    // the path now exists, so the level is chosen from it, and the typed notice date is still there
+    expect(await screen.findByLabelText(/^Level/)).toBeTruthy();
+    expect(
+      (screen.getByLabelText(/Notice date \(printed on the notice this level/) as HTMLInputElement)
+        .value,
+    ).toBe("2026-03-02");
+  });
+
+  it("says a level opened under a draft path picks its window up only by reopening it after verification", async () => {
+    handlers[`GET ${viewPath()}`] = () =>
+      json(
+        200,
+        denialView({
+          cases: [
+            caseRow({
+              pathAwaitingVerification: true,
+              prompt: "Appeal path awaiting verification",
+            }),
+          ],
+        }),
+      );
+    mount(panelAt());
+    expect(await screen.findByText(/withdraw this level and open it again/)).toBeTruthy();
   });
 
   it("does not re-read twice when the parent bumps its refresh key after this panel's own write", async () => {
