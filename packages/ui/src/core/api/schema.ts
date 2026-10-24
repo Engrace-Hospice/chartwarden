@@ -33513,6 +33513,7 @@ export interface operations {
                     };
                     sourceNote?: string;
                     noticeDocumentId?: string | null;
+                    noticeDocumentVersionId?: string | null;
                     satisfy?: boolean;
                 };
             };
@@ -33565,6 +33566,7 @@ export interface operations {
                         time?: string | null;
                     };
                     dencDocumentId?: string | null;
+                    dencDocumentVersionId?: string | null;
                     recordsSent?: {
                         date?: string | null;
                         time?: string | null;
@@ -33579,6 +33581,7 @@ export interface operations {
                         note?: string | null;
                     };
                     decisionDocumentId?: string | null;
+                    decisionDocumentVersionId?: string | null;
                 };
             };
         };
@@ -33636,6 +33639,7 @@ export interface operations {
                     };
                     sourceNote: string;
                     noticeDocumentId?: string | null;
+                    noticeDocumentVersionId?: string | null;
                 };
             };
         };
@@ -33987,6 +33991,7 @@ export interface operations {
                     acknowledgementKind?: ("signed" | "refused" | "other") | null;
                     acknowledgementNote?: string | null;
                     documentId?: string | null;
+                    documentVersionId?: string | null;
                     sourceNote: string;
                 };
             };
@@ -34042,6 +34047,7 @@ export interface operations {
                     acknowledgementKind?: ("signed" | "refused" | "other") | null;
                     acknowledgementNote?: string | null;
                     documentId?: string | null;
+                    documentVersionId?: string | null;
                 };
             };
         };
@@ -34099,6 +34105,7 @@ export interface operations {
                     };
                     sourceNote: string;
                     noticeDocumentId?: string | null;
+                    noticeDocumentVersionId?: string | null;
                 };
             };
         };

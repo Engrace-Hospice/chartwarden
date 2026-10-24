@@ -358,6 +358,7 @@
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
+        "apps/backend/__tests__/m6-nomnc-expedited.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 54

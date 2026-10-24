@@ -29724,6 +29724,17 @@
                       }
                     ]
                   },
+                  "noticeDocumentVersionId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "satisfy": {
                     "type": "boolean"
                   }
@@ -30018,6 +30029,17 @@
                       }
                     ]
                   },
+                  "dencDocumentVersionId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "recordsSent": {
                     "type": "object",
                     "properties": {
@@ -30120,6 +30142,17 @@
                     }
                   },
                   "decisionDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "decisionDocumentVersionId": {
                     "anyOf": [
                       {
                         "format": "uuid",
@@ -30383,6 +30416,17 @@
                     "type": "string"
                   },
                   "noticeDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "noticeDocumentVersionId": {
                     "anyOf": [
                       {
                         "format": "uuid",
@@ -32041,6 +32085,17 @@
                       }
                     ]
                   },
+                  "documentVersionId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "sourceNote": {
                     "maxLength": 2000,
                     "type": "string"
@@ -32331,6 +32386,17 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "documentVersionId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -32585,6 +32651,17 @@
                     "type": "string"
                   },
                   "noticeDocumentId": {
+                    "anyOf": [
+                      {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "noticeDocumentVersionId": {
                     "anyOf": [
                       {
                         "format": "uuid",

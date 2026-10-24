@@ -62,6 +62,7 @@ export const RecordNoticeSchema = Type.Object({
   acknowledgementKind: Type.Optional(Nullable(AcknowledgementKind)),
   acknowledgementNote: Type.Optional(Nullable(Type.String({ maxLength: 2000 }))),
   documentId: Type.Optional(Nullable(Uuid())),
+  documentVersionId: Type.Optional(Nullable(Uuid())),
   sourceNote: Type.String({ maxLength: 2000 }),
 });
 
@@ -71,6 +72,7 @@ export const PatchNoticeSchema = Type.Object({
   acknowledgementKind: Type.Optional(Nullable(AcknowledgementKind)),
   acknowledgementNote: Type.Optional(Nullable(Type.String({ maxLength: 2000 }))),
   documentId: Type.Optional(Nullable(Uuid())),
+  documentVersionId: Type.Optional(Nullable(Uuid())),
 });
 
 export const WithdrawNoticeSchema = Type.Object({
@@ -94,6 +96,7 @@ export const PatchReviewSchema = Type.Object({
   qioReference: Type.Optional(Nullable(Type.String({ maxLength: 200 }))),
   dencDelivered: Type.Optional(TypedMomentSchema),
   dencDocumentId: Type.Optional(Nullable(Uuid())),
+  dencDocumentVersionId: Type.Optional(Nullable(Uuid())),
   recordsSent: Type.Optional(TypedMomentSchema),
   recordsSentNote: Type.Optional(Nullable(Type.String({ maxLength: 2000 }))),
   decision: Type.Optional(
@@ -104,6 +107,7 @@ export const PatchReviewSchema = Type.Object({
     }),
   ),
   decisionDocumentId: Type.Optional(Nullable(Uuid())),
+  decisionDocumentVersionId: Type.Optional(Nullable(Uuid())),
 });
 
 export const WithdrawReviewSchema = Type.Object({ ifVersion: Version() });
@@ -114,6 +118,7 @@ export const AddDeadlineSchema = Type.Object({
   due: TypedMomentSchema,
   sourceNote: Type.String({ maxLength: 2000 }),
   noticeDocumentId: Type.Optional(Nullable(Uuid())),
+  noticeDocumentVersionId: Type.Optional(Nullable(Uuid())),
 });
 
 export const PatchDeadlineSchema = Type.Object({
@@ -122,6 +127,7 @@ export const PatchDeadlineSchema = Type.Object({
   due: Type.Optional(TypedMomentSchema),
   sourceNote: Type.Optional(Type.String({ maxLength: 2000 })),
   noticeDocumentId: Type.Optional(Nullable(Uuid())),
+  noticeDocumentVersionId: Type.Optional(Nullable(Uuid())),
   satisfy: Type.Optional(Type.Boolean()),
 });
 

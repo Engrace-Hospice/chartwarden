@@ -4,9 +4,11 @@
 // transaction as the write, and never blocks or sends anything. Every route hangs off the ADMISSION path; a notice,
 // review or deadline of another admission reads as absent.
 import { type DbClient, organizationTimezone } from "@chartwarden/db";
+import { DegradedError } from "@chartwarden/types";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
+import type { AdmissionEvidenceDocumentValidator } from "../admission-evidence-service";
 import { ResourceNotFoundError } from "../routes/service";
 import { mapUniqueViolation } from "../unique-violation";
 import {
@@ -66,6 +68,9 @@ export interface NomncOutboxPort {
 export interface NomncServiceDeps {
   readonly db: DbClient;
   readonly outbox: NomncOutboxPort;
+  /** M22 check (same org, same patient + admission, ACTIVE version) for every document a record links to. Unbound,
+   *  linking a document is refused with 503; nothing else needs it. */
+  readonly documentValidator?: AdmissionEvidenceDocumentValidator;
   readonly now?: () => Date;
 }
 
@@ -85,6 +90,7 @@ export interface RecordNoticeInput {
   readonly acknowledgementKind?: AcknowledgementKind | null;
   readonly acknowledgementNote?: string | null;
   readonly documentId?: string | null;
+  readonly documentVersionId?: string | null;
   readonly sourceNote: string;
 }
 
@@ -94,6 +100,7 @@ export interface PatchNoticeInput {
   readonly acknowledgementKind?: AcknowledgementKind | null;
   readonly acknowledgementNote?: string | null;
   readonly documentId?: string | null;
+  readonly documentVersionId?: string | null;
 }
 
 export interface OpenReviewInput {
@@ -108,6 +115,7 @@ export interface PatchReviewInput {
   readonly qioReference?: string | null;
   readonly dencDelivered?: TypedMoment;
   readonly dencDocumentId?: string | null;
+  readonly dencDocumentVersionId?: string | null;
   readonly recordsSent?: TypedMoment;
   readonly recordsSentNote?: string | null;
   readonly decision?: {
@@ -116,6 +124,7 @@ export interface PatchReviewInput {
     readonly note?: string | null;
   };
   readonly decisionDocumentId?: string | null;
+  readonly decisionDocumentVersionId?: string | null;
 }
 
 export interface AddDeadlineInput {
@@ -124,6 +133,7 @@ export interface AddDeadlineInput {
   readonly due: TypedMoment;
   readonly sourceNote: string;
   readonly noticeDocumentId?: string | null;
+  readonly noticeDocumentVersionId?: string | null;
 }
 
 export interface PatchDeadlineInput {
@@ -132,6 +142,7 @@ export interface PatchDeadlineInput {
   readonly due?: TypedMoment;
   readonly sourceNote?: string;
   readonly noticeDocumentId?: string | null;
+  readonly noticeDocumentVersionId?: string | null;
   /** Mark the deadline met (the server stamps the time). Irreversible: a satisfied deadline is frozen. */
   readonly satisfy?: boolean;
 }
@@ -267,6 +278,37 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
     }
   };
 
+  /**
+   * A document a record links to must be an ACTIVE M22 version of THIS organization's patient and admission. Run
+   * before any write, inside the caller's org-context transaction; a foreign, cross-patient or cross-tenant id reads
+   * as absent (404, no existence oracle) and nothing is written.
+   */
+  async function verifyDocument(
+    organizationId: string,
+    scope: { readonly admissionId: string; readonly patientId: string },
+    documentId: string | null | undefined,
+    documentVersionId: string | null | undefined,
+  ): Promise<void> {
+    if (!documentId) return;
+    if (!deps.documentValidator) {
+      throw new DegradedError("m6.nomnc-documents", "document linking is not bound");
+    }
+    if (!documentVersionId) {
+      throw new NomncRuleError("DOCUMENT_VERSION_REQUIRED", "name the document version to link");
+    }
+    try {
+      await deps.documentValidator.validateAdmissionEvidenceDocumentVersion({
+        organizationId,
+        admissionId: scope.admissionId,
+        patientId: scope.patientId,
+        documentId,
+        documentVersionId,
+      });
+    } catch {
+      throw new ResourceNotFoundError(documentId);
+    }
+  }
+
   const zoneOf = (tx: DbClient, organizationId: string) => organizationTimezone(tx, organizationId);
 
   const moment = (m: TypedMoment | undefined, zone: string) =>
@@ -328,6 +370,7 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
         const at = now();
         const delivered = moment(input.delivered, zone);
         const sourceNote = requireSourceNote(input.sourceNote);
+        await verifyDocument(organizationId, { admissionId, patientId: facts.patientId }, input.documentId, input.documentVersionId);
         const rep = blankToNull(input.representativeName);
         const ackNote = blankToNull(input.acknowledgementNote);
         validateNoticeFacts({
@@ -418,6 +461,7 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
         const tx = asTx(txRaw);
         const row = await noticeOf(tx, admissionId, noticeId);
         requireActive(row);
+        await verifyDocument(organizationId, row, input.documentId, input.documentVersionId);
         const ackKind =
           input.acknowledgementKind !== undefined
             ? input.acknowledgementKind
@@ -548,6 +592,8 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
           input.decision !== undefined;
         // A decided / withdrawn review is frozen except for its document links (the DB guard repeats this).
         if (touchesFacts) requireOpen(row);
+        await verifyDocument(organizationId, row, input.dencDocumentId, input.dencDocumentVersionId);
+        await verifyDocument(organizationId, row, input.decisionDocumentId, input.decisionDocumentVersionId);
         const zone = await zoneOf(tx, organizationId);
         const set: Partial<typeof R.$inferInsert> = {};
         if (input.qioReference !== undefined) set.qioReference = blankToNull(input.qioReference);
@@ -661,6 +707,7 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
         if (row.satisfiedAt) {
           throw new NomncRuleError("DEADLINE_SATISFIED", "a satisfied deadline cannot change");
         }
+        await verifyDocument(organizationId, row, input.noticeDocumentId, input.noticeDocumentVersionId);
         const at = now();
         const set: Partial<typeof D.$inferInsert> = {};
         if (input.label !== undefined && row.kind === "other") {
@@ -705,6 +752,7 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
         `a deadline of kind "${input.kind}" does not belong here`,
       );
     }
+    await verifyDocument(organizationId, parent, input.noticeDocumentId, input.noticeDocumentVersionId);
     const label = requireOtherLabel(input.kind, input.label);
     const sourceNote = requireSourceNote(input.sourceNote);
     const zone = await zoneOf(tx, organizationId);

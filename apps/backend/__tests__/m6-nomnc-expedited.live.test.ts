@@ -32,6 +32,9 @@ import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { createDocumentReaderEvidenceValidator } from "../src/modules/06-admission/admission-document-validator";
+import { createDrizzleDocumentReaderStore } from "../src/modules/22-documents/seams/drizzle-readers-store";
+import { createDocumentReader } from "../src/modules/22-documents/seams/readers";
 import { buildAdmissionAbacPredicates } from "../src/modules/06-admission/abac-predicates";
 import {
   createDbAdmissionAbacResolver,
@@ -265,7 +268,14 @@ describe.skipIf(!DB_URL)(
           return rows.length > 0;
         },
       });
-      nomnc = createNomncService({ db: handle.db, outbox: validatingM6Outbox() });
+      nomnc = createNomncService({
+        db: handle.db,
+        outbox: validatingM6Outbox(),
+        // The REAL M22 DocumentReader (RLS-scoped through the request context) behind the shared check.
+        documentValidator: createDocumentReaderEvidenceValidator(() =>
+          createDocumentReader(createDrizzleDocumentReaderStore(handle.db)),
+        ),
+      });
 
       // RBAC: 'reader' holds admission.read only; 'recorder' also holds a discharge key. Migration 1230 is re-run once
       // the roles exist (as in a tenant that created them earlier) and must grant nomnc.read / nomnc.record.
@@ -450,7 +460,7 @@ describe.skipIf(!DB_URL)(
     });
 
     it("review: opens once per notice, alerts via the real publisher, decides, and is then frozen (service and DB trigger)", async () => {
-      const { admissionId } = await activate();
+      const { admissionId, patientId } = await activate();
       const notice = (await call("POST", `/api/v1/admissions/${admissionId}/nomnc`, as(recorder), noticeBody())).json() as { id: string };
       const open = {
         qioName: "Example BFCC-QIO",
@@ -512,7 +522,8 @@ describe.skipIf(!DB_URL)(
         ),
       ).rejects.toMatchObject({ cause: { message: expect.stringMatching(/M6_EXPEDITED_REVIEW_FROZEN/) } });
       // a document link may still be attached after the decision
-      const docOk = await call("PATCH", `/api/v1/admissions/${admissionId}/expedited-reviews/${review.id}`, as(recorder), { ifVersion: dv, decisionDocumentId: randomUUID() });
+      const doc = await seedDoc(ORG_A, patientId, admissionId);
+      const docOk = await call("PATCH", `/api/v1/admissions/${admissionId}/expedited-reviews/${review.id}`, as(recorder), { ifVersion: dv, decisionDocumentId: doc.documentId, decisionDocumentVersionId: doc.documentVersionId });
       expect(docOk.statusCode).toBe(200);
       // a reversal prompts
       const ov = (await call("GET", `/api/v1/admissions/${admissionId}/nomnc`, as(reader))).json() as { prompts: { code: string }[] };
@@ -656,6 +667,83 @@ describe.skipIf(!DB_URL)(
       // the review is a fact, left as it was
       const rv = await one<{ state: string }>("SELECT state FROM expedited_review WHERE admission_id=$1", [admissionId]);
       expect(rv.state).toBe("open");
+    });
+
+
+    /** Seed an M22 document (superuser) with one active version. */
+    async function seedDoc(org: string, patientId: string, admissionId: string | null) {
+      const documentId = (
+        await admin.query(
+          `INSERT INTO document (organization_id, patient_id, admission_id, retention_class, source_kind,
+             aggregate_type, title, created_by_membership_id)
+           VALUES ($1,$2,$3,'compliance','user_upload','nomnc','Scan',$4) RETURNING id`,
+          [org, patientId, admissionId, randomUUID()],
+        )
+      ).rows[0].id as string;
+      const documentVersionId = (
+        await admin.query(
+          `INSERT INTO document_version (organization_id, document_id, version_number, minio_object_key,
+             mime_type, byte_size, sha256_hex, uploaded_by_kind)
+           VALUES ($1,$2,'1',$3,'application/pdf','2048','abc123','system') RETURNING id`,
+          [org, documentId, `uploads/nm-${documentId}.pdf`],
+        )
+      ).rows[0].id as string;
+      await admin.query("UPDATE document SET active_version_id=$1 WHERE id=$2", [documentVersionId, documentId]);
+      return { documentId, documentVersionId };
+    }
+
+    it("a linked document must be an ACTIVE version of THIS patient and admission: cross-patient and cross-tenant ids are 404 and write nothing", async () => {
+      const a = await activate();
+      const b = await activate(); // another patient and admission in the same org
+      const created = await call("POST", `/api/v1/admissions/${a.admissionId}/nomnc`, as(recorder), noticeBody());
+      const n = created.json() as { id: string; version: number };
+      const own = await seedDoc(ORG_A, a.patientId, a.admissionId);
+      const otherPatient = await seedDoc(ORG_A, b.patientId, b.admissionId);
+      const otherTenant = await seedDoc(ORG_B, randomUUID(), null);
+      const url = `/api/v1/admissions/${a.admissionId}/nomnc/${n.id}`;
+      const noticeDoc = async () =>
+        (await one<{ document_id: string | null }>("SELECT document_id FROM nomnc_notice WHERE id=$1", [n.id])).document_id;
+
+      for (const bad of [otherPatient, otherTenant]) {
+        const res = await call("PATCH", url, as(recorder), { ifVersion: n.version, documentId: bad.documentId, documentVersionId: bad.documentVersionId });
+        expect(res.statusCode).toBe(404);
+        expect(await noticeDoc()).toBeNull();
+      }
+      // a document id without a version is refused, not guessed
+      expect((await call("PATCH", url, as(recorder), { ifVersion: n.version, documentId: own.documentId })).statusCode).toBe(422);
+      // a foreign document cannot ride in on a new record either, nor on a review or a deadline
+      const rec = await call("POST", `/api/v1/admissions/${b.admissionId}/nomnc`, as(recorder), noticeBody({ documentId: own.documentId, documentVersionId: own.documentVersionId }));
+      expect(rec.statusCode).toBe(404);
+      expect((await admin.query("SELECT 1 FROM nomnc_notice WHERE admission_id=$1", [b.admissionId])).rowCount).toBe(0);
+      const dl = await call("POST", `${url}/deadlines`, as(recorder), {
+        kind: "appeal_request",
+        due: { date: "2026-01-12", time: "12:00" },
+        sourceNote: "printed on the notice",
+        noticeDocumentId: otherTenant.documentId,
+        noticeDocumentVersionId: otherTenant.documentVersionId,
+      });
+      expect(dl.statusCode).toBe(404);
+      expect((await admin.query("SELECT 1 FROM expedited_deadline WHERE nomnc_notice_id=$1", [n.id])).rowCount).toBe(0);
+      const rv = (await call("POST", `${url}/expedited-review`, as(recorder), {
+        qioName: "Example BFCC-QIO",
+        qioNotified: { date: PAST_DATE, time: "14:20" },
+        requestedByKind: "unknown",
+      })).json() as { id: string; version: number };
+      const badDenc = await call("PATCH", `/api/v1/admissions/${a.admissionId}/expedited-reviews/${rv.id}`, as(recorder), {
+        ifVersion: rv.version,
+        dencDocumentId: otherPatient.documentId,
+        dencDocumentVersionId: otherPatient.documentVersionId,
+      });
+      expect(badDenc.statusCode).toBe(404);
+      expect((await one<{ denc_document_id: string | null }>("SELECT denc_document_id FROM expedited_review WHERE id=$1", [rv.id])).denc_document_id).toBeNull();
+
+      // the patient's own active version links
+      const ok = await call("PATCH", url, as(recorder), { ifVersion: n.version, documentId: own.documentId, documentVersionId: own.documentVersionId });
+      expect(ok.statusCode).toBe(200);
+      expect(await noticeDoc()).toBe(own.documentId);
+      // and the actor's scope still gates the admission itself: a user of another org cannot reach it at all
+      const asB = { ...as(recorderB, ORG_B), "x-test-pe": providerA };
+      expect((await call("PATCH", url, asB, { ifVersion: n.version + 1, documentId: own.documentId, documentVersionId: own.documentVersionId })).statusCode).toBe(404);
     });
 
     it("the nomnc routes are not on the auditor enrolment allowlist (an auditor session reaches none of them)", () => {

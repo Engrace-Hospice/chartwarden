@@ -3897,7 +3897,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     : null;
   // Milestone 10a — NOMNC delivery + BFCC-QIO expedited review record-keeping (typed facts, typed deadlines). Its
   // routes mount in `mountAdmissionRoutes`; the 15-minute deadline scan runs in M6's `admission.window_alert` worker.
-  const m6Nomnc = dbHandle ? createNomncService({ db: dbHandle.db, outbox: m6OutboxPublisher }) : null;
+  const m6Nomnc = dbHandle ? createNomncService({
+        db: dbHandle.db,
+        outbox: m6OutboxPublisher,
+        // A linked document must be an ACTIVE M22 version of this org's patient + admission (else 404).
+        documentValidator: createDocumentReaderEvidenceValidator(() => getSeam("DocumentReader")),
+      }) : null;
   // M6 → M37 (confirm-handshake fix, 2026-08-05) — the LIVE `IpuBedAssignmentProvider` seam (registered
   // by M37 at boot), resolved lazily per call (the `m24SignedEncounters`/`m24CoverageResolver` precedent)
   // so registration order at boot never matters. This is the real "bedId verified with M37" check the
