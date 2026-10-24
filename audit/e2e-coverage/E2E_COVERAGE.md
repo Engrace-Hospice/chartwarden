@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 198 statically-routable `web` screen(s) — 20/198 E2E-reached, 187/198 axe-reached.
+**Coverage:** 200 statically-routable `web` screen(s) — 20/200 E2E-reached, 188/200 axe-reached.
 
 ## Zero E2E coverage
 
@@ -70,6 +70,7 @@
 | `evv.events` | 18-evv | `/evv/events` | evv.read |
 | `evv.geofence-policy` | 18-evv | `/evv/geofence-policy` | evv.policy.read |
 | `evv.missing-resolutions` | 18-evv | `/evv/missing-resolutions` | evv.missing_resolution.read |
+| `messaging.family-contact` | 36-messaging | `/family/open` | (none) |
 | `identity.forgot-password` | 02-identity | `/forgot` | (none) |
 | `hope.dashboard` | 10-hope | `/hope` | hope.schedule.read |
 | `hope.compliance` | 10-hope | `/hope/compliance` | hope.dashboard.read |
@@ -106,6 +107,7 @@
 | `messaging.death-board` | 36-messaging | `/messaging/death-board` | messaging.read |
 | `messaging.devices` | 36-messaging | `/messaging/devices` | (none) |
 | `messaging.export` | 36-messaging | `/messaging/export` | messaging.export.request |
+| `messaging.family` | 36-messaging | `/messaging/family` | messaging.family.respond |
 | `messaging.break-glass` | 36-messaging | `/messaging/governance/break-glass` | messaging.break_glass.review |
 | `messaging.export-approvals` | 36-messaging | `/messaging/governance/export-approvals` | messaging.export.approve |
 | `messaging.retention` | 36-messaging | `/messaging/governance/retention` | messaging.retention.manage |
@@ -194,6 +196,7 @@
 | `identity.auditor-enrolment` | 02-identity | `/auditor/enrol` | (none) |
 | `identity.auditor-redeem` | 02-identity | `/auditor/redeem` | (none) |
 | `scheduling.calendar` | 17-scheduling | `/calendar` | (none) |
+| `messaging.family-contact` | 36-messaging | `/family/open` | (none) |
 | `identity.forgot-password` | 02-identity | `/forgot` | (none) |
 | `identity.mfa-challenge` | 02-identity | `/login/2fa` | (none) |
 | `identity.required-password-change` | 02-identity | `/login/change-password` | (none) |
