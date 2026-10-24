@@ -1232,6 +1232,90 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
+  // ── Milestone 10a: NOMNC delivery + BFCC-QIO expedited review (record-keeping; every clock is typed) ───────
+  // PHI-free: ids, the deadline kind and instants only (the representative name, QIO name and every note stay in
+  // the tables). M36 pages the care team and compliance by event NAME; M6 never imports M36.
+  {
+    eventName: "m6.nomnc.recorded",
+    moduleOwner: "m6",
+    description:
+      "A NOMNC delivery was recorded on an admission (or superseded a prior record). Informational: no consumer.",
+    payloadSchema: Type.Object({
+      nomncNoticeId: Type.String({ minLength: 1 }),
+      admissionId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      supersededNoticeId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m6.expedited_review.opened",
+    moduleOwner: "m6",
+    description:
+      "Staff opened a BFCC-QIO expedited review for a NOMNC (the QIO told the hospice). M36 alerts the care team and compliance right away: the provider duties start that same day.",
+    payloadSchema: Type.Object({
+      expeditedReviewId: Type.String({ minLength: 1 }),
+      nomncNoticeId: Type.String({ minLength: 1 }),
+      admissionId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      qioNotifiedAt: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m6.expedited_review.decided",
+    moduleOwner: "m6",
+    description:
+      "The QIO's outcome was recorded as a fact (upheld / reversed / other). Informational: nothing is unwound automatically.",
+    payloadSchema: Type.Object({
+      expeditedReviewId: Type.String({ minLength: 1 }),
+      nomncNoticeId: Type.String({ minLength: 1 }),
+      admissionId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      outcome: Type.Union([
+        Type.Literal("discharge_upheld"),
+        Type.Literal("discharge_reversed"),
+        Type.Literal("other"),
+      ]),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m6.expedited_deadline.approaching",
+    moduleOwner: "m6",
+    description:
+      "An unsatisfied typed deadline crossed a product alert boundary (24 / 4 / 1 hours before it). M36 alerts the care team and compliance.",
+    payloadSchema: Type.Object({
+      expeditedDeadlineId: Type.String({ minLength: 1 }),
+      subject: Type.Union([Type.Literal("notice"), Type.Literal("review")]),
+      kind: Type.String({ minLength: 1 }),
+      admissionId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      dueAt: Type.String({ minLength: 1 }),
+      boundaryHours: Type.Number({ minimum: 1 }),
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m6.expedited_deadline.overdue",
+    moduleOwner: "m6",
+    description:
+      "A typed deadline passed unsatisfied. Emitted once per deadline; M36 alerts the care team and compliance.",
+    payloadSchema: Type.Object({
+      expeditedDeadlineId: Type.String({ minLength: 1 }),
+      subject: Type.Union([Type.Literal("notice"), Type.Literal("review")]),
+      kind: Type.String({ minLength: 1 }),
+      admissionId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      dueAt: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
   // ── bereavement / applier ───────────────────────────────────────────────────────────────────────
   {
     eventName: "m6.bereavement.eligible",

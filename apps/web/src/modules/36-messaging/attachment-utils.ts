@@ -1,3 +1,4 @@
+import { MAX_VOICE_NOTE_BYTES, isVoiceNoteMimeType } from "@chartwarden/types";
 import type { AttachmentChip, MessageAttachment } from "./messaging-types";
 
 /** WP 1.5 pure helpers: client-side pre-validation, hashing and error-code reading for chat attachments. */
@@ -26,8 +27,18 @@ export const ATTACHMENT_ACCEPT = [
 
 export const ATTACHMENT_TYPES_LABEL = "PDF, JPEG, PNG, TIFF, Word (.docx) or plain text";
 
-/** The browser's type if it is allowed; else the type implied by the extension (some platforms leave it empty). */
+/** `audio/webm;codecs=opus` -> `audio/webm`: MediaRecorder reports its codec, the server's allowlist is by container. */
+export const baseMimeType = (type: string): string =>
+  type.split(";")[0]?.trim().toLowerCase() ?? "";
+
+/**
+ * The browser's type if it is allowed; else the type implied by the extension (some platforms leave it empty). The two voice-note
+ * container types (WP 6.3) are recognised here but are not in the picker's `accept` list; the server refuses them unless the tenant
+ * has voice notes on.
+ */
 export function resolveContentType(file: Pick<File, "name" | "type">): string | null {
+  const base = baseMimeType(file.type);
+  if (isVoiceNoteMimeType(base)) return base;
   if (ALLOWED_TYPES.has(file.type)) return file.type;
   if (file.type) return null;
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
@@ -60,6 +71,8 @@ export function selectFiles(files: readonly File[], existingCount: number): File
       rejections.push(`${file.name} was not attached: use ${ATTACHMENT_TYPES_LABEL}.`);
     } else if (file.size === 0) {
       rejections.push(`${file.name} was not attached: the file is empty.`);
+    } else if (isVoiceNoteMimeType(contentType) && file.size > MAX_VOICE_NOTE_BYTES) {
+      rejections.push(`${file.name} was not attached: voice notes can be at most 8 MB.`);
     } else if (file.size > MAX_ATTACHMENT_BYTES) {
       rejections.push(`${file.name} was not attached: files can be at most 25 MB.`);
     } else if (existingCount + accepted.length >= MAX_ATTACHMENTS_PER_MESSAGE) {
@@ -126,8 +139,16 @@ export function toSentAttachments(chips: readonly AttachmentChip[]): MessageAtta
   );
 }
 
+export const VOICE_NOTE_NEEDS_TEXT =
+  "Add a short typed message so everyone can read what the voice note is about.";
+
+/** WP 6.3 (ADR-0094 5.1): a voice note alone is not accessible to everyone, so a message that carries one needs a typed body. */
+export function voiceNoteNeedsText(chips: readonly AttachmentChip[], draft: string): boolean {
+  return !draft.trim() && chips.some((chip) => isVoiceNoteMimeType(chip.contentType));
+}
+
 /** Why Send is held back by the attachments, in words; null when they do not block it. */
-export function sendBlockedReason(chips: readonly AttachmentChip[]): string | null {
+export function sendBlockedReason(chips: readonly AttachmentChip[], draft = ""): string | null {
   if (
     chips.some(
       (chip) => chip.status === "failed" || chip.status === "blocked" || chip.status === "reattach",
@@ -138,7 +159,7 @@ export function sendBlockedReason(chips: readonly AttachmentChip[]): string | nu
   if (chips.some((chip) => chip.status === "hashing" || chip.status === "uploading")) {
     return "Send is available once the files finish uploading.";
   }
-  return null;
+  return voiceNoteNeedsText(chips, draft) ? VOICE_NOTE_NEEDS_TEXT : null;
 }
 
 /** Deadline for one attachment API request (authorize, complete, status, access). */

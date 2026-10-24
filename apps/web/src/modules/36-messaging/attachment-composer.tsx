@@ -1,3 +1,4 @@
+import { isVoiceNoteMimeType } from "@chartwarden/types";
 import { Glyph } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX, RefObject } from "react";
@@ -242,7 +243,10 @@ export function AttachmentChips({
             const name = displayFileName(chip.fileName);
             return (
               <li key={chip.localId} className={`wx-attachment-chip is-${chip.status}`}>
-                <Glyph name="file-text" size={16} />
+                <Glyph
+                  name={isVoiceNoteMimeType(chip.contentType) ? "mic" : "file-text"}
+                  size={16}
+                />
                 <span className="wx-attachment-name" title={name}>
                   {name}
                 </span>

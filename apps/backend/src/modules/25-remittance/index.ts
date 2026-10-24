@@ -52,6 +52,8 @@ export {
   buildDrizzleCaseViewService,
   buildDrizzleDenialRouteService,
   buildDrizzleLaterTierService,
+  buildDrizzlePayerAppealPathService,
+  buildDrizzlePayerAppealService,
   buildDrizzleQicService,
   buildDrizzleSubmissionService,
   buildDrizzleReopeningService,

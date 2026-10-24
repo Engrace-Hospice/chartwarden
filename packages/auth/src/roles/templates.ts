@@ -342,14 +342,16 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       "messaging.export.download",
       // WP 6.6 (ADR-0096): the compliance officer manages external partner shares (migration 1180 covers existing roles).
       "messaging.share.manage",
+      // WP 6.10 (ADR-0102): the compliance officer manages alarm ingest sources (migration 1250 covers existing roles).
+      "messaging.alarm_ingest.manage",
       // WP 5.6 (ADR-0055 item 7): request and approve a message redaction (two different people; migration 1156 covers existing roles).
       "messaging.redact.request",
       "messaging.redact.approve",
-      // M25 milestone 9a-1: the compliance officer reviews and publishes denial playbooks someone else wrote (migration 1251 covers
+      // M25 milestone 9a-1: the compliance officer reviews and publishes denial playbooks someone else wrote (migration 1252 covers
       // existing roles; administrator / org_admin get the keys through the non-platform catalog).
       "playbook.read",
       "playbook.publish",
-      // M25 milestone 9a-2: the leadership medical-review report (migration 1252 covers existing roles).
+      // M25 milestone 9a-2: the leadership medical-review report (migration 1253 covers existing roles).
       "medical_review.report.read",
     ],
   },

@@ -69,6 +69,8 @@ import {
 } from "@chartwarden/tenancy";
 import {
   ACK_ESCALATION_REQUIRED_ROLE,
+  ALARM_INGEST_IP_BUDGET_PER_MINUTE,
+  ALARM_INGEST_SOURCE_BUDGET_PER_MINUTE,
   ChartWardenError,
   DegradedError,
   type Npi,
@@ -81,6 +83,7 @@ import {
 import type {
   AdmissionStatusReader,
   ChartPromotionSourceReader,
+  MessagingAiPort,
   OrgId,
   PatientAddressReader,
   PatientId,
@@ -304,9 +307,10 @@ import { buildGlobalSearchRateLimit } from "./bootstrap/plugins/global-search-ra
 import {
   ACK_BROADCAST_ROUTE_RATE_LIMIT,
   AFTERHOURS_TRIAGE_LINES_ROUTE_RATE_LIMIT,
+  AI_ROUTE_RATE_LIMIT,
+  DEATH_BOARD_ROUTE_RATE_LIMIT,
   ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
   MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
-  DEATH_BOARD_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
   createRouteRateLimit,
 } from "./bootstrap/plugins/route-rate-limit";
@@ -483,6 +487,7 @@ import {
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
   createElectionAddendumService,
+  createNomncService,
   electionAddendumComplianceForOrg,
   electionPeriodContextForOrg,
   idgActiveAdmissionsForOrg,
@@ -1124,6 +1129,8 @@ import {
   buildDrizzleDenialRouteService,
   buildDrizzleDenialSeedStore,
   buildDrizzleLaterTierService,
+  buildDrizzlePayerAppealPathService,
+  buildDrizzlePayerAppealService,
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
@@ -1379,6 +1386,7 @@ import {
   createDrizzleAiTenantConsentStore,
   createFilesystemAiPromptArtifactReader,
   createM32EventEmitter,
+  createMessagingAiPort,
   createOrganizationSettingsAiTokenBudgetResolver,
   createUnconfiguredAiTokenBudgetResolver,
   denyStubAiPlatformAbacResolver,
@@ -1531,10 +1539,13 @@ import {
   buildPresenceDeps,
   buildPromotionDeps,
   buildReviewDeps,
+  UNAVAILABLE_AI_PORT,
+  buildAiDeps,
   buildSbarDeps,
   buildSnoozeReminderBinding,
   buildTaskDeps,
   buildUrgentDeps,
+  buildVoiceNotesEnabled,
   createAttachmentService,
   createBreakGlassReviewSweep,
   createBullmqTimerPort,
@@ -1773,6 +1784,8 @@ export function wireModuleSeams(
     onEscalationRouterBound?: (boundOrgCount: number) => void;
     /** WP 3.7 - the chart-promotion reader M8 and M14 show their reviewer (M36's binding). Absent => fail-closed deny-stub. */
     promotionSource?: ChartPromotionSourceReader;
+    /** ADR-0095 - receives M32's MessagingAiPort once the governed pipeline is built (M36's AI binding resolves it lazily). Not called => "AI unavailable". */
+    onMessagingAiPort?: (port: MessagingAiPort) => void;
   } = {},
 ): void {
   // AUTH-T05b: pass the DB-backed SessionContextStore in production (composition root supplies it when
@@ -2547,25 +2560,29 @@ export function wireModuleSeams(
         ),
       })
     : undefined;
+  const m32LivePipeline =
+    deps.db && deps.platformDb && m32Backends.length > 0
+      ? buildLiveAiInvocationPipeline({
+          db: deps.db,
+          platformDb: deps.platformDb,
+          auditBypass: m34PlatformBypassAuditor,
+          keys: {
+            dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+            dekForOrgVersion: (orgId, version) =>
+              getTenantKeyProvider().dekForOrgVersion(orgId, version),
+          },
+          flags: createDrizzleFeatureFlagReader(deps.db),
+          backends: m32Backends,
+          events: wiredM32Events,
+        })
+      : undefined;
   registerAiPlatformSeams(
     deps.db
       ? {
           ...(m32PromptRegistry ? { promptRegistry: m32PromptRegistry } : {}),
-          ...(deps.platformDb && m32Backends.length > 0
+          ...(m32LivePipeline
             ? {
-                pipeline: buildLiveAiInvocationPipeline({
-                  db: deps.db,
-                  platformDb: deps.platformDb,
-                  auditBypass: m34PlatformBypassAuditor,
-                  keys: {
-                    dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
-                    dekForOrgVersion: (orgId, version) =>
-                      getTenantKeyProvider().dekForOrgVersion(orgId, version),
-                  },
-                  flags: createDrizzleFeatureFlagReader(deps.db),
-                  backends: m32Backends,
-                  events: wiredM32Events,
-                }),
+                pipeline: m32LivePipeline,
                 actors: createDrizzleAiSeamActorResolver(deps.db),
                 projector: createDocLensOutputProjector(),
               }
@@ -2573,6 +2590,19 @@ export function wireModuleSeams(
         }
       : {},
   );
+  // ADR-0095 (M36 WP 6.5) - hand the governed pipeline to M36's messaging AI as a PORT (text in, text out, one recorded human decision). Bound only
+  // when a model backend is configured AND the prompt registry exists; every other gate (flag, lifecycle - the two messaging capabilities are PROPOSED
+  // and unseeded - opt-in, kill switch, BAA/ZDR routing) still runs inside the pipeline. M36 resolves it lazily (it mounts before this runs).
+  if (deps.db && m32LivePipeline && m32PromptRegistry && deps.onMessagingAiPort) {
+    deps.onMessagingAiPort(
+      createMessagingAiPort({
+        pipeline: m32LivePipeline,
+        prompts: m32PromptRegistry,
+        actors: createDrizzleAiSeamActorResolver(deps.db),
+        warn: (message, context) => console.warn(message, context),
+      }),
+    );
+  }
   // M32-T07 (§4.7) — the six named ABAC predicate resolvers. Registered here, beside the seam wiring,
   // because `ai_prohibited_zone_respected` resolves through the SAME `AIPromptRegistry` instance the
   // seam publishes: two registries would be two answers to D18's contraband question.
@@ -3899,6 +3929,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         documentValidator: createDocumentReaderEvidenceValidator(() => getSeam("DocumentReader")),
       })
     : null;
+  // Milestone 10a — NOMNC delivery + BFCC-QIO expedited review record-keeping (typed facts, typed deadlines). Its
+  // routes mount in `mountAdmissionRoutes`; the 15-minute deadline scan runs in M6's `admission.window_alert` worker.
+  const m6Nomnc = dbHandle ? createNomncService({
+        db: dbHandle.db,
+        outbox: m6OutboxPublisher,
+        // A linked document must be an ACTIVE M22 version of this org's patient + admission (else 404).
+        documentValidator: createDocumentReaderEvidenceValidator(() => getSeam("DocumentReader")),
+      }) : null;
   // M6 → M37 (confirm-handshake fix, 2026-08-05) — the LIVE `IpuBedAssignmentProvider` seam (registered
   // by M37 at boot), resolved lazily per call (the `m24SignedEncounters`/`m24CoverageResolver` precedent)
   // so registration order at boot never matters. This is the real "bedId verified with M37" check the
@@ -4481,6 +4519,31 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         warn: (message, context) => console.warn(message, context),
       })
     : undefined;
+  // WP 6.5 (ADR-0095, PROPOSED) - AI thread summaries and reply drafts. Off by default per tenant (`messaging.ai.enabled`) and answers "AI unavailable"
+  // until M32's governed pipeline is bound to the port below (a configured model backend, the prompt registry, and - inside the pipeline - ai.full, the
+  // capability lifecycle, tenant opt-in, kill switch and BAA/ZDR routing). The port is resolved lazily: wireModuleSeams runs after this mount.
+  const m36AiPortRef: { current?: MessagingAiPort } = {};
+  const m36AiPort: MessagingAiPort = {
+    summarize: (request) => (m36AiPortRef.current ?? UNAVAILABLE_AI_PORT).summarize(request),
+    draftReply: (request) => (m36AiPortRef.current ?? UNAVAILABLE_AI_PORT).draftReply(request),
+    recordOutcome: (input) => (m36AiPortRef.current ?? UNAVAILABLE_AI_PORT).recordOutcome(input),
+  };
+  if (dbHandle && !rateLimitStore) {
+    console.warn(
+      "M36 AI quotas use a per-replica in-memory store (no REDIS_URL): the per-user and per-channel limits are not shared across replicas or restarts",
+    );
+  }
+  const m36Ai = dbHandle
+    ? buildAiDeps({
+        db: dbHandle.db,
+        flags: featureFlagReader,
+        messaging: createDbMessagingRouteService(dbHandle.db),
+        // Fail-closed quotas on a PHI disclosure; the in-memory store is per replica (weaker, still bounded).
+        rateLimitStore: rateLimitStore ?? createInMemoryRateLimitStore(),
+        port: m36AiPort,
+        warn: (message, context) => console.warn(message, context),
+      })
+    : undefined;
   // WP 3.10 - "ask a nurse about a medication". One binding for the routes; off unless the tenant flags
   // `messaging.medication_questions` AND `messaging.tasks` are on. Never an order path: it reads no order or prescribing
   // permission. The same messaging service instance sends the message, link and task in one transaction.
@@ -5016,6 +5079,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               closureFor: (organizationId, q) =>
                 priorElectionClosureForOrg(dbHandle.db, organizationId, q),
             },
+            // Milestone 10a — the NOMNC / expedited-review routes.
+            m6Nomnc ?? undefined,
           ); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
           // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under
           // RLS, replacing the retired in-memory scaffold. Each module's write lifecycle is live (no route
@@ -5210,6 +5275,35 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               };
             })(),
             // ── end WP 6.6 external partner share mount
+            // ── WP 6.10 (ADR-0102, PROPOSED) alarm ingest, WATCH ONLY. Flag `messaging.alarm_ingest` (absent = off) gates the inbound route and
+            // create / rotate; list and disable never. Budgets: per client address before any database work (300/min), then per source after the
+            // signature is proven (60/min). The inbound route is mounted only when the ADR-0096 D17 trusted-proxy gate passes (the boot warning for
+            // an invalid TRUSTED_PROXY_CIDRS is the external-share one above). The alerts are ordinary M36 alerts through the AlertEmitter seam.
+            alarmIngest: (() => {
+              const store = rateLimitStore ?? createInMemoryRateLimitStore();
+              const budget = (keyPrefix: string, limit: number) =>
+                createBudgetedRateLimiter(store, {
+                  limit,
+                  windowMs: 60 * 1000,
+                  keyPrefix,
+                  // Fail CLOSED: the pre-auth budget is the abuse control of an unauthenticated route; senders retry on 429.
+                  failClosed: true,
+                  onStoreError: (err) => app.log.warn({ err }, "alarm ingest rate-limit store error"),
+                });
+              return {
+                flags: featureFlagReader,
+                alerts: () => getSeam("AlertEmitter") as AlertEmitter,
+                ingestAvailable: partnerAccessAvailability(process.env).available,
+                ipLimiter: budget("m36-alarm-ingest:ip", ALARM_INGEST_IP_BUDGET_PER_MINUTE),
+                sourceLimiter: budget(
+                  "m36-alarm-ingest:source",
+                  ALARM_INGEST_SOURCE_BUDGET_PER_MINUTE,
+                ),
+                warn: (event: string, context: Record<string, unknown>) =>
+                  app.log.warn(context, event),
+              };
+            })(),
+            // ── end WP 6.10 alarm ingest mount
             // WP 5.8 (ADR-0087, PROPOSED) - break-glass read grants; honoured only while the tenant flag `messaging.break_glass` is on.
             breakGlass: {
               flags: featureFlagReader,
@@ -5232,7 +5326,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // GAP-063 — delivers the sms/email endpoint OTP; unbound => registration answers 503.
             sendEndpointVerificationCode: outOfBandBinding.sendEndpointVerificationCode,
             outbox: m36OutboxPublisher,
-            attachments: m36AttachmentBinding,
+            // WP 6.3 (ADR-0094) - voice notes are attachments; audio is refused at authorize unless the tenant flag `messaging.voice_notes` is on.
+            attachments: {
+              ...m36AttachmentBinding,
+              voiceNotesEnabled: buildVoiceNotesEnabled(featureFlagReader),
+            },
             // WP 5.6 (ADR-0086) - retention overview and legal holds: M4's hold seam (apply/release in the caller's tx) and the audit reader.
             retentionGovernance: {
               holds: createMessagingGovernanceHoldPort({ outbox: m4OutboxPublisher }),
@@ -5291,6 +5389,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                       store: rateLimitStore ?? createInMemoryRateLimitStore(),
                       limit: DEATH_BOARD_ROUTE_RATE_LIMIT,
                       keyPrefix: "m36-death-board",
+                    }),
+                  },
+                }
+              : {}),
+            // WP 6.5 (ADR-0095) - AI summaries and reply drafts; off unless the tenant flag `messaging.ai.enabled` is on, and unavailable until M32 is bound.
+            ...(m36Ai
+              ? {
+                  ai: {
+                    service: m36Ai.service,
+                    rateLimit: createRouteRateLimit({
+                      store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                      limit: AI_ROUTE_RATE_LIMIT,
+                      keyPrefix: "m36-ai",
                     }),
                   },
                 }
@@ -5939,6 +6050,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               sources: buildSeamAppealSourcePorts(),
             }),
             caseViewService: buildDrizzleCaseViewService(dbHandle.db),
+            // Milestone 12a-1: the organization's payer appeal paths (written by a person, verified by a second one;
+            // nothing is seeded) and payer appeal cases keyed on the denial. Payer names come through M40's seam.
+            payerAppealPathService: buildDrizzlePayerAppealPathService(dbHandle.db),
+            payerAppealService: buildDrizzlePayerAppealService(dbHandle.db, {
+              sources: buildSeamAppealSourcePorts(),
+              providerZones: (tx, providerEntityId) =>
+                buildFoundationSiteReader().providerEntityTimezones(tx, providerEntityId),
+            }),
             // Milestone 8a-1: advisory documentation readiness. The assistant port is the deny-stub (no model is
             // reachable); the deterministic gap view and the review record work with AI off.
             adrReadinessService: buildDrizzleAdrReadinessService(dbHandle.db, {
@@ -6532,6 +6651,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         caseloadShiftCacheRedis: m5CaseloadShiftCacheRedisClient,
         messageBodyCipher: m36MessageBodyCipher,
         ...(m36Promotions ? { promotionSource: m36Promotions.sourceReader } : {}),
+        onMessagingAiPort: (port) => {
+          m36AiPortRef.current = port;
+        },
       }),
     registerModuleErasers: () =>
       wireModuleErasers({

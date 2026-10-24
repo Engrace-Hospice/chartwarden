@@ -10,7 +10,7 @@ import { Button, EmptyState, Glyph, LoadingSpinner } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX, KeyboardEvent, MutableRefObject } from "react";
 import { AttachButton, AttachmentChips } from "./attachment-composer";
-import { sendBlockedReason } from "./attachment-utils";
+import { sendBlockedReason, voiceNoteNeedsText } from "./attachment-utils";
 import { DraftSyncNotice, escapeKeepsMine } from "./draft-conflict-prompt";
 import { LegalHoldChip } from "./legal-hold-chip";
 import { MessageRow } from "./message-row";
@@ -207,7 +207,7 @@ export function ThreadPanel({
     }
   }
 
-  const sendHint = sendBlockedReason(uploads.chips);
+  const sendHint = sendBlockedReason(uploads.chips, draft);
   const { root } = thread;
   const replyCount = root?.replyCount ?? replies.length;
 
@@ -365,7 +365,10 @@ export function ThreadPanel({
             <Button
               type="submit"
               disabled={
-                held || (!draft.trim() && uploads.sendableIds.length === 0) || uploads.blocksSend
+                held ||
+                (!draft.trim() && uploads.sendableIds.length === 0) ||
+                uploads.blocksSend ||
+                voiceNoteNeedsText(uploads.chips, draft)
               }
               loading={sending}
               aria-label="Send reply"

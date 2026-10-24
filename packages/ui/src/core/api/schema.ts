@@ -2336,6 +2336,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admissions/{id}/expedited-deadlines/{deadlineId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a typed deadline or mark it met */
+        patch: operations["patchApiV1AdmissionsByIdExpediteddeadlinesByDeadlineId"];
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/expedited-reviews/{reviewId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Record the DENC / records-sent facts or the QIO decision */
+        patch: operations["patchApiV1AdmissionsByIdExpeditedreviewsByReviewId"];
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/expedited-reviews/{reviewId}/deadlines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Type a DENC / records / decision deadline from the QIO's call (date AND time, source note) */
+        post: operations["postApiV1AdmissionsByIdExpeditedreviewsByReviewIdDeadlines"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/expedited-reviews/{reviewId}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw an open QIO review */
+        post: operations["postApiV1AdmissionsByIdExpeditedreviewsByReviewIdWithdraw"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admissions/{id}/face-to-face": {
         parameters: {
             query?: never;
@@ -2382,6 +2450,92 @@ export interface paths {
         put?: never;
         /** Record a level-of-care change (§5.6) */
         post: operations["postApiV1AdmissionsByIdLevelofcare"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/nomnc": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** NOMNC delivery record, history, QIO review, typed deadlines and the prompts for what is missing */
+        get: operations["getApiV1AdmissionsByIdNomnc"];
+        put?: never;
+        /** Record a NOMNC delivery as typed (date AND time, source note); supersedes the active record when asked */
+        post: operations["postApiV1AdmissionsByIdNomnc"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/nomnc/{noticeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Record the acknowledgement, attach the copy, or amend the delivery note */
+        patch: operations["patchApiV1AdmissionsByIdNomncByNoticeId"];
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/nomnc/{noticeId}/deadlines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Type a deadline from the notice (date AND time, mandatory source note) */
+        post: operations["postApiV1AdmissionsByIdNomncByNoticeIdDeadlines"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/nomnc/{noticeId}/expedited-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Open the BFCC-QIO expedited review for a NOMNC (care team and compliance are alerted) */
+        post: operations["postApiV1AdmissionsByIdNomncByNoticeIdExpeditedreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admissions/{id}/nomnc/{noticeId}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw an active NOMNC record (reason required) */
+        post: operations["postApiV1AdmissionsByIdNomncByNoticeIdWithdraw"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6875,7 +7029,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim, with the next deadline */
+        /** The one case view: ADR, reopening, appeal chain, submission attempts, recorded deadlines and audit requests on one claim (Medicare or Medicaid), with the next deadline */
         get: operations["getApiV1ClaimsByClaimIdCaseview"];
         put?: never;
         post?: never;
@@ -8189,6 +8343,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/denials/{denialCaseId}/case-view": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The one case view keyed on the denial, so a claim-less commercial denial has one: payer appeal levels, recorded deadlines and (with a claim) the claim timeline, with the next deadline */
+        get: operations["getApiV1DenialsByDenialCaseIdCaseview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/denials/{denialCaseId}/payer-appeals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A denial's payer appeal levels, the payer's recorded path (or the no-path prompt) and whether a payer appeal may be opened */
+        get: operations["getApiV1DenialsByDenialCaseIdPayerappeals"];
+        put?: never;
+        /** Open a payer appeal level on a non-Medicare denial; a deadline is computed only from a complete path row and a typed notice date */
+        post: operations["postApiV1DenialsByDenialCaseIdPayerappeals"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/denials/{id}": {
         parameters: {
             query?: never;
@@ -8215,7 +8404,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Open an appeal against a denial case (§4.1); refused with 409 ROUTE_IS_REOPENING when the routing rules send the denial to a MAC reopening */
+        /** Open an appeal against a denial case (§4.1); refused with 409 ROUTE_IS_REOPENING when the routing rules send the denial to a MAC reopening, and with 422 PAYER_IS_MEDICAID when the denied remittance is Medicaid (Medicare tiers do not apply) */
         post: operations["postApiV1DenialsByIdAppeals"];
         delete?: never;
         options?: never;
@@ -8232,7 +8421,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Appeal a denial the routing rules send to a MAC reopening, with an audited reason (milestone 3) */
+        /** Appeal a denial the routing rules send to a MAC reopening, with an audited reason (milestone 3); a Medicaid denial is still refused with 422 PAYER_IS_MEDICAID */
         post: operations["postApiV1DenialsByIdAppealsOverride"];
         delete?: never;
         options?: never;
@@ -8639,7 +8828,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** End-of-episode worklist, one bucket per call: admissions ready for a discharge / transfer-out / revocation / death, stay-ending records missing a claim detail, and for-cause discharges awaiting cosign (the last needs discharge.cosign_for_cause) */
+        /** End-of-episode worklist, one bucket per call: admissions ready for a discharge / transfer-out / revocation / death, stay-ending records missing a claim detail, and for-cause discharges awaiting cosign (the last needs discharge.cosign_for_cause); milestone 10a adds the open QIO reviews and the NOMNC records with no appeal-request deadline typed (both need nomnc.read) */
         get: operations["getApiV1DischargesWorklist"];
         put?: never;
         post?: never;
@@ -14276,6 +14465,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/ai/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the AI summary panel is offered to the caller (WP 6.5, ADR-0095 PROPOSED; messaging.read): true only when the tenant flag `messaging.ai.enabled` is on AND the caller holds `messaging.ai.use`. A single boolean; any failure reads as false. It does not say whether a model is bound (a call may still answer AI unavailable). Never cached */
+        get: operations["getApiV1MessagingAiStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/alarm-ingest/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** INBOUND, no user session. A third-party alarm becomes an ordinary in-app alert (never a response request, never routed or paged by this route). Headers x-wx-key-id (`<organizationId>.<sourceId>`), x-wx-timestamp (epoch seconds, within 300 s) and x-wx-signature (`v1=` + hex HMAC-SHA256 of `<timestamp>.<keyId>.<raw body>` under the source secret). Every refusal up to a wrong signature is the same 401. Body at most 1 KiB, no free text. `eventId` is the idempotency key (a replay is 202 duplicate; the same id with a different body is 409). The effective severity is the requested one capped at the mapping's ceiling (info or warn). 422 ALARM_KIND_UNMAPPED when the code is not mapped (recorded and counted); 503 ALARM_NOT_ALERTED when the alert could not be raised (retry with the same eventId); 429 over budget */
+        post: operations["postApiV1MessagingAlarmingestEvents"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/alarm-sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The tenant's alarm sources (messaging.alarm_ingest.manage; never depends on the flag): ids, a staff-chosen name, state, secret version, the alarm-code mappings with their severity ceilings, the last accepted instant and the last 24 hours' outcome counts (alerted, nobody to alert, unmapped, waiting). No secret, cipher or alarm detail */
+        get: operations["getApiV1MessagingAlarmsources"];
+        put?: never;
+        /** Create an alarm source (messaging.alarm_ingest.manage + a fresh step-up; 404 while the tenant flag is off; 503 ALARM_INGEST_UNAVAILABLE without trusted proxy configuration; 409 at 20 enabled sources). Each mapping sends a sender alarm code to one alarm_ingest.* catalog alert type with a severity ceiling of info or warn (never critical). The credential (`keyId` and `secret`) is returned ONCE; the secret is stored sealed under the tenant key */
+        post: operations["postApiV1MessagingAlarmsources"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/alarm-sources/{id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disable a source for good (messaging.alarm_ingest.manage + a fresh step-up; never depends on the flag). One way: create a new source to resume. Idempotent */
+        post: operations["postApiV1MessagingAlarmsourcesByIdDisable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/alarm-sources/{id}/rotate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replace a source's secret (messaging.alarm_ingest.manage + a fresh step-up; 404 while the flag is off or the source is unknown or disabled). The old secret stops verifying at once; the new credential is returned ONCE */
+        post: operations["postApiV1MessagingAlarmsourcesByIdRotatesecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/analytics/response": {
         parameters: {
             query?: never;
@@ -14439,7 +14714,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Authorize an attachment upload: returns attachmentId + a presigned PUT (201; 415 type, 422 size/checksum/name, 410 archived, 413 ATTACHMENT_QUOTA_EXCEEDED when the user's or the organization's total stored bytes would pass the quota (details[0].message is the scope: user | organization), 409 TENANT_ERASURE_IN_PROGRESS while the organization's messaging data is being erased, 429 TOO_MANY_OPEN_UPLOADS past 20 open uploads per user; Idempotency-Key required; Cache-Control: no-store) */
+        /** Authorize an attachment upload: returns attachmentId + a presigned PUT (201; 415 type (audio/webm and audio/mp4 voice notes are allowed only while the tenant flag messaging.voice_notes is on, and are capped at 8,000,000 bytes), 422 size/checksum/name, 410 archived, 413 ATTACHMENT_QUOTA_EXCEEDED when the user's or the organization's total stored bytes would pass the quota (details[0].message is the scope: user | organization), 409 TENANT_ERASURE_IN_PROGRESS while the organization's messaging data is being erased, 429 TOO_MANY_OPEN_UPLOADS past 20 open uploads per user; Idempotency-Key required; Cache-Control: no-store) */
         post: operations["postApiV1MessagingAttachmentsUploads"];
         delete?: never;
         options?: never;
@@ -14600,6 +14875,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/channels/{id}/ai-outcomes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record what the person did with an AI answer (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + channel_visibility): accepted, edited or rejected, on the M32 ai_invocation row. Only the actor's own call, about THIS channel, by a messaging capability, and only while the outcome is still open (pending, or accepted which may be refined to edited): anything else, including an unknown id, is the same 404. 204 */
+        post: operations["postApiV1MessagingChannelsByIdAioutcomes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/channels/{id}/archive": {
         parameters: {
             query?: never;
@@ -14631,6 +14923,23 @@ export interface paths {
         post?: never;
         /** Discard the caller's draft (idempotent, 204) */
         delete: operations["deleteApiV1MessagingChannelsByIdDraft"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/draft-replies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Up to two AI draft replies for the COMPOSER (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + messaging.send + the channel_visibility membership predicate; not for an archived channel). Same input rules, gates, limits (20 per user per hour) and refusals as summaries. The draft is returned in the response only: it is never written to the message store or the drafts store and never queued or sent; a human edits it and sends through the normal send path. Plain text only; no attachments, mentions or orders. Never cached */
+        post: operations["postApiV1MessagingChannelsByIdDraftreplies"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -15064,6 +15373,23 @@ export interface paths {
         post?: never;
         /** End the caller's snooze of a conversation (idempotent; cleared=false when none was set) */
         delete: operations["deleteApiV1MessagingChannelsByIdSnooze"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/channels/{id}/summaries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** An AI summary of the part of this conversation the caller can read (WP 6.5, ADR-0095 PROPOSED; messaging.ai.use + the channel_visibility MEMBERSHIP predicate, never the break-glass read variant; membership and permission are checked again immediately before the model is called and once more before the answer is returned). Optional `thread_root_message_id` summarises one reply thread. The input is the caller's own thread read, bounded to the newest 50 messages of the last 14 days, with redacted, deleted, legally held, system and unreadable messages EXCLUDED (the model sees only the placeholder; `withheld_count` is a bare count), senders replaced by a role token and alias, the patient by [PATIENT], times relative, identifiers masked. ONLY a patient's care-team channel is eligible (any other kind may name other patients in free text and is refused as AI_NOT_AVAILABLE_FOR_CHANNEL). A pending (requested, not approved) redaction also withholds a message; `withheld_count` leaves legally held messages out (a hold's existence is not for readers). Fewer than 3 includable messages, or a model that says so, is `status: insufficient_context` with no points (the model is not called for the former). Every point has `confidence` and `sources` mapped server-side from opaque refs to message ids of THIS conversation that were sent (an invented or withheld ref is dropped and the point demoted; a point with no valid source is discarded); text is plain (links, markup and images are stripped); an answer that states a dose, order or diagnosis is refused with 422 AI_OUTPUT_REFUSED. 404 AI_NOT_ENABLED while the tenant flag is off; 422 AI_NOT_AVAILABLE_FOR_CHANNEL for a Part 2 patient (generic; the model is never called); 429 over the limits (10 per user per hour, 3 per channel per 10 minutes; a quota store outage refuses); 503 AI_UNAVAILABLE for every other refusal (M32 gates, no BAA-covered backend, vendor error, invalid answer twice). Nothing is stored by M36; the only server copy is M32's encrypted ai_invocation row. Writes one m36.ai.summary_viewed audit row (ids and counts). Never cached; no Idempotency-Key */
+        post: operations["postApiV1MessagingChannelsByIdSummaries"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -18704,6 +19030,178 @@ export interface paths {
         get: operations["getApiV1PatientsMessagingsearch"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeal-paths": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The organization's payer appeal paths (written by a person; none are seeded) */
+        get: operations["getApiV1Payerappealpaths"];
+        put?: never;
+        /** Write a draft payer appeal path from a contract or notice (source note required); a second person verifies it */
+        post: operations["postApiV1Payerappealpaths"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeal-paths/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One payer appeal path with its levels, source notes and verification */
+        get: operations["getApiV1PayerappealpathsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeal-paths/{id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire a draft or active path; cases opened under it keep their snapshot (If-Match) */
+        post: operations["postApiV1PayerappealpathsByIdRetire"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeal-paths/{id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify a draft path as a person other than its author; it becomes active and frozen (If-Match) */
+        post: operations["postApiV1PayerappealpathsByIdVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeals/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One payer appeal level with its deadline derivation, recorded deadlines and decision */
+        get: operations["getApiV1PayerappealsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeals/{id}/notice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Type the date printed on the notice a level's clock runs from (If-Match); computes the deadline once */
+        put: operations["putApiV1PayerappealsByIdNotice"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeals/{id}/recorded-deadlines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Deadlines typed from a notice for this payer appeal level, each with its source note */
+        get: operations["getApiV1PayerappealsByIdRecordeddeadlines"];
+        put?: never;
+        /** Record a due date typed from a payer notice (the source note is required) */
+        post: operations["postApiV1PayerappealsByIdRecordeddeadlines"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeals/{id}/recorded-deadlines/{deadlineId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Correct a recorded deadline until it is satisfied (If-Match) */
+        patch: operations["patchApiV1PayerappealsByIdRecordeddeadlinesByDeadlineId"];
+        trace?: never;
+    };
+    "/api/v1/payer-appeals/{id}/recorded-deadlines/{deadlineId}/satisfy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a recorded deadline satisfied (If-Match) */
+        post: operations["postApiV1PayerappealsByIdRecordeddeadlinesByDeadlineIdSatisfy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/payer-appeals/{id}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record that a level was submitted, is under review, was decided, closed or withdrawn (If-Match) */
+        post: operations["postApiV1PayerappealsByIdState"];
         delete?: never;
         options?: never;
         head?: never;
@@ -23507,6 +24005,23 @@ export interface paths {
         put?: never;
         /** Record an intentional hold before the grace window expires */
         post: operations["postApiV1ScheduleddosesByIdIntentionalhold"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/scheduling/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Organization service timezone for authorized scheduling forms */
+        get: operations["getApiV1SchedulingContext"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -33492,6 +34007,235 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    patchApiV1AdmissionsByIdExpediteddeadlinesByDeadlineId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                deadlineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    label?: string | null;
+                    due?: {
+                        date?: string | null;
+                        time?: string | null;
+                    };
+                    sourceNote?: string;
+                    noticeDocumentId?: string | null;
+                    noticeDocumentVersionId?: string | null;
+                    satisfy?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        subject: "notice" | "review";
+                        subjectId: string;
+                        kind: "appeal_request" | "denc_delivery" | "records_to_qio" | "qio_decision" | "other";
+                        label: string | null;
+                        dueAt: string;
+                        dueLocal: string;
+                        zone: string;
+                        sourceNote: string;
+                        noticeDocumentId: string | null;
+                        satisfiedAt: string | null;
+                        status: "open" | "due_soon" | "past" | "satisfied" | "closed";
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1AdmissionsByIdExpeditedreviewsByReviewId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                reviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    qioReference?: string | null;
+                    dencDelivered?: {
+                        date?: string | null;
+                        time?: string | null;
+                    };
+                    dencDocumentId?: string | null;
+                    dencDocumentVersionId?: string | null;
+                    recordsSent?: {
+                        date?: string | null;
+                        time?: string | null;
+                    };
+                    recordsSentNote?: string | null;
+                    decision?: {
+                        outcome: "discharge_upheld" | "discharge_reversed" | "other";
+                        received: {
+                            date?: string | null;
+                            time?: string | null;
+                        };
+                        note?: string | null;
+                    };
+                    decisionDocumentId?: string | null;
+                    decisionDocumentVersionId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        admissionId: string;
+                        nomncNoticeId: string;
+                        state: "open" | "decided" | "withdrawn";
+                        qioName: string;
+                        qioReference: string | null;
+                        qioNotifiedAt: string;
+                        requestedByKind: "beneficiary" | "representative" | "unknown";
+                        dencDeliveredAt: string | null;
+                        dencDocumentId: string | null;
+                        recordsSentAt: string | null;
+                        recordsSentNote: string | null;
+                        decisionOutcome: ("discharge_upheld" | "discharge_reversed" | "other") | null;
+                        decisionReceivedAt: string | null;
+                        decisionNote: string | null;
+                        decisionDocumentId: string | null;
+                        version: number;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdmissionsByIdExpeditedreviewsByReviewIdDeadlines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                reviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: "appeal_request" | "denc_delivery" | "records_to_qio" | "qio_decision" | "other";
+                    label?: string | null;
+                    due: {
+                        date?: string | null;
+                        time?: string | null;
+                    };
+                    sourceNote: string;
+                    noticeDocumentId?: string | null;
+                    noticeDocumentVersionId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        subject: "notice" | "review";
+                        subjectId: string;
+                        kind: "appeal_request" | "denc_delivery" | "records_to_qio" | "qio_decision" | "other";
+                        label: string | null;
+                        dueAt: string;
+                        dueLocal: string;
+                        zone: string;
+                        sourceNote: string;
+                        noticeDocumentId: string | null;
+                        satisfiedAt: string | null;
+                        status: "open" | "due_soon" | "past" | "satisfied" | "closed";
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdmissionsByIdExpeditedreviewsByReviewIdWithdraw: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                reviewId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        admissionId: string;
+                        nomncNoticeId: string;
+                        state: "open" | "decided" | "withdrawn";
+                        qioName: string;
+                        qioReference: string | null;
+                        qioNotifiedAt: string;
+                        requestedByKind: "beneficiary" | "representative" | "unknown";
+                        dencDeliveredAt: string | null;
+                        dencDocumentId: string | null;
+                        recordsSentAt: string | null;
+                        recordsSentNote: string | null;
+                        decisionOutcome: ("discharge_upheld" | "discharge_reversed" | "other") | null;
+                        decisionReceivedAt: string | null;
+                        decisionNote: string | null;
+                        decisionDocumentId: string | null;
+                        version: number;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1AdmissionsByIdFacetoface: {
         parameters: {
             query?: never;
@@ -33623,6 +34367,393 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdmissionsByIdNomnc: {
+        parameters: {
+            query?: {
+                dischargeReason?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        admissionId: string;
+                        timeZone: string;
+                        activeNotice: {
+                            id: string;
+                            admissionId: string;
+                            patientId: string;
+                            status: "active" | "superseded" | "withdrawn";
+                            servicesEndOn: string;
+                            deliveredAt: string;
+                            deliveredByUserId: string | null;
+                            recipientKind: "beneficiary" | "representative";
+                            representativeName: string | null;
+                            deliveryNote: string | null;
+                            acknowledgementKind: ("signed" | "refused" | "other") | null;
+                            acknowledgementNote: string | null;
+                            documentId: string | null;
+                            sourceNote: string;
+                            supersededById: string | null;
+                            withdrawnReason: string | null;
+                            version: number;
+                            createdAt: string;
+                        } | null;
+                        history: {
+                            id: string;
+                            admissionId: string;
+                            patientId: string;
+                            status: "active" | "superseded" | "withdrawn";
+                            servicesEndOn: string;
+                            deliveredAt: string;
+                            deliveredByUserId: string | null;
+                            recipientKind: "beneficiary" | "representative";
+                            representativeName: string | null;
+                            deliveryNote: string | null;
+                            acknowledgementKind: ("signed" | "refused" | "other") | null;
+                            acknowledgementNote: string | null;
+                            documentId: string | null;
+                            sourceNote: string;
+                            supersededById: string | null;
+                            withdrawnReason: string | null;
+                            version: number;
+                            createdAt: string;
+                        }[];
+                        review: {
+                            id: string;
+                            admissionId: string;
+                            nomncNoticeId: string;
+                            state: "open" | "decided" | "withdrawn";
+                            qioName: string;
+                            qioReference: string | null;
+                            qioNotifiedAt: string;
+                            requestedByKind: "beneficiary" | "representative" | "unknown";
+                            dencDeliveredAt: string | null;
+                            dencDocumentId: string | null;
+                            recordsSentAt: string | null;
+                            recordsSentNote: string | null;
+                            decisionOutcome: ("discharge_upheld" | "discharge_reversed" | "other") | null;
+                            decisionReceivedAt: string | null;
+                            decisionNote: string | null;
+                            decisionDocumentId: string | null;
+                            version: number;
+                            createdAt: string;
+                        } | null;
+                        deadlines: {
+                            id: string;
+                            subject: "notice" | "review";
+                            subjectId: string;
+                            kind: "appeal_request" | "denc_delivery" | "records_to_qio" | "qio_decision" | "other";
+                            label: string | null;
+                            dueAt: string;
+                            dueLocal: string;
+                            zone: string;
+                            sourceNote: string;
+                            noticeDocumentId: string | null;
+                            satisfiedAt: string | null;
+                            status: "open" | "due_soon" | "past" | "satisfied" | "closed";
+                            version: number;
+                        }[];
+                        prompts: {
+                            code: string;
+                            severity: "warn" | "info";
+                            message: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdmissionsByIdNomnc: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    supersedesId?: string | null;
+                    /** Format: date */
+                    servicesEndOn: string;
+                    delivered: {
+                        date?: string | null;
+                        time?: string | null;
+                    };
+                    recipientKind: "beneficiary" | "representative";
+                    representativeName?: string | null;
+                    deliveryNote?: string | null;
+                    acknowledgementKind?: ("signed" | "refused" | "other") | null;
+                    acknowledgementNote?: string | null;
+                    documentId?: string | null;
+                    documentVersionId?: string | null;
+                    sourceNote: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        admissionId: string;
+                        patientId: string;
+                        status: "active" | "superseded" | "withdrawn";
+                        servicesEndOn: string;
+                        deliveredAt: string;
+                        deliveredByUserId: string | null;
+                        recipientKind: "beneficiary" | "representative";
+                        representativeName: string | null;
+                        deliveryNote: string | null;
+                        acknowledgementKind: ("signed" | "refused" | "other") | null;
+                        acknowledgementNote: string | null;
+                        documentId: string | null;
+                        sourceNote: string;
+                        supersededById: string | null;
+                        withdrawnReason: string | null;
+                        version: number;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1AdmissionsByIdNomncByNoticeId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                noticeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    deliveryNote?: string | null;
+                    acknowledgementKind?: ("signed" | "refused" | "other") | null;
+                    acknowledgementNote?: string | null;
+                    documentId?: string | null;
+                    documentVersionId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        admissionId: string;
+                        patientId: string;
+                        status: "active" | "superseded" | "withdrawn";
+                        servicesEndOn: string;
+                        deliveredAt: string;
+                        deliveredByUserId: string | null;
+                        recipientKind: "beneficiary" | "representative";
+                        representativeName: string | null;
+                        deliveryNote: string | null;
+                        acknowledgementKind: ("signed" | "refused" | "other") | null;
+                        acknowledgementNote: string | null;
+                        documentId: string | null;
+                        sourceNote: string;
+                        supersededById: string | null;
+                        withdrawnReason: string | null;
+                        version: number;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdmissionsByIdNomncByNoticeIdDeadlines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                noticeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    kind: "appeal_request" | "denc_delivery" | "records_to_qio" | "qio_decision" | "other";
+                    label?: string | null;
+                    due: {
+                        date?: string | null;
+                        time?: string | null;
+                    };
+                    sourceNote: string;
+                    noticeDocumentId?: string | null;
+                    noticeDocumentVersionId?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        subject: "notice" | "review";
+                        subjectId: string;
+                        kind: "appeal_request" | "denc_delivery" | "records_to_qio" | "qio_decision" | "other";
+                        label: string | null;
+                        dueAt: string;
+                        dueLocal: string;
+                        zone: string;
+                        sourceNote: string;
+                        noticeDocumentId: string | null;
+                        satisfiedAt: string | null;
+                        status: "open" | "due_soon" | "past" | "satisfied" | "closed";
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdmissionsByIdNomncByNoticeIdExpeditedreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                noticeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    qioName: string;
+                    qioReference?: string | null;
+                    qioNotified: {
+                        date?: string | null;
+                        time?: string | null;
+                    };
+                    requestedByKind: "beneficiary" | "representative" | "unknown";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        admissionId: string;
+                        nomncNoticeId: string;
+                        state: "open" | "decided" | "withdrawn";
+                        qioName: string;
+                        qioReference: string | null;
+                        qioNotifiedAt: string;
+                        requestedByKind: "beneficiary" | "representative" | "unknown";
+                        dencDeliveredAt: string | null;
+                        dencDocumentId: string | null;
+                        recordsSentAt: string | null;
+                        recordsSentNote: string | null;
+                        decisionOutcome: ("discharge_upheld" | "discharge_reversed" | "other") | null;
+                        decisionReceivedAt: string | null;
+                        decisionNote: string | null;
+                        decisionDocumentId: string | null;
+                        version: number;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdmissionsByIdNomncByNoticeIdWithdraw: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                noticeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        admissionId: string;
+                        patientId: string;
+                        status: "active" | "superseded" | "withdrawn";
+                        servicesEndOn: string;
+                        deliveredAt: string;
+                        deliveredByUserId: string | null;
+                        recipientKind: "beneficiary" | "representative";
+                        representativeName: string | null;
+                        deliveryNote: string | null;
+                        acknowledgementKind: ("signed" | "refused" | "other") | null;
+                        acknowledgementNote: string | null;
+                        documentId: string | null;
+                        sourceNote: string;
+                        supersededById: string | null;
+                        withdrawnReason: string | null;
+                        version: number;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -36569,7 +37700,7 @@ export interface operations {
                         } | null;
                         deadlines: {
                             id: string;
-                            subjectKind: "appeal" | "audit_request";
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
                             subjectId: string;
                             label: string;
                             dueOn: string;
@@ -36743,9 +37874,10 @@ export interface operations {
                 content: {
                     "application/json": {
                         patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
                         items: {
                             id: string;
-                            subjectKind: "appeal" | "audit_request";
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
                             subjectId: string;
                             label: string;
                             dueOn: string;
@@ -37320,7 +38452,7 @@ export interface operations {
                         }[];
                         deadlines: {
                             id: string;
-                            subjectKind: "appeal" | "audit_request";
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
                             subjectId: string;
                             label: string;
                             dueOn: string;
@@ -37577,9 +38709,10 @@ export interface operations {
                 content: {
                     "application/json": {
                         patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
                         items: {
                             id: string;
-                            subjectKind: "appeal" | "audit_request";
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
                             subjectId: string;
                             label: string;
                             dueOn: string;
@@ -46893,7 +48026,7 @@ export interface operations {
                         generatedAt: string;
                         nextDeadline: {
                             id: string;
-                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission";
+                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission" | "payer_appeal";
                             at: string;
                             label: string;
                             state: string;
@@ -46905,7 +48038,7 @@ export interface operations {
                         } | null;
                         items: {
                             id: string;
-                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission";
+                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission" | "payer_appeal";
                             at: string;
                             label: string;
                             state: string;
@@ -50649,6 +51782,7 @@ export interface operations {
                             patientAddressId: string | null;
                             externalFacilityId: string | null;
                             rescheduledIntoVisitId: string | null;
+                            cancellationReasonCode: string | null;
                         }[];
                     };
                 };
@@ -50748,6 +51882,8 @@ export interface operations {
                 content: {
                     "application/json": {
                         items: {
+                            /** @description Payer of the denied remittance; unknown when no advice is linked (277CA / EVV-sourced) */
+                            payerKind: "medicare" | "medicaid" | "commercial" | "unknown";
                             /** Format: uuid */
                             id: string;
                             /** Format: uuid */
@@ -50777,6 +51913,206 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1DenialsByDenialCaseIdCaseview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                denialCaseId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        denialCaseId: string;
+                        claimId: string | null;
+                        patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
+                        generatedAt: string;
+                        nextDeadline: {
+                            id: string;
+                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission" | "payer_appeal";
+                            at: string;
+                            label: string;
+                            state: string;
+                            tier: string | null;
+                            relatedId?: string | null;
+                            deadlineAt: string | null;
+                            deadlineSource: "computed" | "recorded" | null;
+                            windowConfirmed: boolean;
+                        } | null;
+                        items: {
+                            id: string;
+                            kind: "appeal" | "adr" | "reopening" | "recorded_deadline" | "audit_request" | "submission" | "payer_appeal";
+                            at: string;
+                            label: string;
+                            state: string;
+                            tier: string | null;
+                            relatedId?: string | null;
+                            deadlineAt: string | null;
+                            deadlineSource: "computed" | "recorded" | null;
+                            windowConfirmed: boolean;
+                        }[];
+                        truncated: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1DenialsByDenialCaseIdPayerappeals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                denialCaseId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        denialCaseId: string;
+                        payerId: string | null;
+                        payerName: string | null;
+                        payerKind: string | null;
+                        adviceKind: string | null;
+                        refusal: "MEDICARE_PAYER" | "MEDICAID_PAYER" | "NO_PAYER_ADVICE" | null;
+                        maHint: boolean;
+                        payerUnresolved: boolean;
+                        patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
+                        path: {
+                            id: string;
+                            status: string;
+                            verified: boolean;
+                            revision: number;
+                            program: string;
+                            levels: {
+                                ordinal: number;
+                                levelKind: string;
+                                levelLabel: string;
+                                whoFiles: string;
+                                windowComplete: boolean;
+                            }[];
+                        } | null;
+                        pathPrompt: string | null;
+                        cases: {
+                            id: string;
+                            denialCaseId: string;
+                            claimId: string | null;
+                            payerId: string;
+                            program: string;
+                            pathId: string | null;
+                            pathRevision: number | null;
+                            levelOrdinal: number | null;
+                            levelKind: string;
+                            levelLabel: string;
+                            priorLevelCaseId: string | null;
+                            state: string;
+                            noticeDatedOn: string | null;
+                            deadlineAt: string | null;
+                            deadlineZone: string | null;
+                            deadlineSource: string;
+                            deadlineState: "computed" | "recorded" | "none";
+                            windowVerified: boolean;
+                            derivation: {
+                                presumedReceiptOn: string | null;
+                                calendarLastDay: string;
+                                lastFilingDay: string;
+                            } | null;
+                            prompt: string | null;
+                            pathAwaitingVerification: boolean;
+                            patientId: string | null;
+                            patientAttribution: "claim" | "unattributed";
+                            payerReference: string | null;
+                            externalReviewerName: string | null;
+                            decisionOutcome: string | null;
+                            dispositionKind: string | null;
+                            dispositionNote: string | null;
+                            needsManualReview: boolean;
+                            decisionOverdue: boolean;
+                            submittedAt: string | null;
+                            decidedAt: string | null;
+                            closedAt: string | null;
+                            version: number;
+                            deadlines: {
+                                id: string;
+                                subjectKind: "appeal" | "audit_request" | "payer_appeal";
+                                subjectId: string;
+                                label: string;
+                                dueOn: string;
+                                zone: string;
+                                dueAt: string;
+                                sourceNote: string;
+                                noticeDocumentId: string | null;
+                                satisfiedOn: string | null;
+                                status: "open" | "due_soon" | "past" | "satisfied";
+                                version: number;
+                            }[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1DenialsByDenialCaseIdPayerappeals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                denialCaseId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    program?: "commercial" | "medicare_advantage";
+                    contractLabel?: string | null;
+                    levelOrdinal?: number;
+                    levelLabel?: string;
+                    levelKind?: "internal" | "external_review" | "other";
+                    noticeDate?: string;
+                    /** Format: uuid */
+                    priorLevelCaseId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                        deadlineSource: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1DenialsById: {
         parameters: {
             query?: never;
@@ -50795,6 +52131,8 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** @description Payer of the denied remittance; unknown when no advice is linked (277CA / EVV-sourced) */
+                        payerKind: "medicare" | "medicaid" | "commercial" | "unknown";
                         /** Format: uuid */
                         id: string;
                         /** Format: uuid */
@@ -51749,7 +53087,7 @@ export interface operations {
     getApiV1DischargesWorklist: {
         parameters: {
             query: {
-                bucket: "ready" | "needs_details" | "awaiting_cosign" | "recently_discharged";
+                bucket: "ready" | "needs_details" | "awaiting_cosign" | "recently_discharged" | "qio_review_open" | "nomnc_no_deadline";
                 cursor?: string;
                 limit?: number;
             };
@@ -51778,6 +53116,8 @@ export interface operations {
                             transferEventId: string | null;
                             dischargeType: string | null;
                             effectiveDate: string | null;
+                            nextDeadlineAt?: string | null;
+                            noticeDeliveredAt?: string | null;
                             /** @description recently_discharged only: the patient's name and MRN (M5's org-scoped read); null when M5 cannot resolve it. */
                             patient?: {
                                 firstName: string;
@@ -53420,6 +54760,8 @@ export interface operations {
                 purpose: "treatment" | "payment" | "operations" | "disclosure" | "patient_access" | "amendment_review" | "survey_export";
                 recipientMembershipId?: string;
                 recipientClass?: string;
+                recipientKind?: "facility" | "payer";
+                recipientEntityId?: string;
                 ttlSeconds?: number;
             };
             header?: never;
@@ -65023,6 +66365,7 @@ export interface operations {
                             patientAddressId: string | null;
                             externalFacilityId: string | null;
                             rescheduledIntoVisitId: string | null;
+                            cancellationReasonCode: string | null;
                         }[];
                     };
                 };
@@ -68301,6 +69644,257 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingAiStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingAlarmingestEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    eventId: string;
+                    alarmKind: string;
+                    severity?: "info" | "warn" | "critical";
+                    occurredAt?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: "accepted" | "duplicate";
+                        outcome: "received" | "alerted" | "no_recipients" | "unmapped";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingAlarmsources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        sources: {
+                            id: string;
+                            name: string;
+                            enabled: boolean;
+                            secretGeneration: number;
+                            /** Format: date-time */
+                            createdAt: string;
+                            rotatedAt: string | null;
+                            disabledAt: string | null;
+                            lastAcceptedAt: string | null;
+                            mappings: {
+                                alarmKind: string;
+                                alertType: "alarm_ingest.nurse_call" | "alarm_ingest.patient_sensor" | "alarm_ingest.equipment";
+                                severityCeiling: "info" | "warn";
+                            }[];
+                            last24h: {
+                                alerted: number;
+                                noRecipients: number;
+                                unmapped: number;
+                                pending: number;
+                            };
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingAlarmsources: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name: string;
+                    mappings: {
+                        alarmKind: string;
+                        alertType: "alarm_ingest.nurse_call" | "alarm_ingest.patient_sensor" | "alarm_ingest.equipment";
+                        severityCeiling: "info" | "warn";
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        enabled: boolean;
+                        secretGeneration: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        rotatedAt: string | null;
+                        disabledAt: string | null;
+                        lastAcceptedAt: string | null;
+                        mappings: {
+                            alarmKind: string;
+                            alertType: "alarm_ingest.nurse_call" | "alarm_ingest.patient_sensor" | "alarm_ingest.equipment";
+                            severityCeiling: "info" | "warn";
+                        }[];
+                        last24h: {
+                            alerted: number;
+                            noRecipients: number;
+                            unmapped: number;
+                            pending: number;
+                        };
+                        keyId: string;
+                        secret: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingAlarmsourcesByIdDisable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        enabled: boolean;
+                        secretGeneration: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        rotatedAt: string | null;
+                        disabledAt: string | null;
+                        lastAcceptedAt: string | null;
+                        mappings: {
+                            alarmKind: string;
+                            alertType: "alarm_ingest.nurse_call" | "alarm_ingest.patient_sensor" | "alarm_ingest.equipment";
+                            severityCeiling: "info" | "warn";
+                        }[];
+                        last24h: {
+                            alerted: number;
+                            noRecipients: number;
+                            unmapped: number;
+                            pending: number;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingAlarmsourcesByIdRotatesecret: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        name: string;
+                        enabled: boolean;
+                        secretGeneration: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        rotatedAt: string | null;
+                        disabledAt: string | null;
+                        lastAcceptedAt: string | null;
+                        mappings: {
+                            alarmKind: string;
+                            alertType: "alarm_ingest.nurse_call" | "alarm_ingest.patient_sensor" | "alarm_ingest.equipment";
+                            severityCeiling: "info" | "warn";
+                        }[];
+                        last24h: {
+                            alerted: number;
+                            noRecipients: number;
+                            unmapped: number;
+                            pending: number;
+                        };
+                        keyId: string;
+                        secret: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1MessagingAnalyticsResponse: {
         parameters: {
             query?: {
@@ -69153,6 +70747,36 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1MessagingChannelsByIdAioutcomes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    invocation_id: string;
+                    invoked_at: string;
+                    outcome: "accepted" | "edited" | "rejected";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MessagingChannelsByIdArchive: {
         parameters: {
             query?: never;
@@ -69316,6 +70940,47 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingChannelsByIdDraftreplies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    thread_root_message_id?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        label: "AI draft - edit before sending";
+                        invocation_id: string;
+                        /** Format: date-time */
+                        invoked_at: string;
+                        drafts: {
+                            text: string;
+                        }[];
+                        included_count: number;
+                        withheld_count: number;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -71037,6 +72702,56 @@ export interface operations {
                 content: {
                     "application/json": {
                         cleared: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingChannelsByIdSummaries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    thread_root_message_id?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        label: "AI summary - draft - not verified";
+                        invocation_id: string | null;
+                        invoked_at: string | null;
+                        status: "ok" | "insufficient_context";
+                        points: {
+                            text: string;
+                            confidence: "high" | "medium" | "low";
+                            sources: {
+                                n: number;
+                                message_id: string;
+                                /** Format: date-time */
+                                sent_at: string;
+                            }[];
+                        }[];
+                        open_questions: string[];
+                        included_count: number;
+                        withheld_count: number;
+                        input_hash: string;
                     };
                 };
             };
@@ -82388,6 +84103,528 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1Payerappealpaths: {
+        parameters: {
+            query?: {
+                payerId?: string;
+                status?: "draft" | "active" | "retired";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            payerId: string;
+                            payerName: string;
+                            program: string;
+                            contractLabel: string | null;
+                            status: string;
+                            effectiveFrom: string;
+                            sourceNote: string;
+                            sourceDocumentId: string | null;
+                            authoredByMembershipId: string;
+                            verifiedOn: string | null;
+                            verifiedByMembershipId: string | null;
+                            supersedesPathId: string | null;
+                            revision: number;
+                            version: number;
+                            levels: {
+                                id: string;
+                                ordinal: number;
+                                levelKind: string;
+                                levelLabel: string;
+                                whoFiles: string;
+                                filingWindowDays: number | null;
+                                anchorKind: string | null;
+                                receiptPresumptionDays: number | null;
+                                dayBasis: string | null;
+                                roll: string | null;
+                                decisionDays: number | null;
+                                formLabel: string | null;
+                                channelNote: string | null;
+                                sourceNote: string;
+                            }[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Payerappealpaths: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    payerId: string;
+                    program: "commercial" | "medicare_advantage";
+                    contractLabel?: string | null;
+                    effectiveFrom: string;
+                    sourceNote: string;
+                    sourceDocumentId?: string | null;
+                    supersedesPathId?: string | null;
+                    levels: {
+                        levelKind: "internal" | "external_review" | "other";
+                        levelLabel: string;
+                        whoFiles?: "provider" | "member" | "either" | "unknown";
+                        filingWindowDays?: number | null;
+                        anchorKind?: ("notice_date" | "notice_receipt" | "remittance_date" | "prior_decision_date" | "other_typed") | null;
+                        receiptPresumptionDays?: number | null;
+                        dayBasis?: ("calendar" | "business_us_federal") | null;
+                        roll?: ("none" | "back" | "forward") | null;
+                        decisionDays?: number | null;
+                        formLabel?: string | null;
+                        channelNote?: string | null;
+                        sourceNote: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PayerappealpathsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        payerId: string;
+                        payerName: string;
+                        program: string;
+                        contractLabel: string | null;
+                        status: string;
+                        effectiveFrom: string;
+                        sourceNote: string;
+                        sourceDocumentId: string | null;
+                        authoredByMembershipId: string;
+                        verifiedOn: string | null;
+                        verifiedByMembershipId: string | null;
+                        supersedesPathId: string | null;
+                        revision: number;
+                        version: number;
+                        levels: {
+                            id: string;
+                            ordinal: number;
+                            levelKind: string;
+                            levelLabel: string;
+                            whoFiles: string;
+                            filingWindowDays: number | null;
+                            anchorKind: string | null;
+                            receiptPresumptionDays: number | null;
+                            dayBasis: string | null;
+                            roll: string | null;
+                            decisionDays: number | null;
+                            formLabel: string | null;
+                            channelNote: string | null;
+                            sourceNote: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PayerappealpathsByIdRetire: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PayerappealpathsByIdVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PayerappealsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        denialCaseId: string;
+                        claimId: string | null;
+                        payerId: string;
+                        program: string;
+                        pathId: string | null;
+                        pathRevision: number | null;
+                        levelOrdinal: number | null;
+                        levelKind: string;
+                        levelLabel: string;
+                        priorLevelCaseId: string | null;
+                        state: string;
+                        noticeDatedOn: string | null;
+                        deadlineAt: string | null;
+                        deadlineZone: string | null;
+                        deadlineSource: string;
+                        deadlineState: "computed" | "recorded" | "none";
+                        windowVerified: boolean;
+                        derivation: {
+                            presumedReceiptOn: string | null;
+                            calendarLastDay: string;
+                            lastFilingDay: string;
+                        } | null;
+                        prompt: string | null;
+                        pathAwaitingVerification: boolean;
+                        patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
+                        payerReference: string | null;
+                        externalReviewerName: string | null;
+                        decisionOutcome: string | null;
+                        dispositionKind: string | null;
+                        dispositionNote: string | null;
+                        needsManualReview: boolean;
+                        decisionOverdue: boolean;
+                        submittedAt: string | null;
+                        decidedAt: string | null;
+                        closedAt: string | null;
+                        version: number;
+                        deadlines: {
+                            id: string;
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
+                            subjectId: string;
+                            label: string;
+                            dueOn: string;
+                            zone: string;
+                            dueAt: string;
+                            sourceNote: string;
+                            noticeDocumentId: string | null;
+                            satisfiedOn: string | null;
+                            status: "open" | "due_soon" | "past" | "satisfied";
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1PayerappealsByIdNotice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    noticeDate: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                        deadlineSource: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PayerappealsByIdRecordeddeadlines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        patientId: string | null;
+                        patientAttribution: "claim" | "unattributed";
+                        items: {
+                            id: string;
+                            subjectKind: "appeal" | "audit_request" | "payer_appeal";
+                            subjectId: string;
+                            label: string;
+                            dueOn: string;
+                            zone: string;
+                            dueAt: string;
+                            sourceNote: string;
+                            noticeDocumentId: string | null;
+                            satisfiedOn: string | null;
+                            status: "open" | "due_soon" | "past" | "satisfied";
+                            version: number;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PayerappealsByIdRecordeddeadlines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    label: string;
+                    dueOn: string;
+                    sourceNote: string;
+                    noticeDocumentId?: string | null;
+                    /** Format: uuid */
+                    noticeClaimId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1PayerappealsByIdRecordeddeadlinesByDeadlineId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                deadlineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    label?: string;
+                    dueOn?: string;
+                    sourceNote?: string;
+                    noticeDocumentId?: string | null;
+                    /** Format: uuid */
+                    noticeClaimId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PayerappealsByIdRecordeddeadlinesByDeadlineIdSatisfy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                deadlineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    satisfiedOn?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PayerappealsByIdState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    move: "submit" | "begin_review" | "decide" | "close" | "withdraw";
+                    payerReference?: string | null;
+                    externalReviewerName?: string | null;
+                    outcome?: "favorable" | "partial" | "unfavorable";
+                    dispositionKind?: "decision" | "remand" | "dismissal" | "other" | null;
+                    dispositionNote?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1Paymentmethods: {
         parameters: {
             query?: never;
@@ -89187,6 +91424,16 @@ export interface operations {
                         visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
                         rrule: string;
                         status: "active" | "discontinued";
+                        /** Format: uuid */
+                        admissionId?: string;
+                        visitSetting?: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                        patientAddressId?: string | null;
+                        timeOfDayStart?: string;
+                        timeOfDayEnd?: string;
+                        timeZone?: string;
+                        /** Format: date */
+                        startDate?: string;
+                        count?: number | null;
                     }[];
                 };
             };
@@ -89244,6 +91491,16 @@ export interface operations {
                         visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
                         rrule: string;
                         status: "active" | "discontinued";
+                        /** Format: uuid */
+                        admissionId?: string;
+                        visitSetting?: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                        patientAddressId?: string | null;
+                        timeOfDayStart?: string;
+                        timeOfDayEnd?: string;
+                        timeZone?: string;
+                        /** Format: date */
+                        startDate?: string;
+                        count?: number | null;
                     };
                 };
             };
@@ -89284,6 +91541,16 @@ export interface operations {
                         visitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
                         rrule: string;
                         status: "active" | "discontinued";
+                        /** Format: uuid */
+                        admissionId?: string;
+                        visitSetting?: "patient_home" | "facility" | "inpatient_unit" | "telephonic";
+                        patientAddressId?: string | null;
+                        timeOfDayStart?: string;
+                        timeOfDayEnd?: string;
+                        timeZone?: string;
+                        /** Format: date */
+                        startDate?: string;
+                        count?: number | null;
                     };
                 };
             };
@@ -95156,6 +97423,30 @@ export interface operations {
                         medicationOrderId: string;
                         dueAt: string;
                         status: "pending" | "administered" | "missed" | "cancelled" | "intentionally_held";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1SchedulingContext: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        timeZone: string;
                     };
                 };
             };
@@ -103532,6 +105823,13 @@ export interface operations {
                         proposedVisitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
                         /** Format: date */
                         proposedForDate: string;
+                        source?: string;
+                        suggestedMembershipId?: string | null;
+                        /** Format: date-time */
+                        proposedStartedAt?: string;
+                        /** Format: date-time */
+                        proposedEndedAt?: string;
+                        publishedAsVisitId?: string | null;
                         status: "pending" | "published" | "dismissed" | "stale";
                     }[];
                 };
@@ -103573,6 +105871,13 @@ export interface operations {
                         proposedVisitPurpose: "routine_visit" | "prn" | "aide_poc" | "msw_assessment" | "msw_followup" | "chaplain_visit" | "chaplain_assessment" | "volunteer_visit" | "f2f" | "recert" | "loc_change" | "pronouncement" | "admission_visit" | "discharge_visit";
                         /** Format: date */
                         proposedForDate: string;
+                        source?: string;
+                        suggestedMembershipId?: string | null;
+                        /** Format: date-time */
+                        proposedStartedAt?: string;
+                        /** Format: date-time */
+                        proposedEndedAt?: string;
+                        publishedAsVisitId?: string | null;
                         status: "pending" | "published" | "dismissed" | "stale";
                     };
                 };
@@ -103621,6 +105926,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -103672,6 +105978,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     }[];
                 };
             };
@@ -103740,6 +106047,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -103787,6 +106095,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -103848,6 +106157,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -103901,6 +106211,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -103955,6 +106266,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -104008,6 +106320,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -104063,6 +106376,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -104123,6 +106437,7 @@ export interface operations {
                             patientAddressId: string | null;
                             externalFacilityId: string | null;
                             rescheduledIntoVisitId: string | null;
+                            cancellationReasonCode: string | null;
                         };
                         created: {
                             /** Format: uuid */
@@ -104147,6 +106462,7 @@ export interface operations {
                             patientAddressId: string | null;
                             externalFacilityId: string | null;
                             rescheduledIntoVisitId: string | null;
+                            cancellationReasonCode: string | null;
                         };
                     };
                 };
@@ -104201,6 +106517,7 @@ export interface operations {
                         patientAddressId: string | null;
                         externalFacilityId: string | null;
                         rescheduledIntoVisitId: string | null;
+                        cancellationReasonCode: string | null;
                     };
                 };
             };
@@ -104559,6 +106876,7 @@ export interface operations {
                             patientAddressId: string | null;
                             externalFacilityId: string | null;
                             rescheduledIntoVisitId: string | null;
+                            cancellationReasonCode: string | null;
                         }[];
                     };
                 };

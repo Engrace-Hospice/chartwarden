@@ -20,6 +20,8 @@ import { registerInternalRoutes } from "./internal.routes";
 import { registerLaterTierRoutes } from "./later-tier.routes";
 import { registerMedicalReviewReportRoutes } from "./medical-review-report.routes";
 import { registerPlaybookRoutes } from "./playbook.routes";
+import { registerPayerAppealPathRoutes } from "./payer-appeal-path.routes";
+import { registerPayerAppealRoutes } from "./payer-appeal.routes";
 import { registerQicRoutes } from "./qic.routes";
 import { registerRemittanceRoutes } from "./remittance.routes";
 import { registerReopeningRoutes } from "./reopening.routes";
@@ -47,6 +49,11 @@ export { registerAuditRequestRoutes, type AuditRequestRouteDeps } from "./audit-
 export { registerAuditResponseRoutes, type AuditResponseRouteDeps } from "./audit-response.routes";
 export { registerLaterTierRoutes, type LaterTierRouteDeps } from "./later-tier.routes";
 export { registerCaseViewRoutes, type CaseViewRouteDeps } from "./case-view.routes";
+export {
+  registerPayerAppealPathRoutes,
+  type PayerAppealPathRouteDeps,
+} from "./payer-appeal-path.routes";
+export { registerPayerAppealRoutes, type PayerAppealRouteDeps } from "./payer-appeal.routes";
 
 /** Mount every M25 §4.1 route plugin over the Drizzle-backed (or in-memory slice) read + write services. */
 export function mountM25Routes(app: FastifyInstance, services: M25RouteServices): void {
@@ -80,6 +87,16 @@ export function mountM25Routes(app: FastifyInstance, services: M25RouteServices)
   }
   if (services.caseViewService) {
     registerCaseViewRoutes(app, { caseViewService: services.caseViewService });
+  }
+  // Milestone 12a-1: the organization's payer appeal paths, and payer appeal cases keyed on the denial.
+  if (services.payerAppealPathService) {
+    registerPayerAppealPathRoutes(app, { payerAppealPathService: services.payerAppealPathService });
+  }
+  if (services.payerAppealService) {
+    registerPayerAppealRoutes(app, {
+      payerAppealService: services.payerAppealService,
+      ...(services.laterTierService ? { laterTierService: services.laterTierService } : {}),
+    });
   }
   // Milestone 8a-1: advisory documentation readiness (deterministic gaps + a deny-stubbed assistant port).
   if (services.adrReadinessService) {

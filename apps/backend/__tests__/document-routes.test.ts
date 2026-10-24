@@ -503,6 +503,81 @@ describe("M22-T07 — §4.7 document_owner_or_caseload (signed-URL content route
     expect(res.json().url).toContain("X-Amz-Expires=300"); // floor clamps the requested 3600 → 300
   });
 
+  it("mints a disclosure URL only when the request names an active, BAA-covered recipient (403 missing, 422 bad kind)", async () => {
+    const ENTITY = "e0000000-0000-4000-8000-000000000001";
+    registerSeam("MdmEntityProvider", {
+      resolveFacility: async (_org: string, id: string) => ({ id, status: "active" }),
+    } as never);
+    registerSeam("BaaStatusProvider", {
+      baaStatusByMdmEntity: async () => ({ isActive: true, status: "executed" }),
+    } as never);
+    const { app } = makeServer();
+    const base = `/api/v1/documents/${DOC}/versions/${VERSION}/content?purpose=disclosure`;
+
+    const ok = await app.inject({
+      method: "GET",
+      url: `${base}&recipientKind=facility&recipientEntityId=${ENTITY}`,
+      headers: { ...RN, ...STEP_UP_FRESH },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().accessKind).toBe("disclosure_export");
+
+    const none = await app.inject({ method: "GET", url: base, headers: RN });
+    expect(none.statusCode).toBe(403);
+
+    const half = await app.inject({
+      method: "GET",
+      url: `${base}&recipientKind=facility`,
+      headers: { ...RN, ...STEP_UP_FRESH },
+    });
+    expect(half.statusCode).toBe(403);
+
+    const badKind = await app.inject({
+      method: "GET",
+      url: `${base}&recipientKind=physician&recipientEntityId=${ENTITY}`,
+      headers: { ...RN, ...STEP_UP_FRESH },
+    });
+    expect(badKind.statusCode).toBe(422);
+
+    // Kinds with no canonical M40 table can never resolve, so the API does not accept them.
+    const noTable = await app.inject({
+      method: "GET",
+      url: `${base}&recipientKind=dme_vendor&recipientEntityId=${ENTITY}`,
+      headers: { ...RN, ...STEP_UP_FRESH },
+    });
+    expect(noTable.statusCode).toBe(422);
+
+    // §4.12 — an external purpose needs a fresh step-up, whatever recipient is named.
+    const stale = await app.inject({
+      method: "GET",
+      url: `${base}&recipientKind=facility&recipientEntityId=${ENTITY}`,
+      headers: RN,
+    });
+    expect(stale.statusCode).toBe(403);
+    expect(stale.json().code ?? stale.json().error?.code).toBe("STEP_UP_REQUIRED");
+
+    // An internal purpose is not step-up gated.
+    const internal = await app.inject({
+      method: "GET",
+      url: `/api/v1/documents/${DOC}/versions/${VERSION}/content?purpose=treatment`,
+      headers: RN,
+    });
+    expect(internal.statusCode).toBe(200);
+
+    // survey_export is stepped up too; a repeated or oddly cased purpose never mints.
+    const base2 = `/api/v1/documents/${DOC}/versions/${VERSION}/content`;
+    const survey = await app.inject({
+      method: "GET",
+      url: `${base2}?purpose=survey_export&recipientKind=facility&recipientEntityId=${ENTITY}`,
+      headers: RN,
+    });
+    expect(survey.statusCode).toBe(403);
+    for (const q of ["purpose=treatment&purpose=disclosure", "purpose=DISCLOSURE"]) {
+      const odd = await app.inject({ method: "GET", url: `${base2}?${q}`, headers: RN });
+      expect(odd.statusCode).not.toBe(200);
+    }
+  });
+
   it("records the content download as a document_version read event keyed by the version id (matches the sibling version routes)", async () => {
     const captured: Array<{ eventType: string; resourceKind: string; resourceId?: string }> = [];
     const tx = {

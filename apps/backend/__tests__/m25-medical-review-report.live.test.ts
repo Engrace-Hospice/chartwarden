@@ -9,7 +9,7 @@
  * the figures to nothing out of scope; the window bound is enforced; the response has no patient, claim or person field and
  * no target, benchmark or score field (asserted on the keys and against the published schema); a TPE exit threshold shows
  * only where the organization recorded one; a retired playbook stops covering a reason; the route gates on
- * medical_review.report.read, is no-store and bounded; migration 1252 grants existing roles idempotently.
+ * medical_review.report.read, is no-store and bounded; migration 1253 grants existing roles idempotently.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m25:medical-review-report:live
  * (SUPERUSER to a THROWAWAY db - this file DROPs and recreates the public schema.)
@@ -764,7 +764,7 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
     });
   });
 
-  it("registers the key and migration 1252 grants existing roles idempotently", async () => {
+  it("registers the key and migration 1253 grants existing roles idempotently", async () => {
     const key = await fx.admin.query(
       "SELECT key FROM permission WHERE key='medical_review.report.read'",
     );

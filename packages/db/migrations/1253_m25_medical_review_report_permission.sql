@@ -5,7 +5,7 @@
 --   playbook-coverage figures over a date range). Counts, rates and medians only: no patient, person or claim field, and no
 --   target, benchmark or threshold other than a TPE exit threshold the organization itself recorded.
 -- Granted to compliance_officer, administrator and org_admin by role key, and to every role that already holds appeal.decide
--- (the billing-lead decision key, as in 1119 and 1251). Existing tenants get it here; new tenants from templates.ts
+-- (the billing-lead decision key, as in 1119 and 1252). Existing tenants get it here; new tenants from templates.ts
 -- (administrator / org_admin through the catalog, compliance_officer explicitly). Idempotent.
 INSERT INTO "permission" ("key", "resource", "action", "category", "default_abac", "description") VALUES
   ('medical_review.report.read', 'medical_review_report', 'read', 'billing', 'none', '')

@@ -22,7 +22,9 @@ export type RecordedDeadlinePatch = ReqBody<
 export type AuditRequestSummary = Ok<operations["getApiV1Auditrequests"]>["items"][number];
 export type AuditRequestDetail = Ok<operations["getApiV1AuditrequestsById"]>;
 /** The looser (audit detail) shape; the later-tier view's narrower enums are assignable to it. */
-export type RecordedDeadlineView = AuditRequestDetail["deadlines"][number];
+export type RecordedDeadlineView = Ok<
+  operations["getApiV1AppealsByIdRecordeddeadlines"]
+>["items"][number];
 export type AuditRequestInput = ReqBody<operations["postApiV1Auditrequests"]>;
 export type AuditRequestPatch = ReqBody<operations["patchApiV1AuditrequestsById"]>;
 export type AuditRequestState = ReqBody<operations["postApiV1AuditrequestsByIdState"]>["to"];
@@ -44,7 +46,7 @@ export const isLaterTier = (tier: string): boolean =>
 export const isConflict = (res: { readonly status: number | null }): boolean => res.status === 409;
 
 /** The two subjects a recorded deadline can hang off; each has its own route family and permission. */
-export type DeadlineSubject = { kind: "appeal" | "audit"; id: string };
+export type DeadlineSubject = { kind: "appeal" | "audit" | "payer_appeal"; id: string };
 
 export async function loadCaseView(
   client: ApiClient,
@@ -93,16 +95,13 @@ export async function addRecordedDeadline(
   body: RecordedDeadlineInput,
 ): Promise<WriteResult<Versioned>> {
   return guarded(async () => {
+    const params = { params: { path: { id: subject.id } }, body };
     const res =
       subject.kind === "appeal"
-        ? await client.POST("/api/v1/appeals/{id}/recorded-deadlines", {
-            params: { path: { id: subject.id } },
-            body,
-          })
-        : await client.POST("/api/v1/audit-requests/{id}/recorded-deadlines", {
-            params: { path: { id: subject.id } },
-            body,
-          });
+        ? await client.POST("/api/v1/appeals/{id}/recorded-deadlines", params)
+        : subject.kind === "payer_appeal"
+          ? await client.POST("/api/v1/payer-appeals/{id}/recorded-deadlines", params)
+          : await client.POST("/api/v1/audit-requests/{id}/recorded-deadlines", params);
     return res.error || !res.data ? failure(res.response?.status, res.error) : ok(res.data);
   });
 }
@@ -116,18 +115,13 @@ export async function editRecordedDeadline(
   return guarded(async () => {
     const params = { path: { id: subject.id, deadlineId: deadline.id } };
     const headers = ifMatch(deadline.version);
+    const args = { params, headers, body };
     const res =
       subject.kind === "appeal"
-        ? await client.PATCH("/api/v1/appeals/{id}/recorded-deadlines/{deadlineId}", {
-            params,
-            headers,
-            body,
-          })
-        : await client.PATCH("/api/v1/audit-requests/{id}/recorded-deadlines/{deadlineId}", {
-            params,
-            headers,
-            body,
-          });
+        ? await client.PATCH("/api/v1/appeals/{id}/recorded-deadlines/{deadlineId}", args)
+        : subject.kind === "payer_appeal"
+          ? await client.PATCH("/api/v1/payer-appeals/{id}/recorded-deadlines/{deadlineId}", args)
+          : await client.PATCH("/api/v1/audit-requests/{id}/recorded-deadlines/{deadlineId}", args);
     return res.error || !res.data ? failure(res.response?.status, res.error) : ok(res.data);
   });
 }
@@ -142,18 +136,19 @@ export async function satisfyRecordedDeadline(
     const params = { path: { id: subject.id, deadlineId: deadline.id } };
     const headers = ifMatch(deadline.version);
     const body = satisfiedOn ? { satisfiedOn } : {};
+    const args = { params, headers, body };
     const res =
       subject.kind === "appeal"
-        ? await client.POST("/api/v1/appeals/{id}/recorded-deadlines/{deadlineId}/satisfy", {
-            params,
-            headers,
-            body,
-          })
-        : await client.POST("/api/v1/audit-requests/{id}/recorded-deadlines/{deadlineId}/satisfy", {
-            params,
-            headers,
-            body,
-          });
+        ? await client.POST("/api/v1/appeals/{id}/recorded-deadlines/{deadlineId}/satisfy", args)
+        : subject.kind === "payer_appeal"
+          ? await client.POST(
+              "/api/v1/payer-appeals/{id}/recorded-deadlines/{deadlineId}/satisfy",
+              args,
+            )
+          : await client.POST(
+              "/api/v1/audit-requests/{id}/recorded-deadlines/{deadlineId}/satisfy",
+              args,
+            );
     return res.error || !res.data ? failure(res.response?.status, res.error) : ok(res.data);
   });
 }

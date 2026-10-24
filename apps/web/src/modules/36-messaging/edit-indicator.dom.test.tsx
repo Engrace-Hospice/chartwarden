@@ -193,6 +193,10 @@ describe("edit indicator in the real thread panel", () => {
       if (method === "GET" && path === "/api/v1/messaging/channels/{id}/pins") {
         return { data: { pins: [], patientId: null }, error: undefined, response: { status: 200 } };
       }
+      if (method === "GET" && path === "/api/v1/messaging/ai/status") {
+        // The thread header asks once whether the AI panel is on (WP 6.5); off here.
+        return { data: { enabled: false }, error: undefined, response: { status: 200 } };
+      }
       if (method === "GET" && path === "/api/v1/messaging/tasks") {
         // The message-row Task trigger asks once whether the tenant has tasks on; off here.
         return { data: { enabled: false, tasks: [] }, error: undefined, response: { status: 200 } };

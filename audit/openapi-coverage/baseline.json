@@ -22,7 +22,7 @@
       "mutatingNoBody": 0
     },
     "06-admission": {
-      "routes": 88,
+      "routes": 98,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -77,7 +77,7 @@
       "mutatingNoBody": 0
     },
     "17-scheduling": {
-      "routes": 38,
+      "routes": 39,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -117,7 +117,7 @@
       "mutatingNoBody": 0
     },
     "25-remittance": {
-      "routes": 111,
+      "routes": 136,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -172,7 +172,7 @@
       "mutatingNoBody": 1
     },
     "36-messaging": {
-      "routes": 178,
+      "routes": 187,
       "deficit": 0,
       "mutatingNoBody": 0
     },

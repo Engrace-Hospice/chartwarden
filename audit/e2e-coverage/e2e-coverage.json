@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 198,
+  "totalStaticWebScreens": 200,
   "e2eReachedCount": 20,
-  "axeReachedCount": 187,
+  "axeReachedCount": 189,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -741,6 +741,14 @@
       "axeReached": true
     },
     {
+      "id": "messaging.alarm-sources",
+      "module": "36-messaging",
+      "path": "/messaging/alarm-sources",
+      "permission": "messaging.alarm_ingest.manage",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
       "id": "messaging.response-analytics",
       "module": "36-messaging",
       "path": "/messaging/analytics",
@@ -1025,6 +1033,14 @@
       "module": "25-remittance",
       "path": "/remittance/denials",
       "permission": "denial.worklist.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "remittance.payer-appeal-paths",
+      "module": "25-remittance",
+      "path": "/remittance/payer-appeal-paths",
+      "permission": "payer_appeal_path.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -2353,6 +2369,14 @@
       "axeReached": true
     },
     {
+      "id": "messaging.alarm-sources",
+      "module": "36-messaging",
+      "path": "/messaging/alarm-sources",
+      "permission": "messaging.alarm_ingest.manage",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
       "id": "messaging.response-analytics",
       "module": "36-messaging",
       "path": "/messaging/analytics",
@@ -2669,6 +2693,14 @@
       "module": "25-remittance",
       "path": "/remittance/denials",
       "permission": "denial.worklist.read",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "remittance.payer-appeal-paths",
+      "module": "25-remittance",
+      "path": "/remittance/payer-appeal-paths",
+      "permission": "payer_appeal_path.read",
       "e2eReached": false,
       "axeReached": true
     },
