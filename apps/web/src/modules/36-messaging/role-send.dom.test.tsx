@@ -431,3 +431,46 @@ describe("role send: the dialog", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 });
+
+describe("role send: after-hours triage (ADR-0082)", () => {
+  const withTriage = (on: boolean) => () => {
+    const base = covered();
+    return { ...base, data: { ...base.data, afterhours_triage: on } };
+  };
+
+  it("tells the sender, before they confirm, that the send also asks for a triage call (words and icon)", async () => {
+    mount({ resolution: withTriage(true) });
+    await open();
+    await review();
+    await sendButton();
+    const note = document.querySelector("[data-afterhours-indicator]");
+    expect(note?.textContent).toMatch(/after-hours triage call/);
+    expect(note?.querySelector("svg")).toBeTruthy();
+  });
+
+  it("shows no indicator when after-hours triage is off", async () => {
+    mount({ resolution: withTriage(false) });
+    await open();
+    await review();
+    await sendButton();
+    expect(document.querySelector("[data-afterhours-indicator]")).toBeNull();
+  });
+
+  it("a lookup_failed resolution is a refusal with no way to send, not a coverage gap", async () => {
+    mount({ resolution: () => uncovered("lookup_failed") });
+    await open();
+    await review();
+    expect(await screen.findByText(LOOKUP_FAILED_TEXT)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Send urgent message to/ })).toBeNull();
+  });
+
+  it("a 503 ROLE_SEND_LOOKUP_FAILED at send time is a clean refusal (nothing sent), not an indeterminate send", async () => {
+    const post = vi.fn().mockResolvedValue(refusal(503, "ROLE_SEND_LOOKUP_FAILED"));
+    mount({ post });
+    await open();
+    await review();
+    await userEvent.click(await sendButton());
+    expect(await screen.findByText(LOOKUP_FAILED_TEXT)).toBeTruthy();
+    expect(screen.queryByText(/may not have been sent/)).toBeNull();
+  });
+});

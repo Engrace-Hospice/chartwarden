@@ -53,6 +53,7 @@ function setup(
     enabled?: boolean;
     sendFails?: boolean;
     tracker?: UrgentServiceDeps["responseTracker"];
+    afterHours?: UrgentServiceDeps["afterHoursTriage"];
   } = {},
 ) {
   const published: Array<{ eventName: string; payload: Record<string, unknown> }> = [];
@@ -88,6 +89,7 @@ function setup(
     findReplayRecipient: async (_o, _a, _c, clientId) => recipientOf.get(clientId) ?? null,
     displayName: async (_o, u) => (u === RN ? "Rita RN" : u === RN2 ? "Al RN" : null),
     ...(over.tracker ? { responseTracker: over.tracker } : {}),
+    ...(over.afterHours ? { afterHoursTriage: over.afterHours } : {}),
     now: () => new Date("2026-10-14T12:00:00.000Z"),
   };
   return { service: createUrgentService(deps), published, sends, state };
@@ -364,5 +366,89 @@ describe("the response tracker hook (WP 4.2)", () => {
     });
 
     await expect(service.send(actor, input(), noLinks)).rejects.toThrow("insert failed");
+  });
+});
+
+describe("the after-hours request hook (ADR-0082)", () => {
+  const REQ_ID = "00000000-0000-4000-8000-0000000000f7";
+  const tracked = {
+    enabled: async () => true,
+    createInTx: async () => ({ requestId: REQ_ID }),
+  };
+  const port = (enabled: () => Promise<boolean>, calls: unknown[][] = []) => ({
+    enabled,
+    requestInTx: async (...args: unknown[]) => void calls.push(args),
+  });
+
+  it("writes the request in the send transaction, naming the message, its response request, the patient and an instant", async () => {
+    const calls: unknown[][] = [];
+    const { service } = setup({ tracker: tracked, afterHours: port(async () => true, calls) });
+
+    await service.send(actor, input({ roleAddressed: "rn", requestTriageCall: true }), noLinks);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[1]).toEqual({
+      orgId: ORG,
+      messageId: "00000000-0000-4000-8000-000000000091",
+      requestId: REQ_ID,
+      patientId: PAT,
+      at: new Date("2026-10-14T12:00:00.000Z"),
+    });
+  });
+
+  it("does nothing unless the caller asked (an ordinary role send or urgent send)", async () => {
+    const calls: unknown[][] = [];
+    const { service } = setup({ tracker: tracked, afterHours: port(async () => true, calls) });
+    await service.send(actor, input({ roleAddressed: "rn" }), noLinks);
+    expect(calls).toEqual([]);
+  });
+
+  it("does nothing while its flag is off, and the send still goes", async () => {
+    const calls: unknown[][] = [];
+    const { service, sends } = setup({ tracker: tracked, afterHours: port(async () => false, calls) });
+    const res = await service.send(
+      actor,
+      input({ roleAddressed: "rn", requestTriageCall: true }),
+      noLinks,
+    );
+    expect(res.created).toBe(true);
+    expect(sends).toHaveLength(1);
+    expect(calls).toEqual([]);
+  });
+
+  it("fails the send when its flag cannot be read (an after-hours send never silently loses its request)", async () => {
+    const { service, sends } = setup({
+      tracker: tracked,
+      afterHours: port(async () => Promise.reject(new Error("flags down"))),
+    });
+    await expect(
+      service.send(actor, input({ roleAddressed: "rn", requestTriageCall: true }), noLinks),
+    ).rejects.toThrow("flags down");
+    expect(sends).toHaveLength(0);
+  });
+
+  it("a replay writes no second request", async () => {
+    const calls: unknown[][] = [];
+    const { service } = setup({ tracker: tracked, afterHours: port(async () => true, calls) });
+    const body = input({ roleAddressed: "rn", requestTriageCall: true });
+    await service.send(actor, body, noLinks);
+    const again = await service.send(actor, body, noLinks);
+    expect(again.created).toBe(false);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("fails the whole send when the request cannot be written (the message cannot exist without its link)", async () => {
+    const { service } = setup({
+      tracker: tracked,
+      afterHours: {
+        enabled: async () => true,
+        requestInTx: async () => {
+          throw new Error("link insert failed");
+        },
+      },
+    });
+    await expect(
+      service.send(actor, input({ roleAddressed: "rn", requestTriageCall: true }), noLinks),
+    ).rejects.toThrow("link insert failed");
   });
 });

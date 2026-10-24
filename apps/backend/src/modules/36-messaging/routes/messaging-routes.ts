@@ -44,6 +44,10 @@ import type { ExternalShareIndicatorDto } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { rejectIfUnderLegalHold } from "../governance/under-hold";
 import { createRoleSendService } from "../oncall-directory/role-send-service";
+import {
+  DISABLED_AFTERHOURS_TRIAGE,
+  registerAfterHoursTriageRoutes,
+} from "./afterhours-triage-routes";
 import { resolveRichWrite } from "../rich-body-codec";
 import { type AckRouteDeps, DISABLED_ACK, registerAckRoutes } from "./ack-routes";
 import { announcementSendGuard, registerAnnouncementRoutes } from "./announcement-routes";
@@ -556,6 +560,13 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       validateLinks: (request, richBody) =>
         validateRichBodyLinks(request, clinicalLinkDeps, richBody),
     },
+  );
+
+  // --- ADR-0082 (PROPOSED): the fixed-text after-hours triage line of a message; flag-gated inside the service ---
+  registerAfterHoursTriageRoutes(
+    app,
+    deps.oncall?.afterHoursLines ? { service: deps.oncall.afterHoursLines } : DISABLED_AFTERHOURS_TRIAGE,
+    { read: READ, viewChannel: VIEW_CHANNEL },
   );
 
   // --- WP 4.10: snooze (non-urgent only) and reminders; the caller's own rows, flag-gated ---

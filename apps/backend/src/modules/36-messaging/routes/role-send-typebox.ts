@@ -2,7 +2,12 @@
 // CLOSED list of the directory; `recipient_user_id` is the person the sender confirmed from the resolution (it is named `recipient_user_id`
 // so the urgent route's per-pair limiter reads it unchanged). `additionalProperties:false`: no urgency, deadline or tier field to set.
 import { type TSchema, Type } from "@sinclair/typebox";
-import { ONCALL_DIRECTORY_ROLES, ONCALL_DIRECTORY_STATUSES, ONCALL_RANKS } from "@chartwarden/types";
+import {
+  AFTERHOURS_TRIAGE_LINE_STATES,
+  ONCALL_DIRECTORY_ROLES,
+  ONCALL_RANKS,
+  ROLE_SEND_RESOLUTION_STATUSES,
+} from "@chartwarden/types";
 import { RichBodySchema, UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });
@@ -18,7 +23,8 @@ export const RoleSendResolutionQuerySchema = Type.Object(
 export const RoleSendResolutionResponseSchema = Type.Object({
   role: oneOf(ONCALL_DIRECTORY_ROLES),
   as_of: Type.String({ format: "date-time" }),
-  status: oneOf(ONCALL_DIRECTORY_STATUSES),
+  status: oneOf(ROLE_SEND_RESOLUTION_STATUSES),
+  afterhours_triage: Type.Boolean(),
   people: Type.Array(
     Type.Object({
       user_id: Type.String({ format: "uuid" }),
@@ -48,4 +54,20 @@ export const RoleSendResponseSchema = Type.Object({
   recipient_user_id: Type.String({ format: "uuid" }),
   role: oneOf(ONCALL_DIRECTORY_ROLES),
   created: Type.Boolean(),
+});
+
+/** ADR-0082 S4/S5: the after-hours triage lines of some messages of one channel (at most 50 ids, comma-separated). */
+export const AfterHoursLinesQuerySchema = Type.Object(
+  { message_ids: Type.String({ minLength: 36, maxLength: 50 * 37 }) },
+  { additionalProperties: false },
+);
+
+export const AfterHoursLinesResponseSchema = Type.Object({
+  lines: Type.Array(
+    Type.Object({
+      message_id: Type.String({ format: "uuid" }),
+      state: oneOf(AFTERHOURS_TRIAGE_LINE_STATES),
+      text: Type.String(),
+    }),
+  ),
 });

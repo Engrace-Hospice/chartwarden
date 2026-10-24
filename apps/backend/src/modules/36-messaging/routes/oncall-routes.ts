@@ -11,6 +11,7 @@
 // Read-only: nothing is paged, sent or written. The org and the caller come from the request context, never the query. The tenant flag
 // `messaging.oncall_directory` off is the uniform 404 (decided in the service, before any router call). Responses are never cached
 // (who is covering changes at a shift boundary).
+import type { AfterHoursLinesService } from "../afterhours-triage/afterhours-lines";
 import { composeGuards, requireAbac, requirePermission } from "@chartwarden/auth";
 import { NotFoundError, type OnCallDirectoryRole, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -31,6 +32,8 @@ export interface OnCallRouteDeps {
   readonly patientExists: (organizationId: string, patientId: string) => Promise<boolean>;
   /** ADR-0081: the ports of the role-based send (the urgent service is added where the routes are mounted). Absent => the uniform 404. */
   readonly roleSend?: RoleSendPorts;
+  /** ADR-0082 S4/S5: the after-hours triage thread-line read. Absent => the uniform 404. */
+  readonly afterHoursLines?: AfterHoursLinesService;
 }
 
 /** Used when the boot supplies none: the uniform 404. */
