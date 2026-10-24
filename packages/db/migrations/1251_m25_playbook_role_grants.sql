@@ -1,4 +1,4 @@
--- M25 milestone 9a-1 permissions: grant the playbook keys in every tenant that has the matching role or key. 1206 added the
+-- M25 milestone 9a-1 permissions: grant the playbook keys in every tenant that has the matching role or key. 1250 added the
 -- catalog rows only and the template materializer runs at tenant creation, so an EXISTING tenant's roles would hold none of
 -- them (the gap 1111, 1119 and 1191 each closed for their own keys).
 --

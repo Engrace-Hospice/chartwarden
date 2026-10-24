@@ -345,7 +345,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       // WP 5.6 (ADR-0055 item 7): request and approve a message redaction (two different people; migration 1156 covers existing roles).
       "messaging.redact.request",
       "messaging.redact.approve",
-      // M25 milestone 9a-1: the compliance officer reviews and publishes denial playbooks someone else wrote (migration 1207 covers
+      // M25 milestone 9a-1: the compliance officer reviews and publishes denial playbooks someone else wrote (migration 1251 covers
       // existing roles; administrator / org_admin get the keys through the non-platform catalog).
       "playbook.read",
       "playbook.publish",

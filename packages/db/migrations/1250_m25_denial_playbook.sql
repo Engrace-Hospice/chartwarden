@@ -225,7 +225,7 @@ CREATE TRIGGER "trg_denial_playbook_case_step_guard" BEFORE INSERT ON denial_pla
 
 -- playbook.read: see the library and a denial's playbook. playbook.author: write a playbook and its drafts. playbook.publish:
 -- publish a draft someone else wrote, or retire a published version. None gates a case, and the per-case tick needs only
--- denial.read plus playbook.read. Existing tenants' roles get them from 1207.
+-- denial.read plus playbook.read. Existing tenants' roles get them from 1251.
 INSERT INTO "permission" ("key", "resource", "action", "category", "default_abac", "description") VALUES
   ('playbook.read', 'denial_playbook', 'read', 'billing', 'none', ''),
   ('playbook.author', 'denial_playbook', 'author', 'billing', 'none', ''),

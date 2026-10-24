@@ -1,4 +1,4 @@
-// @chartwarden/db - M25 milestone 9a-1 (migration 1206): the denial-reason PLAYBOOK library. denial_playbook (the key: code
+// @chartwarden/db - M25 milestone 9a-1 (migration 1250): the denial-reason PLAYBOOK library. denial_playbook (the key: code
 // kind + code + optional MAC; immutable), denial_playbook_version (draft -> published -> retired; content frozen once
 // published; a published row carries a reviewer who is not its author) and denial_playbook_case_step (an advisory per-denial
 // tick, no free text). NOTHING is seeded: a fresh tenant has zero rows. States are text + CHECK (closed sets mirrored in

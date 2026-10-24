@@ -11,7 +11,7 @@
  * DELETE and RLS is forced; another tenant sees nothing and a cross-tenant parent is refused; the audit trail scrubs the
  * playbook text; the routes gate on playbook.read / .author / .publish (+ denial.read for the panel), require an
  * Idempotency-Key and If-Match, narrow by provider entity, and the read audit event lands with the denial id; migration
- * 1207 grants existing roles idempotently.
+ * 1251 grants existing roles idempotently.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m25:playbook:live
  * (SUPERUSER to a THROWAWAY db - this file DROPs and recreates the public schema.)
@@ -849,7 +849,7 @@ describe.skipIf(!DB_URL)("M25 denial playbooks (milestone 9a-1) - LIVE Postgres"
     });
   });
 
-  it("registers the three keys and migration 1207 grants existing roles idempotently, mirroring the matching keys", async () => {
+  it("registers the three keys and migration 1251 grants existing roles idempotently, mirroring the matching keys", async () => {
     const keys = (
       await fx.admin.query(
         "SELECT key FROM permission WHERE key IN ('playbook.read','playbook.author','playbook.publish') ORDER BY key",
