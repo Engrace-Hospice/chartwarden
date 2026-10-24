@@ -291,6 +291,7 @@
     "test:m6:f2f-fy2027:live": "vitest run apps/backend/__tests__/m6-f2f-fy2027.live.test.ts",
     "test:m6:recertification-signed:live": "vitest run apps/backend/__tests__/m6-recertification-signed.live.test.ts",
     "test:m6:election-addendum:live": "vitest run apps/backend/__tests__/m6-election-addendum.live.test.ts",
+    "test:m6:nomnc-expedited:live": "vitest run apps/backend/__tests__/m6-nomnc-expedited.live.test.ts",
     "test:m6:uploaded-evidence:live": "vitest run apps/backend/__tests__/m6-uploaded-evidence.live.test.ts",
     "test:m6:election-cert-view:live": "vitest run apps/backend/__tests__/m6-election-cert-view-conflicts.live.test.ts",
     "test:m16:consent-signed:live": "vitest run apps/backend/__tests__/m16-consent-signed.live.test.ts",

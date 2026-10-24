@@ -212,6 +212,21 @@ import {
   ElectionAddendumViewSchema as M6ElectionAddendumViewSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/election-addendum-typebox";
 import {
+  AddDeadlineSchema as M6NomncAddDeadlineSchema,
+  DeadlineViewSchema as M6NomncDeadlineViewSchema,
+  NoticeViewSchema as M6NomncNoticeViewSchema,
+  NomncOverviewQuerySchema as M6NomncOverviewQuerySchema,
+  NomncOverviewSchema as M6NomncOverviewSchema,
+  OpenReviewSchema as M6NomncOpenReviewSchema,
+  PatchDeadlineSchema as M6NomncPatchDeadlineSchema,
+  PatchNoticeSchema as M6NomncPatchNoticeSchema,
+  PatchReviewSchema as M6NomncPatchReviewSchema,
+  RecordNoticeSchema as M6NomncRecordNoticeSchema,
+  ReviewViewSchema as M6NomncReviewViewSchema,
+  WithdrawNoticeSchema as M6NomncWithdrawNoticeSchema,
+  WithdrawReviewSchema as M6NomncWithdrawReviewSchema,
+} from "../../apps/backend/src/modules/06-admission/routes/nomnc-typebox";
+import {
   BenefitPeriodPlanQuerySchema,
   BenefitPeriodPlanSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/readmission-typebox";
@@ -4411,6 +4426,63 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Sign the election statement",
     body: ElectionSignSchema,
   },
+  // Milestone 10a — NOMNC delivery + BFCC-QIO expedited review record-keeping (typed facts, typed deadlines).
+  "GET /api/v1/admissions/:id/nomnc": {
+    summary:
+      "NOMNC delivery record, history, QIO review, typed deadlines and the prompts for what is missing",
+    query: M6NomncOverviewQuerySchema,
+    response: M6NomncOverviewSchema,
+  },
+  "POST /api/v1/admissions/:id/nomnc": {
+    summary:
+      "Record a NOMNC delivery as typed (date AND time, source note); supersedes the active record when asked",
+    body: M6NomncRecordNoticeSchema,
+    response: M6NomncNoticeViewSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/admissions/:id/nomnc/:noticeId": {
+    summary: "Record the acknowledgement, attach the copy, or amend the delivery note",
+    body: M6NomncPatchNoticeSchema,
+    response: M6NomncNoticeViewSchema,
+  },
+  "POST /api/v1/admissions/:id/nomnc/:noticeId/withdraw": {
+    summary: "Withdraw an active NOMNC record (reason required)",
+    body: M6NomncWithdrawNoticeSchema,
+    response: M6NomncNoticeViewSchema,
+  },
+  "POST /api/v1/admissions/:id/nomnc/:noticeId/expedited-review": {
+    summary: "Open the BFCC-QIO expedited review for a NOMNC (care team and compliance are alerted)",
+    body: M6NomncOpenReviewSchema,
+    response: M6NomncReviewViewSchema,
+    status: 201,
+  },
+  "POST /api/v1/admissions/:id/nomnc/:noticeId/deadlines": {
+    summary: "Type a deadline from the notice (date AND time, mandatory source note)",
+    body: M6NomncAddDeadlineSchema,
+    response: M6NomncDeadlineViewSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/admissions/:id/expedited-reviews/:reviewId": {
+    summary: "Record the DENC / records-sent facts or the QIO decision",
+    body: M6NomncPatchReviewSchema,
+    response: M6NomncReviewViewSchema,
+  },
+  "POST /api/v1/admissions/:id/expedited-reviews/:reviewId/withdraw": {
+    summary: "Withdraw an open QIO review",
+    body: M6NomncWithdrawReviewSchema,
+    response: M6NomncReviewViewSchema,
+  },
+  "POST /api/v1/admissions/:id/expedited-reviews/:reviewId/deadlines": {
+    summary: "Type a DENC / records / decision deadline from the QIO's call (date AND time, source note)",
+    body: M6NomncAddDeadlineSchema,
+    response: M6NomncDeadlineViewSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/admissions/:id/expedited-deadlines/:deadlineId": {
+    summary: "Edit a typed deadline or mark it met",
+    body: M6NomncPatchDeadlineSchema,
+    response: M6NomncDeadlineViewSchema,
+  },
   // FY2027 — the 42 CFR 418.24(c)/(d) election statement addendum.
   "GET /api/v1/admissions/:id/election-addendum": {
     summary: "Election statement addendum: current version, history and open 418.24(d) windows",
@@ -4636,7 +4708,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/discharges/worklist": {
     summary:
-      "End-of-episode worklist, one bucket per call: admissions ready for a discharge / transfer-out / revocation / death, stay-ending records missing a claim detail, and for-cause discharges awaiting cosign (the last needs discharge.cosign_for_cause)",
+      "End-of-episode worklist, one bucket per call: admissions ready for a discharge / transfer-out / revocation / death, stay-ending records missing a claim detail, and for-cause discharges awaiting cosign (the last needs discharge.cosign_for_cause); milestone 10a adds the open QIO reviews and the NOMNC records with no appeal-request deadline typed (both need nomnc.read)",
     query: DischargeWorklistQuerySchema,
     response: DischargeWorklistResponseSchema,
   },

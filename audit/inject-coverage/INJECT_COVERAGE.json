@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1755,
-    "coveredRoutes": 1755,
-    "directRoutesReferenced": 1628
+    "routes": 1765,
+    "coveredRoutes": 1765,
+    "directRoutesReferenced": 1638
   },
   "modules": [
     {
@@ -110,7 +110,7 @@
     },
     {
       "module": "06-admission",
-      "routes": 88,
+      "routes": 98,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-certification.test.ts",
@@ -125,11 +125,12 @@
         "apps/backend/__tests__/election-addendum-upload-routes.test.ts",
         "apps/backend/__tests__/m2-link-redemption.live.test.ts",
         "apps/backend/__tests__/m36-promotion-targets.live.test.ts",
+        "apps/backend/__tests__/m6-nomnc-expedited.live.test.ts",
         "apps/backend/__tests__/m6-physician-authority.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/readmission-routes.test.ts"
       ],
-      "directRoutesReferenced": 88
+      "directRoutesReferenced": 98
     },
     {
       "module": "07-care-plan",
@@ -357,6 +358,7 @@
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
+        "apps/backend/__tests__/m6-nomnc-expedited.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 54

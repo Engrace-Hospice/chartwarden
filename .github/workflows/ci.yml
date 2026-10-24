@@ -1092,6 +1092,9 @@ jobs:
           # F-223 (#248) — a signed recert order opens the next PENDING election period (gate stays at activation).
           - { name: "M6 recertification signed", scripts: "test:m6:recertification-signed:live" }
           - { name: "M6 election addendum", scripts: "test:m6:election-addendum:live" }
+          # Milestone 10a — NOMNC delivery + BFCC-QIO expedited review record-keeping: typed facts / deadlines, the
+          # 15-minute alert scan through the REAL publisher, RLS, frozen-once-decided guards, and route 39 unblocked.
+          - { name: "M6 NOMNC expedited review", scripts: "test:m6:nomnc-expedited:live" }
           # The NOR / election statement / signed-election / CTI uploaded-evidence routes, through the REAL M22
           # DocumentReader: happy path + another org's, patient's, admission's and a superseded version refused.
           - { name: "M6 uploaded evidence", scripts: "test:m6:uploaded-evidence:live" }
