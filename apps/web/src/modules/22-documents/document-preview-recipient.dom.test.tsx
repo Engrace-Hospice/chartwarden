@@ -155,4 +155,15 @@ describe("DocumentPreviewDialog — disclosure recipient", () => {
     const open = screen.getByRole("button", { name: "Open" }) as HTMLButtonElement;
     expect(open.disabled).toBe(false);
   });
+
+  it("drops the old failure message once the user changes the selection", async () => {
+    mount({ stepUp: true });
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    await screen.findByRole("alert");
+    fireEvent.change(screen.getByLabelText("Reason for access"), {
+      target: { value: "payment" },
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Verify now" })).toBeNull();
+  });
 });
