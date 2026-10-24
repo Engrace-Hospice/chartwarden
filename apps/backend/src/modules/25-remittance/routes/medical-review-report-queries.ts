@@ -155,6 +155,8 @@ export async function denialReasons(
   tx: Tx,
   range: InstantRange,
   s: ScopeArgs,
+  /** The UTC day playbooks are read as of (the report's clock, not the database's). */
+  asOf: string,
 ): Promise<ReasonRow[]> {
   const D = schema.denialCase;
   const r = await rowsOf<Record<string, unknown>>(
@@ -165,7 +167,7 @@ export async function denialReasons(
                WHEN nullif(btrim(denial_case.rarc_code), '') IS NOT NULL THEN 'rarc' ELSE 'carc' END AS kind,
           upper(btrim(coalesce(nullif(btrim(denial_case.mac_reason_code), ''), nullif(btrim(denial_case.rarc_code), ''), denial_case.carc_code))) AS code,
           EXISTS (SELECT 1 FROM denial_playbook_version v JOIN denial_playbook p ON p.id = v.playbook_id
-            WHERE v.status = 'published' AND v.effective_from <= (now() AT TIME ZONE 'UTC')::date
+            WHERE v.status = 'published' AND v.effective_from <= ${asOf}::date
               AND (p.mac_name IS NULL OR upper(btrim(p.mac_name)) = upper(btrim(coalesce(m.mac_name, ''))))
               AND ((p.code_kind = 'mac_reason' AND upper(btrim(p.code)) = upper(btrim(denial_case.mac_reason_code)))
                 OR (p.code_kind = 'rarc' AND upper(btrim(p.code)) = upper(btrim(denial_case.rarc_code)))

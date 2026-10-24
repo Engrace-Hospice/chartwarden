@@ -573,10 +573,15 @@ describe.skipIf(!DB_URL)("M25 medical-review report (milestone 9a-2) - LIVE Post
     });
     // An any-MAC playbook covers whatever the MAC.
     await denial({ openedAt: opened, carc: "72", dollars: 1 });
-    const pinned = buildMedicalReviewReportService(fx.handle.db, {
+    // The playbooks above were published "today" (the real day); read as of that day they apply.
+    const r = await buildMedicalReviewReportService(fx.handle.db).getReport(fx.actor(), w);
+    // Read as of a day BEFORE they took effect, the injected clock (not the database's) decides: nothing is covered.
+    const earlier = await buildMedicalReviewReportService(fx.handle.db, {
       now: () => new Date("2026-01-20T12:00:00Z"),
-    });
-    const r = await pinned.getReport(fx.actor(), w);
+    }).getReport(fx.actor(), w);
+    expect(earlier.playbookCoverage.denialsWithoutPlaybook).toBe(
+      earlier.playbookCoverage.denialsSeen,
+    );
     const cov = r.playbookCoverage;
     expect(cov.denialsSeen).toBe(13);
     expect(cov.denialsWithoutPlaybook).toBe(2); // MAC-Y and no-ADR

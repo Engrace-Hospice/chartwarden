@@ -299,7 +299,7 @@ function ReportBody({ r }: { readonly r: MedicalReviewReport }): JSX.Element {
       </Section>
       <Section title="Playbook coverage">
         <p className="wx-action-hint">
-          {`${r.playbookCoverage.denialsWithoutPlaybook} of ${r.playbookCoverage.denialsSeen} denials opened in this period have no matching published playbook (same MAC and code matching as the denial panel). ${r.playbookCoverage.reasonsWithoutPlaybook} of ${r.playbookCoverage.reasonsSeen} reasons have at least one such denial.`}
+          {`${r.playbookCoverage.denialsWithoutPlaybook} of ${r.playbookCoverage.denialsSeen} denials opened in this period have no matching published playbook (as of today, with the same MAC and code matching as the denial panel). ${r.playbookCoverage.reasonsWithoutPlaybook} of ${r.playbookCoverage.reasonsSeen} reasons have at least one such denial.`}
         </p>
         <Rows
           caption="Reasons without a playbook"

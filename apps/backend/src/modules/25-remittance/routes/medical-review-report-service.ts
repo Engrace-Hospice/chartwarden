@@ -234,7 +234,7 @@ export function buildMedicalReviewReportService(
           await denialTotals(tx, cur, NON_RESPONSE_MAC_REASON_CODE, s),
           await denialTotals(tx, prev, NON_RESPONSE_MAC_REASON_CODE, s),
         ];
-        const reasons = await denialReasons(tx, cur, s);
+        const reasons = await denialReasons(tx, cur, s, now().toISOString().slice(0, 10));
         const months = await denialsByMonth(tx, cur, s);
         const closures = await denialClosures(tx, cur, s);
         const filedC = await appealsFiled(tx, cur, s);
