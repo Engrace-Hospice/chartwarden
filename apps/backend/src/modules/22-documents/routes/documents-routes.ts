@@ -193,7 +193,11 @@ const STEP_UP_DISCLOSE = requireStepUp("documents.disclose_external") as PreHand
 const EXTERNAL_PURPOSES: readonly unknown[] = ["disclosure", "survey_export"];
 const STEP_UP_IF_EXTERNAL: PreHandler = async (request, reply) => {
   const purpose = (request.query as { purpose?: unknown } | undefined)?.purpose;
-  if (EXTERNAL_PURPOSES.includes(purpose)) await STEP_UP_DISCLOSE(request, reply);
+  // Only a plain string that is not external skips the ceremony; an array/object/odd value is stepped up
+  // (the handler's schema would reject it anyway, but the guard must not rely on that).
+  if (typeof purpose !== "string" || EXTERNAL_PURPOSES.includes(purpose)) {
+    await STEP_UP_DISCLOSE(request, reply);
+  }
 };
 const STEP_UP_RETRY = requireStepUp("documents.admin_retry_render") as PreHandler;
 const ABAC_PUBLISH = requireAbac(

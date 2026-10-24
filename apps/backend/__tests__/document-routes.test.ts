@@ -546,7 +546,7 @@ describe("M22-T07 — §4.7 document_owner_or_caseload (signed-URL content route
       headers: { ...RN, ...STEP_UP_FRESH },
     });
     expect(noTable.statusCode).toBe(422);
-  
+
     // §4.12 — an external purpose needs a fresh step-up, whatever recipient is named.
     const stale = await app.inject({
       method: "GET",
@@ -563,6 +563,19 @@ describe("M22-T07 — §4.7 document_owner_or_caseload (signed-URL content route
       headers: RN,
     });
     expect(internal.statusCode).toBe(200);
+
+    // survey_export is stepped up too; a repeated or oddly cased purpose never mints.
+    const base2 = `/api/v1/documents/${DOC}/versions/${VERSION}/content`;
+    const survey = await app.inject({
+      method: "GET",
+      url: `${base2}?purpose=survey_export&recipientKind=facility&recipientEntityId=${ENTITY}`,
+      headers: RN,
+    });
+    expect(survey.statusCode).toBe(403);
+    for (const q of ["purpose=treatment&purpose=disclosure", "purpose=DISCLOSURE"]) {
+      const odd = await app.inject({ method: "GET", url: `${base2}?${q}`, headers: RN });
+      expect(odd.statusCode).not.toBe(200);
+    }
   });
 
   it("records the content download as a document_version read event keyed by the version id (matches the sibling version routes)", async () => {
