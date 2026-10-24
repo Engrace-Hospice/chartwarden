@@ -4,6 +4,13 @@
 import { Button, LoadingSpinner, Modal, useApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
+import {
+  REQUIRE_DONE,
+  REQUIRE_FAILED,
+  REQUIRE_HINT,
+  REQUIRE_LABEL,
+  REQUIRE_OFF,
+} from "./ack-broadcast-wording";
 import { apiErrorMessage } from "./messaging-utils";
 import "./announcements.css";
 
@@ -97,6 +104,7 @@ export function AnnouncementReceiptsDialog({
         ) : (
           <ReceiptLists receipts={receipts} />
         )}
+        <RequireAcknowledgment messageId={messageId} />
         <footer>
           <Button tone="secondary" onClick={onClose}>
             Close
@@ -104,6 +112,41 @@ export function AnnouncementReceiptsDialog({
         </footer>
       </div>
     </Modal>
+  );
+}
+
+type RequireState = "idle" | "busy" | "done" | "off" | "failed";
+
+/**
+ * WP 6.8 (ADR-0097): the author asks everyone to acknowledge this announcement. An explicit action with its audience said first; the
+ * server answers 404 while the tenant flag is off and for anyone but the author, and the words say which is the likelier cause.
+ */
+function RequireAcknowledgment({ messageId }: { messageId: string | null }): JSX.Element | null {
+  const client = useApiClient();
+  const [state, setState] = useState<RequireState>("idle");
+  useEffect(() => setState("idle"), [messageId]);
+  if (!messageId) return null;
+  const run = (): void => {
+    setState("busy");
+    void client
+      .POST("/api/v1/messaging/announcements/{messageId}/ack-broadcast", {
+        params: { path: { messageId } },
+      })
+      .then(({ data, response }) =>
+        setState(data ? "done" : response?.status === 404 ? "off" : "failed"),
+      )
+      .catch(() => setState("failed"));
+  };
+  return (
+    <section aria-label={REQUIRE_LABEL} className="wx-announcement-require">
+      <p className="wx-announcement-empty">{REQUIRE_HINT}</p>
+      {state === "done" ? <p role="status">{REQUIRE_DONE}</p> : null}
+      {state === "off" ? <p role="alert">{REQUIRE_OFF}</p> : null}
+      {state === "failed" ? <p role="alert">{REQUIRE_FAILED}</p> : null}
+      <Button tone="secondary" size="sm" disabled={state === "busy" || state === "done"} onClick={run}>
+        {REQUIRE_LABEL}
+      </Button>
+    </section>
   );
 }
 

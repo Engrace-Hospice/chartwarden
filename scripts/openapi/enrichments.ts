@@ -1392,6 +1392,12 @@ import {
   ReviewListResponseSchema as M36BreakGlassReviewListResponseSchema,
   ListReviewsQuerySchema as M36BreakGlassReviewsQuerySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/break-glass-typebox";
+import { AckBroadcastAcknowledgedSchema as M36AckBroadcastAcknowledgedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastCreatedSchema as M36AckBroadcastCreatedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastDetailQuerySchema as M36AckBroadcastDetailQuerySchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastDetailSchema as M36AckBroadcastDetailSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastListSchema as M36AckBroadcastListSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastMineSchema as M36AckBroadcastMineSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
 import { ClinicalLinkResolveResponseSchema as M36ClinicalLinkResolveResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/clinical-link-typebox";
 // M36 WP 4.8 deep-link resolver.
 import { DeliveryTargetResponseSchema as M36DeliveryTargetResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/delivery-target-typebox";
@@ -10376,6 +10382,32 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Who has read one announcement: counts plus capped reader / unread lists (messaging.announce; 404 outside the announcement channel)",
     response: M36AnnouncementReceiptsResponseSchema,
+  },
+  "POST /api/v1/messaging/announcements/:messageId/ack-broadcast": {
+    summary:
+      "Require acknowledgment of an announcement (WP 6.8, ADR-0097; messaging.announce; only the AUTHOR of a live announcement, else the uniform 404). Freezes the audience (every active member but the author) and returns the counts; a repeat is 200 `created:false` and leaves the audience untouched. The uniform 404 while the tenant flag `messaging.ack_broadcast` is off, before the request is parsed. A tenant above 5000 active members is a typed 422. Never cached",
+    response: M36AckBroadcastCreatedSchema,
+  },
+  "GET /api/v1/messaging/announcements/:messageId/ack-broadcast": {
+    summary:
+      "Who has not acknowledged one announcement (WP 6.8, ADR-0097; messaging.announce; the uniform 404 for an announcement with no broadcast and while the flag is off). Counts cover the whole frozen audience; people are paged exactly (filter pending|acknowledged|ineligible|all, limit up to 200, offset), nothing is cut. A recipient who is no longer an active member is `ineligible`, never a silent non-reader; `outsideAudience` counts active staff who joined after publish. Display names, states and instants only, never message text. Read-audited against the message. Never cached",
+    query: M36AckBroadcastDetailQuerySchema,
+    response: M36AckBroadcastDetailSchema,
+  },
+  "GET /api/v1/messaging/ack-broadcasts": {
+    summary:
+      "The acknowledge-required announcements of the organisation, newest first, with counts (WP 6.8, ADR-0097; messaging.announce; the uniform 404 while the tenant flag is off). No person and no message text. Never cached",
+    response: M36AckBroadcastListSchema,
+  },
+  "GET /api/v1/messaging/ack-broadcasts/mine": {
+    summary:
+      "The caller's OWN acknowledge-required announcements (WP 6.8, ADR-0097; messaging.read; the uniform 404 while the tenant flag is off): ids and instants, waiting ones carry `acknowledgedAt:null`. Never cached",
+    response: M36AckBroadcastMineSchema,
+  },
+  "POST /api/v1/messaging/announcements/:messageId/ack": {
+    summary:
+      "Acknowledge an announcement as yourself (WP 6.8, ADR-0097; messaging.read). Explicit, no body and no user field: the actor is the session. Idempotent: a repeat returns the original instant with `already:true`. Opening an announcement never acknowledges it. The author, a person who joined after publish, a person no longer active, another tenant and an unknown id are all the same 404; so is a tenant with the flag off. Never cached",
+    response: M36AckBroadcastAcknowledgedSchema,
   },
   "POST /api/v1/messaging/department-channels": {
     summary:

@@ -92,7 +92,7 @@ const KEY_RING_CONTEXT_VARS = new Set<string>([
 // WP 5.6 (ADR-0055 item 7): the message REDACTION guard binds the requester (insert) and the approver (approval) to `app.user_id`: two
 // people, enforced in the database. Same rule: that one function head, never a policy.
 const ACK_ACTOR_GUARD_HEAD =
-  /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?(?:message_ack_request_update_guard|message_ack_event_insert_guard|message_break_glass_read_guard|message_export_download_guard|message_export_job_guard|message_redaction_guard|message_external_share_guard|message_external_share_read_guard)\s*\(/i;
+  /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+(?:public\.)?(?:message_ack_request_update_guard|message_ack_event_insert_guard|message_break_glass_read_guard|message_export_download_guard|message_export_job_guard|message_redaction_guard|message_external_share_guard|message_external_share_read_guard|message_ack_broadcast_guard|message_ack_broadcast_recipient_guard)\s*\(/i;
 // ADR-0078: `app.ack_supervisor_reassign` is the transaction-local marker the application sets for a supervisor reassign; the same
 // backstop, the same two functions, never a policy.
 const ACK_ACTOR_VARS = new Set<string>(["app.user_id", "app.ack_supervisor_reassign"]);

@@ -165528,6 +165528,163 @@
         }
       }
     },
+    "/api/v1/messaging/ack-broadcasts": {
+      "get": {
+        "operationId": "getApiV1MessagingAckbroadcasts",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The acknowledge-required announcements of the organisation, newest first, with counts (WP 6.8, ADR-0097; messaging.announce; the uniform 404 while the tenant flag is off). No person and no message text. Never cached",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "broadcasts"
+                  ],
+                  "properties": {
+                    "broadcasts": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "messageId",
+                          "channelId",
+                          "createdAt",
+                          "counts"
+                        ],
+                        "properties": {
+                          "messageId": {
+                            "type": "string"
+                          },
+                          "channelId": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "counts": {
+                            "type": "object",
+                            "required": [
+                              "audience",
+                              "acknowledged",
+                              "pending",
+                              "opened",
+                              "notOpened",
+                              "ineligible",
+                              "outsideAudience"
+                            ],
+                            "properties": {
+                              "audience": {
+                                "type": "integer"
+                              },
+                              "acknowledged": {
+                                "type": "integer"
+                              },
+                              "pending": {
+                                "type": "integer"
+                              },
+                              "opened": {
+                                "type": "integer"
+                              },
+                              "notOpened": {
+                                "type": "integer"
+                              },
+                              "ineligible": {
+                                "type": "integer"
+                              },
+                              "outsideAudience": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/ack-broadcasts/mine": {
+      "get": {
+        "operationId": "getApiV1MessagingAckbroadcastsMine",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The caller's OWN acknowledge-required announcements (WP 6.8, ADR-0097; messaging.read; the uniform 404 while the tenant flag is off): ids and instants, waiting ones carry `acknowledgedAt:null`. Never cached",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "messageId",
+                          "channelId",
+                          "createdAt",
+                          "acknowledgedAt"
+                        ],
+                        "properties": {
+                          "messageId": {
+                            "type": "string"
+                          },
+                          "channelId": {
+                            "type": "string"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "acknowledgedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/analytics/response": {
       "get": {
         "operationId": "getApiV1MessagingAnalyticsResponse",
@@ -165862,6 +166019,376 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/announcements/{messageId}/ack": {
+      "post": {
+        "operationId": "postApiV1MessagingAnnouncementsByMessageIdAck",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Acknowledge an announcement as yourself (WP 6.8, ADR-0097; messaging.read). Explicit, no body and no user field: the actor is the session. Idempotent: a repeat returns the original instant with `already:true`. Opening an announcement never acknowledges it. The author, a person who joined after publish, a person no longer active, another tenant and an unknown id are all the same 404; so is a tenant with the flag off. Never cached",
+        "parameters": [
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "messageId",
+                    "acknowledgedAt",
+                    "already"
+                  ],
+                  "properties": {
+                    "messageId": {
+                      "type": "string"
+                    },
+                    "acknowledgedAt": {
+                      "type": "string"
+                    },
+                    "already": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/announcements/{messageId}/ack-broadcast": {
+      "get": {
+        "operationId": "getApiV1MessagingAnnouncementsByMessageIdAckbroadcast",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Who has not acknowledged one announcement (WP 6.8, ADR-0097; messaging.announce; the uniform 404 for an announcement with no broadcast and while the flag is off). Counts cover the whole frozen audience; people are paged exactly (filter pending|acknowledged|ineligible|all, limit up to 200, offset), nothing is cut. A recipient who is no longer an active member is `ineligible`, never a silent non-reader; `outsideAudience` counts active staff who joined after publish. Display names, states and instants only, never message text. Read-audited against the message. Never cached",
+        "parameters": [
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "pending",
+                  "type": "string"
+                },
+                {
+                  "const": "acknowledged",
+                  "type": "string"
+                },
+                {
+                  "const": "ineligible",
+                  "type": "string"
+                },
+                {
+                  "const": "all",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 0,
+              "maximum": 100000,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "messageId",
+                    "channelId",
+                    "createdAt",
+                    "counts",
+                    "filter",
+                    "offset",
+                    "hasMore",
+                    "people"
+                  ],
+                  "properties": {
+                    "messageId": {
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "counts": {
+                      "type": "object",
+                      "required": [
+                        "audience",
+                        "acknowledged",
+                        "pending",
+                        "opened",
+                        "notOpened",
+                        "ineligible",
+                        "outsideAudience"
+                      ],
+                      "properties": {
+                        "audience": {
+                          "type": "integer"
+                        },
+                        "acknowledged": {
+                          "type": "integer"
+                        },
+                        "pending": {
+                          "type": "integer"
+                        },
+                        "opened": {
+                          "type": "integer"
+                        },
+                        "notOpened": {
+                          "type": "integer"
+                        },
+                        "ineligible": {
+                          "type": "integer"
+                        },
+                        "outsideAudience": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "filter": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "acknowledged",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ineligible",
+                          "type": "string"
+                        },
+                        {
+                          "const": "all",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "offset": {
+                      "type": "integer"
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    },
+                    "people": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "userId",
+                          "displayName",
+                          "state",
+                          "openedAt",
+                          "acknowledgedAt"
+                        ],
+                        "properties": {
+                          "userId": {
+                            "type": "string"
+                          },
+                          "displayName": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "acknowledged",
+                                "type": "string"
+                              },
+                              {
+                                "const": "opened",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_opened",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ineligible",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "openedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "acknowledgedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1MessagingAnnouncementsByMessageIdAckbroadcast",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Require acknowledgment of an announcement (WP 6.8, ADR-0097; messaging.announce; only the AUTHOR of a live announcement, else the uniform 404). Freezes the audience (every active member but the author) and returns the counts; a repeat is 200 `created:false` and leaves the audience untouched. The uniform 404 while the tenant flag `messaging.ack_broadcast` is off, before the request is parsed. A tenant above 5000 active members is a typed 422. Never cached",
+        "parameters": [
+          {
+            "name": "messageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "messageId",
+                    "channelId",
+                    "createdAt",
+                    "counts",
+                    "created"
+                  ],
+                  "properties": {
+                    "messageId": {
+                      "type": "string"
+                    },
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "counts": {
+                      "type": "object",
+                      "required": [
+                        "audience",
+                        "acknowledged",
+                        "pending",
+                        "opened",
+                        "notOpened",
+                        "ineligible",
+                        "outsideAudience"
+                      ],
+                      "properties": {
+                        "audience": {
+                          "type": "integer"
+                        },
+                        "acknowledged": {
+                          "type": "integer"
+                        },
+                        "pending": {
+                          "type": "integer"
+                        },
+                        "opened": {
+                          "type": "integer"
+                        },
+                        "notOpened": {
+                          "type": "integer"
+                        },
+                        "ineligible": {
+                          "type": "integer"
+                        },
+                        "outsideAudience": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "created": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

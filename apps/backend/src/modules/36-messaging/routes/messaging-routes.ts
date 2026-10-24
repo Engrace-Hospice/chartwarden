@@ -118,6 +118,7 @@ import {
   type SnoozeReminderRouteDeps,
   registerSnoozeReminderRoutes,
 } from "./snooze-reminder-routes";
+import { type AckBroadcastRouteDeps, registerAckBroadcastRoutes } from "./ack-broadcast-routes";
 import { DISABLED_INBOX, type InboxRouteDeps, registerInboxRoutes } from "./inbox-routes";
 import { DISABLED_TASKS, type TaskRouteDeps, registerTaskRoutes } from "./task-routes";
 import {
@@ -182,6 +183,8 @@ export interface MessagingRouteDeps {
   snoozeReminders?: SnoozeReminderRouteDeps;
   /** WP 6.1 (ADR-0091): the smart work inbox (read-only; tenant flag `messaging.smart_inbox`). Omitted => reads as off. */
   inbox?: InboxRouteDeps;
+  /** WP 6.8 (ADR-0097): acknowledge-required broadcast (tenant flag `messaging.ack_broadcast`). Omitted => the routes are not registered (404). */
+  ackBroadcast?: AckBroadcastRouteDeps;
   /** WP 4.12: the on-call "who is covering now" directory (read-only). Omitted => the uniform 404. */
   oncall?: OnCallRouteDeps;
   /** WP 4.8: resolve an out-of-band link's opaque delivery id to its in-app target. Omitted => the uniform 404. */
@@ -528,6 +531,8 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
 
   // --- WP 6.1: the smart work inbox (read-only ranked queue over the caller's own work) ---
   registerInboxRoutes(app, deps.inbox ?? DISABLED_INBOX, { read: READ });
+  // --- WP 6.8: acknowledge-required broadcast (flag-gated inside; routes exist only when the boot supplies the service) ---
+  if (deps.ackBroadcast) registerAckBroadcastRoutes(app, deps.ackBroadcast);
 
   // --- WP 4.12: the on-call directory (read-only; flag-gated in the service) ---
   registerOnCallRoutes(app, deps.oncall ?? DISABLED_ONCALL, { read: READ });

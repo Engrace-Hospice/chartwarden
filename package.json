@@ -565,6 +565,7 @@
     "test:m36:retention-destruction:live": "vitest run apps/backend/__tests__/m36-retention-destruction.live.test.ts",
     "test:m36:workforce-offboarding:live": "vitest run apps/backend/__tests__/m36-workforce-offboarding.live.test.ts",
     "test:m36:response-analytics:live": "vitest run apps/backend/__tests__/m36-response-analytics.live.test.ts",
+    "test:m36:ack-broadcast:live": "vitest run apps/backend/__tests__/m36-ack-broadcast.live.test.ts",
     "test:m36:ack-escalation:live": "vitest run apps/backend/__tests__/m36-ack-escalation.live.test.ts",
     "test:m36:delivery-target:live": "vitest run apps/backend/__tests__/m36-delivery-target.live.test.ts",
     "test:m36:ack-supervisor-reassign:live": "vitest run apps/backend/__tests__/m36-ack-supervisor-reassign.live.test.ts",

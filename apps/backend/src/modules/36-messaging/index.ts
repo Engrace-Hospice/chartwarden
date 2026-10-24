@@ -143,12 +143,13 @@ export {
 } from "@chartwarden/messaging";
 
 import type { DbClient } from "@chartwarden/db";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createDbAckStore as _createDbAckStore } from "./ack-requests/ack-store-db";
 import { createOpenRequestLookup as _createOpenRequestLookup } from "./ack-requests/open-request-lookup";
 import { createDbUnacknowledgedReader as _createDbUnacknowledgedReader } from "./ack-requests/unacknowledged-reader-db";
 import { createUnacknowledgedService as _createUnacknowledgedService } from "./ack-requests/unacknowledged-service";
 import { buildSmartInboxService as _buildSmartInboxService, smartInboxFlag as _smartInboxFlag } from "./inbox/binding";
+import { createAckBroadcastService as _createAckBroadcastService } from "./ack-broadcast/ack-broadcast-service";
 import { createDbAnnouncementService as _createDbAnnouncementService } from "./announcement-service-db";
 import type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-ports";
 import { createAttachmentService as _createAttachmentService } from "./attachments/attachment-service-db";
@@ -282,6 +283,11 @@ export function mountMessagingRoutes(
     snoozeReminders?: _SnoozeReminderRouteDeps;
     /** WP 6.1 (ADR-0091): the smart work inbox. `flags` is the platform flag reader for `messaging.smart_inbox`; omitted => off. */
     smartInbox?: { flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined };
+    /** WP 6.8 (ADR-0097): acknowledge-required broadcast. `flags` reads `messaging.ack_broadcast` (absent = off); `rateLimit` is the optional route budget. */
+    ackBroadcast?: {
+      flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
+      rateLimit?: ((request: FastifyRequest, reply: FastifyReply) => Promise<void>) | undefined;
+    };
     /** WP 4.12: the on-call directory (read-only). Omitted => the uniform 404. */
     oncall?: ReturnType<typeof _buildOnCallDirectoryDeps>;
     /** WP 3.7: chart promotion (tenant flag + service). Omitted => flag off. */
@@ -389,6 +395,11 @@ export function mountMessagingRoutes(
         handoffs: opts.handoffs,
         listChannels: service.listChannels,
       }),
+    },
+    // WP 6.8 (ADR-0097): acknowledge-required broadcast; every route answers the uniform 404 while the tenant flag is off.
+    ackBroadcast: {
+      service: _createAckBroadcastService({ db, flags: opts.ackBroadcast?.flags }),
+      ...(opts.ackBroadcast?.rateLimit ? { rateLimit: opts.ackBroadcast.rateLimit } : {}),
     },
     deliveryTarget: {
       service: _createDeliveryTargetService({
