@@ -3677,6 +3677,39 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_scope",
   },
+  // --- payer (commercial / Medicare Advantage) appeals (milestone 12a-1; migration 1206, granted by 1209) ---
+  // `payer_appeal.*` works a case at one level of a payer's own path; `payer_appeal_path.*` is the organization's own
+  // path data (nothing is seeded). `.verify` is the second person who checks a draft path against the contract.
+  "payer_appeal.read": {
+    resource: "payer_appeal_case",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "payer_appeal.manage": {
+    resource: "payer_appeal_case",
+    action: "manage",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "payer_appeal_path.read": {
+    resource: "payer_appeal_path",
+    action: "read",
+    category: "billing",
+    abac: "none",
+  },
+  "payer_appeal_path.manage": {
+    resource: "payer_appeal_path",
+    action: "manage",
+    category: "billing",
+    abac: "none",
+  },
+  "payer_appeal_path.verify": {
+    resource: "payer_appeal_path",
+    action: "verify",
+    category: "billing",
+    abac: "none",
+  },
   // --- taxonomy surface ---
   "taxonomy.read": {
     resource: "denial_taxonomy",

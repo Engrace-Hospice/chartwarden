@@ -26,7 +26,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M14 IDG | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 39/39 ✅ | ✅ | ✅ | — | 11/11 ✅ |
 | M15 Discipline Care Plans | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 28/28 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M16 Bereavement | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 34/34 ✅ | ✅ | ✅ | — | 11/11 ✅ |
-| M17 Scheduling & Route Optimization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 38/38 ✅ | ✅ | ✅ | ✅ | 8/9 ⚠️ |
+| M17 Scheduling & Route Optimization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 39/39 ✅ | ✅ | ✅ | ✅ | 8/9 ⚠️ |
 | M18 EVV | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 26/26 ✅ | ✅ | ✅ | — | 8/8 ✅ |
 | M19 On-Call Triage | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 40/40 ✅ | ✅ | ✅ | ✅ | 12/12 ✅ |
 | M20 Field Safety | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 33/33 ✅ | ✅ | ✅ | — | 14/14 ✅ |
@@ -34,7 +34,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M22 Document Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 58/58 ✅ | ✅ | ✅ | — | 21/21 ✅ |
 | M23 Billing — Medicare | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 90/90 ✅ | ✅ | ✅ | ✅ | 29/29 ✅ |
 | M24 Billing — Medicaid | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 39/39 ✅ | ✅ | ✅ | ✅ | 16/16 ✅ |
-| M25 Remittance & Denials | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 111/111 ✅ | ✅ | ✅ | ✅ | 31/31 ✅ |
+| M25 Remittance & Denials | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 126/126 ✅ | ✅ | ✅ | ✅ | 35/35 ✅ |
 | M26 Cap Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M27 Cost Report | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 45/45 ✅ | ✅ | ✅ | ✅ | 15/15 ✅ |
 | M28 FHIR Gateway | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 35/35 ✅ | ❌ | ✅ | — | 9/9 ✅ |

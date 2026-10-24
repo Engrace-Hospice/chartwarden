@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1765,
-    "coveredRoutes": 1765,
-    "directRoutesReferenced": 1638
+    "routes": 1781,
+    "coveredRoutes": 1781,
+    "directRoutesReferenced": 1651
   },
   "modules": [
     {
@@ -287,7 +287,7 @@
     },
     {
       "module": "17-scheduling",
-      "routes": 38,
+      "routes": 39,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
@@ -297,7 +297,7 @@
         "apps/backend/__tests__/scheduling-inject.test.ts",
         "apps/backend/__tests__/scheduling-own-vs-any.test.ts"
       ],
-      "directRoutesReferenced": 33
+      "directRoutesReferenced": 34
     },
     {
       "module": "18-evv",
@@ -386,6 +386,7 @@
         "apps/backend/__tests__/m25-audit-request.live.test.ts",
         "apps/backend/__tests__/m25-audit-response.live.test.ts",
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",
+        "apps/backend/__tests__/m25-payer-appeal.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
@@ -405,7 +406,7 @@
     },
     {
       "module": "25-remittance",
-      "routes": 111,
+      "routes": 126,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-adr-readiness.live.test.ts",
@@ -413,6 +414,7 @@
         "apps/backend/__tests__/m25-audit-response.live.test.ts",
         "apps/backend/__tests__/m25-denial-version.live.test.ts",
         "apps/backend/__tests__/m25-later-tiers.live.test.ts",
+        "apps/backend/__tests__/m25-payer-appeal.live.test.ts",
         "apps/backend/__tests__/m25-payer-guard.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
@@ -420,7 +422,7 @@
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/remittance-inject.test.ts"
       ],
-      "directRoutesReferenced": 95
+      "directRoutesReferenced": 107
     },
     {
       "module": "26-cap",

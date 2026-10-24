@@ -8,7 +8,7 @@ import type { WatchDeadlineRow } from "../domain";
 import type { AlertEmission } from "./m25-jobs";
 
 export interface RecordedDeadlineWatchRow extends WatchDeadlineRow {
-  readonly subjectKind: "appeal" | "audit_request";
+  readonly subjectKind: "appeal" | "audit_request" | "payer_appeal";
   readonly subjectId: string;
 }
 
