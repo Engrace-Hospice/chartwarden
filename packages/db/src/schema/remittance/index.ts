@@ -32,3 +32,4 @@ export * from "./tpe"; // tpe_mac_rule, tpe_program, tpe_round, tpe_round_claim 
 export * from "./submission"; // submission_attempt (milestone 6a)
 export * from "./audit-request"; // audit_request, audit_request_claim, audit_request_event (milestone 7a-1)
 export * from "./later-tier"; // appeal_tier_detail, recorded_deadline (milestone 7a-1)
+export * from "./adr-readiness"; // adr_readiness_review, adr_readiness_finding (milestone 8a-1)

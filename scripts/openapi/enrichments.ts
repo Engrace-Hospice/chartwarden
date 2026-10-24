@@ -595,6 +595,12 @@ import {
   QicViewSchema as M25QicViewSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/qic.routes";
 import {
+  AdrReadinessDispositionRequestSchema as M25AdrReadinessDispositionRequestSchema,
+  AdrReadinessDispositionResultSchema as M25AdrReadinessDispositionResultSchema,
+  AdrReadinessRequestResultSchema as M25AdrReadinessRequestResultSchema,
+  AdrReadinessViewSchema as M25AdrReadinessViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/adr-readiness.routes";
+import {
   AuditClaimRequestSchema as M25AuditClaimRequestSchema,
   AuditCreateRequestSchema as M25AuditCreateRequestSchema,
   AuditDetailSchema as M25AuditDetailSchema,
@@ -8444,6 +8450,23 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/reopenings/:id/close": {
     summary: "Close a decided reopening (If-Match)",
     response: M25ReopeningVersionedResultSchema,
+  },
+  // ── adr-readiness.routes.ts (hospice ADR/TPE/QIC PRD, milestone 8a-1; advisory, gates nothing) ──
+  "GET /api/v1/adrs/:id/readiness": {
+    summary:
+      "Documentation readiness: the deterministic gap view (no model) plus the latest stored advisory review",
+    response: M25AdrReadinessViewSchema,
+  },
+  "POST /api/v1/adrs/:id/readiness/reviews": {
+    summary:
+      "Request an advisory readiness review; with the AI check unavailable the review is recorded as such and nothing else changes",
+    response: M25AdrReadinessRequestResultSchema,
+    status: 201,
+  },
+  "POST /api/v1/adrs/:id/readiness/findings/:findingId/disposition": {
+    summary: "Acknowledge, dismiss or dispute an advisory readiness finding",
+    body: M25AdrReadinessDispositionRequestSchema,
+    response: M25AdrReadinessDispositionResultSchema,
   },
   // ── audit-request.routes.ts / later-tier.routes.ts / case-view.routes.ts (hospice ADR/TPE/QIC PRD, milestone 7a-1) ──
   "GET /api/v1/audit-requests": {

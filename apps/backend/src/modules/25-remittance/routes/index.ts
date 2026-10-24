@@ -11,6 +11,10 @@ export {
 export { buildDrizzleM25WriteService } from "./write-service-drizzle";
 export { buildDrizzleAdrService, type AdrService } from "./adr-service";
 export {
+  buildDrizzleAdrReadinessService,
+  type AdrReadinessService,
+} from "./adr-readiness-service";
+export {
   buildDrizzleDenialRouteService,
   type DenialRouteService,
 } from "./denial-route-service";
@@ -29,6 +33,7 @@ export {
 } from "./submission-service";
 
 import type { M25IngestService } from "../ingest/service";
+import type { AdrReadinessService } from "./adr-readiness-service";
 import type { AdrService } from "./adr-service";
 import type { AuditRequestService } from "./audit-request-service";
 import type { CaseViewService } from "./case-view-service";
@@ -68,4 +73,6 @@ export interface M25RouteServices {
   readonly laterTierService?: LaterTierService;
   /** The one claim-keyed case view (milestone 7a-1); the route mounts only when supplied. */
   readonly caseViewService?: CaseViewService;
+  /** Advisory ADR documentation readiness (milestone 8a-1); the routes mount only when supplied. */
+  readonly adrReadinessService?: AdrReadinessService;
 }

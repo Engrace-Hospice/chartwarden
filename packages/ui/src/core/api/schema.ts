@@ -2628,6 +2628,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/adrs/{id}/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Documentation readiness: the deterministic gap view (no model) plus the latest stored advisory review */
+        get: operations["getApiV1AdrsByIdReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/adrs/{id}/readiness/findings/{findingId}/disposition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge, dismiss or dispute an advisory readiness finding */
+        post: operations["postApiV1AdrsByIdReadinessFindingsByFindingIdDisposition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/adrs/{id}/readiness/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request an advisory readiness review; with the AI check unavailable the review is recorded as such and nothing else changes */
+        post: operations["postApiV1AdrsByIdReadinessReviews"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/adrs/{id}/sign-off": {
         parameters: {
             query?: never;
@@ -33911,6 +33962,130 @@ export interface operations {
                     "application/json": {
                         id: string;
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdrsByIdReadiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        adrCaseId: string;
+                        caseState: string;
+                        caseVersion: number;
+                        generatedAt: string;
+                        gaps: {
+                            keys: {
+                                checklistKey: "certification_of_terminal_illness" | "election_statement" | "plan_of_care" | "physician_orders" | "visit_notes" | "medical_records_cover";
+                                status: "documents_attached" | "no_document_attached" | "marked_not_applicable";
+                                documentIds: string[];
+                                isGap: boolean;
+                            }[];
+                            unmappedDocumentIds: string[];
+                        };
+                        review: {
+                            id: string;
+                            status: string;
+                            source: string;
+                            requestedAt: string;
+                            requestedByMembershipId: string;
+                            stale: boolean;
+                            unavailableReason: string | null;
+                            droppedFindingCount: number;
+                            modelVersionPin: string | null;
+                            promptTemplateVersion: string | null;
+                            allDisposed: boolean;
+                            findings: {
+                                id: string;
+                                checklistKey: string;
+                                status: string;
+                                citedDocumentIds: string[];
+                                note: string;
+                                disposition: string | null;
+                                disposedAt: string | null;
+                                disposedByMembershipId: string | null;
+                            }[];
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdrsByIdReadinessFindingsByFindingIdDisposition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                findingId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    disposition: "acknowledged" | "dismissed" | "disputed";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        disposition: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdrsByIdReadinessReviews: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        reviewId: string;
+                        status: string;
+                        source: string;
+                        findingCount: number;
                     };
                 };
             };

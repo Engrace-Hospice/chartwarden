@@ -8,6 +8,7 @@
 // close-write-off / appeal-submit compose the §D15 step-up, and every mutating route declares
 // `Idempotency-Key` (§F05).
 import type { FastifyInstance } from "fastify";
+import { registerAdrReadinessRoutes } from "./adr-readiness.routes";
 import { registerAdrRoutes } from "./adr.routes";
 import { registerAppealRoutes } from "./appeals.routes";
 import { registerAuditRequestRoutes } from "./audit-request.routes";
@@ -25,6 +26,7 @@ import { registerTaxonomyRoutes } from "./taxonomy.routes";
 import { registerTpeRoutes } from "./tpe.routes";
 
 export { registerAdrRoutes, type AdrRouteDeps } from "./adr.routes";
+export { registerAdrReadinessRoutes, type AdrReadinessRouteDeps } from "./adr-readiness.routes";
 export { registerReopeningRoutes, type ReopeningRouteDeps } from "./reopening.routes";
 export { registerTpeRoutes, type TpeRouteDeps } from "./tpe.routes";
 export { registerQicRoutes, type QicRouteDeps } from "./qic.routes";
@@ -71,5 +73,9 @@ export function mountM25Routes(app: FastifyInstance, services: M25RouteServices)
   }
   if (services.caseViewService) {
     registerCaseViewRoutes(app, { caseViewService: services.caseViewService });
+  }
+  // Milestone 8a-1: advisory documentation readiness (deterministic gaps + a deny-stubbed assistant port).
+  if (services.adrReadinessService) {
+    registerAdrReadinessRoutes(app, { adrReadinessService: services.adrReadinessService });
   }
 }

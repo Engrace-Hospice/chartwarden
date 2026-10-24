@@ -29,7 +29,7 @@ import type {
 } from "@chartwarden/types";
 
 /**
- * The seventeen capabilities registered at lock time.
+ * The eighteen capabilities registered: seventeen at lock time plus `adr_documentation_readiness` (advisory, PROPOSED).
  *
  * `defaultBackendKey: null` marks the five capabilities §2.4 routes to "tabular ML (XGBoost on
  * `local-ml-worker`)" — a SERVICE, not one of the backend keys §2.3 registers. See the
@@ -205,6 +205,16 @@ export const AI_PHASE_1_CAPABILITIES: readonly AiPhase1CapabilityRegistration[] 
     consumerModules: [],
     governanceCatalogId: "level-of-care-prediction",
     note: "§2.4's prediction group and the architecture §10 inventory both named this capability without classifying it, which left `ai_capability.risk_tier` (NOT NULL) unseedable. The architecture catalog now states it: `level-of-care-prediction` is high, RATIFIED 2026-08-01. The tier is load-bearing, not descriptive — it puts a Clinical Reviewer on the approval gate (§5.7), sets the 12-month reapproval cadence (§5.6), and makes the §164.528 disclosure-accounting acknowledgment mandatory before a tenant may opt in (§5.3.1(4)).",
+  },
+  {
+    capabilityKey: "adr_documentation_readiness",
+    displayName: "ADR Documentation Readiness (advisory)",
+    riskTier: "medium",
+    phase1LifecycleState: "PROPOSED",
+    defaultBackendKey: null,
+    consumerModules: ["m25"],
+    governanceCatalogId: "adr-documentation-readiness",
+    note: "Advisory only; Medium with High-class controls (risk tier is the recommended default pending the AI Safety Owner). No vendor or model chosen, so no backend key. No Phase-1 consumer surface; M25 resolves a deny-stub.",
   },
 ];
 

@@ -460,8 +460,9 @@ The fourteen capabilities registered at lock time. Only `hearthnote_layer2` reac
 | `hospitalization_risk_30d` | 30-Day Hospitalization Risk Prediction | high | `DESIGN_REVIEW` (Phase 2 promotion target) | tabular ML (XGBoost on `local-ml-worker`) | M19, M14, M16 |
 | `bereavement_risk_narrative` | Bereavement Risk Narrative Augmentation | medium | `DESIGN_REVIEW` (Phase 2 promotion target) | `anthropic-claude-opus-4-7` | M16 |
 | `denial_outcome_prediction` | Denial Outcome / Appeal Probability Prediction | medium | `PROPOSED` (Phase 2+) | tabular ML (XGBoost on `local-ml-worker`) | M25 |
+| `adr_documentation_readiness` | ADR Documentation Readiness (advisory) | medium (High-class controls; pending AI Safety Owner) | `PROPOSED` (no consumer surface; no vendor or model chosen) | none (`defaultBackendKey: null`) | M25 |
 
-Mortality / decline / falls-risk / level-of-care prediction (architecture §10) are also registered as `PROPOSED` rows; they appear in the capability table at lock time so the registry is the source of truth, but they do not have Phase-1 consumers. The complete Phase-1 capability count is 14 + 4 prediction = 18 registered, 3 in `APPROVED` (the two HearthNote Layer 2 capabilities + `embeddings_clinical`), the rest in `DESIGN_REVIEW` or `PROPOSED`.
+Mortality / decline / falls-risk / level-of-care prediction (architecture §10) are also registered as `PROPOSED` rows; they appear in the capability table at lock time so the registry is the source of truth, but they do not have Phase-1 consumers. The complete Phase-1 capability count is 14 + 4 prediction = 18 registered, 3 in `APPROVED` (the two HearthNote Layer 2 capabilities + `embeddings_clinical`), the rest in `DESIGN_REVIEW` or `PROPOSED`. `adr_documentation_readiness` (M25, advisory, `PROPOSED`) was registered afterwards; it is not part of the 14 + 4 arithmetic above.
 
 ### 2.5 Typed Schemas — Capability Inputs and Outputs
 
