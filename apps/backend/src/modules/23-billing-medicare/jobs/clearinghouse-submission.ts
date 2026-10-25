@@ -180,9 +180,21 @@ export interface AckCursorStore {
   advance(key: AckCursorKey, expectedVersion: number, next: string | null): Promise<boolean>;
 }
 
-/** What one org's pull produced: PHI-free labels of the provider entities that failed (acks went to `onPage`). */
+/**
+ * Most pages one provider entity's stream may read in one tick. The cursor is persisted after every applied page, so a
+ * longer chain is not lost: the next tick resumes where this one stopped (and `backlog` makes the remainder visible).
+ */
+export const MAX_ACK_PAGES_PER_TICK = 50;
+/** The persisted cursor column accepts 1..512 characters (migration 1267). */
+const MAX_CURSOR_LENGTH = 512;
+
+/**
+ * What one org's pull produced (acks went to `onPage`): PHI-free labels of the provider entities that failed, and of
+ * those that stopped at {@link MAX_ACK_PAGES_PER_TICK} with more to read.
+ */
 export interface TransportAckPull {
   readonly failures: readonly string[];
+  readonly backlog: readonly string[];
 }
 
 type PageHandler = (acks: readonly TransportAck[]) => Promise<void>;
@@ -203,9 +215,11 @@ export async function pullTransportAcks(
   onPage: PageHandler,
 ): Promise<TransportAckPull> {
   const failures: string[] = [];
+  const backlog: string[] = [];
   for (const providerEntityId of await transport.contexts.providerEntitiesFor(organizationId)) {
     try {
-      await pullEntity(transport, organizationId, providerEntityId, kind, onPage);
+      const outcome = await pullEntity(transport, organizationId, providerEntityId, kind, onPage);
+      if (outcome === "backlog") backlog.push(`org ${organizationId} provider ${providerEntityId}`);
     } catch (err) {
       // Ids and the (PHI-free) failure text only.
       failures.push(
@@ -213,7 +227,7 @@ export async function pullTransportAcks(
       );
     }
   }
-  return { failures };
+  return { failures, backlog };
 }
 
 async function pullEntity(
@@ -222,10 +236,10 @@ async function pullEntity(
   providerEntityId: string,
   kind: TransportAck["kind"],
   onPage: PageHandler,
-): Promise<void> {
+): Promise<"done" | "backlog"> {
   const ctx = await transport.contexts.contextFor(organizationId, providerEntityId);
   const macJurisdiction = ctx.jurisdiction;
-  if (!macJurisdiction) return;
+  if (!macJurisdiction) return "done";
   const { vendor, transport: port } = transport.binding;
   const store = transport.ackCursors;
   const key: AckCursorKey = {
@@ -237,7 +251,9 @@ async function pullEntity(
   };
   let state: AckCursorState = store ? await store.read(key) : { cursor: null, version: 0 };
   let retriedFromStart = false;
-  for (;;) {
+  // Every position this tick has asked for: a vendor chain that comes back to one (A, B, A) is a cycle, not progress.
+  const seen = new Set<string | null>([state.cursor]);
+  for (let pages = 0; pages < MAX_ACK_PAGES_PER_TICK; ) {
     const result = await port.fetchAcknowledgments(ctx, state.cursor);
     if (!result.ok) {
       const refused = result.degraded.code === CH.INVALID_REQUEST;
@@ -247,16 +263,30 @@ async function pullEntity(
       retriedFromStart = true;
       // The vendor no longer honours the stored position: start over (replays are idempotent).
       if (store) {
-        if (!(await store.advance(key, state.version, null))) return;
+        if (!(await store.advance(key, state.version, null))) return "done";
         state = await store.read(key);
       } else {
         state = { cursor: null, version: 0 };
       }
+      seen.clear();
+      seen.add(null);
       continue;
     }
+    pages += 1;
     const { items, nextCursor, hasMore } = result.data;
-    if (hasMore && nextCursor === state.cursor) {
-      throw failure("acknowledgment pull", CH.INVALID_REQUEST, "the vendor cursor did not advance");
+    if (nextCursor.length < 1 || nextCursor.length > MAX_CURSOR_LENGTH) {
+      throw failure(
+        "acknowledgment pull",
+        CH.INVALID_REQUEST,
+        "the vendor cursor has an unusable length",
+      );
+    }
+    if (hasMore && seen.has(nextCursor)) {
+      throw failure(
+        "acknowledgment pull",
+        CH.INVALID_REQUEST,
+        "the vendor cursor did not advance (repeated position)",
+      );
     }
     const acks = items
       .map((event) => ackFromEvent(event, { organizationId, providerEntityId, macJurisdiction }))
@@ -264,11 +294,14 @@ async function pullEntity(
     if (acks.length > 0) await onPage(acks);
     if (store && nextCursor !== state.cursor) {
       // Lost the race: another tick owns this stream now and its position stands. (An unchanged position is no write.)
-      if (!(await store.advance(key, state.version, nextCursor))) return;
+      if (!(await store.advance(key, state.version, nextCursor))) return "done";
       state = { cursor: nextCursor, version: state.version + 1 };
     } else if (!store) {
       state = { cursor: nextCursor, version: 0 };
     }
-    if (!hasMore) return;
+    seen.add(nextCursor);
+    if (!hasMore) return "done";
   }
+  // The cap was reached with more to read; the persisted cursor is consistent with what was applied.
+  return "backlog";
 }

@@ -142,7 +142,7 @@ entity (two permanent code paths and a per-entity switch to get wrong), (c) skip
   cursor (#749): the position is persisted per (org, provider entity, vendor, usage, stage) in `clearinghouse_ack_cursor`
   and moved by compare-and-set only after the page was applied (at-least-once; replays collapse on the ack row's unique
   key). A cursor the vendor refuses (`CH_INVALID_REQUEST`) resets to a null re-read once. A page whose apply keeps
-  failing holds that stream's cursor, so it is surfaced as a failure every tick rather than skipped. There is no page cap.
+  failing holds that stream's cursor, so it is surfaced as a failure every tick rather than skipped. One tick reads at most `MAX_ACK_PAGES_PER_TICK` (50) pages per provider entity and stage: the cursor is stored after every applied page, so the rest resumes on the retry the cap hit triggers (logged as a backlog), and a repeated cursor position (a cycle) fails the pull. An over-long cursor (> 512 characters) is refused before apply.
 - Follow-up work (separate PRs): the ack-state split (A6), binding
   `fetchRemittances` to the M25 835 worker port (A5), the Stedi adapter (B2).
 - The port makes no promise about hospice rules (NOE timeliness, benefit periods, revenue/HCPCS pairing); those stay

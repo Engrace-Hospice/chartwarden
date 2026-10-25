@@ -23,7 +23,7 @@ are relying on.
 your edits, and on report and polling calls. Your test-claims page says sandbox accounts cannot submit test claims, test
 claim workflows are only for production accounts, the mode is inferred from the API key type, and `usageIndicator` must be
 `T` when present. Please confirm in writing: (a) the sandbox error is expected; (b) we need a production account with a
-test API key; (c) a test key can never file a real claim, and a production key on a test endpoint returns 404; (d) test
+test API key; (c) a test key can never file a real claim, and a production key used against a test-mode request is refused (your page says HTTP 404): does that hold for the claim submission routes we call, and what happens if a production key sends an interchange marked `T`; (d) test
 claims to any payer ID return a test 277CA without payer enrollment. Is anything else needed (a signed agreement, BAA, a
 payment method)?
 
@@ -32,7 +32,7 @@ holding provider records (NPI, tax id, enrollments) for all customers, or must e
 account connected through an OAuth app? If one account is allowed: any limits on number of providers or enrollments, and
 how do we attribute a 277CA or 835 to a provider (Q27: filter by billing NPI, or a per-provider identifier on each
 report)? If integrated accounts are required: who signs the BAA and owns enrollments and billing, and how do test and
-production keys work per integrated account? OAuth apps are described as private preview; how do we get access?
+production keys work per integrated account? How do we get access to OAuth apps?
 
 **3. (blocking) Q16 - Medicare Part A enrollment.** What does enrollment for Oregon Part A (`MDCKC` / `12M41`) require
 (CCN, NPI, PTAN, signed forms), is it per NPI, per provider entity or per tax id, and how long does it take? Can we test

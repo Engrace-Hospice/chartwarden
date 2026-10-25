@@ -1,7 +1,7 @@
 # Runbook: Stedi sandbox contract test (issue #727)
 
 **Date:** 2026-10-25 · The test is [`stedi-sandbox-contract.test.ts`](../../../packages/x12-837-client/src/clearinghouse/stedi-sandbox-contract.test.ts).
-It is skipped unless both switches below are set, so CI and `bun run test` never reach the network. **Live sending stays
+It is skipped unless all three switches below are set, so CI and `bun run test` never reach the network. **Live sending stays
 disabled**: this test builds its own `StediTransport` from the test key; the platform binding (`CLEARINGHOUSE_VENDOR`) is
 not touched and must stay unset or `in_memory` in every environment you run this from.
 
@@ -9,7 +9,9 @@ not touched and must stay unset or `in_memory` in every environment you run this
 
 1. Stedi's written answer to Q14 is filed in `STEDI_QUESTIONS_20261008.md`, and a **production** Stedi account exists with a
    **test API key** (Stedi's docs: test claims are only available on production accounts; the mode is inferred from the key
-   type; a production key on a test endpoint returns 404). A sandbox-account key will answer `ACCOUNT_NOT_PROVISIONED`;
+   type; a production key on a test endpoint returns 404; whether this transport's single base URL counts as a "test endpoint"
+   is NOT verified, so nothing in the code can detect a production key: you must create the key as a test-mode key and
+   say so with `STEDI_CONTRACT_KEY_IS_TEST=yes`). A sandbox-account key will answer `ACCOUNT_NOT_PROVISIONED`;
    that is the Q14 symptom, not a code defect.
 2. A signed BAA is not required for this run because the data is synthetic (the repo's `__fixtures__/stedi-*.x12`:
    fictional hospice, NPI `1234567893`, payer `STEDI`). Do not point it at real patients or edit the fixtures to hold any.
@@ -20,6 +22,7 @@ not touched and must stay unset or `in_memory` in every environment you run this
 ```bash
 STEDI_TEST_API_KEY='<test-mode key>' \
 STEDI_CONTRACT_CONFIRM=synthetic-only \
+STEDI_CONTRACT_KEY_IS_TEST=yes \
 STEDI_CONTRACT_RESULTS_FILE=/tmp/stedi-contract-results.json \
 bunx vitest run packages/x12-837-client/src/clearinghouse/stedi-sandbox-contract.test.ts
 ```

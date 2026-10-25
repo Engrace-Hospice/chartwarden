@@ -1892,6 +1892,15 @@ async function runTransportAckPull(
     try {
       const pulled = await pullTransportAcks(transport, organizationId, kind, onPage);
       failures.push(...pulled.failures);
+      if (pulled.backlog.length > 0) {
+        // Visible and prompt: log it and fail the run so BullMQ retries (with backoff) instead of waiting a full
+        // cron interval. Every page read so far was applied and its cursor stored, so the retry resumes.
+        deps.logger?.error(
+          { kind, entities: pulled.backlog },
+          "clearinghouse ack pull hit the per-tick page cap; the rest resumes on the retry",
+        );
+        failures.push(`ack backlog (page cap) for ${pulled.backlog.join(", ")}`);
+      }
     } catch (err) {
       failures.push(`org ${organizationId}: ${err instanceof Error ? err.message : "failed"}`);
     }

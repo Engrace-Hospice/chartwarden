@@ -1,16 +1,19 @@
-// Stedi sandbox contract test (#727). SKIPPED unless BOTH switches are set, so CI and a plain `bun run test` never
+// Stedi sandbox contract test (#727). SKIPPED unless ALL THREE switches are set, so CI and a plain `bun run test` never
 // reach the network:
 //
 //   STEDI_TEST_API_KEY=<a Stedi TEST-mode API key from a PRODUCTION Stedi account>
-//   STEDI_CONTRACT_CONFIRM=synthetic-only      (you confirm the fixtures are synthetic and the key is a test key)
+//   STEDI_CONTRACT_CONFIRM=synthetic-only      (you confirm the fixtures are synthetic)
+//   STEDI_CONTRACT_KEY_IS_TEST=yes             (you confirm the key was created as a Stedi TEST-mode API key)
 //   [STEDI_CONTRACT_RESULTS_FILE=/path/results.json]   (a PHI-free record of what Stedi answered, for the results template)
 //
 // Runbook: docs/audits/clearinghouse-integration/STEDI_SANDBOX_RUNBOOK_20261025.md. What it proves is only what the
 // vendor's answers can contradict: that the transport's assumptions (U items in STEDI_TRANSPORT_CONTRACT) hold against a
 // real test-mode account. It never sets live sending: the platform binding (CLEARINGHOUSE_VENDOR) is untouched, the
 // transport is built here from the test key, every submission is `usage: "test"` (ISA15 T, checked locally before the
-// send) and the fixtures are the repo's synthetic interchanges. A production key against the test routes is refused by
-// Stedi (HTTP 404) rather than filing anything.
+// send) and the fixtures are the repo's synthetic interchanges. Stedi's docs say the mode is inferred from the API key
+// type; this transport has one base URL, so NOTHING here can detect a production key. Only the operator's
+// STEDI_CONTRACT_KEY_IS_TEST confirmation stands between a production key and a (ISA15 T) request; what Stedi does with
+// that is the unverified Q14 question.
 //
 // The assertions are deliberately tolerant about shapes nobody has observed yet (a success body, the 277CA): they
 // record what happened and fail only on a broken invariant (test traffic, key leakage, a duplicate send).
@@ -26,9 +29,10 @@ import type { ClearinghouseContext, ClearinghouseSubmission, SubmissionReceipt }
 const KEY = process.env.STEDI_TEST_API_KEY?.trim();
 const CONFIRMED = process.env.STEDI_CONTRACT_CONFIRM === "synthetic-only";
 const RESULTS_FILE = process.env.STEDI_CONTRACT_RESULTS_FILE;
-const RUN = Boolean(KEY) && CONFIRMED;
+const KEY_CONFIRMED_TEST = process.env.STEDI_CONTRACT_KEY_IS_TEST === "yes";
+const RUN = Boolean(KEY) && CONFIRMED && KEY_CONFIRMED_TEST;
 const SKIP_REASON =
-  "set STEDI_TEST_API_KEY (a Stedi test-mode key from a production account) and STEDI_CONTRACT_CONFIRM=synthetic-only to run the live Stedi contract test; see STEDI_SANDBOX_RUNBOOK_20261025.md";
+  "set STEDI_TEST_API_KEY (a Stedi test-mode key from a production account), STEDI_CONTRACT_CONFIRM=synthetic-only and STEDI_CONTRACT_KEY_IS_TEST=yes to run the live Stedi contract test; see STEDI_SANDBOX_RUNBOOK_20261025.md";
 
 const fixture = (name: string): string =>
   readFileSync(join(__dirname, "__fixtures__", `stedi-${name}.x12`), "utf8");
@@ -162,9 +166,8 @@ describe.skipIf(!RUN)(
 
 // Always-on guard: the skipped suite must stay skipped by default (CI sets neither variable).
 describe("Stedi sandbox contract gating", () => {
-  it("does not run without both switches", () => {
-    if (process.env.STEDI_TEST_API_KEY && process.env.STEDI_CONTRACT_CONFIRM === "synthetic-only")
-      return;
+  it("does not run without all three switches", () => {
+    if (RUN) return;
     expect(RUN).toBe(false);
   });
 });

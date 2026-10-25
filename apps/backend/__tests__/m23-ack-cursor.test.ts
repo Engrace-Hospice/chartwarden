@@ -11,6 +11,7 @@ import {
   type AckCursorKey,
   type AckCursorStore,
   type M23TransportDeps,
+  MAX_ACK_PAGES_PER_TICK,
   type TransportAck,
   pullTransportAcks,
   transportUpload,
@@ -222,5 +223,61 @@ describe("pullTransportAcks with a persisted cursor (#749)", () => {
     };
     const pulled = await pullTransportAcks(stuck, ORG, "ack_999", async () => {});
     expect(pulled.failures).toEqual([expect.stringContaining("did not advance")]);
+  });
+
+  it("fails on a vendor cursor that cycles A -> B -> A, keeping the cursor at the last applied page", async () => {
+    const { t, rows } = setup();
+    const chain = ["A", "B", "A"];
+    let n = 0;
+    const cycling: M23TransportDeps = {
+      ...t,
+      binding: {
+        vendor: "in_memory",
+        transport: {
+          fetchAcknowledgments: async () => ({
+            ok: true,
+            data: { items: [], nextCursor: chain[n++ % chain.length], hasMore: true },
+          }),
+        } as never,
+      },
+    };
+    const pulled = await pullTransportAcks(cycling, ORG, "ack_999", async () => {});
+    expect(pulled.failures).toEqual([expect.stringContaining("repeated position")]);
+    expect([...rows.values()][0]?.cursor).toBe("B"); // pages A and B were applied; the repeat was refused
+  });
+
+  it("stops at the per-tick page cap, reports a backlog, and the next tick resumes from the stored cursor", async () => {
+    const { inMemory, t, rows } = setup();
+    const total = MAX_ACK_PAGES_PER_TICK * 2 + 3; // in-memory pages hold 2 events
+    await seed(inMemory, t, PE, total);
+    const first = collect();
+    const tick1 = await pullTransportAcks(t, ORG, "ack_999", first.onPage);
+    expect(tick1.failures).toEqual([]);
+    expect(tick1.backlog).toHaveLength(1);
+    expect(first.pages.flat()).toHaveLength(MAX_ACK_PAGES_PER_TICK * 2);
+    expect([...rows.values()][0]?.cursor).toBe(String(MAX_ACK_PAGES_PER_TICK * 2));
+    const second = collect();
+    const tick2 = await pullTransportAcks(t, ORG, "ack_999", second.onPage);
+    expect(tick2.backlog).toEqual([]);
+    expect(second.pages.flat().map((a) => a.controlNumber)).toEqual(["C100", "C101", "C102"]);
+    expect([...rows.values()][0]?.cursor).toBe(String(total));
+  });
+
+  it("rejects an unusable cursor length before anything is applied", async () => {
+    const { t } = setup();
+    const bad: M23TransportDeps = {
+      ...t,
+      binding: {
+        vendor: "in_memory",
+        transport: {
+          fetchAcknowledgments: async () => ({
+            ok: true,
+            data: { items: [], nextCursor: "x".repeat(513), hasMore: false },
+          }),
+        } as never,
+      },
+    };
+    const pulled = await pullTransportAcks(bad, ORG, "ack_999", async () => {});
+    expect(pulled.failures).toEqual([expect.stringContaining("unusable length")]);
   });
 });
