@@ -737,6 +737,8 @@ jobs:
           - { name: "M25 later tiers", scripts: "test:m25:later-tiers:live" }
           # Milestone 11a-1 - the Medicaid payer guard (no Medicare tier on a Medicaid denial) and the Medicaid case view.
           - { name: "M25 payer guard", scripts: "test:m25:payer-guard:live" }
+          # Billing E2E S07/S09 - golden 835 posting (CAS, partial, recoupment, split line, replay) and supplemental 835 after appeal.
+          - { name: "M25 golden 835", scripts: "test:m25:835-golden:live" }
           - { name: "M25 audit requests", scripts: "test:m25:audit-request:live" }
           # Milestone 7a-2 - the audit response packet: typed checklist, sign-off by a second person, the none-stated attestation, filing proof (audit_response attempt) and the retained render request.
           - { name: "M25 audit response", scripts: "test:m25:audit-response:live" }

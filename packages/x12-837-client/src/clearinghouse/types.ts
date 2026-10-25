@@ -50,6 +50,25 @@ export const CH = {
 } as const;
 export type ClearinghouseErrorCode = (typeof CH)[keyof typeof CH];
 
+/**
+ * `CH_NOT_WIRED` also means "operation not implemented", so a rejected credential (HTTP 401/403) is told apart by
+ * these fixed reasons, which the transports use for nothing else. Never put vendor text in them.
+ */
+export const CREDENTIAL_REJECTED_REASONS: ReadonlySet<string> = new Set([
+  "Stedi rejected the platform credential",
+  "the MAC portal rejected the submitter credential",
+]);
+
+/** True for a degraded answer that means "the vendor rejected our credential" (not "not implemented"). */
+export function isCredentialRejection(r: {
+  readonly ok: boolean;
+  readonly degraded?: { readonly code: string; readonly reason: string };
+}): boolean {
+  return (
+    !r.ok && r.degraded?.code === CH.NOT_WIRED && CREDENTIAL_REJECTED_REASONS.has(r.degraded.reason)
+  );
+}
+
 /** Codes after which a retry can succeed. The rest are terminal until a human or a config change acts. */
 export const RETRYABLE_CODES: ReadonlySet<string> = new Set([CH.UNAVAILABLE]);
 

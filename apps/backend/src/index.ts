@@ -3980,12 +3980,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     : null;
   // Milestone 10a — NOMNC delivery + BFCC-QIO expedited review record-keeping (typed facts, typed deadlines). Its
   // routes mount in `mountAdmissionRoutes`; the 15-minute deadline scan runs in M6's `admission.window_alert` worker.
-  const m6Nomnc = dbHandle ? createNomncService({
+  const m6Nomnc = dbHandle
+    ? createNomncService({
         db: dbHandle.db,
         outbox: m6OutboxPublisher,
         // A linked document must be an ACTIVE M22 version of this org's patient + admission (else 404).
         documentValidator: createDocumentReaderEvidenceValidator(() => getSeam("DocumentReader")),
-      }) : null;
+      })
+    : null;
   // M6 → M37 (confirm-handshake fix, 2026-08-05) — the LIVE `IpuBedAssignmentProvider` seam (registered
   // by M37 at boot), resolved lazily per call (the `m24SignedEncounters`/`m24CoverageResolver` precedent)
   // so registration order at boot never matters. This is the real "bedId verified with M37" check the
@@ -5335,7 +5337,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   limit,
                   windowMs,
                   keyPrefix,
-                  onStoreError: (err) => app.log.warn({ err }, "family messaging rate-limit store error"),
+                  onStoreError: (err) =>
+                    app.log.warn({ err }, "family messaging rate-limit store error"),
                 });
               const access = familyAccessAvailability(process.env);
               if (access.warning) app.log.warn(access.warning);
@@ -5363,7 +5366,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   keyPrefix,
                   // Fail CLOSED: the pre-auth budget is the abuse control of an unauthenticated route; senders retry on 429.
                   failClosed: true,
-                  onStoreError: (err) => app.log.warn({ err }, "alarm ingest rate-limit store error"),
+                  onStoreError: (err) =>
+                    app.log.warn({ err }, "alarm ingest rate-limit store error"),
                 });
               return {
                 flags: featureFlagReader,
@@ -6209,7 +6213,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           mountM41Routes(app, {
             eligibility: createEligibilityService({
               store: buildDrizzleEligibilityStore(dbHandle.db),
-              coverage: { coveragesForPatient: (input) => getPatientCoverageReader().coveragesForPatient(input) },
+              coverage: {
+                coveragesForPatient: (input) =>
+                  getPatientCoverageReader().coveragesForPatient(input),
+              },
               binding: clearinghouseBinding,
               contexts: buildCommercialContextPort({ env: process.env, providerNpi: m25PayeeNpi }),
               now: () => new Date(),
@@ -8212,30 +8219,31 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       { hetsTransport: m23HetsConfig?.transport ?? "unbound" },
       "M23 HETS 270/271 eligibility transport",
     );
+    const m23AlertPort: NonNullable<Parameters<typeof buildM23WorkerDeps>[0]["alerts"]> = {
+      dispatch: async ({ alertCode, severity, organizationId, payload }) => {
+        // Platform-status alerts (MAC portal up/down) carry no tenant (organizationId ""): fan out once per
+        // active org so each tenant's admins hear about it instead of an org-less alert reaching nobody.
+        const targetOrgs =
+          organizationId === ""
+            ? (await m23ActiveOrgs.listActiveOrgs()).map((o) => o.organizationId)
+            : [organizationId];
+        for (const orgId of targetOrgs) {
+          await m23AlertEmitter.emit(orgId, {
+            eventType: alertCode,
+            payload,
+            severity,
+            correlationId: cronAlertCorrelationId("m23-cron", alertCode, payload),
+          });
+        }
+      },
+    };
     const m23CoreWorkerDeps = buildM23WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
       outbox: m23OutboxPublisher,
       // F-161 (#248) — the §4.9 window-watch/portal-health alert routing, over the live M36 AlertEmitter
       // seam (the M27 `WX-PR-013` pattern).
-      alerts: {
-        dispatch: async ({ alertCode, severity, organizationId, payload }) => {
-          // Platform-status alerts (MAC portal up/down) carry no tenant (organizationId ""): fan out once per
-          // active org so each tenant's admins hear about it instead of an org-less alert reaching nobody.
-          const targetOrgs =
-            organizationId === ""
-              ? (await m23ActiveOrgs.listActiveOrgs()).map((o) => o.organizationId)
-              : [organizationId];
-          for (const orgId of targetOrgs) {
-            await m23AlertEmitter.emit(orgId, {
-              eventType: alertCode,
-              payload,
-              severity,
-              correlationId: cronAlertCorrelationId("m23-cron", alertCode, payload),
-            });
-          }
-        },
-      },
+      alerts: m23AlertPort,
       activeOrgs: m23ActiveOrgs,
       noticeWindow: buildNoticeWindowPort(),
       validationRunner: m23ValidationRunner,
@@ -8250,6 +8258,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         binding: clearinghouseBinding,
         attempts: createDrizzleAttemptStore(dbHandle.db),
         ackCursors: createDrizzleAckCursorStore(dbHandle.db),
+        // #714 - a rejected clearinghouse credential raises one critical alert per scope and holds further calls.
+        alerts: m23AlertPort,
+        logger: app.log,
         contexts: buildClearinghouseContextPort({
           db: dbHandle.db,
           env: process.env,

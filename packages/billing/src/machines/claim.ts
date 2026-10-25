@@ -123,6 +123,8 @@ export const CLAIM_TRANSITIONS: readonly ClaimTransition[] = [
 
   // DENIED: an M25 appeal succeeds + 835 re-posts with payment.
   { from: "denied", event: "appeal_succeeded", to: "paid" },
+  // DENIED: a supplemental 835 after a won appeal that pays less than the billed amount (contractual CAS).
+  { from: "denied", event: "remittance_partial_paid", to: "partial_paid" },
 ] as const;
 
 /**

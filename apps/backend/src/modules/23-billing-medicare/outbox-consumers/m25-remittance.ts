@@ -44,8 +44,8 @@ export const M23_REMITTANCE_CONSUMER = {
  * consumer can complete the row with a reason instead of failing it into an endless retry.
  */
 const LEGAL_FROM: Readonly<Record<RemittanceTransitionPlan["transition"], readonly string[]>> = {
-  remittance_paid: ["ack_accepted"],
-  remittance_partial_paid: ["ack_accepted"],
+  remittance_paid: ["ack_accepted", "denied", "partial_paid"],
+  remittance_partial_paid: ["ack_accepted", "denied"],
   remittance_denied: ["ack_accepted"],
   remittance_recouped: ["paid", "partial_paid"],
 };
@@ -145,6 +145,25 @@ export function buildM23RemittanceConsumer(deps: M23RemittanceConsumerDeps) {
                   });
                   return { applied: false, skipped: "already_applied" };
                 }
+                // A denied/underpaid claim only takes a further payment from a DIFFERENT advice: a second
+                // line of the advice that already moved it (or a redelivery) must not read as a won appeal.
+                if (
+                  claim.state !== "ack_accepted" &&
+                  plan.transition !== "remittance_recouped" &&
+                  (await new repositories.ClaimStateHistoryRepository(tx).hasAdvice(
+                    plan.claimId,
+                    plan.remittanceAdviceId,
+                  ))
+                ) {
+                  deps.onSkipped?.({
+                    reason: "already_applied",
+                    eventType: event.eventType,
+                    organizationId,
+                    claimId: plan.claimId,
+                    currentState: claim.state,
+                  });
+                  return { applied: false, skipped: "already_applied" };
+                }
                 if (!LEGAL_FROM[plan.transition].includes(claim.state)) {
                   // An 835 for a claim that was never accepted, or one already replaced/voided. A real
                   // anomaly for a human — but NOT a delivery failure, so the row completes and the sink
@@ -161,7 +180,12 @@ export function buildM23RemittanceConsumer(deps: M23RemittanceConsumerDeps) {
                 await claimState.applyInTx(tx, actor, {
                   claimId: plan.claimId,
                   expectedVersion: claim.version,
-                  event: plan.transition,
+                  // A full payment on a claim already denied or underpaid is a supplemental 835 (the
+                  // won-appeal payment); the machine models it as `appeal_succeeded`, not a first payment.
+                  event:
+                    plan.transition === "remittance_paid" && claim.state !== "ack_accepted"
+                      ? "appeal_succeeded"
+                      : plan.transition,
                   context: { remittanceAdviceId: plan.remittanceAdviceId },
                   extra: {
                     remittanceAdviceId: plan.remittanceAdviceId,
