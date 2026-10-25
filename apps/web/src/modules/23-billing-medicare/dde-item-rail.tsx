@@ -14,7 +14,16 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { EligibilityPanel } from "./dde-eligibility-panel";
 import { OutcomeForm, SubmissionForm } from "./dde-forms";
+import {
+  type ProviderState,
+  canSyncProvider,
+  evidenceOf,
+  providerBadge,
+  providerRefusal,
+  syncMessage,
+} from "./dde-provider-model";
 import {
   CLOSE_REQUEUE_NOTE,
   DEADLINE_LABEL,
@@ -53,6 +62,19 @@ const emptyOutcome = (item: DdeItem): OutcomeDraft => ({
   notes: "",
 });
 const draftKey = (id: string) => `dde:${id}`;
+
+// Items whose provider send ended DDE_IN_DOUBT in this tab: another send could key a second operation, so the
+// button stays away until the operator has checked DDE and recorded the submission by hand. Kept in the shell's
+// in-memory draft store (never browser storage), which sign-out and the screen lock wipe.
+const inDoubtKey = (n: Pick<DdeItem, "ddeWorkItemId" | "attemptNumber">) =>
+  `dde-in-doubt:${n.ddeWorkItemId}:${n.attemptNumber}`;
+
+interface RunOptions {
+  /** A provider call: map the DDE_* refusals to plain language (and remember an in-doubt send). */
+  provider?: boolean;
+  /** The success body, before the item is reloaded. */
+  onData?: (data: unknown) => void;
+}
 
 function Row({ term, children }: { term: string; children: ReactNode }): JSX.Element {
   return (
@@ -94,8 +116,13 @@ export function ItemRail({
   const drawer = useDrawerA11y<HTMLElement>(onClose, `${n.version}:${drafts.panel}`);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
+  const [, bumpInDoubt] = useState(0);
+  const inDoubt = loadDraft<boolean>(inDoubtKey(n)) === true;
   const can = (a: DdeItem["allowedActions"][number]) => n.allowedActions.includes(a);
   const note = deadlineNote(n);
+  const badge = providerBadge(n);
+  const evidence = evidenceOf(n);
 
   // A restored draft is single-use.
   useEffect(() => {
@@ -110,6 +137,7 @@ export function ItemRail({
     lastVersion.current = n.version;
     setDrafts({ panel: "none", submit: EMPTY_SUBMISSION, outcome: emptyOutcome(n) });
     setActionError(null);
+    setSyncNote(null);
   }, [n]);
 
   const setPanel = (panel: Panel) => setDrafts((d) => ({ ...d, panel }));
@@ -119,12 +147,13 @@ export function ItemRail({
   const run = async (
     call: () => Promise<{ data?: unknown; error?: unknown; response?: Response }>,
     fallback: string,
+    opts: RunOptions = {},
   ): Promise<void> => {
     if (busy) return;
     setBusy(true);
     setActionError(null);
     try {
-      const { error, response } = await call();
+      const { data, error, response } = await call();
       if (error) {
         const redirect = authFailureRedirect(
           response?.status,
@@ -141,9 +170,15 @@ export function ItemRail({
           onConflict("This item changed since you opened it. It has been reloaded; try again.");
           return;
         }
-        setActionError(errorMessage(error, fallback));
+        const refusal = opts.provider ? providerRefusal(error, fallback) : null;
+        if (refusal?.inDoubt) {
+          saveDraft(inDoubtKey(n), true);
+          bumpInDoubt((v) => v + 1);
+        }
+        setActionError(refusal?.message ?? errorMessage(error, fallback));
         return;
       }
+      opts.onData?.(data);
       onChanged();
     } catch {
       setActionError(`${fallback} Check your connection.`);
@@ -173,6 +208,30 @@ export function ItemRail({
     };
     return run(call, fallback);
   };
+
+  const sendViaProvider = (): Promise<void> =>
+    run(
+      () =>
+        client.POST("/api/v1/billing/dde-items/{id}/submit-via-provider", {
+          params: params(),
+          body: { expectedVersion: n.version },
+        }),
+      "The item could not be sent through the provider.",
+      { provider: true },
+    );
+
+  const syncProvider = (): Promise<void> =>
+    run(
+      () => client.POST("/api/v1/billing/dde-items/{id}/sync-provider", { params: params() }),
+      "The provider could not be checked.",
+      {
+        provider: true,
+        onData: (d) => {
+          const state = (d as { providerState?: ProviderState } | undefined)?.providerState;
+          setSyncNote(state ? syncMessage(state) : null);
+        },
+      },
+    );
 
   const submitOutcome = (d: OutcomeDraft): Promise<void> =>
     d.outcome === "accepted"
@@ -212,6 +271,7 @@ export function ItemRail({
             <h2>{patientName}</h2>
             <StatusPill label={STATE_LABEL[n.state]} tone={STATE_TONE[n.state]} />
             {n.respawnedFromId ? <StatusPill label={REQUEUED_LABEL} tone="warning" /> : null}
+            {badge ? <StatusPill label={badge.label} tone={badge.tone} /> : null}
           </div>
           <div className="wx-row-sub">
             {TYPE_LABEL[n.itemType]} · attempt {n.attemptNumber}
@@ -260,6 +320,16 @@ export function ItemRail({
                 <span className="wx-nums">{n.rtpReasonCode}</span>
               </Row>
             ) : null}
+            {evidence ? (
+              <Row term="Evidence">
+                <span>{evidence.label}</span>
+              </Row>
+            ) : null}
+            {n.providerReference ? (
+              <Row term="Provider reference">
+                <span className="wx-nums">{n.providerReference}</span>
+              </Row>
+            ) : null}
             <Row term="Source">
               {n.source === "watchdog" ? "Filing-window watch" : "Added by staff"}
             </Row>
@@ -287,6 +357,8 @@ export function ItemRail({
           </section>
         ) : null}
 
+        <EligibilityPanel patientId={n.patientId} />
+
         <section className="wx-drawer-card" aria-label="History">
           <h3>History</h3>
           {n.events.length === 0 ? (
@@ -310,6 +382,11 @@ export function ItemRail({
           <section className="wx-drawer-card" aria-label="Actions">
             <h3>Actions</h3>
             {actionError ? <InlineAlert>{actionError}</InlineAlert> : null}
+            {syncNote ? (
+              <output className="wx-row-sub" aria-label="Provider answer">
+                {syncNote}
+              </output>
+            ) : null}
             {drafts.panel === "submit" ? (
               <SubmissionForm
                 busy={busy}
@@ -364,6 +441,16 @@ export function ItemRail({
                 {can("record_submission") ? (
                   <Button disabled={busy} onClick={() => setPanel("submit")}>
                     Record as keyed in DDE
+                  </Button>
+                ) : null}
+                {can("submit_via_provider") && !inDoubt ? (
+                  <Button disabled={busy} onClick={sendViaProvider}>
+                    Send via provider
+                  </Button>
+                ) : null}
+                {canSyncProvider(n) ? (
+                  <Button tone="secondary" disabled={busy} onClick={syncProvider}>
+                    Check provider status
                   </Button>
                 ) : null}
                 {can("record_outcome") ? (

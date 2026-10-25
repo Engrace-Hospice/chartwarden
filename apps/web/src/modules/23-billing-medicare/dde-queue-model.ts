@@ -33,6 +33,8 @@ export type DdeAction =
   | "record_submission"
   | "record_outcome"
   | "record_acceptance"
+  | "submit_via_provider"
+  | "sync_provider"
   | "retry"
   | "cancel"
   | "close";
@@ -53,6 +55,9 @@ export interface DdeItem {
   deadlineStatus: DdeDeadlineStatus;
   submittedAt: string | null;
   macAcceptedOn: string | null;
+  /** How the submission was recorded: by hand, or through the DDE access provider (ADR-0103). Absent on an older server. */
+  submissionMode?: "manual" | "provider" | null;
+  providerReference?: string | null;
   dcn: string | null;
   rtpReasonCode: string | null;
   outcomeCode: string | null;

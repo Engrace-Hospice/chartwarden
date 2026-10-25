@@ -12973,6 +12973,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Register a platform validation rule — 409 if the key exists, 501 (platform rules are code-defined); platform-admin + step-up (§4.1 #41)",
     body: RegisterPlatformRuleBodySchema,
   },
+  "GET /api/v1/admin/billing/dde-provider": {
+    summary:
+      "Read-only platform status of the DDE access provider binding (manual = none bound, every send answers DDE_NOT_WIRED); platform-admin; no credentials (ADR-0103 D2)",
+    response: Type.Object({
+      provider: Type.Union([
+        Type.Literal("manual"),
+        Type.Literal("in_memory"),
+        Type.Literal("episode_alert"),
+      ]),
+      wired: Type.Boolean(),
+    }),
+  },
   "POST /api/v1/admin/billing/wage-indexes/load": {
     summary:
       "Load the annual CMS hospice wage index into the platform table — all-or-nothing; platform-admin + step-up (§4.1 #42)",

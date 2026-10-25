@@ -5906,6 +5906,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // F-211 — the tenant-entered CMS wage index (`/billing/wage-indexes`), read by the same boot assembly.
             wageIndexService: buildDrizzleWageIndexService(dbHandle.db),
             platformAdminService: buildDrizzlePlatformAdminService(dbHandle.db),
+            ddeProviderVendor: ddeBinding.vendor,
             // F-212 — the tenant-entered sequestration policy (`/billing/sequestration-policies`); the SAME table the
             // assembly service's `referenceData.activeSequestrationPolicy` reads (M23-owned, over `dbHandle.db`).
             sequestrationService: buildDrizzleSequestrationPolicyService(dbHandle.db),

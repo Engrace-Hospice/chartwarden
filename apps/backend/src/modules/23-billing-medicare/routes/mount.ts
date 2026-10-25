@@ -17,6 +17,7 @@ import type { FastifyInstance } from "fastify";
 
 import { registerClaimsRoutes } from "./claims.routes";
 import { registerClearinghouseAttemptRoutes } from "./clearinghouse-attempt.routes";
+import { registerDdeProviderStatusRoutes } from "./dde-provider-status.routes";
 import { registerDdeQueueRoutes } from "./dde-queue.routes";
 import { registerEligibilityRoutes } from "./eligibility.routes";
 import type { M23RouteServices } from "./index";
@@ -96,6 +97,10 @@ export function mountM23Routes(
   // ADR-0052 — the DDE work queue: human work tracking for Medicare Direct Data Entry (absent service => not mounted).
   if (services.ddeQueueService) {
     registerDdeQueueRoutes(app, { ddeQueueService: services.ddeQueueService });
+  }
+  // ADR-0103 D2 — read-only platform status of the DDE provider binding (absent => not mounted).
+  if (services.ddeProviderVendor !== undefined) {
+    registerDdeProviderStatusRoutes(app, { ddeProviderVendor: services.ddeProviderVendor });
   }
   // ADR-0053 — settle a clearinghouse attempt past the vendor's window (absent service => not mounted).
   if (services.attemptResolutionService) {

@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { buildM23AbacPredicates } from "../src/modules/23-billing-medicare/abac-predicates";
 import type { ReadingM23AbacResolver } from "../src/modules/23-billing-medicare/abac-resolver-drizzle";
+import { registerDdeProviderStatusRoutes } from "../src/modules/23-billing-medicare/routes/dde-provider-status.routes";
 import { registerDdeQueueRoutes } from "../src/modules/23-billing-medicare/routes/dde-queue.routes";
 import type { DdeItemView } from "../src/modules/23-billing-medicare/services/dde-queue-service";
 import type { DdeQueueService } from "../src/modules/23-billing-medicare/services/dde-queue-service";
@@ -504,5 +505,51 @@ describe("M23 DDE work-queue routes (ADR-0052)", () => {
     expect(res.statusCode).toBeLessThan(500);
     expect(calls).toEqual([]);
     await app.close();
+  });
+});
+
+describe("M23 DDE provider status route (ADR-0103 D2, #761)", () => {
+  const url = "/api/v1/admin/billing/dde-provider";
+  const PLATFORM = { "x-test-user": "platform_1", "x-test-roles": "platform_admin" };
+
+  function statusApp(vendor: "episode_alert" | null) {
+    const { app } = makeServer();
+    registerDdeProviderStatusRoutes(app, { ddeProviderVendor: vendor });
+    return app;
+  }
+
+  it("is platform-admin only: 401 without a session, 403 for a DDE admin without the platform key", async () => {
+    const app = statusApp(null);
+    expect((await app.inject({ method: "GET", url })).statusCode).toBe(401);
+    expect((await app.inject({ method: "GET", url, headers: ADMIN })).statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("reports manual (not wired) and a bound vendor, nothing else", async () => {
+    const manualApp = statusApp(null);
+    const boundApp = statusApp("episode_alert");
+    registerEffectivePermissionResolver(
+      createInMemoryEffectivePermissionStore([
+        {
+          orgId: ORG,
+          userId: "platform_1",
+          grants: [
+            {
+              roleKey: "seed",
+              enabled: true,
+              expiresAt: null,
+              permissionKeys: ["billing.rule_config.platform_admin"],
+            },
+          ],
+        },
+      ]).store,
+    );
+    const manual = await manualApp.inject({ method: "GET", url, headers: PLATFORM });
+    expect(manual.statusCode).toBe(200);
+    expect(manual.json()).toEqual({ provider: "manual", wired: false });
+    const bound = await boundApp.inject({ method: "GET", url, headers: PLATFORM });
+    expect(bound.json()).toEqual({ provider: "episode_alert", wired: true });
+    await manualApp.close();
+    await boundApp.close();
   });
 });
