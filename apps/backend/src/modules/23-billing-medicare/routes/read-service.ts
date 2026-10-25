@@ -343,6 +343,7 @@ export interface NoticeAckOutcomeView {
     | "999_isa09"
     | "receipt"
     | "dde_manual"
+    | "dde_provider"
     | null;
 }
 

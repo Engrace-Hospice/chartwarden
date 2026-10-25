@@ -63,6 +63,8 @@ export type DdeWorkItemPatch = Partial<
     | "assigneeMembershipId"
     | "attemptNumber"
     | "submittedAt"
+    | "submissionMode"
+    | "providerReference"
     | "macAcceptedOn"
     | "dcn"
     | "rtpReasonCode"

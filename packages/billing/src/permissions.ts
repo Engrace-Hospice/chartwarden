@@ -60,6 +60,7 @@ export const M23_PERMISSIONS = [
   "billing.dde.read",
   "billing.dde.work",
   "billing.dde.mark_submitted",
+  "billing.dde.submit_via_provider",
   "billing.dde.admin",
   // ADR-0053: settle a clearinghouse attempt the transport can no longer settle (past the vendor's key window).
   "billing.clearinghouse.resolve_attempt",

@@ -64,6 +64,8 @@ const VIEW: DdeItemView = {
   deadlineStatus: "on_track",
   submittedAt: null,
   macAcceptedOn: null,
+  submissionMode: null,
+  providerReference: null,
   dcn: null,
   rtpReasonCode: null,
   outcomeCode: null,
@@ -138,6 +140,11 @@ function makeServer() {
     recordSubmission: () => view("record-submission"),
     recordOutcome: (_a, _id, body) => view(`record-outcome:${body.outcome}`),
     recordAcceptance: () => view("record-acceptance"),
+    submitViaProvider: (_a, _id, v) => view(`submit-via-provider:${v}`),
+    syncProviderOutcome: async () => {
+      calls.push("sync-provider");
+      return { item: VIEW, providerState: "received" };
+    },
     retry: () => view("retry"),
     cancel: () => view("cancel"),
     close: () => view("close"),
@@ -158,6 +165,11 @@ function makeServer() {
       grant("worker_1", ["billing.dde.read", "billing.dde.work"]),
       grant("reader_1", ["billing.dde.read"]),
       grant("biller_1", ["billing.dde.read", "billing.dde.work", "billing.dde.mark_submitted"]),
+      grant("provider_1", [
+        "billing.dde.read",
+        "billing.dde.work",
+        "billing.dde.submit_via_provider",
+      ]),
       grant("none_1", []),
     ]).store,
   );
@@ -178,6 +190,11 @@ const ADMIN = { "x-test-user": "admin_1", "x-test-roles": "org_admin" };
 const WORKER = { "x-test-user": "worker_1", "x-test-roles": "billing_manager", "x-test-pe": PE_IN };
 const READER = { "x-test-user": "reader_1", "x-test-roles": "billing_manager", "x-test-pe": PE_IN };
 const BILLER = { "x-test-user": "biller_1", "x-test-roles": "billing_manager", "x-test-pe": PE_IN };
+const PROVIDER = {
+  "x-test-user": "provider_1",
+  "x-test-roles": "billing_manager",
+  "x-test-pe": PE_IN,
+};
 const NONE = { "x-test-user": "none_1", "x-test-roles": "" };
 let idemCounter = 0;
 const idem = () => ({ "idempotency-key": `dde-${++idemCounter}` });
@@ -299,6 +316,33 @@ describe("M23 DDE work-queue routes (ADR-0052)", () => {
     });
     expect(ok.statusCode).toBe(200);
     expect(calls).toEqual(["record-submission"]);
+    await app.close();
+  });
+
+  it("submit-via-provider needs its own permission AND a recent step-up; sync needs the permission only", async () => {
+    const { app, calls } = makeServer();
+    const url = `${BASE}/${ITEM}/submit-via-provider`;
+    const payload = { expectedVersion: 2 };
+    const post = (
+      u: string,
+      who: Record<string, string>,
+      stepUp: boolean,
+      body: unknown = payload,
+    ) =>
+      app.inject({
+        method: "POST",
+        url: u,
+        headers: { ...who, ...idem(), ...(stepUp ? { "x-test-step-up": "1" } : {}) },
+        payload: body as never,
+      });
+    // mark_submitted is NOT the provider permission (a manual attester cannot send through the vendor).
+    expect((await post(url, BILLER, true)).statusCode).toBe(403);
+    expect((await post(url, PROVIDER, false)).statusCode).toBe(403);
+    expect(calls).toEqual([]);
+    expect((await post(url, PROVIDER, true)).statusCode).toBe(200);
+    expect((await post(`${BASE}/${ITEM}/sync-provider`, BILLER, false, {})).statusCode).toBe(403);
+    expect((await post(`${BASE}/${ITEM}/sync-provider`, PROVIDER, false, {})).statusCode).toBe(200);
+    expect(calls).toEqual(["submit-via-provider:2", "sync-provider"]);
     await app.close();
   });
 

@@ -5945,6 +5945,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/dde-items/{id}/submit-via-provider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send an in-progress DDE item through the bound DDE access provider as the acting operator (step-up, billing.dde.submit_via_provider). The item becomes submitted with submissionMode provider. 503 DDE_NOT_WIRED when no provider is bound, 409 DDE_OPERATOR_NOT_ENROLLED when the operator has no DDE ID with the provider; one derived idempotency key per item and attempt, so a double click never keys a second operation */
+        post: operations["postApiV1BillingDdeitemsByIdSubmitviaprovider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/dde-items/{id}/sync-provider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask the DDE access provider what FISS did with a provider-submitted item and apply a final answer (billing.dde.submit_via_provider). Accepted feeds the notice's payer_status_date with source dde_provider; returned or rejected opens the RTP path; a pending answer changes nothing */
+        post: operations["postApiV1BillingDdeitemsByIdSyncprovider"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/eligibility": {
         parameters: {
             query?: never;
@@ -44855,12 +44889,15 @@ export interface operations {
                             deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                             submittedAt: string | null;
                             macAcceptedOn: string | null;
+                            /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                            submissionMode: "manual" | "provider" | null;
+                            providerReference: string | null;
                             dcn: string | null;
                             rtpReasonCode: string | null;
                             outcomeCode: string | null;
                             notes: string | null;
                             respawnedFromId: string | null;
-                            allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                            allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "submit_via_provider" | "sync_provider" | "retry" | "cancel" | "close")[];
                             version: number;
                             /** Format: date-time */
                             createdAt: string;
@@ -44932,12 +44969,15 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
+                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        submissionMode: "manual" | "provider" | null;
+                        providerReference: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
                         respawnedFromId: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "submit_via_provider" | "sync_provider" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -44989,12 +45029,15 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
+                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        submissionMode: "manual" | "provider" | null;
+                        providerReference: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
                         respawnedFromId: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "submit_via_provider" | "sync_provider" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -45084,12 +45127,15 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
+                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        submissionMode: "manual" | "provider" | null;
+                        providerReference: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
                         respawnedFromId: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "submit_via_provider" | "sync_provider" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -45151,12 +45197,15 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
+                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        submissionMode: "manual" | "provider" | null;
+                        providerReference: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
                         respawnedFromId: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "submit_via_provider" | "sync_provider" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -45218,12 +45267,15 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
+                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        submissionMode: "manual" | "provider" | null;
+                        providerReference: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
                         respawnedFromId: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "submit_via_provider" | "sync_provider" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -45285,12 +45337,15 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
+                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        submissionMode: "manual" | "provider" | null;
+                        providerReference: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
                         respawnedFromId: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "submit_via_provider" | "sync_provider" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -45363,12 +45418,15 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
+                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        submissionMode: "manual" | "provider" | null;
+                        providerReference: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
                         respawnedFromId: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "submit_via_provider" | "sync_provider" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -45440,12 +45498,15 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
+                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        submissionMode: "manual" | "provider" | null;
+                        providerReference: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
                         respawnedFromId: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "submit_via_provider" | "sync_provider" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -45511,12 +45572,15 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
+                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        submissionMode: "manual" | "provider" | null;
+                        providerReference: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
                         respawnedFromId: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "submit_via_provider" | "sync_provider" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -45578,12 +45642,15 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
+                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        submissionMode: "manual" | "provider" | null;
+                        providerReference: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
                         respawnedFromId: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "submit_via_provider" | "sync_provider" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
@@ -45645,17 +45712,157 @@ export interface operations {
                         deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
                         submittedAt: string | null;
                         macAcceptedOn: string | null;
+                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        submissionMode: "manual" | "provider" | null;
+                        providerReference: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
                         notes: string | null;
                         respawnedFromId: string | null;
-                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "retry" | "cancel" | "close")[];
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "submit_via_provider" | "sync_provider" | "retry" | "cancel" | "close")[];
                         version: number;
                         /** Format: date-time */
                         createdAt: string;
                         /** Format: date-time */
                         updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingDdeitemsByIdSubmitviaprovider: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The item `version` the change is applied against (a stale value → 412). */
+                    expectedVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        ddeWorkItemId: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        providerEntityId: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        itemType: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                        subjectKind: "claim" | "noe_record" | "notr_record";
+                        /** Format: uuid */
+                        subjectId: string;
+                        state: "queued" | "assigned" | "in_progress" | "submitted" | "accepted" | "returned" | "closed" | "cancelled";
+                        attemptNumber: number;
+                        assigneeMembershipId: string | null;
+                        priority: number;
+                        source: "manual" | "watchdog";
+                        deadlineAt: string | null;
+                        deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
+                        submittedAt: string | null;
+                        macAcceptedOn: string | null;
+                        /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                        submissionMode: "manual" | "provider" | null;
+                        providerReference: string | null;
+                        dcn: string | null;
+                        rtpReasonCode: string | null;
+                        outcomeCode: string | null;
+                        notes: string | null;
+                        respawnedFromId: string | null;
+                        allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "submit_via_provider" | "sync_provider" | "retry" | "cancel" | "close")[];
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingDdeitemsByIdSyncprovider: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        item: {
+                            /** Format: uuid */
+                            ddeWorkItemId: string;
+                            /** Format: uuid */
+                            organizationId: string;
+                            /** Format: uuid */
+                            providerEntityId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            itemType: "noe" | "notr" | "claim_entry" | "rtp_correction" | "adjustment" | "cancel" | "adr_response";
+                            subjectKind: "claim" | "noe_record" | "notr_record";
+                            /** Format: uuid */
+                            subjectId: string;
+                            state: "queued" | "assigned" | "in_progress" | "submitted" | "accepted" | "returned" | "closed" | "cancelled";
+                            attemptNumber: number;
+                            assigneeMembershipId: string | null;
+                            priority: number;
+                            source: "manual" | "watchdog";
+                            deadlineAt: string | null;
+                            deadlineStatus: "none" | "on_track" | "at_risk" | "overdue" | "met" | "missed";
+                            submittedAt: string | null;
+                            macAcceptedOn: string | null;
+                            /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
+                            submissionMode: "manual" | "provider" | null;
+                            providerReference: string | null;
+                            dcn: string | null;
+                            rtpReasonCode: string | null;
+                            outcomeCode: string | null;
+                            notes: string | null;
+                            respawnedFromId: string | null;
+                            allowedActions: ("claim" | "assign" | "start" | "record_submission" | "record_outcome" | "record_acceptance" | "submit_via_provider" | "sync_provider" | "retry" | "cancel" | "close")[];
+                            version: number;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        };
+                        /** @description What the provider reported. received / not_found: nothing final yet, the item is unchanged. accepted / returned / rejected: applied to the item. */
+                        providerState: "not_found" | "received" | "accepted" | "returned" | "rejected";
                     };
                 };
             };
@@ -80620,7 +80827,7 @@ export interface operations {
                             rejectionStage: "999" | "277ca" | null;
                             rejectionCodes: string[];
                             payerStatusDate: string | null;
-                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | null;
+                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | "dde_provider" | null;
                             correctsNoticeId: string | null;
                             correctionReason: string | null;
                             correctedBy: {
@@ -80678,7 +80885,7 @@ export interface operations {
                         rejectionStage: "999" | "277ca" | null;
                         rejectionCodes: string[];
                         payerStatusDate: string | null;
-                        payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | null;
+                        payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | "dde_provider" | null;
                         correctsNoticeId: string | null;
                         correctionReason: string | null;
                         correctedBy: {
@@ -80773,7 +80980,7 @@ export interface operations {
                             rejectionStage: "999" | "277ca" | null;
                             rejectionCodes: string[];
                             payerStatusDate: string | null;
-                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | null;
+                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | "dde_provider" | null;
                             correctsNoticeId: string | null;
                             correctionReason: string | null;
                             correctedBy: {
@@ -81036,7 +81243,7 @@ export interface operations {
                             rejectionStage: "999" | "277ca" | null;
                             rejectionCodes: string[];
                             payerStatusDate: string | null;
-                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | null;
+                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | "dde_provider" | null;
                             correctsNoticeId: string | null;
                             correctionReason: string | null;
                             correctedBy: {
@@ -81097,7 +81304,7 @@ export interface operations {
                         rejectionStage: "999" | "277ca" | null;
                         rejectionCodes: string[];
                         payerStatusDate: string | null;
-                        payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | null;
+                        payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | "dde_provider" | null;
                         correctsNoticeId: string | null;
                         correctionReason: string | null;
                         correctedBy: {
@@ -81195,7 +81402,7 @@ export interface operations {
                             rejectionStage: "999" | "277ca" | null;
                             rejectionCodes: string[];
                             payerStatusDate: string | null;
-                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | null;
+                            payerStatusDateSource: "277ca_stc02" | "999_gs04" | "999_isa09" | "receipt" | "dde_manual" | "dde_provider" | null;
                             correctsNoticeId: string | null;
                             correctionReason: string | null;
                             correctedBy: {

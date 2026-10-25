@@ -2,6 +2,7 @@
 // work tracking for Medicare Direct Data Entry items (NOE, NOTR, claim entry, RTP correction, adjustment, cancel,
 // ADR response). ChartWarden never calls DDE; these routes record what an operator did and what came back.
 //
+// SUBMIT-VIA-PROVIDER (step-up) and SYNC-PROVIDER gate `billing.dde.submit_via_provider`.
 // Reads gate `billing.dde.read`; create / claim / start / outcome / retry / cancel / close gate `billing.dde.work`;
 // RECORD SUBMISSION and RECORD ACCEPTANCE (the attestations that an item was keyed / accepted) gate `billing.dde.mark_submitted` + the §D14
 // step-up; assigning an item to someone else gates `billing.dde.admin`. Every object route composes
@@ -24,6 +25,7 @@ import {
   RecordDdeAcceptanceBodySchema,
   RecordDdeOutcomeBodySchema,
   RecordDdeSubmissionBodySchema,
+  SubmitDdeViaProviderBodySchema,
 } from "./dde-queue-typebox";
 import {
   P,
@@ -45,6 +47,9 @@ const CREATE_ABAC = PROVIDER_SCOPE("billing.dde.work", targetDdeSubjectFromBody)
 const MARK = P("billing.dde.mark_submitted");
 const MARK_ABAC = PROVIDER_SCOPE("billing.dde.mark_submitted", targetDdeWorkItemId);
 const MARK_STEPUP = STEP_UP("billing.dde.mark_submitted");
+const SUBMIT_PROVIDER = P("billing.dde.submit_via_provider");
+const SUBMIT_PROVIDER_ABAC = PROVIDER_SCOPE("billing.dde.submit_via_provider", targetDdeWorkItemId);
+const SUBMIT_PROVIDER_STEPUP = STEP_UP("billing.dde.submit_via_provider");
 const ADMIN = P("billing.dde.admin");
 const ADMIN_ABAC = PROVIDER_SCOPE("billing.dde.admin", targetDdeWorkItemId);
 const NO_AI = rejectAiActor();
@@ -146,6 +151,37 @@ export function registerDdeQueueRoutes(app: FastifyInstance, deps: DdeQueueRoute
       const { id } = parse(DdeItemIdParamsSchema, request.params);
       const body = parse(RecordDdeSubmissionBodySchema, request.body);
       return service.recordSubmission(await ddeWriteActorOf(request, reply), id, body);
+    },
+  );
+
+  // SEND THROUGH THE PROVIDER (ADR-0103, #760): keys the item via the bound DdeAccessProvider as the acting operator.
+  // As privileged as keying it by hand, so its own permission plus the step-up. Unbound => 503 DDE_NOT_WIRED.
+  app.post(
+    "/api/v1/billing/dde-items/:id/submit-via-provider",
+    {
+      preHandler: [
+        SUBMIT_PROVIDER,
+        SUBMIT_PROVIDER_ABAC,
+        SUBMIT_PROVIDER_STEPUP,
+        NO_AI,
+        IDEMPOTENT,
+      ],
+    },
+    async (request, reply) => {
+      const { id } = parse(DdeItemIdParamsSchema, request.params);
+      const { expectedVersion } = parse(SubmitDdeViaProviderBodySchema, request.body);
+      return service.submitViaProvider(await ddeWriteActorOf(request, reply), id, expectedVersion);
+    },
+  );
+
+  // INGEST THE PROVIDER'S ANSWER for one provider-submitted item. The answer is provider-verified (not an operator
+  // attestation), so no step-up; the permission and the ownership rule still apply.
+  app.post(
+    "/api/v1/billing/dde-items/:id/sync-provider",
+    { preHandler: [SUBMIT_PROVIDER, SUBMIT_PROVIDER_ABAC, NO_AI, IDEMPOTENT] },
+    async (request, reply) => {
+      const { id } = parse(DdeItemIdParamsSchema, request.params);
+      return service.syncProviderOutcome(await ddeWriteActorOf(request, reply), id);
     },
   );
 

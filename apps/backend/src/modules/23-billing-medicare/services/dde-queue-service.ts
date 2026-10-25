@@ -16,9 +16,7 @@ import type { Static } from "@sinclair/typebox";
 import {
   DDE_AT_RISK_DAYS,
   type DdeItemType,
-  type DdeKeyingSheet,
   type DdeWorkItemEvent,
-  buildDdeKeyingSheet,
   type DdeWorkItemState,
   ddeDeadlineStatus,
   ddeWorkItemMachine,
@@ -29,6 +27,8 @@ import {
   validateDdeNotes,
 } from "@chartwarden/billing";
 import { withOrgContext } from "@chartwarden/tenancy";
+import { DDE, type DdeAccessProvider } from "@chartwarden/x12-837-client";
+import { randomUUID } from "node:crypto";
 import {
   ConflictError,
   ForbiddenError,
@@ -42,6 +42,7 @@ import type {
   DdeItemDetailViewSchema,
   DdeItemListViewSchema,
   DdeItemViewSchema,
+  DdeProviderSyncViewSchema,
   RecordDdeAcceptanceBodySchema,
   RecordDdeOutcomeBodySchema,
   RecordDdeSubmissionBodySchema,
@@ -55,11 +56,20 @@ import {
   requireStepUp,
 } from "./claim-state-service";
 import { applyDdeNoticeAcceptance } from "./dde-notice-acceptance";
+import {
+  PROVIDER_REFERENCE_PATTERN,
+  ddeIdempotencyKey,
+  ddeProviderAnswerRejected,
+  ddeProviderRefusal,
+  planProviderOutcome,
+} from "./dde-provider-ops";
+import { loadControlNumber, loadKeyingSheet, loadSubject } from "./dde-queue-subject";
 
 type Item = repositories.DdeWorkItemRecord;
 export type DdeItemView = Static<typeof DdeItemViewSchema>;
 export type DdeItemDetailView = Static<typeof DdeItemDetailViewSchema>;
 export type DdeItemListView = Static<typeof DdeItemListViewSchema>;
+export type DdeProviderSyncView = Static<typeof DdeProviderSyncViewSchema>;
 type CreateBody = Static<typeof CreateDdeItemBodySchema>;
 type AssignBody = Static<typeof AssignDdeItemBodySchema>;
 type SubmissionBody = Static<typeof RecordDdeSubmissionBodySchema>;
@@ -86,7 +96,10 @@ export interface DdeQueueReadActor {
  * The write actor for the DDE queue. `ddeAdmin` is set by the route layer when the caller holds `billing.dde.admin`
  * over the item; only then may someone other than the assignee act on an assigned item.
  */
-export type DdeWriteActor = BillingWriteActor & { readonly ddeAdmin?: boolean };
+export type DdeWriteActor = BillingWriteActor & {
+  readonly ddeAdmin?: boolean;
+  readonly request?: { readonly correlationId?: string };
+};
 
 export interface DdeQueueServicePorts {
   readonly outbox?: WriteOutboxPort;
@@ -96,6 +109,13 @@ export interface DdeQueueServicePorts {
    * whose provider-entity reach covers it? Injected at the composition root (membership and role grants are M2/M3
    * data). Absent => assigning is refused (fail closed).
    */
+  /**
+   * The bound DdeAccessProvider (ADR-0103). Absent => sending through a provider is refused with `DDE_NOT_WIRED`
+   * (fail closed; manual keying is the baseline).
+   */
+  readonly ddeProvider?: DdeAccessProvider;
+  /** `test` MUST reach only vendor test mode. Defaults to `test` so a mis-wired caller can never reach production FISS. */
+  readonly ddeUsage?: "test" | "production";
   readonly assigneeCanWork?: (
     organizationId: string,
     membershipId: string,
@@ -128,6 +148,20 @@ export interface DdeQueueService {
    * transition with the operator-entered date, so it is as privileged as keying: `billing.dde.mark_submitted`.
    */
   recordAcceptance(actor: DdeWriteActor, id: string, body: AcceptanceBody): Promise<DdeItemView>;
+  /**
+   * Send an in_progress item through the bound DdeAccessProvider as the acting operator (step-up, ownership rule). The
+   * item becomes `submitted` with `submissionMode = "provider"`; a refusal leaves it in_progress.
+   */
+  submitViaProvider(
+    actor: DdeWriteActor,
+    id: string,
+    expectedVersion: number,
+  ): Promise<DdeItemView>;
+  /**
+   * Ask the provider what FISS did with a provider-submitted item and apply a final answer (accepted -> the notice's
+   * acceptance with source `dde_provider`; returned/rejected -> the RTP path). A still-pending answer changes nothing.
+   */
+  syncProviderOutcome(actor: DdeWriteActor, id: string): Promise<DdeProviderSyncView>;
   retry(actor: DdeWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
   cancel(actor: DdeWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
   close(actor: DdeWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
@@ -137,8 +171,8 @@ export interface DdeQueueService {
 const ACTIONS_BY_STATE: Record<DdeWorkItemState, readonly Action[]> = {
   queued: ["claim", "assign", "cancel"],
   assigned: ["assign", "start", "cancel"],
-  in_progress: ["record_submission", "cancel"],
-  submitted: ["record_outcome", "record_acceptance"],
+  in_progress: ["record_submission", "submit_via_provider", "cancel"],
+  submitted: ["record_outcome", "record_acceptance", "sync_provider"],
   accepted: ["close"],
   returned: ["retry", "close"],
   closed: [],
@@ -200,6 +234,8 @@ function viewOf(row: Item, asOf: string): DdeItemView {
     deadlineStatus: ddeDeadlineStatus(row, asOf),
     submittedAt: row.submittedAt?.toISOString() ?? null,
     macAcceptedOn: row.macAcceptedOn,
+    submissionMode: row.submissionMode,
+    providerReference: row.providerReference,
     dcn: row.dcn,
     rtpReasonCode: row.rtpReasonCode,
     outcomeCode: row.outcomeCode,
@@ -210,110 +246,6 @@ function viewOf(row: Item, asOf: string): DdeItemView {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
-}
-
-/** The subject a new item acts on, resolved server-side (the body never names the provider entity). */
-interface SubjectFacts {
-  readonly subjectKind: Item["subjectKind"];
-  readonly providerEntityId: string;
-  readonly patientId: string;
-  readonly deadlineAt: string | null;
-}
-
-async function loadSubject(
-  tx: BillingTx,
-  organizationId: string,
-  itemType: DdeItemType,
-  subjectId: string,
-): Promise<SubjectFacts> {
-  if (itemType === "noe" || itemType === "notr") {
-    const notice =
-      itemType === "noe"
-        ? await new repositories.NoeRepository(tx).findById(subjectId)
-        : await new repositories.NotrRepository(tx).findById(subjectId);
-    if (!notice || notice.organizationId !== organizationId) throw new NotFoundError(itemType);
-    if (notice.state === "ack_accepted" || notice.state === "cancelled") {
-      throw new ConflictError(
-        `the ${itemType} is already ${notice.state}; there is nothing to key`,
-      );
-    }
-    return {
-      subjectKind: itemType === "noe" ? "noe_record" : "notr_record",
-      providerEntityId: notice.providerEntityId,
-      patientId: notice.patientId,
-      deadlineAt: notice.windowTargetAt,
-    };
-  }
-  const claim = await new repositories.ClaimRepository(tx).findById(subjectId);
-  if (!claim || claim.organizationId !== organizationId) throw new NotFoundError("claim");
-  return {
-    subjectKind: "claim",
-    providerEntityId: claim.providerEntityId,
-    patientId: claim.patientId,
-    deadlineAt: null,
-  };
-}
-
-/** Keep only code-shaped strings from a stored ack payload (they were sanitised on the way in; belt and braces). */
-function codesOf(payload: unknown): string[] {
-  const raw = (payload as { reasonCodes?: unknown } | null)?.reasonCodes;
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((c): c is string => typeof c === "string" && /^[A-Za-z0-9:._-]{1,24}$/.test(c));
-}
-
-/** The DDE keying sheet for an item's subject (ids, dates and codes only; never an MBI). Org-scoped by RLS. */
-async function loadKeyingSheet(tx: BillingTx, item: Item): Promise<DdeKeyingSheet> {
-  if (item.subjectKind === "claim") {
-    const claim = await new repositories.ClaimRepository(tx).findById(item.subjectId);
-    if (!claim || claim.organizationId !== item.organizationId) {
-      return buildDdeKeyingSheet(item.itemType, {});
-    }
-    const acks = await new repositories.ClaimAcknowledgmentRepository(tx).listForClaim(claim.id, {
-      limit: 10,
-    });
-    const rejected = acks.find((a) => a.stage === "payer" && a.outcomeStatus === "rejected");
-    return buildDdeKeyingSheet(item.itemType, {
-      claim: {
-        tob: String(claim.tob),
-        serviceFrom: claim.serviceFrom,
-        serviceTo: claim.serviceTo,
-        controlNumber: claim.claimControlNumber,
-        payerControlNumber: claim.payerClaimControlNumber,
-        patientStatusCode: claim.patientStatusCode,
-        admissionTypeCode: claim.admissionTypeCode,
-        admissionSourceCode: claim.admissionSourceCode,
-        rejectionCodes: rejected ? codesOf(rejected.parsedPayload) : [],
-      },
-    });
-  }
-  const isNoe = item.subjectKind === "noe_record";
-  const notice = isNoe
-    ? await new repositories.NoeRepository(tx).findById(item.subjectId)
-    : await new repositories.NotrRepository(tx).findById(item.subjectId);
-  if (!notice || notice.organizationId !== item.organizationId) {
-    return buildDdeKeyingSheet(item.itemType, {});
-  }
-  const base = {
-    kind: isNoe ? ("noe" as const) : ("notr" as const),
-    windowTargetAt: notice.windowTargetAt,
-    rejectionCodes: notice.rejectionCodes ?? [],
-  };
-  return buildDdeKeyingSheet(item.itemType, {
-    notice:
-      "noeControlNumber" in notice
-        ? {
-            ...base,
-            controlNumber: notice.noeControlNumber,
-            payerControlNumber: notice.payerNoeControlNumber,
-            effectiveDate: notice.electionEffectiveDate,
-          }
-        : {
-            ...base,
-            controlNumber: notice.notrControlNumber,
-            payerControlNumber: notice.payerNotrControlNumber,
-            effectiveDate: notice.effectiveEndDate,
-          },
-  });
 }
 
 export function buildDdeQueueService(
@@ -433,6 +365,8 @@ export function buildDdeQueueService(
       dcn: updated.dcn,
       rtpReasonCode: updated.rtpReasonCode,
       outcomeCode: updated.outcomeCode,
+      submissionMode: updated.submissionMode,
+      providerReference: updated.providerReference,
     });
     return updated;
   };
@@ -456,6 +390,30 @@ export function buildDdeQueueService(
       return fn(tx, item);
     });
     return viewOf(row, toIsoDate(now()));
+  };
+
+  /** The bound provider, or the same fail-closed refusal an unbound registry answers with. */
+  const requireProvider = (): DdeAccessProvider => {
+    if (!ports.ddeProvider) throw ddeProviderRefusal(DDE.NOT_WIRED);
+    return ports.ddeProvider;
+  };
+
+  /** The provider call context: the ACTING operator's membership (DDE IDs are per person, ADR-0103 D4). */
+  const providerContext = (actor: DdeWriteActor, item: Item) => ({
+    organizationId: item.organizationId,
+    providerEntityId: item.providerEntityId,
+    operatorMembershipId: actor.membershipId,
+    correlationId: actor.request?.correlationId ?? randomUUID(),
+    usage: ports.ddeUsage ?? ("test" as const),
+  });
+
+  const staleVersion = (item: Item, expectedVersion: number): void => {
+    if (item.version === expectedVersion) return;
+    throw new ChartWardenError(
+      "VERSION_CONFLICT",
+      `the DDE item was modified concurrently (current version ${item.version})`,
+      412,
+    );
   };
 
   return {
@@ -637,6 +595,7 @@ export function buildDdeQueueService(
           "submit",
           {
             submittedAt: now(),
+            submissionMode: "manual",
             ...(body.dcn !== undefined ? { dcn: body.dcn } : {}),
             ...(body.notes !== undefined ? { notes: body.notes } : {}),
           },
@@ -739,9 +698,145 @@ export function buildDdeQueueService(
       });
     },
 
+    submitViaProvider(actor, id, expectedVersion) {
+      assertNotAiActor(actor);
+      // Unbound first: never ask for a second factor for an operation that cannot run.
+      const provider = requireProvider();
+      requireStepUp(actor);
+      return mutate(actor, id, async (tx, item) => {
+        // Refuse before any vendor call: a stale view or a wrong state must never reach FISS.
+        staleVersion(item, expectedVersion);
+        if (
+          ddeWorkItemMachine.reduce(item.state, "submit", { attemptNumber: item.attemptNumber })
+            .error
+        ) {
+          throw new ConflictError(`cannot submit a DDE item in state '${item.state}'`);
+        }
+        const controlNumber = await loadControlNumber(tx, item);
+        if (!controlNumber) throw new NotFoundError("dde subject");
+        const result = await provider.submitOperation(providerContext(actor, item), {
+          kind: item.itemType,
+          controlNumber,
+          ...(item.dcn ? { dcn: item.dcn } : {}),
+          // Derived, never minted: a double click replays the first operation instead of keying a second one.
+          idempotencyKey: ddeIdempotencyKey(item.id, item.attemptNumber),
+          payload: {
+            format: "json",
+            document: {
+              itemType: item.itemType,
+              attemptNumber: item.attemptNumber,
+              keying: await loadKeyingSheet(tx, item),
+            },
+          },
+        });
+        if (!result.ok) throw ddeProviderRefusal(result.degraded.code);
+        const reference = result.data.providerReference;
+        if (!PROVIDER_REFERENCE_PATTERN.test(reference)) {
+          throw ddeProviderAnswerRejected("the provider's operation reference is not usable");
+        }
+        return applyEvent(
+          tx,
+          actor,
+          item,
+          expectedVersion,
+          "submit",
+          { submittedAt: now(), submissionMode: "provider", providerReference: reference },
+          { submissionMode: "provider", providerReference: reference },
+        );
+      });
+    },
+
+    async syncProviderOutcome(actor, id) {
+      assertNotAiActor(actor);
+      const provider = requireProvider();
+      let providerState: DdeProviderSyncView["providerState"] = "received";
+      const item = await mutate(actor, id, async (tx, current) => {
+        const reference = current.providerReference;
+        if (current.state !== "submitted" || current.submissionMode !== "provider" || !reference) {
+          throw new ConflictError(
+            "only a provider-submitted item awaiting an answer can be synced",
+          );
+        }
+        const result = await provider.fetchOperationStatus(
+          providerContext(actor, current),
+          reference,
+        );
+        if (!result.ok) throw ddeProviderRefusal(result.degraded.code);
+        const status = result.data;
+        providerState = status.state;
+        const latest = status.latest;
+        if (status.state === "received" || status.state === "not_found") return current;
+        if (
+          !latest ||
+          latest.providerReference !== reference ||
+          latest.disposition !== status.state
+        ) {
+          throw ddeProviderAnswerRejected("the provider's answer does not match this operation");
+        }
+        const recordedAt = now();
+        const plan = planProviderOutcome(latest, toIsoDate(recordedAt));
+        if (plan.kind === "invalid") throw ddeProviderAnswerRejected(plan.reason);
+        // An answer cannot predate the submission it answers (Eastern day): a stale provider date would corrupt timeliness.
+        if (
+          plan.kind === "accepted" &&
+          current.submittedAt &&
+          plan.macAcceptedOn < toIsoDate(current.submittedAt)
+        ) {
+          throw ddeProviderAnswerRejected("the provider's acceptance date predates the submission");
+        }
+        const detail = { submissionMode: "provider", providerReference: reference };
+        if (plan.kind === "returned") {
+          return applyEvent(
+            tx,
+            actor,
+            current,
+            current.version,
+            "return",
+            {
+              rtpReasonCode: plan.rtpReasonCode,
+              outcomeCode: plan.outcomeCode,
+              ...(plan.dcn ? { dcn: plan.dcn } : {}),
+            },
+            { ...detail, rtpReasonCode: plan.rtpReasonCode, dcn: plan.dcn },
+          );
+        }
+        let macAcceptedOn = plan.macAcceptedOn;
+        if (current.itemType === "noe" || current.itemType === "notr") {
+          const applied = await applyDdeNoticeAcceptance(tx, {
+            organizationId: actor.organizationId,
+            kind: current.itemType,
+            noticeId: current.subjectId,
+            macAcceptedOn,
+            recordedAt,
+            outbox: ports.outbox,
+            source: "dde_provider",
+          });
+          // The electronic path got there first: the notice's own date is the truth, so the item takes it.
+          if (!applied.applied && applied.existingPayerStatusDate) {
+            macAcceptedOn = applied.existingPayerStatusDate;
+          }
+        }
+        return applyEvent(
+          tx,
+          actor,
+          current,
+          current.version,
+          "accept",
+          { macAcceptedOn, outcomeCode: "accepted", ...(plan.dcn ? { dcn: plan.dcn } : {}) },
+          { ...detail, macAcceptedOn, dcn: plan.dcn },
+        );
+      });
+      return { item, providerState };
+    },
+
     retry(actor, id, expectedVersion) {
       return mutate(actor, id, (tx, item) =>
-        applyEvent(tx, actor, item, expectedVersion, "retry", { outcomeCode: null }),
+        applyEvent(tx, actor, item, expectedVersion, "retry", {
+          outcomeCode: null,
+          // A new attempt starts unsubmitted: the previous attempt's path and provider operation do not carry over.
+          submissionMode: null,
+          providerReference: null,
+        }),
       );
     },
 

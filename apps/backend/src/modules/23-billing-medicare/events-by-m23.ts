@@ -49,6 +49,7 @@ const payerStatusDateSource = Type.Union([
   Type.Literal("receipt"),
   // ADR-0052 D5: the MAC acceptance date an operator read off DDE and keyed into the DDE work queue.
   Type.Literal("dde_manual"),
+  Type.Literal("dde_provider"),
 ]);
 
 export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
@@ -807,6 +808,10 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       dcn: nullableStr,
       rtpReasonCode: nullableStr,
       outcomeCode: nullableStr,
+      // ADR-0103 D5: who vouches for "submitted" ("manual" attestation | "provider" verified) and the provider's
+      // opaque operation id. No MBI, no notes. Absent on events from before migration 1271.
+      submissionMode: Type.Optional(nullableStr),
+      providerReference: Type.Optional(nullableStr),
     }),
     declaredConsumers: [],
     isOutboxOnly: true,

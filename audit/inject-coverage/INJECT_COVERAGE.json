@@ -2,8 +2,8 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1857,
-    "coveredRoutes": 1857,
+    "routes": 1859,
+    "coveredRoutes": 1859,
     "directRoutesReferenced": 1697
   },
   "modules": [
@@ -367,7 +367,7 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 90,
+      "routes": 92,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-clinical-site-scope.test.ts",

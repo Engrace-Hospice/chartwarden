@@ -456,10 +456,12 @@ import {
   DdeItemListQuerySchema,
   DdeItemListViewSchema,
   DdeItemViewSchema,
+  DdeProviderSyncViewSchema,
   DdeVersionBodySchema,
   RecordDdeAcceptanceBodySchema,
   RecordDdeOutcomeBodySchema,
   RecordDdeSubmissionBodySchema,
+  SubmitDdeViaProviderBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/dde-queue-typebox";
 import {
   LoadWageIndexesBodySchema,
@@ -3603,6 +3605,19 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     body: RecordDdeSubmissionBodySchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     response: DdeItemViewSchema,
+  },
+  "POST /api/v1/billing/dde-items/:id/submit-via-provider": {
+    summary:
+      "Send an in-progress DDE item through the bound DDE access provider as the acting operator (step-up, billing.dde.submit_via_provider). The item becomes submitted with submissionMode provider. 503 DDE_NOT_WIRED when no provider is bound, 409 DDE_OPERATOR_NOT_ENROLLED when the operator has no DDE ID with the provider; one derived idempotency key per item and attempt, so a double click never keys a second operation",
+    body: SubmitDdeViaProviderBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: DdeItemViewSchema,
+  },
+  "POST /api/v1/billing/dde-items/:id/sync-provider": {
+    summary:
+      "Ask the DDE access provider what FISS did with a provider-submitted item and apply a final answer (billing.dde.submit_via_provider). Accepted feeds the notice's payer_status_date with source dde_provider; returned or rejected opens the RTP path; a pending answer changes nothing",
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: DdeProviderSyncViewSchema,
   },
   "POST /api/v1/billing/dde-items/:id/record-outcome": {
     summary:
@@ -12728,6 +12743,7 @@ const M23NoticeAckAndCorrection = {
     Type.Literal("999_isa09"),
     Type.Literal("receipt"),
     Type.Literal("dde_manual"),
+    Type.Literal("dde_provider"),
     Type.Null(),
   ]),
   correctsNoticeId: Type.Union([Type.String(), Type.Null()]),

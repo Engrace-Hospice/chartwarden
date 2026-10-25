@@ -78,3 +78,19 @@ through `ClearinghouseTransport`, and this port stays bound to `manual`.
 - A provider that passes conformance is still unverified against the real vendor until a trial account proves its field
   names (the DoseSpot precedent in `docs/history/m12-dosespot-adapter.md`).
 - `arch:adr-docs` sees one more ADR; no manifest, table or migration change is made by this ADR or the port.
+
+## Amendment 2026-10-25 — the M23 send and sync routes (issue #760)
+
+Built. `POST /api/v1/billing/dde-items/:id/submit-via-provider` (permission `billing.dde.submit_via_provider` plus a recent
+step-up, the ADR-0052 D6 assignee-ownership rule) keys an `in_progress` item through the bound provider and records
+`submission_mode = provider` and the provider's opaque `provider_reference` (migration 1271; manual keying records
+`submission_mode = manual`; a retry clears both). The idempotency key is derived, `dde:<item id>:<attempt number>`, never
+minted, so a double click replays one operation and a retry is a new one. The call carries the acting operator's membership
+id; `DDE_OPERATOR_NOT_ENROLLED` (409), `DDE_NOT_WIRED` (503) and the other port codes map to stable typed refusals, and a stale
+version or wrong state is refused before the vendor is called. `POST .../sync-provider` asks the provider for the status of
+one provider-submitted item: an acceptance applies the notice's acceptance with `payer_status_date_source = dde_provider`
+(provider-verified, distinct from `dde_manual`), a return or rejection opens the RTP path, a pending answer changes nothing.
+The platform binds `DDE_PROVIDER` at boot (`bindDdeProvider`); no vendor adapter exists yet, so the only bindable value is
+unset or `manual` and the routes answer `DDE_NOT_WIRED`. **Not built:** a batch ingest of the cursor-paged daily change report
+(`fetchOutcomes` needs a persisted cursor), and the beneficiary identifier: the queue holds no MBI (ADR-0052 D7), so the
+operation document is the keying sheet (ids, dates, codes) and a real adapter will need an MBI seam before it can key anything.
