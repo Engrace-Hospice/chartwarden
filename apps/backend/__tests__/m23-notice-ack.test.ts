@@ -1055,7 +1055,12 @@ describe("notice 277CA answer follows up the DDE queue (ADR-0052)", () => {
     h.set277([ack277("sub-claim", "accepted", { claimId: "claim-1" })]);
     await runAckPull277ca(withPort(h, s.port));
     expect(s.superseded).toEqual([
-      { organizationId: ORG, subjectKind: "claim", subjectId: "claim-1", acknowledgmentId: "ack-1" },
+      {
+        organizationId: ORG,
+        subjectKind: "claim",
+        subjectId: "claim-1",
+        acknowledgmentId: "ack-1",
+      },
     ]);
   });
 
@@ -1078,5 +1083,29 @@ describe("notice 277CA answer follows up the DDE queue (ADR-0052)", () => {
     expect(fakes.noes.get("noe-1")?.state).toBe("ack_accepted");
     expect(errors).toHaveLength(1);
     expect(JSON.stringify(errors)).not.toContain("1EG4TE5MK73");
+  });
+
+  it("a late 999 acceptance catching up a stored 277CA rejection still files the item (stage read off the notice)", async () => {
+    seedNoe("submitted");
+    const filed: Record<string, unknown>[] = [];
+    const port = {
+      ensureNoticeItem: async (_tx: unknown, n: Record<string, unknown>) => {
+        filed.push(n);
+        return { created: true };
+      },
+      ensureClaimRtpItem: async () => ({ created: false }),
+      supersedeForSubject: async () => ({ closed: 0 }),
+    };
+    const h = harness();
+    // the 277CA rejection arrives first and fits no transition from `submitted`; the 999 acceptance then catches it up
+    h.set277([ack277("sub-noe", "rejected")]);
+    await runAckPull277ca(withPort(h, port));
+    h.set999([ack999("sub-noe", true)]);
+    await runAckPull999(withPort(h, port));
+    expect(fakes.noes.get("noe-1")).toMatchObject({
+      state: "ack_rejected",
+      rejectionStage: "277ca",
+    });
+    expect(filed).toHaveLength(1);
   });
 });

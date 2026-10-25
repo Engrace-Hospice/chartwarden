@@ -69,7 +69,8 @@ export function explainAckCode(code: string): DdeKeyingReasonCode {
 const SCREEN_HINT: Readonly<Record<DdeItemType, string>> = {
   noe: "FISS DDE hospice NOE entry (claims menu options 28 / 49 per ADR-0052). Key the election date and TOB 81A; the MAC's acceptance date is what stops the 5-day clock.",
   notr: "FISS DDE hospice NOTR entry (claims menu options 28 / 49 per ADR-0052). Key the effective end date and TOB 81B.",
-  claim_entry: "FISS DDE hospice claim entry (claims menu). Key the claim header, then the revenue lines.",
+  claim_entry:
+    "FISS DDE hospice claim entry (claims menu). Key the claim header, then the revenue lines.",
   rtp_correction:
     "FISS DDE claim inquiry, then correction: find the claim at status/location T B9997 (returned to provider), fix the reason shown, and resubmit. A correction receives a new receipt date.",
   adjustment: "FISS DDE claim adjustment on the paid or rejected claim (claims menu).",
@@ -108,8 +109,12 @@ export function buildDdeKeyingSheet(
       ...(claim.payerControlNumber
         ? [{ label: "Payer claim control number (DCN/ICN)", value: claim.payerControlNumber }]
         : []),
-      ...(claim.patientStatusCode ? [{ label: "Patient status", value: claim.patientStatusCode }] : []),
-      ...(claim.admissionTypeCode ? [{ label: "Admission type", value: claim.admissionTypeCode }] : []),
+      ...(claim.patientStatusCode
+        ? [{ label: "Patient status", value: claim.patientStatusCode }]
+        : []),
+      ...(claim.admissionTypeCode
+        ? [{ label: "Admission type", value: claim.admissionTypeCode }]
+        : []),
       ...(claim.admissionSourceCode
         ? [{ label: "Admission source", value: claim.admissionSourceCode }]
         : []),

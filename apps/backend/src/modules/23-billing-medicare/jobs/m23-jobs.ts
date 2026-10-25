@@ -1562,7 +1562,6 @@ async function routeAck(
         kind: submission.kind,
         noticeId,
         state,
-        payerStage: ack.kind === "ack_277ca" && ack.stage !== "clearinghouse",
         organizationId: ack.organizationId,
       });
     }
@@ -1650,7 +1649,6 @@ async function followUpNoticeAck(
     readonly kind: "noe" | "notr";
     readonly noticeId: string;
     readonly state: string;
-    readonly payerStage: boolean;
     readonly organizationId: string;
   },
 ): Promise<void> {
@@ -1668,12 +1666,14 @@ async function followUpNoticeAck(
         });
         return;
       }
-      if (notice.state !== "ack_rejected" || !notice.payerStage) return;
+      if (notice.state !== "ack_rejected") return;
       const row =
         notice.kind === "noe"
           ? await new NoeRepository(sp).findById(notice.noticeId)
           : await new NotrRepository(sp).findById(notice.noticeId);
-      if (!row) return;
+      // The stage is read off the notice, not the ack being processed: a late 999 acceptance can catch up an earlier
+      // stored 277CA rejection in the same call. Only a payer-stage (277CA) rejection reached the MAC.
+      if (!row || row.rejectionStage !== "277ca") return;
       await watchdog.ensureNoticeItem(sp, {
         organizationId: notice.organizationId,
         itemType: notice.kind,

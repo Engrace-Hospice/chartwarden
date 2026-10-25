@@ -21,6 +21,9 @@
 import { ddeWorkItemMachine, repositories } from "@chartwarden/billing";
 import type { BillingTx, WriteOutboxPort } from "./claim-state-service";
 
+/** The item types a claim's 277CA acceptance supersedes. */
+const CLAIM_ACCEPTANCE_TYPES = ["claim_entry", "rtp_correction"] as const;
+
 /** Priority 1 (high): a notice already in its filing window outranks routine claim work. */
 const WATCHDOG_PRIORITY = 1;
 /** Priority 2 (normal): an RTP correction is routine claim work with no filing deadline of its own. */
@@ -64,7 +67,10 @@ export interface DdeWatchdogPort {
    * must not key work the payer already accepted. System actor, history event `close` with
    * `trigger = payer_accepted`; an accepted/closed/cancelled item is untouched, so a replay closes nothing.
    */
-  supersedeForSubject(tx: BillingTx, subject: DdeSubjectResolved): Promise<{ readonly closed: number }>;
+  supersedeForSubject(
+    tx: BillingTx,
+    subject: DdeSubjectResolved,
+  ): Promise<{ readonly closed: number }>;
   ensureNoticeItem(tx: BillingTx, notice: DdeNoticeAtRisk): Promise<{ readonly created: boolean }>;
   ensureClaimRtpItem(
     tx: BillingTx,
@@ -115,7 +121,14 @@ export function buildDdeWatchdog(
     async supersedeForSubject(tx, subject) {
       const items = new repositories.DdeWorkItemRepository(tx);
       let closed = 0;
-      for (const item of await items.listOpenForSubject(subject.subjectKind, subject.subjectId)) {
+      // A 277CA acceptance resolves entry / RTP work only; an open adjustment, cancel or ADR response on the same claim
+      // is a different job the acceptance says nothing about.
+      const types = subject.subjectKind === "claim" ? CLAIM_ACCEPTANCE_TYPES : undefined;
+      for (const item of await items.listOpenForSubject(
+        subject.subjectKind,
+        subject.subjectId,
+        types,
+      )) {
         const reduced = ddeWorkItemMachine.reduce(item.state, "supersede", {
           attemptNumber: item.attemptNumber,
         });

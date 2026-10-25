@@ -68,7 +68,8 @@ describe("ddeWorkItemMachine", () => {
   });
 
   it("supersede (system only) closes every open state and nothing else", () => {
-    for (const s of m.DDE_WORK_ITEM_OPEN_STATES) expect(m.reduce(s, "supersede").state).toBe("closed");
+    for (const s of m.DDE_WORK_ITEM_OPEN_STATES)
+      expect(m.reduce(s, "supersede").state).toBe("closed");
     expect(m.reduce("accepted", "supersede").error).toBe("INVALID_TRANSITION");
     expect(m.reduce("closed", "supersede").error).toBe("INVALID_TRANSITION");
     expect(m.reduce("cancelled", "supersede").error).toBe("INVALID_TRANSITION");

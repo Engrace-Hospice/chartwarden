@@ -107,10 +107,11 @@ export class DdeWorkItemRepository {
     return row ?? null;
   }
 
-  /** Every OPEN item on the subject (any type), oldest first. */
+  /** Every OPEN item on the subject (optionally only of these types), oldest first. */
   async listOpenForSubject(
     subjectKind: schema.DdeSubjectKindValue,
     subjectId: string,
+    itemTypes?: readonly schema.DdeItemTypeValue[],
   ): Promise<readonly DdeWorkItemRecord[]> {
     return this.db
       .select()
@@ -120,6 +121,7 @@ export class DdeWorkItemRepository {
           eq(I.subjectKind, subjectKind),
           eq(I.subjectId, subjectId),
           inArray(I.state, OPEN_STATES),
+          ...(itemTypes ? [inArray(I.itemType, [...itemTypes])] : []),
         ),
       )
       .orderBy(asc(I.createdAt), asc(I.id));

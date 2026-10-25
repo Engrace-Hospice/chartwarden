@@ -754,7 +754,9 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
 
     it("the detail route carries the claim keying sheet for an RTP correction", async () => {
       const { claimId } = await seedClaimWithSubmission(admin);
-      const item = (await post("", asA(), { itemType: "rtp_correction", subjectId: claimId })).json();
+      const item = (
+        await post("", asA(), { itemType: "rtp_correction", subjectId: claimId })
+      ).json();
       const detail = (await get(`/${item.ddeWorkItemId}`)).json();
       const labels = detail.keying.fields.map((f: { label: string }) => f.label);
       expect(labels).toEqual(
@@ -786,6 +788,22 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
         [id],
       );
       expect(out.rowCount).toBe(1);
+    });
+
+    it("a claim acceptance closes the RTP item but leaves an open adjustment on the same claim", async () => {
+      const { claimId } = await seedClaimWithSubmission(admin);
+      const rtp = (
+        await post("", asA(), { itemType: "rtp_correction", subjectId: claimId })
+      ).json();
+      const adj = (await post("", asA(), { itemType: "adjustment", subjectId: claimId })).json();
+      expect(await supersede(ORG_A, "claim", claimId)).toEqual({ closed: 1 });
+      const states = await admin.query(
+        "SELECT id, state FROM dde_work_item WHERE id = ANY($1::uuid[])",
+        [[rtp.ddeWorkItemId, adj.ddeWorkItemId]],
+      );
+      const byId = Object.fromEntries(states.rows.map((r) => [r.id, r.state]));
+      expect(byId[rtp.ddeWorkItemId]).toBe("closed");
+      expect(byId[adj.ddeWorkItemId]).toBe("queued");
     });
 
     it("supersede leaves a finished (accepted / cancelled) item alone", async () => {
