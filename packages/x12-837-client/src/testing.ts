@@ -3,3 +3,5 @@
 // production code cannot import it (or its `node:crypto` dependency) by accident. See ADR-0053 D4.
 export { createInMemoryHarness, InMemoryClearinghouse } from "./clearinghouse/in-memory-transport";
 export type { InMemoryClearinghouseOptions } from "./clearinghouse/in-memory-transport";
+export { createInMemoryDdeHarness, InMemoryDdeProvider } from "./dde/in-memory-provider";
+export type { InMemoryDdeOptions } from "./dde/in-memory-provider";
