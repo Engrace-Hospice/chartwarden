@@ -1055,7 +1055,7 @@ export async function runClaimSubmitRetry(
   const preflight = await preflightClaimSubmit(tx, claim);
   if ("error" in preflight) {
     const reason = `claim is no longer submit-eligible (${preflight.error}, state=${claim.state})`;
-    await submissions.append({
+    const recorded = await submissions.append({
       organizationId: job.organizationId,
       providerEntityId: claim.providerEntityId,
       kind: "claim_837i",
@@ -1068,6 +1068,8 @@ export async function runClaimSubmitRetry(
       submittedAt: null,
       workerCorrelationId: null,
     });
+    // A redelivery after this attempt already succeeded collapses onto its row (idempotent append): nothing failed.
+    if (recorded.outcome !== "failed_worker") return;
     await outbox.publish(tx, {
       eventName: "m23.claim.submission_failed",
       organizationId: job.organizationId,

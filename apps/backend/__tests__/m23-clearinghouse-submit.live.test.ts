@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 /**
  * M23 workers over the bound clearinghouse transport (#707) - LIVE Postgres.
  *
@@ -14,6 +13,7 @@ import { randomUUID } from "node:crypto";
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m23:clearinghouse-submit:live
  * Local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
+import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -855,6 +855,14 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         )
       ).rows;
 
+    const failedEventCount = async (claimId: string): Promise<number> =>
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM outbox_event WHERE event_type = 'm23.claim.submission_failed' AND payload->>'claimId' = $1",
+          [claimId],
+        )
+      ).rows[0].n;
+
     it("filed retry keeps the control number: 999/277CA bind to the NEW submitted row, and a redelivered retry appends nothing (#754)", async () => {
       const r = rig({ dropAfterLanding: true });
       const c = await seed("f4f4f4f4-f4f4-f4f4-f4f4-f4f4f4f4f4f4");
@@ -910,8 +918,11 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       expect(acked.rows).toHaveLength(2);
       for (const row of acked.rows) expect(row.submission_id).toBe(newRowId);
 
-      // A late redelivery of the retry (the claim has moved on) still appends nothing and never re-uploads.
+      const failedBefore = await failedEventCount(c.claimId);
+      // A late redelivery of the retry (the claim has moved on) still appends nothing, never re-uploads, and does
+      // not announce a failure for a claim that was filed.
       await runInOrg((tx) => runClaimSubmitRetry(tx, r.deps(), c.retry));
+      expect(await failedEventCount(c.claimId)).toBe(failedBefore);
       expect(await submissionRows(c.claimId)).toEqual(afterRetry);
       expect(await claimState(c.claimId)).toBe("ACK_ACCEPTED");
       expect(r.uploads).toEqual([c.ccn]);
@@ -951,10 +962,11 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       await runInOrg((tx) => runClaimSubmit(tx, r.deps(), c.job));
       expect((await submissionRow(c.submissionId)).outcome_reason).toMatch(/CH_IN_DOUBT/);
       // Force the contradictory state: the vendor "definitively did not take it" yet the submission still says in doubt.
-      await admin.query(
+      const released = await admin.query(
         "UPDATE clearinghouse_submission_attempt SET status = 'released' WHERE idempotency_key = $1",
         [`m23.claim.${c.ccn}`],
       );
+      expect(released.rowCount).toBe(1);
       await expect(runInOrg((tx) => runClaimSubmitRetry(tx, r.deps(), c.retry))).rejects.toThrow(
         /in doubt/,
       );
