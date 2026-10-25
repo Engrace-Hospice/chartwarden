@@ -144,7 +144,7 @@ describe("pullRemittances", () => {
     const result = await pullRemittances(deps, ORG);
 
     expect(result.failures).toHaveLength(1);
-    expect(result.failures[0]).toContain("cursor refused (not reset)");
+    expect(result.failures[0]).toContain("request refused (cursor not reset)");
     expect(result.failures[0]).toContain(CH.INVALID_REQUEST);
     expect(ingest.received).toHaveLength(0);
     expect(cursors.current()).toBe("garbage");
@@ -187,6 +187,44 @@ describe("pullRemittances", () => {
 
     expect(result.failures[0]).toContain("Medicare payer is not resolvable");
     expect(ingest.received).toHaveLength(0);
+  });
+
+  it("does not write the cursor when an empty poll leaves it where it was", async () => {
+    const { far, deps } = setup();
+    await far.control.deliverRemittance("ERA-1", buildRawEdi("1", "0001"));
+    await pullRemittances(deps, ORG);
+    let writes = 0;
+    const counting = {
+      ...deps,
+      cursors: {
+        get: deps.cursors.get,
+        set: async (...args: Parameters<typeof deps.cursors.set>) => {
+          writes += 1;
+          return deps.cursors.set(...args);
+        },
+      },
+    };
+
+    await pullRemittances(counting, ORG);
+
+    expect(writes).toBe(0);
+  });
+
+  it("keeps a failing provider-entity listing from throwing out of the org (other orgs still run)", async () => {
+    const { deps } = setup();
+    const broken = {
+      ...deps,
+      contexts: {
+        ...deps.contexts,
+        providerEntitiesFor: async () => {
+          throw new Error("db down");
+        },
+      },
+    };
+
+    const result = await pullRemittances(broken, ORG);
+
+    expect(result.failures).toEqual([`org ${ORG}: provider entities could not be listed`]);
   });
 
   it("reports an outage as a failure and keeps the cursor", async () => {

@@ -1565,7 +1565,7 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
 
       const result = await pullRemittances(deps, ORG_A);
 
-      expect(result.failures[0]).toContain("cursor refused (not reset)");
+      expect(result.failures[0]).toContain("request refused (cursor not reset)");
       expect(received).toHaveLength(0);
       expect(await cursors.get(key)).toBe("not-a-cursor");
     });

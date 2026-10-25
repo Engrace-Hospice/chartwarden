@@ -69,7 +69,18 @@ export async function pullRemittances(
   let duplicates = 0;
   let unsupported = 0;
   const failures: string[] = [];
-  for (const providerEntityId of await deps.contexts.providerEntitiesFor(organizationId)) {
+  let providerEntityIds: readonly string[];
+  try {
+    providerEntityIds = await deps.contexts.providerEntitiesFor(organizationId);
+  } catch {
+    return {
+      queued,
+      duplicates,
+      unsupported,
+      failures: [`org ${organizationId}: provider entities could not be listed`],
+    };
+  }
+  for (const providerEntityId of providerEntityIds) {
     const label = `org ${organizationId} provider ${providerEntityId}`;
     try {
       const counts = await pullOne(deps, organizationId, providerEntityId);
@@ -106,9 +117,10 @@ async function pullOne(
     const result = await deps.transport.fetchRemittances(ctx, cursor);
     if (!result.ok) {
       if (result.degraded.code === CH.NOT_WIRED) return "unsupported";
+      // Code only: the vendor's reason text is not provably PHI-free and this string reaches job data and logs.
       const refused = result.degraded.code === CH.INVALID_REQUEST;
       throw new Error(
-        `${refused ? "remittance cursor refused (not reset)" : "remittance pull"}: ${result.degraded.code} ${result.degraded.reason}`,
+        `${refused ? "remittance request refused (cursor not reset)" : "remittance pull"}: ${result.degraded.code}`,
       );
     }
     for (const file of result.data.items) {
@@ -124,14 +136,17 @@ async function pullOne(
         },
       );
       if (received.outcome === "malformed") {
-        throw new Error(`remittance ${file.remittanceId} refused at receive: ${received.reason}`);
+        throw new Error(`remittance ${file.remittanceId} refused at receive`);
       }
       if (received.outcome === "queued") queued += 1;
       else duplicates += 1;
     }
-    await deps.cursors.set(key, result.data.nextCursor);
-    if (!result.data.hasMore) break;
+    if (result.data.nextCursor !== cursor) await deps.cursors.set(key, result.data.nextCursor);
+    if (!result.data.hasMore) return { queued, duplicates };
     cursor = result.data.nextCursor;
   }
-  return { queued, duplicates };
+  // Page bound reached with more waiting: the next tick resumes from the stored cursor.
+  throw new Error(
+    `remittance chain exceeds ${MAX_REMITTANCE_PAGES} pages in one tick; resuming next tick`,
+  );
 }
