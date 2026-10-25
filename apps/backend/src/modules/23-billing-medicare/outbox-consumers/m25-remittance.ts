@@ -145,6 +145,25 @@ export function buildM23RemittanceConsumer(deps: M23RemittanceConsumerDeps) {
                   });
                   return { applied: false, skipped: "already_applied" };
                 }
+                // A denied/underpaid claim only takes a further payment from a DIFFERENT advice: a second
+                // line of the advice that already moved it (or a redelivery) must not read as a won appeal.
+                if (
+                  claim.state !== "ack_accepted" &&
+                  plan.transition !== "remittance_recouped" &&
+                  (await new repositories.ClaimStateHistoryRepository(tx).hasAdvice(
+                    plan.claimId,
+                    plan.remittanceAdviceId,
+                  ))
+                ) {
+                  deps.onSkipped?.({
+                    reason: "already_applied",
+                    eventType: event.eventType,
+                    organizationId,
+                    claimId: plan.claimId,
+                    currentState: claim.state,
+                  });
+                  return { applied: false, skipped: "already_applied" };
+                }
                 if (!LEGAL_FROM[plan.transition].includes(claim.state)) {
                   // An 835 for a claim that was never accepted, or one already replaced/voided. A real
                   // anomaly for a human — but NOT a delivery failure, so the row completes and the sink

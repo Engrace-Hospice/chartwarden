@@ -522,11 +522,12 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
         "ACK_ACCEPTED>DENIED",
         "DENIED>PAID",
       ]);
-      const paidEvent = await one(
+      const paidEvents = await rows(
         "SELECT payload FROM outbox_event WHERE event_type='m23.claim.paid' AND payload->>'claimId'=$1",
         [claimId],
       );
-      expect(paidEvent.payload.paidAmountCents).toBe(100_000);
+      expect(paidEvents).toHaveLength(1);
+      expect(paidEvents[0].payload.paidAmountCents).toBe(100_000);
 
       // Denial case: resolved via the appeal, then closed. The original evidence is untouched.
       const dc = await one("SELECT state, version FROM denial_case WHERE id=$1", [denialCase.id]);
@@ -579,6 +580,26 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
         [claimId],
       );
       expect(Number(paid.paid)).toBe(1000);
+      // m23.claim.paid carries the supplemental amount only (incremental); the claim total is the sum of its lines.
+      const ev = await rows(
+        "SELECT payload FROM outbox_event WHERE event_type='m23.claim.paid' AND payload->>'claimId'=$1",
+        [claimId],
+      );
+      expect(ev.map((e) => e.payload.paidAmountCents)).toEqual([30_000]);
+    });
+
+    it("a second paid line of the SAME advice does not read as a won appeal", async () => {
+      const claimId = await seedClaim("PCN-S09D", "ACK_ACCEPTED");
+      await postEra(
+        era("000009006", "0001", "1100.00", [
+          "CLP*PCN-S09D*1*1000.00*700.00*0.00*MC*ICN-S09D",
+          "CAS*CO*45*300.00",
+          "CLP*PCN-S09D*1*400.00*400.00*0.00*MC*ICN-S09D2",
+        ]),
+        "minio/s09d.835",
+      );
+      await dispatcher.tick();
+      expect(await stateOf(claimId)).toBe("PARTIAL_PAID");
     });
 
     it("a supplemental payment the machine cannot place (draft claim) is skipped, not retried forever", async () => {
