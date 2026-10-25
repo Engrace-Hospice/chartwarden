@@ -88,7 +88,7 @@ export const MEDICAID_NO_ELECTRONIC_GATEWAY_CODE = "MEDICAID_STATE_NO_ELECTRONIC
 const GATEWAY_PROBE_REGISTRY = new MedicaidAdapterRegistry();
 
 /**
- * Null when `state` has a live electronic gateway (today: Oregon only), else the refusal to surface:
+ * Null when `state` has a non-deny-stub adapter (today: Oregon only; does not prove its gateway is bound), else the refusal:
  * a stable code plus a message naming the manual/paper alternative. WA/ID/CA/NV are deny-stubs and every
  * other state has no adapter at all — both are refused (fail closed). PURE: no I/O.
  */
