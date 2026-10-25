@@ -1123,6 +1123,12 @@ Triggers:
 # 6. Document in incident retrospective
 ```
 
+#### 8.2.x Clearinghouse credential rejected at runtime (Stedi key or MAC submitter credential)
+
+A 401/403 from the vendor surfaces as the terminal `CH_NOT_WIRED` ("... rejected the ... credential") and raises ONE critical alert `m23.clearinghouse.credential_rejected` per org / provider entity / usage (to billing managers, compliance and org admins). Further submits and ack pulls for that scope are then held for 10 minutes without calling the vendor (`CREDENTIAL_HOLD_MS`, `jobs/clearinghouse-credential-guard.ts`); after the hold the next call probes the vendor again. Fix the credential (rotate the key, or correct the tenant's MAC submitter credential); no manual reset is needed.
+
+**Known limit:** the hold is in-memory per process. With N worker processes each sends at most one call per scope per hold window (plus concurrent first calls before the first rejection lands) and may raise its own alert; the alert router de-duplicates by correlation id per day. **Upgrade path if that matters:** store the hold as a shared Valkey key (`SET clearinghouse:cred-hold:<scopeKey> 1 NX PX 600000`) read by `withCredentialGuard`, so one rejection holds all workers and alerts once. Not built: it needs a Valkey handle on the transport deps and a live test.
+
 ### 8.3 Key Rotation (Encryption Keys)
 
 Different from credentials. Encryption keys must be rotated with backward-compatibility consideration since old data was encrypted with old keys.
