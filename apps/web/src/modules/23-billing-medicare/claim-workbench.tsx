@@ -28,6 +28,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { BillingTabs } from "../../shell/billing-tabs";
 import { PatientLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { claimStateTone, dollars, statusLabel, tobLabel } from "./billing-status";
 import type { ClaimAttention } from "./discharge-attention";
@@ -176,6 +177,9 @@ export function ClaimWorkbench(): JSX.Element {
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review Medicare claims, submit ready claims, and open replace or void ceremonies from
             the editor.
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <BillingTabs />
           </div>
         </PageHeader>
       }
