@@ -174,8 +174,12 @@ export class InMemoryClearinghouse implements ClearinghouseTransport {
     ctx: ClearinghouseContext,
     submission: ClearinghouseSubmission,
   ): Promise<X12WorkerResult<SubmissionReceipt>> {
-    if (submission.kind !== "noe" && submission.kind !== "notr") {
-      return degraded(CH.INVALID_REQUEST, "submitNotice requires kind noe or notr");
+    if (
+      submission.kind !== "noe" &&
+      submission.kind !== "notr" &&
+      submission.kind !== "transfer_notice"
+    ) {
+      return degraded(CH.INVALID_REQUEST, "submitNotice requires kind noe, notr or transfer_notice");
     }
     if (submission.adjustment) {
       return degraded(CH.INVALID_REQUEST, "a notice cannot carry a claim adjustment");

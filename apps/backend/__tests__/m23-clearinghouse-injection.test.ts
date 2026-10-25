@@ -137,6 +137,7 @@ describe("transportUpload (claim / NOE / NOTR submit + retry go through the vend
       ["claim_837i", "CCN1"],
       ["noe", "NOE1"],
       ["notr", "NOTR1"],
+      ["transfer_notice", "TN1"],
     ] as const) {
       const r = await upload(kind, n);
       expect(r.accepted).toBe(true);
@@ -171,8 +172,28 @@ describe("transportUpload (claim / NOE / NOTR submit + retry go through the vend
     expect(worker.macPortal?.upload).toBe(unboundPortal); // the legacy port is only bypassed inside macPortalOf
   });
 
-  it("a transfer notice has no clearinghouse kind: it fails closed instead of using the legacy portal", async () => {
-    await expect(upload("transfer_notice", "TN1")).rejects.toThrow(/not routable/);
+  it("a transfer notice rides submitNotice; a vendor that cannot carry it refuses with a typed error, never the legacy portal", async () => {
+    const inMemory = new InMemoryClearinghouse();
+    await inMemory.control.setOutage(true);
+    await expect(upload("transfer_notice", "TN2", transportDeps(inMemory))).rejects.toThrow(
+      CH.UNAVAILABLE,
+    );
+    const refusing = transportDeps();
+    const refuse = async () => ({
+      ok: false as const,
+      degraded: { code: CH.INVALID_REQUEST, reason: "this transport cannot carry a transfer notice" },
+    });
+    const t = {
+      ...refusing,
+      binding: {
+        ...refusing.binding,
+        transport: Object.assign(Object.create(refusing.binding.transport), {
+          submitNotice: refuse,
+        }),
+      },
+    };
+    await expect(upload("transfer_notice", "TN3", t)).rejects.toThrow(CH.INVALID_REQUEST);
+    await expect(upload("bogus" as never, "TN4")).rejects.toThrow(CH.INVALID_REQUEST);
   });
 });
 

@@ -24,10 +24,12 @@ export interface DirectMacGatewayDeps {
   readonly now?: () => Date;
 }
 
-const UPLOAD_KIND = { claim: "claim_837i", noe: "noe", notr: "notr" } as const satisfies Record<
-  SubmissionKind,
-  "claim_837i" | "noe" | "notr"
->;
+const UPLOAD_KIND = {
+  claim: "claim_837i",
+  noe: "noe",
+  notr: "notr",
+  transfer_notice: "transfer_notice",
+} as const satisfies Record<SubmissionKind, "claim_837i" | "noe" | "notr" | "transfer_notice">;
 
 /** `launch-gateway.ts` reports a non-2xx answer as "... returned HTTP <status>". */
 const DEFINITE_REFUSAL = /returned HTTP 4\d\d$/;
@@ -66,6 +68,10 @@ export function buildDirectMacGateway(deps: DirectMacGatewayDeps): DirectMacGate
           noeControlNumber: controlNumber,
         });
         return { x12: generated.x12 };
+      }
+      if (kind === "transfer_notice") {
+        // The transport refuses a JSON transfer notice before it gets here; the 8xC/8xD file is built upstream.
+        throw new Error("direct_mac: a transfer notice is sent as raw X12, not generated here");
       }
       const generated = await deps.x12.generateNotr({
         organizationId,

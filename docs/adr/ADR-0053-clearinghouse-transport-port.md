@@ -136,9 +136,8 @@ entity (two permanent code paths and a per-entity switch to get wrong), (c) skip
   so the cursor-replay cases (C08, C17) and everything that needs `fetchClaimStatus` are skipped by name, not passed.
   `validate`, `eligibility`, `adjustment` and `enrollment` have no gateway operation either. Its
   `fetchAcknowledgments` is covered by its own tests. The per-vendor limits are visible as skipped cases, never silent.
-- Known limits of the worker injection (#707): 8xC/8xD transfer notices have no `SubmissionKind`, so with a vendor set
-  they fail closed rather than use the legacy portal; a 277CA "partial" is carried as a rejection marked `PARTIAL`
-  because the port has no partial disposition. Tracked as follow-up issues. The ack crons no longer re-read from a null
+- Known limits of the worker injection (#707): a 277CA "partial" is carried as a rejection marked `PARTIAL`
+  because the port has no partial disposition. Tracked as a follow-up issue. The transfer-notice limit recorded at ratification (8xC/8xD had no `SubmissionKind`) is closed by the 2026-10-25 amendment. The ack crons no longer re-read from a null
   cursor (#749): the position is persisted per (org, provider entity, vendor, usage, stage) in `clearinghouse_ack_cursor`
   and moved by compare-and-set only after the page was applied (at-least-once; replays collapse on the ack row's unique
   key). A cursor the vendor refuses (`CH_INVALID_REQUEST`) resets to a null re-read once. A page whose apply keeps
@@ -169,6 +168,21 @@ NOE/NOTR not accepted, no platform model, or no BAA; Availity and Office Ally (n
 
 **Unchanged by this decision.** D6: the attempt store, not any vendor idempotency key, is the idempotency authority, so
 no vendor's key lifetime blocks a build.
+
+## Amendment (2026-10-25) — transfer notices are in the port (#750)
+
+**Transfer notices (#750).** `SubmissionKind` gains `transfer_notice` (837I TOB 8xC change / 8xD cancel). *In the port,
+not out of it,* because (a) the CMS 837I NOE Companion Guide governs every NOE-related TOB (8XA-8XE), so an 8xC/8xD is an
+NOE-family file that goes to the same MAC by the same channel as NOE/NOTR, (b) the alternative, a documented boundary,
+would leave a configured vendor with a path (the legacy portal) that the rest of the cycle is forbidden to use (D1), and
+(c) Stedi's sandbox findings expect "the same edit path as NOE". It travels `submitNotice` (no claim adjustment, raw
+X12 only: the repo's `build837iTransferNotice` is the generator, the legacy sidecar has none). `submitClaim` refuses it.
+The attempt record's kind CHECK is widened (migration 1268). A transport that cannot carry it answers a typed
+`CH_INVALID_REQUEST` (or `CH_NOT_WIRED`), which the M23 worker records as `failed_portal`; nothing is dropped and the
+legacy portal is never the fallback. Conformance: C03 now covers `transfer_notice` (accepted by `submitNotice`, refused by
+`submitClaim`, refused with an adjustment), and every registered transport (`in_memory`, `direct_mac`, `stedi`) passes it.
+**Unverified:** whether Stedi's payer routing accepts TOB 8xC/8xD (Q30 is open); the adapter sends it as it does an NOE
+and a vendor 4xx surfaces as a typed refusal.
 
 ## Open questions
 

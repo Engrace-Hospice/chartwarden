@@ -284,9 +284,9 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   {
     id: "C03-notice-kind-routing",
     requires: ["submit"],
-    stage: "3 NOE / 14 NOTR",
+    stage: "3 NOE / 14 NOTR / transfer notice",
     title:
-      "submitNotice accepts noe and notr and refuses a claim or an adjustment; submitClaim refuses a notice",
+      "submitNotice accepts noe, notr and transfer_notice and refuses a claim or an adjustment; submitClaim refuses a notice",
     async run(h) {
       const sub = submissionFor(h);
       const noe = ok(await h.transport.submitNotice(ctxFor(), sub("noe", "NOE-0003")), "noe");
@@ -301,6 +301,33 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
         "submitNotice refuses kind=claim",
       );
       const claimAsNotice = await h.transport.submitClaim(ctxFor(), sub("noe", "NOE-0003b"));
+      const transfer = ok(
+        await h.transport.submitNotice(ctxFor(), sub("transfer_notice", "TRN-0003")),
+        "transfer_notice",
+      );
+      check(
+        transfer.clearinghouseSubmissionId !== noe.clearinghouseSubmissionId &&
+          transfer.controlNumber === "TRN-0003",
+        "a transfer notice is its own submission",
+      );
+      const transferAsClaim = await h.transport.submitClaim(
+        ctxFor(),
+        sub("transfer_notice", "TRN-0003b"),
+      );
+      check(
+        degradedCode(transferAsClaim, "submitClaim(transfer_notice)") === CH.INVALID_REQUEST,
+        "submitClaim refuses kind=transfer_notice",
+      );
+      const adjustedTransfer = await h.transport.submitNotice(
+        ctxFor(),
+        sub("transfer_notice", "TRN-0003c", {
+          adjustment: { kind: "void", originalControlNumber: "TRN-0003" },
+        }),
+      );
+      check(
+        degradedCode(adjustedTransfer, "transfer notice with adjustment") === CH.INVALID_REQUEST,
+        "a transfer notice cannot carry a claim adjustment",
+      );
       check(
         degradedCode(claimAsNotice, "submitClaim(noe)") === CH.INVALID_REQUEST,
         "submitClaim refuses kind=noe",

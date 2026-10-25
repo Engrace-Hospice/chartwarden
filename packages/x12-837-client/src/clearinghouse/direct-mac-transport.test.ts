@@ -25,10 +25,12 @@ import { type AckEvent, CH, type ClearinghouseContext, RETRYABLE_CODES } from ".
 
 const fixture = (name: string): string =>
   readFileSync(join(__dirname, "__fixtures__", `stedi-${name}.x12`), "utf8");
-const BASE_X12 = { claim: fixture("claim"), noe: fixture("NOE_81A"), notr: fixture("NOTR_81B") };
+const BASE_X12 = { claim: fixture("claim"), noe: fixture("NOE_81A"), notr: fixture("NOTR_81B"),
+  transfer_notice: fixture("TRANSFER_81C"),
+};
 
 function x12For(
-  kind: "claim" | "noe" | "notr",
+  kind: "claim" | "noe" | "notr" | "transfer_notice",
   variant: string,
   usage: "test" | "production" = "test",
   controlNumber: string = variant,
@@ -129,6 +131,26 @@ describe("DirectMacTransport against the shared conformance suite (submit side)"
 });
 
 describe("DirectMacTransport", () => {
+  it("carries a transfer notice as raw X12 and refuses a JSON document for it (typed, nothing uploaded)", async () => {
+    const gw = fakeGateway();
+    const t = createHarness(gw).transport;
+    const sent = await t.submitNotice(ctx, {
+      kind: "transfer_notice",
+      controlNumber: "000000041",
+      idempotencyKey: "idem-41",
+      payload: { format: "x12", x12: x12For("transfer_notice", "T", "test", "000000041") },
+    });
+    expect(sent).toMatchObject({ ok: true, data: { replayed: false } });
+    const json = await t.submitNotice(ctx, {
+      kind: "transfer_notice",
+      controlNumber: "000000042",
+      idempotencyKey: "idem-42",
+      payload: { format: "json", document: { transferNoticeId: "t" } },
+    });
+    expect(json).toMatchObject({ ok: false, degraded: { code: CH.INVALID_REQUEST } });
+    expect(gw.uploads).toEqual(["000000041"]);
+  });
+
   const submission = (x12: string, controlNumber = "000000001") => ({
     kind: "claim" as const,
     controlNumber,

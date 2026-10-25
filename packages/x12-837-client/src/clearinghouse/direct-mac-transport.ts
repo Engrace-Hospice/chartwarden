@@ -163,11 +163,21 @@ export class DirectMacTransport implements ClearinghouseTransport {
     ctx: ClearinghouseContext,
     submission: ClearinghouseSubmission,
   ): Promise<X12WorkerResult<SubmissionReceipt>> {
-    if (submission.kind !== "noe" && submission.kind !== "notr") {
-      return Promise.resolve(refuse("submitNotice accepts kind=noe or notr only"));
+    if (
+      submission.kind !== "noe" &&
+      submission.kind !== "notr" &&
+      submission.kind !== "transfer_notice"
+    ) {
+      return Promise.resolve(
+        refuse("submitNotice accepts kind=noe, notr or transfer_notice only"),
+      );
     }
     if (submission.adjustment) {
       return Promise.resolve(refuse("a notice cannot carry a claim adjustment"));
+    }
+    // The gateway has no transfer-notice generator: the 8xC/8xD file is built upstream and sent as raw X12.
+    if (submission.kind === "transfer_notice" && submission.payload.format !== "x12") {
+      return Promise.resolve(refuse("a transfer notice is sent as raw X12"));
     }
     return this.submit(ctx, submission);
   }

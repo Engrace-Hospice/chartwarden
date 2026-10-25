@@ -6,11 +6,12 @@ import {
   runConformance,
 } from "./conformance";
 import { createInMemoryHarness } from "./in-memory-transport";
-import type {
-  ClearinghouseContext,
-  ClearinghouseSubmission,
-  ClearinghouseTransport,
-  SubmissionReceipt,
+import {
+  CH,
+  type ClearinghouseContext,
+  type ClearinghouseSubmission,
+  type ClearinghouseTransport,
+  type SubmissionReceipt,
 } from "./types";
 
 describe("in-memory clearinghouse transport", () => {
@@ -46,6 +47,18 @@ describe("conformance suite catches broken transports", () => {
       })),
     );
     expect(failures.map((f) => f.id)).toContain("C04-idempotent-submission");
+  });
+
+  it("flags a transport that cannot carry a transfer notice", async () => {
+    const failures = await runClearinghouseConformance(
+      mutant((t) => ({
+        submitNotice: async (ctx, s) =>
+          s.kind === "transfer_notice"
+            ? { ok: false, degraded: { code: CH.INVALID_REQUEST, reason: "no" } }
+            : t.submitNotice(ctx, s),
+      })),
+    );
+    expect(failures.map((f) => f.id)).toContain("C03-notice-kind-routing");
   });
 
   it("flags a transport that echoes the MBI", async () => {

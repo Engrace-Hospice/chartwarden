@@ -61,21 +61,25 @@ export function activeTransport(deps: {
   return deps.transport?.binding.vendor ? deps.transport : null;
 }
 
-const UPLOAD_TO_SUBMISSION_KIND: Record<string, SubmissionKind> = {
+/** Every legacy upload kind has a port kind (the 8xC/8xD transfer notice is `transfer_notice`, ADR-0053 amendment). */
+const UPLOAD_TO_SUBMISSION_KIND: Record<TransportUploadKind, SubmissionKind> = {
   claim_837i: "claim",
   noe: "noe",
   notr: "notr",
+  transfer_notice: "transfer_notice",
 };
 
 function failure(what: string, code: string, reason: string): Error {
   return new Error(`clearinghouse ${what} failed (${code}): ${reason}`);
 }
 
+type TransportUploadKind = "claim_837i" | "noe" | "notr" | "transfer_notice";
+
 /** Structurally `MacPortalPort["upload"]` (declared here so m23-jobs can import this file without a cycle). */
 export type TransportUpload = (input: {
   readonly organizationId: string;
   readonly providerEntityId: string;
-  readonly kind: "claim_837i" | "noe" | "notr" | "transfer_notice";
+  readonly kind: TransportUploadKind;
   readonly x12: string;
   readonly controlNumber: string;
 }) => Promise<{ readonly accepted: boolean; readonly generatedFileUri: string }>;
@@ -88,12 +92,7 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
   return async (input) => {
     const kind = UPLOAD_TO_SUBMISSION_KIND[input.kind];
     if (!kind) {
-      // ponytail: 8xC/8xD transfer notices have no SubmissionKind yet; fail closed, never the legacy portal.
-      throw failure(
-        input.kind,
-        "CH_INVALID_REQUEST",
-        "this file kind is not routable through the clearinghouse",
-      );
+      throw failure(input.kind, CH.INVALID_REQUEST, "this file kind is not routable through the clearinghouse");
     }
     const ctx = await transport.contexts.contextFor(input.organizationId, input.providerEntityId);
     const submission = {

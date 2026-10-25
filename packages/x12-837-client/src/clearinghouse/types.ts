@@ -89,9 +89,14 @@ export type ClearinghouseScope = Pick<
   "organizationId" | "providerEntityId" | "usage" | "billingNpi"
 >;
 
-// ─── Submission (claims, NOE, NOTR) ─────────────────────────────────────────────────────────────
+// ─── Submission (claims, NOE, NOTR, transfer notices) ─────────────────────────────────────────────────────────────
 
-export type SubmissionKind = "claim" | "noe" | "notr";
+/**
+ * `transfer_notice` is the 837I transfer notice (TOB 8xC change / 8xD cancel, ADR-0053 amendment 2026-10-25): an
+ * NOE-family notice (the CMS 837I NOE companion guide governs TOB 8XA-8XE), so it travels `submitNotice`, never
+ * `submitClaim`, and carries no claim adjustment.
+ */
+export type SubmissionKind = "claim" | "noe" | "notr" | "transfer_notice";
 
 /** Raw X12 or a vendor JSON document. Exactly one is meaningful; the transport rejects a mismatch. */
 export type SubmissionPayload =
@@ -283,7 +288,7 @@ export interface ClearinghouseTransport {
     submission: ClearinghouseSubmission,
   ): Promise<X12WorkerResult<ValidationReport>>;
 
-  /** NOE (stage 3) or NOTR (stage 14). `submission.kind` must be `noe` or `notr`. */
+  /** NOE (stage 3), NOTR (stage 14) or a transfer notice. `submission.kind` must be `noe`, `notr` or `transfer_notice`. */
   submitNotice(
     ctx: ClearinghouseContext,
     submission: ClearinghouseSubmission,
