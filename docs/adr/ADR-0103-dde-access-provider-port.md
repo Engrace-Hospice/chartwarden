@@ -4,6 +4,11 @@
   conformance suite). The vendor questions in D7 are open until Episode Alert's write-API documentation is in hand;
   ratify when the first real adapter passes the conformance suite.
 - **Date:** 2026-10-24
+- **Status note (2026-10-25):** the D7 questions are written and ready to send, not sent, in
+  [`EPISODE_ALERT_QUESTIONS_TO_SEND_20261025.md`](../audits/clearinghouse-integration/EPISODE_ALERT_QUESTIONS_TO_SEND_20261025.md);
+  the human onboarding steps and the secrets and configuration names are in the sibling `EPISODE_ALERT_ONBOARDING_RUNBOOK_20261025.md`
+  and `EPISODE_ALERT_SECRETS_RUNBOOK_20261025.md`. Until a person records the answers (issue #762), D7 is unanswered and the
+  default stays `manual`.
 - **Phase:** post-launch billing work (Medicare submission paths). Tracking issue #755; this ADR is #756, the port is #757.
 - **Narrows:** [ADR-0052](ADR-0052-dde-work-queue.md) D2 ("never an integration"). ADR-0052 stays Accepted and unedited;
   D2 is read as narrowed by D3 below. Everything else in ADR-0052 (item types, lifecycle, deadline rule, controls, PHI
