@@ -1,5 +1,7 @@
 # Clearinghouse comparison: Claim.MD and Stedi against `ClearinghouseTransport`
 
+**Update 2026-10-24:** sections 2-4 contain statements that section 7 corrects or qualifies (Stedi test-claim wording, idempotency key lifetime, "settled" duplicate handling); read section 7 for the decision.
+
 **Date:** 2026-10-23 · **Status:** documentation review, **no account was opened and no call was made**. Facts come from
 the vendors' public documentation and pricing pages as fetched on 2026-10-23; each is the vendor's statement, not a test
 result. "Not stated" means the pages read did not say, not that the answer is no. Several Claim.MD pages link to a separate
@@ -100,7 +102,7 @@ Design consequences for an adapter, whichever vendor:
 
 ## 7. Critical review and decision (2026-10-24, #718)
 
-A second read against current vendor pages (Stedi test-mode, claims and pricing pages; a Claim.MD search that returned
+A second read on 2026-10-24 against Stedi's public docs (stedi.com/docs/healthcare, stedi.com/test-mode, stedi.com/pricing.md; no per-page retrieval log was kept, re-fetch before relying on them) (Stedi test-mode, claims and pricing pages; a Claim.MD search that returned
 nothing usable). Everything below is a vendor-document fact and is **unverified** until the vendor confirms it in writing.
 
 **Corrections and gaps in sections 1-6**
@@ -115,7 +117,7 @@ nothing usable). Everything below is a vendor-document fact and is **unverified*
   production unless explicitly marked test (`usageIndicator` `T`, or ISA15 `T`), and describe a 277CA for every test claim;
   one page says `T` claims get no 835 while another says the Stedi Test Payer returns test ERAs. Treat both statements as
   unverified and keep Q14 open. Operational consequence for any adapter: an unmarked API claim is a **production** claim, so
-  `usage: "test"` must always set the indicator (ADR-0053 D3 already requires this).
+  `usage: "test"` must always set the indicator (follows from ADR-0053 D3, which requires test usage to reach only vendor test mode).
 - **Stedi per-claim price.** The pricing figures in section 2 were not all re-found on the page read (one changelog page says
   split claims are billed per claim and points to sales for the rate). Use the section 2 figures only as an estimate.
 - **Idempotency.** Stedi's 24-hour `Idempotency-Key` lifetime was not re-found; its resubmission guidance is a new patient
@@ -132,10 +134,10 @@ non-Stedi adapter that proves the port. Recorded in the [ADR-0053 amendment of 2
 **Go criteria (all in writing from the vendor, filed under this folder):**
 - G1 hospice 837I (type of bill 81x) and NOE/NOTR (81A/81B) accepted, with the payer list for hospice.
 - G2 full response-status code list and a recorded payer-stage response sample, so D2 stages map without guessing.
-- G3 a platform (software-vendor) account may serve many unrelated agencies on one key, with API pricing.
-- G4 duplicate-upload behaviour, and whether "Transmit Approval" can be turned off by API or account setting.
+- G3 a platform (software-vendor) account may serve many unrelated agencies on one key (API pricing is also requested but is not an ADR criterion).
+- G4 duplicate-upload behaviour and the held-for-approval ("Transmit Approval") setting.
 - G5 a signed or signable BAA.
-- G6 a sandbox/test run with synthetic patients succeeds (this is #719's acceptance, not a precondition to start the ask).
+- Not an ADR criterion: a sandbox/test run with synthetic patients is #719's acceptance, after G1-G5.
 
 **Owner action:** send the section 5 Claim.MD list plus the BAA request (and the section 5 Stedi list) to the vendors; file
 each reply here. Owner: product owner (vendor relationship). Engineering cannot obtain these.
