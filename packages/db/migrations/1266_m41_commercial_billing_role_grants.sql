@@ -4,6 +4,9 @@
 -- may bill a commercial plan: billing.claim.read -> read, billing.claim.assemble -> write, billing.validation.override ->
 -- override_validation. The override additionally needs a billing override role in scope (the commercial_override_eligible predicate)
 -- and a fresh step-up. Idempotent.
+-- Also here: 1265's commercial_eligibility_check has a composite (plan_id, organization_id) foreign key with no index on exactly those
+-- columns (the fk-index-coverage live suite flags it, as it did the 1260 tables fixed in 1261).
+CREATE INDEX IF NOT EXISTS "commercial_eligibility_check_plan_fk_ix" ON "commercial_eligibility_check" ("plan_id", "organization_id");--> statement-breakpoint
 INSERT INTO "role_permission" ("organization_id", "role_id", "permission_key")
 SELECT rp."organization_id", rp."role_id", m."new_key"
   FROM "role_permission" rp
