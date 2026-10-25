@@ -12,12 +12,13 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { JSX } from "react";
 // apps/web/src/modules/25-remittance — M25, the APPEAL TRACKER (R2, §5 / §1.1). The five-tier Medicare
 // appeal hierarchy with its per-tier filing deadline — the §6.6 CountdownChip is the anchor (the most
 // expensive billing mistake is a missed 60-day window). Reads org-scoped server-side (RLS); the hard T-0
 // submit block is the `appeal_within_deadline` ABAC predicate on the server, surfaced here as the chip tone.
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { JSX } from "react";
+import { BillingTabs } from "../../shell/billing-tabs";
 import { useSession } from "../../shell/session";
 import { findStepUpDraftResourceId } from "../../shell/step-up-redirect";
 import { APPEAL_DRAFT_ACTION, AppealDetailPanel } from "./appeal-detail-panel";
@@ -142,6 +143,9 @@ export function AppealTracker(): JSX.Element {
         <PageHeader title="Appeals" breadcrumb="Revenue Cycle — Appeals">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Track appeal tiers, filing deadlines, current state, and decision outcomes.
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <BillingTabs />
           </div>
         </PageHeader>
       }

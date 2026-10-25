@@ -27,7 +27,7 @@ import {
 // parser/enforcer.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
 import type { RhcCarryOver } from "../../shell/rhc-carry-over";
 import {
@@ -344,6 +344,17 @@ export function ClaimEditor(): JSX.Element {
             <a href={`/billing/claims/${claim.claimId}/validation`} style={linkStyle}>
               Validation worklist →
             </a>
+          </nav>
+          <nav
+            aria-label="Related remittance and denial work"
+            style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}
+          >
+            <Link to="/remittance" style={linkStyle}>
+              Remittances →
+            </Link>
+            <Link to="/remittance/denials" style={linkStyle}>
+              Denials →
+            </Link>
           </nav>
         </div>
       }

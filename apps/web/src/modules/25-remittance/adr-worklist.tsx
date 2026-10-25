@@ -11,12 +11,13 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { JSX } from "react";
 // apps/web/src/modules/25-remittance — M25, the ADR WORKLIST (hospice ADR/TPE/QIC PRD, milestone 2a). Every
 // additional documentation request from a MAC with its response due date as a countdown: a missed ADR window
 // is a denial, so the soonest-due row leads. A window that comes from an unconfirmed rule is flagged, never
 // hidden. Rows open the ADR work panel; "Log an ADR" and "MAC response windows" open the two forms.
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { JSX } from "react";
+import { BillingTabs } from "../../shell/billing-tabs";
 import { useSession } from "../../shell/session";
 import {
   clearStepUpDraft,
@@ -101,6 +102,9 @@ export function AdrWorklist(): JSX.Element {
           <PageHeader title="ADR Requests" breadcrumb="Revenue Cycle — ADR Requests">
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Additional documentation requests from your MAC, soonest response due first.
+            </div>
+            <div style={{ marginTop: "0.75rem" }}>
+              <BillingTabs />
             </div>
           </PageHeader>
         }

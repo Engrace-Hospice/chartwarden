@@ -33,9 +33,10 @@ import {
 } from "./action-ui";
 import { BeneficiarySection } from "./beneficiary-section";
 import { CaseViewPanel } from "./case-view-panel";
+import { ClaimLink } from "./claim-link";
 import { DenialRoutePanel } from "./denial-route-panel";
-import { PlaybookPanel } from "./playbook-panel";
 import { PayerAppealPanel } from "./payer-appeal-panel";
+import { PlaybookPanel } from "./playbook-panel";
 import {
   type AppealTier,
   type DenialAction,
@@ -287,7 +288,7 @@ export function DenialDetailPanel({
                 />,
               ],
               ["Assignee", denial.assigneeMembershipId ?? "Unassigned"],
-              ["Claim", denial.claimId ?? "None linked"],
+              ["Claim", <ClaimLink key="claim" claimId={denial.claimId} />],
             ]}
           />
           <NoticeAlert message={notice} />

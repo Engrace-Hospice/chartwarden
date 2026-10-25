@@ -1,6 +1,6 @@
 // apps/web/src/shell — the Billing area's navigation: Overview · Work Queue · Claims · Revenue Cycle · Tools, with the
 // views inside the current area on a second row (Work Queue: NOE / NOTR · Transfers · DDE queue; Claims: Medicare ·
-// Commercial; Revenue Cycle: Remittances · Denials; Tools: Eligibility · Rates · Wage index). The views are separate
+// Commercial; Revenue Cycle: Remittances · Denials · ADR requests · Audits · Appeals; Tools: Eligibility · Rates · Wage index). The views are separate
 // screens owned by M23, M25 and M41, so the bar lives in the shell and every one of them renders it.
 // The current area and view are read from the URL (longest matching prefix), so callers just render <BillingTabs />.
 import type { JSX } from "react";
@@ -43,6 +43,9 @@ const AREAS: BillingArea[] = [
     views: [
       { to: "/remittance", label: "Remittances", match: ["/remittance"] },
       { to: "/remittance/denials", label: "Denials", match: ["/remittance/denials"] },
+      { to: "/remittance/adrs", label: "ADR requests", match: ["/remittance/adrs"] },
+      { to: "/remittance/audits", label: "Audits", match: ["/remittance/audits"] },
+      { to: "/remittance/appeals", label: "Appeals", match: ["/remittance/appeals"] },
     ],
   },
   {
