@@ -321,6 +321,7 @@ export function buildDrizzleM24WriteService(
       version: r.version,
       validationRunIdLatest: r.validationRunIdLatest ?? null,
       eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
+      electronicSubmissionRefusal: electronicSubmissionRefusal(r.serviceState)?.message ?? null,
       createdAt: iso(r.createdAt),
       updatedAt: iso(r.updatedAt),
     };

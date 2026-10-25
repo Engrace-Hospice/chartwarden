@@ -167640,6 +167640,7 @@
                           "version",
                           "validationRunIdLatest",
                           "eligibilityOutcomeSnapshot",
+                          "electronicSubmissionRefusal",
                           "createdAt",
                           "updatedAt"
                         ],
@@ -167875,6 +167876,16 @@
                               }
                             ]
                           },
+                          "electronicSubmissionRefusal": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "createdAt": {
                             "format": "date-time",
                             "type": "string"
@@ -167941,6 +167952,7 @@
                     "version",
                     "validationRunIdLatest",
                     "eligibilityOutcomeSnapshot",
+                    "electronicSubmissionRefusal",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -168170,6 +168182,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "electronicSubmissionRefusal": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -168333,6 +168355,7 @@
                     "version",
                     "validationRunIdLatest",
                     "eligibilityOutcomeSnapshot",
+                    "electronicSubmissionRefusal",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -168562,6 +168585,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "electronicSubmissionRefusal": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -168630,6 +168663,7 @@
                     "version",
                     "validationRunIdLatest",
                     "eligibilityOutcomeSnapshot",
+                    "electronicSubmissionRefusal",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -168859,6 +168893,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "electronicSubmissionRefusal": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -168953,6 +168997,7 @@
                     "version",
                     "validationRunIdLatest",
                     "eligibilityOutcomeSnapshot",
+                    "electronicSubmissionRefusal",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -169182,6 +169227,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "electronicSubmissionRefusal": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -169520,6 +169575,7 @@
                     "version",
                     "validationRunIdLatest",
                     "eligibilityOutcomeSnapshot",
+                    "electronicSubmissionRefusal",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -169749,6 +169805,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "electronicSubmissionRefusal": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -170014,6 +170080,7 @@
                     "version",
                     "validationRunIdLatest",
                     "eligibilityOutcomeSnapshot",
+                    "electronicSubmissionRefusal",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -170243,6 +170310,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "electronicSubmissionRefusal": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
@@ -170644,6 +170721,7 @@
                     "version",
                     "validationRunIdLatest",
                     "eligibilityOutcomeSnapshot",
+                    "electronicSubmissionRefusal",
                     "createdAt",
                     "updatedAt"
                   ],
@@ -170873,6 +170951,16 @@
                               "type": "string"
                             }
                           ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "electronicSubmissionRefusal": {
+                      "anyOf": [
+                        {
+                          "type": "string"
                         },
                         {
                           "type": "null"
