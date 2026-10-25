@@ -12,6 +12,7 @@ export const MEDICAID_AREAS: NavArea[] = [
   {
     label: "Work Queue",
     views: [
+      { to: "/medicaid/billing/queue", label: "All work", match: ["/medicaid/billing/queue"] },
       {
         to: "/medicaid/billing/validation-worklist",
         label: "Blocked claims",

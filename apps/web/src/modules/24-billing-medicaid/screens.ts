@@ -58,6 +58,9 @@ const MedicaidTradingPartnerCredentials = lazy(() =>
     default: m.MedicaidTradingPartnerCredentials,
   })),
 );
+const MedicaidWorkQueue = lazy(() =>
+  import("./medicaid-work-queue").then((m) => ({ default: m.MedicaidWorkQueue })),
+);
 const MedicaidValidationQueue = lazy(() =>
   import("./validation-queue").then((m) => ({ default: m.MedicaidValidationQueue })),
 );
@@ -77,6 +80,15 @@ export const medicaidBillingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "medicaid.claim.read_ar_dashboard",
       screen: MedicaidArDashboard,
+    },
+    // --- work queue: claims that need a person + the validation worklist, one list ---
+    {
+      id: "medicaid.work-queue",
+      path: "/medicaid/billing/queue",
+      title: "Medicaid Work Queue",
+      navGroup: "Billing",
+      requiredPermission: "medicaid.claim.read",
+      screen: MedicaidWorkQueue,
     },
     // --- claim lifecycle (§5.1 #2, #3, #4, #8, #9) ---
     {

@@ -17,6 +17,7 @@ import type { JSX } from "react";
 // degrades to an inline note rather than failing the page. Lantern: DashboardLayout + KpiStrip + No-Line
 // tables (§6.7), tabular-nums money, CSS-var tokens only. The server is the only authz point (ADR-0030).
 import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
+import { MedicaidNeedsAttention } from "./medicaid-home-attention";
 import { money, pct, shortId } from "./medicaid-status";
 import {
   Card,
@@ -118,33 +119,36 @@ export function MedicaidArDashboard(): JSX.Element {
         </PageHeader>
       }
       kpis={
-        <KpiStrip>
-          <KpiCard
-            label="Open claims"
-            value={ar.totalOpen.toLocaleString()}
-            detail="Backend AR dashboard"
-            tone="info"
-            accentColor="var(--color-primary)"
-          />
-          <KpiCard
-            label="Metrics open"
-            value={metrics ? metrics.openCount.toLocaleString() : metricsDegraded ? "—" : "…"}
-            detail="Backend metrics read"
-            tone="neutral"
-            accentColor="var(--color-outline-variant)"
-          />
-          <KpiCard
-            label="Denial rate (rolling)"
-            value={metrics ? pct(metrics.denialRate) : metricsDegraded ? "—" : "…"}
-            detail="Backend metrics read"
-            tone={metrics && metrics.denialRate > 0 ? "warning" : "neutral"}
-            accentColor={
-              metrics && metrics.denialRate > 0
-                ? "var(--color-warning)"
-                : "var(--color-outline-variant)"
-            }
-          />
-        </KpiStrip>
+        <>
+          <MedicaidNeedsAttention />
+          <KpiStrip>
+            <KpiCard
+              label="Open claims"
+              value={ar.totalOpen.toLocaleString()}
+              detail="Backend AR dashboard"
+              tone="info"
+              accentColor="var(--color-primary)"
+            />
+            <KpiCard
+              label="Metrics open"
+              value={metrics ? metrics.openCount.toLocaleString() : metricsDegraded ? "—" : "…"}
+              detail="Backend metrics read"
+              tone="neutral"
+              accentColor="var(--color-outline-variant)"
+            />
+            <KpiCard
+              label="Denial rate (rolling)"
+              value={metrics ? pct(metrics.denialRate) : metricsDegraded ? "—" : "…"}
+              detail="Backend metrics read"
+              tone={metrics && metrics.denialRate > 0 ? "warning" : "neutral"}
+              accentColor={
+                metrics && metrics.denialRate > 0
+                  ? "var(--color-warning)"
+                  : "var(--color-outline-variant)"
+              }
+            />
+          </KpiStrip>
+        </>
       }
       table={
         <section

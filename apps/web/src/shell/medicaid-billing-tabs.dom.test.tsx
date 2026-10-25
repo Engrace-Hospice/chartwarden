@@ -31,7 +31,7 @@ describe("MedicaidBillingTabs", () => {
     );
     expect(hrefs).toEqual({
       Overview: "/medicaid/billing/ar-dashboard",
-      "Work Queue": "/medicaid/billing/validation-worklist",
+      "Work Queue": "/medicaid/billing/queue",
       Claims: "/medicaid/billing/claims",
       Compliance: "/medicaid/billing/rule-config",
       Tools: "/medicaid/billing/eligibility",
@@ -40,6 +40,7 @@ describe("MedicaidBillingTabs", () => {
 
   it.each([
     ["/medicaid/billing/ar-dashboard", "Overview"],
+    ["/medicaid/billing/queue", "Work Queue"],
     ["/medicaid/billing/validation-worklist", "Work Queue"],
     ["/medicaid/billing/claims", "Claims"],
     ["/medicaid/billing/claims/new", "Claims"],
