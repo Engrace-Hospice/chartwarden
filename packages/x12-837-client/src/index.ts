@@ -161,6 +161,7 @@ export {
   CH,
   CLEARINGHOUSE_EVENT_KINDS,
   RETRYABLE_CODES,
+  isCredentialRejection,
   isCommercialEligibilityRequest,
 } from "./clearinghouse/types";
 export {

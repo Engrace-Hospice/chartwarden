@@ -30,6 +30,7 @@ const ORG_B = "33333333-3333-3333-3333-333333333333";
 const PE_A = "22222222-2222-2222-2222-222222222222";
 const PE_B = "44444444-4444-4444-4444-444444444444";
 const KEY = "stedi-key-SENTINEL-0001";
+const REJECTED = "Stedi rejected the platform credential";
 const MBI = "1EG4TE5MK73"; // synthetic
 const BODY_SECRET = "echoed-body-SENTINEL";
 
@@ -134,6 +135,26 @@ describe("Stedi credential rejected at runtime", () => {
   }
 });
 
+describe("a non-credential CH_NOT_WIRED does not look like a rejected credential", () => {
+  it("Stedi's unimplemented ack pull raises no alert and does not hold submits", async () => {
+    let calls = 0;
+    const stedi = new StediTransport({
+      apiKey: KEY,
+      attempts: new InMemoryAttemptStore(),
+      fetch: (async () => {
+        calls += 1;
+        return Response.json({ status: "SUCCESS", claimReference: { correlationId: "c-1" } });
+      }) as typeof fetch,
+    });
+    const { d, captured } = deps({ vendor: "stedi", transport: stedi });
+    const pull = await pullTransportAcks(d, ORG_A, "ack_999", async () => undefined);
+    expect(pull.failures).toHaveLength(1);
+    expect(captured.alerts).toEqual([]);
+    await expect(upload(d)).resolves.toMatchObject({ accepted: true });
+    expect(calls).toBe(1);
+  });
+});
+
 describe("tenant isolation", () => {
   it("one tenant's rejected credential does not hold or fail another tenant's submit or ack pull", async () => {
     const seen: string[] = [];
@@ -142,7 +163,7 @@ describe("tenant isolation", () => {
       submitClaim: async (ctx: ClearinghouseContext) => {
         seen.push(ctx.organizationId);
         return rejecting(ctx.organizationId)
-          ? { ok: false, degraded: { code: CH.NOT_WIRED, reason: "rejected" } }
+          ? { ok: false, degraded: { code: CH.NOT_WIRED, reason: REJECTED } }
           : {
               ok: true,
               data: {
@@ -155,7 +176,7 @@ describe("tenant isolation", () => {
       },
       fetchAcknowledgments: async (ctx: ClearinghouseContext) =>
         rejecting(ctx.organizationId)
-          ? { ok: false, degraded: { code: CH.NOT_WIRED, reason: "rejected" } }
+          ? { ok: false, degraded: { code: CH.NOT_WIRED, reason: REJECTED } }
           : { ok: true, data: { items: [], nextCursor: "0", hasMore: false } },
     };
     const { d, captured } = deps({ vendor: "stedi", transport: fake as never }, [
@@ -178,7 +199,7 @@ describe("tenant isolation", () => {
 
   it("a failing alert router never masks the degraded result", async () => {
     const fake = {
-      submitClaim: async () => ({ ok: false, degraded: { code: CH.NOT_WIRED, reason: "x" } }),
+      submitClaim: async () => ({ ok: false, degraded: { code: CH.NOT_WIRED, reason: REJECTED } }),
     };
     const { d, captured } = deps({ vendor: "stedi", transport: fake as never });
     const broken: M23TransportDeps = {

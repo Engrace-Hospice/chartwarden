@@ -15,7 +15,7 @@ Claim-level straddle test: `apps/backend/src/modules/23-billing-medicare/__tests
 
 ## 1. National per-diem base rates (carried in `packages/billing/src/rate-table/national-rates.ts`)
 
-Source: CMS-1851-CN correction, 91 FR 61791 (2026-09-30), corrected Tables at 91 FR 61792-61793
+Source (citations copied from repo docs, not resolved offline: treat as unverified): CMS-1851-CN correction, 91 FR 61791 (2026-09-30), corrected Tables at 91 FR 61792-61793
 (https://www.federalregister.gov/documents/2026/09/30/2026-20067), which supersedes Tables 1-4 of CMS-1851-F,
 91 FR 49118 (2026-08-03). Update 2.3%; HQRP reduction 4 percentage points.
 

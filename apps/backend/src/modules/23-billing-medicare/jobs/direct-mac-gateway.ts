@@ -104,7 +104,7 @@ export function buildDirectMacGateway(deps: DirectMacGatewayDeps): DirectMacGate
         return { accepted: uploaded.accepted, fileId: uploaded.generatedFileUri };
       } catch (err) {
         if (err instanceof Error && CREDENTIAL_REJECTION.test(err.message)) {
-          throw new CredentialRejectedError();
+          return rethrowCredentialRejection(err);
         }
         // A 4xx answer proves the portal took nothing; anything else (5xx, timeout, reset) is in doubt.
         if (err instanceof Error && DEFINITE_REFUSAL.test(err.message)) {

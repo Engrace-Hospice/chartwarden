@@ -10,6 +10,7 @@ import {
   type ClearinghouseContext,
   type X12WorkerResult,
   degraded,
+  isCredentialRejection,
   scopeKey,
 } from "@chartwarden/x12-837-client";
 
@@ -60,7 +61,7 @@ export async function withCredentialGuard<T>(
   if ((holds.get(key) ?? 0) > now) return degraded<T>(CH.NOT_WIRED, HELD_REASON);
 
   const result = await call();
-  if (result.ok || result.degraded.code !== CH.NOT_WIRED) return result;
+  if (!isCredentialRejection(result)) return result;
 
   holds.set(key, now + CREDENTIAL_HOLD_MS);
   const fields = {
@@ -70,8 +71,9 @@ export async function withCredentialGuard<T>(
     code: CH.NOT_WIRED,
   };
   deps.logger?.error(fields, "clearinghouse credential rejected; calls held");
-  try {
-    await deps.alerts?.dispatch({
+  // Not awaited: a slow alert router must not delay the job; a failure is logged.
+  void Promise.resolve(
+    deps.alerts?.dispatch({
       alertCode: CREDENTIAL_REJECTED_ALERT,
       severity: "critical",
       organizationId: ctx.organizationId,
@@ -80,9 +82,9 @@ export async function withCredentialGuard<T>(
         vendor: deps.binding.vendor,
         code: CH.NOT_WIRED,
       },
-    });
-  } catch {
+    }),
+  ).catch(() => {
     deps.logger?.error(fields, "clearinghouse credential alert could not be dispatched");
-  }
+  });
   return result;
 }
