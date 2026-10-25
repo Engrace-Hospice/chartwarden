@@ -1056,12 +1056,7 @@ export const M6_CONTRIBUTED_PERMISSIONS = {
   },
   // --- Milestone 10a: NOMNC delivery + BFCC-QIO expedited review record-keeping (mig 1230 grants `nomnc.read` to the
   //     roles holding admission.read and `nomnc.record` to those holding discharge.no_longer_terminal / for_cause) ---
-  "nomnc.read": {
-    resource: "nomnc",
-    action: "read",
-    category: "clinical",
-    abac: "admission.scope",
-  },
+  "nomnc.read": { resource: "nomnc", action: "read", category: "clinical", abac: "admission.scope" },
   "nomnc.record": {
     resource: "nomnc",
     action: "record",

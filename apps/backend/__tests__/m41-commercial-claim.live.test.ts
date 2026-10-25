@@ -876,9 +876,9 @@ describe.skipIf(!DB_URL)("M41 commercial claim assembly and validation - LIVE Po
       expect((await w.lifecycle.assertReady(actor, out.claimId)).state).toBe("ready");
 
       // voiding the authorization later drops a READY claim back to draft on the next validation
-      const covering = (await authorizations.listForPatient(actor, providerEntityId, s.patientId)).find(
-        (a) => a.effectiveFrom === "2026-03-16",
-      );
+      const covering = (
+        await authorizations.listForPatient(actor, providerEntityId, s.patientId)
+      ).find((a) => a.effectiveFrom === "2026-03-16");
       await authorizations.setStatus(actor, covering?.id as string, "voided");
       await w.lifecycle.validate(actor, out.claimId);
       expect(
@@ -1304,19 +1304,25 @@ describe.skipIf(!DB_URL)("M41 commercial claim assembly and validation - LIVE Po
       ).toBe(1);
     });
 
-    it("a void claim stays void: ready racing a void cannot revive it, and the database refuses void -> anything", async () => {
+    it("a void claim stays void: ready racing a void loses with a clean 409, and the database refuses void -> anything", async () => {
+      for (const order of ["ready-first", "void-first"] as const) {
+        const s = await seedScenario();
+        const w = wire(s);
+        const out = await w.assembly.assemble(actor, input(s));
+        const readyCall = () => w.lifecycle.markReady(actor, out.claimId);
+        const voidCall = () => w.lifecycle.voidClaim(actor, out.claimId);
+        const [first, second] =
+          order === "ready-first" ? [readyCall, voidCall] : [voidCall, readyCall];
+        const results = await Promise.all([first, second].map((f) => failure(f())));
+        for (const e of results) if (e !== null) expect(e.code).toBe("CONFLICT"); // never a raw trigger error (a 500)
+        expect(
+          (await admin.query("SELECT state FROM commercial_claim WHERE id=$1", [out.claimId]))
+            .rows[0].state,
+        ).toBe("void");
+      }
       const s = await seedScenario();
-      const w = wire(s);
-      const out = await w.assembly.assemble(actor, input(s));
-      await Promise.all(
-        [w.lifecycle.markReady(actor, out.claimId), w.lifecycle.voidClaim(actor, out.claimId)].map(
-          failure,
-        ),
-      );
-      expect(
-        (await admin.query("SELECT state FROM commercial_claim WHERE id=$1", [out.claimId])).rows[0]
-          .state,
-      ).toBe("void");
+      const out = await wire(s).assembly.assemble(actor, input(s));
+      await wire(s).lifecycle.voidClaim(actor, out.claimId);
       const revive = await admin
         .query("UPDATE commercial_claim SET state='draft' WHERE id=$1", [out.claimId])
         .then(
@@ -1324,6 +1330,67 @@ describe.skipIf(!DB_URL)("M41 commercial claim assembly and validation - LIVE Po
           (e: Error) => e.message,
         );
       expect(revive).toMatch(/M41_CLAIM_VOID_IS_FINAL/);
+    });
+
+    it("allows adjacent windows and re-assembly after a void (with the right bill type); the database refuses an overlapping live claim", async () => {
+      const s = await seedScenario();
+      const w = wire(s);
+      const first = await w.assembly.assemble(actor, { ...input(s), serviceTo: "2026-03-15" });
+      const adjacent = await w.assembly.assemble(actor, { ...input(s), serviceFrom: "2026-03-16" });
+      expect([first.tob, adjacent.tob]).toEqual(["812", "813"]);
+      await w.lifecycle.voidClaim(actor, first.claimId);
+      // the first window again: it is the FIRST bill of the stay even though a later claim exists
+      const again = await w.assembly.assemble(actor, { ...input(s), serviceTo: "2026-03-15" });
+      expect(again.tob).toBe("812");
+      const overlap = await admin
+        .query(
+          `INSERT INTO commercial_claim (id, organization_id, provider_entity_id, patient_id, admission_id, plan_id, primary_patient_payer_id, claim_filing_indicator, tob, frequency_code, service_from, service_to, admission_date, patient_status_code, claim_control_number, total_charge_cents, created_by_membership_id)
+           SELECT gen_random_uuid(), organization_id, provider_entity_id, patient_id, admission_id, plan_id, primary_patient_payer_id, claim_filing_indicator, tob, frequency_code, '2026-03-10', '2026-03-20', admission_date, patient_status_code, 'OVERLAP-1', 0, created_by_membership_id
+             FROM commercial_claim WHERE id=$1`,
+          [adjacent.claimId],
+        )
+        .then(
+          () => "",
+          (e: Error) => e.message,
+        );
+      expect(overlap).toMatch(/commercial_claim_no_overlap/);
+    });
+
+    it("tolerates an unbilled discharge day on a final bill, and only there", async () => {
+      const s = await seedScenario();
+      const period = {
+        levelOfCarePeriodId: randomUUID(),
+        levelOfCare: "routine_home_care" as const,
+        from: "2026-03-01",
+        to: "2026-03-30",
+        chcDocumentedHours: null,
+        gipAdmissionCriteriaDocumented: null,
+      };
+      const discharged = {
+        resolveForRange: async () => ({
+          admissionId: s.admissionId,
+          providerEntityId,
+          hospiceAdmissionDate: "2026-03-01",
+          admissionTypeCode: "1",
+          admissionSourceCode: "1",
+          dischargeDate: "2026-03-31",
+          dischargeReason: "no_longer_terminal",
+          deceasedDate: null,
+          placeOfDeath: null,
+          transferOut: null,
+        }),
+      };
+      const final = await wire(s, {
+        admission: discharged,
+        levelOfCare: { periodsInRange: async () => [period] },
+      }).assembly.assemble(actor, input(s));
+      expect(final.tob).toBe("811");
+      expect(ruleOf(final.validation, "service_days_covered")?.outcome).toBe("pass");
+      const interim = await seedScenario();
+      const open = await wire(interim, {
+        levelOfCare: { periodsInRange: async () => [period] },
+      }).assembly.assemble(actor, input(interim));
+      expect(ruleOf(open.validation, "service_days_covered")?.outcome).toBe("fail");
     });
 
     it("blocks a claim whose lines leave a day of the window unbilled or bill one twice", async () => {

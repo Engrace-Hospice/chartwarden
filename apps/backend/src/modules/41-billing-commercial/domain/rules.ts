@@ -67,6 +67,8 @@ export interface RuleContext {
   readonly diagnosisCodes: readonly string[];
   readonly attendingNpi: string | null;
   readonly secondaryPayerKind: CommercialSecondaryPayerKind | null;
+  /** The bill ends the stay (TOB 811 / 814): the discharge day itself is not a billed day, so the last day may be unbilled. */
+  readonly finalBill?: boolean;
 }
 
 export interface RuleOutcome {
@@ -145,7 +147,8 @@ function serviceDaysCovered(c: RuleContext): RuleOutcome {
   for (const l of c.lines)
     for (const d of eachDay(l.serviceFrom, l.serviceTo)) counts.set(d, (counts.get(d) ?? 0) + 1);
   const window = eachDay(c.serviceFrom, c.serviceTo);
-  const missing = window.filter((d) => !counts.has(d));
+  const lastDayExempt = c.finalBill === true ? c.serviceTo : null;
+  const missing = window.filter((d) => !counts.has(d) && d !== lastDayExempt);
   const doubled = window.filter((d) => (counts.get(d) ?? 0) > 1);
   const outside = [...counts.keys()].filter((d) => d < c.serviceFrom || d > c.serviceTo);
   if (missing.length === 0 && doubled.length === 0 && outside.length === 0) {

@@ -23,6 +23,7 @@ import {
   assertRowReachable,
 } from "./scope-guard";
 import type { CommercialActor, CommercialClaimSeams, CommercialDb, CommercialTx } from "./types";
+import { evaluateClaim } from "./validation-runner";
 
 export interface RecordAuthorizationInput {
   readonly providerEntityId: string;
@@ -190,6 +191,38 @@ export function buildCommercialAuthorizationService(
           )
           .returning();
         if (!row) throw new NotFoundError("authorization");
+        // A ready claim that depended on this authorization falls back to draft in the same transaction (its readiness event
+        // was already published; nothing may keep trusting state=ready after the evidence is gone).
+        const dependents = await tx
+          .select()
+          .from(schema.commercialClaims)
+          .where(
+            and(
+              eq(schema.commercialClaims.organizationId, actor.organizationId),
+              eq(schema.commercialClaims.providerEntityId, row.providerEntityId),
+              eq(schema.commercialClaims.patientId, row.patientId),
+              eq(schema.commercialClaims.planId, row.planId),
+              eq(schema.commercialClaims.state, "ready"),
+            ),
+          )
+          .for("update");
+        for (const claim of dependents) {
+          if (!(await evaluateClaim(tx, claim)).some((r) => r.blocking)) continue;
+          await tx
+            .update(schema.commercialClaims)
+            .set({ state: "draft", readyAt: null, updatedAt: now() })
+            .where(eq(schema.commercialClaims.id, claim.id));
+          await tx.insert(schema.commercialClaimStateHistory).values({
+            organizationId: actor.organizationId,
+            providerEntityId: claim.providerEntityId,
+            locationId: claim.locationId,
+            claimId: claim.id,
+            fromState: "ready",
+            toState: "draft",
+            actorKind: actor.actorKind,
+            actorMembershipId: actor.membershipId,
+          });
+        }
         return view(row);
       });
     },

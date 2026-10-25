@@ -48,7 +48,7 @@ export async function assertPatientBoundToProvider(
   patientId: string,
   providerEntityId: string,
   range: { from: string; to: string },
-): Promise<void> {
+): Promise<NonNullable<Awaited<ReturnType<CommercialClaimSeams["admission"]["resolveForRange"]>>>> {
   const adm = await admission.resolveForRange(organizationId, patientId, range);
   if (!adm) {
     throw new ChartWardenError(
@@ -60,6 +60,7 @@ export async function assertPatientBoundToProvider(
   if (adm.providerEntityId == null || adm.providerEntityId !== providerEntityId) {
     throw new NotFoundError("patient");
   }
+  return adm;
 }
 
 /** Provider scope, then caseload, for a stored row (claim or authorization) the actor is about to read or change. */

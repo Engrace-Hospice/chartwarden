@@ -152,7 +152,8 @@ export function buildCommercialClaimAssemblyService(
       // entity's patient by pairing it with their own entity id.
       assertProviderInScope(actor, providerEntityId);
       await assertPatientReachable(actor, seams.caseload, patientId);
-      await assertPatientBoundToProvider(
+      // the bound admission is the one billed (read once, so it cannot change between the check and its use)
+      const admission = await assertPatientBoundToProvider(
         seams.admission,
         orgId,
         patientId,
@@ -175,14 +176,6 @@ export function buildCommercialClaimAssemblyService(
       }
 
       // 2. Clinical facts through the shared seams.
-      const admission = await seams.admission.resolveForRange(orgId, patientId, range);
-      if (!admission) {
-        throw new ChartWardenError(
-          "PATIENT_NOT_ELECTED",
-          "no hospice admission covers the service window",
-          409,
-        );
-      }
       if (admission.deceasedDate !== null && admission.deceasedDate < serviceFrom) {
         throw new ChartWardenError(
           "PATIENT_DECEASED_BEFORE_FROM",
@@ -292,7 +285,11 @@ export function buildCommercialClaimAssemblyService(
             "a non-void commercial claim already covers part of this service window",
           );
         }
-        const hasPrior = earlier.some((c) => c.admissionId === admission.admissionId);
+        // a bill continues the stay only when an earlier-window claim of this admission exists (a re-assembled March claim is not
+        // "continuing" because an April claim exists)
+        const hasPrior = earlier.some(
+          (c) => c.admissionId === admission.admissionId && c.serviceTo < serviceFrom,
+        );
         const tob = deriveTypeOfBill({
           hasPriorClaimForAdmission: hasPrior,
           patientDischarged,

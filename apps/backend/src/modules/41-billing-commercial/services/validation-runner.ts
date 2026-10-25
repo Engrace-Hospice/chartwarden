@@ -156,6 +156,7 @@ export async function loadRuleContext(tx: CommercialTx, claim: ClaimRow): Promis
     diagnosisCodes: diagnoses,
     attendingNpi: claim.attendingNpi,
     secondaryPayerKind: claim.secondaryPayerKind as CommercialSecondaryPayerKind | null,
+    finalBill: claim.tob === "811" || claim.tob === "814",
   };
 }
 
