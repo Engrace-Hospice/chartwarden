@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { bindDdeProvider } from "@chartwarden/x12-837-client";
 import {
   AUDIT_HASH_CHAIN_FLAG,
   auditPlatformEvent,
@@ -3585,6 +3586,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         : null,
     onAnomaly: (anomaly) => app.log.warn({ anomaly }, "Clearinghouse anomaly"),
   });
+  // ADR-0103 D2 - which DdeAccessProvider the DDE queue's send route uses. Unset / `manual` binds the fail-closed
+  // provider (every call answers DDE_NOT_WIRED); a vendor with no adapter in this build throws here (no adapter exists
+  // yet, so naming one refuses to boot rather than silently behaving as manual).
+  const ddeBinding = bindDdeProvider(process.env, {});
   const m23SubmissionQueues =
     queueConnection && m23LaunchGateway ? buildM23SubmissionQueuePort(queueConnection) : null;
   // F-153 (#248) — the `revalidate.consumer` producer, unlike submission, needs no MAC/X12 launch
@@ -5986,6 +5991,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             ),
             ddeQueueService: buildDdeQueueService(dbHandle.db, {
               outbox: m23OutboxPublisher,
+              ddeProvider: ddeBinding.provider,
+              ddeUsage: process.env.NODE_ENV === "production" ? "production" : "test",
               // Assignable only to an active member whose role grants billing.dde.work (M3's holder reader).
               assigneeCanWork: buildDdeAssigneeEligibility(
                 dbHandle.db,
@@ -12787,6 +12794,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         ? Number(process.env.LISTENER_HEALTH_PORT ?? 3002)
         : Number(process.env.PORT ?? 3000);
   app.log.info(describeClearinghouseBinding(clearinghouseBinding));
+  app.log.info({ ddeProvider: ddeBinding.vendor ?? "manual" }, "DDE access provider binding");
   // WP 1.1 / ADR-0054 — the Socket.IO transport. API role only (never the worker or the MLLP listener), opt-in via
   // REALTIME_ENABLED. It attaches to the same HTTP server and so bypasses Fastify's hooks: authentication, the
   // Origin check, staff-only and the idle-timer rule are therefore re-implemented here, not inherited.

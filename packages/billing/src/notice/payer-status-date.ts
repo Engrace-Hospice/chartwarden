@@ -15,13 +15,17 @@
 import type { IsoDate } from "../contracts";
 import { toEpochDay } from "../domain/dates";
 
-/** `dde_manual`: the MAC acceptance date an operator read off DDE and keyed into the DDE work queue (ADR-0052 D5). */
+/**
+ * `dde_manual`: the MAC acceptance date an operator read off DDE and keyed into the DDE work queue (ADR-0052 D5).
+ * `dde_provider`: the MAC date for an answer a DdeAccessProvider reported (ADR-0103 D5); provider-verified, not attested.
+ */
 export type PayerStatusDateSource =
   | "277ca_stc02"
   | "999_gs04"
   | "999_isa09"
   | "receipt"
-  | "dde_manual";
+  | "dde_manual"
+  | "dde_provider";
 
 export const PAYER_STATUS_DATE_SOURCES: readonly PayerStatusDateSource[] = [
   "277ca_stc02",
@@ -29,6 +33,7 @@ export const PAYER_STATUS_DATE_SOURCES: readonly PayerStatusDateSource[] = [
   "999_isa09",
   "receipt",
   "dde_manual",
+  "dde_provider",
 ];
 
 export interface PayerStatusDate {

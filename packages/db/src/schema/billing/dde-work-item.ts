@@ -52,6 +52,11 @@ export type DdeStateValue = (typeof DDE_STATE_VALUES)[number];
 export const DDE_SOURCE_VALUES = ["manual", "watchdog"] as const;
 export type DdeSourceValue = (typeof DDE_SOURCE_VALUES)[number];
 
+// Who vouches for "submitted" (ADR-0103 D5): an operator who keyed it (an attestation) or a DdeAccessProvider that
+// answered for it (provider-verified). Migration 1271.
+export const DDE_SUBMISSION_MODE_VALUES = ["manual", "provider"] as const;
+export type DdeSubmissionModeValue = (typeof DDE_SUBMISSION_MODE_VALUES)[number];
+
 export const ddeWorkItem = pgTable(
   "dde_work_item",
   {
@@ -77,6 +82,10 @@ export const ddeWorkItem = pgTable(
     deadlineAt: date("deadline_at"),
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     macAcceptedOn: date("mac_accepted_on"),
+    // The CURRENT attempt's submission path (cleared by a retry). `provider_reference` is the provider's opaque
+    // operation id; set iff `submission_mode = 'provider'` (CHECK). Migration 1271.
+    submissionMode: text("submission_mode").$type<DdeSubmissionModeValue>(),
+    providerReference: text("provider_reference"),
 
     // Outcome facts (codes only; never names or free text).
     dcn: text("dcn"),

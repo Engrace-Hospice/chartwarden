@@ -71694,6 +71694,8 @@
                           "deadlineStatus",
                           "submittedAt",
                           "macAcceptedOn",
+                          "submissionMode",
+                          "providerReference",
                           "dcn",
                           "rtpReasonCode",
                           "outcomeCode",
@@ -71899,6 +71901,33 @@
                               }
                             ]
                           },
+                          "submissionMode": {
+                            "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                            "anyOf": [
+                              {
+                                "const": "manual",
+                                "type": "string"
+                              },
+                              {
+                                "const": "provider",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "providerReference": {
+                            "anyOf": [
+                              {
+                                "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "dcn": {
                             "anyOf": [
                               {
@@ -71976,6 +72005,14 @@
                                 },
                                 {
                                   "const": "record_acceptance",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "submit_via_provider",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "sync_provider",
                                   "type": "string"
                                 },
                                 {
@@ -72074,6 +72111,8 @@
                     "deadlineStatus",
                     "submittedAt",
                     "macAcceptedOn",
+                    "submissionMode",
+                    "providerReference",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -72279,6 +72318,33 @@
                         }
                       ]
                     },
+                    "submissionMode": {
+                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "anyOf": [
+                        {
+                          "const": "manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "provider",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerReference": {
+                      "anyOf": [
+                        {
+                          "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "dcn": {
                       "anyOf": [
                         {
@@ -72356,6 +72422,14 @@
                           },
                           {
                             "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit_via_provider",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sync_provider",
                             "type": "string"
                           },
                           {
@@ -72506,6 +72580,8 @@
                     "deadlineStatus",
                     "submittedAt",
                     "macAcceptedOn",
+                    "submissionMode",
+                    "providerReference",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -72713,6 +72789,33 @@
                         }
                       ]
                     },
+                    "submissionMode": {
+                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "anyOf": [
+                        {
+                          "const": "manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "provider",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerReference": {
+                      "anyOf": [
+                        {
+                          "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "dcn": {
                       "anyOf": [
                         {
@@ -72790,6 +72893,14 @@
                           },
                           {
                             "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit_via_provider",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sync_provider",
                             "type": "string"
                           },
                           {
@@ -73016,6 +73127,8 @@
                     "deadlineStatus",
                     "submittedAt",
                     "macAcceptedOn",
+                    "submissionMode",
+                    "providerReference",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -73221,6 +73334,33 @@
                         }
                       ]
                     },
+                    "submissionMode": {
+                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "anyOf": [
+                        {
+                          "const": "manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "provider",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerReference": {
+                      "anyOf": [
+                        {
+                          "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "dcn": {
                       "anyOf": [
                         {
@@ -73298,6 +73438,14 @@
                           },
                           {
                             "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit_via_provider",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sync_provider",
                             "type": "string"
                           },
                           {
@@ -73415,6 +73563,8 @@
                     "deadlineStatus",
                     "submittedAt",
                     "macAcceptedOn",
+                    "submissionMode",
+                    "providerReference",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -73620,6 +73770,33 @@
                         }
                       ]
                     },
+                    "submissionMode": {
+                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "anyOf": [
+                        {
+                          "const": "manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "provider",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerReference": {
+                      "anyOf": [
+                        {
+                          "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "dcn": {
                       "anyOf": [
                         {
@@ -73697,6 +73874,14 @@
                           },
                           {
                             "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit_via_provider",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sync_provider",
                             "type": "string"
                           },
                           {
@@ -73809,6 +73994,8 @@
                     "deadlineStatus",
                     "submittedAt",
                     "macAcceptedOn",
+                    "submissionMode",
+                    "providerReference",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -74014,6 +74201,33 @@
                         }
                       ]
                     },
+                    "submissionMode": {
+                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "anyOf": [
+                        {
+                          "const": "manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "provider",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerReference": {
+                      "anyOf": [
+                        {
+                          "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "dcn": {
                       "anyOf": [
                         {
@@ -74091,6 +74305,14 @@
                           },
                           {
                             "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit_via_provider",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sync_provider",
                             "type": "string"
                           },
                           {
@@ -74203,6 +74425,8 @@
                     "deadlineStatus",
                     "submittedAt",
                     "macAcceptedOn",
+                    "submissionMode",
+                    "providerReference",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -74408,6 +74632,33 @@
                         }
                       ]
                     },
+                    "submissionMode": {
+                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "anyOf": [
+                        {
+                          "const": "manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "provider",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerReference": {
+                      "anyOf": [
+                        {
+                          "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "dcn": {
                       "anyOf": [
                         {
@@ -74485,6 +74736,14 @@
                           },
                           {
                             "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit_via_provider",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sync_provider",
                             "type": "string"
                           },
                           {
@@ -74597,6 +74856,8 @@
                     "deadlineStatus",
                     "submittedAt",
                     "macAcceptedOn",
+                    "submissionMode",
+                    "providerReference",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -74802,6 +75063,33 @@
                         }
                       ]
                     },
+                    "submissionMode": {
+                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "anyOf": [
+                        {
+                          "const": "manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "provider",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerReference": {
+                      "anyOf": [
+                        {
+                          "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "dcn": {
                       "anyOf": [
                         {
@@ -74879,6 +75167,14 @@
                           },
                           {
                             "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit_via_provider",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sync_provider",
                             "type": "string"
                           },
                           {
@@ -75023,6 +75319,8 @@
                     "deadlineStatus",
                     "submittedAt",
                     "macAcceptedOn",
+                    "submissionMode",
+                    "providerReference",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -75228,6 +75526,33 @@
                         }
                       ]
                     },
+                    "submissionMode": {
+                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "anyOf": [
+                        {
+                          "const": "manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "provider",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerReference": {
+                      "anyOf": [
+                        {
+                          "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "dcn": {
                       "anyOf": [
                         {
@@ -75305,6 +75630,14 @@
                           },
                           {
                             "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit_via_provider",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sync_provider",
                             "type": "string"
                           },
                           {
@@ -75459,6 +75792,8 @@
                     "deadlineStatus",
                     "submittedAt",
                     "macAcceptedOn",
+                    "submissionMode",
+                    "providerReference",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -75664,6 +75999,33 @@
                         }
                       ]
                     },
+                    "submissionMode": {
+                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "anyOf": [
+                        {
+                          "const": "manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "provider",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerReference": {
+                      "anyOf": [
+                        {
+                          "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "dcn": {
                       "anyOf": [
                         {
@@ -75741,6 +76103,14 @@
                           },
                           {
                             "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit_via_provider",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sync_provider",
                             "type": "string"
                           },
                           {
@@ -75863,6 +76233,8 @@
                     "deadlineStatus",
                     "submittedAt",
                     "macAcceptedOn",
+                    "submissionMode",
+                    "providerReference",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -76068,6 +76440,33 @@
                         }
                       ]
                     },
+                    "submissionMode": {
+                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "anyOf": [
+                        {
+                          "const": "manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "provider",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerReference": {
+                      "anyOf": [
+                        {
+                          "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "dcn": {
                       "anyOf": [
                         {
@@ -76145,6 +76544,14 @@
                           },
                           {
                             "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit_via_provider",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sync_provider",
                             "type": "string"
                           },
                           {
@@ -76257,6 +76664,8 @@
                     "deadlineStatus",
                     "submittedAt",
                     "macAcceptedOn",
+                    "submissionMode",
+                    "providerReference",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -76462,6 +76871,33 @@
                         }
                       ]
                     },
+                    "submissionMode": {
+                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "anyOf": [
+                        {
+                          "const": "manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "provider",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerReference": {
+                      "anyOf": [
+                        {
+                          "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "dcn": {
                       "anyOf": [
                         {
@@ -76542,6 +76978,14 @@
                             "type": "string"
                           },
                           {
+                            "const": "submit_via_provider",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sync_provider",
+                            "type": "string"
+                          },
+                          {
                             "const": "retry",
                             "type": "string"
                           },
@@ -76597,6 +77041,882 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/dde-items/{id}/submit-via-provider": {
+      "post": {
+        "operationId": "postApiV1BillingDdeitemsByIdSubmitviaprovider",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Send an in-progress DDE item through the bound DDE access provider as the acting operator (step-up, billing.dde.submit_via_provider). The item becomes submitted with submissionMode provider. 503 DDE_NOT_WIRED when no provider is bound, 409 DDE_OPERATOR_NOT_ENROLLED when the operator has no DDE ID with the provider; one derived idempotency key per item and attempt, so a double click never keys a second operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ddeWorkItemId",
+                    "organizationId",
+                    "providerEntityId",
+                    "patientId",
+                    "itemType",
+                    "subjectKind",
+                    "subjectId",
+                    "state",
+                    "attemptNumber",
+                    "assigneeMembershipId",
+                    "priority",
+                    "source",
+                    "deadlineAt",
+                    "deadlineStatus",
+                    "submittedAt",
+                    "macAcceptedOn",
+                    "submissionMode",
+                    "providerReference",
+                    "dcn",
+                    "rtpReasonCode",
+                    "outcomeCode",
+                    "notes",
+                    "respawnedFromId",
+                    "allowedActions",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "ddeWorkItemId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "itemType": {
+                      "anyOf": [
+                        {
+                          "const": "noe",
+                          "type": "string"
+                        },
+                        {
+                          "const": "notr",
+                          "type": "string"
+                        },
+                        {
+                          "const": "claim_entry",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rtp_correction",
+                          "type": "string"
+                        },
+                        {
+                          "const": "adjustment",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancel",
+                          "type": "string"
+                        },
+                        {
+                          "const": "adr_response",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "subjectKind": {
+                      "anyOf": [
+                        {
+                          "const": "claim",
+                          "type": "string"
+                        },
+                        {
+                          "const": "noe_record",
+                          "type": "string"
+                        },
+                        {
+                          "const": "notr_record",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "subjectId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "queued",
+                          "type": "string"
+                        },
+                        {
+                          "const": "assigned",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_progress",
+                          "type": "string"
+                        },
+                        {
+                          "const": "submitted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "returned",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "attemptNumber": {
+                      "type": "integer"
+                    },
+                    "assigneeMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priority": {
+                      "type": "integer"
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "watchdog",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "deadlineAt": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deadlineStatus": {
+                      "anyOf": [
+                        {
+                          "const": "none",
+                          "type": "string"
+                        },
+                        {
+                          "const": "on_track",
+                          "type": "string"
+                        },
+                        {
+                          "const": "at_risk",
+                          "type": "string"
+                        },
+                        {
+                          "const": "overdue",
+                          "type": "string"
+                        },
+                        {
+                          "const": "met",
+                          "type": "string"
+                        },
+                        {
+                          "const": "missed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "submittedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "macAcceptedOn": {
+                      "anyOf": [
+                        {
+                          "format": "date",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "submissionMode": {
+                      "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                      "anyOf": [
+                        {
+                          "const": "manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "provider",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerReference": {
+                      "anyOf": [
+                        {
+                          "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dcn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "rtpReasonCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "outcomeCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "notes": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "respawnedFromId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "allowedActions": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "claim",
+                            "type": "string"
+                          },
+                          {
+                            "const": "assign",
+                            "type": "string"
+                          },
+                          {
+                            "const": "start",
+                            "type": "string"
+                          },
+                          {
+                            "const": "record_submission",
+                            "type": "string"
+                          },
+                          {
+                            "const": "record_outcome",
+                            "type": "string"
+                          },
+                          {
+                            "const": "record_acceptance",
+                            "type": "string"
+                          },
+                          {
+                            "const": "submit_via_provider",
+                            "type": "string"
+                          },
+                          {
+                            "const": "sync_provider",
+                            "type": "string"
+                          },
+                          {
+                            "const": "retry",
+                            "type": "string"
+                          },
+                          {
+                            "const": "cancel",
+                            "type": "string"
+                          },
+                          {
+                            "const": "close",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "expectedVersion"
+                ],
+                "properties": {
+                  "expectedVersion": {
+                    "minimum": 0,
+                    "description": "The item `version` the change is applied against (a stale value → 412).",
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/dde-items/{id}/sync-provider": {
+      "post": {
+        "operationId": "postApiV1BillingDdeitemsByIdSyncprovider",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Ask the DDE access provider what FISS did with a provider-submitted item and apply a final answer (billing.dde.submit_via_provider). Accepted feeds the notice's payer_status_date with source dde_provider; returned or rejected opens the RTP path; a pending answer changes nothing",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "item",
+                    "providerState"
+                  ],
+                  "properties": {
+                    "item": {
+                      "type": "object",
+                      "required": [
+                        "ddeWorkItemId",
+                        "organizationId",
+                        "providerEntityId",
+                        "patientId",
+                        "itemType",
+                        "subjectKind",
+                        "subjectId",
+                        "state",
+                        "attemptNumber",
+                        "assigneeMembershipId",
+                        "priority",
+                        "source",
+                        "deadlineAt",
+                        "deadlineStatus",
+                        "submittedAt",
+                        "macAcceptedOn",
+                        "submissionMode",
+                        "providerReference",
+                        "dcn",
+                        "rtpReasonCode",
+                        "outcomeCode",
+                        "notes",
+                        "respawnedFromId",
+                        "allowedActions",
+                        "version",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "properties": {
+                        "ddeWorkItemId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "providerEntityId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "patientId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "itemType": {
+                          "anyOf": [
+                            {
+                              "const": "noe",
+                              "type": "string"
+                            },
+                            {
+                              "const": "notr",
+                              "type": "string"
+                            },
+                            {
+                              "const": "claim_entry",
+                              "type": "string"
+                            },
+                            {
+                              "const": "rtp_correction",
+                              "type": "string"
+                            },
+                            {
+                              "const": "adjustment",
+                              "type": "string"
+                            },
+                            {
+                              "const": "cancel",
+                              "type": "string"
+                            },
+                            {
+                              "const": "adr_response",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "subjectKind": {
+                          "anyOf": [
+                            {
+                              "const": "claim",
+                              "type": "string"
+                            },
+                            {
+                              "const": "noe_record",
+                              "type": "string"
+                            },
+                            {
+                              "const": "notr_record",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "subjectId": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "queued",
+                              "type": "string"
+                            },
+                            {
+                              "const": "assigned",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_progress",
+                              "type": "string"
+                            },
+                            {
+                              "const": "submitted",
+                              "type": "string"
+                            },
+                            {
+                              "const": "accepted",
+                              "type": "string"
+                            },
+                            {
+                              "const": "returned",
+                              "type": "string"
+                            },
+                            {
+                              "const": "closed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "cancelled",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "attemptNumber": {
+                          "type": "integer"
+                        },
+                        "assigneeMembershipId": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "priority": {
+                          "type": "integer"
+                        },
+                        "source": {
+                          "anyOf": [
+                            {
+                              "const": "manual",
+                              "type": "string"
+                            },
+                            {
+                              "const": "watchdog",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "deadlineAt": {
+                          "anyOf": [
+                            {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "deadlineStatus": {
+                          "anyOf": [
+                            {
+                              "const": "none",
+                              "type": "string"
+                            },
+                            {
+                              "const": "on_track",
+                              "type": "string"
+                            },
+                            {
+                              "const": "at_risk",
+                              "type": "string"
+                            },
+                            {
+                              "const": "overdue",
+                              "type": "string"
+                            },
+                            {
+                              "const": "met",
+                              "type": "string"
+                            },
+                            {
+                              "const": "missed",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "submittedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "macAcceptedOn": {
+                          "anyOf": [
+                            {
+                              "format": "date",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "submissionMode": {
+                          "description": "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+                          "anyOf": [
+                            {
+                              "const": "manual",
+                              "type": "string"
+                            },
+                            {
+                              "const": "provider",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "providerReference": {
+                          "anyOf": [
+                            {
+                              "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "dcn": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "rtpReasonCode": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "outcomeCode": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "notes": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "respawnedFromId": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "allowedActions": {
+                          "type": "array",
+                          "items": {
+                            "anyOf": [
+                              {
+                                "const": "claim",
+                                "type": "string"
+                              },
+                              {
+                                "const": "assign",
+                                "type": "string"
+                              },
+                              {
+                                "const": "start",
+                                "type": "string"
+                              },
+                              {
+                                "const": "record_submission",
+                                "type": "string"
+                              },
+                              {
+                                "const": "record_outcome",
+                                "type": "string"
+                              },
+                              {
+                                "const": "record_acceptance",
+                                "type": "string"
+                              },
+                              {
+                                "const": "submit_via_provider",
+                                "type": "string"
+                              },
+                              {
+                                "const": "sync_provider",
+                                "type": "string"
+                              },
+                              {
+                                "const": "retry",
+                                "type": "string"
+                              },
+                              {
+                                "const": "cancel",
+                                "type": "string"
+                              },
+                              {
+                                "const": "close",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "version": {
+                          "type": "integer"
+                        },
+                        "createdAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "providerState": {
+                      "description": "What the provider reported. received / not_found: nothing final yet, the item is unchanged. accepted / returned / rejected: applied to the item.",
+                      "anyOf": [
+                        {
+                          "const": "not_found",
+                          "type": "string"
+                        },
+                        {
+                          "const": "received",
+                          "type": "string"
+                        },
+                        {
+                          "const": "accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "returned",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rejected",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -211881,6 +213201,10 @@
                                 "type": "string"
                               },
                               {
+                                "const": "dde_provider",
+                                "type": "string"
+                              },
+                              {
                                 "type": "null"
                               }
                             ]
@@ -212229,6 +213553,10 @@
                         },
                         {
                           "const": "dde_manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dde_provider",
                           "type": "string"
                         },
                         {
@@ -212631,6 +213959,10 @@
                             },
                             {
                               "const": "dde_manual",
+                              "type": "string"
+                            },
+                            {
+                              "const": "dde_provider",
                               "type": "string"
                             },
                             {
@@ -213709,6 +215041,10 @@
                                 "type": "string"
                               },
                               {
+                                "const": "dde_provider",
+                                "type": "string"
+                              },
+                              {
                                 "type": "null"
                               }
                             ]
@@ -214103,6 +215439,10 @@
                         },
                         {
                           "const": "dde_manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dde_provider",
                           "type": "string"
                         },
                         {
@@ -214551,6 +215891,10 @@
                             },
                             {
                               "const": "dde_manual",
+                              "type": "string"
+                            },
+                            {
+                              "const": "dde_provider",
                               "type": "string"
                             },
                             {

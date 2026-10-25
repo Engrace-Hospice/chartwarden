@@ -13,7 +13,12 @@
 // A notice that is ALREADY `ack_accepted` (the electronic path got there first) is left untouched: the electronic
 // answer stays the notice's truth and the queue item just records its own outcome.
 import { type NoticeState, noeMachine, notrMachine, repositories } from "@chartwarden/billing";
-import { ConflictError, NotFoundError, ValidationError, ChartWardenError } from "@chartwarden/types";
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+  ChartWardenError,
+} from "@chartwarden/types";
 import type { BillingTx, WriteOutboxPort } from "./claim-state-service";
 
 export type DdeNoticeKind = "noe" | "notr";
@@ -27,6 +32,8 @@ export interface DdeNoticeAcceptanceInput {
   /** When the operator recorded it. */
   readonly recordedAt: Date;
   readonly outbox?: WriteOutboxPort;
+  /** Where the date came from: an operator's attestation (default) or a DdeAccessProvider's answer (ADR-0103 D5). */
+  readonly source?: "dde_manual" | "dde_provider";
 }
 
 export interface DdeNoticeAcceptanceResult {
@@ -111,6 +118,7 @@ export async function applyDdeNoticeAcceptance(
   input: DdeNoticeAcceptanceInput,
 ): Promise<DdeNoticeAcceptanceResult> {
   const ops = OPS[input.kind];
+  const source = input.source ?? "dde_manual";
   const notice = await ops.find(tx, input.noticeId);
   if (!notice) throw new NotFoundError(`${input.kind} record`);
   if (notice.state === "ack_accepted") {
@@ -151,7 +159,7 @@ export async function applyDdeNoticeAcceptance(
         ? {
             acceptedAt: input.recordedAt,
             payerStatusDate: input.macAcceptedOn,
-            payerStatusDateSource: "dde_manual",
+            payerStatusDateSource: source,
           }
         : {},
     );
@@ -177,7 +185,7 @@ export async function applyDdeNoticeAcceptance(
         [ops.payerKey]: "",
         acceptedAt: input.recordedAt.toISOString(),
         payerStatusDate: input.macAcceptedOn,
-        payerStatusDateSource: "dde_manual",
+        payerStatusDateSource: source,
       },
     });
   }

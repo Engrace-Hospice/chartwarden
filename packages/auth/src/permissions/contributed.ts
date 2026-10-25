@@ -3422,6 +3422,12 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_billing_scope",
   },
+  "billing.dde.submit_via_provider": {
+    resource: "billing_dde",
+    action: "submit_via_provider",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
   "billing.dde.admin": {
     resource: "billing_dde",
     action: "admin",

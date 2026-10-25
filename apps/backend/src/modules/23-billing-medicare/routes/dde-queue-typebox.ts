@@ -45,6 +45,8 @@ const ACTION = Type.Union([
   Type.Literal("record_submission"),
   Type.Literal("record_outcome"),
   Type.Literal("record_acceptance"),
+  Type.Literal("submit_via_provider"),
+  Type.Literal("sync_provider"),
   Type.Literal("retry"),
   Type.Literal("cancel"),
   Type.Literal("close"),
@@ -173,6 +175,15 @@ export const DdeItemViewSchema = Type.Object({
   deadlineStatus: DEADLINE_STATUS,
   submittedAt: nullable(Type.String({ format: "date-time" })),
   macAcceptedOn: nullable(isoDate()),
+  submissionMode: Type.Union([Type.Literal("manual"), Type.Literal("provider"), Type.Null()], {
+    description:
+      "Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry).",
+  }),
+  providerReference: nullable(
+    Type.String({
+      description: "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+    }),
+  ),
   dcn: nullable(Type.String()),
   rtpReasonCode: nullable(Type.String()),
   outcomeCode: nullable(Type.String()),
@@ -197,6 +208,25 @@ export const DdeItemDetailViewSchema = Type.Composite([
   DdeItemViewSchema,
   Type.Object({ events: Type.Array(DdeEventViewSchema), keying: DdeKeyingSheetSchema }),
 ]);
+
+export const SubmitDdeViaProviderBodySchema = DdeVersionBodySchema;
+
+export const DdeProviderSyncViewSchema = Type.Object({
+  item: DdeItemViewSchema,
+  providerState: Type.Union(
+    [
+      Type.Literal("not_found"),
+      Type.Literal("received"),
+      Type.Literal("accepted"),
+      Type.Literal("returned"),
+      Type.Literal("rejected"),
+    ],
+    {
+      description:
+        "What the provider reported. received / not_found: nothing final yet, the item is unchanged. accepted / returned / rejected: applied to the item.",
+    },
+  ),
+});
 
 export const DdeItemListViewSchema = Type.Object({
   items: Type.Array(DdeItemViewSchema),

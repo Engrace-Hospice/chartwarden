@@ -42,6 +42,7 @@ const DDE_KEYS = [
   "billing.dde.read",
   "billing.dde.work",
   "billing.dde.mark_submitted",
+  "billing.dde.submit_via_provider",
   "billing.dde.admin",
 ];
 
