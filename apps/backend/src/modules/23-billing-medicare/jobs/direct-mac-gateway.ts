@@ -5,7 +5,12 @@
 import { type ClaimDocument837i, repositories } from "@chartwarden/billing";
 import type { DbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type { AckEvent, DirectMacGateway, SubmissionKind } from "@chartwarden/x12-837-client";
+import {
+  type AckEvent,
+  type DirectMacGateway,
+  type SubmissionKind,
+  UploadNotSentError,
+} from "@chartwarden/x12-837-client";
 import type { MacPortalPort, X12ClientPort } from "./m23-jobs";
 
 export interface DirectMacGatewayDeps {
@@ -23,6 +28,9 @@ const UPLOAD_KIND = { claim: "claim_837i", noe: "noe", notr: "notr" } as const s
   SubmissionKind,
   "claim_837i" | "noe" | "notr"
 >;
+
+/** `launch-gateway.ts` reports a non-2xx answer as "... returned HTTP <status>". */
+const DEFINITE_REFUSAL = /returned HTTP 4\d\d$/;
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -68,14 +76,22 @@ export function buildDirectMacGateway(deps: DirectMacGatewayDeps): DirectMacGate
     },
 
     async upload({ kind, organizationId, providerEntityId, controlNumber, x12 }) {
-      const uploaded = await deps.macPortal.upload({
-        organizationId,
-        providerEntityId,
-        kind: UPLOAD_KIND[kind],
-        x12,
-        controlNumber,
-      });
-      return { accepted: uploaded.accepted, fileId: uploaded.generatedFileUri };
+      try {
+        const uploaded = await deps.macPortal.upload({
+          organizationId,
+          providerEntityId,
+          kind: UPLOAD_KIND[kind],
+          x12,
+          controlNumber,
+        });
+        return { accepted: uploaded.accepted, fileId: uploaded.generatedFileUri };
+      } catch (err) {
+        // A 4xx answer proves the portal took nothing; anything else (5xx, timeout, reset) is in doubt.
+        if (err instanceof Error && DEFINITE_REFUSAL.test(err.message)) {
+          throw new UploadNotSentError("the MAC gateway refused the upload");
+        }
+        throw err;
+      }
     },
 
     async pullAcknowledgments(ctx) {

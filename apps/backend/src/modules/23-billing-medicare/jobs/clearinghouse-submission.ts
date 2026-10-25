@@ -127,8 +127,16 @@ export function ackFromEvent(
   };
 }
 
+/** What one org's pull produced: the acknowledgments, and PHI-free labels of the provider entities that failed. */
+export interface TransportAckPull {
+  readonly acks: readonly TransportAck[];
+  readonly failures: readonly string[];
+}
+
 /**
- * Every pending acknowledgment of one stage for the org's credentialed provider entities.
+ * Every pending acknowledgment of one stage for the org's credentialed provider entities. One provider entity that
+ * cannot be pulled (no NPI on file, a degraded vendor answer) is recorded in `failures` and does not stop the others;
+ * the caller applies what arrived and then fails the run so BullMQ retries.
  * ponytail: each tick re-reads from a null cursor (no persisted cursor yet); replays collapse on the ack row's unique
  * `(jurisdiction, ack_file_uri)` and the transition guards. Persist the cursor per provider entity when chains grow.
  */
@@ -136,26 +144,35 @@ export async function pullTransportAcks(
   transport: M23TransportDeps,
   organizationId: string,
   kind: TransportAck["kind"],
-): Promise<readonly TransportAck[]> {
-  const out: TransportAck[] = [];
+): Promise<TransportAckPull> {
+  const acks: TransportAck[] = [];
+  const failures: string[] = [];
   for (const providerEntityId of await transport.contexts.providerEntitiesFor(organizationId)) {
-    const ctx = await transport.contexts.contextFor(organizationId, providerEntityId);
-    const macJurisdiction = ctx.jurisdiction;
-    if (!macJurisdiction) continue;
-    let cursor: string | null = null;
-    for (let page = 0; page < MAX_PAGES; page++) {
-      const result = await transport.binding.transport.fetchAcknowledgments(ctx, cursor);
-      if (!result.ok)
-        throw failure("acknowledgment pull", result.degraded.code, result.degraded.reason);
-      for (const event of result.data.items) {
-        const ack = ackFromEvent(event, { organizationId, providerEntityId, macJurisdiction });
-        if (ack.kind === kind) out.push(ack);
+    try {
+      const ctx = await transport.contexts.contextFor(organizationId, providerEntityId);
+      const macJurisdiction = ctx.jurisdiction;
+      if (!macJurisdiction) continue;
+      let cursor: string | null = null;
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const result = await transport.binding.transport.fetchAcknowledgments(ctx, cursor);
+        if (!result.ok) {
+          throw failure("acknowledgment pull", result.degraded.code, result.degraded.reason);
+        }
+        for (const event of result.data.items) {
+          const ack = ackFromEvent(event, { organizationId, providerEntityId, macJurisdiction });
+          if (ack.kind === kind) acks.push(ack);
+        }
+        if (!result.data.hasMore) break;
+        cursor = result.data.nextCursor;
       }
-      if (!result.data.hasMore) break;
-      cursor = result.data.nextCursor;
+    } catch (err) {
+      // Ids and the (PHI-free) failure text only.
+      failures.push(
+        `org ${organizationId} provider ${providerEntityId}: ${err instanceof Error ? err.message : "failed"}`,
+      );
     }
   }
-  return out;
+  return { acks, failures };
 }
 
 const MAX_PAGES = 100;

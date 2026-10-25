@@ -10,8 +10,12 @@ import {
   DEFAULT_SCOPE,
   runConformance,
 } from "./conformance";
-import { type DirectMacGateway, DirectMacTransport } from "./direct-mac-transport";
-import { type AckEvent, CH, type ClearinghouseContext } from "./types";
+import {
+  type DirectMacGateway,
+  DirectMacTransport,
+  UploadNotSentError,
+} from "./direct-mac-transport";
+import { type AckEvent, CH, type ClearinghouseContext, RETRYABLE_CODES } from "./types";
 
 // The direct-MAC adapter against the shared conformance suite (ADR-0053 D4). Declared capabilities: `submit` only.
 // Why not `receive`: the legacy portal has no claim-status inquiry, no 835 delivery on this path (M25's worker port) and
@@ -49,11 +53,11 @@ function fakeGateway(): FakeGateway {
     acks: [],
     // The generator echoes a valid file for the control number it was given (usage test).
     generate: async ({ kind, controlNumber }) => {
-      if (gw.outage) throw new Error("down");
+      if (gw.outage) throw new UploadNotSentError("down");
       return { x12: x12For(kind, "G", "test", controlNumber) };
     },
     upload: async ({ controlNumber }) => {
-      if (gw.outage) throw new Error("down");
+      if (gw.outage) throw new UploadNotSentError("down");
       gw.uploads.push(controlNumber);
       return { accepted: true, fileId: `file-${gw.uploads.length}` };
     },
@@ -171,6 +175,46 @@ describe("DirectMacTransport", () => {
       submission(x12For("claim", "A", "test", "000000003"), "000000003"),
     );
     expect(again).toMatchObject({ ok: true, data: { replayed: false } });
+  });
+
+  it("an upload that fails in doubt is never re-sent under the same key, nor under a new control number's reservation", async () => {
+    const gw = fakeGateway();
+    let calls = 0;
+    gw.upload = async () => {
+      calls += 1;
+      throw new Error("socket hang up"); // the file may have landed
+    };
+    const t = createHarness(gw).transport;
+    const s = submission(x12For("claim", "A", "test", "000000005"), "000000005");
+    const first = await t.submitClaim(ctx, s);
+    expect(first).toMatchObject({ ok: false, degraded: { code: CH.IN_DOUBT } });
+    expect(RETRYABLE_CODES.has(CH.IN_DOUBT)).toBe(false);
+    gw.upload = async () => {
+      calls += 1;
+      return { accepted: true, fileId: "f" };
+    };
+    const again = await t.submitClaim(ctx, s);
+    expect(again).toMatchObject({ ok: false, degraded: { code: CH.IN_DOUBT } });
+    expect(calls).toBe(1);
+  });
+
+  it("a record that cannot be completed after the upload is in doubt, not retryable", async () => {
+    const attempts = new InMemoryAttemptStore();
+    attempts.complete = async () => {
+      throw new Error("db down");
+    };
+    const anomalies: unknown[] = [];
+    const t = new DirectMacTransport({
+      attempts,
+      gateway: fakeGateway(),
+      onAnomaly: (a) => anomalies.push(a),
+    });
+    const r = await t.submitClaim(
+      ctx,
+      submission(x12For("claim", "A", "test", "000000006"), "000000006"),
+    );
+    expect(r).toMatchObject({ ok: false, degraded: { code: CH.IN_DOUBT } });
+    expect(anomalies).toEqual([expect.objectContaining({ type: "sent_but_unrecorded" })]);
   });
 
   it("refuses replacement and void", async () => {

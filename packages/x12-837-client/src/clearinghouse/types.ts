@@ -41,6 +41,8 @@ export const CH = {
   IDEMPOTENCY_CONFLICT: "CH_IDEMPOTENCY_CONFLICT",
   /** A replacement/void names an original the clearinghouse has never seen. */
   UNKNOWN_ORIGINAL: "CH_UNKNOWN_ORIGINAL",
+  /** A send may have reached the destination but is unconfirmed and the destination does not dedupe. Never retry. */
+  IN_DOUBT: "CH_IN_DOUBT",
   /** A push event failed signature verification. */
   INVALID_SIGNATURE: "CH_INVALID_SIGNATURE",
   /** The submission was refused before send (payload malformed for this vendor). */

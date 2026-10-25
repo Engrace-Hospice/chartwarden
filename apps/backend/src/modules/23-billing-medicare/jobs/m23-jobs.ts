@@ -49,6 +49,7 @@ import {
 } from "@chartwarden/billing";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
+  CH,
   CLEARINGHOUSE_VENDOR_ENV,
   type HospiceHistory,
   assertNoMbi,
@@ -1019,6 +1020,14 @@ export async function runClaimSubmitRetry(
     return;
   }
 
+  // #706/#707: a prior attempt left IN DOUBT at the clearinghouse (the file may have reached the MAC portal, which does
+  // not dedupe) must be reconciled, not re-sent under a fresh control number.
+  if (activeTransport(deps) && priorSubmission.outcomeReason?.includes(CH.IN_DOUBT)) {
+    throw new Error(
+      `claim submission ${job.submissionId} is in doubt at the clearinghouse (${CH.IN_DOUBT}); reconcile it before retrying`,
+    );
+  }
+
   // Preflight the §2.3 submit guard BEFORE transmitting anything — mirrors {@link runClaimSubmit}. A
   // concurrent `revalidate` (or a new blocking failure) since the last attempt means this claim must not
   // be re-transmitted; fail this attempt instead (the retry budget check above still applies on the next
@@ -1709,39 +1718,53 @@ async function runTransportAckPull(
 ): Promise<void> {
   const now = deps.now ?? (() => new Date());
   const acks: { submissionId: string; ack: RoutedAck }[] = [];
+  const failures: string[] = [];
   for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
-    for (const t of await pullTransportAcks(transport, organizationId, kind)) {
-      const submission = await withOrgContext(
-        deps.db,
-        { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
-        (txAny) =>
-          new ClaimSubmissionRepository(txAny as unknown as BillingDb).findLatestAttempt(
-            t.providerEntityId,
-            t.controlNumber,
-          ),
-      );
-      if (!submission) continue;
-      acks.push({
-        submissionId: submission.id,
-        ack: {
-          organizationId,
-          kind: t.kind,
-          stage: t.stage,
-          outcome: t.outcome,
-          payerControlNumber: t.payerControlNumber,
-          reasonCodes: t.reasonCodes,
-          macJurisdiction: t.macJurisdiction,
-          ackFileUri: t.ackFileUri,
-          receivedAt: now(),
-          payerDates:
-            t.kind === "ack_999"
-              ? { functionalGroupDate: t.day, interchangeDate: null }
-              : { statusEffectiveDate: t.day },
-        },
-      });
+    try {
+      const pulled = await pullTransportAcks(transport, organizationId, kind);
+      failures.push(...pulled.failures);
+      for (const t of pulled.acks) {
+        const submission = await withOrgContext(
+          deps.db,
+          { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+          (txAny) =>
+            new ClaimSubmissionRepository(txAny as unknown as BillingDb).findLatestAttempt(
+              t.providerEntityId,
+              t.controlNumber,
+            ),
+        );
+        if (!submission) continue;
+        acks.push({
+          submissionId: submission.id,
+          ack: {
+            organizationId,
+            kind: t.kind,
+            stage: t.stage,
+            outcome: t.outcome,
+            payerControlNumber: t.payerControlNumber,
+            reasonCodes: t.reasonCodes,
+            macJurisdiction: t.macJurisdiction,
+            ackFileUri: t.ackFileUri,
+            receivedAt: now(),
+            payerDates:
+              t.kind === "ack_999"
+                ? { functionalGroupDate: t.day, interchangeDate: null }
+                : { statusEffectiveDate: t.day },
+          },
+        });
+      }
+    } catch (err) {
+      failures.push(`org ${organizationId}: ${err instanceof Error ? err.message : "failed"}`);
     }
   }
-  await applyAcks(deps, acks);
+  try {
+    await applyAcks(deps, acks);
+  } catch (err) {
+    failures.push(err instanceof Error ? err.message : "apply failed");
+  }
+  if (failures.length > 0) {
+    throw new Error(`clearinghouse ack pull: ${failures.length} failure(s): ${failures.join("; ")}`);
+  }
 }
 
 /** `ack.pull-999` (§4.8 cron). Exported for the transfer-notice and NOE/NOTR live suites. */

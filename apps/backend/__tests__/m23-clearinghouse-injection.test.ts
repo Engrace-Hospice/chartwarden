@@ -231,16 +231,46 @@ describe("acknowledgments over the transport", () => {
     await inMemory.control.payerAccepts("CCN7", "ICN7", scope);
     const first = await pullTransportAcks(t, ORG, "ack_999");
     const second = await pullTransportAcks(t, ORG, "ack_277ca");
-    expect(first.map((a) => a.stage)).toEqual(["clearinghouse"]);
-    expect(second.map((a) => [a.stage, a.payerControlNumber])).toEqual([["payer", "ICN7"]]);
+    expect(first.acks.map((a) => a.stage)).toEqual(["clearinghouse"]);
+    expect(second.acks.map((a) => [a.stage, a.payerControlNumber])).toEqual([["payer", "ICN7"]]);
   });
 
-  it("a degraded pull throws so the cron fails and BullMQ retries it", async () => {
+  it("a degraded pull is reported as a failure (the cron then fails and BullMQ retries it)", async () => {
     const inMemory = new InMemoryClearinghouse();
     await inMemory.control.setOutage(true);
-    await expect(pullTransportAcks(transportDeps(inMemory), ORG, "ack_999")).rejects.toThrow(
-      CH.UNAVAILABLE,
-    );
+    const pulled = await pullTransportAcks(transportDeps(inMemory), ORG, "ack_999");
+    expect(pulled.acks).toEqual([]);
+    expect(pulled.failures).toEqual([expect.stringContaining(CH.UNAVAILABLE)]);
+  });
+
+  it("one provider entity that cannot be pulled does not stop the others", async () => {
+    const inMemory = new InMemoryClearinghouse();
+    const bad = "33333333-3333-3333-3333-333333333333";
+    const t: M23TransportDeps = {
+      binding: { vendor: "in_memory", transport: inMemory },
+      contexts: {
+        providerEntitiesFor: async () => [bad, PE],
+        contextFor: async (_o, pe) => {
+          if (pe === bad) throw new Error("no NPI on file");
+          return ctx;
+        },
+      },
+    };
+    await transportUpload(t)({
+      organizationId: ORG,
+      providerEntityId: PE,
+      kind: "claim_837i",
+      x12: ISA("T", "000000001"),
+      controlNumber: "CCN8",
+    });
+    await inMemory.control.clearinghouseAccepts("CCN8", {
+      organizationId: ORG,
+      providerEntityId: PE,
+      usage: "test",
+    });
+    const pulled = await pullTransportAcks(t, ORG, "ack_999");
+    expect(pulled.acks).toHaveLength(1);
+    expect(pulled.failures).toEqual([expect.stringContaining("no NPI on file")]);
   });
 });
 

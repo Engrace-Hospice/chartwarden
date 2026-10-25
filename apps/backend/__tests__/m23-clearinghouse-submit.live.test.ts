@@ -270,6 +270,51 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     expect(await claimState(claimId)).toBe("SUBMITTED");
   });
 
+  it("an upload left in doubt is not re-sent by the retry worker under a fresh control number", async () => {
+    const inMemory = new InMemoryClearinghouse();
+    const inDoubt = Object.create(inMemory) as InMemoryClearinghouse;
+    inDoubt.submitClaim = async () => ({
+      ok: false,
+      degraded: { code: "CH_IN_DOUBT", reason: "the MAC portal upload may have landed" },
+    });
+    const deps = depsFor(inMemory);
+    const doubtful: M23WorkerDeps = {
+      ...deps,
+      transport: {
+        ...(deps.transport as NonNullable<M23WorkerDeps["transport"]>),
+        binding: { vendor: "in_memory", transport: inDoubt },
+      },
+    };
+    const { claimId, submissionId, ccn } = await seedReadyClaim({
+      patient: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+      attemptIndex: 0,
+      withBlockingFailure: false,
+    });
+    await runInOrg((tx) =>
+      runClaimSubmit(tx, doubtful, {
+        organizationId: ORG,
+        claimId,
+        submissionId,
+        claimControlNumber: ccn,
+        attemptIndex: 0,
+      }),
+    );
+    expect(await claimState(claimId)).toBe("READY");
+    expect((await submissionRow(submissionId)).outcome_reason).toMatch(/CH_IN_DOUBT/);
+
+    // The healthy transport must not be asked to file it again until the attempt is reconciled.
+    const retry: ClaimSubmitRetryJob = {
+      organizationId: ORG,
+      claimId,
+      submissionId,
+      attemptIndex: 0,
+    };
+    await expect(runInOrg((tx) => runClaimSubmitRetry(tx, deps, retry))).rejects.toThrow(
+      /in doubt/,
+    );
+    expect(await claimState(claimId)).toBe("READY");
+  });
+
   it("the ack crons pull both stages from the vendor: clearinghouse accept -> ACK_PENDING, payer accept -> ACK_ACCEPTED", async () => {
     const clearinghouse = new InMemoryClearinghouse();
     const deps = depsFor(clearinghouse);

@@ -57,6 +57,17 @@ export interface DirectMacGateway {
   pullAcknowledgments(ctx: ClearinghouseContext): Promise<readonly AckEvent[]>;
 }
 
+/**
+ * Thrown by a {@link DirectMacGateway} when it can PROVE nothing reached the MAC portal (the portal answered with a
+ * refusal, or the call was never made). Any other upload failure is in doubt: the file may have landed.
+ */
+export class UploadNotSentError extends Error {
+  constructor(message = "the upload was not sent") {
+    super(message);
+    this.name = "UploadNotSentError";
+  }
+}
+
 export interface DirectMacTransportOptions {
   readonly attempts: SubmissionAttemptStore;
   readonly gateway: DirectMacGateway;
@@ -66,17 +77,15 @@ export interface DirectMacTransportOptions {
   readonly onAnomaly?: (anomaly: DirectMacAnomaly) => void;
 }
 
-export type DirectMacAnomaly = {
-  readonly type: "sent_but_unrecorded";
-  readonly idempotencyKey: string;
-  readonly clearinghouseSubmissionId: string;
-};
+export type DirectMacAnomaly =
+  | {
+      readonly type: "sent_but_unrecorded";
+      readonly idempotencyKey: string;
+      readonly clearinghouseSubmissionId: string;
+    }
+  | { readonly type: "in_doubt"; readonly idempotencyKey: string };
 
 const RECORD_ATTEMPTS = 3;
-/** A reservation younger than this may still be mid-send: nothing else sends it. */
-const IN_FLIGHT_MS = 15 * 60_000;
-/** After an ambiguous failure, wait this long before the retake. */
-const SETTLE_MS = 60_000;
 const KEY_SHAPE = /^[A-Za-z0-9_.:-]{1,128}$/;
 const CONTROL_NUMBER_SHAPE = /^[A-Za-z0-9-]{1,64}$/;
 const CURSOR_SHAPE = /^\d+$/;
@@ -247,10 +256,18 @@ export class DirectMacTransport implements ClearinghouseTransport {
         controlNumber: submission.controlNumber,
         x12,
       });
-    } catch {
-      // The file may have landed: keep the reservation, retaken after a short settle delay.
-      await this.abandon(ctx.organizationId, scope, submission, reservedAt);
-      return degraded(CH.UNAVAILABLE, "the MAC portal could not be reached");
+    } catch (e) {
+      if (e instanceof UploadNotSentError) {
+        await this.release(ctx.organizationId, scope, submission);
+        return degraded(CH.UNAVAILABLE, "the MAC portal could not be reached");
+      }
+      // The file may have landed and the portal does not dedupe: keep the reservation and never re-send under it
+      // automatically. An operator settles it (sent / voided) through the attempt resolution routes.
+      this.onAnomaly({ type: "in_doubt", idempotencyKey: submission.idempotencyKey });
+      return degraded(
+        CH.IN_DOUBT,
+        "the MAC portal upload may have landed; reconcile before re-sending",
+      );
     }
     if (!uploaded.accepted) {
       await this.release(ctx.organizationId, scope, submission);
@@ -294,23 +311,12 @@ export class DirectMacTransport implements ClearinghouseTransport {
           ? { ok: true, data: receipt }
           : degraded(CH.UNAVAILABLE, "the earlier attempt's record is incomplete");
       }
-      const age = this.now().getTime() - Date.parse(existing.reservedAt);
-      if (!(age >= IN_FLIGHT_MS)) {
-        return degraded(
-          CH.UNAVAILABLE,
-          "an earlier attempt at this submission may still be in flight",
-        );
-      }
-      const won = await this.attempts.retake(
-        ctx.organizationId,
-        attempt.scope,
-        submission.idempotencyKey,
-        existing.reservedAt,
-        attempt.reservedAt,
+      // Reserved by an earlier call that never finished: it may have uploaded. No vendor replays a key here, so it is
+      // never retaken automatically.
+      return degraded(
+        CH.IN_DOUBT,
+        "an earlier attempt at this submission may have reached the MAC portal; reconcile before re-sending",
       );
-      return won
-        ? null
-        : degraded(CH.UNAVAILABLE, "an earlier attempt at this submission may still be in flight");
     } catch (e) {
       if (e instanceof Error && e.name === "PlatformControlNumberTaken") {
         return degraded(
@@ -319,26 +325,6 @@ export class DirectMacTransport implements ClearinghouseTransport {
         );
       }
       return degraded(CH.UNAVAILABLE, "the submission record could not be reserved");
-    }
-  }
-
-  private async abandon(
-    organizationId: string,
-    scope: string,
-    submission: ClearinghouseSubmission,
-    reservedAt: string,
-  ): Promise<void> {
-    try {
-      const backdated = new Date(Date.parse(reservedAt) - IN_FLIGHT_MS + SETTLE_MS).toISOString();
-      await this.attempts.retake(
-        organizationId,
-        scope,
-        submission.idempotencyKey,
-        reservedAt,
-        backdated,
-      );
-    } catch {
-      // The reservation ages out of the in-flight window on its own.
     }
   }
 
@@ -383,8 +369,8 @@ export class DirectMacTransport implements ClearinghouseTransport {
       clearinghouseSubmissionId,
     });
     return degraded(
-      CH.UNAVAILABLE,
-      "uploaded to the MAC portal but the attempt could not be recorded; retry with the same key and reconcile",
+      CH.IN_DOUBT,
+      "uploaded to the MAC portal but the attempt could not be recorded; reconcile before re-sending",
     );
   }
 
