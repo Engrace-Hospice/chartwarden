@@ -3601,6 +3601,40 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_scope",
   },
+  // Milestone 9a-1 (migrations 1250/1251): the denial-reason PLAYBOOK library. Guidance only: none of these gates a case.
+  // Publishing needs a person other than the author. The per-case step tick needs playbook.step.mark + denial.read.
+  "playbook.read": {
+    resource: "denial_playbook",
+    action: "read",
+    category: "billing",
+    abac: "none",
+  },
+  "playbook.author": {
+    resource: "denial_playbook",
+    action: "author",
+    category: "billing",
+    abac: "none",
+  },
+  "playbook.publish": {
+    resource: "denial_playbook",
+    action: "publish",
+    category: "billing",
+    abac: "none",
+  },
+  // Ticking a step is working the denial (advisory, gates nothing), so it is a write-level key of its own.
+  "playbook.step.mark": {
+    resource: "denial_playbook",
+    action: "step_mark",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  // Milestone 9a-2 (migration 1252): the leadership medical-review report. Aggregates only; no target or benchmark is shown.
+  "medical_review.report.read": {
+    resource: "medical_review_report",
+    action: "read",
+    category: "billing",
+    abac: "none",
+  },
   "mac_rule.manage": {
     resource: "mac_rule",
     action: "manage",
@@ -3727,6 +3761,46 @@ export const M25_CONTRIBUTED_PERMISSIONS = {
     action: "verify",
     category: "billing",
     abac: "none",
+  },
+  // --- beneficiary appeals and appointments of representative (milestone 13a; migration 1240, granted by 1242) ---
+  // Record-keeping only. `beneficiary_appeal.*` records an appeal the beneficiary or their representative filed;
+  // `representative.*` drafts an appointment record, and `.verify` is the SECOND person who activates or revokes it (step-up
+  // gated). `representative_form.configure` enters the organization's own appointment form versions (nothing is seeded).
+  "beneficiary_appeal.read": {
+    resource: "beneficiary_appeal",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "beneficiary_appeal.manage": {
+    resource: "beneficiary_appeal",
+    action: "manage",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "representative.read": {
+    resource: "representative_appointment",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "representative.manage": {
+    resource: "representative_appointment",
+    action: "manage",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "representative.verify": {
+    resource: "representative_appointment",
+    action: "verify",
+    category: "billing",
+    abac: "provider_entity_scope",
+  },
+  "representative_form.configure": {
+    resource: "representative_form_version",
+    action: "configure",
+    category: "billing",
+    abac: "inOrg",
   },
   // --- taxonomy surface ---
   "taxonomy.read": {

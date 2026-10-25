@@ -17,7 +17,15 @@ import {
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../../shell/session";
+import {
+  clearStepUpDraft,
+  findStepUpDraftResourceId,
+  stashStepUpDraft,
+  stepUpDraftKey,
+} from "../../shell/step-up-redirect";
+import { useStepUpOwner, useStepUpReturn } from "../../shell/use-step-up-return";
 import {
   type DeadlineView,
   type NomncApi,
@@ -25,8 +33,15 @@ import {
   type Prompt,
   createNomncApi,
   isConflict,
+  isStepUp,
 } from "./nomnc-api";
-import { NomncDrawer, type NomncDrawerMode, drawerTargetKey } from "./nomnc-drawer";
+import {
+  NOMNC_DRAFT_ACTIONS,
+  NOMNC_STEP_UP_ACTIONS,
+  NomncDrawer,
+  type NomncDrawerMode,
+  drawerTargetKey,
+} from "./nomnc-drawer";
 import {
   ACK_LABEL,
   DEADLINE_KIND_LABEL,
@@ -200,6 +215,13 @@ export function NomncPanel({
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
+  /** The open form was restored from a draft stashed before the step-up redirect. */
+  const [restored, setRestored] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const owner = useStepUpOwner();
+  const returning = useStepUpReturn(owner, NOMNC_DRAFT_ACTIONS);
+  const reopened = useRef(false);
   const now = useNow();
 
   // another admission: nothing from the previous one stays open
@@ -211,6 +233,24 @@ export function NomncPanel({
     setConfirmWithdraw(false);
   }, [admissionId]);
 
+  // Back from /step-up: reopen the form (or the withdraw confirmation) the user was on, with what they had typed.
+  useEffect(() => {
+    if (!returning || reopened.current || !ov) return;
+    reopened.current = true;
+    const noticeId = findStepUpDraftResourceId(owner, NOMNC_STEP_UP_ACTIONS.withdraw_notice);
+    const reviewDecisionId = findStepUpDraftResourceId(owner, NOMNC_STEP_UP_ACTIONS.decision);
+    const reviewWithdrawId = findStepUpDraftResourceId(owner, NOMNC_STEP_UP_ACTIONS.withdraw_review);
+    if (noticeId && ov.activeNotice?.id === noticeId) {
+      setMode({ kind: "withdraw_notice", notice: ov.activeNotice });
+      setRestored(true);
+    } else if (reviewDecisionId && ov.review?.id === reviewDecisionId && ov.review.state === "open") {
+      setMode({ kind: "decision", review: ov.review });
+      setRestored(true);
+    } else if (reviewWithdrawId && ov.review?.id === reviewWithdrawId && ov.review.state === "open") {
+      setConfirmWithdraw(true);
+    }
+  }, [returning, ov, owner]);
+
   if (!canRead) return null;
 
   const notice = ov?.activeNotice ?? null;
@@ -220,6 +260,7 @@ export function NomncPanel({
   const locked = dirty || busy;
 
   const open = (m: NomncDrawerMode) => {
+    setRestored(false);
     setActionError(null);
     setConfirmWithdraw(false);
     setMode(m);
@@ -238,13 +279,20 @@ export function NomncPanel({
   };
 
   /** An inline action (mark met, withdraw review): busy while it runs; a 409 reloads and says the record changed. */
-  const act = async (op: () => Promise<unknown>): Promise<void> => {
+  const act = async (op: () => Promise<unknown>, stepUpKey: string | null = null): Promise<void> => {
     setActionError(null);
     setBusy(true);
     try {
       await op();
+      clearStepUpDraft(stepUpKey);
       await load();
     } catch (e) {
+      if (isStepUp(e) && stepUpKey) {
+        // not fresh enough: nothing was typed here, so the draft only marks "come back to the confirmation"
+        stashStepUpDraft(stepUpKey, {});
+        navigate(`/step-up?returnTo=${encodeURIComponent(`${location.pathname}${location.search}`)}`);
+        return;
+      }
       if (isConflict(e)) {
         await load();
         setActionError(`${CONFLICT_NOTICE} (${e instanceof Error ? e.message : ""})`);
@@ -523,12 +571,24 @@ export function NomncPanel({
                       disabled={busy}
                       onClick={() => {
                         setConfirmWithdraw(false);
-                        void act(() => api.withdrawReview(admissionId, review));
+                        void act(
+                          () => api.withdrawReview(admissionId, review),
+                          stepUpDraftKey(owner, NOMNC_STEP_UP_ACTIONS.withdraw_review, review.id),
+                        );
                       }}
                     >
                       Confirm withdraw
                     </Button>
-                    <Button tone="tertiary" size="sm" onClick={() => setConfirmWithdraw(false)}>
+                    <Button
+                      tone="tertiary"
+                      size="sm"
+                      onClick={() => {
+                        clearStepUpDraft(
+                          stepUpDraftKey(owner, NOMNC_STEP_UP_ACTIONS.withdraw_review, review.id),
+                        );
+                        setConfirmWithdraw(false);
+                      }}
+                    >
                       Keep review
                     </Button>
                   </span>
@@ -587,6 +647,7 @@ export function NomncPanel({
           }}
           onConflict={onConflict}
           onDirty={setDirty}
+          restore={restored}
           onClose={() => setMode(null)}
         />
       ) : null}

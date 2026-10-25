@@ -1171,7 +1171,9 @@ export interface SeamContracts {
   // M24 → M25 — the Medicaid sibling of ClaimSubmissionReader above (F-172, #248 m24 group): M25's
   // `postAdvice` picks between the two by the advice's own `payerKind` discriminator. Registered by M24
   // at boot over the fail-closed deny-stub. It also carries `claimContext(orgId, claimId)` (state, MCO,
-  // provider entity of one claim; null when absent) so M25's case view can render a Medicaid claim.
+  // provider entity of one claim; null when absent) so M25's case view can render a Medicaid claim, and
+  // `medicaidClaimIds(orgId, claimIds)` (which of up to 200 ids are this org's Medicaid claims, one query) so M25's
+  // denial worklist can badge the payer of a denial that has no remittance without an N+1.
   MedicaidClaimMatchProvider: unknown;
   CostReportFilingStatusReader: unknown;
   // M30's five §4.3 seams — the SAME opaque rich-seam pattern: the interfaces live in @chartwarden/quality

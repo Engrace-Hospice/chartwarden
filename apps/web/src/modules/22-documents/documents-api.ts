@@ -23,7 +23,7 @@
 // Anything that fails between 2 and 4 leaves a `pending` upload row and a staged object, so every
 // failure path calls `DELETE /api/v1/document-uploads/:id`. A row nobody aborts expires on its own
 // after 15 minutes, but relying on that would leave the user's next attempt racing a stale one.
-import { type ApiClient, type operations, isStepUpRequired } from "@chartwarden/ui";
+import { type ApiClient, isStepUpRequired, type operations } from "@chartwarden/ui";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 
@@ -288,9 +288,8 @@ export async function mintContentUrl(
   purpose: AccessPurpose,
   recipient?: DisclosureRecipient,
 ): Promise<WriteResult<SignedUrlResult>> {
-  const { data, error, response } = await client.GET(
-    "/api/v1/documents/{id}/versions/{versionId}/content",
-    {
+  const getContent = () =>
+    client.GET("/api/v1/documents/{id}/versions/{versionId}/content", {
       params: {
         path: { id: documentId, versionId },
         query: {
@@ -300,8 +299,15 @@ export async function mintContentUrl(
             : {}),
         },
       },
-    },
-  );
+    });
+  let result: Awaited<ReturnType<typeof getContent>>;
+  try {
+    result = await getContent();
+  } catch {
+    // openapi-fetch rethrows a rejected fetch; uncaught, the dialog's busy flag never clears.
+    return { ok: false, status: null, message: "The server could not be reached. Try again." };
+  }
+  const { data, error, response } = result;
   if (error || !data) {
     const res = failure<SignedUrlResult>(response?.status, error);
     return !res.ok && isStepUpRequired(error)

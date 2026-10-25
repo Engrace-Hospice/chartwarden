@@ -45,6 +45,8 @@ export {
   type OutboxEmission,
   type TerminologyLookupPort,
   buildDrizzleAdrReadinessService,
+  buildDrizzlePlaybookService,
+  buildMedicalReviewReportService,
   buildDrizzleAdrService,
   buildDrizzleAuditRequestService,
   buildDrizzleCaseViewService,
@@ -52,6 +54,8 @@ export {
   buildDrizzleLaterTierService,
   buildDrizzlePayerAppealPathService,
   buildDrizzlePayerAppealService,
+  buildDrizzleRepresentativeService,
+  buildDrizzleBeneficiaryAppealService,
   buildDrizzleQicService,
   buildDrizzleSubmissionService,
   buildDrizzleReopeningService,
@@ -75,6 +79,7 @@ export {
   validateRemittanceAIBlock,
 } from "./ai/ai-block";
 export { buildSeamAppealSourcePorts } from "./routes/appeal-packet-sources";
+export { buildSeamLinkedDocumentPort } from "./routes/linked-document";
 
 // §4.8 platform tenancy — the cron job id + the PLATFORM_CONTEXT_ALLOWLIST registration the active-org
 // enumerator's `withPlatformContext` fan-out requires (the M30/M33/M34 wiring.ts precedent).

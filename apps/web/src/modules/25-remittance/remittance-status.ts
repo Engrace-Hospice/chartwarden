@@ -56,6 +56,25 @@ export const APPEAL_STATE_TONE: Record<string, StatusTone> = {
   closed: "neutral",
 };
 
+/** beneficiary_appeal state → tone (a record the hospice keeps; "decided" is the notice's outcome, not ours). */
+export const BENEFICIARY_STATE_TONE: Record<string, StatusTone> = {
+  recorded: "neutral",
+  supporting: "progress",
+  decided: "success",
+  closed: "neutral",
+  withdrawn: "neutral",
+};
+
+/** Representative status (derived from typed dates by the server) → tone. none_on_file is the one that needs attention. */
+export const REPRESENTATIVE_STATUS_TONE: Record<string, StatusTone> = {
+  none_on_file: "warning",
+  draft: "neutral",
+  active: "success",
+  validity_end_passed_as_recorded: "warning",
+  revoked: "error",
+  superseded: "neutral",
+};
+
 /** adr_case state → tone. */
 export const ADR_STATE_TONE: Record<string, StatusTone> = {
   received: "warning",

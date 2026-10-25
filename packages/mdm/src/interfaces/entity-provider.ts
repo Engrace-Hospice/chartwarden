@@ -50,7 +50,7 @@ export interface CanonicalFacilityFields extends CanonicalBaseFields {
 /** Canonical `payer` projection (§3.3). */
 export interface CanonicalPayerFields extends CanonicalBaseFields {
   readonly x12PayerId: string | null;
-  /** The `payer_kind` subtype (medicare, medicaid, medicare_advantage, commercial, other). */
+  /** The payer program (medicare, medicaid, medicare_advantage, commercial, other); consumers branch on it. */
   readonly kind: PayerKind;
 }
 

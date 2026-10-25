@@ -22,7 +22,18 @@ const RemittanceWorklist = lazy(() =>
 const PayerAppealPaths = lazy(() =>
   import("./payer-appeal-paths").then((m) => ({ default: m.PayerAppealPaths })),
 );
+const RepresentativeFormSettings = lazy(() =>
+  import("./representative-form-settings").then((m) => ({
+    default: m.RepresentativeFormSettings,
+  })),
+);
 const TpeTracker = lazy(() => import("./tpe-tracker").then((m) => ({ default: m.TpeTracker })));
+const PlaybookLibrary = lazy(() =>
+  import("./playbook-library").then((m) => ({ default: m.PlaybookLibrary })),
+);
+const MedicalReviewReportScreen = lazy(() =>
+  import("./medical-review-report").then((m) => ({ default: m.MedicalReviewReportScreen })),
+);
 const TaxonomyOverlay = lazy(() =>
   import("./taxonomy-overlay").then((m) => ({ default: m.TaxonomyOverlay })),
 );
@@ -80,12 +91,36 @@ export const remittanceScreens: ScreenRegistryModule<ComponentType> = {
       screen: TpeTracker,
     },
     {
+      id: "remittance.playbooks",
+      path: "/remittance/playbooks",
+      title: "Playbooks",
+      navGroup: "Billing",
+      requiredPermission: "playbook.read",
+      screen: PlaybookLibrary,
+    },
+    {
+      id: "remittance.report",
+      path: "/remittance/report",
+      title: "Medical Review Report",
+      navGroup: "Billing",
+      requiredPermission: "medical_review.report.read",
+      screen: MedicalReviewReportScreen,
+    },
+    {
       id: "remittance.payer-appeal-paths",
       path: "/remittance/payer-appeal-paths",
       title: "Payer Appeal Paths",
       navGroup: "Billing",
       requiredPermission: "payer_appeal_path.read",
       screen: PayerAppealPaths,
+    },
+    {
+      id: "remittance.representative-forms",
+      path: "/remittance/representative-forms",
+      title: "Appointment Forms",
+      navGroup: "Billing",
+      requiredPermission: "representative_form.configure",
+      screen: RepresentativeFormSettings,
     },
     {
       id: "remittance.taxonomy",

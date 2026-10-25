@@ -32,19 +32,12 @@ export function buildSeamPayerSeam(): PayerSeam {
       try {
         const provider = getSeam("MdmEntityProvider") as MdmPayerProviderView;
         const found = await provider.resolvePayer(organizationId, payerId);
-        if (
-          !found ||
-          typeof found.canonical.displayName !== "string" ||
-          found.canonical.displayName.trim() === "" ||
-          typeof found.canonical.kind !== "string"
-        ) {
-          return null;
-        }
-        return {
-          id: found.id,
-          name: found.canonical.displayName,
-          kind: found.canonical.kind,
-        };
+        const { displayName, kind } = found?.canonical ?? {};
+        // A payer with no name or no program kind is "not resolved": the Medicare/Medicaid guard branches on `kind`,
+        // so a missing kind must never be defaulted to a program that passes it.
+        if (!found || typeof displayName !== "string" || displayName.trim() === "") return null;
+        if (typeof kind !== "string" || kind === "") return null;
+        return { id: found.id, name: displayName, kind };
       } catch {
         return null;
       }

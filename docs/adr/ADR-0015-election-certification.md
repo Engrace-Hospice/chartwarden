@@ -85,6 +85,13 @@ ill** or **for-cause**, a **Notice of Medicare Non-Coverage (NOMNC)** is issued 
 > (`nomnc` stays a forms-only key). `NOMNC_PROMPT_REASONS` (`no_longer_terminal`, `for_cause`) cites D5 above
 > and is SME-unconfirmed; it drives a non-blocking prompt only. Computed candidate clocks, NOMNC/DENC
 > rendering and the next level after the QIO (10b) wait on SME or compliance facts.
+>
+> **Follow-up (2026-10-24) — step-up on the irreversible NOMNC writes.** Three writes require a FRESH second factor
+> (M3 `step_up_recent`, 403 `STEP_UP_REQUIRED`, enforced server-side after permission and admission scope): withdrawing
+> a NOMNC record (`nomnc.withdraw`), withdrawing a QIO review (`nomnc.review.withdraw`) and recording the QIO decision
+> (`nomnc.review.decide`, only on a request body that carries a `decision`). Each ends a record or closes a review for
+> good (its deadlines stop running). Recording, supersede, acknowledgement, DENC / records facts, typing deadlines and
+> marking one met stay plain `nomnc.record` writes. The web keeps what the user typed across the `/step-up` round trip.
 
 ### D6 — Transfer requires the 418.30 patient-signed statement
 
