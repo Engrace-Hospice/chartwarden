@@ -332,8 +332,9 @@ describe("EligibilityService.check", () => {
     }
   });
 
-  it("rejects a malformed service date before any lookup", async () => {
+  it("rejects a malformed or impossible service date before any lookup", async () => {
     const h = harness();
+    await refusal(h.service.check(ACTOR, { ...ARGS, serviceDate: "2026-02-30" }));
     const e = await refusal(h.service.check(ACTOR, { ...ARGS, serviceDate: "10/25/2026" }));
     expect(e.code).toBe("VALIDATION_FAILED");
     expect(h.calls).toHaveLength(0);

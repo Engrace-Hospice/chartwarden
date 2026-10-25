@@ -30,6 +30,9 @@ import { evaluateSendGate } from "./send-gate";
 import type { EligibilityStore, OrgScope, PlanRef, StoredEligibilityCheck } from "./store";
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+/** A real calendar day: 2026-02-30 is refused (Date.parse would roll it over). */
+const isRealDay = (v: string): boolean =>
+  ISO_DAY.test(v) && new Date(`${v}T00:00:00.000Z`).toISOString().startsWith(v);
 const DEFAULT_LIST_LIMIT = 20;
 const LATEST_SCAN_LIMIT = 50;
 
@@ -191,7 +194,7 @@ export function createEligibilityService(deps: EligibilityServiceDeps) {
       args: CheckEligibilityArgs,
     ): Promise<EligibilityCheckView> {
       const { organizationId } = actor;
-      if (!ISO_DAY.test(args.serviceDate) || Number.isNaN(Date.parse(args.serviceDate))) {
+      if (!isRealDay(args.serviceDate)) {
         throw new ValidationError("serviceDate must be a date (yyyy-mm-dd)", [
           { field: "serviceDate", code: "INVALID", message: "must be a date (yyyy-mm-dd)" },
         ]);
@@ -288,7 +291,7 @@ export function createEligibilityService(deps: EligibilityServiceDeps) {
         return refuse(refusalFromTransportCode(answer.degraded.code));
       }
       const { outcome, asOfDate } = answer.data;
-      if (!isOutcome(outcome) || !ISO_DAY.test(asOfDate) || Number.isNaN(Date.parse(asOfDate))) {
+      if (!isOutcome(outcome) || !isRealDay(asOfDate)) {
         return refuse(unavailable());
       }
 
