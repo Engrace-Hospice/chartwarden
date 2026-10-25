@@ -204,6 +204,7 @@ export function buildDrizzleEligibilityStore(db: DbClient): EligibilityStore {
           .where(
             and(
               eq(CHECK.organizationId, scope.organizationId),
+              eq(CHECK.providerEntityId, filter.providerEntityId),
               eq(CHECK.patientId, filter.patientId),
               ...(filter.planId ? [eq(CHECK.planId, filter.planId)] : []),
             ),

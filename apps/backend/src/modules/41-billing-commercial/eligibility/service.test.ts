@@ -317,7 +317,7 @@ describe("EligibilityService.check", () => {
 describe("EligibilityService.latest", () => {
   it("reports missing under the plan policy when the patient was never checked", async () => {
     const h = harness();
-    const r = await h.service.latest(ACTOR, { patientId: PATIENT, planId: PLAN });
+    const r = await h.service.latest(ACTOR, { providerEntityId: PE, patientId: PATIENT, planId: PLAN });
     expect(r.latest).toBeNull();
     expect(r.freshness).toMatchObject({ status: "missing", severity: "warning" });
   });
@@ -325,14 +325,14 @@ describe("EligibilityService.latest", () => {
   it("reports the policy 'block' for a plan that opted in", async () => {
     const h = harness();
     h.store.plan = { ...PLAN_REF, eligibilityStalenessPolicy: "block" };
-    const r = await h.service.latest(ACTOR, { patientId: PATIENT, planId: PLAN });
+    const r = await h.service.latest(ACTOR, { providerEntityId: PE, patientId: PATIENT, planId: PLAN });
     expect(r.freshness.severity).toBe("block");
   });
 
   it("reports fresh after a check", async () => {
     const h = harness();
     await h.service.check(ACTOR, ARGS);
-    const r = await h.service.latest(ACTOR, { patientId: PATIENT, planId: PLAN });
+    const r = await h.service.latest(ACTOR, { providerEntityId: PE, patientId: PATIENT, planId: PLAN });
     expect(r.latest?.outcome).toBe("active");
     expect(r.freshness.severity).toBe("pass");
   });

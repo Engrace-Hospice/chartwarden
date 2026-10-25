@@ -1,9 +1,9 @@
 // apps/backend/src/modules/41-billing-commercial/routes/eligibility.routes.ts - commercial eligibility (270/271), issue #724.
 //
 //   POST  /api/v1/billing/commercial/eligibility/check            run a check through the platform clearinghouse (200; commercial_billing.write)
-//   GET   /api/v1/billing/commercial/eligibility?patientId=       a patient's checks, newest first (commercial_billing.read)
-//   GET   /api/v1/billing/commercial/eligibility/latest?patientId=&planId=   newest check + the plan's freshness verdict
-//   PATCH /api/v1/billing/commercial/payer-plans/:id/eligibility-policy      warn/block + max age for a plan (commercial_billing.write)
+//   GET   /api/v1/billing/commercial/eligibility?providerEntityId=&patientId=   a patient's checks, newest first (commercial_billing.read)
+//   GET   /api/v1/billing/commercial/eligibility/latest?providerEntityId=&patientId=&planId=   newest check + the plan's freshness verdict
+//   PATCH /api/v1/billing/commercial/payer-plans/:id/eligibility-policy      warn/block + max age for a plan (manage_enrollment + fresh step-up)
 //
 // Mutating routes require an Idempotency-Key (the key is also the check row's uniqueness key), reject AI actors, and are scoped to the
 // provider entity (and, for a check, the patient). The body never carries a member id: it is resolved from M5's coverage server side.
@@ -11,6 +11,8 @@ import type { FastifyInstance } from "fastify";
 import type { CommercialAdminService } from "../eligibility/admin-service";
 import type { EligibilityService } from "../eligibility/service";
 import {
+  ENROLLMENT_STEP_UP,
+  MANAGE_ENROLLMENT,
   PATIENT_SCOPE,
   PROVIDER_SCOPE,
   READ,
@@ -78,13 +80,18 @@ export function registerCommercialEligibilityRoutes(
   app.get(
     "/api/v1/billing/commercial/eligibility",
     {
-      preHandler: [READ, PATIENT_SCOPE("commercial_billing.read")],
+      preHandler: [
+        READ,
+        PROVIDER_SCOPE("commercial_billing.read"),
+        PATIENT_SCOPE("commercial_billing.read"),
+      ],
       schema: { response: { 200: EligibilityListResponseSchema } },
       config: { auditRead: AUDIT_READ },
     },
     async (request, reply) => {
       const q = parse(PatientPlanQuerySchema, request.query);
       const rows = await eligibility.list(actorOf(request), {
+        providerEntityId: q.providerEntityId,
         patientId: q.patientId,
         ...(q.planId ? { planId: q.planId } : {}),
       });
@@ -108,7 +115,11 @@ export function registerCommercialEligibilityRoutes(
   app.get(
     "/api/v1/billing/commercial/eligibility/latest",
     {
-      preHandler: [READ, PATIENT_SCOPE("commercial_billing.read")],
+      preHandler: [
+        READ,
+        PROVIDER_SCOPE("commercial_billing.read"),
+        PATIENT_SCOPE("commercial_billing.read"),
+      ],
       schema: { response: { 200: LatestEligibilityResponseSchema } },
       config: { auditRead: AUDIT_READ },
     },
@@ -123,7 +134,8 @@ export function registerCommercialEligibilityRoutes(
   app.patch(
     "/api/v1/billing/commercial/payer-plans/:id/eligibility-policy",
     {
-      preHandler: [WRITE, REJECT_AI_ACTOR, REQUIRE_IDEMPOTENCY_KEY],
+      // Relaxing the policy weakens a billing control, so it takes the enrollment-admin permission and a fresh step-up.
+      preHandler: [MANAGE_ENROLLMENT, ENROLLMENT_STEP_UP, REJECT_AI_ACTOR, REQUIRE_IDEMPOTENCY_KEY],
       schema: { response: { 200: EligibilityPolicyResponseSchema } },
     },
     async (request) => {

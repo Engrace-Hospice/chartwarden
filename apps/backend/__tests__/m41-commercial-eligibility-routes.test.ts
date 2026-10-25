@@ -120,7 +120,7 @@ function makeServer() {
   );
   const registry = createPredicateRegistry();
   registry.register("step_up_recent", async (ctx) => ctx.attributes.stepUpRecent === true);
-  registry.register("provider_entity_billing_scope", async () => true);
+  registry.register("provider_entity_billing_scope", async (_ctx, target) => (target as { providerEntityId?: string }).providerEntityId === PE);
   registry.register("caseload_or_scope", async () => true);
   registerAbacRegistry(registry);
   const store = new Store();
@@ -278,16 +278,36 @@ describe("eligibility policy and reads", () => {
   it("sets a plan's policy and validates the range", async () => {
     const { app } = makeServer();
     const url = `/api/v1/billing/commercial/payer-plans/${PLAN}/eligibility-policy`;
-    const ok = await app.inject({ method: "PATCH", url, headers: as("biller"), payload: { policy: "block", maxAgeDays: 14 } });
+    expect((await app.inject({ method: "PATCH", url, headers: as("biller", { "x-fresh": "1" }), payload: { policy: "block", maxAgeDays: 14 } })).statusCode).toBe(403);
+    const stale = await app.inject({ method: "PATCH", url, headers: as("admin"), payload: { policy: "warn", maxAgeDays: 90 } });
+    expect(code(stale)).toBe("STEP_UP_REQUIRED");
+    const ok = await app.inject({ method: "PATCH", url, headers: as("admin", { "x-fresh": "1" }), payload: { policy: "block", maxAgeDays: 14 } });
     expect(ok.statusCode).toBe(200);
     expect(ok.json()).toMatchObject({ eligibilityStalenessPolicy: "block", eligibilityMaxAgeDays: 14 });
-    const bad = await app.inject({ method: "PATCH", url, headers: as("biller"), payload: { policy: "block", maxAgeDays: 400 } });
+    const bad = await app.inject({ method: "PATCH", url, headers: as("admin", { "x-fresh": "1" }), payload: { policy: "block", maxAgeDays: 400 } });
     expect(bad.statusCode).toBe(422);
+  });
+
+  it("a read without the provider entity is refused (404, fail closed) and are scope-checked", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({ method: "GET", url: `/api/v1/billing/commercial/eligibility?patientId=${PATIENT}`, headers: { "x-test-user": "biller" } });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("an actor scoped to another provider entity is refused (404) on both reads and on the check", async () => {
+    const { app } = makeServer();
+    const other = "99999999-0000-4000-8000-000000000001";
+    const q = `patientId=${PATIENT}&planId=${PLAN}&providerEntityId=${other}`;
+    for (const url of [`/api/v1/billing/commercial/eligibility?${q}`, `/api/v1/billing/commercial/eligibility/latest?${q}`]) {
+      expect((await app.inject({ method: "GET", url, headers: { "x-test-user": "biller" } })).statusCode).toBe(404);
+    }
+    const res = await app.inject({ method: "POST", url: CHECK, headers: as("biller"), payload: { ...body, providerEntityId: other } });
+    expect(res.statusCode).toBe(404);
   });
 
   it("latest reports a missing check as a warning under the default policy", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: `/api/v1/billing/commercial/eligibility/latest?patientId=${PATIENT}&planId=${PLAN}`, headers: { "x-test-user": "biller" } });
+    const res = await app.inject({ method: "GET", url: `/api/v1/billing/commercial/eligibility/latest?providerEntityId=${PE}&patientId=${PATIENT}&planId=${PLAN}`, headers: { "x-test-user": "biller" } });
     expect(res.statusCode).toBe(200);
     expect(res.json().freshness).toMatchObject({ status: "missing", severity: "warning" });
   });

@@ -50,11 +50,11 @@ export const CheckEligibilityBodySchema = Type.Object(
 );
 
 export const PatientPlanQuerySchema = Type.Object(
-  { patientId: Uuid, planId: Type.Optional(Uuid) },
+  { providerEntityId: Uuid, patientId: Uuid, planId: Type.Optional(Uuid) },
   { additionalProperties: false },
 );
 export const LatestQuerySchema = Type.Object(
-  { patientId: Uuid, planId: Uuid },
+  { providerEntityId: Uuid, patientId: Uuid, planId: Uuid },
   { additionalProperties: false },
 );
 

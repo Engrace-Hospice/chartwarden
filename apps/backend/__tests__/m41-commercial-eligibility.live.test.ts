@@ -342,11 +342,21 @@ describe.skipIf(!DB_URL)("M41 commercial eligibility and enrollment - LIVE Postg
     });
 
     it("reports freshness from the stored check under the plan policy", async () => {
-      const latest = await build("in_memory").latest(actorA, { patientId: PATIENT, planId: planA });
+      const latest = await build("in_memory").latest(actorA, { providerEntityId: PE, patientId: PATIENT, planId: planA });
       expect(latest.latest?.outcome).toBe("active");
       expect(latest.freshness.severity).toBe("pass");
-      const none = await build("in_memory").latest(actorA, { patientId: "00000000-0000-4000-8000-0000000000a9", planId: planA });
+      const none = await build("in_memory").latest(actorA, { providerEntityId: PE, patientId: "00000000-0000-4000-8000-0000000000a9", planId: planA });
       expect(none.freshness).toMatchObject({ status: "missing", severity: "warning" });
+    });
+
+    it("a read scoped to another provider entity sees none of this provider entity's checks", async () => {
+      const svc = build("in_memory");
+      const otherPe = "00000000-0000-4000-8000-0000000000e9";
+      expect((await svc.list(actorA, { providerEntityId: PE, patientId: PATIENT })).length).toBeGreaterThan(0);
+      expect(await svc.list(actorA, { providerEntityId: otherPe, patientId: PATIENT })).toHaveLength(0);
+      const latest = await svc.latest(actorA, { providerEntityId: otherPe, patientId: PATIENT, planId: planA });
+      expect(latest.latest).toBeNull();
+      expect(latest.freshness.status).toBe("missing");
     });
 
     it("does not see another tenant's plan (404) and the admin service creates an enrollment through RLS", async () => {

@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 39/39 modules covered (100%) · 1839/1839 route defs sit behind a covered module · 1689/1839 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
+**Totals:** 40/40 modules covered (100%) · 1846/1846 route defs sit behind a covered module · 1695/1846 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
 
 | Module | Routes | Covered | Direct refs | Suite file(s) |
 |---|--:|:--:|--:|---|
@@ -47,3 +47,4 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 38-terminology | 19 | ✅ | 19/19 | apps/backend/__tests__/m38-terminology-search.live.test.ts, apps/backend/__tests__/terminology-admin-routes.test.ts, apps/backend/__tests__/terminology-routes-mount.test.ts, apps/backend/__tests__/terminology-routes.test.ts |
 | 39-consent | 27 | ✅ | 27/27 | apps/backend/__tests__/consent-routes-abac.test.ts, apps/backend/__tests__/consent-routes-mount.test.ts, apps/backend/__tests__/consent-routes.test.ts, apps/backend/__tests__/consent-surface.test.ts, apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts, apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts, apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts, apps/backend/__tests__/m16-routes.live.test.ts, apps/backend/__tests__/m36-tenant-idor.live.test.ts |
 | 40-mdm | 25 | ✅ | 11/25 | apps/backend/__tests__/m25-payer-appeal.live.test.ts, apps/backend/__tests__/mdm-routes-mount.test.ts, apps/backend/__tests__/mdm-routes.test.ts |
+| 41-billing-commercial | 7 | ✅ | 6/7 | apps/backend/__tests__/m41-commercial-eligibility-routes.test.ts |

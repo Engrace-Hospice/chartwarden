@@ -96,7 +96,12 @@ export interface EligibilityStore {
   /** Newest first. */
   listChecks(
     scope: OrgScope,
-    filter: { readonly patientId: string; readonly planId?: string; readonly limit: number },
+    filter: {
+      readonly providerEntityId: string;
+      readonly patientId: string;
+      readonly planId?: string;
+      readonly limit: number;
+    },
   ): Promise<StoredEligibilityCheck[]>;
   /** Null when no such plan exists in the organization. */
   setPlanEligibilityPolicy(

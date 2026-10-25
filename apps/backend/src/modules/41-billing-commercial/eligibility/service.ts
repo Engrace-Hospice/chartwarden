@@ -312,10 +312,15 @@ export function createEligibilityService(deps: EligibilityServiceDeps) {
     /** The newest check for a patient and plan, with the plan's freshness verdict. */
     async latest(
       actor: EligibilityActor,
-      args: { readonly patientId: string; readonly planId: string },
+      args: {
+        readonly providerEntityId: string;
+        readonly patientId: string;
+        readonly planId: string;
+      },
     ): Promise<LatestEligibilityView> {
       const plan = await loadPlan(actor, args.planId);
       const [newest] = await store.listChecks(actor, {
+        providerEntityId: args.providerEntityId,
         patientId: args.patientId,
         planId: args.planId,
         limit: 1,
@@ -331,9 +336,15 @@ export function createEligibilityService(deps: EligibilityServiceDeps) {
 
     async list(
       actor: EligibilityActor,
-      args: { readonly patientId: string; readonly planId?: string; readonly limit?: number },
+      args: {
+        readonly providerEntityId: string;
+        readonly patientId: string;
+        readonly planId?: string;
+        readonly limit?: number;
+      },
     ): Promise<readonly StoredEligibilityCheck[]> {
       return store.listChecks(actor, {
+        providerEntityId: args.providerEntityId,
         patientId: args.patientId,
         ...(args.planId ? { planId: args.planId } : {}),
         limit: args.limit ?? DEFAULT_LIST_LIMIT,

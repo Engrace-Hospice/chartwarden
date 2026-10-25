@@ -14626,3 +14626,70 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M14RejectChartPromotionResponseSchema,
   },
 });
+
+// M41 Billing - Commercial: eligibility (270/271) and enrollment (#724, ADR-0100 D4, D5).
+import {
+  CheckEligibilityBodySchema as M41CheckEligibilityBodySchema,
+  CreateEnrollmentBodySchema as M41CreateEnrollmentBodySchema,
+  EligibilityCheckResponseSchema as M41EligibilityCheckResponseSchema,
+  EligibilityListResponseSchema as M41EligibilityListResponseSchema,
+  EligibilityPolicyBodySchema as M41EligibilityPolicyBodySchema,
+  EligibilityPolicyResponseSchema as M41EligibilityPolicyResponseSchema,
+  EnrollmentListQuerySchema as M41EnrollmentListQuerySchema,
+  EnrollmentListResponseSchema as M41EnrollmentListResponseSchema,
+  EnrollmentResponseSchema as M41EnrollmentResponseSchema,
+  LatestEligibilityResponseSchema as M41LatestEligibilityResponseSchema,
+  LatestQuerySchema as M41LatestQuerySchema,
+  PatchEnrollmentBodySchema as M41PatchEnrollmentBodySchema,
+  PatientPlanQuerySchema as M41PatientPlanQuerySchema,
+} from "../../apps/backend/src/modules/41-billing-commercial/routes/typebox";
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "POST /api/v1/billing/commercial/eligibility/check": {
+    summary:
+      "Run a commercial 270/271 eligibility check through the platform clearinghouse (commercial_billing.write; provider entity and patient scope; Idempotency-Key required, and a repeat of the same key answers the stored result with `replayed: true` without a second send). The member id is read server side from the patient's coverage and is never in the request, the stored row, the response or a log. Refuses with a stable code and sends nothing: 503 CH_NOT_WIRED (no clearinghouse bound), 409 COMMERCIAL_PAYER_NOT_ROUTED (the bound clearinghouse has no payer id for the plan), 409 COMMERCIAL_PROVIDER_NOT_ENROLLED, 409 COMMERCIAL_PROVIDER_NPI_MISSING, 422 COMMERCIAL_COVERAGE_NOT_FOUND. A clearinghouse that cannot answer is 503 COMMERCIAL_ELIGIBILITY_UNAVAILABLE (nothing recorded). The response carries the plan's freshness verdict",
+    body: M41CheckEligibilityBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M41EligibilityCheckResponseSchema,
+  },
+  "GET /api/v1/billing/commercial/eligibility": {
+    summary:
+      "A patient's commercial eligibility checks, newest first (commercial_billing.read; provider entity and patient scope, and only that provider entity's checks are returned; read-audited). Outcome and as-of date only: no member id, no 271 body",
+    query: M41PatientPlanQuerySchema,
+    response: M41EligibilityListResponseSchema,
+  },
+  "GET /api/v1/billing/commercial/eligibility/latest": {
+    summary:
+      "The newest check for a patient and plan plus the plan's freshness verdict (rule M41.ELIGIBILITY.FRESHNESS): missing or stale follows the plan's warn/block policy, a fresh inactive answer always blocks (commercial_billing.read; provider entity and patient scope; read-audited)",
+    query: M41LatestQuerySchema,
+    response: M41LatestEligibilityResponseSchema,
+  },
+  "PATCH /api/v1/billing/commercial/payer-plans/:id/eligibility-policy": {
+    summary:
+      "Set what stale or missing eligibility does for a plan: `warn` (default) or `block`, and how many days (1 to 365; default 30) make a check stale (commercial_billing.manage_enrollment + a fresh step-up, because relaxing it weakens a billing control; Idempotency-Key required)",
+    body: M41EligibilityPolicyBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M41EligibilityPolicyResponseSchema,
+  },
+  "GET /api/v1/billing/commercial/enrollments": {
+    summary:
+      "A provider entity's enrollments with commercial payers on a clearinghouse (commercial_billing.read; provider entity scope)",
+    query: M41EnrollmentListQuerySchema,
+    response: M41EnrollmentListResponseSchema,
+  },
+  "POST /api/v1/billing/commercial/enrollments": {
+    summary:
+      "Record a provider entity's enrollment with a payer on a clearinghouse (commercial_billing.manage_enrollment + a fresh step-up; Idempotency-Key required). Only status `enrolled`, in effect on the day, lets a send through. 409 CONFLICT when the period overlaps another for the same provider entity, payer and clearinghouse; 422 when the payer is not an active commercial payer",
+    body: M41CreateEnrollmentBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M41EnrollmentResponseSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/billing/commercial/enrollments/:id": {
+    summary:
+      "Change an enrollment's status, end date or evidence reference (commercial_billing.manage_enrollment + a fresh step-up; Idempotency-Key required). The body names the provider entity; an enrollment of another provider entity or tenant is a 404",
+    body: M41PatchEnrollmentBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M41EnrollmentResponseSchema,
+  },
+});
