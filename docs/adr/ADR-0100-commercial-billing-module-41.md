@@ -64,6 +64,21 @@ Checked against primary sources without a billing expert; each line says what ch
 
 **Residual, tracked outside this ADR.** M23's claim assembly looks only for a `medicare_ffs` coverage row, so a patient recorded only as `medicare_advantage` is refused with `NON_MEDICARE_PRIMARY_PAYER` even though the hospice claim for that patient is an Original Medicare claim. Fixing that is an M23 change with its own tests and is tracked as issue #772; it does not block M41.
 
+## Eligibility and enrollment (issue #724, migration 1265)
+
+Built: `commercial_payer_enrollment`, `commercial_eligibility_check`, the per-plan `eligibility_staleness_policy` (`warn` by default) and `eligibility_max_age_days` (30 by default), the pure send gate `evaluateSendGate` (bound, routed, enrolled; codes `CH_NOT_WIRED`, `COMMERCIAL_PAYER_NOT_ROUTED`, `COMMERCIAL_PROVIDER_NOT_ENROLLED`) and the pure `evaluateEligibilityFreshness` for the assembly lane. The port's eligibility request gained a commercial shape (`memberId`); the payer is the context's routed payer id. The member id is read from M5's coverage seam for the one call and is never stored, returned or logged; relaxing a plan's policy needs `commercial_billing.manage_enrollment` and a fresh step-up.
+
+**Known limits.**
+- No vendor adapter answers a commercial 270 yet: the Stedi and direct-MAC transports answer `CH_NOT_WIRED` (not implemented) and Episode Alert refuses a member id (Medicare only). Only the in-memory test double answers, so a production check returns 503 until a vendor adapter implements it. Nothing is sent in the meantime.
+- The 30-day staleness window is our default (matching M23's HETS window), not a payer fact; payers differ, so it is a per-plan setting. Which payers require a recent 271 before billing is a confirm-with-payer item, not asserted here.
+- How a vendor's 271 maps to `active` / `inactive` / `unknown` for a commercial plan (benefit codes, hospice service type) is UNVERIFIED until a sandbox run; the port contract returns the three-valued outcome and anything unreadable must be `unknown`, which follows the plan's policy.
+- An inactive answer blocks regardless of the staleness policy; whether a payer's "inactive" can be overridden for a retroactive-eligibility case is left to the override lane (#722).
+- Eligibility checks hold a patient id, so the M4 eraser registration for them is still to do with the patient-erasure work; they hold no name, member id or 271 body.
+- Two concurrent requests with the same Idempotency-Key can each send one 270 before the first row lands (one row is kept and the other request is answered from it, or refused if it differs). The M1 middleware serializes by key per organization; a worker retry path would need an advisory lock. Eligibility is a read-only query, so the cost is a duplicate vendor transaction, not a duplicate effect.
+- Freshness for a claim must be asked with the claim's date of service (`latest(..., serviceDate)`): a check made for another date of service does not count. Without a service date the newest check of any date is used.
+- `commercial_eligibility_check.location_id` exists for the three-column rule but is not set by the API yet (no M1 location reader is wired here).
+- Rate limiting on the mutating routes relies on the platform-wide limiter; there is no per-route budget.
+
 ## Open questions
 
 1. ~~Payer plan versus an M40 extension.~~ Resolved: M40 owns the canonical `payer` master and needs no change; M41 owns the per-tenant plan, route and rate tables (migration 1260), referencing the payer by a logical id.

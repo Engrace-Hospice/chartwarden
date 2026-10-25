@@ -68568,6 +68568,1304 @@
         }
       }
     },
+    "/api/v1/billing/commercial/eligibility": {
+      "get": {
+        "operationId": "getApiV1BillingCommercialEligibility",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "A patient's commercial eligibility checks, newest first (commercial_billing.read; provider entity and patient scope, and only that provider entity's checks are returned; read-audited). Outcome and as-of date only: no member id, no 271 body",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "planId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "providerEntityId",
+                          "patientId",
+                          "planId",
+                          "clearinghouseKey",
+                          "serviceDate",
+                          "outcome",
+                          "asOfDate",
+                          "requestId",
+                          "checkedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "clearinghouseKey": {
+                            "type": "string"
+                          },
+                          "serviceDate": {
+                            "type": "string"
+                          },
+                          "outcome": {
+                            "anyOf": [
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "inactive",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unknown",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "asOfDate": {
+                            "type": "string"
+                          },
+                          "requestId": {
+                            "type": "string"
+                          },
+                          "checkedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/eligibility/check": {
+      "post": {
+        "operationId": "postApiV1BillingCommercialEligibilityCheck",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Run a commercial 270/271 eligibility check through the platform clearinghouse (commercial_billing.write; provider entity and patient scope; Idempotency-Key required, and a repeat of the same key answers the stored result with `replayed: true` without a second send). The member id is read server side from the patient's coverage and is never in the request, the stored row, the response or a log. Refuses with a stable code and sends nothing: 503 CH_NOT_WIRED (no clearinghouse bound), 409 COMMERCIAL_PAYER_NOT_ROUTED (the bound clearinghouse has no payer id for the plan), 409 COMMERCIAL_PROVIDER_NOT_ENROLLED, 409 COMMERCIAL_PROVIDER_NPI_MISSING, 422 COMMERCIAL_COVERAGE_NOT_FOUND. A clearinghouse that cannot answer is 503 COMMERCIAL_ELIGIBILITY_UNAVAILABLE (nothing recorded). The response carries the plan's freshness verdict",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "providerEntityId",
+                    "patientId",
+                    "planId",
+                    "clearinghouseKey",
+                    "serviceDate",
+                    "outcome",
+                    "asOfDate",
+                    "requestId",
+                    "checkedAt",
+                    "replayed",
+                    "freshness"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "planId": {
+                      "type": "string"
+                    },
+                    "clearinghouseKey": {
+                      "type": "string"
+                    },
+                    "serviceDate": {
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "inactive",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unknown",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "asOfDate": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "checkedAt": {
+                      "type": "string"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    },
+                    "freshness": {
+                      "type": "object",
+                      "required": [
+                        "ruleId",
+                        "status",
+                        "severity",
+                        "message",
+                        "evidence"
+                      ],
+                      "properties": {
+                        "ruleId": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "severity": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "evidence": {
+                          "type": "object",
+                          "required": [
+                            "ageDays",
+                            "maxAgeDays",
+                            "policy",
+                            "outcome",
+                            "checkedAt"
+                          ],
+                          "properties": {
+                            "ageDays": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "maxAgeDays": {
+                              "type": "integer"
+                            },
+                            "policy": {
+                              "anyOf": [
+                                {
+                                  "const": "warn",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "block",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "const": "active",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "inactive",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "unknown",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "checkedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "patientId",
+                  "planId",
+                  "serviceDate"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "patientId": {
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "planId": {
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "serviceDate": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/eligibility/latest": {
+      "get": {
+        "operationId": "getApiV1BillingCommercialEligibilityLatest",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "The newest check for a patient and plan plus the plan's freshness verdict (rule M41.ELIGIBILITY.FRESHNESS): missing or stale follows the plan's warn/block policy, a fresh inactive answer always blocks (commercial_billing.read; provider entity and patient scope; read-audited)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "planId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "serviceDate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "latest",
+                    "freshness"
+                  ],
+                  "properties": {
+                    "latest": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "providerEntityId",
+                            "patientId",
+                            "planId",
+                            "clearinghouseKey",
+                            "serviceDate",
+                            "outcome",
+                            "asOfDate",
+                            "requestId",
+                            "checkedAt",
+                            "replayed",
+                            "freshness"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "providerEntityId": {
+                              "type": "string"
+                            },
+                            "patientId": {
+                              "type": "string"
+                            },
+                            "planId": {
+                              "type": "string"
+                            },
+                            "clearinghouseKey": {
+                              "type": "string"
+                            },
+                            "serviceDate": {
+                              "type": "string"
+                            },
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "active",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "inactive",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "unknown",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "asOfDate": {
+                              "type": "string"
+                            },
+                            "requestId": {
+                              "type": "string"
+                            },
+                            "checkedAt": {
+                              "type": "string"
+                            },
+                            "replayed": {
+                              "type": "boolean"
+                            },
+                            "freshness": {
+                              "type": "object",
+                              "required": [
+                                "ruleId",
+                                "status",
+                                "severity",
+                                "message",
+                                "evidence"
+                              ],
+                              "properties": {
+                                "ruleId": {
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "type": "string"
+                                },
+                                "severity": {
+                                  "type": "string"
+                                },
+                                "message": {
+                                  "type": "string"
+                                },
+                                "evidence": {
+                                  "type": "object",
+                                  "required": [
+                                    "ageDays",
+                                    "maxAgeDays",
+                                    "policy",
+                                    "outcome",
+                                    "checkedAt"
+                                  ],
+                                  "properties": {
+                                    "ageDays": {
+                                      "anyOf": [
+                                        {
+                                          "type": "integer"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "maxAgeDays": {
+                                      "type": "integer"
+                                    },
+                                    "policy": {
+                                      "anyOf": [
+                                        {
+                                          "const": "warn",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "block",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "outcome": {
+                                      "anyOf": [
+                                        {
+                                          "anyOf": [
+                                            {
+                                              "const": "active",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "inactive",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "unknown",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "checkedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "freshness": {
+                      "type": "object",
+                      "required": [
+                        "ruleId",
+                        "status",
+                        "severity",
+                        "message",
+                        "evidence"
+                      ],
+                      "properties": {
+                        "ruleId": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "severity": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "evidence": {
+                          "type": "object",
+                          "required": [
+                            "ageDays",
+                            "maxAgeDays",
+                            "policy",
+                            "outcome",
+                            "checkedAt"
+                          ],
+                          "properties": {
+                            "ageDays": {
+                              "anyOf": [
+                                {
+                                  "type": "integer"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "maxAgeDays": {
+                              "type": "integer"
+                            },
+                            "policy": {
+                              "anyOf": [
+                                {
+                                  "const": "warn",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "block",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "const": "active",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "inactive",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "unknown",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "checkedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/enrollments": {
+      "get": {
+        "operationId": "getApiV1BillingCommercialEnrollments",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "A provider entity's enrollments with commercial payers on a clearinghouse (commercial_billing.read; provider entity scope)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "payerId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "providerEntityId",
+                          "payerId",
+                          "clearinghouseKey",
+                          "status",
+                          "effectiveFrom",
+                          "effectiveTo",
+                          "evidenceRef",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "type": "string"
+                          },
+                          "payerId": {
+                            "type": "string"
+                          },
+                          "clearinghouseKey": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "not_enrolled",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "enrolled",
+                                "type": "string"
+                              },
+                              {
+                                "const": "suspended",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "effectiveFrom": {
+                            "type": "string"
+                          },
+                          "effectiveTo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "evidenceRef": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1BillingCommercialEnrollments",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Record a provider entity's enrollment with a payer on a clearinghouse (commercial_billing.manage_enrollment + a fresh step-up; Idempotency-Key required). Only status `enrolled`, in effect on the day, lets a send through. 409 CONFLICT when the period overlaps another for the same provider entity, payer and clearinghouse; 422 when the payer is not an active commercial payer",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "providerEntityId",
+                    "payerId",
+                    "clearinghouseKey",
+                    "status",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "evidenceRef",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "payerId": {
+                      "type": "string"
+                    },
+                    "clearinghouseKey": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "not_enrolled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "enrolled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "suspended",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "evidenceRef": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "payerId",
+                  "clearinghouseKey",
+                  "status",
+                  "effectiveFrom"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "payerId": {
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "clearinghouseKey": {
+                    "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$",
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "not_enrolled",
+                        "type": "string"
+                      },
+                      {
+                        "const": "pending",
+                        "type": "string"
+                      },
+                      {
+                        "const": "enrolled",
+                        "type": "string"
+                      },
+                      {
+                        "const": "suspended",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "effectiveFrom": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "evidenceRef": {
+                    "anyOf": [
+                      {
+                        "pattern": "^[A-Za-z0-9._:/#-]{1,200}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/enrollments/{id}": {
+      "patch": {
+        "operationId": "patchApiV1BillingCommercialEnrollmentsById",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Change an enrollment's status, end date or evidence reference (commercial_billing.manage_enrollment + a fresh step-up; Idempotency-Key required). The body names the provider entity; an enrollment of another provider entity or tenant is a 404",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "providerEntityId",
+                    "payerId",
+                    "clearinghouseKey",
+                    "status",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "evidenceRef",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "payerId": {
+                      "type": "string"
+                    },
+                    "clearinghouseKey": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "not_enrolled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "enrolled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "suspended",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "evidenceRef": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "providerEntityId"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "not_enrolled",
+                        "type": "string"
+                      },
+                      {
+                        "const": "pending",
+                        "type": "string"
+                      },
+                      {
+                        "const": "enrolled",
+                        "type": "string"
+                      },
+                      {
+                        "const": "suspended",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "effectiveTo": {
+                    "anyOf": [
+                      {
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "evidenceRef": {
+                    "anyOf": [
+                      {
+                        "pattern": "^[A-Za-z0-9._:/#-]{1,200}$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/payer-plans/{id}/eligibility-policy": {
+      "patch": {
+        "operationId": "patchApiV1BillingCommercialPayerplansByIdEligibilitypolicy",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Set what stale or missing eligibility does for a plan: `warn` (default) or `block`, and how many days (1 to 365; default 30) make a check stale (commercial_billing.manage_enrollment + a fresh step-up, because relaxing it weakens a billing control; Idempotency-Key required)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "payerId",
+                    "eligibilityStalenessPolicy",
+                    "eligibilityMaxAgeDays"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "payerId": {
+                      "type": "string"
+                    },
+                    "eligibilityStalenessPolicy": {
+                      "anyOf": [
+                        {
+                          "const": "warn",
+                          "type": "string"
+                        },
+                        {
+                          "const": "block",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "eligibilityMaxAgeDays": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "policy",
+                  "maxAgeDays"
+                ],
+                "properties": {
+                  "policy": {
+                    "anyOf": [
+                      {
+                        "const": "warn",
+                        "type": "string"
+                      },
+                      {
+                        "const": "block",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "maxAgeDays": {
+                    "minimum": 1,
+                    "maximum": 365,
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/dde-items": {
       "get": {
         "operationId": "getApiV1BillingDdeitems",

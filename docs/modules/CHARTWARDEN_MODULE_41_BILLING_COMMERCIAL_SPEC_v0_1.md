@@ -43,9 +43,9 @@ acceptance stamps `clearinghouse_accepted_at` and never advances the claim to ac
 | `commercial_payer_plan` | Per-tenant plan for an active commercial M40 payer: claim filing indicator, authorization requirement, effective dating (no overlap per payer and plan name). No PHI. Built |
 | `commercial_payer_route` | The payer id a clearinghouse routes a plan on, effective dated, one in effect per plan and clearinghouse. Built |
 | `commercial_contract_rate` | Contract rate per level of care: revenue code, basis (per diem, per hour, percent of charges), amount, effective dated. Built |
-| `commercial_payer_enrollment` | Per provider entity, per payer, per clearinghouse: `not_enrolled`, `pending`, `enrolled`, `suspended`, with dates and evidence reference |
+| `commercial_payer_enrollment` | Per provider entity, per payer, per clearinghouse: `not_enrolled`, `pending`, `enrolled`, `suspended`, with dates and evidence reference. Built (#724) |
 | `commercial_authorization` | Pre-authorization: number, patient, payer, approved level of care and dates, units, status |
-| `commercial_eligibility_check` | A 270/271 exchange: request id, outcome, as-of date, no member id in logs |
+| `commercial_eligibility_check` | A 270/271 exchange: request id, outcome, as-of date, no member id stored or logged. Built (#724) |
 | `commercial_claim` | Header: patient, payer plan, billing period, type of bill, COB context, totals, state |
 | `commercial_claim_line` | Revenue code, HCPCS, service date, units, charge; PE-scoped |
 | `commercial_claim_state_history` | Immutable transition log |

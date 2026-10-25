@@ -208,6 +208,20 @@ describe("WP 6.10 (ADR-0102) alarm ingest key: the compliance officer template o
   });
 });
 
+describe("M41 (#724) commercial billing keys: the compliance officer template", () => {
+  it("grants all five commercial_billing keys, and the clinical templates grant none", () => {
+    const keys = ["read", "write", "submit", "override_validation", "manage_enrollment"].map(
+      (k) => `commercial_billing.${k}`,
+    );
+    const grants = ROLE_TEMPLATES.find((t) => t.key === "compliance_officer")?.grants ?? [];
+    for (const k of keys) expect(grants).toContain(k);
+    for (const t of ROLE_TEMPLATES) {
+      if (["compliance_officer", "administrator", "org_admin"].includes(t.key)) continue;
+      for (const k of keys) expect(t.grants ?? [], `${t.key} ${k}`).not.toContain(k);
+    }
+  });
+});
+
 describe("WP 6.6 (ADR-0096) external share key: the compliance officer template only", () => {
   it("the compliance_officer template grants it and no other template does", () => {
     const grants = ROLE_TEMPLATES.find((t) => t.key === "compliance_officer")?.grants ?? [];

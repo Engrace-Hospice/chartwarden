@@ -6695,6 +6695,50 @@ export function m37ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M37_CONTRIBUTED_PERMISSIONS);
 }
 
+// M41 — Billing — Commercial (spec section 6; issue #724 lands the keys with the first routes). category 'billing'. RBAC only: the
+// provider-entity and patient scope are composed at the route layer (provider_entity_billing_scope, caseload_or_scope).
+// manage_enrollment (and, later, submit) also demand a fresh step-up, keyed on the permission key.
+export const M41_CONTRIBUTED_PERMISSIONS = {
+  "commercial_billing.read": {
+    resource: "commercial_billing",
+    action: "read",
+    category: "billing",
+    abac: "none",
+  },
+  "commercial_billing.write": {
+    resource: "commercial_billing",
+    action: "write",
+    category: "billing",
+    abac: "none",
+  },
+  "commercial_billing.submit": {
+    resource: "commercial_claim",
+    action: "submit",
+    category: "billing",
+    abac: "none",
+  },
+  "commercial_billing.override_validation": {
+    resource: "commercial_validation_result",
+    action: "override",
+    category: "billing",
+    abac: "none",
+  },
+  "commercial_billing.manage_enrollment": {
+    resource: "commercial_payer_enrollment",
+    action: "manage",
+    category: "billing",
+    abac: "none",
+  },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M41 contributed permission keys. */
+export type M41ContributedPermissionKey = keyof typeof M41_CONTRIBUTED_PERMISSIONS;
+
+/** Project the M41 contributed keys into `permission`-table mirror rows (M41 spec section 6). */
+export function m41ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M41_CONTRIBUTED_PERMISSIONS);
+}
+
 export function allPermissionMirrorRows(): PermissionMirrorRow[] {
   return [
     ...permissionMirrorRows(),
@@ -6736,5 +6780,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m35ContributedPermissionMirrorRows(),
     ...m29ContributedPermissionMirrorRows(),
     ...m37ContributedPermissionMirrorRows(),
+    ...m41ContributedPermissionMirrorRows(),
   ];
 }

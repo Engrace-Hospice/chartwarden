@@ -140,6 +140,20 @@ describe("EpisodeAlertTransport.checkEligibility", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("refuses a commercial request (a member id is never sent to the Medicare vendor)", async () => {
+    const { transport, calls } = transportWith(() => new Response(xml("20240101")));
+    const r = await transport.checkEligibility(CTX, {
+      memberId: "SYNTHETIC-MEMBER-77",
+      serviceDate: "2026-10-01",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.degraded.code).toBe(CH.INVALID_REQUEST);
+      expect(r.degraded.reason).not.toContain("SYNTHETIC-MEMBER-77");
+    }
+    expect(calls).toHaveLength(0);
+  });
+
   it("refuses a malformed request before any network call", async () => {
     const { transport, calls } = transportWith(() => new Response(xml("20240101")));
     for (const bad of [

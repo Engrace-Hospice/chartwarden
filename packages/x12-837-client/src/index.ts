@@ -157,7 +157,12 @@ export type { RoutedAckEvent } from "./acks/route-ack-event";
 export type { Ack999TransactionSet, Parsed999Detail } from "./acks/parse-999";
 
 // ─── ClearinghouseTransport port and conformance cases (ADR-0053; the in-memory reference is in ./testing) ─────────
-export { CH, CLEARINGHOUSE_EVENT_KINDS, RETRYABLE_CODES } from "./clearinghouse/types";
+export {
+  CH,
+  CLEARINGHOUSE_EVENT_KINDS,
+  RETRYABLE_CODES,
+  isCommercialEligibilityRequest,
+} from "./clearinghouse/types";
 export {
   EPISODE_ALERT_API_KEY_ENV,
   EPISODE_ALERT_BASE_URL_ENV,
@@ -178,8 +183,10 @@ export type {
   ClaimAdjustment,
   ClaimStatus,
   ClearinghouseContext,
+  ClearinghouseCommercialEligibilityRequest,
   ClearinghouseEligibilityRequest,
   ClearinghouseEligibilityResult,
+  ClearinghouseMedicareEligibilityRequest,
   ClearinghouseErrorCode,
   ClearinghouseScope,
   ClearinghouseEvent,
