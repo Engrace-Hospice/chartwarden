@@ -3,8 +3,8 @@
 // authorization number, no patient name.
 import { schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError } from "@chartwarden/types";
-import { and, asc, desc, eq, gte, isNull, lt, lte, or } from "drizzle-orm";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
+import { and, asc, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { isBlocking } from "../domain/rules";
 import { assertPatientReachable, assertProviderInScope, assertRowReachable } from "./scope-guard";
 import type { CommercialActor, CommercialClaimSeams, CommercialDb, CommercialTx } from "./types";
@@ -51,7 +51,36 @@ const QUEUE_CHUNK = 100;
 const QUEUE_SCAN_CAP = 500;
 const PLAN_LIST_CAP = 200;
 
+interface QueueCursor {
+  readonly ts: string;
+  readonly id: string;
+}
+const CURSOR_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const CURSOR_TS = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?(\+|-)\d{2}(:\d{2})?$/;
+
+const encodeCursor = (c: QueueCursor): string =>
+  Buffer.from(JSON.stringify([c.ts, c.id])).toString("base64url");
+
+/** An opaque keyset position; anything that does not decode to a timestamp and a uuid is a 422, never reaches SQL. */
+function decodeCursor(raw: string): QueueCursor {
+  try {
+    const [ts, id] = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as unknown[];
+    if (
+      typeof ts === "string" &&
+      typeof id === "string" &&
+      CURSOR_TS.test(ts) &&
+      CURSOR_ID.test(id)
+    ) {
+      return { ts, id };
+    }
+  } catch {
+    // fall through to the refusal
+  }
+  throw new ChartWardenError("VALIDATION_FAILED", "cursor is not valid", 422);
+}
+
 export interface ClaimListFilter {
+  readonly cursor?: string;
   readonly providerEntityId: string;
   readonly state?: string;
   readonly payerKind?: "commercial_only" | "medicare_secondary" | "medicaid_secondary";
@@ -83,7 +112,11 @@ export interface CommercialClaimReadService {
   listClaims(
     actor: ReadActor,
     filter: ClaimListFilter,
-  ): Promise<{ items: readonly Record<string, string | number | null>[]; hasMore: boolean }>;
+  ): Promise<{
+    items: readonly Record<string, string | number | null>[];
+    hasMore: boolean;
+    nextCursor: string | null;
+  }>;
   listPlans(
     actor: ReadActor,
     providerEntityId: string,
@@ -140,38 +173,50 @@ export function buildCommercialClaimReadService(
       const items: Record<string, string | number | null>[] = [];
       let hasMore = false;
       let scanned = 0;
-      let after: { updatedAt: Date; id: string } | null = null;
+      let after: QueueCursor | null = f.cursor ? decodeCursor(f.cursor) : null;
+      let lastReturned: QueueCursor | null = null;
+      let lastScanned: QueueCursor | null = null;
+      let stoppedByLimit = false;
+      let exhausted = false;
       while (items.length < limit && !hasMore) {
-        const page: { claim: typeof c.$inferSelect; planName: string }[] = await inOrg(
+        const page: { claim: typeof c.$inferSelect; planName: string; ts: string }[] = await inOrg(
           actor,
           (tx) =>
             tx
-              .select({ claim: c, planName: schema.commercialPayerPlan.planName })
+              .select({
+                claim: c,
+                planName: schema.commercialPayerPlan.planName,
+                // Full-precision text: a JS Date truncates to milliseconds and a keyset on it would skip or repeat rows.
+                ts: sql<string>`${c.updatedAt}::text`,
+              })
               .from(c)
               .innerJoin(schema.commercialPayerPlan, eq(schema.commercialPayerPlan.id, c.planId))
               .where(
                 and(
                   ...conds,
                   after
-                    ? or(
-                        lt(c.updatedAt, after.updatedAt),
-                        and(eq(c.updatedAt, after.updatedAt), lt(c.id, after.id)),
-                      )
+                    ? sql`(${c.updatedAt}, ${c.id}) < (${after.ts}::timestamptz, ${after.id}::uuid)`
                     : undefined,
                 ),
               )
               .orderBy(desc(c.updatedAt), desc(c.id))
               .limit(QUEUE_CHUNK),
         );
-        if (page.length === 0) break;
+        if (page.length === 0) {
+          exhausted = true;
+          break;
+        }
         await Promise.all(page.map((r) => isReachable(r.claim.patientId)));
-        for (const { claim, planName } of page) {
+        for (const { claim, planName, ts } of page) {
           scanned += 1;
+          lastScanned = { ts, id: claim.id };
           if (!(await isReachable(claim.patientId))) continue;
           if (items.length === limit) {
             hasMore = true;
+            stoppedByLimit = true;
             break;
           }
+          lastReturned = { ts, id: claim.id };
           items.push({
             id: claim.id,
             claimControlNumber: claim.claimControlNumber,
@@ -188,12 +233,23 @@ export function buildCommercialClaimReadService(
             updatedAt: claim.updatedAt.toISOString(),
           });
         }
-        const last = page[page.length - 1];
-        if (page.length < QUEUE_CHUNK || !last) break;
-        after = { updatedAt: last.claim.updatedAt, id: last.claim.id };
-        if (!hasMore && items.length < limit && scanned >= QUEUE_SCAN_CAP) hasMore = true;
+        if (hasMore) break;
+        if (page.length < QUEUE_CHUNK) {
+          exhausted = true;
+          break;
+        }
+        after = lastScanned;
+        if (items.length === limit) {
+          // Exactly full at a page boundary with rows left unread: more may exist.
+          hasMore = true;
+          stoppedByLimit = true;
+        } else if (scanned >= QUEUE_SCAN_CAP) {
+          hasMore = true; // the scan cap: the caller continues from where the scan stopped
+        }
       }
-      return { items, hasMore };
+      const resume = stoppedByLimit ? lastReturned : lastScanned;
+      const nextCursor = hasMore && !exhausted && resume ? encodeCursor(resume) : null;
+      return { items, hasMore: nextCursor !== null, nextCursor };
     },
 
     async listPlans(actor, providerEntityId) {

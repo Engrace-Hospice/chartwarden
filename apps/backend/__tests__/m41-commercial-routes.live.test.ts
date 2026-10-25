@@ -490,6 +490,101 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     expect(detail.claim.claimControlNumber).toEqual(expect.any(String));
   });
 
+  /** Bulk-insert VOID claims (exempt from the one-live-claim-per-day rule), three per timestamp so the keyset tie-break is exercised. */
+  async function bulkClaims(
+    entity: string,
+    planId: string,
+    count: number,
+    tag: string,
+  ): Promise<void> {
+    await admin.query(
+      `INSERT INTO commercial_claim (organization_id, provider_entity_id, patient_id, admission_id, plan_id, primary_patient_payer_id,
+         claim_filing_indicator, tob, frequency_code, service_from, service_to, admission_date, patient_status_code,
+         claim_control_number, total_charge_cents, state, created_by_membership_id, updated_at)
+       SELECT $1, $2, gen_random_uuid(), gen_random_uuid(), $3, gen_random_uuid(), 'CI', '812', '2',
+         DATE '2026-03-01', DATE '2026-03-31', DATE '2026-03-01', '30', $4 || '-' || i, 1000, 'void', $5,
+         now() - make_interval(secs => (i / 3)::int)
+       FROM generate_series(1, $6::int) AS i`,
+      [ORG, entity, planId, tag, membershipId, count],
+    );
+  }
+  const follow = async (app: FastifyInstance, base: string, user?: string) => {
+    const ids: string[] = [];
+    const pages: { size: number; cursor: string | null }[] = [];
+    let cursor: string | null = null;
+    for (let guard = 0; guard < 40; guard += 1) {
+      const res = await call(
+        app,
+        "GET",
+        `${base}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+        user ? { user } : {},
+      );
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        items: { id: string }[];
+        hasMore: boolean;
+        nextCursor: string | null;
+      };
+      expect(body.hasMore).toBe(body.nextCursor !== null);
+      ids.push(...body.items.map((i) => i.id));
+      pages.push({ size: body.items.length, cursor: body.nextCursor });
+      cursor = body.nextCursor;
+      if (cursor === null) break;
+    }
+    return { ids, pages };
+  };
+
+  it("pages a queue of more than 100 reachable claims by keyset cursor without gaps or repeats (#726)", async () => {
+    const s = await seed("not_required");
+    const app = server(s.admissionId);
+    await bulkClaims(otherProviderEntityId, s.planId, 230, "PGA");
+    const { ids, pages } = await follow(
+      app,
+      `${BASE}/claims?providerEntityId=${otherProviderEntityId}&limit=100`,
+      "pe2",
+    );
+    expect(new Set(ids).size).toBe(ids.length); // no repeats, even across equal timestamps
+    const stored = await admin.query(
+      "SELECT count(*)::int AS n FROM commercial_claim WHERE provider_entity_id = $1",
+      [otherProviderEntityId],
+    );
+    expect(ids.length).toBe(stored.rows[0].n as number); // no gaps
+    expect(pages[0]?.size).toBe(100);
+    expect(pages.length).toBeGreaterThanOrEqual(3);
+    expect(pages.at(-1)?.cursor).toBeNull();
+    // a malformed cursor is a 422 and never reaches SQL
+    const bad = await call(
+      app,
+      "GET",
+      `${BASE}/claims?providerEntityId=${otherProviderEntityId}&cursor=AAAA`,
+      { user: "pe2" },
+    );
+    expect(bad.statusCode).toBe(422);
+  });
+
+  it("hits the scan cap for an actor whose caseload holds none of a long queue: empty page, hasMore, a cursor that continues (#726)", async () => {
+    const s = await seed("not_required");
+    const app = server(s.admissionId);
+    await bulkClaims(providerEntityId, s.planId, 620, "CAP");
+    const first = await call(app, "GET", `${BASE}/claims?providerEntityId=${providerEntityId}`, {
+      user: "nocase",
+    });
+    expect(first.statusCode).toBe(200);
+    const body = first.json() as { items: unknown[]; hasMore: boolean; nextCursor: string | null };
+    expect(body.items).toEqual([]); // nothing reachable in the first 500 rows scanned
+    expect(body.hasMore).toBe(true);
+    expect(body.nextCursor).not.toBeNull();
+    // following the cursor reaches the end (still nothing reachable) and then stops
+    const { ids, pages } = await follow(
+      app,
+      `${BASE}/claims?providerEntityId=${providerEntityId}`,
+      "nocase",
+    );
+    expect(ids).toEqual([]);
+    expect(pages.length).toBeGreaterThanOrEqual(2);
+    expect(pages.at(-1)?.cursor).toBeNull();
+  });
+
   it("scopes the DATA: an entity the actor reaches does not open another entity's patient, claim or authorizations", async () => {
     const s = await seed("required_at_admission");
     const app = server(s.admissionId);

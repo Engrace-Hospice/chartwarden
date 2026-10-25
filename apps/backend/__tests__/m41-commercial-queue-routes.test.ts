@@ -27,7 +27,7 @@ let listCalls: unknown[] = [];
 const reads = {
   listClaims: async (_actor: unknown, filter: unknown) => {
     listCalls.push(filter);
-    return { items: [], hasMore: false };
+    return { items: [], hasMore: false, nextCursor: null };
   },
   listPlans: async () => ({ items: [] }),
   getClaim: async () => {
@@ -94,7 +94,7 @@ describe("GET /billing/commercial/claims (work queue)", () => {
       headers: as("biller"),
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ items: [], hasMore: false });
+    expect(res.json()).toEqual({ items: [], hasMore: false, nextCursor: null });
     expect(listCalls).toEqual([
       { providerEntityId: PE, payerKind: "medicare_secondary", state: "draft" },
     ]);

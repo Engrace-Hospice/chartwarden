@@ -38,7 +38,13 @@ const MEDICARE_SECONDARY = row({
   secondaryPayerKind: "medicare",
 });
 
+// The screens probe the default provider entity with the payer-plans read before the queue loads.
+async function stubProbe(page: Page): Promise<void> {
+  await page.route(PLANS, (route) => route.fulfill({ json: { items: [] } }));
+}
+
 async function stubQueue(page: Page, requests: string[]): Promise<void> {
+  await stubProbe(page);
   await page.route(CLAIMS, async (route) => {
     const url = new URL(route.request().url());
     requests.push(url.search);
@@ -49,7 +55,7 @@ async function stubQueue(page: Page, requests: string[]): Promise<void> {
         : kind === "commercial_only"
           ? [COMMERCIAL_ONLY]
           : [COMMERCIAL_ONLY, MEDICARE_SECONDARY];
-    await route.fulfill({ json: { items, hasMore: false } });
+    await route.fulfill({ json: { items, hasMore: false, nextCursor: null } });
   });
 }
 
@@ -86,13 +92,44 @@ test.describe("Billing — Commercial claim work queue (M41)", () => {
     await expect(claimRow).toBeFocused();
   });
 
+  test("main path: Load more follows the server's keyset cursor and appends the next page", async ({
+    page,
+  }) => {
+    const cursors: (string | null)[] = [];
+    await stubProbe(page);
+    await page.route(CLAIMS, async (route) => {
+      const cursor = new URL(route.request().url()).searchParams.get("cursor");
+      cursors.push(cursor);
+      await route.fulfill({
+        json: cursor
+          ? { items: [MEDICARE_SECONDARY], hasMore: false, nextCursor: null }
+          : { items: [COMMERCIAL_ONLY], hasMore: true, nextCursor: "CUR-E2E-1" },
+      });
+    });
+    await signInAs(page, ADMIN_ACCOUNT());
+    await page.goto("/commercial/billing/claims");
+    const table = page.getByRole("table", { name: "Commercial claims" });
+    await expect(table.getByRole("link", { name: "CCN-E2E-0001", exact: true })).toBeVisible();
+    await expect(table.getByRole("link", { name: "CCN-E2E-0002", exact: true })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Load more" }).click();
+    await expect(table.getByRole("link", { name: "CCN-E2E-0002", exact: true })).toBeVisible();
+    await expect(table.getByRole("link", { name: "CCN-E2E-0001", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Load more" })).toHaveCount(0);
+    expect(cursors.at(-1)).toBe("CUR-E2E-1");
+  });
+
   test("failure path: an unavailable queue is announced and Try again recovers", async ({
     page,
   }) => {
     let fail = true;
+    await stubProbe(page);
     await page.route(CLAIMS, async (route) => {
       if (fail) await route.fulfill({ status: 500, json: { error: { code: "INTERNAL" } } });
-      else await route.fulfill({ json: { items: [COMMERCIAL_ONLY], hasMore: false } });
+      else
+        await route.fulfill({
+          json: { items: [COMMERCIAL_ONLY], hasMore: false, nextCursor: null },
+        });
     });
     await signInAs(page, ADMIN_ACCOUNT());
     await page.goto("/commercial/billing/claims");

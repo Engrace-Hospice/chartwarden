@@ -42,15 +42,15 @@ payers view is the same list-plus-drawer frame with the plan drawer. All three u
 
 ## Claim queue
 
-- **Scope.** Every read is for one provider entity (chosen in the filter panel, kept in the URL); the server proves the actor reaches
+- **Scope.** Every read is for one provider entity (chosen in the filter panel, kept in the URL; with none chosen, the first entity the user can actually bill for); the server proves the actor reaches
   it and drops claims outside the actor's caseload.
 - **Payer-kind filter.** The other payer on the claim (coordination of benefits): commercial only, Medicare secondary, Medicaid
   secondary. A state filter narrows to draft, ready or void.
 - **Columns.** Claim number with the plan name, patient, dates of service, payer kind, charge, expected payment, state.
 - **Drawer.** Selecting a row (pointer or Enter/Space) opens a preview with a link to the claim detail; Escape or the close button
   returns focus to the row.
-- **States.** Loading (status), a retryable error (alert), an empty queue and an empty filter result (with Clear filters), and a
-  warning when more claims match than one page shows.
+- **States.** Loading (status), a retryable error (alert), an empty queue and an empty filter result (with Clear filters), and
+  Load more following the server's keyset cursor (a page can be short or empty when claims outside the caseload are skipped; an empty first page offers Load more instead of calling the queue empty).
 
 ---
 

@@ -72,6 +72,7 @@ export const ClaimListQuerySchema = Type.Object(
     payerKind: Type.Optional(lit(COMMERCIAL_PAYER_KIND_FILTER_VALUES)),
     patientId: Type.Optional(uuid()),
     limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+    cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
   },
   { additionalProperties: false },
 );
@@ -147,6 +148,8 @@ export const CommercialClaimSummarySchema = Type.Object({
 export const ClaimListResponseSchema = Type.Object({
   items: Type.Array(CommercialClaimSummarySchema),
   hasMore: Type.Boolean(),
+  /** Pass back as `cursor` for the next page; null when there is none. */
+  nextCursor: nullableString(),
 });
 
 export const PayerPlanViewSchema = Type.Object({

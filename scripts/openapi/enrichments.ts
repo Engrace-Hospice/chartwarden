@@ -14676,7 +14676,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/billing/commercial/claims": {
     summary:
-      "The commercial claim work queue for one provider entity (commercial_billing.read; provider entity scope, caseload-filtered; read-audited list). Filter by state and payer kind (commercial only, Medicare secondary, Medicaid secondary). One page: `hasMore` says narrow the filters. Ids, dates, plan name and money only",
+      "The commercial claim work queue for one provider entity (commercial_billing.read; provider entity scope, caseload-filtered; read-audited list). Filter by state and payer kind (commercial only, Medicare secondary, Medicaid secondary). Keyset paging: `limit` (default 50, max 100) and an opaque `cursor`; `nextCursor` is null on the last page. A page may hold fewer than `limit` rows (and even none) when claims outside the caseload were skipped; keep following `nextCursor`. Ids, dates, plan name and money only",
     query: M41ClaimListQuerySchema,
     response: M41ClaimListResponseSchema,
   },

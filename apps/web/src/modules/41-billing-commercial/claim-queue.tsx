@@ -54,7 +54,11 @@ export interface QueueClaim {
 type QueueLoad =
   | { readonly status: "loading" }
   | { readonly status: "error" }
-  | { readonly status: "ready"; readonly items: readonly QueueClaim[]; readonly hasMore: boolean };
+  | {
+      readonly status: "ready";
+      readonly items: readonly QueueClaim[];
+      readonly nextCursor: string | null;
+    };
 
 const KIND_PARAM = "kind";
 const STATE_PARAM = "state";
@@ -69,12 +73,15 @@ export function CommercialClaimQueue(): JSX.Element {
   const selectedId = params.get(CLAIM_PARAM) ?? "";
   const [load, setLoad] = useState<QueueLoad>({ status: "loading" });
   const [reloadKey, setReloadKey] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreFailed, setMoreFailed] = useState(false);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is a retry trigger, not a value the effect reads.
   useEffect(() => {
     if (!entityId) return;
     let active = true;
     setLoad({ status: "loading" });
+    setMoreFailed(false);
     const payerKind = asPayerKind(kind);
     const claimState = asClaimState(stateFilter);
     void client
@@ -92,7 +99,7 @@ export function CommercialClaimQueue(): JSX.Element {
         setLoad(
           error || !data
             ? { status: "error" }
-            : { status: "ready", items: data.items, hasMore: data.hasMore },
+            : { status: "ready", items: data.items, nextCursor: data.nextCursor ?? null },
         );
       })
       .catch(() => {
@@ -102,6 +109,46 @@ export function CommercialClaimQueue(): JSX.Element {
       active = false;
     };
   }, [client, entityId, kind, stateFilter, reloadKey]);
+
+  const queueFilters = (): Record<string, string> => {
+    const payerKind = asPayerKind(kind);
+    const claimState = asClaimState(stateFilter);
+    return {
+      providerEntityId: entityId,
+      ...(payerKind ? { payerKind } : {}),
+      ...(claimState ? { state: claimState } : {}),
+    };
+  };
+  // The next keyset page. A page can be short or even empty (claims outside the caseload are skipped), so the cursor is
+  // followed for as long as the server returns one.
+  const loadMore = async (): Promise<void> => {
+    if (load.status !== "ready" || load.nextCursor === null) return;
+    setLoadingMore(true);
+    setMoreFailed(false);
+    try {
+      const { data, error } = await client.GET("/api/v1/billing/commercial/claims", {
+        params: {
+          query: {
+            ...(queueFilters() as { providerEntityId: string }),
+            cursor: load.nextCursor,
+          },
+        },
+      });
+      if (error || !data) {
+        setMoreFailed(true);
+      } else {
+        setLoad({
+          status: "ready",
+          items: [...load.items, ...data.items],
+          nextCursor: data.nextCursor ?? null,
+        });
+      }
+    } catch {
+      setMoreFailed(true);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const items = load.status === "ready" ? load.items : [];
   const names = usePatientNames(client, [...new Set(items.map((c) => c.patientId))]);
@@ -189,12 +236,13 @@ export function CommercialClaimQueue(): JSX.Element {
                   Try again
                 </Button>
               </div>
-            ) : load.items.length === 0 && load.hasMore ? (
+            ) : load.items.length === 0 && load.nextCursor !== null ? (
               <div className="wx-list-state">
                 <EmptyState
-                  title="Too many claims to scan"
-                  description="Nothing in the newest claims is in your caseload, and more claims exist. Narrow the filters (state, payer kind) to find yours."
+                  title="Nothing in your caseload in the newest claims"
+                  description="More claims exist further back. Load more, or narrow the filters (state, payer kind)."
                 />
+                <LoadMore onClick={() => void loadMore()} busy={loadingMore} failed={moreFailed} />
               </div>
             ) : load.items.length === 0 ? (
               <div className="wx-list-state">
@@ -219,17 +267,22 @@ export function CommercialClaimQueue(): JSX.Element {
               </div>
             ) : (
               <>
-                {load.hasMore ? (
-                  <InlineAlert tone="warning">
-                    More claims match than this page shows. Narrow the filters to see the rest.
-                  </InlineAlert>
-                ) : null}
                 <ClaimTable
                   claims={load.items}
                   selectedId={selected?.id ?? ""}
                   nameOf={nameOf}
                   onSelect={(id) => setParam(CLAIM_PARAM, id)}
                 />
+                <div className="wx-table-footer">
+                  <span className="wx-nums">{load.items.length} claims loaded</span>
+                  {load.nextCursor !== null ? (
+                    <LoadMore
+                      onClick={() => void loadMore()}
+                      busy={loadingMore}
+                      failed={moreFailed}
+                    />
+                  ) : null}
+                </div>
               </>
             )}
           </div>
@@ -244,6 +297,21 @@ export function CommercialClaimQueue(): JSX.Element {
         />
       ) : null}
     </div>
+  );
+}
+
+function LoadMore({
+  onClick,
+  busy,
+  failed,
+}: { onClick: () => void; busy: boolean; failed: boolean }): JSX.Element {
+  return (
+    <span style={{ display: "inline-flex", gap: "0.5rem", alignItems: "center" }}>
+      {failed ? <InlineAlert tone="error">More claims could not be loaded.</InlineAlert> : null}
+      <Button tone="secondary" size="sm" disabled={busy} onClick={onClick}>
+        {busy ? "Loading…" : "Load more"}
+      </Button>
+    </span>
   );
 }
 

@@ -5525,7 +5525,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The commercial claim work queue for one provider entity (commercial_billing.read; provider entity scope, caseload-filtered; read-audited list). Filter by state and payer kind (commercial only, Medicare secondary, Medicaid secondary). One page: `hasMore` says narrow the filters. Ids, dates, plan name and money only */
+        /** The commercial claim work queue for one provider entity (commercial_billing.read; provider entity scope, caseload-filtered; read-audited list). Filter by state and payer kind (commercial only, Medicare secondary, Medicaid secondary). Keyset paging: `limit` (default 50, max 100) and an opaque `cursor`; `nextCursor` is null on the last page. A page may hold fewer than `limit` rows (and even none) when claims outside the caseload were skipped; keep following `nextCursor`. Ids, dates, plan name and money only */
         get: operations["getApiV1BillingCommercialClaims"];
         put?: never;
         post?: never;
@@ -44092,6 +44092,7 @@ export interface operations {
                 payerKind?: "commercial_only" | "medicare_secondary" | "medicaid_secondary";
                 patientId?: string;
                 limit?: number;
+                cursor?: string;
             };
             header?: never;
             path?: never;
@@ -44122,6 +44123,7 @@ export interface operations {
                             updatedAt: string;
                         }[];
                         hasMore: boolean;
+                        nextCursor: string | null;
                     };
                 };
             };

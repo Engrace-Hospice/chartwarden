@@ -25,6 +25,7 @@ function mount(
   return mountScreen({
     routes: {
       "GET /api/v1/provider-entities": entitiesRoute,
+      "GET /api/v1/billing/commercial/payer-plans": () => ({ body: { items: [] } }),
       [`GET /api/v1/patients/${PATIENT_ID}`]: patientRoute,
       [QUEUE]: queue,
     },
@@ -41,7 +42,13 @@ describe("CommercialClaimQueue", () => {
   it("reads the queue for the first provider entity and renders the claim with its payer kind", async () => {
     const calls: Call[] = [];
     mount(
-      () => ({ body: { items: [claimRow({ secondaryPayerKind: "medicare" })], hasMore: false } }),
+      () => ({
+        body: {
+          items: [claimRow({ secondaryPayerKind: "medicare" })],
+          hasMore: false,
+          nextCursor: null,
+        },
+      }),
       calls,
     );
 
@@ -56,7 +63,7 @@ describe("CommercialClaimQueue", () => {
 
   it("sends the payer-kind and state filters to the API", async () => {
     const calls: Call[] = [];
-    mount(() => ({ body: { items: [], hasMore: false } }), calls);
+    mount(() => ({ body: { items: [], hasMore: false, nextCursor: null } }), calls);
     await screen.findByText("No commercial claims yet");
 
     fireEvent.change(screen.getByLabelText("Payer kind"), {
@@ -73,7 +80,7 @@ describe("CommercialClaimQueue", () => {
   });
 
   it("opens a drawer with the claim on row activation (keyboard) and closes it with the close button", async () => {
-    mount(() => ({ body: { items: [claimRow()], hasMore: false } }), []);
+    mount(() => ({ body: { items: [claimRow()], hasMore: false, nextCursor: null } }), []);
     const link = await screen.findByRole("link", { name: "CCN-0001" });
     const tr = link.closest("tr") as HTMLElement;
 
@@ -90,15 +97,107 @@ describe("CommercialClaimQueue", () => {
     );
   });
 
-  it("warns when more claims match than one page shows", async () => {
-    mount(() => ({ body: { items: [claimRow()], hasMore: true } }), []);
-    await screen.findByText(/More claims match than this page shows/);
+  it("loads the next keyset page with the server's cursor and appends it", async () => {
+    const calls: Call[] = [];
+    const second = claimRow({
+      id: "66666666-6666-4666-8666-777777777777",
+      claimControlNumber: "CCN-0002",
+    });
+    mount(
+      (call) =>
+        call.query.get("cursor") === "CUR-1"
+          ? { body: { items: [second], hasMore: false, nextCursor: null } }
+          : { body: { items: [claimRow()], hasMore: true, nextCursor: "CUR-1" } },
+      calls,
+    );
+    await screen.findByRole("link", { name: "CCN-0001" });
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    await screen.findByRole("link", { name: "CCN-0002" });
+    expect(screen.getByRole("link", { name: "CCN-0001" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
+    const more = calls.filter((c) => c.path.endsWith("/commercial/claims")).at(-1);
+    expect(more?.query.get("cursor")).toBe("CUR-1");
+    expect(more?.query.get("providerEntityId")).toBe(ENTITY_ID);
   });
 
-  it("does not call an unscanned queue empty: nothing reachable but more exist says to narrow the filters", async () => {
-    mount(() => ({ body: { items: [], hasMore: true } }), []);
-    await screen.findByText("Too many claims to scan");
+  it("offers Load more instead of calling the queue empty when the first page held nothing reachable", async () => {
+    mount(
+      (call) =>
+        call.query.get("cursor")
+          ? { body: { items: [claimRow()], hasMore: false, nextCursor: null } }
+          : { body: { items: [], hasMore: true, nextCursor: "CUR-9" } },
+      [],
+    );
+    await screen.findByText("Nothing in your caseload in the newest claims");
     expect(screen.queryByText("No commercial claims yet")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    await screen.findByRole("link", { name: "CCN-0001" });
+  });
+
+  it("keeps the loaded claims and says so when a further page cannot be loaded", async () => {
+    mount(
+      (call) =>
+        call.query.get("cursor")
+          ? { status: 500, body: {} }
+          : { body: { items: [claimRow()], hasMore: true, nextCursor: "CUR-2" } },
+      [],
+    );
+    await screen.findByRole("link", { name: "CCN-0001" });
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    await screen.findByText("More claims could not be loaded.");
+    expect(screen.getByRole("link", { name: "CCN-0001" })).toBeTruthy();
+  });
+
+  it("defaults to the first provider entity the user can bill for, skipping one outside their scope", async () => {
+    const calls: Call[] = [];
+    const OUT = "99999999-9999-4999-8999-999999999999";
+    mountScreen({
+      routes: {
+        "GET /api/v1/provider-entities": () => ({
+          body: {
+            items: [
+              { id: OUT, legalName: "Outside Hospice", ccn: "111111", npi: null, status: "active" },
+              {
+                id: ENTITY_ID,
+                legalName: "Synthetic Hospice",
+                ccn: "123456",
+                npi: null,
+                status: "active",
+              },
+            ],
+            nextCursor: null,
+          },
+        }),
+        "GET /api/v1/billing/commercial/payer-plans": (call) =>
+          call.query.get("providerEntityId") === OUT
+            ? { status: 404, body: { error: { code: "NOT_FOUND" } } }
+            : { body: { items: [] } },
+        [QUEUE]: () => ({ body: { items: [claimRow()], hasMore: false, nextCursor: null } }),
+        [`GET /api/v1/patients/${PATIENT_ID}`]: patientRoute,
+      },
+      calls,
+      element: <CommercialClaimQueue />,
+      routePath: "/commercial/billing/claims",
+      entry: "/commercial/billing/claims",
+    });
+    await screen.findByRole("link", { name: "CCN-0001" });
+    const queue = calls.filter((c) => c.path.endsWith("/commercial/claims"));
+    expect(queue.every((c) => c.query.get("providerEntityId") === ENTITY_ID)).toBe(true);
+    expect((screen.getByLabelText("Provider entity") as HTMLSelectElement).value).toBe(ENTITY_ID);
+  });
+
+  it("says there is no usable provider entity when none is billable for the user", async () => {
+    mountScreen({
+      routes: {
+        "GET /api/v1/provider-entities": entitiesRoute,
+        "GET /api/v1/billing/commercial/payer-plans": () => ({ status: 404, body: {} }),
+      },
+      calls: [],
+      element: <CommercialClaimQueue />,
+      routePath: "/commercial/billing/claims",
+      entry: "/commercial/billing/claims",
+    });
+    await screen.findByText("No provider entity in your scope");
   });
 
   it("shows a loading status first, then a retryable error that announces itself", async () => {
@@ -107,7 +206,7 @@ describe("CommercialClaimQueue", () => {
       () =>
         ++attempt === 1
           ? { status: 500, body: {} }
-          : { body: { items: [claimRow()], hasMore: false } },
+          : { body: { items: [claimRow()], hasMore: false, nextCursor: null } },
       [],
     );
     const alert = await screen.findByRole("alert");
@@ -122,7 +221,7 @@ describe("CommercialClaimQueue", () => {
     mountScreen({
       routes: {
         "GET /api/v1/provider-entities": () => ({ body: { items: [], nextCursor: null } }),
-        [QUEUE]: () => ({ body: { items: [], hasMore: false } }),
+        [QUEUE]: () => ({ body: { items: [], hasMore: false, nextCursor: null } }),
       },
       calls,
       element: <CommercialClaimQueue />,

@@ -140,9 +140,9 @@ describe("SupportedPayers", () => {
   });
 
   it("announces a load failure and retries", async () => {
-    let attempt = 0;
+    let attempt = 0; // call 1 is the default-entity probe, call 2 the page read
     mount(
-      () => (++attempt === 1 ? { status: 500, body: {} } : { body: { items: [plan()] } }),
+      () => (++attempt === 2 ? { status: 500, body: {} } : { body: { items: [plan()] } }),
       () => ({ body: { items: [] } }),
     );
     expect((await screen.findByRole("alert")).textContent).toContain(
