@@ -56,8 +56,14 @@ export function evaluateEligibilityFreshness(
   input: EligibilityFreshnessInput,
 ): EligibilityFreshnessFinding {
   const { latest, policy, maxAgeDays } = input;
-  if (!Number.isInteger(maxAgeDays) || maxAgeDays < 1 || maxAgeDays > MAX_ELIGIBILITY_MAX_AGE_DAYS) {
-    throw new RangeError(`maxAgeDays must be a whole number from 1 to ${MAX_ELIGIBILITY_MAX_AGE_DAYS}`);
+  if (
+    !Number.isInteger(maxAgeDays) ||
+    maxAgeDays < 1 ||
+    maxAgeDays > MAX_ELIGIBILITY_MAX_AGE_DAYS
+  ) {
+    throw new RangeError(
+      `maxAgeDays must be a whole number from 1 to ${MAX_ELIGIBILITY_MAX_AGE_DAYS}`,
+    );
   }
   const policySeverity: EligibilityFreshnessSeverity = policy === "block" ? "block" : "warning";
   const finding = (

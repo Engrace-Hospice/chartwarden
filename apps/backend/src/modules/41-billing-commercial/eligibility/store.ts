@@ -112,7 +112,11 @@ export interface EligibilityStore {
   ): Promise<PlanRef | null>;
   listEnrollments(
     scope: OrgScope,
-    filter: { readonly providerEntityId?: string; readonly payerId?: string; readonly limit: number },
+    filter: {
+      readonly providerEntityId?: string;
+      readonly payerId?: string;
+      readonly limit: number;
+    },
   ): Promise<StoredEnrollment[]>;
   createEnrollment(scope: OrgScope, row: NewEnrollment): Promise<StoredEnrollment>;
   /** Null when no such enrollment exists for the provider entity (RLS hides other tenants). */

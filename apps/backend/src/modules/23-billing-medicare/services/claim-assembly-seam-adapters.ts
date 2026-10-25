@@ -81,24 +81,33 @@ export function buildM23PatientPayerAdapter(
   return {
     async medicarePrimaryForRange(orgId, patientId, range) {
       const reader = resolve();
+      const at = (coverageKind: string, onDate: string) =>
+        reader.activeCoverageOfKind({ organizationId: orgId, patientId, coverageKind, onDate });
       const [atStart, atEnd] = await Promise.all([
-        reader.activeCoverageOfKind({
-          organizationId: orgId,
-          patientId,
-          coverageKind: "medicare_ffs",
-          onDate: range.from,
-        }),
-        reader.activeCoverageOfKind({
-          organizationId: orgId,
-          patientId,
-          coverageKind: "medicare_ffs",
-          onDate: range.to,
-        }),
+        at("medicare_ffs", range.from),
+        at("medicare_ffs", range.to),
       ]);
-      if (!atStart || !atEnd || atStart.id !== atEnd.id) return null;
+      const ffs = atStart && atEnd && atStart.id === atEnd.id ? atStart : null;
+      // #772 - a Medicare Advantage enrollee's hospice claim is billed to the MAC as an Original Medicare claim, but the
+      // claim stamps the coverage row's id and the MBI is read from that row, so a plan member id must never stand in for
+      // it. The decision: the patient needs a medicare_ffs row (with the MBI) ranked 1 for the hospice benefit; an MA row
+      // that outranks it, or a missing FFS row, is reported as such so the refusal can say how to record the coverage.
+      const advantage =
+        ffs === null || ffs.rank !== 1 ? await at("medicare_advantage", range.from) : null;
+      if (!ffs) {
+        return advantage
+          ? {
+              patientPayerId: advantage.id,
+              medicarePrimary: false,
+              medicareAdvantageEnrollee: true,
+            }
+          : null;
+      }
+      const advantageEnrollee = advantage !== null && advantage.rank < ffs.rank;
       const resolution: MedicarePrimaryResolution = {
-        patientPayerId: atStart.id,
-        medicarePrimary: atStart.rank === 1,
+        patientPayerId: ffs.id,
+        medicarePrimary: ffs.rank === 1,
+        ...(advantageEnrollee ? { medicareAdvantageEnrollee: true } : {}),
       };
       return resolution;
     },
@@ -209,6 +218,7 @@ export interface M6ClaimRangeReader {
       readonly hospiceAdmissionDate: string;
       readonly admissionTypeCode?: string | null;
       readonly admissionSourceCode?: string | null;
+      readonly providerEntityId?: string | null;
       readonly rhcPriorHospiceDays?: number;
       readonly rhcPriorStays?: readonly {
         readonly admissionId: string;

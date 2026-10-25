@@ -49,6 +49,12 @@ export interface MedicarePrimaryResolution {
   readonly patientPayerId: string;
   /** True iff Medicare FFS Part A is the PRIMARY payer across the window (D15 assembly gate). */
   readonly medicarePrimary: boolean;
+  /**
+   * True when Medicare is NOT primary but a Medicare Advantage coverage ranks ahead of (or stands in for) the missing
+   * Original Medicare row (#772). Hospice for such a patient is an Original Medicare claim to the MAC (42 CFR 422.320(c)),
+   * so the refusal says how to record the coverage instead of the generic "Medicare is not primary".
+   */
+  readonly medicareAdvantageEnrollee?: boolean;
 }
 
 export interface PatientPayerReader {
@@ -67,6 +73,8 @@ export interface AdmissionContext {
   /** M6 `admission.admission_type_code` / `admission_source_code` (UB-04 FL 14 / FL 15, NUBC strings); null/absent = not recorded. */
   readonly admissionTypeCode?: string | null;
   readonly admissionSourceCode?: string | null;
+  /** The provider entity the admission belongs to (`null`/absent = not recorded). M41 binds the patient to the billed entity with it. */
+  readonly providerEntityId?: string | null;
   /** Earlier stays' hospice days carried into the RHC day count (readmission within 60 days); absent = 0. */
   readonly rhcPriorHospiceDays?: number;
   /** M6's earlier stays with us (the facts behind `rhcPriorHospiceDays`), merged with the HETS cross-hospice

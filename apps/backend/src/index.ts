@@ -1075,6 +1075,19 @@ import {
 } from "./modules/23-billing-medicare/services/claim-cbsa";
 import { buildClearinghouseAttemptResolutionService } from "./modules/23-billing-medicare/services/clearinghouse-attempt-resolution-service";
 import { resolveInpatientCapDifferential } from "./modules/23-billing-medicare/services/inpatient-cap-differential";
+// M41 (Billing — Commercial) boot surface (#722): the m41.* outbox catalog, the three ABAC predicates, and the claim /
+// authorization routes over the SAME clinical reader seams M23 binds (ADR-0100 D2).
+import {
+  type CommercialOutboxPort,
+  M41_OUTBOX_EVENTS,
+  buildCommercialAuthorizationService,
+  buildCommercialClaimAssemblyService,
+  buildCommercialClaimLifecycleService,
+  buildCommercialClaimReadService,
+  registerCommercialBillingRoutes,
+  registerM41AbacPredicates,
+} from "./modules/41-billing-commercial/index";
+import { buildM41OverrideAuditPort } from "./m41-override-audit";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
 // (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
 // medicaid_override_role_eligible / regulatory_required_rule_protected_medicaid / rb_arrangement_visible_in_scope
@@ -2430,6 +2443,13 @@ export function wireModuleSeams(
   // owner-fact resolver binds under RLS; with no db it defaults to the deny-stub (default-deny). The M5
   // CaseloadProvider axis behind `claim_in_billing_manager_caseload` stays fail-closed until that seam binds.
   registerM23AbacPredicates({ db: deps.db });
+  // M41 - the three commercial-billing predicates (`commercial_billing_provider_scope`,
+  // `commercial_claim_in_billing_caseload`, `commercial_override_eligible`). The caseload axis resolves the live M5
+  // CaseloadProvider lazily (getSeam at call time, so registration order never matters); no db => deny-stub.
+  registerM41AbacPredicates({
+    db: deps.db,
+    isInCaseload: (input) => getSeam("CaseloadProvider").isInCaseload(input),
+  });
   // M25 — the two §4.7 ABAC resolvers (`claim_assigned_to_actor` denial worklist-ownership;
   // `appeal_within_deadline` the hard T-0 block on submit). Pass the DB handle so the Drizzle fact resolver
   // binds under RLS; with no db it defaults to the deny-stub (default-deny).
@@ -3839,6 +3859,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     // a name the dispatcher had never heard of and every `document_id` back-ref column stayed NULL.
     M22_OUTBOX_EVENTS,
     M23_OUTBOX_EVENTS,
+    // M41 (Billing - Commercial): m41.claim.draft_created / ready_for_submission / override_applied. REQUIRED for the claim
+    // lane's publisher to validate; record-only until the submission slice subscribes.
+    M41_OUTBOX_EVENTS,
     M24_OUTBOX_EVENTS,
     M25_OUTBOX_EVENTS,
     M26_OUTBOX_EVENTS,
@@ -4012,6 +4035,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const m22OutboxPublisher = bindCallerModule(txOutboxPublisher, "m22");
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
   const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
+  const m41OutboxPublisher = bindCallerModule(txOutboxPublisher, "m41");
   const m25OutboxPublisher = bindCallerModule(txOutboxPublisher, "m25");
   // #659 - the tenant's NPI an 835 payee must match (see M25IngestDrizzleDeps.payeeNpi); one lookup for both M25 ingest roots.
   const m25PayeeNpi = dbHandle
@@ -5974,6 +5998,43 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 transferInNoticeContextForOrg(dbHandle.db, organizationId, transferEventId),
             }),
           });
+          // M41 (Billing — Commercial) — claim assembly, validation, pre-authorization, coordination of benefits and
+          // audited overrides (#722). The clinical facts (admission, election, level of care, diagnoses, attending +
+          // place of service) come through the SAME bound reader seams M23's assembly uses (built here from the same
+          // ports, so one adapter serves both lanes); coverage is M5's registered `PatientCoverageReader`, resolved
+          // lazily. Each mutation opens its own withOrgContext and emits its m41.* event through the catalog-validating
+          // tx publisher (callerModule `m41`); the override's M4 audit event is written in the override's transaction.
+          {
+            const m23Seams = buildM23BootAssemblySeams(dbHandle.db, {
+              outbox: m23OutboxPublisher,
+              providerCcn: m23ProviderCcn,
+              ...m23AssemblyPorts,
+            });
+            const m41Seams = {
+              coverage: {
+                coveragesForPatient: (q: { organizationId: string; patientId: string }) =>
+                  getSeam("PatientCoverageReader").coveragesForPatient(q),
+              },
+              admission: m23Seams.admission,
+              electionPeriods: m23Seams.electionPeriods,
+              levelOfCare: m23Seams.levelOfCare,
+              diagnoses: m23Seams.diagnoses,
+              // The per-patient axis for a scoped (not organization-wide) billing actor: M5's live CaseloadProvider, resolved lazily.
+              caseload: {
+                isInCaseload: (q: { organizationId: string; userId: string; patientId: string }) =>
+                  getSeam("CaseloadProvider").isInCaseload(q),
+              },
+              clinicalParticipants: m23Seams.mdm,
+              outbox: m41OutboxPublisher as unknown as CommercialOutboxPort,
+              audit: buildM41OverrideAuditPort(),
+            };
+            registerCommercialBillingRoutes(app, {
+              assembly: buildCommercialClaimAssemblyService(dbHandle.db, m41Seams),
+              lifecycle: buildCommercialClaimLifecycleService(dbHandle.db, m41Seams),
+              authorizations: buildCommercialAuthorizationService(dbHandle.db, m41Seams),
+              reads: buildCommercialClaimReadService(dbHandle.db, m41Seams),
+            });
+          }
           // M25 (Remittance & Denials) — mount the §4.1 route plugins over the Drizzle READ + WRITE
           // services. Each mutation opens its own withOrgContext (RLS scopes every statement to app.org_id),
           // validates the §2.2 transition via the pure domain machines, and version-checks the PATCH surfaces

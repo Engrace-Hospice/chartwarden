@@ -25,7 +25,8 @@ const ROUTE = schema.commercialPayerRoute;
 const ENROLL = schema.commercialPayerEnrollment;
 const CHECK = schema.commercialEligibilityCheck;
 
-const asIso = (d: Date | string): string => (d instanceof Date ? d.toISOString() : new Date(d).toISOString());
+const asIso = (d: Date | string): string =>
+  d instanceof Date ? d.toISOString() : new Date(d).toISOString();
 
 type CheckRow = typeof CHECK.$inferSelect;
 type EnrollRow = typeof ENROLL.$inferSelect;
@@ -222,7 +223,9 @@ export function buildDrizzleEligibilityStore(db: DbClient): EligibilityStore {
           .where(
             and(
               eq(ENROLL.organizationId, scope.organizationId),
-              ...(filter.providerEntityId ? [eq(ENROLL.providerEntityId, filter.providerEntityId)] : []),
+              ...(filter.providerEntityId
+                ? [eq(ENROLL.providerEntityId, filter.providerEntityId)]
+                : []),
               ...(filter.payerId ? [eq(ENROLL.payerId, filter.payerId)] : []),
             ),
           )

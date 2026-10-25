@@ -4,8 +4,8 @@
 // payer, closed status set). This layer turns those database refusals into the standard error envelope and refuses empty or
 // backwards writes before they reach the database.
 import {
-  ConflictError,
   type CommercialEligibilityStalenessPolicy,
+  ConflictError,
   MAX_ELIGIBILITY_MAX_AGE_DAYS,
   NotFoundError,
   ValidationError,
@@ -46,11 +46,17 @@ function messageChain(error: unknown): string {
 /** Database refusals that are the caller's doing become envelope errors; anything else is rethrown untouched (a 500). */
 function translate(error: unknown): never {
   if (pgCodeOf(error) === PG_EXCLUSION_VIOLATION) {
-    throw new ConflictError("An enrollment for this provider entity, payer and clearinghouse already covers part of these dates");
+    throw new ConflictError(
+      "An enrollment for this provider entity, payer and clearinghouse already covers part of these dates",
+    );
   }
   if (pgCodeOf(error) === PG_CHECK_VIOLATION) {
     throw new ValidationError("The enrollment dates or fields are not valid", [
-      { field: "(root)", code: "INVALID", message: "check constraint failed (for example effectiveTo before effectiveFrom)" },
+      {
+        field: "(root)",
+        code: "INVALID",
+        message: "check constraint failed (for example effectiveTo before effectiveFrom)",
+      },
     ]);
   }
   if (messageChain(error).includes(NOT_COMMERCIAL_MARKER)) {
@@ -88,7 +94,11 @@ export function createCommercialAdminService(store: EligibilityStore) {
       id: string,
       patch: EnrollmentPatch,
     ): Promise<StoredEnrollment> {
-      if (patch.status === undefined && patch.effectiveTo === undefined && patch.evidenceRef === undefined) {
+      if (
+        patch.status === undefined &&
+        patch.effectiveTo === undefined &&
+        patch.evidenceRef === undefined
+      ) {
         throw invalid("(root)", "nothing to change");
       }
       let updated: StoredEnrollment | null;
@@ -107,8 +117,15 @@ export function createCommercialAdminService(store: EligibilityStore) {
       policy: CommercialEligibilityStalenessPolicy,
       maxAgeDays: number,
     ): Promise<PlanRef> {
-      if (!Number.isInteger(maxAgeDays) || maxAgeDays < 1 || maxAgeDays > MAX_ELIGIBILITY_MAX_AGE_DAYS) {
-        throw invalid("maxAgeDays", `maxAgeDays must be a whole number from 1 to ${MAX_ELIGIBILITY_MAX_AGE_DAYS}`);
+      if (
+        !Number.isInteger(maxAgeDays) ||
+        maxAgeDays < 1 ||
+        maxAgeDays > MAX_ELIGIBILITY_MAX_AGE_DAYS
+      ) {
+        throw invalid(
+          "maxAgeDays",
+          `maxAgeDays must be a whole number from 1 to ${MAX_ELIGIBILITY_MAX_AGE_DAYS}`,
+        );
       }
       const plan = await store.setPlanEligibilityPolicy(scope, planId, policy, maxAgeDays);
       if (!plan) throw new NotFoundError("payer plan", planId);

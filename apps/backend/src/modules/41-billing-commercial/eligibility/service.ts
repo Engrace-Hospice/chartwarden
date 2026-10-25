@@ -13,10 +13,10 @@ import {
   COMMERCIAL_ELIGIBILITY_OUTCOME_VALUES,
   COMMERCIAL_SEND_REFUSAL,
   type CommercialEligibilityOutcome,
-  type PatientCoverage,
-  type PatientCoverageReader,
   IdempotencyConflictError,
   NotFoundError,
+  type PatientCoverage,
+  type PatientCoverageReader,
   ValidationError,
 } from "@chartwarden/types";
 import {
@@ -228,7 +228,9 @@ export function createEligibilityService(deps: EligibilityServiceDeps) {
         serviceDate: args.serviceDate,
       });
       if (!gate.ok) {
-        return refuse(new CommercialRefusalError(gate.code, gate.message, statusForRefusal(gate.code)));
+        return refuse(
+          new CommercialRefusalError(gate.code, gate.message, statusForRefusal(gate.code)),
+        );
       }
       // The gate proved the binding is non-null; narrow for the rest of the function.
       const boundKey = clearinghouseKey as string;

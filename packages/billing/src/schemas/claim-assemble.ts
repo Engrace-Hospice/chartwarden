@@ -42,7 +42,8 @@ export type ClaimAssembleResponse = Static<typeof ClaimAssembleResponse>;
 
 // Errors (per §4.2):
 //   409 PATIENT_NOT_ELECTED          — no active election covering serviceFrom..serviceTo (M6)
-//   409 NON_MEDICARE_PRIMARY_PAYER   — D15
+//   409 NON_MEDICARE_PRIMARY_PAYER   — D15 (a commercial primary payer is Module 41's claim; Medicaid is Module 24's)
+//   409 MEDICARE_ADVANTAGE_NEEDS_ORIGINAL_MEDICARE_COVERAGE — a Medicare Advantage enrollee with no Original Medicare coverage ranked 1 (#772)
 //   409 PATIENT_DECEASED_BEFORE_FROM — patient died before the claim's service_from
 //   409 OVERLAPPING_ACTIVE_CLAIM     — a non-superseded claim already covers this range
 //   422 ASSEMBLY_VALIDATION_FAILED   — the rule registry found failures even before SUBMIT

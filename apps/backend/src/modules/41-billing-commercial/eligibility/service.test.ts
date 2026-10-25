@@ -69,8 +69,15 @@ class FakeStore implements EligibilityStore {
   async listChecks() {
     return [...this.checks].reverse();
   }
-  async setPlanEligibilityPolicy(_s: unknown, _id: string, policy: "warn" | "block", maxAge: number) {
-    this.plan = this.plan ? { ...this.plan, eligibilityStalenessPolicy: policy, eligibilityMaxAgeDays: maxAge } : null;
+  async setPlanEligibilityPolicy(
+    _s: unknown,
+    _id: string,
+    policy: "warn" | "block",
+    maxAge: number,
+  ) {
+    this.plan = this.plan
+      ? { ...this.plan, eligibilityStalenessPolicy: policy, eligibilityMaxAgeDays: maxAge }
+      : null;
     return this.plan;
   }
   async listEnrollments() {
@@ -124,7 +131,12 @@ function harness(
     async checkEligibility(ctx: ClearinghouseContext, req: ClearinghouseEligibilityRequest) {
       calls.push({ ctx, req });
       if (opts.transportThrows) throw opts.transportThrows;
-      return opts.transportResult ?? { ok: true as const, data: { outcome: "active" as const, asOfDate: "2026-10-25" } };
+      return (
+        opts.transportResult ?? {
+          ok: true as const,
+          data: { outcome: "active" as const, asOfDate: "2026-10-25" },
+        }
+      );
     },
   } as unknown as ClearinghouseTransport;
   const service = createEligibilityService({
@@ -177,10 +189,19 @@ describe("EligibilityService.check", () => {
     expect(h.calls).toHaveLength(1);
     expect(h.calls[0]?.ctx.payerId).toBe("CH-PAYER-9");
     expect(h.calls[0]?.req).toEqual({ memberId: MEMBER_ID, serviceDate: "2026-10-25" });
-    expect(view).toMatchObject({ outcome: "active", asOfDate: "2026-10-25", replayed: false, clearinghouseKey: "in_memory" });
+    expect(view).toMatchObject({
+      outcome: "active",
+      asOfDate: "2026-10-25",
+      replayed: false,
+      clearinghouseKey: "in_memory",
+    });
     expect(view.freshness.severity).toBe("pass");
     expect(h.store.checks).toHaveLength(1);
-    expect(h.store.checks[0]).toMatchObject({ patientPayerId: COVERAGE, clearinghousePayerId: "CH-PAYER-9", checkedByUserId: USER });
+    expect(h.store.checks[0]).toMatchObject({
+      patientPayerId: COVERAGE,
+      clearinghousePayerId: "CH-PAYER-9",
+      checkedByUserId: USER,
+    });
     expect(JSON.stringify([view, h.store.checks, h.logs])).not.toContain(MEMBER_ID);
   });
 
@@ -205,7 +226,9 @@ describe("EligibilityService.check", () => {
 
   it("refuses an unenrolled provider entity, and sends nothing", async () => {
     const h = harness();
-    h.store.enrollments = [{ status: "pending" as never, effectiveFrom: "2026-01-01", effectiveTo: null }];
+    h.store.enrollments = [
+      { status: "pending" as never, effectiveFrom: "2026-01-01", effectiveTo: null },
+    ];
     const e = await refusal(h.service.check(ACTOR, ARGS));
     expect(e.code).toBe(COMMERCIAL_SEND_REFUSAL.PROVIDER_NOT_ENROLLED);
     expect(h.calls).toHaveLength(0);
@@ -229,7 +252,11 @@ describe("EligibilityService.check", () => {
   it("picks the highest-ranked matching coverage", async () => {
     const h = harness({
       coverages: [
-        coverage({ id: "00000000-0000-4000-8000-0000000000d2", rank: 2, subscriberId: "SECOND-MEMBER" }),
+        coverage({
+          id: "00000000-0000-4000-8000-0000000000d2",
+          rank: 2,
+          subscriberId: "SECOND-MEMBER",
+        }),
         coverage({ rank: 1 }),
       ],
     });
@@ -261,9 +288,19 @@ describe("EligibilityService.check", () => {
   it("latest with a service date ignores checks made for another date of service", async () => {
     const h = harness();
     await h.service.check(ACTOR, ARGS);
-    const same = await h.service.latest(ACTOR, { providerEntityId: PE, patientId: PATIENT, planId: PLAN, serviceDate: "2026-10-25" });
+    const same = await h.service.latest(ACTOR, {
+      providerEntityId: PE,
+      patientId: PATIENT,
+      planId: PLAN,
+      serviceDate: "2026-10-25",
+    });
     expect(same.freshness.severity).toBe("pass");
-    const other = await h.service.latest(ACTOR, { providerEntityId: PE, patientId: PATIENT, planId: PLAN, serviceDate: "2026-11-30" });
+    const other = await h.service.latest(ACTOR, {
+      providerEntityId: PE,
+      patientId: PATIENT,
+      planId: PLAN,
+      serviceDate: "2026-11-30",
+    });
     expect(other.latest).toBeNull();
     expect(other.freshness.status).toBe("missing");
   });
@@ -272,7 +309,13 @@ describe("EligibilityService.check", () => {
     const h = harness();
     const winner = { patientId: "00000000-0000-4000-8000-0000000000a2" };
     h.store.insertCheck = async (scope, row) => ({
-      row: { ...row, ...winner, organizationId: scope.organizationId, id: "chk-x", checkedAt: NOW.toISOString() },
+      row: {
+        ...row,
+        ...winner,
+        organizationId: scope.organizationId,
+        id: "chk-x",
+        checkedAt: NOW.toISOString(),
+      },
       replayed: true,
     });
     await expect(h.service.check(ACTOR, ARGS)).rejects.toBeInstanceOf(IdempotencyConflictError);
@@ -301,15 +344,18 @@ describe("EligibilityService.check", () => {
     [CH.NOT_PROVISIONED, 503, COMMERCIAL_ELIGIBILITY_ERROR.CLEARINGHOUSE_UNAVAILABLE],
     [CH.NOT_ENROLLED, 409, COMMERCIAL_SEND_REFUSAL.PROVIDER_NOT_ENROLLED],
     [CH.INVALID_REQUEST, 422, COMMERCIAL_ELIGIBILITY_ERROR.CLEARINGHOUSE_REJECTED],
-  ])("maps the transport code %s to %i %s, stores nothing, and never echoes the member id", async (code, status, mapped) => {
-    const h = harness({ transportResult: degraded(code, `vendor said no about ${MEMBER_ID}`) });
-    const e = await refusal(h.service.check(ACTOR, ARGS));
-    expect(e.code).toBe(mapped);
-    expect(e.statusCode).toBe(status);
-    expect(e.message).not.toContain(MEMBER_ID);
-    expect(JSON.stringify(h.logs)).not.toContain(MEMBER_ID);
-    expect(h.store.checks).toHaveLength(0);
-  });
+  ])(
+    "maps the transport code %s to %i %s, stores nothing, and never echoes the member id",
+    async (code, status, mapped) => {
+      const h = harness({ transportResult: degraded(code, `vendor said no about ${MEMBER_ID}`) });
+      const e = await refusal(h.service.check(ACTOR, ARGS));
+      expect(e.code).toBe(mapped);
+      expect(e.statusCode).toBe(status);
+      expect(e.message).not.toContain(MEMBER_ID);
+      expect(JSON.stringify(h.logs)).not.toContain(MEMBER_ID);
+      expect(h.store.checks).toHaveLength(0);
+    },
+  );
 
   it("a transport that throws becomes a 503 whose message and logs never contain the member id", async () => {
     const h = harness({ transportThrows: new Error(`socket reset while sending ${MEMBER_ID}`) });
@@ -344,7 +390,11 @@ describe("EligibilityService.check", () => {
 describe("EligibilityService.latest", () => {
   it("reports missing under the plan policy when the patient was never checked", async () => {
     const h = harness();
-    const r = await h.service.latest(ACTOR, { providerEntityId: PE, patientId: PATIENT, planId: PLAN });
+    const r = await h.service.latest(ACTOR, {
+      providerEntityId: PE,
+      patientId: PATIENT,
+      planId: PLAN,
+    });
     expect(r.latest).toBeNull();
     expect(r.freshness).toMatchObject({ status: "missing", severity: "warning" });
   });
@@ -352,14 +402,22 @@ describe("EligibilityService.latest", () => {
   it("reports the policy 'block' for a plan that opted in", async () => {
     const h = harness();
     h.store.plan = { ...PLAN_REF, eligibilityStalenessPolicy: "block" };
-    const r = await h.service.latest(ACTOR, { providerEntityId: PE, patientId: PATIENT, planId: PLAN });
+    const r = await h.service.latest(ACTOR, {
+      providerEntityId: PE,
+      patientId: PATIENT,
+      planId: PLAN,
+    });
     expect(r.freshness.severity).toBe("block");
   });
 
   it("reports fresh after a check", async () => {
     const h = harness();
     await h.service.check(ACTOR, ARGS);
-    const r = await h.service.latest(ACTOR, { providerEntityId: PE, patientId: PATIENT, planId: PLAN });
+    const r = await h.service.latest(ACTOR, {
+      providerEntityId: PE,
+      patientId: PATIENT,
+      planId: PLAN,
+    });
     expect(r.latest?.outcome).toBe("active");
     expect(r.freshness.severity).toBe("pass");
   });

@@ -6,6 +6,7 @@
 // sets are text + CHECK mirrored in @chartwarden/types (commercial-billing.ts), so there is no pgEnum. The no-overlap
 // EXCLUDE constraints (effective dating) live in the migration; Drizzle carries the logical shape only.
 import {
+  boolean,
   date,
   index,
   integer,
@@ -28,8 +29,11 @@ export const commercialPayerPlan = pgTable(
     payerId: uuid("payer_id").notNull(), // M40 payer (logical FK)
     planName: text("plan_name").notNull(),
     claimFilingIndicator: text("claim_filing_indicator").notNull(), // CommercialClaimFilingIndicator
-    authorizationRequirement: text("authorization_requirement").notNull().default("confirm_with_payer"),
+    authorizationRequirement: text("authorization_requirement")
+      .notNull()
+      .default("confirm_with_payer"),
     authorizationLeadDays: smallint("authorization_lead_days"),
+    siteOfServiceHcpcsRequired: boolean("site_of_service_hcpcs_required").notNull().default(false), // migration 1261
     // #724 (migration 1265): what stale or missing eligibility does to claim validation, and how old makes a check stale.
     eligibilityStalenessPolicy: text("eligibility_staleness_policy").notNull().default("warn"), // CommercialEligibilityStalenessPolicy
     eligibilityMaxAgeDays: smallint("eligibility_max_age_days").notNull().default(30),
@@ -158,3 +162,5 @@ export type CommercialPayerPlan = typeof commercialPayerPlan.$inferSelect;
 export type NewCommercialPayerPlan = typeof commercialPayerPlan.$inferInsert;
 export type CommercialPayerRoute = typeof commercialPayerRoute.$inferSelect;
 export type CommercialContractRate = typeof commercialContractRate.$inferSelect;
+
+export * from "./claims";

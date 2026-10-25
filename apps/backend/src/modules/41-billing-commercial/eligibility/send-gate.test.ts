@@ -4,7 +4,12 @@ import { type GateEnrollment, evaluateSendGate } from "./send-gate";
 
 const ROUTE = { clearinghousePayerId: "PAYER-77", effectiveFrom: "2026-01-01", effectiveTo: null };
 const ENROLLED = { status: "enrolled", effectiveFrom: "2026-01-01", effectiveTo: null } as const;
-const ok = { clearinghouseKey: "stedi", routes: [ROUTE], enrollments: [ENROLLED], serviceDate: "2026-10-01" } as const;
+const ok = {
+  clearinghouseKey: "stedi",
+  routes: [ROUTE],
+  enrollments: [ENROLLED],
+  serviceDate: "2026-10-01",
+} as const;
 
 describe("evaluateSendGate (ADR-0100 D4, D5; fails closed)", () => {
   it("passes with the routed payer id when bound, routed and enrolled", () => {

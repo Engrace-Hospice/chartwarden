@@ -46,7 +46,9 @@ describe("commercial admin service", () => {
     const svc = createCommercialAdminService(
       storeWith({
         createEnrollment: async () => {
-          throw Object.assign(new Error("conflicting key value violates exclusion constraint"), { code: "23P01" });
+          throw Object.assign(new Error("conflicting key value violates exclusion constraint"), {
+            code: "23P01",
+          });
         },
       }),
     );
@@ -57,7 +59,9 @@ describe("commercial admin service", () => {
     const svc = createCommercialAdminService(
       storeWith({
         createEnrollment: async () => {
-          throw new Error("query failed", { cause: Object.assign(new Error("x"), { code: "23P01" }) });
+          throw new Error("query failed", {
+            cause: Object.assign(new Error("x"), { code: "23P01" }),
+          });
         },
       }),
     );
@@ -68,7 +72,9 @@ describe("commercial admin service", () => {
     const svc = createCommercialAdminService(
       storeWith({
         createEnrollment: async () => {
-          throw new Error("M41_PLAN_PAYER_NOT_COMMERCIAL: payer x is not an active commercial or other-program payer");
+          throw new Error(
+            "M41_PLAN_PAYER_NOT_COMMERCIAL: payer x is not an active commercial or other-program payer",
+          );
         },
       }),
     );
@@ -83,7 +89,9 @@ describe("commercial admin service", () => {
         },
       }),
     );
-    await expect(svc.patchEnrollment(SCOPE, PE, "enr-1", { effectiveTo: "2020-01-01" })).rejects.toBeInstanceOf(ValidationError);
+    await expect(
+      svc.patchEnrollment(SCOPE, PE, "enr-1", { effectiveTo: "2020-01-01" }),
+    ).rejects.toBeInstanceOf(ValidationError);
   });
 
   it("rethrows an error it does not recognise", async () => {
@@ -107,26 +115,43 @@ describe("commercial admin service", () => {
 
   it("patching an enrollment of another provider entity (or tenant) is a 404", async () => {
     const svc = createCommercialAdminService(storeWith({ patchEnrollment: async () => null }));
-    await expect(svc.patchEnrollment(SCOPE, PE, "enr-1", { status: "suspended" })).rejects.toBeInstanceOf(NotFoundError);
+    await expect(
+      svc.patchEnrollment(SCOPE, PE, "enr-1", { status: "suspended" }),
+    ).rejects.toBeInstanceOf(NotFoundError);
   });
 
   it("an empty patch is a 422, not a no-op write", async () => {
     const svc = createCommercialAdminService(storeWith({}));
-    await expect(svc.patchEnrollment(SCOPE, PE, "enr-1", {})).rejects.toBeInstanceOf(ValidationError);
+    await expect(svc.patchEnrollment(SCOPE, PE, "enr-1", {})).rejects.toBeInstanceOf(
+      ValidationError,
+    );
   });
 
   it("sets a plan's eligibility policy, 404 for an unknown plan", async () => {
-    const plan = { id: "p", payerId: PAYER, eligibilityStalenessPolicy: "block" as const, eligibilityMaxAgeDays: 14 };
-    const ok = createCommercialAdminService(storeWith({ setPlanEligibilityPolicy: async () => plan }));
+    const plan = {
+      id: "p",
+      payerId: PAYER,
+      eligibilityStalenessPolicy: "block" as const,
+      eligibilityMaxAgeDays: 14,
+    };
+    const ok = createCommercialAdminService(
+      storeWith({ setPlanEligibilityPolicy: async () => plan }),
+    );
     await expect(ok.setEligibilityPolicy(SCOPE, "p", "block", 14)).resolves.toEqual(plan);
-    const missing = createCommercialAdminService(storeWith({ setPlanEligibilityPolicy: async () => null }));
-    await expect(missing.setEligibilityPolicy(SCOPE, "p", "warn", 30)).rejects.toBeInstanceOf(NotFoundError);
+    const missing = createCommercialAdminService(
+      storeWith({ setPlanEligibilityPolicy: async () => null }),
+    );
+    await expect(missing.setEligibilityPolicy(SCOPE, "p", "warn", 30)).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
   });
 
   it("rejects a max age outside 1..365", async () => {
     const svc = createCommercialAdminService(storeWith({}));
     for (const days of [0, 366, 1.5]) {
-      await expect(svc.setEligibilityPolicy(SCOPE, "p", "warn", days)).rejects.toBeInstanceOf(ValidationError);
+      await expect(svc.setEligibilityPolicy(SCOPE, "p", "warn", days)).rejects.toBeInstanceOf(
+        ValidationError,
+      );
     }
   });
 });

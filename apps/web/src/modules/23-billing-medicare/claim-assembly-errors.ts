@@ -4,7 +4,9 @@
 
 const ASSEMBLE_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   NON_MEDICARE_PRIMARY_PAYER:
-    "This patient's primary payer is not Medicare (D15) — a Medicare claim cannot be assembled.",
+    "This patient's primary payer is not Medicare (D15) — a Medicare claim cannot be assembled. A commercial primary payer is billed under Billing - Commercial.",
+  MEDICARE_ADVANTAGE_NEEDS_ORIGINAL_MEDICARE_COVERAGE:
+    "This patient is a Medicare Advantage enrollee. Hospice is billed to the Medicare contractor as an Original Medicare claim: record the patient's Original Medicare (medicare_ffs) coverage with the MBI as the primary coverage, alongside the Medicare Advantage row, then retry.",
   PATIENT_NOT_ELECTED: "No active Medicare hospice election covers this service-date range.",
   PATIENT_DECEASED_BEFORE_FROM:
     "The patient's date of death precedes the claim's service-from date.",

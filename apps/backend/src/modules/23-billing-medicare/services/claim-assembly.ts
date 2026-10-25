@@ -219,10 +219,18 @@ export function buildClaimAssemblyService(
       // ── 1. Walk the consumed reader seams ONCE (no client data trusted) ────────────────────────────
       // D15 Medicare-primary gate.
       const payer = await seams.patientPayer.medicarePrimaryForRange(orgId, patientId, range);
+      if (payer?.medicareAdvantageEnrollee && !payer.medicarePrimary) {
+        // #772 - hospice for a Medicare Advantage enrollee is an Original Medicare claim to the MAC, not a claim to the plan.
+        throw new ChartWardenError(
+          "MEDICARE_ADVANTAGE_NEEDS_ORIGINAL_MEDICARE_COVERAGE",
+          "This patient is a Medicare Advantage enrollee. Hospice care is billed to the Medicare contractor as an Original Medicare claim: record the patient's Original Medicare (medicare_ffs) coverage with the MBI as the primary coverage for the hospice benefit, alongside the Medicare Advantage row, then assemble again.",
+          409,
+        );
+      }
       if (!payer || !payer.medicarePrimary) {
         throw new ChartWardenError(
           "NON_MEDICARE_PRIMARY_PAYER",
-          "Medicare FFS Part A is not the primary payer for this service window (D15)",
+          "Medicare FFS Part A is not the primary payer for this service window (D15). A claim whose primary payer is a commercial plan is assembled by Module 41 (Billing - Commercial); Medicaid is Module 24",
           409,
         );
       }

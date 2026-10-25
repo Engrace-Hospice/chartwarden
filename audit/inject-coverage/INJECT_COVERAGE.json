@@ -2,8 +2,8 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1846,
-    "coveredRoutes": 1846,
+    "routes": 1855,
+    "coveredRoutes": 1855,
     "directRoutesReferenced": 1695
   },
   "modules": [
@@ -96,6 +96,7 @@
         "apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
         "apps/backend/__tests__/m36-phase3-gate.live.test.ts",
         "apps/backend/__tests__/m36-tenant-idor.live.test.ts",
+        "apps/backend/__tests__/m41-commercial-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
         "apps/backend/__tests__/m5-care-team-staff-routes.test.ts",
@@ -683,10 +684,11 @@
     },
     {
       "module": "41-billing-commercial",
-      "routes": 7,
+      "routes": 16,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/m41-commercial-eligibility-routes.test.ts"
+        "apps/backend/__tests__/m41-commercial-eligibility-routes.test.ts",
+        "apps/backend/__tests__/m41-commercial-routes.live.test.ts"
       ],
       "directRoutesReferenced": 6
     }

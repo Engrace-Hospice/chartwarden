@@ -250,6 +250,9 @@ export interface ClaimRangeAdmission {
   readonly admissionTypeCode: string | null;
   /** UB-04 FL 15 Point of Origin (837I CL102) recorded on the admission (migration 1057); `null` = not recorded. */
   readonly admissionSourceCode: string | null;
+  /** The provider entity the stay belongs to (`admission.provider_entity_id`); `null` = not recorded. Lets a billing lane bind the
+   *  patient to the entity it bills for (M41). */
+  readonly providerEntityId: string | null;
   /** `admission_at` coalesced to `activated_at` — day 1 of THIS stay in the HIPPS day counter; earlier stays a
    *  readmission continues are carried separately in `rhcPriorHospiceDays` (this date also anchors the NOE
    *  admission day, so it is never shifted). */
@@ -383,6 +386,7 @@ export async function claimAssemblyRangeContextForOrg(
         hospicePhysicianId: ADM.hospicePhysicianId,
         admissionTypeCode: ADM.admissionTypeCode,
         admissionSourceCode: ADM.admissionSourceCode,
+        providerEntityId: ADM.providerEntityId,
       })
       .from(ADM)
       .where(and(eq(ADM.organizationId, organizationId), eq(ADM.patientId, patientId)))
@@ -396,6 +400,7 @@ export async function claimAssemblyRangeContextForOrg(
         hospicePhysicianId: r.hospicePhysicianId,
         admissionTypeCode: r.admissionTypeCode,
         admissionSourceCode: r.admissionSourceCode,
+        providerEntityId: r.providerEntityId,
       }))
       .filter(
         (
@@ -407,6 +412,7 @@ export async function claimAssemblyRangeContextForOrg(
           hospicePhysicianId: string | null;
           admissionTypeCode: string | null;
           admissionSourceCode: string | null;
+          providerEntityId: string | null;
         } => r.start !== null,
       )
       .find((r) => {
@@ -464,6 +470,7 @@ export async function claimAssemblyRangeContextForOrg(
       admissionId,
       admissionTypeCode: candidate.admissionTypeCode,
       admissionSourceCode: candidate.admissionSourceCode,
+      providerEntityId: candidate.providerEntityId,
       hospiceAdmissionDate: localDate(candidate.start),
       rhcPriorHospiceDays: rhc.priorHospiceDays,
       rhcPriorStays,

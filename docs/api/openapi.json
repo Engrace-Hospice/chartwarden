@@ -68568,6 +68568,1209 @@
         }
       }
     },
+    "/api/v1/billing/commercial/authorizations": {
+      "get": {
+        "operationId": "getApiV1BillingCommercialAuthorizations",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "A patient's pre-authorizations, newest first. Read-audited (list)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "planId",
+                          "levelOfCare",
+                          "status",
+                          "obtainedOn",
+                          "effectiveFrom",
+                          "effectiveTo"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "levelOfCare": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "obtainedOn": {
+                            "type": "string"
+                          },
+                          "effectiveFrom": {
+                            "type": "string"
+                          },
+                          "effectiveTo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1BillingCommercialAuthorizations",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Record a pre-authorization for a patient and plan (optionally for one level of care). The authorization number is stored but never shown in a rule message or audit event",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "planId",
+                    "levelOfCare",
+                    "status",
+                    "obtainedOn",
+                    "effectiveFrom",
+                    "effectiveTo"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "planId": {
+                      "type": "string"
+                    },
+                    "levelOfCare": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "obtainedOn": {
+                      "type": "string"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "patientId",
+                  "planId",
+                  "authorizationNumber",
+                  "obtainedOn",
+                  "effectiveFrom"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "planId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "authorizationNumber": {
+                    "pattern": "^[A-Za-z0-9._-]{1,50}$",
+                    "type": "string"
+                  },
+                  "levelOfCare": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "const": "routine_home_care",
+                            "type": "string"
+                          },
+                          {
+                            "const": "continuous_home_care",
+                            "type": "string"
+                          },
+                          {
+                            "const": "inpatient_respite",
+                            "type": "string"
+                          },
+                          {
+                            "const": "general_inpatient",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "obtainedOn": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "anyOf": [
+                      {
+                        "format": "date",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/authorizations/{id}/status": {
+      "post": {
+        "operationId": "postApiV1BillingCommercialAuthorizationsByIdStatus",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Mark a pre-authorization denied or voided; the next validation sees the change",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "planId",
+                    "levelOfCare",
+                    "status",
+                    "obtainedOn",
+                    "effectiveFrom",
+                    "effectiveTo"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "planId": {
+                      "type": "string"
+                    },
+                    "levelOfCare": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "obtainedOn": {
+                      "type": "string"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "denied",
+                        "type": "string"
+                      },
+                      {
+                        "const": "voided",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/claims/{id}": {
+      "get": {
+        "operationId": "getApiV1BillingCommercialClaimsById",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "A commercial claim with its lines and the latest validation run (rule, severity, overridable, overridden, blocking, actionable message). Read-audited",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "claim",
+                    "lines",
+                    "validation"
+                  ],
+                  "properties": {
+                    "claim": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "state",
+                        "patientId",
+                        "providerEntityId",
+                        "planId",
+                        "tob",
+                        "serviceFrom",
+                        "serviceTo",
+                        "claimFilingIndicator",
+                        "secondaryPayerKind",
+                        "totalChargeCents",
+                        "expectedPaymentCents",
+                        "readyAt"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "state": {
+                          "type": "string"
+                        },
+                        "patientId": {
+                          "type": "string"
+                        },
+                        "providerEntityId": {
+                          "type": "string"
+                        },
+                        "planId": {
+                          "type": "string"
+                        },
+                        "tob": {
+                          "type": "string"
+                        },
+                        "serviceFrom": {
+                          "type": "string"
+                        },
+                        "serviceTo": {
+                          "type": "string"
+                        },
+                        "claimFilingIndicator": {
+                          "type": "string"
+                        },
+                        "secondaryPayerKind": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "totalChargeCents": {
+                          "type": "integer"
+                        },
+                        "expectedPaymentCents": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "readyAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "lines": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "lineNumber",
+                          "levelOfCare",
+                          "revenueCode",
+                          "hcpcsCode",
+                          "serviceFrom",
+                          "serviceTo",
+                          "units",
+                          "unitRateCents",
+                          "lineChargeCents"
+                        ],
+                        "properties": {
+                          "lineNumber": {
+                            "type": "integer"
+                          },
+                          "levelOfCare": {
+                            "type": "string"
+                          },
+                          "revenueCode": {
+                            "type": "string"
+                          },
+                          "hcpcsCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "serviceFrom": {
+                            "type": "string"
+                          },
+                          "serviceTo": {
+                            "type": "string"
+                          },
+                          "units": {
+                            "type": "integer"
+                          },
+                          "unitRateCents": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lineChargeCents": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    },
+                    "validation": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "runId",
+                            "outcome",
+                            "results"
+                          ],
+                          "properties": {
+                            "runId": {
+                              "type": "string"
+                            },
+                            "outcome": {
+                              "type": "string"
+                            },
+                            "results": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "ruleKey",
+                                  "severity",
+                                  "outcome",
+                                  "overridable",
+                                  "overridden",
+                                  "blocking",
+                                  "message"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "ruleKey": {
+                                    "type": "string"
+                                  },
+                                  "severity": {
+                                    "type": "string"
+                                  },
+                                  "outcome": {
+                                    "type": "string"
+                                  },
+                                  "overridable": {
+                                    "type": "boolean"
+                                  },
+                                  "overridden": {
+                                    "type": "boolean"
+                                  },
+                                  "blocking": {
+                                    "type": "boolean"
+                                  },
+                                  "message": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/claims/{id}/ready": {
+      "post": {
+        "operationId": "postApiV1BillingCommercialClaimsByIdReady",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Move a draft claim to ready after a fresh validation. 409 COMMERCIAL_CLAIM_BLOCKED (with the blocking rules and what to do) while a hard block fails or a soft block lacks an audited override",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "claimId",
+                    "state",
+                    "validation"
+                  ],
+                  "properties": {
+                    "claimId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "validation": {
+                      "type": "object",
+                      "required": [
+                        "runId",
+                        "outcome",
+                        "results"
+                      ],
+                      "properties": {
+                        "runId": {
+                          "type": "string"
+                        },
+                        "outcome": {
+                          "type": "string"
+                        },
+                        "results": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "ruleKey",
+                              "severity",
+                              "outcome",
+                              "overridable",
+                              "overridden",
+                              "blocking",
+                              "message"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "ruleKey": {
+                                "type": "string"
+                              },
+                              "severity": {
+                                "type": "string"
+                              },
+                              "outcome": {
+                                "type": "string"
+                              },
+                              "overridable": {
+                                "type": "boolean"
+                              },
+                              "overridden": {
+                                "type": "boolean"
+                              },
+                              "blocking": {
+                                "type": "boolean"
+                              },
+                              "message": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/claims/{id}/validate": {
+      "post": {
+        "operationId": "postApiV1BillingCommercialClaimsByIdValidate",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Re-run the payer-specific rules (plan, payer state, route, contract rate, authorization, diagnosis, attending). A ready claim that now has a block drops back to draft",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "runId",
+                    "outcome",
+                    "results"
+                  ],
+                  "properties": {
+                    "runId": {
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "type": "string"
+                    },
+                    "results": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "ruleKey",
+                          "severity",
+                          "outcome",
+                          "overridable",
+                          "overridden",
+                          "blocking",
+                          "message"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "ruleKey": {
+                            "type": "string"
+                          },
+                          "severity": {
+                            "type": "string"
+                          },
+                          "outcome": {
+                            "type": "string"
+                          },
+                          "overridable": {
+                            "type": "boolean"
+                          },
+                          "overridden": {
+                            "type": "boolean"
+                          },
+                          "blocking": {
+                            "type": "boolean"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/claims/{id}/validation-results/{resultId}/override": {
+      "post": {
+        "operationId": "postApiV1BillingCommercialClaimsByIdValidationresultsByResultIdOverride",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Override ONE failing soft-block (warn) validation result with a reason of at least 40 characters; step-up, never an AI actor, one override per result, bound to the exact facts. A hard block is refused (403). Writes a prominent M4 audit event and an m41.claim.override_applied outbox event in the same transaction",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "resultId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "overrideId",
+                    "auditEventId",
+                    "ruleKey"
+                  ],
+                  "properties": {
+                    "overrideId": {
+                      "type": "string"
+                    },
+                    "auditEventId": {
+                      "type": "string"
+                    },
+                    "ruleKey": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 40,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/claims/{id}/void": {
+      "post": {
+        "operationId": "postApiV1BillingCommercialClaimsByIdVoid",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Void a commercial claim (frees its service window for a corrected re-assembly)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "claimId",
+                    "state"
+                  ],
+                  "properties": {
+                    "claimId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/claims/assemble": {
+      "post": {
+        "operationId": "postApiV1BillingCommercialClaimsAssemble",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Assemble a hospice 837I claim for a COMMERCIAL primary payer from the shared claim facts, priced from the plan's contract rates (plan, route and rate periods intersected with the window); records COB when Medicare or Medicaid is secondary. 409 NON_COMMERCIAL_PRIMARY_PAYER when the primary payer is not a commercial plan (Medicare is Module 23, Medicaid Module 24); 422 COMMERCIAL_PLAN_NOT_FOUND",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "claimId",
+                    "state",
+                    "tob",
+                    "totalChargeCents",
+                    "expectedPaymentCents",
+                    "lineCount",
+                    "secondaryPayerKind",
+                    "validation"
+                  ],
+                  "properties": {
+                    "claimId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "tob": {
+                      "type": "string"
+                    },
+                    "totalChargeCents": {
+                      "type": "integer"
+                    },
+                    "expectedPaymentCents": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lineCount": {
+                      "type": "integer"
+                    },
+                    "secondaryPayerKind": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "validation": {
+                      "type": "object",
+                      "required": [
+                        "runId",
+                        "outcome",
+                        "results"
+                      ],
+                      "properties": {
+                        "runId": {
+                          "type": "string"
+                        },
+                        "outcome": {
+                          "type": "string"
+                        },
+                        "results": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "ruleKey",
+                              "severity",
+                              "outcome",
+                              "overridable",
+                              "overridden",
+                              "blocking",
+                              "message"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "ruleKey": {
+                                "type": "string"
+                              },
+                              "severity": {
+                                "type": "string"
+                              },
+                              "outcome": {
+                                "type": "string"
+                              },
+                              "overridable": {
+                                "type": "boolean"
+                              },
+                              "overridden": {
+                                "type": "boolean"
+                              },
+                              "blocking": {
+                                "type": "boolean"
+                              },
+                              "message": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "patientId",
+                  "serviceFrom",
+                  "serviceTo"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "patientId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "serviceFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "serviceTo": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "planId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "clearinghouseKey": {
+                    "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/commercial/eligibility": {
       "get": {
         "operationId": "getApiV1BillingCommercialEligibility",

@@ -13,26 +13,55 @@ describe("evaluateEligibilityFreshness", () => {
       maxAgeDays: 30,
       now: NOW,
     });
-    expect(f).toMatchObject({ status: "fresh", severity: "pass", ruleId: COMMERCIAL_ELIGIBILITY_FRESHNESS_RULE_ID });
-    expect(f.evidence).toMatchObject({ ageDays: 3, maxAgeDays: 30, policy: "warn", outcome: "active" });
+    expect(f).toMatchObject({
+      status: "fresh",
+      severity: "pass",
+      ruleId: COMMERCIAL_ELIGIBILITY_FRESHNESS_RULE_ID,
+    });
+    expect(f.evidence).toMatchObject({
+      ageDays: 3,
+      maxAgeDays: 30,
+      policy: "warn",
+      outcome: "active",
+    });
   });
 
   it("treats the last day of the window as fresh and the next day as stale", () => {
     const base = { policy: "warn", maxAgeDays: 30, now: NOW } as const;
-    expect(evaluateEligibilityFreshness({ ...base, latest: { outcome: "active", checkedAt: daysAgo(30) } }).status).toBe("fresh");
-    expect(evaluateEligibilityFreshness({ ...base, latest: { outcome: "active", checkedAt: daysAgo(31) } }).status).toBe("stale");
+    expect(
+      evaluateEligibilityFreshness({
+        ...base,
+        latest: { outcome: "active", checkedAt: daysAgo(30) },
+      }).status,
+    ).toBe("fresh");
+    expect(
+      evaluateEligibilityFreshness({
+        ...base,
+        latest: { outcome: "active", checkedAt: daysAgo(31) },
+      }).status,
+    ).toBe("stale");
   });
 
   it("a missing check is a warning under the default policy and a block under the block policy", () => {
     const base = { latest: null, maxAgeDays: 30, now: NOW } as const;
-    expect(evaluateEligibilityFreshness({ ...base, policy: "warn" })).toMatchObject({ status: "missing", severity: "warning" });
-    expect(evaluateEligibilityFreshness({ ...base, policy: "block" })).toMatchObject({ status: "missing", severity: "block" });
+    expect(evaluateEligibilityFreshness({ ...base, policy: "warn" })).toMatchObject({
+      status: "missing",
+      severity: "warning",
+    });
+    expect(evaluateEligibilityFreshness({ ...base, policy: "block" })).toMatchObject({
+      status: "missing",
+      severity: "block",
+    });
   });
 
   it("a stale check follows the policy", () => {
     const latest = { outcome: "active", checkedAt: daysAgo(90) } as const;
-    expect(evaluateEligibilityFreshness({ latest, policy: "warn", maxAgeDays: 30, now: NOW }).severity).toBe("warning");
-    expect(evaluateEligibilityFreshness({ latest, policy: "block", maxAgeDays: 30, now: NOW }).severity).toBe("block");
+    expect(
+      evaluateEligibilityFreshness({ latest, policy: "warn", maxAgeDays: 30, now: NOW }).severity,
+    ).toBe("warning");
+    expect(
+      evaluateEligibilityFreshness({ latest, policy: "block", maxAgeDays: 30, now: NOW }).severity,
+    ).toBe("block");
   });
 
   it("a fresh inactive answer blocks whatever the policy says (the payer said not covered)", () => {
@@ -47,8 +76,12 @@ describe("evaluateEligibilityFreshness", () => {
 
   it("a fresh unknown answer cannot be relied on, so it follows the policy", () => {
     const latest = { outcome: "unknown", checkedAt: daysAgo(1) } as const;
-    expect(evaluateEligibilityFreshness({ latest, policy: "warn", maxAgeDays: 30, now: NOW })).toMatchObject({ status: "unverified", severity: "warning" });
-    expect(evaluateEligibilityFreshness({ latest, policy: "block", maxAgeDays: 30, now: NOW }).severity).toBe("block");
+    expect(
+      evaluateEligibilityFreshness({ latest, policy: "warn", maxAgeDays: 30, now: NOW }),
+    ).toMatchObject({ status: "unverified", severity: "warning" });
+    expect(
+      evaluateEligibilityFreshness({ latest, policy: "block", maxAgeDays: 30, now: NOW }).severity,
+    ).toBe("block");
   });
 
   it("an unreadable timestamp fails closed to the policy severity, never to pass", () => {
@@ -87,6 +120,12 @@ describe("evaluateEligibilityFreshness", () => {
       maxAgeDays: 30,
       now: NOW,
     });
-    expect(Object.keys(f.evidence).sort()).toEqual(["ageDays", "checkedAt", "maxAgeDays", "outcome", "policy"]);
+    expect(Object.keys(f.evidence).sort()).toEqual([
+      "ageDays",
+      "checkedAt",
+      "maxAgeDays",
+      "outcome",
+      "policy",
+    ]);
   });
 });

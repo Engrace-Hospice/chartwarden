@@ -11,14 +11,18 @@
 // line applies is claim assembly (`@chartwarden/billing`), not this serializer.
 import { type Parties837i, partySegments } from "../x12/parties";
 import {
+  NAME_LIMIT,
+  ORG_NAME_LIMIT,
   X12BuildError,
   type X12Envelope,
   type X12Physician,
   d8,
   hi,
   matches,
+  optionalText,
   physicianName,
   prepareEnvelope,
+  text,
   wrapTransaction,
 } from "../x12/writer";
 
@@ -51,8 +55,11 @@ const ADMISSION_SOURCE_CODES: readonly string[] = ["1", "2", "4", "5", "6", "8",
 export interface ClaimLine {
   /** 4-digit revenue code (e.g. 0651). */
   readonly revenueCode: string;
-  /** 5-character HCPCS code (e.g. Q5001). */
-  readonly hcpcs: string;
+  /**
+   * 5-character HCPCS code (e.g. Q5001). Required on a Medicare claim; a commercial claim (`commercial` set) may bill a
+   * revenue code alone, which leaves SV2-02 empty.
+   */
+  readonly hcpcs?: string;
   /** Optional 2-character HCPCS modifiers, serialised into SV2-02 (`HC:Q5001:PM`). */
   readonly modifiers?: readonly string[];
   /** Integer cents, > 0. */
@@ -64,6 +71,21 @@ export interface ClaimLine {
   readonly serviceThroughDate?: string;
   /** Integer cents of the line charge that is not covered (SV207). Absent or 0 emits nothing; at most `chargeCents`. */
   readonly noncoveredCents?: number;
+}
+
+/**
+ * Loop 2320 — another payer responsible for part of the claim (coordination of benefits). Only meaningful on a
+ * commercial primary claim, where Medicare (`MA`) or Medicaid (`MC`) is secondary. The subscriber is the patient, so
+ * the 2330A name is the claim's subscriber name; `memberId` is that payer's id for the patient (an MBI for Medicare).
+ */
+export interface ClaimOtherPayer {
+  /** SBR01: S secondary, T tertiary. */
+  readonly responsibility: "S" | "T";
+  /** SBR09 for the other payer: `MA` Medicare Part A, `MC` Medicaid. */
+  readonly claimFilingIndicator: "MA" | "MC";
+  readonly memberId: string;
+  readonly payerName: string;
+  readonly payerId: string;
 }
 
 /** An occurrence span (HI*BI): a code with a from-through date range, e.g. 77 (provider-liable late-NOE days). */
@@ -107,6 +129,8 @@ export interface ClaimDocument {
   /** `amount` is a decimal string (e.g. a CBSA "38900"). */
   readonly valueCodes: readonly { readonly code: string; readonly amount: string }[];
   readonly lines: readonly ClaimLine[];
+  /** Loop 2320/2330A/2330B. Commercial primary only: refused on a Medicare claim. At most two. */
+  readonly otherPayers?: readonly ClaimOtherPayer[];
 }
 
 export interface Claim837iInput extends Parties837i {
@@ -160,6 +184,7 @@ function lineSegments(
   lines: readonly ClaimLine[],
   from: string,
   through: string,
+  hcpcsOptional: boolean,
 ): { segments: string[][]; totalCents: number; noncoveredCents: number } {
   check(Array.isArray(lines) && lines.length > 0, "claim.lines");
   let totalCents = 0;
@@ -169,7 +194,7 @@ function lineSegments(
     const modifiers = l.modifiers ?? [];
     check(Array.isArray(modifiers), "claim.lines");
     check(matches(/^\d{4}$/, l.revenueCode), "claim.lines");
-    check(matches(/^[A-Z0-9]{5}$/, l.hcpcs), "claim.lines");
+    check(l.hcpcs === undefined ? hcpcsOptional : matches(/^[A-Z0-9]{5}$/, l.hcpcs), "claim.lines");
     check(
       modifiers.length <= 4 && modifiers.every((m) => matches(/^[A-Z0-9]{2}$/, m)),
       "claim.lines",
@@ -189,7 +214,7 @@ function lineSegments(
       [
         "SV2",
         l.revenueCode,
-        ["HC", l.hcpcs, ...modifiers].join(":"),
+        l.hcpcs === undefined ? "" : ["HC", l.hcpcs, ...modifiers].join(":"),
         dollars(l.chargeCents),
         "UN",
         String(l.units),
@@ -201,6 +226,48 @@ function lineSegments(
   });
   check(totalCents <= MAX_TOTAL_CENTS, "claim.lines");
   return { segments, totalCents, noncoveredCents };
+}
+
+/** 2320 SBR/OI, 2330A subscriber name, 2330B other payer name, for each other payer (commercial primary only). */
+function otherPayerSegments(input: Claim837iInput): string[][] {
+  const others = input.claim.otherPayers ?? [];
+  check(Array.isArray(others) && others.length <= 2, "claim.otherPayers");
+  if (others.length === 0) return [];
+  check(input.commercial !== undefined, "claim.otherPayers");
+  const s = input.subscriber;
+  return others.flatMap((o) => {
+    check(o.responsibility === "S" || o.responsibility === "T", "claim.otherPayers");
+    check(o.claimFilingIndicator === "MA" || o.claimFilingIndicator === "MC", "claim.otherPayers");
+    check(matches(/^[A-Za-z0-9-]{2,60}$/, o.memberId), "claim.otherPayers.memberId");
+    return [
+      ["SBR", o.responsibility, "18", "", "", "", "", "", "", o.claimFilingIndicator],
+      ["OI", "", "", "Y", "", "", "Y"],
+      [
+        "NM1",
+        "IL",
+        "1",
+        text(s.lastName, "subscriber.lastName", NAME_LIMIT),
+        text(s.firstName, "subscriber.firstName", 35),
+        optionalText(s.middleInitial, "subscriber.middleInitial", 1),
+        "",
+        "",
+        "MI",
+        o.memberId.trim().toUpperCase(),
+      ],
+      [
+        "NM1",
+        "PR",
+        "2",
+        text(o.payerName, "claim.otherPayers.payerName", ORG_NAME_LIMIT),
+        "",
+        "",
+        "",
+        "",
+        "PI",
+        text(o.payerId, "claim.otherPayers.payerId", 80),
+      ],
+    ];
+  });
 }
 
 function buildClaim(input: Claim837iInput): string {
@@ -275,7 +342,12 @@ function buildClaim(input: Claim837iInput): string {
   });
 
   const env = prepareEnvelope(input.envelope);
-  const { segments: lineSegs, totalCents, noncoveredCents } = lineSegments(c.lines, from, through);
+  const {
+    segments: lineSegs,
+    totalCents,
+    noncoveredCents,
+  } = lineSegments(c.lines, from, through, input.commercial !== undefined);
+  const otherPayerSegs = otherPayerSegments(input);
   check(
     c.nonCoveredChargeCents === undefined || c.nonCoveredChargeCents === noncoveredCents,
     "claim.nonCoveredChargeCents",
@@ -300,6 +372,7 @@ function buildClaim(input: Claim837iInput): string {
     ...hi("BE", values),
     ...hi("BG", c.conditionCodes),
     physicianName(input.attendingPhysician, "71", "attendingPhysician"),
+    ...otherPayerSegs,
     ...lineSegs,
   ];
   return wrapTransaction(env, { transactionSet: "837", body });
