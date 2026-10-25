@@ -498,8 +498,8 @@
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 44,
-        "covered": 44
+        "tables": 45,
+        "covered": 45
       }
     },
     {
@@ -811,15 +811,15 @@
       "migration": false,
       "routes": true,
       "enriched": {
-        "routes": 9,
-        "enriched": 9
+        "routes": 16,
+        "enriched": 16
       },
       "screens": false,
       "tests": false,
       "adapter": null,
       "liveInfra": {
         "tables": 14,
-        "covered": 10
+        "covered": 12
       }
     }
   ],

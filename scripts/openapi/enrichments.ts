@@ -13,22 +13,6 @@ import {
   ManualValidateRequest,
 } from "@chartwarden/billing";
 import { type TSchema, Type } from "@sinclair/typebox";
-// M41 Billing - Commercial (#722): the claim / authorization route contracts.
-import {
-  AssembleCommercialClaimBodySchema as M41AssembleBodySchema,
-  AssembleCommercialClaimResponseSchema as M41AssembleResponseSchema,
-  AuthorizationListQuerySchema as M41AuthorizationListQuerySchema,
-  AuthorizationListResponseSchema as M41AuthorizationListResponseSchema,
-  AuthorizationViewSchema as M41AuthorizationViewSchema,
-  CommercialClaimViewSchema as M41ClaimViewSchema,
-  OverrideBodySchema as M41OverrideBodySchema,
-  OverrideResponseSchema as M41OverrideResponseSchema,
-  ReadyResponseSchema as M41ReadyResponseSchema,
-  RecordAuthorizationBodySchema as M41RecordAuthorizationBodySchema,
-  SetAuthorizationStatusBodySchema as M41SetAuthorizationStatusBodySchema,
-  ValidationRunViewSchema as M41ValidationRunViewSchema,
-  VoidResponseSchema as M41VoidResponseSchema,
-} from "../../apps/backend/src/modules/41-billing-commercial/routes/commercial-typebox";
 import {
   HealthResponseSchema as M1HealthResponseSchema,
   ReadyResponseSchema as M1ReadyResponseSchema,
@@ -231,9 +215,9 @@ import {
   AddDeadlineSchema as M6NomncAddDeadlineSchema,
   DeadlineViewSchema as M6NomncDeadlineViewSchema,
   NoticeViewSchema as M6NomncNoticeViewSchema,
+  OpenReviewSchema as M6NomncOpenReviewSchema,
   NomncOverviewQuerySchema as M6NomncOverviewQuerySchema,
   NomncOverviewSchema as M6NomncOverviewSchema,
-  OpenReviewSchema as M6NomncOpenReviewSchema,
   PatchDeadlineSchema as M6NomncPatchDeadlineSchema,
   PatchNoticeSchema as M6NomncPatchNoticeSchema,
   PatchReviewSchema as M6NomncPatchReviewSchema,
@@ -617,26 +601,6 @@ import {
   AuditResponseVersionedResultSchema as M25AuditResponseVersionedResultSchema,
   AuditSubmitRequestSchema as M25AuditSubmitRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/audit-response.routes";
-import { CaseViewSchema as M25CaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
-import {
-  DenialCaseViewSchema as M25DenialCaseViewSchema,
-} from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
-import {
-  PayerAppealPathListQuerySchema as M25PayerAppealPathListQuerySchema,
-  PayerAppealPathPageSchema as M25PayerAppealPathPageSchema,
-  PayerAppealPathRequestSchema as M25PayerAppealPathRequestSchema,
-  PayerAppealPathViewSchema as M25PayerAppealPathViewSchema,
-  PayerAppealVersionedResultSchema as M25PayerAppealPathVersionedResultSchema,
-} from "../../apps/backend/src/modules/25-remittance/routes/payer-appeal-path.routes";
-import {
-  PayerAppealCaseViewSchema as M25PayerAppealCaseViewSchema,
-  PayerAppealDenialViewSchema as M25PayerAppealDenialViewSchema,
-  PayerAppealMoveRequestSchema as M25PayerAppealMoveRequestSchema,
-  PayerAppealNoticeRequestSchema as M25PayerAppealNoticeRequestSchema,
-  PayerAppealOpenRequestSchema as M25PayerAppealOpenRequestSchema,
-  PayerAppealOpenedSchema as M25PayerAppealOpenedSchema,
-  PayerAppealVersionedSchema as M25PayerAppealVersionedSchema,
-} from "../../apps/backend/src/modules/25-remittance/routes/payer-appeal.routes";
 import {
   BeneficiaryAppealDocumentRequestSchema as M25BeneficiaryAppealDocumentRequestSchema,
   BeneficiaryAppealIntakeRequestSchema as M25BeneficiaryAppealIntakeRequestSchema,
@@ -646,19 +610,8 @@ import {
   BeneficiaryAppealViewSchema as M25BeneficiaryAppealViewSchema,
   ClaimBeneficiaryAppealsSchema as M25ClaimBeneficiaryAppealsSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/beneficiary-appeal.routes";
-import {
-  AppointmentActivatedSchema as M25AppointmentActivatedSchema,
-  AppointmentDocumentRequestSchema as M25AppointmentDocumentRequestSchema,
-  AppointmentDraftRequestSchema as M25AppointmentDraftRequestSchema,
-  AppointmentElementsRequestSchema as M25AppointmentElementsRequestSchema,
-  AppointmentPatchRequestSchema as M25AppointmentPatchRequestSchema,
-  AppointmentRevokeRequestSchema as M25AppointmentRevokeRequestSchema,
-  AppointmentViewSchema as M25AppointmentViewSchema,
-  ClaimAppointmentsSchema as M25ClaimAppointmentsSchema,
-  RepresentativeFormVersionPageSchema as M25RepresentativeFormVersionPageSchema,
-  RepresentativeFormVersionRequestSchema as M25RepresentativeFormVersionRequestSchema,
-  RepresentativeVersionedResultSchema as M25RepresentativeVersionedResultSchema,
-} from "../../apps/backend/src/modules/25-remittance/routes/representative.routes";
+import { CaseViewSchema as M25CaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
+import { DenialCaseViewSchema as M25DenialCaseViewSchema } from "../../apps/backend/src/modules/25-remittance/routes/case-view.routes";
 import {
   LaterTierViewSchema as M25LaterTierViewSchema,
   RecordedDeadlinePageSchema as M25RecordedDeadlinePageSchema,
@@ -673,6 +626,22 @@ import {
   MedicalReviewReportQuerySchema as M25MedicalReviewReportQuerySchema,
   MedicalReviewReportSchema as M25MedicalReviewReportSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/medical-review-report.routes";
+import {
+  PayerAppealPathListQuerySchema as M25PayerAppealPathListQuerySchema,
+  PayerAppealPathPageSchema as M25PayerAppealPathPageSchema,
+  PayerAppealPathRequestSchema as M25PayerAppealPathRequestSchema,
+  PayerAppealVersionedResultSchema as M25PayerAppealPathVersionedResultSchema,
+  PayerAppealPathViewSchema as M25PayerAppealPathViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/payer-appeal-path.routes";
+import {
+  PayerAppealCaseViewSchema as M25PayerAppealCaseViewSchema,
+  PayerAppealDenialViewSchema as M25PayerAppealDenialViewSchema,
+  PayerAppealMoveRequestSchema as M25PayerAppealMoveRequestSchema,
+  PayerAppealNoticeRequestSchema as M25PayerAppealNoticeRequestSchema,
+  PayerAppealOpenRequestSchema as M25PayerAppealOpenRequestSchema,
+  PayerAppealOpenedSchema as M25PayerAppealOpenedSchema,
+  PayerAppealVersionedSchema as M25PayerAppealVersionedSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/payer-appeal.routes";
 import {
   DenialPlaybookViewSchema as M25DenialPlaybookViewSchema,
   PlaybookContentRequestSchema as M25PlaybookContentRequestSchema,
@@ -709,6 +678,19 @@ import {
   RouteRulePageSchema as M25RouteRulePageSchema,
   RouteRuleRequestSchema as M25RouteRuleRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/reopening.routes";
+import {
+  AppointmentActivatedSchema as M25AppointmentActivatedSchema,
+  AppointmentDocumentRequestSchema as M25AppointmentDocumentRequestSchema,
+  AppointmentDraftRequestSchema as M25AppointmentDraftRequestSchema,
+  AppointmentElementsRequestSchema as M25AppointmentElementsRequestSchema,
+  AppointmentPatchRequestSchema as M25AppointmentPatchRequestSchema,
+  AppointmentRevokeRequestSchema as M25AppointmentRevokeRequestSchema,
+  AppointmentViewSchema as M25AppointmentViewSchema,
+  ClaimAppointmentsSchema as M25ClaimAppointmentsSchema,
+  RepresentativeFormVersionPageSchema as M25RepresentativeFormVersionPageSchema,
+  RepresentativeFormVersionRequestSchema as M25RepresentativeFormVersionRequestSchema,
+  RepresentativeVersionedResultSchema as M25RepresentativeVersionedResultSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/representative.routes";
 import {
   SubmissionCancelRequestSchema as M25SubmissionCancelRequestSchema,
   SubmissionReceiptRequestSchema as M25SubmissionReceiptRequestSchema,
@@ -911,6 +893,22 @@ import {
   PsapJurisdictionPatchSchema as M40PsapJurisdictionPatch,
 } from "../../apps/backend/src/modules/40-mdm/psap-jurisdictions";
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
+// M41 Billing - Commercial (#722): the claim / authorization route contracts.
+import {
+  AssembleCommercialClaimBodySchema as M41AssembleBodySchema,
+  AssembleCommercialClaimResponseSchema as M41AssembleResponseSchema,
+  AuthorizationListQuerySchema as M41AuthorizationListQuerySchema,
+  AuthorizationListResponseSchema as M41AuthorizationListResponseSchema,
+  AuthorizationViewSchema as M41AuthorizationViewSchema,
+  CommercialClaimViewSchema as M41ClaimViewSchema,
+  OverrideBodySchema as M41OverrideBodySchema,
+  OverrideResponseSchema as M41OverrideResponseSchema,
+  ReadyResponseSchema as M41ReadyResponseSchema,
+  RecordAuthorizationBodySchema as M41RecordAuthorizationBodySchema,
+  SetAuthorizationStatusBodySchema as M41SetAuthorizationStatusBodySchema,
+  ValidationRunViewSchema as M41ValidationRunViewSchema,
+  VoidResponseSchema as M41VoidResponseSchema,
+} from "../../apps/backend/src/modules/41-billing-commercial/routes/commercial-typebox";
 
 // M3 Authorization (§4.3–4.4) — request bodies + response DTOs the route handlers parse/return.
 // Every symbol M3-aliased. Response DTOs mirror ../authz-ports views (RoleView, MembershipRoleView,
@@ -1479,6 +1477,23 @@ import {
   AlertDeliveriesQuerySchema as M36AlertDeliveriesQuerySchema,
   AlertDeliveriesResponseSchema as M36AlertDeliveriesResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/admin-alert-deliveries-routes";
+// M36 WP 6.5 AI summaries and reply drafts (ADR-0095, PROPOSED).
+import {
+  AiDraftResponseSchema as M36AiDraftResponseSchema,
+  AiOutcomeBodySchema as M36AiOutcomeBodySchema,
+  AiRequestBodySchema as M36AiRequestBodySchema,
+  AiStatusResponseSchema as M36AiStatusResponseSchema,
+  AiSummaryResponseSchema as M36AiSummaryResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/ai-typebox";
+// M36 WP 6.10 alarm ingest, watch only (ADR-0102, PROPOSED).
+import {
+  AlarmIngestAcceptedResponseSchema as M36AlarmAcceptedResponseSchema,
+  CreateAlarmSourceBodySchema as M36AlarmCreateBodySchema,
+  AlarmSourceCredentialResponseSchema as M36AlarmCredentialResponseSchema,
+  AlarmEventBodySchema as M36AlarmEventBodySchema,
+  AlarmSourceListResponseSchema as M36AlarmSourceListResponseSchema,
+  AlarmSourceResponseSchema as M36AlarmSourceResponseSchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/alarm-ingest-typebox";
 // M36 WP 5.8 break-glass (ADR-0087, PROPOSED).
 import {
   CompleteReviewBodySchema as M36BreakGlassCompleteBodySchema,
@@ -1513,23 +1528,6 @@ import {
   ExportDetailResponseSchema as M36ExportDetailResponseSchema,
   ExportListResponseSchema as M36ExportListResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/export-typebox";
-// M36 WP 6.5 AI summaries and reply drafts (ADR-0095, PROPOSED).
-import {
-  AiDraftResponseSchema as M36AiDraftResponseSchema,
-  AiOutcomeBodySchema as M36AiOutcomeBodySchema,
-  AiRequestBodySchema as M36AiRequestBodySchema,
-  AiStatusResponseSchema as M36AiStatusResponseSchema,
-  AiSummaryResponseSchema as M36AiSummaryResponseSchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/ai-typebox";
-// M36 WP 6.10 alarm ingest, watch only (ADR-0102, PROPOSED).
-import {
-  AlarmEventBodySchema as M36AlarmEventBodySchema,
-  AlarmIngestAcceptedResponseSchema as M36AlarmAcceptedResponseSchema,
-  AlarmSourceCredentialResponseSchema as M36AlarmCredentialResponseSchema,
-  AlarmSourceListResponseSchema as M36AlarmSourceListResponseSchema,
-  AlarmSourceResponseSchema as M36AlarmSourceResponseSchema,
-  CreateAlarmSourceBodySchema as M36AlarmCreateBodySchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/alarm-ingest-typebox";
 // M36 WP 6.6 external partner share (ADR-0096, PROPOSED).
 import {
   CreateExternalShareBodySchema as M36ExtShareCreateBodySchema,
@@ -1545,14 +1543,14 @@ import {
 } from "../../apps/backend/src/modules/36-messaging/routes/external-share-typebox";
 // M36 WP 6.7 family / caregiver messaging (ADR-0099, PROPOSED).
 import {
-  CreateFamilyInvitationBodySchema as M36FamilyInviteBodySchema,
-  CreatedFamilyInvitationResponseSchema as M36FamilyInviteResponseSchema,
   FamilyCaregiversResponseSchema as M36FamilyCaregiversResponseSchema,
   FamilyContactListResponseSchema as M36FamilyContactListResponseSchema,
   FamilyContactMessagesResponseSchema as M36FamilyContactMessagesResponseSchema,
   FamilyContactStateResponseSchema as M36FamilyContactStateResponseSchema,
   FamilyContactSummarySchema as M36FamilyContactSummarySchema,
   FamilyContactVerifiedResponseSchema as M36FamilyContactVerifiedResponseSchema,
+  CreateFamilyInvitationBodySchema as M36FamilyInviteBodySchema,
+  CreatedFamilyInvitationResponseSchema as M36FamilyInviteResponseSchema,
   FamilyRedeemBodySchema as M36FamilyRedeemBodySchema,
   FamilyRedeemResponseSchema as M36FamilyRedeemResponseSchema,
   FamilyReplyBodySchema as M36FamilyReplyBodySchema,
@@ -4563,7 +4561,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M6NomncNoticeViewSchema,
   },
   "POST /api/v1/admissions/:id/nomnc/:noticeId/expedited-review": {
-    summary: "Open the BFCC-QIO expedited review for a NOMNC (care team and compliance are alerted)",
+    summary:
+      "Open the BFCC-QIO expedited review for a NOMNC (care team and compliance are alerted)",
     body: M6NomncOpenReviewSchema,
     response: M6NomncReviewViewSchema,
     status: 201,
@@ -4585,7 +4584,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M6NomncReviewViewSchema,
   },
   "POST /api/v1/admissions/:id/expedited-reviews/:reviewId/deadlines": {
-    summary: "Type a DENC / records / decision deadline from the QIO's call (date AND time, source note)",
+    summary:
+      "Type a DENC / records / decision deadline from the QIO's call (date AND time, source note)",
     body: M6NomncAddDeadlineSchema,
     response: M6NomncDeadlineViewSchema,
     status: 201,
@@ -8874,12 +8874,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M25PayerAppealCaseViewSchema,
   },
   "PUT /api/v1/payer-appeals/:id/notice": {
-    summary: "Type the date printed on the notice a level's clock runs from (If-Match); computes the deadline once",
+    summary:
+      "Type the date printed on the notice a level's clock runs from (If-Match); computes the deadline once",
     body: M25PayerAppealNoticeRequestSchema,
     response: M25PayerAppealOpenedSchema,
   },
   "POST /api/v1/payer-appeals/:id/state": {
-    summary: "Record that a level was submitted, is under review, was decided, closed or withdrawn (If-Match)",
+    summary:
+      "Record that a level was submitted, is under review, was decided, closed or withdrawn (If-Match)",
     body: M25PayerAppealMoveRequestSchema,
     response: M25PayerAppealVersionedSchema,
   },
@@ -8917,7 +8919,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     status: 201,
   },
   "POST /api/v1/representative-form-versions/:id/retire": {
-    summary: "Retire a form version so new drafts cannot use it; existing appointments keep their checklist (If-Match)",
+    summary:
+      "Retire a form version so new drafts cannot use it; existing appointments keep their checklist (If-Match)",
     response: M25RepresentativeVersionedResultSchema,
   },
   "GET /api/v1/claims/:claimId/representative-appointments": {
@@ -8933,7 +8936,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     status: 201,
   },
   "GET /api/v1/representative-appointments/:id": {
-    summary: "One appointment of representative with its element checklist, signed document and activation record",
+    summary:
+      "One appointment of representative with its element checklist, signed document and activation record",
     response: M25AppointmentViewSchema,
   },
   "PATCH /api/v1/representative-appointments/:id": {
@@ -8948,7 +8952,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M25RepresentativeVersionedResultSchema,
   },
   "PUT /api/v1/representative-appointments/:id/elements": {
-    summary: "Confirm which of the form version's required elements are present on the signed document (If-Match)",
+    summary:
+      "Confirm which of the form version's required elements are present on the signed document (If-Match)",
     body: M25AppointmentElementsRequestSchema,
     response: M25RepresentativeVersionedResultSchema,
   },
@@ -8958,12 +8963,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M25AppointmentActivatedSchema,
   },
   "POST /api/v1/representative-appointments/:id/revoke": {
-    summary: "Record a revocation (typed date and note); needs a step-up but never a second person (If-Match)",
+    summary:
+      "Record a revocation (typed date and note); needs a step-up but never a second person (If-Match)",
     body: M25AppointmentRevokeRequestSchema,
     response: M25RepresentativeVersionedResultSchema,
   },
   "GET /api/v1/claims/:claimId/beneficiary-appeals": {
-    summary: "Appeals the beneficiary or their representative filed on this claim, as recorded by the hospice",
+    summary:
+      "Appeals the beneficiary or their representative filed on this claim, as recorded by the hospice",
     response: M25ClaimBeneficiaryAppealsSchema,
   },
   "POST /api/v1/claims/:claimId/beneficiary-appeals": {
@@ -8974,7 +8981,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     status: 201,
   },
   "GET /api/v1/beneficiary-appeals/:id": {
-    summary: "One beneficiary appeal with its representative status, documents and recorded deadlines",
+    summary:
+      "One beneficiary appeal with its representative status, documents and recorded deadlines",
     response: M25BeneficiaryAppealViewSchema,
   },
   "PATCH /api/v1/beneficiary-appeals/:id": {
@@ -8983,12 +8991,14 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M25BeneficiaryAppealVersionedSchema,
   },
   "POST /api/v1/beneficiary-appeals/:id/state": {
-    summary: "Record that the hospice is supporting the appeal, that it was decided, closed or withdrawn (If-Match)",
+    summary:
+      "Record that the hospice is supporting the appeal, that it was decided, closed or withdrawn (If-Match)",
     body: M25BeneficiaryAppealMoveRequestSchema,
     response: M25BeneficiaryAppealVersionedSchema,
   },
   "POST /api/v1/beneficiary-appeals/:id/documents": {
-    summary: "Attach a document, validated against the claim's patient and admission and M22's active version (If-Match)",
+    summary:
+      "Attach a document, validated against the claim's patient and admission and M22's active version (If-Match)",
     body: M25BeneficiaryAppealDocumentRequestSchema,
     response: M25BeneficiaryAppealVersionedSchema,
     status: 201,
@@ -9002,7 +9012,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M25RecordedDeadlinePageSchema,
   },
   "POST /api/v1/beneficiary-appeals/:id/recorded-deadlines": {
-    summary: "Record a due date typed from a notice (the source note is required; none is computed)",
+    summary:
+      "Record a due date typed from a notice (the source note is required; none is computed)",
     body: M25RecordedDeadlineRequestSchema,
     response: M25RecordedDeadlineResultSchema,
     status: 201,
@@ -14702,5 +14713,72 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "A patient's pre-authorizations, newest first. Read-audited (list)",
     query: M41AuthorizationListQuerySchema,
     response: M41AuthorizationListResponseSchema,
+  },
+});
+
+// M41 Billing - Commercial: eligibility (270/271) and enrollment (#724, ADR-0100 D4, D5).
+import {
+  CheckEligibilityBodySchema as M41CheckEligibilityBodySchema,
+  CreateEnrollmentBodySchema as M41CreateEnrollmentBodySchema,
+  EligibilityCheckResponseSchema as M41EligibilityCheckResponseSchema,
+  EligibilityListResponseSchema as M41EligibilityListResponseSchema,
+  EligibilityPolicyBodySchema as M41EligibilityPolicyBodySchema,
+  EligibilityPolicyResponseSchema as M41EligibilityPolicyResponseSchema,
+  EnrollmentListQuerySchema as M41EnrollmentListQuerySchema,
+  EnrollmentListResponseSchema as M41EnrollmentListResponseSchema,
+  EnrollmentResponseSchema as M41EnrollmentResponseSchema,
+  LatestEligibilityResponseSchema as M41LatestEligibilityResponseSchema,
+  LatestQuerySchema as M41LatestQuerySchema,
+  PatchEnrollmentBodySchema as M41PatchEnrollmentBodySchema,
+  PatientPlanQuerySchema as M41PatientPlanQuerySchema,
+} from "../../apps/backend/src/modules/41-billing-commercial/routes/typebox";
+
+Object.assign(ROUTE_ENRICHMENTS, {
+  "POST /api/v1/billing/commercial/eligibility/check": {
+    summary:
+      "Run a commercial 270/271 eligibility check through the platform clearinghouse (commercial_billing.write; provider entity and patient scope; Idempotency-Key required, and a repeat of the same key answers the stored result with `replayed: true` without a second send). The member id is read server side from the patient's coverage and is never in the request, the stored row, the response or a log. Refuses with a stable code and sends nothing: 503 CH_NOT_WIRED (no clearinghouse bound), 409 COMMERCIAL_PAYER_NOT_ROUTED (the bound clearinghouse has no payer id for the plan), 409 COMMERCIAL_PROVIDER_NOT_ENROLLED, 409 COMMERCIAL_PROVIDER_NPI_MISSING, 422 COMMERCIAL_COVERAGE_NOT_FOUND. A clearinghouse that cannot answer is 503 COMMERCIAL_ELIGIBILITY_UNAVAILABLE (nothing recorded). The response carries the plan's freshness verdict",
+    body: M41CheckEligibilityBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M41EligibilityCheckResponseSchema,
+  },
+  "GET /api/v1/billing/commercial/eligibility": {
+    summary:
+      "A patient's commercial eligibility checks, newest first (commercial_billing.read; provider entity and patient scope, and only that provider entity's checks are returned; read-audited). Outcome and as-of date only: no member id, no 271 body",
+    query: M41PatientPlanQuerySchema,
+    response: M41EligibilityListResponseSchema,
+  },
+  "GET /api/v1/billing/commercial/eligibility/latest": {
+    summary:
+      "The newest check for a patient and plan plus the plan's freshness verdict (rule M41.ELIGIBILITY.FRESHNESS): missing or stale follows the plan's warn/block policy, a fresh inactive answer always blocks (commercial_billing.read; provider entity and patient scope; read-audited)",
+    query: M41LatestQuerySchema,
+    response: M41LatestEligibilityResponseSchema,
+  },
+  "PATCH /api/v1/billing/commercial/payer-plans/:id/eligibility-policy": {
+    summary:
+      "Set what stale or missing eligibility does for a plan: `warn` (default) or `block`, and how many days (1 to 365; default 30) make a check stale (commercial_billing.manage_enrollment + a fresh step-up, because relaxing it weakens a billing control; Idempotency-Key required)",
+    body: M41EligibilityPolicyBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M41EligibilityPolicyResponseSchema,
+  },
+  "GET /api/v1/billing/commercial/enrollments": {
+    summary:
+      "A provider entity's enrollments with commercial payers on a clearinghouse (commercial_billing.read; provider entity scope)",
+    query: M41EnrollmentListQuerySchema,
+    response: M41EnrollmentListResponseSchema,
+  },
+  "POST /api/v1/billing/commercial/enrollments": {
+    summary:
+      "Record a provider entity's enrollment with a payer on a clearinghouse (commercial_billing.manage_enrollment + a fresh step-up; Idempotency-Key required). Only status `enrolled`, in effect on the day, lets a send through. 409 CONFLICT when the period overlaps another for the same provider entity, payer and clearinghouse; 422 when the payer is not an active commercial payer",
+    body: M41CreateEnrollmentBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M41EnrollmentResponseSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/billing/commercial/enrollments/:id": {
+    summary:
+      "Change an enrollment's status, end date or evidence reference (commercial_billing.manage_enrollment + a fresh step-up; Idempotency-Key required). The body names the provider entity; an enrollment of another provider entity or tenant is a 404",
+    body: M41PatchEnrollmentBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M41EnrollmentResponseSchema,
   },
 });

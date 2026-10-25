@@ -601,6 +601,7 @@ export function buildDrizzleM25IngestService(
         return {
           outcome: "malformed",
           reason: "not a valid X12 envelope (missing ISA/ST segment)",
+          cause: "content",
         };
       }
       // #668 — the staged text is what gets posted, so the declared hash must describe it.
@@ -608,7 +609,11 @@ export function buildDrizzleM25IngestService(
         createHash("sha256").update(input.rawEdi, "utf8").digest("hex") !==
         input.fileSha256.toLowerCase()
       ) {
-        return { outcome: "malformed", reason: "fileSha256 does not match the submitted 835 text" };
+        return {
+          outcome: "malformed",
+          reason: "fileSha256 does not match the submitted 835 text",
+          cause: "content",
+        };
       }
       // One file may hold several ST/SE sets; each is its own advice (its own dedup key and event). Every set is
       // parsed and payee-checked BEFORE anything is stored, so one bad set refuses the whole file.
@@ -621,7 +626,12 @@ export function buildDrizzleM25IngestService(
           transactionSetControlNumber: st02,
         });
         if (!parsed.ok) {
-          return { outcome: "malformed", reason: parsed.degraded.reason };
+          // A retryable degraded result is a parser/transport outage, not a property of the file.
+          return {
+            outcome: "malformed",
+            reason: parsed.degraded.reason,
+            cause: parsed.degraded.retryable ? "environment" : "content",
+          };
         }
         if (
           parsed.value.interchangeControlNumber !== header.interchangeControlNumber ||
@@ -630,6 +640,7 @@ export function buildDrizzleM25IngestService(
           return {
             outcome: "malformed",
             reason: "parsed envelope control numbers disagree with the local ISA/ST header",
+            cause: "content",
           };
         }
         const mismatch = await payeeMismatch(
@@ -637,7 +648,8 @@ export function buildDrizzleM25IngestService(
           input.providerEntityId,
           parsed.value.payee,
         );
-        if (mismatch) return { outcome: "malformed", reason: mismatch };
+        // Payee/NPI checks depend on tenant configuration: transient, never counted toward quarantine.
+        if (mismatch) return { outcome: "malformed", reason: mismatch, cause: "environment" };
         parsedSets.push(parsed.value);
       }
 

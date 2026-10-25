@@ -37,3 +37,4 @@ export * from "./payer-appeal"; // payer_appeal_path, payer_appeal_path_level, p
 export * from "./beneficiary-representative"; // representative_form_version, representative_appointment, beneficiary_appeal, beneficiary_appeal_document, beneficiary_appeal_event (milestone 13a)
 export * from "./playbook"; // denial_playbook, denial_playbook_version, denial_playbook_case_step (milestone 9a-1)
 export * from "./pull-cursor"; // remittance_pull_cursor (#717)
+export * from "./pull-refusal"; // remittance_pull_refusal (#717 follow-up)

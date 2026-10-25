@@ -272,4 +272,53 @@ describe("commercial rules", () => {
     const outside = ctx({ lines: [line({ serviceFrom: "2026-02-25" })] });
     expect(byKey(outside, "service_days_covered")?.message).toContain("Outside the window");
   });
+
+  describe("eligibility freshness (#724 policy)", () => {
+    const NOW = "2026-04-02T12:00:00.000Z";
+    const withElig = (
+      policy: "warn" | "block",
+      latest: { outcome: "active" | "inactive" | "unknown"; checkedAt: string } | null,
+    ) => ctx({ eligibility: { policy, maxAgeDays: 30, latest, now: NOW } });
+
+    it("is skipped when the claim carries no eligibility context", () => {
+      expect(byKey(ctx(), "eligibility_freshness")).toBeUndefined();
+    });
+
+    it("passes a recent active check", () => {
+      const c = withElig("block", { outcome: "active", checkedAt: "2026-03-30T12:00:00.000Z" });
+      expect(byKey(c, "eligibility_freshness")?.outcome).toBe("pass");
+    });
+
+    it("a missing or stale check is a visible, non-blocking finding under warn and a hard block under block", () => {
+      for (const latest of [
+        null,
+        { outcome: "active" as const, checkedAt: "2026-01-01T00:00:00.000Z" },
+      ]) {
+        const warn = byKey(withElig("warn", latest), "eligibility_freshness");
+        expect(warn).toMatchObject({ outcome: "fail", severity: "info", overridable: false });
+        expect(isBlocking(warn as never, false)).toBe(false);
+        const block = byKey(withElig("block", latest), "eligibility_freshness");
+        expect(block).toMatchObject({ outcome: "fail", severity: "error", overridable: false });
+      }
+    });
+
+    it("a payer that said inactive blocks whatever the policy, and the evidence carries no age (an override does not expire daily)", () => {
+      const inactive = { outcome: "inactive" as const, checkedAt: "2026-03-30T12:00:00.000Z" };
+      expect(byKey(withElig("warn", inactive), "eligibility_freshness")).toMatchObject({
+        severity: "error",
+      });
+      const later = {
+        ...withElig("block", null),
+        eligibility: {
+          policy: "block" as const,
+          maxAgeDays: 30,
+          latest: null,
+          now: "2026-04-09T12:00:00.000Z",
+        },
+      };
+      expect(
+        evidenceHash(byKey(withElig("block", null), "eligibility_freshness")?.evidence ?? {}),
+      ).toBe(evidenceHash(byKey(later, "eligibility_freshness")?.evidence ?? {}));
+    });
+  });
 });

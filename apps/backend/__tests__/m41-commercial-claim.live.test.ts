@@ -1393,6 +1393,46 @@ describe.skipIf(!DB_URL)("M41 commercial claim assembly and validation - LIVE Po
       expect(ruleOf(open.validation, "service_days_covered")?.outcome).toBe("fail");
     });
 
+    it("applies the plan's eligibility policy (#724): block turns a missing check into a hard stop, a recent active check clears it", async () => {
+      const s = await seedScenario();
+      await admin.query(
+        "UPDATE commercial_payer_plan SET eligibility_staleness_policy='block' WHERE id=$1",
+        [s.planId],
+      );
+      const w = wire(s);
+      const out = await w.assembly.assemble(actor, input(s));
+      expect(ruleOf(out.validation, "eligibility_freshness")).toMatchObject({
+        outcome: "fail",
+        overridable: false,
+      });
+      expect((await failure(w.lifecycle.assertReady(actor, out.claimId)))?.code).toBe(
+        "COMMERCIAL_CLAIM_BLOCKED",
+      );
+      await admin.query(
+        `INSERT INTO commercial_eligibility_check (organization_id, provider_entity_id, patient_id, plan_id, patient_payer_id, clearinghouse_key, clearinghouse_payer_id, service_date, outcome, as_of_date, request_id, idempotency_key, checked_by_user_id)
+         VALUES ($1,$2,$3,$4,$5,'stedi','SYNTH01','2026-03-01','active',current_date,$6,$7,$8)`,
+        [
+          ORG,
+          providerEntityId,
+          s.patientId,
+          s.planId,
+          s.primaryCoverageId,
+          randomUUID(),
+          `idem-${randomUUID()}`,
+          USER,
+        ],
+      );
+      expect((await w.lifecycle.assertReady(actor, out.claimId)).state).toBe("ready");
+      // under the default policy (warn) a missing check is visible but never blocks
+      const lenient = await seedScenario();
+      const l = await wire(lenient).assembly.assemble(actor, input(lenient));
+      expect(ruleOf(l.validation, "eligibility_freshness")).toMatchObject({
+        outcome: "fail",
+        severity: "info",
+      });
+      expect(l.validation.blocking).toEqual([]);
+    });
+
     it("blocks a claim whose lines leave a day of the window unbilled or bill one twice", async () => {
       const hole = await seedScenario();
       const period = (from: string, to: string) => ({

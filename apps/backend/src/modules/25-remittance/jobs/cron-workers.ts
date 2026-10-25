@@ -117,7 +117,8 @@ export async function runRemittancePullCron(deps: M25WorkerDeps): Promise<void> 
     throw new Error("M25_WORKER_PORT_UNBOUND: remittancePull - no clearinghouse vendor is bound");
   const failures: string[] = [];
   for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
-    failures.push(...(await pullRemittances(pull, organizationId)).failures);
+    const result = await pullRemittances(pull, organizationId);
+    failures.push(...result.failures, ...result.quarantined);
   }
   if (failures.length > 0) throw new Error(`remittance pull failed: ${failures.join("; ")}`);
 }

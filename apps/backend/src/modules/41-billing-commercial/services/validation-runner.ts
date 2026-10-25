@@ -10,7 +10,7 @@ import type {
   CommercialSecondaryPayerKind,
   CommercialValidationTrigger,
 } from "@chartwarden/types";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { ContractRateFact, PricedLine, UnpricedReason } from "../domain/pricing";
 import {
   COMMERCIAL_RULE_SET_VERSION,
@@ -22,6 +22,7 @@ import {
   isBlocking,
   runCommercialRules,
 } from "../domain/rules";
+import type { LatestEligibilityCheck } from "../eligibility/freshness";
 import type { CommercialTx } from "./types";
 
 type ClaimRow = typeof schema.commercialClaims.$inferSelect;
@@ -74,7 +75,11 @@ function unpricedReasonOf(
 }
 
 /** Everything the rules need for a stored claim, read on the caller's org-context transaction. */
-export async function loadRuleContext(tx: CommercialTx, claim: ClaimRow): Promise<RuleContext> {
+export async function loadRuleContext(
+  tx: CommercialTx,
+  claim: ClaimRow,
+  now: Date = new Date(),
+): Promise<RuleContext> {
   const [plan] = await tx
     .select()
     .from(schema.commercialPayerPlan)
@@ -131,6 +136,18 @@ export async function loadRuleContext(tx: CommercialTx, claim: ClaimRow): Promis
         eq(schema.commercialAuthorizations.providerEntityId, claim.providerEntityId),
       ),
     );
+  const [latestCheck] = await tx
+    .select()
+    .from(schema.commercialEligibilityCheck)
+    .where(
+      and(
+        eq(schema.commercialEligibilityCheck.planId, plan.id),
+        eq(schema.commercialEligibilityCheck.patientId, claim.patientId),
+        eq(schema.commercialEligibilityCheck.providerEntityId, claim.providerEntityId),
+      ),
+    )
+    .orderBy(desc(schema.commercialEligibilityCheck.checkedAt))
+    .limit(1);
   const diagnoses = (claim.diagnoses as { icd10Code: string }[]).map((d) => d.icd10Code);
   return {
     serviceFrom: claim.serviceFrom,
@@ -157,6 +174,17 @@ export async function loadRuleContext(tx: CommercialTx, claim: ClaimRow): Promis
     attendingNpi: claim.attendingNpi,
     secondaryPayerKind: claim.secondaryPayerKind as CommercialSecondaryPayerKind | null,
     finalBill: claim.tob === "811" || claim.tob === "814",
+    eligibility: {
+      policy: plan.eligibilityStalenessPolicy === "block" ? "block" : "warn",
+      maxAgeDays: plan.eligibilityMaxAgeDays,
+      latest: latestCheck
+        ? {
+            outcome: latestCheck.outcome as LatestEligibilityCheck["outcome"],
+            checkedAt: latestCheck.checkedAt.toISOString(),
+          }
+        : null,
+      now: now.toISOString(),
+    },
   };
 }
 
@@ -189,8 +217,9 @@ export async function evaluateClaim(
   tx: CommercialTx,
   claim: ClaimRow,
   contextOverride?: RuleContext,
+  now: Date = new Date(),
 ): Promise<EvaluatedResult[]> {
-  const ctx = contextOverride ?? (await loadRuleContext(tx, claim));
+  const ctx = contextOverride ?? (await loadRuleContext(tx, claim, now));
   const overrides = await tx
     .select({
       ruleKey: schema.commercialValidationOverrides.ruleKey,
@@ -221,7 +250,7 @@ export async function runAndPersistValidation(
   now: Date,
   contextOverride?: RuleContext,
 ): Promise<ValidationRunView> {
-  const evaluated = await evaluateClaim(tx, claim, contextOverride);
+  const evaluated = await evaluateClaim(tx, claim, contextOverride, now);
   const failed = evaluated.filter((o) => o.outcome === "fail");
   const [run] = await tx
     .insert(schema.commercialValidationRuns)

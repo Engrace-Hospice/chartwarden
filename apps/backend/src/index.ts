@@ -1753,6 +1753,13 @@ import {
   scheduleM40Jobs,
   wireM40Tenancy,
 } from "./modules/40-mdm/index";
+import {
+  buildCommercialContextPort,
+  buildDrizzleEligibilityStore,
+  createCommercialAdminService,
+  createEligibilityService,
+  mountM41Routes,
+} from "./modules/41-billing-commercial/index";
 
 export { buildServer };
 export * from "./bootstrap/index";
@@ -6194,6 +6201,21 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               limit: MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
               keyPrefix: "m25-medical-review-report",
             }),
+          });
+          // M41 (Billing - Commercial, #724) - commercial eligibility (270/271) and payer enrollment. The ONLY path to a payer is
+          // the platform clearinghouse binding (ADR-0100 D4): unbound answers CH_NOT_WIRED and nothing is sent. The member id
+          // comes from M5's coverage seam for the one call and is never stored or logged.
+          mountM41Routes(app, {
+            eligibility: createEligibilityService({
+              store: buildDrizzleEligibilityStore(dbHandle.db),
+              coverage: { coveragesForPatient: (input) => getPatientCoverageReader().coveragesForPatient(input) },
+              binding: clearinghouseBinding,
+              contexts: buildCommercialContextPort({ env: process.env, providerNpi: m25PayeeNpi }),
+              now: () => new Date(),
+              newRequestId: randomUUID,
+              log: (event) => app.log.info({ eligibility: event }, "M41 eligibility"),
+            }),
+            admin: createCommercialAdminService(buildDrizzleEligibilityStore(dbHandle.db)),
           });
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
           // §4.10 `m26.cap.*` transactional outbox publisher binds here (events persist on the mutation's tx).

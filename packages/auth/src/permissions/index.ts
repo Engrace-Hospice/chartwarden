@@ -172,6 +172,13 @@ export {
   m25ContributedPermissionMirrorRows,
 } from "./contributed";
 
+// M41 — Module 41's five Billing — Commercial permission keys registered into M3's catalog (spec section 6).
+export {
+  type M41ContributedPermissionKey,
+  M41_CONTRIBUTED_PERMISSIONS,
+  m41ContributedPermissionMirrorRows,
+} from "./contributed";
+
 // M26 — Module 26's fourteen Cap Management permission keys registered into M3's catalog (§4.6 handshake).
 export {
   type M26ContributedPermissionKey,
@@ -256,8 +263,4 @@ export {
   type M37ContributedPermissionKey,
   M37_CONTRIBUTED_PERMISSIONS,
   m37ContributedPermissionMirrorRows,
-  // M41 - Module 41's Billing - Commercial permission keys (ADR-0100).
-  type M41ContributedPermissionKey,
-  M41_CONTRIBUTED_PERMISSIONS,
-  m41ContributedPermissionMirrorRows,
 } from "./contributed";

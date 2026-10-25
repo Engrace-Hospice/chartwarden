@@ -47,7 +47,10 @@ import {
   buildDrizzleM25ReadService,
   buildM23BackedClaimMatchCandidateProvider,
 } from "../src/modules/25-remittance/index";
-import { pullRemittances } from "../src/modules/25-remittance/ingest/clearinghouse-pull";
+import {
+  MAX_REFUSALS_PER_REMITTANCE,
+  pullRemittances,
+} from "../src/modules/25-remittance/ingest/clearinghouse-pull";
 import { buildDrizzleRemittanceCursorStore } from "../src/modules/25-remittance/ingest/pull-cursor-store";
 import type {
   ClaimMatchCandidateProvider,
@@ -1568,6 +1571,130 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       expect(result.failures[0]).toContain("request refused (cursor not reset)");
       expect(received).toHaveLength(0);
       expect(await cursors.get(key)).toBe("not-a-cursor");
+    });
+
+    it("quarantines a file refused MAX times (durable, audited), advances the cursor past it, and hides it from other tenants", async () => {
+      const cursors = buildDrizzleRemittanceCursorStore(handle.db);
+      const far = new InMemoryClearinghouse();
+      for (const n of [1, 2, 3, 4]) {
+        await far.control.deliverRemittance(
+          `ERA-Q-${n}`,
+          buildFullEdi(`00007180${n}`, "0001", "100.00", {
+            clp01: `PCN-Q-${n}`,
+            icn: `ICN-Q-${n}`,
+          }),
+          scope,
+        );
+      }
+      const deps = {
+        transport: far,
+        vendor: "in_memory_poison",
+        contexts: { providerEntitiesFor: async () => [PE_A], contextFor: async () => pullCtx() },
+        payers: { medicarePayerId: async () => PAYER },
+        cursors,
+        ingest: {
+          receiveAdvice: async (
+            _actor: { organizationId: string },
+            input: { minioObjectKey: string },
+          ): Promise<ReceiveAdviceResult> =>
+            input.minioObjectKey.endsWith("ERA-Q-3")
+              ? { outcome: "malformed", reason: "synthetic", cause: "content" }
+              : { outcome: "duplicate", existingAdviceId: "x" },
+        },
+      };
+      const key = {
+        organizationId: ORG_A,
+        providerEntityId: PE_A,
+        vendor: "in_memory_poison",
+        usage: "test" as const,
+      };
+
+      for (let i = 1; i < MAX_REFUSALS_PER_REMITTANCE; i++) {
+        const r = await pullRemittances(deps, ORG_A);
+        expect(r.failures).toHaveLength(1);
+        expect(await cursors.isQuarantined(key, "ERA-Q-3", "0".repeat(64))).toBe(false);
+      }
+      const final = await pullRemittances(deps, ORG_A);
+
+      expect(final.failures).toEqual([]);
+      expect(final.quarantined).toHaveLength(1);
+      expect(final.quarantined[0]).toContain("REMITTANCE_QUARANTINED");
+      expect(await cursors.get(key)).toBe("4");
+      const row = await admin.query(
+        "SELECT file_sha256, refusal_count, reason_code, quarantined_at FROM remittance_pull_refusal WHERE organization_id=$1 AND remittance_id='ERA-Q-3'",
+        [ORG_A],
+      );
+      expect(row.rows[0].refusal_count).toBe(MAX_REFUSALS_PER_REMITTANCE);
+      expect(row.rows[0].reason_code).toBe("RECEIVE_REFUSED");
+      expect(row.rows[0].quarantined_at).not.toBeNull();
+      const sha = row.rows[0].file_sha256 as string;
+      expect(await cursors.isQuarantined(key, "ERA-Q-3", sha)).toBe(true);
+      expect(await cursors.isQuarantined(key, "ERA-Q-3", "1".repeat(64))).toBe(false); // changed content is a new file
+      expect(await cursors.isQuarantined({ ...key, organizationId: ORG_B }, "ERA-Q-3", sha)).toBe(false);
+      // still reported (skipped) when the vendor re-offers it on a later tick
+      await cursors.set(key, "2");
+      const again = await pullRemittances(deps, ORG_A);
+      expect(again.quarantined).toHaveLength(1);
+      expect(again.failures).toEqual([]);
+      const audit = await admin.query(
+        "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind='remittance_pull_refusal' AND organization_id=$1",
+        [ORG_A],
+      );
+      expect(audit.rows[0].n).toBe(MAX_REFUSALS_PER_REMITTANCE);
+    });
+
+    it("zeroes a file's refusal count once it is accepted, and the cursor advances", async () => {
+      const cursors = buildDrizzleRemittanceCursorStore(handle.db);
+      const far = new InMemoryClearinghouse();
+      await far.control.deliverRemittance(
+        "ERA-R-1",
+        buildFullEdi("000071901", "0001", "100.00", { clp01: "PCN-R-1", icn: "ICN-R-1" }),
+        scope,
+      );
+      let refuse = true;
+      const deps = {
+        transport: far,
+        vendor: "in_memory_reset",
+        contexts: { providerEntitiesFor: async () => [PE_A], contextFor: async () => pullCtx() },
+        payers: { medicarePayerId: async () => PAYER },
+        cursors,
+        ingest: {
+          receiveAdvice: async (): Promise<ReceiveAdviceResult> =>
+            refuse
+              ? { outcome: "malformed", reason: "synthetic", cause: "content" }
+              : { outcome: "queued", adviceId: "adv-r" },
+        },
+      };
+      const key = {
+        organizationId: ORG_A,
+        providerEntityId: PE_A,
+        vendor: "in_memory_reset",
+        usage: "test" as const,
+      };
+      const sha = async (): Promise<string> =>
+        (
+          await admin.query(
+            "SELECT file_sha256 FROM remittance_pull_refusal WHERE organization_id=$1 AND vendor='in_memory_reset' AND remittance_id='ERA-R-1'",
+            [ORG_A],
+          )
+        ).rows[0]?.file_sha256;
+      const count = async () =>
+        (
+          await admin.query(
+            "SELECT refusal_count, file_sha256 FROM remittance_pull_refusal WHERE organization_id=$1 AND vendor='in_memory_reset' AND remittance_id='ERA-R-1'",
+            [ORG_A],
+          )
+        ).rows[0]?.refusal_count;
+
+      expect((await pullRemittances(deps, ORG_A)).failures).toHaveLength(1);
+      expect(await count()).toBe(1);
+      refuse = false;
+      const ok = await pullRemittances(deps, ORG_A);
+
+      expect(ok).toMatchObject({ queued: 1, failures: [], quarantined: [] });
+      expect(await count()).toBe(0);
+      expect(await cursors.get(key)).toBe("1");
+      expect(await cursors.isQuarantined(key, "ERA-R-1", await sha())).toBe(false);
     });
 
     it("keeps one tenant's cursor invisible to another (RLS on the app role)", async () => {

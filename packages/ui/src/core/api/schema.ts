@@ -5620,6 +5620,109 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/commercial/eligibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A patient's commercial eligibility checks, newest first (commercial_billing.read; provider entity and patient scope, and only that provider entity's checks are returned; read-audited). Outcome and as-of date only: no member id, no 271 body */
+        get: operations["getApiV1BillingCommercialEligibility"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/eligibility/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run a commercial 270/271 eligibility check through the platform clearinghouse (commercial_billing.write; provider entity and patient scope; Idempotency-Key required, and a repeat of the same key answers the stored result with `replayed: true` without a second send). The member id is read server side from the patient's coverage and is never in the request, the stored row, the response or a log. Refuses with a stable code and sends nothing: 503 CH_NOT_WIRED (no clearinghouse bound), 409 COMMERCIAL_PAYER_NOT_ROUTED (the bound clearinghouse has no payer id for the plan), 409 COMMERCIAL_PROVIDER_NOT_ENROLLED, 409 COMMERCIAL_PROVIDER_NPI_MISSING, 422 COMMERCIAL_COVERAGE_NOT_FOUND. A clearinghouse that cannot answer is 503 COMMERCIAL_ELIGIBILITY_UNAVAILABLE (nothing recorded). The response carries the plan's freshness verdict */
+        post: operations["postApiV1BillingCommercialEligibilityCheck"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/eligibility/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The newest check for a patient and plan plus the plan's freshness verdict (rule M41.ELIGIBILITY.FRESHNESS): missing or stale follows the plan's warn/block policy, a fresh inactive answer always blocks (commercial_billing.read; provider entity and patient scope; read-audited) */
+        get: operations["getApiV1BillingCommercialEligibilityLatest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/enrollments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A provider entity's enrollments with commercial payers on a clearinghouse (commercial_billing.read; provider entity scope) */
+        get: operations["getApiV1BillingCommercialEnrollments"];
+        put?: never;
+        /** Record a provider entity's enrollment with a payer on a clearinghouse (commercial_billing.manage_enrollment + a fresh step-up; Idempotency-Key required). Only status `enrolled`, in effect on the day, lets a send through. 409 CONFLICT when the period overlaps another for the same provider entity, payer and clearinghouse; 422 when the payer is not an active commercial payer */
+        post: operations["postApiV1BillingCommercialEnrollments"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/enrollments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change an enrollment's status, end date or evidence reference (commercial_billing.manage_enrollment + a fresh step-up; Idempotency-Key required). The body names the provider entity; an enrollment of another provider entity or tenant is a 404 */
+        patch: operations["patchApiV1BillingCommercialEnrollmentsById"];
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/payer-plans/{id}/eligibility-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Set what stale or missing eligibility does for a plan: `warn` (default) or `block`, and how many days (1 to 365; default 30) make a check stale (commercial_billing.manage_enrollment + a fresh step-up, because relaxing it weakens a billing control; Idempotency-Key required) */
+        patch: operations["patchApiV1BillingCommercialPayerplansByIdEligibilitypolicy"];
+        trace?: never;
+    };
     "/api/v1/billing/dde-items": {
         parameters: {
             query?: never;
@@ -44220,6 +44323,343 @@ export interface operations {
                                 message: string;
                             }[];
                         };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingCommercialEligibility: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                patientId: string;
+                planId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            providerEntityId: string;
+                            patientId: string;
+                            planId: string;
+                            clearinghouseKey: string;
+                            serviceDate: string;
+                            outcome: "active" | "inactive" | "unknown";
+                            asOfDate: string;
+                            requestId: string;
+                            checkedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialEligibilityCheck: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    providerEntityId: string;
+                    patientId: string;
+                    planId: string;
+                    serviceDate: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        patientId: string;
+                        planId: string;
+                        clearinghouseKey: string;
+                        serviceDate: string;
+                        outcome: "active" | "inactive" | "unknown";
+                        asOfDate: string;
+                        requestId: string;
+                        checkedAt: string;
+                        replayed: boolean;
+                        freshness: {
+                            ruleId: string;
+                            status: string;
+                            severity: string;
+                            message: string;
+                            evidence: {
+                                ageDays: number | null;
+                                maxAgeDays: number;
+                                policy: "warn" | "block";
+                                outcome: ("active" | "inactive" | "unknown") | null;
+                                checkedAt: string | null;
+                            };
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingCommercialEligibilityLatest: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                patientId: string;
+                planId: string;
+                serviceDate?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        latest: {
+                            id: string;
+                            providerEntityId: string;
+                            patientId: string;
+                            planId: string;
+                            clearinghouseKey: string;
+                            serviceDate: string;
+                            outcome: "active" | "inactive" | "unknown";
+                            asOfDate: string;
+                            requestId: string;
+                            checkedAt: string;
+                            replayed: boolean;
+                            freshness: {
+                                ruleId: string;
+                                status: string;
+                                severity: string;
+                                message: string;
+                                evidence: {
+                                    ageDays: number | null;
+                                    maxAgeDays: number;
+                                    policy: "warn" | "block";
+                                    outcome: ("active" | "inactive" | "unknown") | null;
+                                    checkedAt: string | null;
+                                };
+                            };
+                        } | null;
+                        freshness: {
+                            ruleId: string;
+                            status: string;
+                            severity: string;
+                            message: string;
+                            evidence: {
+                                ageDays: number | null;
+                                maxAgeDays: number;
+                                policy: "warn" | "block";
+                                outcome: ("active" | "inactive" | "unknown") | null;
+                                checkedAt: string | null;
+                            };
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingCommercialEnrollments: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                payerId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            providerEntityId: string;
+                            payerId: string;
+                            clearinghouseKey: string;
+                            status: "not_enrolled" | "pending" | "enrolled" | "suspended";
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            evidenceRef: string | null;
+                            createdAt: string;
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialEnrollments: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    providerEntityId: string;
+                    payerId: string;
+                    clearinghouseKey: string;
+                    status: "not_enrolled" | "pending" | "enrolled" | "suspended";
+                    effectiveFrom: string;
+                    effectiveTo?: string | null;
+                    evidenceRef?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        payerId: string;
+                        clearinghouseKey: string;
+                        status: "not_enrolled" | "pending" | "enrolled" | "suspended";
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        evidenceRef: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1BillingCommercialEnrollmentsById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    providerEntityId: string;
+                    status?: "not_enrolled" | "pending" | "enrolled" | "suspended";
+                    effectiveTo?: string | null;
+                    evidenceRef?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        payerId: string;
+                        clearinghouseKey: string;
+                        status: "not_enrolled" | "pending" | "enrolled" | "suspended";
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        evidenceRef: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1BillingCommercialPayerplansByIdEligibilitypolicy: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    policy: "warn" | "block";
+                    maxAgeDays: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        payerId: string;
+                        eligibilityStalenessPolicy: "warn" | "block";
+                        eligibilityMaxAgeDays: number;
                     };
                 };
             };

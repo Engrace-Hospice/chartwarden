@@ -356,6 +356,12 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       "playbook.publish",
       // M25 milestone 9a-2: the leadership medical-review report (migration 1253 covers existing roles).
       "medical_review.report.read",
+      // M41 (#724): commercial billing (migration 1265 covers existing roles). Administrator and org_admin get them through the catalog.
+      "commercial_billing.read",
+      "commercial_billing.write",
+      "commercial_billing.submit",
+      "commercial_billing.override_validation",
+      "commercial_billing.manage_enrollment",
     ],
   },
   {

@@ -1,6 +1,6 @@
 # ChartWarden — Module 41: Billing — Commercial — Specification
 
-> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) win on as-built behaviour. Built so far: the payer and plan model (migration 1260, issue #721) and claim assembly, validation, pre-authorization, coordination of benefits and audited overrides (migrations 1261-1262, issue #722). Billing-domain facts were reviewed against primary sources on 2026-10-24 (ADR-0100 "Billing facts review"); items that depend on a payer's contract are **confirm-with-payer-contract** configuration, not assumptions in code.
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) win on as-built behaviour. Built so far: the payer and plan model (migration 1260, issue #721) and claim assembly, validation, pre-authorization, coordination of benefits and audited overrides (migrations 1261 and 1266, issue #722). Billing-domain facts were reviewed against primary sources on 2026-10-24 (ADR-0100 "Billing facts review"); items that depend on a payer's contract are **confirm-with-payer-contract** configuration, not assumptions in code.
 
 **Version:** 0.1
 **Status:** Draft (proposal); ADR-0100 Accepted
@@ -10,7 +10,7 @@
 **Sibling specs read into context:** M23 v0.2 (D15), M24 v0.2.1 (structure), M25 v0.2 (D9), M40 v0.4
 
 ## Changelog
-- **0.3 (2026-10-24)** - Claim assembly and validation built (issue #722). Tables `commercial_authorization`, `commercial_claim`, `commercial_claim_line`, `commercial_claim_state_history`, `commercial_validation_run`, `_result` and `_override` (migration 1261); the plan gains `site_of_service_hcpcs_required`. Routes under `/api/v1/billing/commercial` (section 4.1), the three-key permission set, three ABAC predicates, three `m41.claim.*` events. The shared 837I builder gained the commercial shape (SBR09 filing indicator, group number, member id, revenue-code-only lines, loop 2320/2330 for a Medicare or Medicaid secondary). M40 payer merge or deactivation is handled by a read-time guard (section 4.2), not by rewriting plans.
+- **0.3 (2026-10-24)** - Claim assembly and validation built (issue #722). Tables `commercial_authorization`, `commercial_claim`, `commercial_claim_line`, `commercial_claim_state_history`, `commercial_validation_run`, `_result` and `_override` (migration 1261; role grants in 1266); the plan gains `site_of_service_hcpcs_required`. Routes under `/api/v1/billing/commercial` (section 4.1), the three-key permission set, three ABAC predicates, three `m41.claim.*` events. The shared 837I builder gained the commercial shape (SBR09 filing indicator, group number, member id, revenue-code-only lines, loop 2320/2330 for a Medicare or Medicaid secondary). M40 payer merge or deactivation is handled by a read-time guard (section 4.2), not by rewriting plans.
 - **0.2 (2026-10-24)** — ADR-0100 ratified; UNVERIFIED claim-shape and COB statements corrected (Medicare Advantage hospice is billed to the MAC, not M41). Payer and plan model built: `commercial_payer_plan`, plus two tables added to the owned set, `commercial_payer_route` (clearinghouse payer id) and `commercial_contract_rate` (rate terms; no longer deferred).
 - **0.1 (2026-10-23)** — First draft. Skeleton and decision record only; no tables, routes or events exist.
 
@@ -44,9 +44,9 @@ acceptance stamps `clearinghouse_accepted_at` and never advances the claim to ac
 | `commercial_payer_plan` | Per-tenant plan for an active commercial M40 payer: claim filing indicator, authorization requirement, effective dating (no overlap per payer and plan name). No PHI. Built |
 | `commercial_payer_route` | The payer id a clearinghouse routes a plan on, effective dated, one in effect per plan and clearinghouse. Built |
 | `commercial_contract_rate` | Contract rate per level of care: revenue code, basis (per diem, per hour, percent of charges), amount, effective dated. Built |
-| `commercial_payer_enrollment` | Per provider entity, per payer, per clearinghouse: `not_enrolled`, `pending`, `enrolled`, `suspended`, with dates and evidence reference |
+| `commercial_payer_enrollment` | Per provider entity, per payer, per clearinghouse: `not_enrolled`, `pending`, `enrolled`, `suspended`, with dates and evidence reference. Built (#724) |
 | `commercial_authorization` | Pre-authorization: number (never shown in a message or audit event), patient, plan, optional level of care, date obtained, approved period, status (`approved`, `denied`, `voided`). Built (#722); no unit count yet |
-| `commercial_eligibility_check` | A 270/271 exchange: request id, outcome, as-of date, no member id in logs |
+| `commercial_eligibility_check` | A 270/271 exchange: request id, outcome, as-of date, no member id stored or logged. Built (#724) |
 | `commercial_claim` | Header: patient, plan, payer-route snapshot, type of bill 81x, window, COB (secondary Medicare or Medicaid), diagnosis and attending snapshot, totals, expected payment, state (`draft`, `ready`, `void`). Built (#722) |
 | `commercial_claim_line` | One line per level-of-care stretch the rate in effect covers: contract revenue code, optional site-of-service HCPCS, dates, units, unit rate, charge, the rate row it was priced from. Built (#722) |
 | `commercial_claim_state_history` | Immutable transition log. Built (#722) |
@@ -98,6 +98,7 @@ Rules are pure functions over loaded facts (`domain/rules.ts`) and run on assemb
 | `principal_diagnosis_present`, `attending_physician_present`, `site_of_service_hcpcs` | hard | 837I content the plan requires |
 | `authorization_on_file` | hard when the plan requires authorization, soft when the requirement is `confirm_with_payer` | approved authorizations cover every billed day (and the level of care when required per level); an expired one is reported as expired |
 | `authorization_lead_time` | soft | the plan's lead time (days before service) was met |
+| `eligibility_freshness` | hard when the plan policy is `block` or the payer answered "not active"; otherwise a visible, non-blocking finding | the latest 270/271 check (#724) is recent enough (`evaluateEligibilityFreshness`) |
 | `cob_secondary_declared` | info | Medicare or Medicaid is secondary; the claim carries the other-payer loop |
 
 **Scope of the data (security).** A route-level ABAC predicate proves the actor may act on the provider entity NAMED in the request; every service also checks the DATA it touches (`services/scope-guard.ts`): the entity is in the actor's billing scope, the patient is in their caseload (M5 `CaseloadProvider`, skipped only for organization-wide billing roles and the system principal), and the patient's admission belongs to that entity (`admission.provider_entity_id`, added to the M6 range context). Authorization lookups, lists and the claim read filter on the entity too, and an authorization recorded under another entity never satisfies a claim. Absent scope fails closed. Concurrency: lifecycle operations lock the claim row, assembly takes a per-patient advisory lock, and the table carries an exclusion constraint (one live claim per patient per day) and a trigger that makes `void` final. Idempotency on the mutating routes is presence-only (the `Idempotency-Key` header is required); a retried validate, ready or void re-executes harmlessly, a retried override or assembly is a 409.
@@ -120,7 +121,7 @@ filter, validation panel, send gate reasons), claim detail (payer, plan, authori
 and the flat rail/drawer pattern; screens are added to the UI corpus so `docs:ui` and `ui:parity` stay green.
 
 ## 6. Permissions
-`commercial_billing.read`, `.write` and `.override_validation` are built (#722; migration 1262 grants them to administrator, org_admin and every role holding the Medicare analogue); `.submit` and `.manage_enrollment` arrive with their issues. ABAC: `commercial_billing_provider_scope`, `commercial_claim_in_billing_caseload`, `commercial_override_eligible`. `submit` and enrollment
+`commercial_billing.read`, `.write` and `.override_validation` are built (created by migration 1265; migration 1266 also grants them to every role holding the Medicare analogue); `.submit` and `.manage_enrollment` arrive with their issues. ABAC: `commercial_billing_provider_scope`, `commercial_claim_in_billing_caseload`, `commercial_override_eligible`. `submit` and enrollment
 changes require step-up. Auditor and AI actors are read-denied by default.
 
 ## 7. Acceptance scenarios
@@ -147,7 +148,7 @@ a `ci.yml` job row. Conformance for the transport is owned by ADR-0053.
 1. Skeleton: ADR-0100, this spec, manifest `.ts` and `.cjs`, `bun run scaffold`, index updates. **Done by this change.**
 2. Migrations and Drizzle schema for the owned tables, code-side enum mirrors, RLS and audit triggers. **Plan, route and rate tables done (#721, migration 1260); authorization, claim, line, history and validation tables done (#722, migration 1261). Enrollment, eligibility, submission and acknowledgment tables remain.**
 3. Payer plan, enrollment and authorization routes with live RLS suite.
-4. Claim assembly from M23 seams and validation rules (S17). **Done (#722, migrations 1261-1262, live suites `test:m41:commercial-claim:live` and `test:m41:commercial-routes:live`).**
+4. Claim assembly from M23 seams and validation rules (S17). **Done (#722, migrations 1261 and 1266, live suites `test:m41:commercial-claim:live` and `test:m41:commercial-routes:live`).**
 5. Submission and acknowledgment workers through the transport (S15, S18); requires the Medicare submission-path decision.
 6. Eligibility.
 7. `CommercialClaimReader` seam and the M25 payer-keyed candidate provider (S15, S19).

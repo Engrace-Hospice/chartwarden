@@ -16,6 +16,10 @@ import {
   type CommercialValidationOutcome,
   type CommercialValidationSeverity,
 } from "@chartwarden/types";
+import {
+  type LatestEligibilityCheck,
+  evaluateEligibilityFreshness,
+} from "../eligibility/freshness";
 import { addDays, eachDay, toRanges } from "./dates";
 import type { PricedLine, UnpricedReason } from "./pricing";
 
@@ -69,6 +73,14 @@ export interface RuleContext {
   readonly secondaryPayerKind: CommercialSecondaryPayerKind | null;
   /** The bill ends the stay (TOB 811 / 814): the discharge day itself is not a billed day, so the last day may be unbilled. */
   readonly finalBill?: boolean;
+  /** The plan's eligibility staleness policy and the patient's latest 270/271 check (#724); absent = the rule is skipped. */
+  readonly eligibility?: {
+    readonly policy: "warn" | "block";
+    readonly maxAgeDays: number;
+    readonly latest: LatestEligibilityCheck | null;
+    /** ISO timestamp of "now" (injected: the rules stay pure). */
+    readonly now: string;
+  };
 }
 
 export interface RuleOutcome {
@@ -170,6 +182,48 @@ function serviceDaysCovered(c: RuleContext): RuleOutcome {
     },
   );
 }
+
+/**
+ * Is the latest eligibility check good enough to bill on? The finding comes from the eligibility lane's pure function; the plan's
+ * policy decides what a missing or stale check does: `warn` is visible but never blocks, `block` is a hard block. A payer that
+ * answered "not active" is a hard block whatever the policy. The evidence leaves out the check's age so an override (bound to the
+ * evidence hash) does not expire merely because a day passed.
+ */
+function eligibilityFreshness(c: RuleContext): RuleOutcome | null {
+  const e = c.eligibility;
+  if (!e) return null;
+  const key = "eligibility_freshness";
+  const f = evaluateEligibilityFreshness({
+    latest: e.latest,
+    policy: e.policy,
+    maxAgeDays: e.maxAgeDays,
+    now: e.now,
+  });
+  const evidence = {
+    ruleId: f.ruleId,
+    status: f.status,
+    policy: f.evidence.policy,
+    maxAgeDays: f.evidence.maxAgeDays,
+    outcome: f.evidence.outcome,
+    checkedAt: f.evidence.checkedAt,
+  };
+  if (f.severity === "pass") return pass(key, f.message);
+  if (f.severity === "block") return hardFail(key, f.message, evidence);
+  // a warning: recorded and shown, never blocking
+  return {
+    ruleKey: key,
+    severity: "info",
+    outcome: "fail",
+    overridable: false,
+    message: f.message,
+    evidence,
+  };
+}
+
+const eligibilityRule = (c: RuleContext): RuleOutcome[] => {
+  const r = eligibilityFreshness(c);
+  return r ? [r] : [];
+};
 
 function planInEffect(c: RuleContext): RuleOutcome {
   const key = "plan_in_effect";
@@ -430,6 +484,7 @@ export function runCommercialRules(c: RuleContext): RuleOutcome[] {
     payerRouteInEffect(c),
     ...ratesAndCharges(c),
     serviceDaysCovered(c),
+    ...eligibilityRule(c),
     ...diagnosisAndAttending(c),
     authorizationOnFile(c),
     authorizationLeadTime(c),

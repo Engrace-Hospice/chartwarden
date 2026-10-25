@@ -34,6 +34,9 @@ export const commercialPayerPlan = pgTable(
       .default("confirm_with_payer"),
     authorizationLeadDays: smallint("authorization_lead_days"),
     siteOfServiceHcpcsRequired: boolean("site_of_service_hcpcs_required").notNull().default(false), // migration 1261
+    // #724 (migration 1265): what stale or missing eligibility does to claim validation, and how old makes a check stale.
+    eligibilityStalenessPolicy: text("eligibility_staleness_policy").notNull().default("warn"), // CommercialEligibilityStalenessPolicy
+    eligibilityMaxAgeDays: smallint("eligibility_max_age_days").notNull().default(30),
     effectiveFrom: date("effective_from").notNull(),
     effectiveTo: date("effective_to"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -89,6 +92,72 @@ export const commercialContractRate = pgTable(
   }),
 );
 
+// #724 (migration 1265): a provider entity's enrollment with a payer on a clearinghouse. No PHI. The no-overlap EXCLUDE lives in the migration.
+export const commercialPayerEnrollment = pgTable(
+  "commercial_payer_enrollment",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    providerEntityId: uuid("provider_entity_id").notNull(), // M1 provider entity (logical FK)
+    payerId: uuid("payer_id").notNull(), // M40 payer (logical FK)
+    clearinghouseKey: text("clearinghouse_key").notNull(),
+    status: text("status").notNull().default("not_enrolled"), // CommercialEnrollmentStatus
+    effectiveFrom: date("effective_from").notNull(),
+    effectiveTo: date("effective_to"),
+    evidenceRef: text("evidence_ref"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byOrg: index("commercial_payer_enrollment_org_ix").on(t.organizationId),
+    byLookup: index("commercial_payer_enrollment_lookup_ix").on(
+      t.organizationId,
+      t.providerEntityId,
+      t.payerId,
+      t.clearinghouseKey,
+    ),
+  }),
+);
+
+// #724 (migration 1265): one 270/271 exchange. Append-only. Outcome and as-of date ONLY: never the member id, never the 271 body.
+export const commercialEligibilityCheck = pgTable(
+  "commercial_eligibility_check",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    providerEntityId: uuid("provider_entity_id").notNull(), // logical FK (M1)
+    locationId: uuid("location_id"), // logical FK (M1)
+    patientId: uuid("patient_id").notNull(), // logical FK (M5)
+    planId: uuid("plan_id").notNull(), // composite FK (plan_id, organization_id) in the migration
+    patientPayerId: uuid("patient_payer_id").notNull(), // the M5 coverage row used (an id, never the member id)
+    clearinghouseKey: text("clearinghouse_key").notNull(),
+    clearinghousePayerId: text("clearinghouse_payer_id").notNull(),
+    serviceDate: date("service_date").notNull(),
+    outcome: text("outcome").notNull(), // CommercialEligibilityOutcome
+    asOfDate: date("as_of_date").notNull(),
+    requestId: uuid("request_id").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    checkedByUserId: uuid("checked_by_user_id").notNull(),
+    checkedAt: timestamp("checked_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byOrg: index("commercial_eligibility_check_org_ix").on(t.organizationId),
+    byPatientRecent: index("commercial_eligibility_check_patient_recent_ix").on(
+      t.organizationId,
+      t.patientId,
+      t.planId,
+      t.checkedAt,
+    ),
+    byPlan: index("commercial_eligibility_check_plan_ix").on(t.planId),
+  }),
+);
+
+export type CommercialPayerEnrollment = typeof commercialPayerEnrollment.$inferSelect;
+export type CommercialEligibilityCheck = typeof commercialEligibilityCheck.$inferSelect;
 export type CommercialPayerPlan = typeof commercialPayerPlan.$inferSelect;
 export type NewCommercialPayerPlan = typeof commercialPayerPlan.$inferInsert;
 export type CommercialPayerRoute = typeof commercialPayerRoute.$inferSelect;
