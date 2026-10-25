@@ -38,6 +38,9 @@ const WATCHER_LOG = "M29 listener health watcher constructed";
 // ADR-0053 D3 - the clearinghouse binding line proves the vendor wiring ran (unbound is a valid, logged state).
 const CLEARINGHOUSE_LOG = "Clearinghouse binding:";
 const WATCHER_REQUESTED = process.env.M29_LISTENER_WATCH_ENABLED === "true";
+// #717 - a bound vendor with a queue connection must have constructed the M25 835 pull worker (bound is not computing).
+const PULL_LOG = "M25 remittance pull worker constructed";
+const PULL_REQUESTED = Boolean(process.env.CLEARINGHOUSE_VENDOR) && Boolean(process.env.REDIS_URL);
 
 for (const key of ["DATABASE_URL", "DATABASE_PLATFORM_URL"]) {
   if (!process.env[key]) {
@@ -122,6 +125,11 @@ if (!output.includes(CLEARINGHOUSE_LOG)) {
   );
 }
 
+if (PULL_REQUESTED && !output.includes(PULL_LOG)) {
+  fail(
+    `CLEARINGHOUSE_VENDOR is set but the backend never constructed the M25 remittance pull worker (no "${PULL_LOG}" line) - the 835 feed is bound but not computing`,
+  );
+}
 if (WATCHER_REQUESTED && !output.includes(WATCHER_LOG)) {
   fail(
     `M29_LISTENER_WATCH_ENABLED=true but the backend never constructed the listener-health watcher (no "${WATCHER_LOG}" line) - the flag also stops the listener paging listener_down, so a dead listener would page nobody`,

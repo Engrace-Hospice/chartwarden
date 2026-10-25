@@ -1012,6 +1012,7 @@ export const MODULES: ModuleDef[] = [
       "denial_playbook",
       "denial_playbook_version",
       "denial_playbook_case_step",
+      "remittance_pull_cursor",
       "appeal_tier_detail",
       "recorded_deadline",
       "payer_appeal_path",

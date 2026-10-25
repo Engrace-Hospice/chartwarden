@@ -18,6 +18,7 @@ export interface M25BackoffOptions {
 export const M25_CRON_QUEUES = {
   denialAgingScan: "denial-aging-scan",
   appealDeadlineScan: "appeal-deadline-scan",
+  remittancePull: "remittance-pull",
 } as const;
 
 export type M25CronQueueName = (typeof M25_CRON_QUEUES)[keyof typeof M25_CRON_QUEUES];
@@ -26,6 +27,7 @@ export type M25CronQueueName = (typeof M25_CRON_QUEUES)[keyof typeof M25_CRON_QU
 export const M25_JOB_SCHEDULES = {
   denialAgingScan: "0 2 * * *",
   appealDeadlineScan: "30 2 * * *",
+  remittancePull: "*/15 * * * *",
 } as const;
 
 /** One cron's §4.8 runtime params: worker concurrency + the bounded retry/backoff envelope. */
@@ -41,6 +43,7 @@ const EXPONENTIAL = (delay = 5000): M25BackoffOptions => ({ type: "exponential",
 export const M25_QUEUE_PARAMS = {
   denialAgingScan: { concurrency: 1, attempts: 2, backoff: EXPONENTIAL() },
   appealDeadlineScan: { concurrency: 1, attempts: 2, backoff: EXPONENTIAL() },
+  remittancePull: { concurrency: 1, attempts: 3, backoff: EXPONENTIAL(30000) },
 } as const satisfies Record<string, M25QueueParam>;
 
 /** The day bucket (UTC `yyyy-mm-dd`) the cron dedupe keys quantize on (one tick per day). */

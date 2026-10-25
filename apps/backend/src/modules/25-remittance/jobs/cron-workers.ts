@@ -9,6 +9,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, sql } from "drizzle-orm";
+import { type RemittancePullDeps, pullRemittances } from "../ingest/clearinghouse-pull";
 import { type AuditNoDeadlineStore, runAuditNoDeadlineWatch } from "./audit-no-deadline-watch";
 import {
   type AdrDeadlineStore,
@@ -59,6 +60,8 @@ export interface M25WorkerDeps {
   now?: () => Date;
   readonly alerts?: WorkerAlertPort;
   readonly activeOrgs?: ActiveOrgListPort;
+  /** #717 - the bound clearinghouse 835 feed. Absent = no vendor is bound and the `remittance-pull` worker is not registered. */
+  readonly remittancePull?: RemittancePullDeps;
 }
 
 /** A fail-closed port: throws a descriptive UNBOUND error when a cron tick reaches an unbound dependency. */
@@ -93,17 +96,31 @@ export function buildM25WorkerDeps(deps: {
   db: DbClient;
   alerts?: WorkerAlertPort;
   activeOrgs?: ActiveOrgListPort;
+  remittancePull?: RemittancePullDeps;
 }): M25WorkerDeps {
   return {
     connection: deps.connection,
     db: deps.db,
     alerts: deps.alerts,
     activeOrgs: deps.activeOrgs,
+    remittancePull: deps.remittancePull,
     now: () => new Date(),
   };
 }
 
 // ── the per-org cron runners (fan out over active orgs, RLS-scoped, alert-dispatching) ────────────────────
+
+/** Every 15 minutes: pull each org's pending 835s from the bound clearinghouse into the receive/post pipeline (#717). Throws after all orgs ran so BullMQ retries. */
+export async function runRemittancePullCron(deps: M25WorkerDeps): Promise<void> {
+  const pull = deps.remittancePull;
+  if (!pull)
+    throw new Error("M25_WORKER_PORT_UNBOUND: remittancePull - no clearinghouse vendor is bound");
+  const failures: string[] = [];
+  for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
+    failures.push(...(await pullRemittances(pull, organizationId)).failures);
+  }
+  if (failures.length > 0) throw new Error(`remittance pull failed: ${failures.join("; ")}`);
+}
 
 /** Nightly: rebucket every open denial's aging + dispatch the 30/90-day threshold alerts (§2.4). */
 export async function runDenialAgingCron(deps: M25WorkerDeps): Promise<void> {
@@ -482,6 +499,14 @@ export async function runAppealDeadlineCron(deps: M25WorkerDeps): Promise<void> 
 /** Construct one BullMQ `Worker` per §4.8 cron queue. The caller owns lifecycle (`close()` on shutdown). */
 export function registerM25CronWorkers(deps: M25WorkerDeps): Worker[] {
   const { connection } = deps;
+  const pull = deps.remittancePull
+    ? [
+        new Worker(M25_CRON_QUEUES.remittancePull, async () => runRemittancePullCron(deps), {
+          connection,
+          concurrency: M25_QUEUE_PARAMS.remittancePull.concurrency,
+        }),
+      ]
+    : [];
   return [
     new Worker(M25_CRON_QUEUES.denialAgingScan, async () => runDenialAgingCron(deps), {
       connection,
@@ -491,14 +516,26 @@ export function registerM25CronWorkers(deps: M25WorkerDeps): Worker[] {
       connection,
       concurrency: M25_QUEUE_PARAMS.appealDeadlineScan.concurrency,
     }),
+    ...pull,
   ];
 }
 
 /** Register the §4.8 repeatable cron schedules on their dedicated queues. Returns the `Queue`s to `close()`. */
-export async function scheduleM25Jobs(connection: ConnectionOptions): Promise<Queue[]> {
+export async function scheduleM25Jobs(
+  connection: ConnectionOptions,
+  options: { readonly remittancePull?: boolean } = {},
+): Promise<Queue[]> {
   const schedules: readonly [M25CronQueueName, string][] = [
     [M25_CRON_QUEUES.denialAgingScan, M25_JOB_SCHEDULES.denialAgingScan],
     [M25_CRON_QUEUES.appealDeadlineScan, M25_JOB_SCHEDULES.appealDeadlineScan],
+    ...(options.remittancePull
+      ? [
+          [M25_CRON_QUEUES.remittancePull, M25_JOB_SCHEDULES.remittancePull] as [
+            M25CronQueueName,
+            string,
+          ],
+        ]
+      : []),
   ];
   const queues: Queue[] = [];
   for (const [name, pattern] of schedules) {
