@@ -94,8 +94,16 @@ const GATEWAY_PROBE_REGISTRY = new MedicaidAdapterRegistry();
  */
 export function electronicSubmissionRefusal(
   state: string,
+  gatewayBound = true,
 ): { readonly code: string; readonly message: string } | null {
-  if (!GATEWAY_PROBE_REGISTRY.isPhaseOneDenyStub(state as StateCode)) return null;
+  if (!GATEWAY_PROBE_REGISTRY.isPhaseOneDenyStub(state as StateCode)) {
+    // Adapter exists but this deployment has no gateway wired (e.g. M24_LAUNCH_GATEWAY_ENABLED off): same code.
+    if (gatewayBound) return null;
+    return {
+      code: MEDICAID_NO_ELECTRONIC_GATEWAY_CODE,
+      message: `Electronic Medicaid submission is not configured for ${state} in this deployment. Submit this claim manually through the ${state} Medicaid provider portal or on paper (UB-04), then record the outcome on the claim.`,
+    };
+  }
   return {
     code: MEDICAID_NO_ELECTRONIC_GATEWAY_CODE,
     message: `Electronic Medicaid submission is not available for ${state}: no live state gateway is configured. Submit this claim manually through the ${state} Medicaid provider portal or on paper (UB-04), then record the outcome on the claim.`,

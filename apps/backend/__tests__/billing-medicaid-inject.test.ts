@@ -148,6 +148,7 @@ function createM24Backend(): {
     version: 1,
     validationRunIdLatest: RUN,
     eligibilityOutcomeSnapshot: null,
+    electronicSubmissionRefusal: null,
     createdAt: NOW,
     updatedAt: NOW,
   });
@@ -395,6 +396,7 @@ function createM24Backend(): {
         version: 1,
         validationRunIdLatest: null,
         eligibilityOutcomeSnapshot: null,
+        electronicSubmissionRefusal: null,
         createdAt: NOW,
         updatedAt: NOW,
       };

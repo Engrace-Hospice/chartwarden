@@ -4,7 +4,10 @@ import { type DbClient, schema } from "@chartwarden/db";
 // each statement to the acting org. Claim list paging is keyset over (created_at DESC, id DESC). The
 // rule-config read overlays the per-tenant config rows onto the §4.6 platform-default registry. Secrets and
 // the Recipient ID are NEVER returned (presence flags + masked last-4 only; D12 / §3.6).
-import { DEFAULT_MEDICAID_RULES } from "@chartwarden/medicaid-adapters";
+import {
+  DEFAULT_MEDICAID_RULES,
+  electronicSubmissionRefusal,
+} from "@chartwarden/medicaid-adapters";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { type SQL, and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { isUsableCipher } from "../credential-crypto";
@@ -72,6 +75,7 @@ export function buildDrizzleM24ReadService(db: DbClient): M24ReadService {
     version: r.version,
     validationRunIdLatest: r.validationRunIdLatest ?? null,
     eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
+    electronicSubmissionRefusal: electronicSubmissionRefusal(r.serviceState)?.message ?? null,
     createdAt: iso(r.createdAt),
     updatedAt: iso(r.updatedAt),
   });

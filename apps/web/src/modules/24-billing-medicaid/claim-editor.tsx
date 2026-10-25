@@ -73,6 +73,7 @@ interface ClaimDetail {
   version: number;
   validationRunIdLatest: string | null;
   eligibilityOutcomeSnapshot: string | null;
+  electronicSubmissionRefusal: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -203,7 +204,7 @@ export function MedicaidClaimEditor(): JSX.Element {
   if (loading) return <LoadingSpinner />;
   if (error || !claim) return <EmptyState title="Unavailable" description={error ?? "No claim."} />;
 
-  const canSubmit = SUBMITTABLE.has(claim.state);
+  const canSubmit = SUBMITTABLE.has(claim.state) && !claim.electronicSubmissionRefusal;
   const canReplaceVoid = REPLACEABLE.has(claim.state);
   const totalCharges = lines.reduce((acc, l) => acc + l.chargesCents, 0);
   const rbLines = lines.filter((l) => l.isRb);
@@ -258,6 +259,14 @@ export function MedicaidClaimEditor(): JSX.Element {
       }
       aside={
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          {claim.electronicSubmissionRefusal ? (
+            <Card title="Submission">
+              <span role="status" style={mutedStyle}>
+                {claim.electronicSubmissionRefusal}
+              </span>
+            </Card>
+          ) : null}
+
           {/* R&B context (§5.1) — present only for combined / rb_only claims. */}
           <Card title="Room &amp; Board">
             {claim.rbArrangementId ? (

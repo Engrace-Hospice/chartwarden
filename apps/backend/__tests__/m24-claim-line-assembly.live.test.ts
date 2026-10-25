@@ -616,6 +616,94 @@ describe.skipIf(!DB_URL)(
       });
     });
     describe("S11 (#711): submit refused for states without a Medicaid gateway", () => {
+      async function readyClaim(
+        state: string,
+        claimState: string,
+        isGatewayBound?: (s: string) => boolean,
+      ) {
+        const published: unknown[] = [];
+        const svc = buildDrizzleM24WriteService(
+          handle.db,
+          {
+            async publish(_tx: unknown, ev: unknown) {
+              published.push(ev);
+            },
+          } as never,
+          OPEN_CIPHER,
+          coverage,
+          ccnReader,
+          locPeriodReader([
+            {
+              id: LOC_1,
+              levelOfCare: "routine_home_care",
+              effectiveAt: new Date("2026-06-01"),
+              endedAt: new Date("2026-06-10"),
+            },
+          ]),
+          noEncounters(),
+          undefined,
+          undefined,
+          undefined,
+          isGatewayBound,
+        );
+        const actor = { organizationId: ORG, userId: USER, roles: [], stepUpRecent: true };
+        const claim = await svc.assembleClaim(actor, {
+          patientId: PATIENT,
+          admissionId: "99999999-9999-9999-9999-999999999999",
+          providerEntityId: peId,
+          serviceFrom: "2026-06-01",
+          serviceTo: "2026-06-10",
+          kind: "hospice_only",
+        });
+        await admin.query("UPDATE medicaid_claim SET state=$3, service_state=$2 WHERE id=$1", [
+          claim.id,
+          state,
+          claimState,
+        ]);
+        published.length = 0;
+        const v = await admin.query("SELECT version FROM medicaid_claim WHERE id=$1", [claim.id]);
+        return { svc, actor, claim, published, version: v.rows[0].version as number };
+      }
+
+      it("ordering: a non-READY WA claim still gets 409 INVALID_TRANSITION, not the gateway refusal", async () => {
+        const { svc, actor, claim, version } = await readyClaim("WA", "DRAFT");
+        await expect(
+          svc.submitClaim(actor, claim.id, { expectedVersion: version }),
+        ).rejects.toMatchObject({ code: "INVALID_TRANSITION", statusCode: 409 });
+      });
+
+      it("a READY Oregon claim with a bound gateway still submits (SUBMITTED, submission row, outbox event)", async () => {
+        const { svc, actor, claim, published, version } = await readyClaim("OR", "READY");
+        await svc.submitClaim(actor, claim.id, { expectedVersion: version });
+        const after = await admin.query("SELECT state FROM medicaid_claim WHERE id=$1", [claim.id]);
+        expect(after.rows[0].state).toBe("SUBMITTED");
+        const subs = await admin.query(
+          "SELECT 1 FROM medicaid_submission WHERE medicaid_claim_id=$1",
+          [claim.id],
+        );
+        expect(subs.rowCount).toBe(1);
+        expect(published).toHaveLength(1);
+      });
+
+      it("a READY Oregon claim is refused with the same code when the gateway is unbound", async () => {
+        const { svc, actor, claim, published, version } = await readyClaim(
+          "OR",
+          "READY",
+          (s) => s !== "OR",
+        );
+        await expect(
+          svc.submitClaim(actor, claim.id, { expectedVersion: version }),
+        ).rejects.toMatchObject({
+          code: "MEDICAID_STATE_NO_ELECTRONIC_GATEWAY",
+          statusCode: 422,
+        });
+        const subs = await admin.query(
+          "SELECT 1 FROM medicaid_submission WHERE medicaid_claim_id=$1",
+          [claim.id],
+        );
+        expect(subs.rowCount).toBe(0);
+        expect(published).toHaveLength(0);
+      });
       it.each(["WA", "ID", "CA", "NV"])(
         "%s: submit is refused with the stable code, no submission row, no outbox event, state unchanged",
         async (state) => {
