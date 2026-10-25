@@ -319,6 +319,22 @@ describe("commercial rules", () => {
       expect(
         evidenceHash(byKey(withElig("block", null), "eligibility_freshness")?.evidence ?? {}),
       ).toBe(evidenceHash(byKey(later, "eligibility_freshness")?.evidence ?? {}));
+      // and with a REAL stale check: the same check judged ten days later has a different age but the same evidence
+      const stale = { outcome: "active" as const, checkedAt: "2026-01-01T00:00:00.000Z" };
+      const a = byKey(withElig("block", stale), "eligibility_freshness");
+      const b = byKey(
+        ctx({
+          eligibility: {
+            policy: "block",
+            maxAgeDays: 30,
+            latest: stale,
+            now: "2026-04-12T12:00:00.000Z",
+          },
+        }),
+        "eligibility_freshness",
+      );
+      expect(a?.message).not.toBe(b?.message); // the message states the age...
+      expect(evidenceHash(a?.evidence ?? {})).toBe(evidenceHash(b?.evidence ?? {})); // ...the evidence does not
     });
   });
 });

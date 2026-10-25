@@ -1265,7 +1265,30 @@ describe.skipIf(!DB_URL)("M41 commercial claim assembly and validation - LIVE Po
         createdAt: new Date("2026-04-02T15:00:00Z"),
       };
       expect((await renderer.render(actor, args)).ok).toBe(true);
+      // an unrelated authorization (other patient, same plan) changing leaves this claim ready
+      const unrelated = await seedScenario({ authorization: "required_at_admission" });
+      const otherAuth = await buildCommercialAuthorizationService(
+        handle.db,
+        seamsFor(unrelated),
+      ).record(actor, recordBody(unrelated));
+      await buildCommercialAuthorizationService(handle.db, seamsFor(unrelated)).setStatus(
+        actor,
+        otherAuth.id,
+        "voided",
+      );
+      const stateOf = async () =>
+        (await admin.query("SELECT state FROM commercial_claim WHERE id=$1", [out.claimId])).rows[0]
+          .state;
+      expect(await stateOf()).toBe("ready");
+      // voiding the authorization it depends on demotes it IN THE SAME TRANSACTION (before any other call touches the claim)
       await authSvc.setStatus(actor, a.id, "voided");
+      expect(await stateOf()).toBe("draft");
+      expect(
+        await scalar<number>(
+          "SELECT count(*)::int AS n FROM commercial_claim_state_history WHERE claim_id=$1 AND from_state='ready' AND to_state='draft'",
+          [out.claimId],
+        ),
+      ).toBe(1);
       expect((await failure(renderer.render(actor, args)))?.code).toBe("COMMERCIAL_CLAIM_BLOCKED");
       expect((await failure(w.lifecycle.assertReady(actor, out.claimId)))?.code).toBe(
         "COMMERCIAL_CLAIM_BLOCKED",

@@ -115,6 +115,12 @@ export function buildCommercial837iRenderer(db: CommercialDb, ports: CommercialR
               409,
             );
           }
+          // the state is checked in the same transaction as the evaluation (a draft or void claim is never rendered)
+          if (claim.state !== "ready") {
+            throw new ConflictError(
+              "only a ready claim can be rendered; validate and clear every block first",
+            );
+          }
           const lines = await tx
             .select()
             .from(schema.commercialClaimLines)
@@ -124,11 +130,6 @@ export function buildCommercial837iRenderer(db: CommercialDb, ports: CommercialR
         },
       );
       const { claim, lines } = loaded;
-      if (claim.state !== "ready") {
-        throw new ConflictError(
-          "only a ready claim can be rendered; validate and clear every block first",
-        );
-      }
       if (claim.clearinghousePayerId === null) return gap("payer.payerId");
       if (
         claim.attendingNpi === null ||

@@ -14,7 +14,7 @@ import {
   type CommercialHospiceLevelOfCare,
   NotFoundError,
 } from "@chartwarden/types";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { conflictOnUnique } from "./db-errors";
 import {
   assertPatientBoundToProvider,
@@ -202,11 +202,13 @@ export function buildCommercialAuthorizationService(
               eq(schema.commercialClaims.providerEntityId, row.providerEntityId),
               eq(schema.commercialClaims.patientId, row.patientId),
               eq(schema.commercialClaims.planId, row.planId),
-              eq(schema.commercialClaims.state, "ready"),
             ),
           )
+          .orderBy(asc(schema.commercialClaims.id)) // one lock order, so concurrent changes cannot deadlock
           .for("update");
-        for (const claim of dependents) {
+        // ALL of the patient's claims on the plan are locked (not only the ready ones): a draft being made ready right now holds
+        // its lock until it commits, so this waits for it and then sees (and demotes) the claim it just made ready.
+        for (const claim of dependents.filter((c) => c.state === "ready")) {
           if (!(await evaluateClaim(tx, claim)).some((r) => r.blocking)) continue;
           await tx
             .update(schema.commercialClaims)
