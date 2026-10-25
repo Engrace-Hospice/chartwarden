@@ -78,7 +78,7 @@ const CLAIM_NEXT: Record<string, string> = {
   ready: "Submit the claim",
   denied: "Review the denial",
   ack_partial: "Review the partial acknowledgment",
-  partial_paid: "Review the partial payment",
+  ack_rejected: "Fix the rejection and resubmit",
 };
 
 /** Notice states that have left the filing window; a rejected notice is still work (it needs a correction). */

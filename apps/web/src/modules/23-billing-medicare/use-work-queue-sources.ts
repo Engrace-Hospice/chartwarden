@@ -16,7 +16,7 @@ export const ACTIONABLE_CLAIM_STATES = [
   "ready",
   "denied",
   "ack_partial",
-  "partial_paid",
+  "ack_rejected",
 ] as const;
 
 interface RawResult {

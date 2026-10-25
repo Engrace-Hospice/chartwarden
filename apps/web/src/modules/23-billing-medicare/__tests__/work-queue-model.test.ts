@@ -73,6 +73,7 @@ describe("claims", () => {
         claim({ claimId: "a", state: "draft" }),
         claim({ claimId: "b", state: "ready" }),
         claim({ claimId: "c", state: "denied" }),
+        claim({ claimId: "d", state: "ack_rejected" }),
       ],
     });
     expect(items.map((i) => [i.key, i.nextAction])).toEqual(
@@ -80,6 +81,7 @@ describe("claims", () => {
         ["claim:a", "Complete the claim"],
         ["claim:b", "Submit the claim"],
         ["claim:c", "Review the denial"],
+        ["claim:d", "Fix the rejection and resubmit"],
       ]),
     );
     expect(items.find((i) => i.key === "claim:b")?.href).toBe("/billing/claims/b");

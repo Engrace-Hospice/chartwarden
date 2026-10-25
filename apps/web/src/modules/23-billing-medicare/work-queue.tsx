@@ -177,7 +177,15 @@ export function BillingWorkQueue(): JSX.Element {
               ))}
             </select>
           </label>
-          <label className="wx-filter-field" style={{ flexDirection: "row", gap: "0.5rem" }}>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              alignSelf: "flex-end",
+              fontSize: "0.85rem",
+            }}
+          >
             <input
               type="checkbox"
               checked={urgentOnly}
