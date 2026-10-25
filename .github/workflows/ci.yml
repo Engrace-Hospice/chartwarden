@@ -403,6 +403,8 @@ jobs:
           # detector) + `m20.coverage-gap-watchdog.cron`. Live because the per-row `FOR UPDATE` decision,
           # the overdue/escalated stamp CHECKs and the real catalog-validating outbox publish are Postgres.
           - { name: "M20 Overdue detector", scripts: "test:m20:overdue-detector:live" }
+          # M23 persisted clearinghouse ack cursor (#749): CAS under real concurrency, FORCEd RLS, the 999/277CA crons resume from it, a crash replays a page, a refused cursor resets.
+          - { name: "M23 Ack cursor", scripts: "test:m23:ack-cursor:live" }
           # M23 durable clearinghouse attempt store: the package contract run against the real table as chartwarden_app, plus RLS isolation, the identity/final-row guard and no-delete.
           - { name: "M23 Clearinghouse attempts", scripts: "test:m23:clearinghouse-attempts:live" }
           # M23 submit/retry workers and the 999/277CA crons over the bound clearinghouse transport (in-memory), real catalog-validating publisher, legacy portal forbidden (#707).

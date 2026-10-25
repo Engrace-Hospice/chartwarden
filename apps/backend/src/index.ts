@@ -986,6 +986,7 @@ import {
   validateDocumentsAIBlock,
 } from "./modules/22-documents/index";
 import { buildM22ConsentRevokedConsumer } from "./modules/22-documents/outbox-consumers/m39-consent-revoked";
+import { createDrizzleAckCursorStore } from "./modules/23-billing-medicare/clearinghouse-ack-cursor-store";
 import { createDrizzleAttemptStore } from "./modules/23-billing-medicare/clearinghouse-attempt-store";
 import {
   bindPlatformClearinghouse,
@@ -8244,6 +8245,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       transport: {
         binding: clearinghouseBinding,
         attempts: createDrizzleAttemptStore(dbHandle.db),
+        ackCursors: createDrizzleAckCursorStore(dbHandle.db),
         contexts: buildClearinghouseContextPort({
           db: dbHandle.db,
           env: process.env,
