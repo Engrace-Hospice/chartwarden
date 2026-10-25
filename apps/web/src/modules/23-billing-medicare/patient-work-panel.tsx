@@ -39,7 +39,7 @@ export function PatientWorkPanel({ patientId }: { patientId: string }): JSX.Elem
     <Panel title="Needs attention" icon="alert-circle">
       {down.length > 0 ? (
         <p className="wx-rail-empty" role="alert" style={{ padding: 0 }}>
-          {down.map(([k]) => NOUN[k]).join(", ")} could not be read, so this list may be incomplete.{" "}
+          {down.map(([k]) => NOUN[k]).join(", ")} could not be read, so their items are not shown.{" "}
           <button type="button" className="wx-btn-link" onClick={reload}>
             Try again
           </button>
@@ -58,6 +58,11 @@ export function PatientWorkPanel({ patientId }: { patientId: string }): JSX.Elem
           Nothing is waiting on a person for this patient.
         </p>
       ) : null}
+      {paged ? (
+        <p className="wx-rail-empty" style={{ padding: 0 }}>
+          Only the first items of a long list were loaded; more may be waiting.
+        </p>
+      ) : null}
     </Panel>
   );
 }
@@ -67,6 +72,7 @@ function WorkRow({ item }: { item: WorkItem }): JSX.Element {
     <li style={{ display: "grid", gap: "0.125rem", padding: "0.5rem 0" }}>
       <Link to={item.href} className="wx-row-title" style={{ fontSize: "0.875rem" }}>
         {item.nextAction}
+        <span className="sr-only"> — {item.what}</span>
       </Link>
       <span style={{ fontSize: "0.75rem" }}>
         {item.what}

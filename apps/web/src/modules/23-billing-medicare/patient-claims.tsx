@@ -308,7 +308,7 @@ export function PatientClaims(): JSX.Element {
         patientId ? (
           <>
             <PatientSummaryPanel identity={identity} />
-            <PatientWorkPanel patientId={patientId} />
+            <PatientWorkPanel key={patientId} patientId={patientId} />
             <NoticesPanel notices={notices} />
           </>
         ) : undefined

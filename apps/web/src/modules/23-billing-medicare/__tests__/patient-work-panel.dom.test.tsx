@@ -34,7 +34,7 @@ function view(get: ApiClient["GET"], patientId: string) {
   const tree = (id: string) => (
     <ApiClientProvider client={client}>
       <MemoryRouter>
-        <PatientWorkPanel patientId={id} />
+        <PatientWorkPanel key={id} patientId={id} />
       </MemoryRouter>
     </ApiClientProvider>
   );
@@ -50,7 +50,7 @@ describe("PatientWorkPanel", () => {
         : ok([]),
     );
     view(get as never, "p1");
-    expect(await screen.findByRole("link", { name: "Submit the claim" })).toBeTruthy();
+    expect(await screen.findByRole("link", { name: /Submit the claim/ })).toBeTruthy();
     expect(get).toHaveBeenCalled();
     for (const [, init] of get.mock.calls as unknown as [
       string,
@@ -84,13 +84,20 @@ describe("PatientWorkPanel", () => {
           : ok([]),
     );
     const v = view(get as never, "p1");
-    await screen.findByRole("link", { name: "Submit the claim" });
+    await screen.findByRole("link", { name: /Submit the claim/ });
     v.rerender("p2");
+    expect(screen.queryByRole("link", { name: /Submit the claim/ })).toBeNull();
     await waitFor(() =>
-      expect(screen.queryByRole("link", { name: "Submit the claim" })).toBeNull(),
+      expect(screen.queryByRole("link", { name: /Submit the claim/ })).toBeNull(),
     );
     expect(
-      (await screen.findByRole("link", { name: "Submit the claim" })).getAttribute("href"),
+      (await screen.findByRole("link", { name: /Submit the claim/ })).getAttribute("href"),
     ).toBe("/billing/claims/c-p2");
+  });
+
+  it("says a long list was cut off instead of rendering an empty panel", async () => {
+    view(vi.fn(async () => ok([], true)) as never, "p1");
+    expect(await screen.findByText(/more may be waiting/i)).toBeTruthy();
+    expect(screen.queryByText(/nothing is waiting/i)).toBeNull();
   });
 });
