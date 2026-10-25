@@ -116,7 +116,10 @@ export function ItemRail({
   const [actionError, setActionError] = useState<string | null>(null);
   const [syncNote, setSyncNote] = useState<string | null>(null);
   // The server owns the in-doubt marker (durable across reloads and tabs); read defensively from an older server.
-  const inDoubt = n.providerInDoubt === true;
+  // `sentUnsure` only bridges until a reload lands: a send whose outcome this tab never saw stays blocked even if
+  // that reload fails, and the server's answer replaces it as soon as the item version changes.
+  const [sentUnsure, setSentUnsure] = useState(false);
+  const inDoubt = n.providerInDoubt === true || sentUnsure;
   const can = (a: DdeItem["allowedActions"][number]) => n.allowedActions.includes(a);
   const note = deadlineNote(n);
   const badge = providerBadge(n);
@@ -136,6 +139,7 @@ export function ItemRail({
     setDrafts({ panel: "none", submit: EMPTY_SUBMISSION, outcome: emptyOutcome(n) });
     setActionError(null);
     setSyncNote(null);
+    setSentUnsure(n.providerInDoubt === true);
   }, [n]);
 
   const setPanel = (panel: Panel) => setDrafts((d) => ({ ...d, panel }));
@@ -173,7 +177,10 @@ export function ItemRail({
         const refusal = opts.provider ? providerRefusal(error, fallback) : null;
         setActionError(refusal?.message ?? errorMessage(error, fallback));
         // The server marked the send in doubt (a send moves the version by 2): reload to read the marker.
-        if (refusal?.inDoubt) onChanged();
+        if (refusal?.inDoubt) {
+          setSentUnsure(true);
+          onChanged();
+        }
         return;
       }
       opts.onData?.(data);
@@ -184,6 +191,7 @@ export function ItemRail({
         setActionError(
           providerRefusal({ error: { code: "DDE_IN_DOUBT" } }, fallback)?.message ?? fallback,
         );
+        setSentUnsure(true);
         onChanged();
       } else setActionError(`${fallback} Check your connection.`);
     } finally {
@@ -387,10 +395,12 @@ export function ItemRail({
           <section className="wx-drawer-card" aria-label="Actions">
             <h3>Actions</h3>
             {inDoubt ? (
-              <InlineAlert tone="warning">
-                {IN_DOUBT_GUIDANCE} Sending again, checking the provider, reopening and cancelling
-                are blocked until you record it.
-              </InlineAlert>
+              <div role="alert">
+                <InlineAlert tone="warning">
+                  {IN_DOUBT_GUIDANCE} Sending again, checking the provider, reopening and cancelling
+                  are blocked until you record it.
+                </InlineAlert>
+              </div>
             ) : null}
             {actionError ? <InlineAlert>{actionError}</InlineAlert> : null}
             {syncNote ? (

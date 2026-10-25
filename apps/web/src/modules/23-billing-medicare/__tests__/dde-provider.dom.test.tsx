@@ -153,6 +153,9 @@ describe("provider model", () => {
     expect(providerBadge({ submissionMode: "manual" })?.label).toBe("Keyed by hand");
     expect(providerBadge({ submissionMode: null })).toEqual({ label: "Not sent", tone: "neutral" });
     expect(providerBadge({})).toEqual({ label: "Not sent", tone: "neutral" });
+    expect(providerBadge({ submissionMode: null, state: "accepted" }).label).toBe(
+      "Mode not recorded",
+    );
   });
 
   it("only calls an answer verified when the provider gave it", () => {
@@ -294,7 +297,7 @@ describe("DDE item rail: send via provider", () => {
     mount(api);
     const r = await rail();
     fireEvent.click(r.getByRole("button", SEND));
-    expect((await r.findByRole("alert")).textContent).toMatch(/Do not send it again/);
+    expect((await r.findByRole("alert")).textContent).toMatch(/Verify it in DDE/);
     await waitFor(() => expect(r.queryByRole("button", SEND)).toBeNull());
     expect(r.getByRole("button", { name: "Record as keyed in DDE" })).toBeTruthy();
   });
@@ -310,8 +313,21 @@ describe("DDE item rail: send via provider", () => {
     mount(api);
     const r = await rail();
     fireEvent.click(r.getByRole("button", SEND));
-    expect((await r.findByRole("alert")).textContent).toMatch(/Do not send it again/);
+    expect((await r.findByRole("alert")).textContent).toMatch(/Verify it in DDE/);
     await waitFor(() => expect(r.queryByRole("button", SEND)).toBeNull());
+  });
+
+  it("keeps Send blocked after a lost response even when the reload shows no marker yet", async () => {
+    const post = vi.fn(async () => {
+      throw new Error("network");
+    });
+    const { api } = setup({ post });
+    mount(api);
+    const r = await rail();
+    fireEvent.click(r.getByRole("button", SEND));
+    expect(await r.findByText(/Verify it in DDE/)).toBeTruthy();
+    expect(r.queryByRole("button", SEND)).toBeNull();
+    expect(post).toHaveBeenCalledTimes(1);
   });
 
   it("keeps an in-doubt item blocked after a reload, with guidance and the manual path", async () => {
@@ -420,11 +436,16 @@ describe("DDE item rail: provider status check and evidence", () => {
     expect((await rail()).getByText(/Attested by the operator/)).toBeTruthy();
   });
 
-  it("badges a row with no recorded submission mode as Not sent", async () => {
-    const { api } = setup({ detail: providerItem({ submissionMode: null }) });
-    mount(api);
+  it("badges a not-yet-sent row as Not sent, and an older keyed row without a mode as such", async () => {
+    const queued = setup({ detail: item({ submissionMode: null }) });
+    const first = mount(queued.api);
+    expect(await within(await screen.findByRole("table")).findByText("Not sent")).toBeTruthy();
+    first.unmount();
+    const older = setup({ detail: providerItem({ submissionMode: null }) });
+    mount(older.api);
     const row = within(await screen.findByRole("table"));
-    expect(await row.findByText("Not sent")).toBeTruthy();
+    expect(await row.findByText("Mode not recorded")).toBeTruthy();
+    expect(row.queryByText("Not sent")).toBeNull();
   });
 
   it("badges each row with how it was keyed", async () => {

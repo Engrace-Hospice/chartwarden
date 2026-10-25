@@ -10,13 +10,18 @@ export type SubmissionMode = "manual" | "provider";
 export type ProviderState = "not_found" | "received" | "accepted" | "returned" | "rejected";
 
 /** The badge on a queue row: who keyed it, or "Not sent" while no submission mode is recorded (text, not colour). */
-export function providerBadge(item: Pick<DdeItem, "submissionMode">): {
+export function providerBadge(
+  item: Pick<DdeItem, "submissionMode"> & { state?: DdeItem["state"] },
+): {
   label: string;
   tone: StatusTone;
 } {
   if (item.submissionMode === "provider") return { label: "Via provider", tone: "progress" };
   if (item.submissionMode === "manual") return { label: "Keyed by hand", tone: "neutral" };
-  return { label: "Not sent", tone: "neutral" };
+  // An item past submission with no mode (an older row) was keyed, so "Not sent" would be false.
+  const keyed =
+    item.state === "submitted" || item.state === "accepted" || item.state === "returned";
+  return { label: keyed ? "Mode not recorded" : "Not sent", tone: "neutral" };
 }
 
 /**
