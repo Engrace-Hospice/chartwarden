@@ -232,7 +232,7 @@ describe("review fixes", () => {
         dde({ subjectId: "x", deadlineAt: "2026-11-19T12:00:00Z", deadlineStatus: "on_track" }),
       ],
     });
-    expect(items.map((i) => i.key)).toEqual(["noe:later", "dde:d1"]);
+    expect(items.map((i) => i.key)).toEqual(["dde:d1", "noe:later"]);
   });
 });
 
