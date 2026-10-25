@@ -746,6 +746,8 @@ jobs:
           - { name: "M25 beneficiary and representative", scripts: "test:m25:beneficiary-representative:live" }
           # Milestone 9a-1 - the org-authored denial playbook library (nothing seeded; review before publish; advisory ticks).
           - { name: "M25 playbooks", scripts: "test:m25:playbook:live" }
+          # M41 commercial payer and plan model (#721) - tenant isolation as chartwarden_app, commercial-payer guard, effective dating.
+          - { name: "M41 payer plan", scripts: "test:m41:payer-plan:live" }
           # Milestone 9a-2 - the leadership medical-review report (figures only; no table, no target or benchmark).
           - { name: "M25 medical-review report", scripts: "test:m25:medical-review-report:live" }
           # F-158 (#248) — the `handlers-unbound` denial-worklist seed: m23.claim.rejected +

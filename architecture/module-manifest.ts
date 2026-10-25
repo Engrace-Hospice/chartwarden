@@ -419,6 +419,8 @@ export const MODULES: ModuleDef[] = [
     dependsOn: [1, 23, 40],
     ownedTables: [
       "commercial_payer_plan",
+      "commercial_payer_route", // #721 - the payer id each clearinghouse routes a plan on
+      "commercial_contract_rate", // #721 - contract rate terms per level of care
       "commercial_payer_enrollment",
       "commercial_authorization",
       "commercial_eligibility_check",
