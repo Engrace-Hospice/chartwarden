@@ -19,7 +19,7 @@ import {
 } from "@chartwarden/ui";
 import { useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
 import { fmtDay } from "./dde-queue-model";
 import { patientLabel, usePatientNames } from "./use-patient-names";
@@ -52,7 +52,7 @@ const URGENCY_PILL: Partial<Record<Urgency, { label: string; tone: "error" | "wa
   overdue: { label: "Overdue", tone: "error" },
   at_risk: { label: "At risk", tone: "warning" },
 };
-const isUrgent = (i: WorkItem) => i.urgency === "overdue" || i.urgency === "at_risk";
+export const isUrgent = (i: WorkItem) => i.urgency === "overdue" || i.urgency === "at_risk";
 
 function matchesType(item: WorkItem, type: TypeFilter): boolean {
   if (type === "all") return true;
@@ -65,8 +65,19 @@ const itemsOf = <T,>(s: SourceState<T>): T[] => (s.status === "ok" ? s.items : [
 export function BillingWorkQueue(): JSX.Element {
   const client = useApiClient();
   const { sources, reload } = useWorkQueueSources(client);
-  const [type, setType] = useState<TypeFilter>("all");
-  const [urgentOnly, setUrgentOnly] = useState(false);
+  // Billing Home links here pre-filtered (?type=dde&urgent=1); anything else in the URL is ignored.
+  // The filters live in the URL, so the "All work" tab, Back/Forward and a bookmark all agree with what is shown.
+  const [params, setParams] = useSearchParams();
+  const type: TypeFilter = TYPE_OPTIONS.find((o) => o.value === params.get("type"))?.value ?? "all";
+  const urgentOnly = params.get("urgent") === "1";
+  const setFilters = (nextType: TypeFilter, nextUrgent: boolean) => {
+    const next = new URLSearchParams();
+    if (nextType !== "all") next.set("type", nextType);
+    if (nextUrgent) next.set("urgent", "1");
+    setParams(next, { replace: true });
+  };
+  const setType = (t: TypeFilter) => setFilters(t, urgentOnly);
+  const setUrgentOnly = (u: boolean) => setFilters(type, u);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   const items = useMemo(
@@ -102,10 +113,7 @@ export function BillingWorkQueue(): JSX.Element {
   const refused = states.filter(([, s]) => s.status === "denied");
   const paged = states.filter(([, s]) => s.status === "ok" && s.hasMore);
 
-  const clearFilters = () => {
-    setType("all");
-    setUrgentOnly(false);
-  };
+  const clearFilters = () => setFilters("all", false);
 
   return (
     <WorkQueueLayout
@@ -227,7 +235,7 @@ export function BillingWorkQueue(): JSX.Element {
   );
 }
 
-function SourceProblems({
+export function SourceProblems({
   failed,
   refused,
   onRetry,
@@ -264,7 +272,7 @@ function SourceProblems({
   );
 }
 
-function SourceCard({
+export function SourceCard({
   label,
   source,
   rows,
@@ -424,7 +432,7 @@ function WorkTable({
   );
 }
 
-function UrgencyPill({ urgency }: { urgency: Urgency }): JSX.Element | null {
+export function UrgencyPill({ urgency }: { urgency: Urgency }): JSX.Element | null {
   const pill = URGENCY_PILL[urgency];
   return pill ? <StatusPill label={pill.label} tone={pill.tone} /> : null;
 }

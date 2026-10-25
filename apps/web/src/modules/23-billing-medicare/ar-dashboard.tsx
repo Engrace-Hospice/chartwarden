@@ -25,6 +25,7 @@ import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
 import { useSession } from "../../shell/session";
+import { BillingNeedsAttention } from "./billing-home-attention";
 import { claimStateTone, dollars, statusLabel } from "./billing-status";
 
 interface ArAging {
@@ -287,6 +288,8 @@ export function ArDashboard(): JSX.Element {
         </header>
 
         <BillingTabs />
+
+        <BillingNeedsAttention />
 
         <div className="wx-stat-grid" aria-label="Billing summary">
           <Kpi
