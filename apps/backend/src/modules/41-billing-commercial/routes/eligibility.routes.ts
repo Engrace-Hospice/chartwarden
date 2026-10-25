@@ -56,8 +56,8 @@ export function registerCommercialEligibilityRoutes(
     {
       preHandler: [
         WRITE,
-        PROVIDER_SCOPE("commercial_billing.write"),
-        PATIENT_SCOPE("commercial_billing.write"),
+        PROVIDER_SCOPE("commercial_billing.write", "body"),
+        PATIENT_SCOPE("commercial_billing.write", "body"),
         REJECT_AI_ACTOR,
         REQUIRE_IDEMPOTENCY_KEY,
       ],
@@ -67,7 +67,6 @@ export function registerCommercialEligibilityRoutes(
       const body = parse(CheckEligibilityBodySchema, request.body);
       const view = await eligibility.check(actorOf(request), {
         providerEntityId: body.providerEntityId,
-        locationId: body.locationId ?? null,
         patientId: body.patientId,
         planId: body.planId,
         serviceDate: body.serviceDate,
@@ -82,8 +81,8 @@ export function registerCommercialEligibilityRoutes(
     {
       preHandler: [
         READ,
-        PROVIDER_SCOPE("commercial_billing.read"),
-        PATIENT_SCOPE("commercial_billing.read"),
+        PROVIDER_SCOPE("commercial_billing.read", "query"),
+        PATIENT_SCOPE("commercial_billing.read", "query"),
       ],
       schema: { response: { 200: EligibilityListResponseSchema } },
       config: { auditRead: AUDIT_READ },
@@ -117,8 +116,8 @@ export function registerCommercialEligibilityRoutes(
     {
       preHandler: [
         READ,
-        PROVIDER_SCOPE("commercial_billing.read"),
-        PATIENT_SCOPE("commercial_billing.read"),
+        PROVIDER_SCOPE("commercial_billing.read", "query"),
+        PATIENT_SCOPE("commercial_billing.read", "query"),
       ],
       schema: { response: { 200: LatestEligibilityResponseSchema } },
       config: { auditRead: AUDIT_READ },

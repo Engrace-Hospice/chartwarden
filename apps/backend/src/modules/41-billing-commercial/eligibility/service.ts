@@ -31,6 +31,7 @@ import type { EligibilityStore, OrgScope, PlanRef, StoredEligibilityCheck } from
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const DEFAULT_LIST_LIMIT = 20;
+const LATEST_SCAN_LIMIT = 50;
 
 export type EligibilityActor = OrgScope;
 
@@ -135,6 +136,12 @@ function inForceOn(c: PatientCoverage, day: string): boolean {
   return c.effectiveFrom <= day && (c.effectiveTo === null || c.effectiveTo >= day);
 }
 
+const sameRequest = (row: StoredEligibilityCheck, args: CheckEligibilityArgs): boolean =>
+  row.patientId === args.patientId &&
+  row.planId === args.planId &&
+  row.serviceDate === args.serviceDate &&
+  row.providerEntityId === args.providerEntityId;
+
 const isOutcome = (v: unknown): v is CommercialEligibilityOutcome =>
   (COMMERCIAL_ELIGIBILITY_OUTCOME_VALUES as readonly unknown[]).includes(v);
 
@@ -199,13 +206,7 @@ export function createEligibilityService(deps: EligibilityServiceDeps) {
         args.idempotencyKey,
       );
       if (prior) {
-        if (
-          prior.patientId !== args.patientId ||
-          prior.planId !== args.planId ||
-          prior.serviceDate !== args.serviceDate
-        ) {
-          throw new IdempotencyConflictError();
-        }
+        if (!sameRequest(prior, args)) throw new IdempotencyConflictError();
         return view(prior, plan, true);
       }
 
@@ -266,10 +267,12 @@ export function createEligibilityService(deps: EligibilityServiceDeps) {
         );
       }
 
+      // The id sent to the clearinghouse is the id stored, so a vendor log joins to our audit trail.
+      const requestId = deps.newRequestId();
       let answer: Awaited<ReturnType<ClearinghouseTransport["checkEligibility"]>>;
       try {
         answer = await binding.transport.checkEligibility(
-          { ...ctx, correlationId: deps.newRequestId() },
+          { ...ctx, correlationId: requestId },
           // TRANSIENT: the only place the member id leaves the coverage row.
           { memberId: chosen.subscriberId.trim(), serviceDate: args.serviceDate },
         );
@@ -301,10 +304,12 @@ export function createEligibilityService(deps: EligibilityServiceDeps) {
         serviceDate: args.serviceDate,
         outcome,
         asOfDate,
-        requestId: ctx.correlationId,
+        requestId,
         idempotencyKey: args.idempotencyKey,
         checkedByUserId: actor.userId,
       });
+      // A concurrent request with the same key may have won the insert: it only counts as a replay if it was the same request.
+      if (replayed && !sameRequest(row, args)) throw new IdempotencyConflictError();
       deps.log({ event: "eligibility.checked" });
       return view(row, plan, replayed);
     },
@@ -316,15 +321,23 @@ export function createEligibilityService(deps: EligibilityServiceDeps) {
         readonly providerEntityId: string;
         readonly patientId: string;
         readonly planId: string;
+        /**
+         * When given, only a check made FOR this service date counts (a check for another date of service says nothing about this
+         * one). Claim assembly passes the claim's date of service; without it the newest check of any date is used.
+         */
+        readonly serviceDate?: string;
       },
     ): Promise<LatestEligibilityView> {
       const plan = await loadPlan(actor, args.planId);
-      const [newest] = await store.listChecks(actor, {
+      const recent = await store.listChecks(actor, {
         providerEntityId: args.providerEntityId,
         patientId: args.patientId,
         planId: args.planId,
-        limit: 1,
+        limit: LATEST_SCAN_LIMIT,
       });
+      const newest = args.serviceDate
+        ? recent.find((c) => c.serviceDate === args.serviceDate)
+        : recent[0];
       const freshness = evaluateEligibilityFreshness({
         latest: newest ? { outcome: newest.outcome, checkedAt: newest.checkedAt } : null,
         policy: plan.eligibilityStalenessPolicy,

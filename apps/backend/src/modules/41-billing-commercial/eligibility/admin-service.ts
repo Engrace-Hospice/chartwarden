@@ -20,6 +20,7 @@ import type {
 } from "./store";
 
 const PG_EXCLUSION_VIOLATION = "23P01";
+const PG_CHECK_VIOLATION = "23514";
 const NOT_COMMERCIAL_MARKER = "M41_PLAN_PAYER_NOT_COMMERCIAL";
 
 function pgCodeOf(error: unknown): string | undefined {
@@ -46,6 +47,11 @@ function messageChain(error: unknown): string {
 function translate(error: unknown): never {
   if (pgCodeOf(error) === PG_EXCLUSION_VIOLATION) {
     throw new ConflictError("An enrollment for this provider entity, payer and clearinghouse already covers part of these dates");
+  }
+  if (pgCodeOf(error) === PG_CHECK_VIOLATION) {
+    throw new ValidationError("The enrollment dates or fields are not valid", [
+      { field: "(root)", code: "INVALID", message: "check constraint failed (for example effectiveTo before effectiveFrom)" },
+    ]);
   }
   if (messageChain(error).includes(NOT_COMMERCIAL_MARKER)) {
     throw new ValidationError("The payer must be an active commercial payer", [

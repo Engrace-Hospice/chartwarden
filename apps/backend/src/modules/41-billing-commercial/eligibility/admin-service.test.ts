@@ -75,6 +75,17 @@ describe("commercial admin service", () => {
     await expect(svc.createEnrollment(SCOPE, NEW)).rejects.toBeInstanceOf(ValidationError);
   });
 
+  it("maps a CHECK violation (23514) to a 422 ValidationError, not a 500", async () => {
+    const svc = createCommercialAdminService(
+      storeWith({
+        patchEnrollment: async () => {
+          throw Object.assign(new Error("violates check constraint"), { code: "23514" });
+        },
+      }),
+    );
+    await expect(svc.patchEnrollment(SCOPE, PE, "enr-1", { effectiveTo: "2020-01-01" })).rejects.toBeInstanceOf(ValidationError);
+  });
+
   it("rethrows an error it does not recognise", async () => {
     const boom = new Error("disk on fire");
     const svc = createCommercialAdminService(

@@ -252,6 +252,32 @@ describe("EligibilityService.check", () => {
     expect(h.calls).toHaveLength(0);
   });
 
+  it("sends and stores the same request id so a vendor log joins to our audit trail", async () => {
+    const h = harness();
+    await h.service.check(ACTOR, ARGS);
+    expect(h.calls[0]?.ctx.correlationId).toBe(h.store.checks[0]?.requestId);
+  });
+
+  it("latest with a service date ignores checks made for another date of service", async () => {
+    const h = harness();
+    await h.service.check(ACTOR, ARGS);
+    const same = await h.service.latest(ACTOR, { providerEntityId: PE, patientId: PATIENT, planId: PLAN, serviceDate: "2026-10-25" });
+    expect(same.freshness.severity).toBe("pass");
+    const other = await h.service.latest(ACTOR, { providerEntityId: PE, patientId: PATIENT, planId: PLAN, serviceDate: "2026-11-30" });
+    expect(other.latest).toBeNull();
+    expect(other.freshness.status).toBe("missing");
+  });
+
+  it("a concurrent request that lost the insert race for a different request is a conflict, not a replay", async () => {
+    const h = harness();
+    const winner = { patientId: "00000000-0000-4000-8000-0000000000a2" };
+    h.store.insertCheck = async (scope, row) => ({
+      row: { ...row, ...winner, organizationId: scope.organizationId, id: "chk-x", checkedAt: NOW.toISOString() },
+      replayed: true,
+    });
+    await expect(h.service.check(ACTOR, ARGS)).rejects.toBeInstanceOf(IdempotencyConflictError);
+  });
+
   it("replays the stored answer for the same idempotency key without a second send", async () => {
     const h = harness();
     const first = await h.service.check(ACTOR, ARGS);

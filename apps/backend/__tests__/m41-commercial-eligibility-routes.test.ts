@@ -305,6 +305,18 @@ describe("eligibility policy and reads", () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it("a GET cannot smuggle its own ids in a JSON body to pass the scope check (the target is read from the query only)", async () => {
+    const { app } = makeServer();
+    const other = "99999999-0000-4000-8000-000000000001";
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/billing/commercial/eligibility?providerEntityId=${other}&patientId=${PATIENT}`,
+      headers: { "x-test-user": "biller", "content-type": "application/json" },
+      payload: { providerEntityId: PE, patientId: PATIENT },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
   it("latest reports a missing check as a warning under the default policy", async () => {
     const { app } = makeServer();
     const res = await app.inject({ method: "GET", url: `/api/v1/billing/commercial/eligibility/latest?providerEntityId=${PE}&patientId=${PATIENT}&planId=${PLAN}`, headers: { "x-test-user": "biller" } });

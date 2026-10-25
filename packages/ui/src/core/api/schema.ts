@@ -43836,7 +43836,6 @@ export interface operations {
             content: {
                 "application/json": {
                     providerEntityId: string;
-                    locationId?: string;
                     patientId: string;
                     planId: string;
                     serviceDate: string;
@@ -43888,6 +43887,7 @@ export interface operations {
                 providerEntityId: string;
                 patientId: string;
                 planId: string;
+                serviceDate?: string;
             };
             header?: never;
             path?: never;

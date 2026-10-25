@@ -37,7 +37,7 @@ export function registerCommercialEnrollmentRoutes(
   app.get(
     "/api/v1/billing/commercial/enrollments",
     {
-      preHandler: [READ, PROVIDER_SCOPE("commercial_billing.read")],
+      preHandler: [READ, PROVIDER_SCOPE("commercial_billing.read", "query")],
       schema: { response: { 200: EnrollmentListResponseSchema } },
       config: {
         auditRead: {
@@ -61,7 +61,7 @@ export function registerCommercialEnrollmentRoutes(
     {
       preHandler: [
         MANAGE_ENROLLMENT,
-        PROVIDER_SCOPE(MANAGE_KEY),
+        PROVIDER_SCOPE(MANAGE_KEY, "body"),
         ENROLLMENT_STEP_UP,
         REJECT_AI_ACTOR,
         REQUIRE_IDEMPOTENCY_KEY,
@@ -88,7 +88,7 @@ export function registerCommercialEnrollmentRoutes(
     {
       preHandler: [
         MANAGE_ENROLLMENT,
-        PROVIDER_SCOPE(MANAGE_KEY),
+        PROVIDER_SCOPE(MANAGE_KEY, "body"),
         ENROLLMENT_STEP_UP,
         REJECT_AI_ACTOR,
         REQUIRE_IDEMPOTENCY_KEY,

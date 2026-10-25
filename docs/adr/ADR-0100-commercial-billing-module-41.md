@@ -74,6 +74,9 @@ Built: `commercial_payer_enrollment`, `commercial_eligibility_check`, the per-pl
 - How a vendor's 271 maps to `active` / `inactive` / `unknown` for a commercial plan (benefit codes, hospice service type) is UNVERIFIED until a sandbox run; the port contract returns the three-valued outcome and anything unreadable must be `unknown`, which follows the plan's policy.
 - An inactive answer blocks regardless of the staleness policy; whether a payer's "inactive" can be overridden for a retroactive-eligibility case is left to the override lane (#722).
 - Eligibility checks hold a patient id, so the M4 eraser registration for them is still to do with the patient-erasure work; they hold no name, member id or 271 body.
+- Two concurrent requests with the same Idempotency-Key can each send one 270 before the first row lands (one row is kept and the other request is answered from it, or refused if it differs). The M1 middleware serializes by key per organization; a worker retry path would need an advisory lock. Eligibility is a read-only query, so the cost is a duplicate vendor transaction, not a duplicate effect.
+- Freshness for a claim must be asked with the claim's date of service (`latest(..., serviceDate)`): a check made for another date of service does not count. Without a service date the newest check of any date is used.
+- `commercial_eligibility_check.location_id` exists for the three-column rule but is not set by the API yet (no M1 location reader is wired here).
 - Rate limiting on the mutating routes relies on the platform-wide limiter; there is no per-route budget.
 
 ## Open questions

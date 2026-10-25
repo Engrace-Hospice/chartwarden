@@ -13,7 +13,8 @@ import {
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 
-const UUID_PATTERN = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
+// Lowercase only: the scope predicates compare the raw string, so one canonical spelling keeps ABAC and the idempotency replay check exact.
+const UUID_PATTERN = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 const DAY_PATTERN = "^\\d{4}-\\d{2}-\\d{2}$";
 const KEY_PATTERN = "^[a-z0-9][a-z0-9_-]{0,39}$";
 const EVIDENCE_PATTERN = "^[A-Za-z0-9._:/#-]{1,200}$";
@@ -41,7 +42,6 @@ export const IdParamsSchema = Type.Object({ id: Uuid }, { additionalProperties: 
 export const CheckEligibilityBodySchema = Type.Object(
   {
     providerEntityId: Uuid,
-    locationId: Type.Optional(Uuid),
     patientId: Uuid,
     planId: Uuid,
     serviceDate: Day,
@@ -54,7 +54,7 @@ export const PatientPlanQuerySchema = Type.Object(
   { additionalProperties: false },
 );
 export const LatestQuerySchema = Type.Object(
-  { providerEntityId: Uuid, patientId: Uuid, planId: Uuid },
+  { providerEntityId: Uuid, patientId: Uuid, planId: Uuid, serviceDate: Type.Optional(Day) },
   { additionalProperties: false },
 );
 

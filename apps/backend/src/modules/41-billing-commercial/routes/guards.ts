@@ -78,28 +78,31 @@ export const ENROLLMENT_STEP_UP = requireStepUp(
   COMMERCIAL_BILLING_PERMISSIONS.MANAGE_ENROLLMENT,
 ) as PreHandler;
 
-const fromBodyOrQuery = (request: TargetRequest, field: string): string => {
-  const body = request.body as Record<string, unknown> | undefined;
-  const query = request.query as Record<string, unknown> | undefined;
-  const value = body?.[field] ?? query?.[field];
+/**
+ * The ABAC target is read from the SAME source the handler reads, and only that source: a GET handler parses `request.query`, a
+ * POST/PATCH handler parses `request.body`. Falling back from one to the other let a GET carry its own ids in a JSON body (which
+ * Fastify parses on GET) for the scope check while the handler used different ids from the query string.
+ */
+export type TargetSource = "body" | "query";
+
+const fieldFrom = (request: TargetRequest, source: TargetSource, field: string): string => {
+  const bag = request[source] as Record<string, unknown> | undefined;
+  const value = bag?.[field];
   return typeof value === "string" ? value : "";
 };
 
-export const targetProvider = (request: TargetRequest): Target => ({
-  providerEntityId: fromBodyOrQuery(request, "providerEntityId"),
-});
-export const targetPatient = (request: TargetRequest): Target => ({
-  patientId: fromBodyOrQuery(request, "patientId"),
-});
-
-export const PROVIDER_SCOPE = (key: string): PreHandler =>
+export const PROVIDER_SCOPE = (key: string, source: TargetSource): PreHandler =>
   requireAbac(key, "provider_entity_billing_scope", {
-    getTarget: targetProvider,
+    getTarget: (request: TargetRequest): Target => ({
+      providerEntityId: fieldFrom(request, source, "providerEntityId"),
+    }),
     notFoundOnDeny: true,
   }) as PreHandler;
 
-export const PATIENT_SCOPE = (key: string): PreHandler =>
+export const PATIENT_SCOPE = (key: string, source: TargetSource): PreHandler =>
   requireAbac(key, "caseload_or_scope", {
-    getTarget: targetPatient,
+    getTarget: (request: TargetRequest): Target => ({
+      patientId: fieldFrom(request, source, "patientId"),
+    }),
     notFoundOnDeny: true,
   }) as PreHandler;
