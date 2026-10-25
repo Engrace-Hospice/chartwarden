@@ -126,9 +126,10 @@ Module 23 owns **the assembly, validation, submission, and acknowledgment of Med
 Source: CMS-1851-F (91 FR 49118) as corrected by CMS-1851-CN (91 FR 61791–61793). The rates are a reference for
 prefill and sanity-checking only; the rate table stays tenant-entered and is the single pricing input. A version's
 `hqrp_compliant` says which column it was keyed under; a mismatch is a warning, not a validation failure, so a
-tenant can key a later CMS correction before the platform reference is updated. The FY2027 wage index is NOT
-bundled: CMS republished the corrected FY2027 hospice wage index file (floors 0.8916 / 0.8298) on its Hospice Wage
-Index page; tenants key it per CCN through `tenant_wage_index` (F-211).
+tenant can key a later CMS correction before the platform reference is updated. The FY2026 and FY2027 wage index by CBSA
+is bundled as platform reference data (`hospice_cbsa_wage_index`, migration 1058, from the corrected CMS file with
+floors 0.8916 / 0.8298); the provider-CCN index is still tenant-keyed through `tenant_wage_index` (F-211). Source
+register: `docs/audits/billing-e2e/FY2027_CMS_SOURCE_REGISTER.md`.
 
 ### 1.4 Competitive Context
 

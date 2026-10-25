@@ -12,6 +12,11 @@ import type {
   SubmissionKind,
 } from "@chartwarden/x12-837-client";
 import { CH, routeAckEvent, scopeKey } from "@chartwarden/x12-837-client";
+import {
+  type CredentialAlertPort,
+  type CredentialGuardDeps,
+  withCredentialGuard,
+} from "./clearinghouse-credential-guard";
 
 /** Resolves the per-call clearinghouse context (the composition root reads provider entity + MAC credential). */
 export interface ClearinghouseContextPort {
@@ -32,6 +37,10 @@ export interface M23TransportDeps {
   readonly attempts?: SubmissionAttemptStore;
   /** Durable ack cursors (#749); absent, every ack pull starts from a null cursor. */
   readonly ackCursors?: AckCursorStore;
+  /** Raised once per scope when the vendor rejects the credential (#714); absent, only the log line is written. */
+  readonly alerts?: CredentialAlertPort;
+  readonly logger?: CredentialGuardDeps["logger"];
+  readonly now?: () => number;
 }
 
 /** The idempotency key {@link transportUpload} files a submission under. */
@@ -106,10 +115,11 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
       idempotencyKey: submissionKeyFor(kind, input.controlNumber),
       payload: { format: "x12", x12: input.x12 },
     } as const;
-    const result =
+    const result = await withCredentialGuard(transport, ctx, () =>
       kind === "claim"
-        ? await transport.binding.transport.submitClaim(ctx, submission)
-        : await transport.binding.transport.submitNotice(ctx, submission);
+        ? transport.binding.transport.submitClaim(ctx, submission)
+        : transport.binding.transport.submitNotice(ctx, submission),
+    );
     if (!result.ok) throw failure(kind, result.degraded.code, result.degraded.reason);
     return {
       accepted: true,
@@ -284,7 +294,9 @@ async function pullEntity(
   // Every position this tick has asked for: a vendor chain that comes back to one (A, B, A) is a cycle, not progress.
   const seen = new Set<string | null>([state.cursor]);
   for (let pages = 0; pages < MAX_ACK_PAGES_PER_TICK; ) {
-    const result = await port.fetchAcknowledgments(ctx, state.cursor);
+    const result = await withCredentialGuard(transport, ctx, () =>
+      port.fetchAcknowledgments(ctx, state.cursor),
+    );
     if (!result.ok) {
       const refused = result.degraded.code === CH.INVALID_REQUEST;
       if (state.cursor === null || retriedFromStart || !refused) {
