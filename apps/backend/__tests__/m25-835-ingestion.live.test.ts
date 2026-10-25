@@ -36,6 +36,8 @@ import type {
   X12835WorkerClient,
 } from "@chartwarden/x12-835-client";
 import { createX12835Client, degraded835 } from "@chartwarden/x12-835-client";
+import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
+import { InMemoryClearinghouse } from "@chartwarden/x12-837-client/testing";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";
@@ -45,10 +47,13 @@ import {
   buildDrizzleM25ReadService,
   buildM23BackedClaimMatchCandidateProvider,
 } from "../src/modules/25-remittance/index";
+import { pullRemittances } from "../src/modules/25-remittance/ingest/clearinghouse-pull";
+import { buildDrizzleRemittanceCursorStore } from "../src/modules/25-remittance/ingest/pull-cursor-store";
 import type {
   ClaimMatchCandidateProvider,
   M25IngestActor,
   ReceiveAdviceInput,
+  ReceiveAdviceResult,
   TerminologyLookupPort,
 } from "../src/modules/25-remittance/ingest/service";
 import {
@@ -1457,5 +1462,121 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     expect(asOrgA).not.toContain(b.adviceId);
     expect(asOrgB).toContain(b.adviceId);
     expect(asOrgB).not.toContain(a.adviceId);
+  });
+
+  // ── #717: the clearinghouse feed into this same pipeline (in-memory far side, REAL receive/post + cursor store) ──
+  describe("clearinghouse remittance pull (#717)", () => {
+    const pullCtx = (): ClearinghouseContext => ({
+      organizationId: ORG_A,
+      providerEntityId: PE_A,
+      payerId: "J6",
+      correlationId: "corr-717",
+      usage: "test",
+      billingNpi: "1234567893",
+    });
+    const scope = {
+      organizationId: ORG_A,
+      providerEntityId: PE_A,
+      usage: "test" as const,
+      billingNpi: "1234567893",
+    };
+
+    it("fetches cursor-paged 835s, dedups a redelivery on its control numbers (S08), posts them, and resumes from the stored cursor", async () => {
+      const far = new InMemoryClearinghouse();
+      const files = ["000071701", "000071702", "000071703"].map((isa, i) =>
+        buildFullEdi(isa, "0001", "500.00", { clp01: `PCN-717-${i}`, icn: `ICN-717-${i}` }),
+      );
+      await far.control.deliverRemittance("ERA-717-1", files[0] as string, scope);
+      await far.control.deliverRemittance("ERA-717-2", files[1] as string, scope);
+      await far.control.deliverRemittance("ERA-717-2-again", files[1] as string, scope); // same ISA/ST, new file id
+      await far.control.deliverRemittance("ERA-717-3", files[2] as string, scope);
+
+      const staged = new Map<string, string>();
+      const events: string[] = [];
+      const service = buildDrizzleM25IngestService(handle.db, {
+        payeeNpi: PAYEE_UNCHECKED,
+        client: createX12835Client(),
+        rawStore: {
+          put: async (_o, id, text) => void staged.set(id, text),
+          get: async (_o, id) => staged.get(id) ?? null,
+          delete: async (_o, id) => void staged.delete(id),
+        },
+        terminology: fakeTerminology({}),
+        claims: { medicare: fakeClaims({}, {}) },
+        outbox: {
+          async publish(_tx, event) {
+            events.push(event.eventName);
+          },
+        },
+      });
+      const deps = {
+        transport: far,
+        vendor: "in_memory",
+        contexts: { providerEntitiesFor: async () => [PE_A], contextFor: async () => pullCtx() },
+        payers: { medicarePayerId: async () => PAYER },
+        cursors: buildDrizzleRemittanceCursorStore(handle.db),
+        ingest: service,
+      };
+
+      const first = await pullRemittances(deps, ORG_A);
+
+      expect(first).toMatchObject({ queued: 3, duplicates: 1, failures: [] });
+      expect(events.filter((e) => e === "m25.edi.835_received")).toHaveLength(3);
+      const rows = await admin.query(
+        "SELECT id FROM remittance_advice WHERE interchange_control_number IN ('000071701','000071702','000071703')",
+      );
+      expect(rows.rows).toHaveLength(3);
+      for (const r of rows.rows) {
+        const posted = await service.postAdvice({ organizationId: ORG_A }, r.id as string);
+        expect(["posted", "partial_posted"]).toContain(posted.outcome);
+      }
+      const again = await pullRemittances(deps, ORG_A);
+      expect(again).toMatchObject({ queued: 0, duplicates: 0, failures: [] });
+      const stored = await admin.query(
+        "SELECT cursor FROM remittance_pull_cursor WHERE organization_id=$1 AND provider_entity_id=$2 AND vendor='in_memory'",
+        [ORG_A, PE_A],
+      );
+      expect(stored.rows[0].cursor).toBe("4");
+    });
+
+    it("refuses a malformed stored cursor and leaves the row untouched (never restarts from the beginning)", async () => {
+      const cursors = buildDrizzleRemittanceCursorStore(handle.db);
+      const key = {
+        organizationId: ORG_A,
+        providerEntityId: PE_A,
+        vendor: "in_memory_bad",
+        usage: "test" as const,
+      };
+      await cursors.set(key, "not-a-cursor");
+      const received: string[] = [];
+      const deps = {
+        transport: new InMemoryClearinghouse(),
+        vendor: "in_memory_bad",
+        contexts: { providerEntitiesFor: async () => [PE_A], contextFor: async () => pullCtx() },
+        payers: { medicarePayerId: async () => PAYER },
+        cursors,
+        ingest: {
+          receiveAdvice: async (): Promise<ReceiveAdviceResult> => {
+            received.push("x");
+            return { outcome: "duplicate", existingAdviceId: "x" };
+          },
+        },
+      };
+
+      const result = await pullRemittances(deps, ORG_A);
+
+      expect(result.failures[0]).toContain("request refused (cursor not reset)");
+      expect(received).toHaveLength(0);
+      expect(await cursors.get(key)).toBe("not-a-cursor");
+    });
+
+    it("keeps one tenant's cursor invisible to another (RLS on the app role)", async () => {
+      const cursors = buildDrizzleRemittanceCursorStore(handle.db);
+      const base = { providerEntityId: PE_A, vendor: "in_memory_rls", usage: "test" as const };
+      await cursors.set({ ...base, organizationId: ORG_A }, "7");
+
+      expect(await cursors.get({ ...base, organizationId: ORG_A })).toBe("7");
+      expect(await cursors.get({ ...base, organizationId: ORG_B })).toBeNull();
+    });
   });
 });

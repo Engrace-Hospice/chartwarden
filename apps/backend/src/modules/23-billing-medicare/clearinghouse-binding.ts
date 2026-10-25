@@ -6,7 +6,7 @@
 // The binding is created and logged at boot and INJECTED into the M23 submit/retry workers and ack crons
 // (`buildM23WorkerDeps({ transport })`, #707); `registerM23LaunchWorkers` refuses to build them without it while a vendor is
 // configured. M24 (Medicaid) deliberately does not use it: Oregon stays a state-direct adapter (ADR-0053 D10). M25
-// remittance consumption is not bound yet. Read `binding.vendor`, not `binding.transport.vendor`, to know whether a
+// remittance consumption is bound separately (#717: M25 `remittance-pull`). Read `binding.vendor`, not `binding.transport.vendor`, to know whether a
 // clearinghouse is bound.
 import {
   type ClearinghouseBinding,

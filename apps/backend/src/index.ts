@@ -227,6 +227,8 @@ import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store
 import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenant-kek";
 import { buildM23OverrideAuditPort } from "./m23-override-audit";
 import { buildM25RawAdviceStore } from "./m25-raw-advice-store";
+import { buildSeamMedicarePayerPort } from "./modules/25-remittance/ingest/medicare-payer-port";
+import { buildDrizzleRemittanceCursorStore } from "./modules/25-remittance/ingest/pull-cursor-store";
 import { buildM36AttachmentBinding, buildM36AttachmentStorage } from "./m36-attachment-storage";
 import {
   type AuthAuditDb,
@@ -8533,19 +8535,49 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         });
       },
     };
+    // #717 - the bound clearinghouse feeds the 835 intake. With no vendor bound (CLEARINGHOUSE_VENDOR unset) neither the
+    // `remittance-pull` worker nor its schedule exists, so nothing polls an unbound transport.
+    const m25RemittancePull = clearinghouseBinding.vendor
+      ? {
+          transport: clearinghouseBinding.transport,
+          vendor: clearinghouseBinding.vendor,
+          contexts: buildClearinghouseContextPort({
+            db: dbHandle.db,
+            env: process.env,
+            providerNpi: m25PayeeNpi,
+          }),
+          payers: buildSeamMedicarePayerPort(),
+          cursors: buildDrizzleRemittanceCursorStore(dbHandle.db),
+          ingest: buildDrizzleM25IngestService(dbHandle.db, {
+            client: createX12835Client(),
+            rawStore: buildM25RawAdviceStore(process.env, {}, (error) =>
+              app.log.warn(
+                { errorName: error instanceof Error ? error.name : "unknown" },
+                "M25 staged-835 expiry rule could not be applied",
+              ),
+            ),
+            payeeNpi: m25PayeeNpi,
+            outbox: m25OutboxPublisher,
+          }),
+        }
+      : undefined;
     const m25WorkerDeps = buildM25WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
       activeOrgs: m25ActiveOrgs,
       alerts: m25Alerts,
+      remittancePull: m25RemittancePull,
     });
     const m25Workers = registerM25CronWorkers(m25WorkerDeps);
+    if (m25RemittancePull) app.log.info("M25 remittance pull worker constructed");
     attachDlqAlertsToAll(m25Workers, "m25");
     app.addHook("onClose", async () => {
       await Promise.all(m25Workers.map((w) => w.close()));
     });
     try {
-      const m25ScheduleQueues = await scheduleM25Jobs(queueConnection);
+      const m25ScheduleQueues = await scheduleM25Jobs(queueConnection, {
+        remittancePull: m25RemittancePull !== undefined,
+      });
       app.addHook("onClose", async () => {
         await Promise.all(m25ScheduleQueues.map((q) => q.close()));
       });
