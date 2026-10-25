@@ -7,6 +7,7 @@ import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
 import { InMemoryClearinghouse } from "@chartwarden/x12-837-client/testing";
 import { describe, expect, it } from "vitest";
 import {
+  MAX_REFUSALS_PER_REMITTANCE,
   type RemittanceCursorKey,
   type RemittanceCursorStore,
   pullRemittances,
@@ -36,16 +37,33 @@ function cursorStore(initial: string | null = null) {
       keyOf({ organizationId: ORG, providerEntityId: PE, vendor: "in_memory", usage: "test" }),
       initial,
     );
+  const refusals = new Map<string, { count: number; quarantined: boolean }>();
   const store: RemittanceCursorStore = {
     get: async (k) => saved.get(keyOf(k)) ?? null,
     set: async (k, c) => {
       saved.set(keyOf(k), c);
     },
+    isQuarantined: async (k, id, sha) =>
+      refusals.get(`${keyOf(k)}|${id}|${sha}`)?.quarantined ?? false,
+    clearRefusals: async (k, id, sha) => {
+      const ref = `${keyOf(k)}|${id}|${sha}`;
+      const cur = refusals.get(ref);
+      if (cur && !cur.quarantined) refusals.set(ref, { count: 0, quarantined: false });
+    },
+    recordRefusal: async (k, id, sha, _code, cap) => {
+      const ref = `${keyOf(k)}|${id}|${sha}`;
+      const count = (refusals.get(ref)?.count ?? 0) + 1;
+      const next = { count, quarantined: count >= cap };
+      refusals.set(ref, next);
+      return next;
+    },
   };
   return { store, current: () => [...saved.values()][0] ?? null };
 }
 
-function ingestDouble(opts: { malformedFor?: string } = {}) {
+function ingestDouble(
+  opts: { malformedFor?: string; cause?: "content" | "environment" | undefined } = {},
+) {
   const seen = new Map<string, string>();
   const received: ReceiveAdviceInput[] = [];
   return {
@@ -57,7 +75,11 @@ function ingestDouble(opts: { malformedFor?: string } = {}) {
       ): Promise<ReceiveAdviceResult> {
         received.push(input);
         if (opts.malformedFor && input.minioObjectKey.endsWith(opts.malformedFor)) {
-          return { outcome: "malformed", reason: "synthetic refusal" };
+          return {
+            outcome: "malformed",
+            reason: "synthetic refusal",
+            cause: "cause" in opts ? opts.cause : "content",
+          };
         }
         const isa = /^ISA(?:\*[^*]*){12}\*(\d{9})/.exec(input.rawEdi)?.[1] ?? "";
         const st = /ST\*835\*(\w+)/.exec(input.rawEdi)?.[1] ?? "";
@@ -72,11 +94,20 @@ function ingestDouble(opts: { malformedFor?: string } = {}) {
 }
 
 function setup(
-  over: { payer?: string | null; cursor?: string | null; malformedFor?: string } = {},
+  over: {
+    payer?: string | null;
+    cursor?: string | null;
+    malformedFor?: string;
+    cause?: "content" | "environment" | undefined;
+  } = {},
 ) {
   const far = new InMemoryClearinghouse();
   const cursors = cursorStore(over.cursor ?? null);
-  const ingest = ingestDouble({ malformedFor: over.malformedFor });
+  const ingest = ingestDouble(
+    "cause" in over
+      ? { malformedFor: over.malformedFor, cause: over.cause }
+      : { malformedFor: over.malformedFor },
+  );
   const deps = {
     transport: far,
     vendor: "in_memory",
@@ -162,6 +193,120 @@ describe("pullRemittances", () => {
     expect(cursors.current()).toBe("2"); // page 1 (ERA-1, ERA-2) done; ERA-3 is re-offered next tick
   });
 
+  it("retries a refused file until the cap, then quarantines it, advances the cursor and keeps going", async () => {
+    const { far, deps, cursors, ingest } = setup({ malformedFor: "ERA-3" });
+    for (const n of [1, 2, 3, 4]) {
+      await far.control.deliverRemittance(`ERA-${n}`, buildRawEdi(String(n), "0001"));
+    }
+
+    for (let i = 1; i < MAX_REFUSALS_PER_REMITTANCE; i++) {
+      const transient = await pullRemittances(deps, ORG);
+      expect(transient.failures[0]).toContain("ERA-3 refused at receive");
+      expect(transient.quarantined).toEqual([]);
+      expect(cursors.current()).toBe("2");
+    }
+    const final = await pullRemittances(deps, ORG);
+
+    expect(final.failures).toEqual([]);
+    expect(final.quarantined).toEqual([
+      `org ${ORG} provider ${PE}: remittance ERA-3 REMITTANCE_QUARANTINED`,
+    ]);
+    expect(cursors.current()).toBe("4");
+    const offered = ingest.received.length;
+    const after = await pullRemittances(deps, ORG);
+    expect(after).toMatchObject({ queued: 0, failures: [], quarantined: [] });
+    expect(ingest.received.length).toBe(offered); // nothing re-offered
+  });
+
+  it("counts only CONSECUTIVE refusals: an accepted file zeroes its count", async () => {
+    const { far, deps, ingest } = setup();
+    await far.control.deliverRemittance("ERA-1", buildRawEdi("1", "0001"));
+    let flaky = true;
+    const flakyDeps = {
+      ...deps,
+      ingest: {
+        receiveAdvice: async (a: { organizationId: string }, i: ReceiveAdviceInput) =>
+          flaky
+            ? ({ outcome: "malformed", reason: "synthetic", cause: "content" } as const)
+            : ingest.ingest.receiveAdvice(a, i),
+      },
+    };
+    for (let i = 0; i < MAX_REFUSALS_PER_REMITTANCE - 1; i++) await pullRemittances(flakyDeps, ORG);
+    flaky = false;
+    expect(await pullRemittances(flakyDeps, ORG)).toMatchObject({ queued: 1, failures: [] });
+    flaky = true;
+    await far.control.setOutage(false);
+
+    const again = await pullRemittances(
+      { ...flakyDeps, cursors: { ...deps.cursors, get: async () => null } },
+      ORG,
+    );
+
+    expect(again.quarantined).toEqual([]); // count restarted from 0, so one refusal is not the cap
+    expect(again.failures).toHaveLength(1);
+  });
+
+  it("skips an already-quarantined file if the vendor re-offers it", async () => {
+    const { far, deps, cursors, ingest } = setup({ malformedFor: "ERA-1" });
+    await far.control.deliverRemittance("ERA-1", buildRawEdi("1", "0001"));
+    for (let i = 0; i < MAX_REFUSALS_PER_REMITTANCE; i++) await pullRemittances(deps, ORG);
+    await cursors.store.set(
+      { organizationId: ORG, providerEntityId: PE, vendor: "in_memory", usage: "test" },
+      "0",
+    );
+    const before = ingest.received.length;
+
+    const result = await pullRemittances(deps, ORG);
+
+    expect(result.failures).toEqual([]);
+    expect(result.quarantined).toHaveLength(1); // still reported on every tick it is offered
+    expect(ingest.received.length).toBe(before);
+    expect((await pullRemittances(deps, ORG)).quarantined).toHaveLength(0); // cursor moved on; nothing re-offered
+  });
+
+  it("never counts an environment refusal (payee/config, parser outage) toward the cap", async () => {
+    for (const cause of ["environment", undefined] as const) {
+      const { far, deps, cursors } = setup({ malformedFor: "ERA-1", cause });
+      await far.control.deliverRemittance("ERA-1", buildRawEdi("1", "0001"));
+
+      for (let i = 0; i < MAX_REFUSALS_PER_REMITTANCE + 3; i++) {
+        const r = await pullRemittances(deps, ORG);
+        expect(r.failures[0]).toContain("ERA-1 refused at receive");
+        expect(r.quarantined).toEqual([]);
+      }
+      expect(cursors.current()).toBeNull(); // never advanced past it
+    }
+  });
+
+  it("retries a re-offered file whose content changed (new hash) instead of treating it as quarantined", async () => {
+    const { deps, cursors, ingest } = setup({ malformedFor: "ERA-1" });
+    const offer = { body: buildRawEdi("1", "0001") };
+    const transport = {
+      fetchRemittances: async () => ({
+        ok: true as const,
+        data: {
+          items: [{ remittanceId: "ERA-1", rawX12: offer.body }],
+          nextCursor: "1",
+          hasMore: false,
+        },
+      }),
+    };
+    const flaky = { ...deps, transport: transport as never };
+    for (let i = 0; i < MAX_REFUSALS_PER_REMITTANCE; i++) await pullRemittances(flaky, ORG);
+    await cursors.store.set(
+      { organizationId: ORG, providerEntityId: PE, vendor: "in_memory", usage: "test" },
+      "0",
+    );
+    const before = ingest.received.length;
+    offer.body = buildRawEdi("1", "0002"); // the vendor corrected the file
+
+    const result = await pullRemittances(flaky, ORG);
+
+    expect(ingest.received.length).toBe(before + 1); // handed to receiveAdvice again
+    expect(result.quarantined).toEqual([]);
+    expect(result.failures[0]).toContain("ERA-1 refused at receive"); // first refusal of the new content
+  });
+
   it("reports a transport without an 835 feed as unsupported, not failed", async () => {
     const { deps } = setup();
     const notWired = {
@@ -197,6 +342,7 @@ describe("pullRemittances", () => {
     const counting = {
       ...deps,
       cursors: {
+        ...deps.cursors,
         get: deps.cursors.get,
         set: async (...args: Parameters<typeof deps.cursors.set>) => {
           writes += 1;
