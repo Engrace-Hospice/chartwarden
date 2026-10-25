@@ -16,8 +16,8 @@
 //     non-MBI beneficiary fields (sex, address, DOB) are read and checked, and the MBI is unlocked LAST.
 //   • The caller owns the clock and the interchange control number (a port-less, deterministic loader).
 //
-// NOT wired: the submit worker still sends the thin `claimDocumentFor` document to the gateway. Binding this loader
-// (and the parties port, which has no production implementation yet) into the Stedi submit path is a later slice.
+// Bound by `renderClaimForTransport` (./claim-837i-submit.ts), which the submit/retry workers call when a clearinghouse
+// vendor is configured.
 import {
   type ClaimDocument837iDetail,
   type ClaimGap,
@@ -90,6 +90,11 @@ export interface LoadClaim837iArgs {
   readonly context: ClearinghouseContext;
   readonly interchangeControlNumber: number;
   readonly createdAt: Date;
+  /**
+   * The control number this attempt is filed under (CLM01). Defaults to the claim row's own; a retry files under a fresh
+   * derived number, and the acks route back by it, so the rendered claim must carry the same one.
+   */
+  readonly claimControlNumber?: string;
   /** The user who triggered this load, when there is one; recorded on the MBI-disclosure audit (else system). */
   readonly actorUserId?: string;
 }
@@ -265,7 +270,7 @@ async function loadOnce(
   const documentResult = buildClaimDocument837iDetail({
     claim,
     lines,
-    claimControlNumber: claim.claimControlNumber,
+    claimControlNumber: args.claimControlNumber ?? claim.claimControlNumber,
     admissionDate: admission?.hospiceAdmissionDate ?? null,
     predecessorPayerClaimControlNumber: predecessorPccn,
   });

@@ -64,6 +64,7 @@ import {
   getRequestContext,
   registerPlatformJob,
   runWithRequestContext,
+  systemOrgContext,
   withOrgContext,
   withPlatformContext,
 } from "@chartwarden/tenancy";
@@ -87,6 +88,7 @@ import type {
   OrgId,
   PatientAddressReader,
   PatientId,
+  PatientReader,
   ScaleType,
 } from "@chartwarden/types";
 import { createX12835Client } from "@chartwarden/x12-835-client";
@@ -1053,6 +1055,9 @@ import {
   buildM23WorkQueueEnqueuePort,
   buildM23WorkRequestConsumer,
   buildM23WorkerDeps,
+  buildClaim837iPartiesPort,
+  buildClaim837iProviderReader,
+  buildDrizzleEdiProfileReader,
   buildMacJurisdictionLister,
   buildMacSecretCipherFromEnv,
   buildNoticeWindowPort,
@@ -1744,6 +1749,7 @@ import {
   facilityKindsForIds,
   facilityPostalCodesForIds,
   getMdmEntityProvider,
+  buildPayerNameByX12IdReader,
   mountMdmRoutes,
   registerM40CronWorkers,
   registerMdmAbacPredicates,
@@ -3291,6 +3297,35 @@ function buildFirstAdminAcceptanceService(deps: {
       return { accepted: true, email: acceptedEmail };
     },
   };
+}
+
+/**
+ * A reader that resolves its seam on every call (registration order at boot never matters). The 837I loader holds these
+ * for the life of the worker, so a seam registered after the workers are built is still found.
+ */
+function lazyPatientReader(): PatientReader {
+  return lazySeamProxy<PatientReader>("PatientReader", () => getPatientReader());
+}
+
+function lazyPatientAddressReader(): PatientAddressReader {
+  return lazySeamProxy<PatientAddressReader>(
+    "PatientAddressReader",
+    () => getSeam("PatientAddressReader") as PatientAddressReader,
+  );
+}
+
+/** Forwards each method call to the seam resolved at call time. Never thenable; an absent method throws, not undefined. */
+function lazySeamProxy<T extends object>(name: string, resolve: () => T): T {
+  return new Proxy({} as T, {
+    get: (_t, method) => {
+      if (typeof method === "symbol" || method === "then") return undefined;
+      return (...args: unknown[]) => {
+        const fn = (resolve() as Record<string, unknown>)[method];
+        if (typeof fn !== "function") throw new Error(`${name}.${method} is not a function`);
+        return fn.apply(resolve(), args);
+      };
+    },
+  });
 }
 
 /**
@@ -8267,14 +8302,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       reason: "M23 §4.8 watchdog cron fan-out (active-org enumeration)",
     });
     const m23ClaimSeamPorts = buildM23AssemblyPorts(dbHandle.db);
+    const m23AssemblySeams = buildM23BootAssemblySeams(dbHandle.db, {
+      outbox: m23OutboxPublisher,
+      providerCcn: m23ClaimSeamPorts.providerCcn,
+      ...m23ClaimSeamPorts.assemblyPorts,
+    });
     const m23ValidationRunner = buildM23ValidationRunner({
       db: dbHandle.db,
       outbox: m23OutboxPublisher,
-      seams: buildM23BootAssemblySeams(dbHandle.db, {
-        outbox: m23OutboxPublisher,
-        providerCcn: m23ClaimSeamPorts.providerCcn,
-        ...m23ClaimSeamPorts.assemblyPorts,
-      }),
+      seams: m23AssemblySeams,
       // The §11.A eligibility rules read eligibility_check only when HETS can actually refresh it.
       eligibilityBound: m23HetsConfig !== null,
     });
@@ -8315,6 +8351,36 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       revalidationTargets: buildDrizzleRevalidationTargetResolver(),
       // The revalidate consumer's `validation-run` fan-out producer (GAP-070).
       enqueue: m23WorkQueues?.port,
+      // The 837I loader's ports for the claim submit/retry workers (they render through the loader whenever a vendor is
+      // bound and fail the attempt on a gap). Seams resolve lazily per call, so registration order never matters. The
+      // billing-provider EIN is opened with M2's tax-id cipher (the tenant's own DEK) and held in memory for one build.
+      claim837i: {
+        admission: m23AssemblySeams.admission,
+        mbiUnlock: () => getSeam("MbiUnlockReader"),
+        patients: lazyPatientReader(),
+        addresses: lazyPatientAddressReader(),
+        parties: buildClaim837iPartiesPort({
+          routeKey: clearinghouseBinding.vendor,
+          profile: buildDrizzleEdiProfileReader(dbHandle.db),
+          provider: buildClaim837iProviderReader({
+            sealedFacts: (organizationId, providerEntityId) =>
+              withOrgContext(dbHandle.db, systemOrgContext(organizationId), (tx) =>
+                buildFoundationSiteReader().providerEntityBillingFacts(
+                  tx as unknown as DbClient,
+                  organizationId,
+                  providerEntityId,
+                ),
+              ),
+            decryptTaxId: (input) =>
+              createTaxIdCipher({
+                dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+                dekForOrgVersion: (orgId, version) =>
+                  getTenantKeyProvider().dekForOrgVersion(orgId, version),
+              }).decrypt(input),
+          }),
+          payerName: buildPayerNameByX12IdReader(dbHandle.db),
+        }),
+      },
       // #707 - the clearinghouse binding. With CLEARINGHOUSE_VENDOR set the submit/retry workers and the ack crons use
       // it instead of the legacy MAC portal; unset keeps the legacy path. registerM23LaunchWorkers refuses to build
       // without it while a vendor is configured.

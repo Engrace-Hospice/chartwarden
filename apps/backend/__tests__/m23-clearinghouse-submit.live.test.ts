@@ -232,6 +232,8 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         pullPending277ca: legacyMustNotRun as never,
         probeHealth: async () => true,
       },
+      // These cases exercise the transport, not the rendering (the loader has its own suites and the gap cases below).
+      renderClaim: async () => x12Text ?? "ISA*00*...~",
       transport: {
         binding: { vendor, transport: clearinghouse },
         contexts: { contextFor: async () => CTX, providerEntitiesFor: async () => [PE] },
@@ -429,6 +431,84 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     expect(sub.generated_file_uri).toMatch(/^clearinghouse:in_memory:/);
     const status = await clearinghouse.fetchClaimStatus(CTX, ccn);
     expect(status).toMatchObject({ ok: true, data: { state: "received" } });
+  });
+
+  /** The REAL loader over a claim row with no lines, no admission and no parties: every gap, no beneficiary read. */
+  function gappedLoaderDeps(clearinghouse: ClearinghouseTransport) {
+    const unreachable = (what: string) => () => {
+      throw new Error(`${what} must not be read for a claim that cannot be sent`);
+    };
+    const { renderClaim: _stub, ...deps } = depsFor(clearinghouse);
+    return {
+      ...deps,
+      claim837i: {
+        admission: { resolveForRange: async () => null },
+        mbiUnlock: unreachable("the MBI"),
+        patients: { findById: unreachable("the patient") } as never,
+        addresses: { primaryAddress: unreachable("the address") } as never,
+        parties: {
+          partiesFor: async () => ({
+            submitter: null,
+            receiver: null,
+            billingProvider: null,
+            payer: null,
+          }),
+        },
+      },
+    } satisfies M23WorkerDeps;
+  }
+
+  it("a loader gap fails the attempt as failed_worker naming the gaps, and nothing is sent", async () => {
+    const clearinghouse = new InMemoryClearinghouse();
+    const { claimId, submissionId, ccn } = await seedReadyClaim({
+      patient: "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1",
+      attemptIndex: 0,
+      withBlockingFailure: false,
+    });
+    const job: ClaimSubmitJob = {
+      organizationId: ORG,
+      claimId,
+      submissionId,
+      claimControlNumber: ccn,
+      attemptIndex: 0,
+    };
+
+    await runInOrg((tx) => runClaimSubmit(tx, gappedLoaderDeps(clearinghouse), job));
+
+    expect(await claimState(claimId)).toBe("READY");
+    const sub = await submissionRow(submissionId);
+    expect(sub.outcome).toBe("failed_worker");
+    expect(sub.outcome_reason).toContain("837I is not sendable");
+    expect(sub.outcome_reason).toContain("submitter (missing)");
+    expect(sub.outcome_reason).toContain("billingProvider (missing)");
+    expect(await clearinghouse.fetchClaimStatus(CTX, ccn)).not.toMatchObject({
+      data: { state: "received" },
+    });
+  });
+
+  it("a loader gap on the retry worker records a failed_worker attempt and keeps the claim READY", async () => {
+    const clearinghouse = new InMemoryClearinghouse();
+    const { claimId, submissionId } = await seedReadyClaim({
+      patient: "b2b2b2b2-b2b2-4b2b-8b2b-b2b2b2b2b2b2",
+      attemptIndex: 0,
+      withBlockingFailure: false,
+    });
+    const job: ClaimSubmitRetryJob = {
+      organizationId: ORG,
+      claimId,
+      submissionId,
+      attemptIndex: 0,
+    };
+
+    await runInOrg((tx) => runClaimSubmitRetry(tx, gappedLoaderDeps(clearinghouse), job));
+
+    expect(await claimState(claimId)).toBe("READY");
+    const { rows } = await admin.query(
+      "SELECT outcome, outcome_reason FROM claim_submission WHERE claim_id = $1 AND attempt_index = 1",
+      [claimId],
+    );
+    expect(rows[0]?.outcome).toBe("failed_worker");
+    expect(rows[0]?.outcome_reason).toContain("submitter (missing)");
   });
 
   it("the retry worker files through the vendor; an outage leaves the claim READY with a failed_portal attempt", async () => {

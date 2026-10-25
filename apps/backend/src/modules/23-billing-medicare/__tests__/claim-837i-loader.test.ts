@@ -254,6 +254,13 @@ describe("loadClaim837iInput golden claim", () => {
     expect(r.rendered.reveal().x12).toBe(GOLDEN_X12);
   });
 
+  it("files under the attempt's control number (CLM01) when one is given, not the claim row's", async () => {
+    const r = await loadAndRender837i(deps().value, { ...args, claimControlNumber: "RETRY0002" });
+    if (!r.ok) throw new Error(`load failed: ${gapsOf(r).join(",")}`);
+    expect(r.rendered.reveal().x12).toContain("CLM*RETRY0002*1500.00");
+    expect(r.rendered.reveal().x12).not.toContain("WXHOSP0001");
+  });
+
   it("produces the matching Stedi JSON, with charges summing to the lines", async () => {
     const r = await loadAndRender837i(deps().value, args);
     if (!r.ok) throw new Error(`load failed: ${gapsOf(r).join(",")}`);

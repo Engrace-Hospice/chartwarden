@@ -56,6 +56,7 @@ import {
   parseClearinghouseVendor,
 } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import { type Claim837iSubmitDeps, renderClaimForTransport } from "../services/claim-837i-submit";
 import type { DdeWatchdogPort } from "../services/dde-watchdog";
 import {
   type M23TransportDeps,
@@ -516,6 +517,14 @@ export interface M23WorkerDeps {
    * Unset or an unbound binding keeps the legacy ports.
    */
   readonly transport?: M23TransportDeps;
+  /**
+   * The 837I loader's ports (admission, MBI unlock, patient identity/address, parties). When a clearinghouse vendor is
+   * bound the claim submit/retry workers render the claim through the loader with these, and fail the attempt on a gap;
+   * they never fall back to the sidecar's thin document. `registerM23LaunchWorkers` refuses to build without them.
+   */
+  readonly claim837i?: Claim837iSubmitDeps;
+  /** Replaces {@link renderClaimForTransport} (the suites that exercise transport semantics, not rendering). */
+  readonly renderClaim?: typeof renderClaimForTransport;
   readonly hets?: HetsEligibilityPort;
   readonly noticeWindow?: NoticeWindowPort;
   readonly validationRunner?: ClaimValidationRunnerPort;
@@ -820,6 +829,45 @@ export function claimDocumentFor(
   };
 }
 
+/**
+ * The 837I for one claim attempt. With a clearinghouse vendor bound it is the loader's render of the persisted claim (a
+ * gap throws, so the caller records `failed_worker` with the gap names); with none it is the legacy sidecar document.
+ */
+async function generateClaim837i(
+  tx: BillingDb,
+  deps: M23WorkerDeps,
+  organizationId: string,
+  claim: Parameters<typeof claimDocumentFor>[0] & { readonly providerEntityId: string },
+  claimControlNumber: string,
+): Promise<{ readonly x12: string; readonly correlationId: string }> {
+  const transport = activeTransport(deps);
+  if (!transport) {
+    return x12Of(deps).generate837i({
+      organizationId,
+      claimId: claim.id,
+      claimControlNumber,
+      claimDocument: claimDocumentFor(claim, claimControlNumber),
+    });
+  }
+  if (!deps.claim837i && !deps.renderClaim) {
+    return unboundWorkerPort(
+      "claim837i",
+      "bind the 837I loader ports (admission, MBI unlock, patients, addresses, parties) beside the clearinghouse transport",
+    );
+  }
+  const x12 = await (deps.renderClaim ?? renderClaimForTransport)({
+    tx,
+    deps: deps.claim837i as Claim837iSubmitDeps,
+    contextFor: transport.contexts.contextFor,
+    organizationId,
+    claim,
+    claimControlNumber,
+    now: (deps.now ?? (() => new Date()))(),
+  });
+  // A `submitted` attempt must carry a worker correlation id (the terminalize trigger); the sidecar used to mint it.
+  return { x12, correlationId: randomUUID() };
+}
+
 // ── the §4.8 WORK processors (each runs INSIDE the worker's per-job withOrgContext tx) ──────────────────────
 
 /**
@@ -870,19 +918,20 @@ export async function runClaimSubmit(
 
   let generated: {
     readonly x12: string;
-    readonly correlationId: string;
+    readonly correlationId: string | null;
   } | null = null;
   let uploaded: {
     readonly accepted: boolean;
     readonly generatedFileUri: string;
   } | null = null;
   try {
-    generated = await x12Of(deps).generate837i({
-      organizationId: job.organizationId,
-      claimId: job.claimId,
-      claimControlNumber: job.claimControlNumber,
-      claimDocument: claimDocumentFor(claim, job.claimControlNumber),
-    });
+    generated = await generateClaim837i(
+      tx,
+      deps,
+      job.organizationId,
+      claim,
+      job.claimControlNumber,
+    );
     uploaded = await macPortalOf(deps).upload({
       organizationId: job.organizationId,
       providerEntityId: claim.providerEntityId,
@@ -1102,7 +1151,7 @@ export async function runClaimSubmitRetry(
 
   let generated: {
     readonly x12: string;
-    readonly correlationId: string;
+    readonly correlationId: string | null;
   } | null = null;
   let uploaded: {
     readonly accepted: boolean;
@@ -1113,12 +1162,7 @@ export async function runClaimSubmitRetry(
     if (filedAs !== null) {
       uploaded = { accepted: true, generatedFileUri: filedAs };
     } else {
-      generated = await x12Of(deps).generate837i({
-        organizationId: job.organizationId,
-        claimId: job.claimId,
-        claimControlNumber,
-        claimDocument: claimDocumentFor(claim, claimControlNumber),
-      });
+      generated = await generateClaim837i(tx, deps, job.organizationId, claim, claimControlNumber);
       uploaded = await macPortalOf(deps).upload({
         organizationId: job.organizationId,
         providerEntityId: claim.providerEntityId,
@@ -2615,6 +2659,11 @@ export function registerM23LaunchWorkers(
     );
   }
   assertTransportInjected(env, deps);
+  if (activeTransport(deps) && !deps.claim837i) {
+    throw new Error(
+      "M23LaunchCapabilityIncomplete: a clearinghouse vendor is bound but the workers were built without the 837I loader ports (claim837i)",
+    );
+  }
   const orgWorker = <D extends { organizationId: string }>(
     queue: string,
     concurrency: number,
@@ -2818,6 +2867,8 @@ export function buildM23WorkerDeps(deps: {
   x12?: X12ClientPort;
   macPortal?: MacPortalPort;
   transport?: M23TransportDeps;
+  claim837i?: Claim837iSubmitDeps;
+  renderClaim?: typeof renderClaimForTransport;
   hets?: HetsEligibilityPort;
   noticeWindow?: NoticeWindowPort;
   validationRunner?: ClaimValidationRunnerPort;
@@ -2837,6 +2888,8 @@ export function buildM23WorkerDeps(deps: {
     x12: deps.x12,
     macPortal: deps.macPortal,
     transport: deps.transport,
+    claim837i: deps.claim837i,
+    renderClaim: deps.renderClaim,
     hets: deps.hets,
     noticeWindow: deps.noticeWindow,
     validationRunner: deps.validationRunner,
