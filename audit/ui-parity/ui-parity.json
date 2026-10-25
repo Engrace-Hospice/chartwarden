@@ -1776,6 +1776,14 @@
       "app": "web",
       "module": "24-billing-medicaid",
       "moduleId": 24,
+      "id": "medicaid.work-queue",
+      "path": "/medicaid/billing/queue",
+      "permission": "medicaid.claim.read"
+    },
+    {
+      "app": "web",
+      "module": "24-billing-medicaid",
+      "moduleId": 24,
       "id": "medicaid.claims",
       "path": "/medicaid/billing/claims",
       "permission": "medicaid.claim.read"

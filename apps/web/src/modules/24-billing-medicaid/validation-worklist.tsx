@@ -12,6 +12,9 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { JSX } from "react";
+import { useParams } from "react-router-dom";
 // apps/web/src/modules/24-billing-medicaid — M24, the PER-CLAIM VALIDATION WORKLIST (R2, §5.1 #5 scoped to
 // one claim, + the #6 override modal). A run selector over GET /api/v1/medicaid-claims/{id}/validation-runs,
 // the selected run's per-rule results from GET /api/v1/medicaid-validation-runs/{id}, and an Override
@@ -19,9 +22,7 @@ import {
 // carry a shield glyph and an error-toned GuardChip in the modal — those overrides are reported on survey.
 // The override POST is §4.7 role-eligibility + §D12 step-up + §8.6 AI-actor-reject gated SERVER-side; a
 // 401/403/422 surfaces inline (role="alert"), never a toast. Lantern: WorkQueueLayout + No-Line table.
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { JSX } from "react";
-import { useParams } from "react-router-dom";
+import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import { VALIDATION_OUTCOME_TONE, humanize, shortId, toneOf } from "./medicaid-status";
 import {
   Field,
@@ -226,6 +227,9 @@ export function MedicaidValidationWorklist(): JSX.Element {
           >
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Review per-rule validation results and apply audited overrides when permitted.
+            </div>
+            <div style={{ marginTop: "0.75rem" }}>
+              <MedicaidBillingTabs />
             </div>
           </PageHeader>
         }

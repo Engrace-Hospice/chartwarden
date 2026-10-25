@@ -12,6 +12,8 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { JSX } from "react";
 // apps/web/src/modules/24-billing-medicaid — M24, the STATE TRADING PARTNER CREDENTIALS (R2, §5.1 #16). The
 // org admin's per-ProviderEntity per-state channel configuration: trading-partner id, channel, MCO scope,
 // active window, and a sandbox connectivity test. Secrets are WRITE-ONLY — the read surface returns only
@@ -20,8 +22,7 @@ import {
 // is not wired it returns the ADAPTER_NOT_WIRED deferral, surfaced here as a precise inline message.
 // Backed by GET/POST /api/v1/state-medicaid-trading-partner-credentials (+ /{id}/test). Lantern:
 // WorkQueueLayout + No-Line table (§6.7) + §6.6 StatusPill; CSS-var tokens only.
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { JSX } from "react";
+import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import { SANDBOX_RESULT_TONE, channelLabel, shortDate, shortId, toneOf } from "./medicaid-status";
 import {
   FilterRow,
@@ -176,6 +177,9 @@ export function MedicaidTradingPartnerCredentials(): JSX.Element {
         >
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Monitor state channel setup, secret presence, active windows, and sandbox readiness.
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <MedicaidBillingTabs />
           </div>
         </PageHeader>
       }

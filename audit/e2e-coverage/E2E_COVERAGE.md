@@ -2,7 +2,7 @@
 
 > **Generated, advisory report** (`bun run e2e:coverage`). Static analysis over `e2e/specs/` source text against the built `web`-app screen registry — see the script header for what "reached" means and its known heuristic limits. Do not hand-edit — the `arch:e2e-coverage --check` gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 206 statically-routable `web` screen(s) — 22/206 E2E-reached, 194/206 axe-reached.
+**Coverage:** 207 statically-routable `web` screen(s) — 22/207 E2E-reached, 195/207 axe-reached.
 
 ## Zero E2E coverage
 
@@ -98,6 +98,7 @@
 | `medicaid.eligibility` | 24-billing-medicaid | `/medicaid/billing/eligibility` | medicaid.eligibility.read |
 | `medicaid.metrics` | 24-billing-medicaid | `/medicaid/billing/metrics` | medicaid.claim.read_metrics |
 | `medicaid.overrides` | 24-billing-medicaid | `/medicaid/billing/override-audit` | medicaid.validation.read_override |
+| `medicaid.work-queue` | 24-billing-medicaid | `/medicaid/billing/queue` | medicaid.claim.read |
 | `medicaid.rb-arrangements` | 24-billing-medicaid | `/medicaid/billing/rb-arrangements` | medicaid.rb_arrangement.read |
 | `medicaid.rule-config` | 24-billing-medicaid | `/medicaid/billing/rule-config` | medicaid.rule_config.read |
 | `medicaid.trading-partners` | 24-billing-medicaid | `/medicaid/billing/trading-partner-credentials` | medicaid.trading_partner.read |

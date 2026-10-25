@@ -6,15 +6,16 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useState } from "react";
+import type { JSX } from "react";
+import { useParams } from "react-router-dom";
 // apps/web/src/modules/24-billing-medicaid — M24, the ACKNOWLEDGMENTS TIMELINE (R2, §5.1 #9). Every ack
 // received against this claim's submissions: kind (999 / 277CA / state-specific), outcome, the payer's own
 // claim control number, the accepted/rejected line numbers, and the payer error codes. A PARTIAL ack is the
 // signal that puts the claim on the validation worklist — the rejected line numbers here are the biller's
 // starting point. Backed by GET /api/v1/medicaid-claims/{id}/acknowledgments. Lantern: WorkQueueLayout +
 // No-Line table (§6.7) + §6.6 StatusPill; mono identifiers; CSS-var tokens only.
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
-import { useParams } from "react-router-dom";
+import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import { ACK_OUTCOME_TONE, ackKindLabel, humanize, toneOf } from "./medicaid-status";
 import { linkStyle, mutedStyle, rowLine, tableStyle, td, tdMono, th } from "./medicaid-ui";
 
@@ -82,7 +83,11 @@ export function MedicaidAcknowledgmentsTimeline(): JSX.Element {
               ← Back to claim
             </a>
           }
-        />
+        >
+          <div style={{ marginTop: "0.75rem" }}>
+            <MedicaidBillingTabs />
+          </div>
+        </PageHeader>
       }
       table={
         ordered.length === 0 ? (

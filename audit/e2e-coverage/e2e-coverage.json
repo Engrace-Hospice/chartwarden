@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 206,
+  "totalStaticWebScreens": 207,
   "e2eReachedCount": 22,
-  "axeReachedCount": 194,
+  "axeReachedCount": 195,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -721,6 +721,14 @@
       "module": "24-billing-medicaid",
       "path": "/medicaid/billing/override-audit",
       "permission": "medicaid.validation.read_override",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "medicaid.work-queue",
+      "module": "24-billing-medicaid",
+      "path": "/medicaid/billing/queue",
+      "permission": "medicaid.claim.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -2397,6 +2405,14 @@
       "module": "24-billing-medicaid",
       "path": "/medicaid/billing/override-audit",
       "permission": "medicaid.validation.read_override",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "medicaid.work-queue",
+      "module": "24-billing-medicaid",
+      "path": "/medicaid/billing/queue",
+      "permission": "medicaid.claim.read",
       "e2eReached": false,
       "axeReached": true
     },

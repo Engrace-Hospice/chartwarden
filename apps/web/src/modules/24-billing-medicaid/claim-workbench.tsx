@@ -11,15 +11,16 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { JSX } from "react";
+import { MdmEntityLookupField, PatientLookupField } from "../../shell/entity-lookups";
 // apps/web/src/modules/24-billing-medicaid — M24, the MEDICAID CLAIM WORKBENCH (R2, §5.1 #2). The biller's
 // filterable claim list (state · kind · service state · MCO · patient) over the cursor-paginated
 // GET /api/v1/medicaid-claims. Per §5.1 the only bulk actions are validate-now and abandon; both are
 // server-authoritative writes (medicaid.validation.run / medicaid.claim.* + If-Match), so a partial failure
 // reports per-claim inline (role="alert") and the queue reloads. Lantern: WorkQueueLayout + No-Line table
 // (§6.7) + §6.6 StatusPill via medicaid-status.ts; mono control numbers; CSS-var tokens only.
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { JSX } from "react";
-import { MdmEntityLookupField, PatientLookupField } from "../../shell/entity-lookups";
+import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import {
   CLAIM_STATE_TONE,
   humanize,
@@ -242,6 +243,9 @@ export function MedicaidClaimWorkbench(): JSX.Element {
         >
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Filter, validate, abandon, and open Medicaid claims in the current organization scope.
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <MedicaidBillingTabs />
           </div>
         </PageHeader>
       }

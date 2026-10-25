@@ -11,13 +11,14 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { JSX } from "react";
 // apps/web/src/modules/24-billing-medicaid — M24, the R&B ARRANGEMENTS LIST (R2, §5.1 #11). Per-patient NF
 // Room & Board pass-through contracts: facility, effective window, the three per-diems, the pass-through /
 // retention split, and the arrangement state. Backed by GET /api/v1/rb-arrangements (+ GET /api/v1/rb-days
 // for the day counts, read once for the whole page and bucketed client-side so the list stays one round
 // trip per resource). Lantern: WorkQueueLayout + No-Line table (§6.7) + §6.6 StatusPill; CSS-var tokens only.
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { JSX } from "react";
+import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import {
   RB_ARRANGEMENT_STATE_TONE,
   humanize,
@@ -150,6 +151,9 @@ export function MedicaidRbArrangements(): JSX.Element {
         >
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Track facility agreements, effective windows, per-diem rates, and day-level readiness.
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <MedicaidBillingTabs />
           </div>
         </PageHeader>
       }

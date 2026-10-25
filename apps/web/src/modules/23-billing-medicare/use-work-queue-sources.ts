@@ -29,7 +29,7 @@ interface Page<T> {
   hasMore: boolean;
 }
 
-async function readPage<T>(call: Promise<unknown>): Promise<SourceState<T>> {
+export async function readPage<T>(call: Promise<unknown>): Promise<SourceState<T>> {
   try {
     const r = (await call) as RawResult;
     if (r.error || !r.data) return { status: r.response?.status === 403 ? "denied" : "error" };
@@ -42,7 +42,7 @@ async function readPage<T>(call: Promise<unknown>): Promise<SourceState<T>> {
 }
 
 /** Several reads that make up one source: whole only when every read is whole; a refusal needs every read refused. */
-function combine<T>(parts: SourceState<T>[]): SourceState<T> {
+export function combine<T>(parts: SourceState<T>[]): SourceState<T> {
   const failed = parts.find((p) => p.status === "error");
   if (failed) return failed;
   if (parts.every((p) => p.status === "denied")) return { status: "denied" };
