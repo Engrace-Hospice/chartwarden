@@ -65,3 +65,68 @@ export const COMMERCIAL_REVENUE_CODE_BY_LEVEL_OF_CARE: Readonly<
 
 export const COMMERCIAL_RATE_BASIS_VALUES = ["per_diem", "per_hour", "percent_of_charges"] as const;
 export type CommercialRateBasis = (typeof COMMERCIAL_RATE_BASIS_VALUES)[number];
+
+// ─── Enrollment, eligibility and the send gate (migration 1265, issue #724) ───────────────────────────────
+
+/** A provider entity's enrollment with a payer on a clearinghouse (ADR-0053 D8, ADR-0100 D5). Only `enrolled` lets a send through. */
+export const COMMERCIAL_ENROLLMENT_STATUS_VALUES = [
+  "not_enrolled",
+  "pending",
+  "enrolled",
+  "suspended",
+] as const;
+export type CommercialEnrollmentStatus = (typeof COMMERCIAL_ENROLLMENT_STATUS_VALUES)[number];
+
+/** What a 271 said about coverage on the service date. `unknown` is a response we could not read as active or inactive. */
+export const COMMERCIAL_ELIGIBILITY_OUTCOME_VALUES = ["active", "inactive", "unknown"] as const;
+export type CommercialEligibilityOutcome = (typeof COMMERCIAL_ELIGIBILITY_OUTCOME_VALUES)[number];
+
+/** What stale or missing eligibility does to claim validation: a warning (overridable) or a block. */
+export const COMMERCIAL_ELIGIBILITY_STALENESS_POLICY_VALUES = ["warn", "block"] as const;
+export type CommercialEligibilityStalenessPolicy =
+  (typeof COMMERCIAL_ELIGIBILITY_STALENESS_POLICY_VALUES)[number];
+
+/** Safe default: a warning. A tenant opts in to blocking per plan. */
+export const DEFAULT_ELIGIBILITY_STALENESS_POLICY: CommercialEligibilityStalenessPolicy = "warn";
+/**
+ * Default age after which an eligibility check is stale. This is OUR default, matching M23's 30-day HETS window; it is not a
+ * payer fact. Payers differ, so it is a per-plan setting (1..365 days).
+ */
+export const DEFAULT_ELIGIBILITY_MAX_AGE_DAYS = 30;
+export const MAX_ELIGIBILITY_MAX_AGE_DAYS = 365;
+
+/** Stable machine codes for a send that is refused before anything leaves the building (ADR-0100 D4, D5). */
+export const COMMERCIAL_SEND_REFUSAL = {
+  /** The platform clearinghouse binding is unbound (the port's own code, re-stated so callers need one import). */
+  NOT_WIRED: "CH_NOT_WIRED",
+  /** The plan has no route in effect on the service date for the clearinghouse the platform is bound to. */
+  PAYER_NOT_ROUTED: "COMMERCIAL_PAYER_NOT_ROUTED",
+  /** The provider entity has no `enrolled` enrollment in effect for this payer on this clearinghouse. */
+  PROVIDER_NOT_ENROLLED: "COMMERCIAL_PROVIDER_NOT_ENROLLED",
+} as const;
+export type CommercialSendRefusalCode =
+  (typeof COMMERCIAL_SEND_REFUSAL)[keyof typeof COMMERCIAL_SEND_REFUSAL];
+
+/** Other stable codes the eligibility check answers. */
+export const COMMERCIAL_ELIGIBILITY_ERROR = {
+  /** The patient has no coverage naming this plan's payer on the service date, so there is no member id to ask about. */
+  COVERAGE_NOT_FOUND: "COMMERCIAL_COVERAGE_NOT_FOUND",
+  /** The clearinghouse could not answer (outage, not provisioned, not implemented for commercial). Nothing is stored. */
+  CLEARINGHOUSE_UNAVAILABLE: "COMMERCIAL_ELIGIBILITY_UNAVAILABLE",
+  /** The clearinghouse refused the request as malformed for this vendor. */
+  CLEARINGHOUSE_REJECTED: "COMMERCIAL_ELIGIBILITY_REJECTED",
+} as const;
+
+/** Rule id the claim-validation lane (#722) reports freshness under. */
+export const COMMERCIAL_ELIGIBILITY_FRESHNESS_RULE_ID = "M41.ELIGIBILITY.FRESHNESS";
+
+/** Permission keys (spec section 6). */
+export const COMMERCIAL_BILLING_PERMISSIONS = {
+  READ: "commercial_billing.read",
+  WRITE: "commercial_billing.write",
+  SUBMIT: "commercial_billing.submit",
+  OVERRIDE_VALIDATION: "commercial_billing.override_validation",
+  MANAGE_ENROLLMENT: "commercial_billing.manage_enrollment",
+} as const;
+export type CommercialBillingPermissionKey =
+  (typeof COMMERCIAL_BILLING_PERMISSIONS)[keyof typeof COMMERCIAL_BILLING_PERMISSIONS];

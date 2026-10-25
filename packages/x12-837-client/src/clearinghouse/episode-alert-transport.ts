@@ -35,6 +35,7 @@ import {
   type RemittanceFile,
   type SubmissionReceipt,
   type ValidationReport,
+  isCommercialEligibilityRequest,
 } from "./types";
 
 export const EPISODE_ALERT_API_KEY_ENV = "EPISODE_ALERT_API_KEY";
@@ -114,6 +115,10 @@ export class EpisodeAlertTransport implements ClearinghouseTransport {
         CH.INVALID_REQUEST,
         "episode_alert has no test mode, so a test-usage call is refused",
       );
+    }
+    if (isCommercialEligibilityRequest(req)) {
+      // Episode Alert answers Medicare (MBI) eligibility only; a commercial member id is never sent to it.
+      return degraded(CH.INVALID_REQUEST, "episode_alert answers Medicare eligibility only");
     }
     if (!MBI_SHAPE.test(req.mbi) || toIsoDate(req.serviceDate) !== req.serviceDate) {
       return degraded(CH.INVALID_REQUEST, "the eligibility request is malformed");

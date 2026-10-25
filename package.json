@@ -290,6 +290,7 @@
     "test:m25:payer-seam:live": "vitest run apps/backend/__tests__/m25-payer-seam.live.test.ts",
     "test:m25:beneficiary-representative:live": "vitest run apps/backend/__tests__/m25-beneficiary-representative.live.test.ts",
     "test:m41:payer-plan:live": "vitest run apps/backend/__tests__/m41-payer-plan.live.test.ts",
+    "test:m41:eligibility:live": "vitest run apps/backend/__tests__/m41-commercial-eligibility.live.test.ts",
     "test:m25:playbook:live":"vitest run apps/backend/__tests__/m25-playbook.live.test.ts",
     "test:m25:medical-review-report:live": "vitest run apps/backend/__tests__/m25-medical-review-report.live.test.ts",
     "test:m6:loc-change-signed:live": "vitest run apps/backend/__tests__/m6-loc-change-signed.live.test.ts",

@@ -53,7 +53,7 @@ describe("conformance suite catches broken transports", () => {
       mutant((t) => ({
         checkEligibility: async (ctx, req) => {
           const r = await t.checkEligibility(ctx, req);
-          return r.ok ? { ok: true, data: { ...r.data, mbi: req.mbi } as typeof r.data } : r;
+          return r.ok ? { ok: true, data: { ...r.data, mbi: "mbi" in req ? req.mbi : "" } as typeof r.data } : r;
         },
       })),
     );

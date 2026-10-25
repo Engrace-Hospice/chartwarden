@@ -207,10 +207,32 @@ export interface ClaimStatus {
 
 // ─── Eligibility ────────────────────────────────────────────────────────────────────────────────
 
-export interface ClearinghouseEligibilityRequest {
+export interface ClearinghouseMedicareEligibilityRequest {
   /** TRANSIENT. Built into the 270 for this one call; never returned, logged, stored or placed in a reason. */
   readonly mbi: string;
   readonly serviceDate: string;
+}
+
+/**
+ * A commercial 270 (M41, ADR-0100 D4). The payer is NOT in the request: it is `ctx.payerId`, the id this clearinghouse routes
+ * the plan on (`commercial_payer_route`). A transport that cannot answer a commercial 270 refuses it with a degraded envelope
+ * (`CH_NOT_IMPLEMENTED` / `CH_INVALID_REQUEST`); it never guesses a payer.
+ */
+export interface ClearinghouseCommercialEligibilityRequest {
+  /** TRANSIENT, like the MBI: built into the 270 for this one call; never returned, logged, stored or placed in a reason. */
+  readonly memberId: string;
+  readonly serviceDate: string;
+}
+
+export type ClearinghouseEligibilityRequest =
+  | ClearinghouseMedicareEligibilityRequest
+  | ClearinghouseCommercialEligibilityRequest;
+
+/** True for the commercial shape (a `memberId`, no `mbi`). */
+export function isCommercialEligibilityRequest(
+  req: ClearinghouseEligibilityRequest,
+): req is ClearinghouseCommercialEligibilityRequest {
+  return "memberId" in req;
 }
 
 export interface ClearinghouseEligibilityResult extends Eligibility271Result {
