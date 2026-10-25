@@ -321,21 +321,25 @@ async function pullEntity(
     const acks: TransportAck[] = [];
     for (const event of items) {
       try {
-        const ack = ackFromEvent(event, { organizationId, providerEntityId, macJurisdiction });
-        if (ack.kind === kind) acks.push(ack);
+        routeAckEvent(event);
       } catch (err) {
-        // An event we cannot route must not stall every ack behind it (fail closed per event, not per stream): it is
-        // skipped, never applied, and reported by the 999 cron so it leaves a trail.
-        if (kind === "ack_999") {
+        // Only an event we cannot ROUTE is quarantined (a mapping bug below must still fail the entity, not skip acks).
+        // It must not stall every ack behind it: skipped, never applied, reported by the 999 cron. A replayed page
+        // reports it again at most once per tick (deduped on the vendor event id).
+        const eventId = clip(event?.eventId);
+        if (kind === "ack_999" && !quarantined.some((q) => q.eventId === eventId)) {
           quarantined.push({
             organizationId,
             providerEntityId,
-            eventId: clip(event?.eventId),
+            eventId,
             controlNumber: clip(event?.controlNumber),
             reason: err instanceof Error ? err.message : "unroutable acknowledgment",
           });
         }
+        continue;
       }
+      const ack = ackFromEvent(event, { organizationId, providerEntityId, macJurisdiction });
+      if (ack.kind === kind) acks.push(ack);
     }
     if (acks.length > 0) await onPage(acks);
     if (store && nextCursor !== state.cursor) {

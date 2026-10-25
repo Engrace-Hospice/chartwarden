@@ -1,6 +1,6 @@
+// @vitest-environment jsdom
 import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
-// @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
