@@ -10,6 +10,7 @@ import type { JSX } from "react";
 import { ActionRail, ButtonRow, ErrorAlert, Facts, Hint, NoticeAlert } from "./action-ui";
 import { AdrPacketPanel } from "./adr-packet-panel";
 import { AdrReadinessPanel } from "./adr-readiness-panel";
+import { ClaimLink } from "./claim-link";
 import { type AdrDetail, type AdrTransitionTarget, loadAdr, transitionAdr } from "./remittance-api";
 import { ADR_STATE_TONE, humanize, toneOf } from "./remittance-status";
 import { SubmissionPanel } from "./submission-panel";
@@ -104,7 +105,7 @@ export function AdrDetailPanel({ adrId, onClose, onChanged }: AdrDetailPanelProp
                   tone={toneOf(ADR_STATE_TONE, adr.state)}
                 />,
               ],
-              ["Claim", adr.claimId],
+              ["Claim", <ClaimLink key="claim" claimId={adr.claimId} />],
               ["Request date", adr.requestedOn],
               ["Response window", `${adr.windowDays} days`],
               ["Response due", adr.dueDay],
@@ -156,8 +157,8 @@ export function AdrDetailPanel({ adrId, onClose, onChanged }: AdrDetailPanelProp
             <SubmissionPanel key={adrId} kind="adr" subjectId={adrId} />
           ) : null}
           <Hint>
-            ChartWarden does not send the response to the MAC yet: file it through the MAC's portal, fax
-            or mail, then record the filing here with its confirmation.
+            ChartWarden does not send the response to the MAC yet: file it through the MAC's portal,
+            fax or mail, then record the filing here with its confirmation.
           </Hint>
           <h3 className="wx-action-title">History</h3>
           <ul>

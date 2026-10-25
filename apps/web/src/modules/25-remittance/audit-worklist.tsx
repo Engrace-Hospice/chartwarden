@@ -11,12 +11,13 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { JSX } from "react";
 // apps/web/src/modules/25-remittance — M25, the AUDIT REQUESTS worklist (milestone 7a-1): RAC / UPIC / SMRC / other
 // record requests. The authority is a label. Every due date is one the user recorded from a notice; a request with
 // none says "No due date recorded" and is counted, never defaulted. Rows open the audit work rail; "Log an audit
 // request" opens the intake form.
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { JSX } from "react";
+import { BillingTabs } from "../../shell/billing-tabs";
 import { type AuditRequestSummary, loadAuditRequests } from "./audit-api";
 import { AuditDetailPanel } from "./audit-detail-panel";
 import { AuditIntakeModal } from "./audit-forms";
@@ -92,6 +93,9 @@ export function AuditWorklist(): JSX.Element {
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               RAC, UPIC and SMRC record requests. Due dates are the ones you recorded from the
               notice.
+            </div>
+            <div style={{ marginTop: "0.75rem" }}>
+              <BillingTabs />
             </div>
           </PageHeader>
         }

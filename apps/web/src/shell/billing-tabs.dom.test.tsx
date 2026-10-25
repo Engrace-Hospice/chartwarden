@@ -19,6 +19,9 @@ const OLD_VIEWS: Record<string, string> = {
   Eligibility: "/billing/eligibility",
   Rates: "/billing/rate-tables",
   "Wage index": "/billing/wage-indexes",
+  "ADR requests": "/remittance/adrs",
+  Audits: "/remittance/audits",
+  Appeals: "/remittance/appeals",
 };
 
 function renderAt(path: string): HTMLElement {
@@ -60,6 +63,9 @@ describe("BillingTabs areas", () => {
     ["/billing/dde", "Work Queue"],
     ["/remittance", "Revenue Cycle"],
     ["/remittance/denials", "Revenue Cycle"],
+    ["/remittance/adrs", "Revenue Cycle"],
+    ["/remittance/audits", "Revenue Cycle"],
+    ["/remittance/appeals", "Revenue Cycle"],
     ["/billing/eligibility", "Tools"],
     ["/billing/rate-tables", "Tools"],
     ["/billing/wage-indexes", "Tools"],
@@ -88,6 +94,9 @@ describe("BillingTabs areas", () => {
     ["/billing/notr/n1", "NOE / NOTR"],
     ["/remittance", "Remittances"],
     ["/remittance/denials", "Denials"],
+    ["/remittance/adrs", "ADR requests"],
+    ["/remittance/audits", "Audits"],
+    ["/remittance/appeals", "Appeals"],
     ["/billing/rate-tables", "Rates"],
   ])("%s highlights the %s view", (path, view) => {
     renderAt(path);
