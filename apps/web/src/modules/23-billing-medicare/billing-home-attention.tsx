@@ -46,6 +46,8 @@ export function BillingNeedsAttention(): JSX.Element {
   const failed = states.filter(([, s]) => s.status === "error");
   const refused = states.filter(([, s]) => s.status === "denied");
   const paged = states.some(([, s]) => s.status === "ok" && s.hasMore);
+  // The "+" on the Denied card follows the whole claims source (any state paged), so it may say "3+" for an exact 3:
+  // it can overstate that more exist, never understate.
   const denied = itemsOf(sources.claims).filter((c) => c.state === "denied").length;
   const go = (type: string, urgent = false) =>
     navigate(`/billing/queue?type=${type}${urgent ? "&urgent=1" : ""}`);
@@ -96,7 +98,9 @@ export function BillingNeedsAttention(): JSX.Element {
               key={i.key}
               style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", padding: "0.4rem 0" }}
             >
-              <strong>{i.patientId ? patientLabel(names[i.patientId], i.patientId) : "—"}</strong>
+              <strong>
+                {i.patientId ? patientLabel(names[i.patientId], i.patientId) : "Unknown patient"}
+              </strong>
               <span>{i.what}</span>
               <span>{fmtDay(i.deadlineAt)}</span>
               <UrgencyPill urgency={i.urgency} />

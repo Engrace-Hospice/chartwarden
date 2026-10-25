@@ -4,7 +4,8 @@
 import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import type { JSX } from "react";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BillingNeedsAttention } from "../billing-home-attention";
 import { BillingWorkQueue } from "../work-queue";
@@ -120,7 +121,85 @@ describe("BillingNeedsAttention", () => {
   });
 });
 
+describe("BillingNeedsAttention refused and failed sources", () => {
+  it("shows a dash and no access note for a refused source, and does not claim nothing is at risk", async () => {
+    const get = vi.fn(async (path: string) =>
+      path === "/api/v1/noe-records" ? fail(403) : page([]),
+    );
+    render(
+      <ApiClientProvider client={{ GET: get, POST: vi.fn() } as unknown as ApiClient}>
+        <MemoryRouter>
+          <BillingNeedsAttention />
+        </MemoryRouter>
+      </ApiClientProvider>,
+    );
+    await screen.findByText(/do not have access to NOE notices/);
+    expect(within(cardOf("NOE")).getByText("—")).toBeTruthy();
+    expect(within(cardOf("NOE")).getByText("No access")).toBeTruthy();
+    expect(screen.queryByText("Nothing is at risk or overdue.")).toBeNull();
+  });
+
+  it("shows dashes on both claim cards when claims cannot be read", async () => {
+    const get = vi.fn(async (path: string) =>
+      path === "/api/v1/billing/claims" ? fail(500) : page([]),
+    );
+    render(
+      <ApiClientProvider client={{ GET: get, POST: vi.fn() } as unknown as ApiClient}>
+        <MemoryRouter>
+          <BillingNeedsAttention />
+        </MemoryRouter>
+      </ApiClientProvider>,
+    );
+    await screen.findByRole("alert");
+    expect(within(cardOf("Claims")).getByText("—")).toBeTruthy();
+    expect(within(cardOf("Denied claims")).getByText("—")).toBeTruthy();
+    expect(within(cardOf("Denied claims")).getByText("Not available")).toBeTruthy();
+  });
+
+  it("shows no count and no empty message while a source is still loading", () => {
+    const get = vi.fn(() => new Promise(() => {}));
+    render(
+      <ApiClientProvider client={{ GET: get, POST: vi.fn() } as unknown as ApiClient}>
+        <MemoryRouter>
+          <BillingNeedsAttention />
+        </MemoryRouter>
+      </ApiClientProvider>,
+    );
+    expect(within(cardOf("Claims")).getByText("—")).toBeTruthy();
+    expect(screen.queryByText("Nothing is at risk or overdue.")).toBeNull();
+  });
+});
+
 describe("Work Queue opened from Billing Home", () => {
+  it("follows the URL when it changes while mounted, and writes filter changes back to it", async () => {
+    function Jump(): JSX.Element {
+      const nav = useNavigate();
+      return (
+        <button type="button" onClick={() => nav("/billing/queue")}>
+          jump
+        </button>
+      );
+    }
+    setup(
+      { claims: [claim()], noe: [noe()] },
+      <>
+        <Jump />
+        <BillingWorkQueue />
+      </>,
+      "/billing/queue?type=noe&urgent=1",
+    );
+    await screen.findByText("Okonkwo, Samuel");
+    fireEvent.click(screen.getByText("jump"));
+    await waitFor(() =>
+      expect((screen.getByLabelText("Type") as HTMLSelectElement).value).toBe("all"),
+    );
+    expect((screen.getByLabelText("At risk or overdue only") as HTMLInputElement).checked).toBe(
+      false,
+    );
+    fireEvent.change(screen.getByLabelText("Type"), { target: { value: "claim" } });
+    expect(document.body.dataset.where).toBe("/billing/queue?type=claim");
+  });
+
   it("starts on the type and urgency in the URL, and ignores an unknown type", async () => {
     setup(
       { claims: [claim()], noe: [noe()] },

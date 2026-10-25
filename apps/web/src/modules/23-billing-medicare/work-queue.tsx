@@ -66,12 +66,18 @@ export function BillingWorkQueue(): JSX.Element {
   const client = useApiClient();
   const { sources, reload } = useWorkQueueSources(client);
   // Billing Home links here pre-filtered (?type=dde&urgent=1); anything else in the URL is ignored.
-  const [params] = useSearchParams();
-  const [type, setType] = useState<TypeFilter>(() => {
-    const t = params.get("type");
-    return TYPE_OPTIONS.find((o) => o.value === t)?.value ?? "all";
-  });
-  const [urgentOnly, setUrgentOnly] = useState(() => params.get("urgent") === "1");
+  // The filters live in the URL, so the "All work" tab, Back/Forward and a bookmark all agree with what is shown.
+  const [params, setParams] = useSearchParams();
+  const type: TypeFilter = TYPE_OPTIONS.find((o) => o.value === params.get("type"))?.value ?? "all";
+  const urgentOnly = params.get("urgent") === "1";
+  const setFilters = (nextType: TypeFilter, nextUrgent: boolean) => {
+    const next = new URLSearchParams();
+    if (nextType !== "all") next.set("type", nextType);
+    if (nextUrgent) next.set("urgent", "1");
+    setParams(next, { replace: true });
+  };
+  const setType = (t: TypeFilter) => setFilters(t, urgentOnly);
+  const setUrgentOnly = (u: boolean) => setFilters(type, u);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   const items = useMemo(
@@ -107,10 +113,7 @@ export function BillingWorkQueue(): JSX.Element {
   const refused = states.filter(([, s]) => s.status === "denied");
   const paged = states.filter(([, s]) => s.status === "ok" && s.hasMore);
 
-  const clearFilters = () => {
-    setType("all");
-    setUrgentOnly(false);
-  };
+  const clearFilters = () => setFilters("all", false);
 
   return (
     <WorkQueueLayout
