@@ -25,31 +25,8 @@ describe("platform clearinghouse binding", () => {
   it("registers exactly the adapters compiled into this build", () => {
     expect(Object.keys(buildClearinghouseFactories(deps())).sort()).toEqual([
       "direct_mac",
-      "episode_alert",
       "stedi",
     ]);
-  });
-
-  it("binds episode_alert without an attempt store and logs the vendor, never the key", () => {
-    const binding = bindPlatformClearinghouse(
-      {
-        CLEARINGHOUSE_VENDOR: "episode_alert",
-        EPISODE_ALERT_API_KEY: "ea_do_not_log",
-        EPISODE_ALERT_BASE_URL: "https://api.example.test",
-      },
-      { attempts: null },
-    );
-    expect(binding.vendor).toBe("episode_alert");
-    expect(describeClearinghouseBinding(binding)).toBe("Clearinghouse binding: episode_alert");
-    expect(describeClearinghouseBinding(binding)).not.toContain("ea_do_not_log");
-  });
-
-  it("refuses to boot with episode_alert named but no key or no base URL, naming only the variable", () => {
-    const base = { CLEARINGHOUSE_VENDOR: "episode_alert" };
-    expect(() => bindPlatformClearinghouse(base, deps())).toThrow(/EPISODE_ALERT_API_KEY/);
-    expect(() =>
-      bindPlatformClearinghouse({ ...base, EPISODE_ALERT_API_KEY: "k" }, deps()),
-    ).toThrow(/EPISODE_ALERT_BASE_URL/);
   });
 
   it("binds stedi from STEDI_API_KEY and logs the vendor, never the key", () => {

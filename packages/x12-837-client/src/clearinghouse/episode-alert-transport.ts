@@ -10,12 +10,16 @@
 // their shape, so those methods answer CH_NOT_WIRED until a trial account supplies it. Submission and acknowledgments
 // are not offered through this adapter at all.
 //
+// NOT bindable as CLEARINGHOUSE_VENDOR (review of 0882c4eb8, H1): that setting is platform-wide and routes the M23
+// submit workers and acknowledgment crons through the one vendor, so binding an eligibility-only adapter there would
+// stop claim submission. It is registered in the vendor union only; #760 adds a separate eligibility-vendor setting.
+//
 // Safety: the MBI exists only inside the request body of one call and never appears in a result, reason or log; the
 // response body is never echoed. Episode Alert documents no test mode, so `usage: "test"` is refused unless the
 // adapter is explicitly built with `allowTestUsage` (conformance tests only), because the port requires `test` to
 // reach only vendor test mode.
 import { type X12WorkerResult, degraded } from "../types";
-import { eligibilityOutcomeFromXml } from "./episode-alert-eligibility";
+import { eligibilityOutcomeFromXml, toIsoDate } from "./episode-alert-eligibility";
 import {
   type AckEvent,
   CH,
@@ -37,8 +41,8 @@ export const EPISODE_ALERT_API_KEY_ENV = "EPISODE_ALERT_API_KEY";
 export const EPISODE_ALERT_BASE_URL_ENV = "EPISODE_ALERT_BASE_URL";
 const ELIGIBILITY_PATH = "/eligibility"; // UNVERIFIED
 const REQUEST_TIMEOUT_MS = 30_000;
-const MBI_SHAPE = /^[A-Za-z0-9-]{11,13}$/;
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const MBI_SHAPE = /^[A-Za-z0-9]{4}-?[A-Za-z0-9]{3}-?[A-Za-z0-9]{4}$/;
+const MAX_BODY_BYTES = 1_000_000;
 /** Statuses that mean "you may not use this" (credential or plan), not "try again". */
 const NOT_PROVISIONED_STATUSES: ReadonlySet<number> = new Set([401, 402, 403]);
 const REFUSED_STATUSES: ReadonlySet<number> = new Set([400, 404, 422]);
@@ -60,18 +64,24 @@ export interface EpisodeAlertTransportOptions {
 export function createEpisodeAlertTransportFromEnv(env: EnvMap): EpisodeAlertTransport {
   const apiKey = env[EPISODE_ALERT_API_KEY_ENV]?.trim();
   if (!apiKey) {
-    throw new Error(
-      `${EPISODE_ALERT_API_KEY_ENV} is required for CLEARINGHOUSE_VENDOR=episode_alert`,
-    );
+    throw new Error(`${EPISODE_ALERT_API_KEY_ENV} is required for Episode Alert`);
   }
   const baseUrl = env[EPISODE_ALERT_BASE_URL_ENV]?.trim();
   if (!baseUrl) {
     throw new Error(
-      `${EPISODE_ALERT_BASE_URL_ENV} is required for CLEARINGHOUSE_VENDOR=episode_alert (from the vendor's signup docs)`,
+      `${EPISODE_ALERT_BASE_URL_ENV} is required for Episode Alert (from the vendor's signup docs)`,
     );
   }
-  if (!baseUrl.startsWith("https://")) {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
     throw new Error(`${EPISODE_ALERT_BASE_URL_ENV} must be an https:// URL`);
+  }
+  if (url.protocol !== "https:" || url.search || url.hash) {
+    throw new Error(
+      `${EPISODE_ALERT_BASE_URL_ENV} must be an https:// URL with no query or fragment`,
+    );
   }
   return new EpisodeAlertTransport({ apiKey, baseUrl });
 }
@@ -105,13 +115,14 @@ export class EpisodeAlertTransport implements ClearinghouseTransport {
         "episode_alert has no test mode, so a test-usage call is refused",
       );
     }
-    if (!MBI_SHAPE.test(req.mbi) || !ISO_DATE.test(req.serviceDate)) {
+    if (!MBI_SHAPE.test(req.mbi) || toIsoDate(req.serviceDate) !== req.serviceDate) {
       return degraded(CH.INVALID_REQUEST, "the eligibility request is malformed");
     }
     let res: Response;
     try {
       res = await this.fetchImpl(`${this.baseUrl}${ELIGIBILITY_PATH}`, {
         method: "POST",
+        // The Authorization scheme is UNVERIFIED: a placeholder until the trial docs name it.
         headers: { Authorization: this.apiKey, "Content-Type": "application/json" },
         body: JSON.stringify({ mbi: req.mbi, serviceDate: req.serviceDate }),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -121,6 +132,7 @@ export class EpisodeAlertTransport implements ClearinghouseTransport {
     } catch {
       return degraded(CH.UNAVAILABLE, "Episode Alert could not be reached");
     }
+    if (!res.ok) await res.body?.cancel().catch(() => undefined);
     if (NOT_PROVISIONED_STATUSES.has(res.status)) {
       return degraded(
         CH.NOT_PROVISIONED,
@@ -133,6 +145,10 @@ export class EpisodeAlertTransport implements ClearinghouseTransport {
     if (!res.ok) return degraded(CH.UNAVAILABLE, "Episode Alert is unavailable");
     let body: string;
     try {
+      if (Number(res.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) {
+        await res.body?.cancel().catch(() => undefined);
+        return { ok: true, data: { outcome: "unknown", asOfDate: req.serviceDate } };
+      }
       body = await res.text();
     } catch {
       return degraded(CH.UNAVAILABLE, "the Episode Alert response could not be read");

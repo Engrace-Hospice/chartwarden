@@ -44,6 +44,41 @@ describe("eligibilityOutcomeFromXml", () => {
     expect(eligibilityOutcomeFromXml("x".repeat(1_000_001), day)).toBe("unknown");
   });
 
+  it("is unknown when an end element is empty, self-closing, nested or repeated", () => {
+    const start = "<PartAEligibilityStartDate>20240101</PartAEligibilityStartDate>";
+    for (const end of [
+      "<PartAEndDate></PartAEndDate>",
+      "<PartAEndDate/>",
+      "<PartAEndDate><Date>20250101</Date></PartAEndDate>",
+      "<PartAEndDate>20250101</PartAEndDate><PartAEndDate>20270101</PartAEndDate>",
+    ]) {
+      expect(eligibilityOutcomeFromXml(`<R>${start}${end}</R>`, day)).toBe("unknown");
+    }
+    expect(eligibilityOutcomeFromXml(`<R>${start}${start}</R>`, day)).toBe("unknown");
+  });
+
+  it("does not match look-alike element names or hidden markup", () => {
+    expect(
+      eligibilityOutcomeFromXml("<R><PartAStartDateNote>20240101</PartAStartDateNote></R>", day),
+    ).toBe("unknown");
+    expect(
+      eligibilityOutcomeFromXml(
+        `<R><!--<PartAEndDate>20200101</PartAEndDate>--><PartAStartDate>20240101</PartAStartDate></R>`,
+        day,
+      ),
+    ).toBe("unknown");
+    expect(
+      eligibilityOutcomeFromXml(
+        "<R><![CDATA[<PartAStartDate>20240101</PartAStartDate>]]></R>",
+        day,
+      ),
+    ).toBe("unknown");
+  });
+
+  it("is unknown for an unreadable service date", () => {
+    expect(eligibilityOutcomeFromXml(xml("20240101"), "2026-99-99")).toBe("unknown");
+  });
+
   it("accepts a namespace prefix on the element", () => {
     const prefixed =
       "<ns:R><ns:PartAEligibilityStartDate>20240101</ns:PartAEligibilityStartDate></ns:R>";
@@ -110,6 +145,7 @@ describe("EpisodeAlertTransport.checkEligibility", () => {
     for (const bad of [
       { mbi: "short", serviceDate: "2026-10-01" },
       { mbi: SYNTHETIC_MBI, serviceDate: "10/01/2026" },
+      { mbi: SYNTHETIC_MBI, serviceDate: "2026-99-99" },
     ]) {
       const r = await transport.checkEligibility(CTX, bad);
       expect(r.ok).toBe(false);
@@ -131,6 +167,36 @@ describe("EpisodeAlertTransport.checkEligibility", () => {
       expect(r.degraded.code).toBe(code);
       expect(r.degraded.reason).not.toContain("1EG4");
     }
+  });
+
+  it("answers UNAVAILABLE for a redirect (fetch rejects under redirect:error)", async () => {
+    const { transport } = transportWith(() => {
+      throw new TypeError("redirect mode is set to error");
+    });
+    const r = await transport.checkEligibility(CTX, REQ);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.degraded.code).toBe(CH.UNAVAILABLE);
+  });
+
+  it("answers unknown, not active, for an oversized declared body without reading it", async () => {
+    const { transport } = transportWith(
+      () => new Response(xml("20240101"), { headers: { "content-length": "5000000" } }),
+    );
+    const r = await transport.checkEligibility(CTX, REQ);
+    expect(r).toEqual({ ok: true, data: { outcome: "unknown", asOfDate: "2026-10-01" } });
+  });
+
+  it("never puts the API key in the URL or the result, and refuses test usage by default via env", async () => {
+    const { transport, calls } = transportWith(() => new Response(xml("20240101")));
+    const r = await transport.checkEligibility(CTX, REQ);
+    expect(calls[0]?.url).not.toContain(KEY);
+    expect(JSON.stringify(r)).not.toContain(KEY);
+    const viaEnv = createEpisodeAlertTransportFromEnv({
+      [EPISODE_ALERT_API_KEY_ENV]: KEY,
+      [EPISODE_ALERT_BASE_URL_ENV]: "https://api.example.test",
+    });
+    const test = await viaEnv.checkEligibility({ ...CTX, usage: "test" }, REQ);
+    expect(test.ok).toBe(false);
   });
 
   it("answers UNAVAILABLE, never a throw, when the network fails", async () => {
@@ -181,6 +247,12 @@ describe("createEpisodeAlertTransportFromEnv", () => {
         [EPISODE_ALERT_BASE_URL_ENV]: "http://x.test",
       }),
     ).toThrow(/https/);
+    expect(() =>
+      createEpisodeAlertTransportFromEnv({
+        ...good,
+        [EPISODE_ALERT_BASE_URL_ENV]: "https://x.test/v1?token=1",
+      }),
+    ).toThrow(/query or fragment/);
   });
 });
 

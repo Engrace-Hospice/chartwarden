@@ -1,5 +1,5 @@
 // apps/backend/src/modules/23-billing-medicare/clearinghouse-binding.ts — which clearinghouse the platform is bound to
-// (ADR-0053 D3). Platform configuration: `CLEARINGHOUSE_VENDOR` unset | `stedi` | `direct_mac` | `episode_alert` (eligibility only, #758) (`in_memory` is a
+// (ADR-0053 D3). Platform configuration: `CLEARINGHOUSE_VENDOR` unset | `stedi` | `direct_mac` (`in_memory` is a
 // test double, refused in production). Unset is the logged, unbound state (every call answers CH_NOT_WIRED). A vendor
 // with no adapter in this build, a vendor whose credential is missing, or a vendor named with no durable attempt store
 // all throw at boot — a deployment never silently behaves as "unset" while believing it is bound.
@@ -16,7 +16,6 @@ import {
   type StediAnomaly,
   type SubmissionAttemptStore,
   bindClearinghouseTransport,
-  createEpisodeAlertTransportFromEnv,
   createStediTransportFromEnv,
 } from "@chartwarden/x12-837-client";
 
@@ -52,8 +51,6 @@ export function buildClearinghouseFactories(
         ...(onAnomaly ? { onAnomaly } : {}),
       });
     },
-    // Eligibility only (no submit), so it needs no attempt store; it reads EPISODE_ALERT_API_KEY and _BASE_URL.
-    episode_alert: (env) => createEpisodeAlertTransportFromEnv(env),
     stedi: (env) => {
       // The port promises durable idempotency; refuse to bind an adapter that would only keep it in memory.
       if (!attempts) {

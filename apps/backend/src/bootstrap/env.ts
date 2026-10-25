@@ -18,11 +18,7 @@ export type EnvLike = Record<string, string | undefined>;
  * two agree. The registry still throws at boot for a vendor with no adapter.
  */
 export const CLEARINGHOUSE_VENDOR_ENV = "CLEARINGHOUSE_VENDOR";
-export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = [
-  "stedi",
-  "direct_mac",
-  "episode_alert",
-];
+export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = ["stedi", "direct_mac"];
 
 /** One unmet production requirement. */
 export interface EnvProblem {
@@ -133,11 +129,7 @@ const REQUIREMENTS: readonly Requirement[] = [
     when: (env) => Boolean(env.TENANT_BASE_DOMAIN?.trim()),
     rule: (value, env) => {
       const domain = value.trim().toLowerCase();
-      if (
-        !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(
-          domain,
-        )
-      ) {
+      if (!/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(domain)) {
         return "must be a bare domain such as chartwarden.com";
       }
       return env.PASSKEY_RP_ID?.trim().toLowerCase() === domain
