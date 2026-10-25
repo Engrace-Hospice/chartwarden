@@ -4,11 +4,40 @@ import type { GlyphName } from "@chartwarden/ui";
 // group per module. Every registered top-level screen still has exactly one home: it is either an
 // entry's own target or one of its children (revealed by the entry's disclosure chevron), and any
 // screen no rule claims falls into Administration — so nothing silently drops out of the nav.
+//
+// SUB-SECTIONS: an entry may declare `subsections` — headed groups of children inside the one entry
+// (Billing: Medicare / Medicaid / Commercial / All payers). The entry key, landing and `activeEntryKey`
+// are unchanged. Each subsection has its own `claims`; ownership is still longest-prefix across ALL
+// claims of ALL entries and subsections, so a screen belongs to exactly one subsection (give the more
+// specific path to the narrower owner: `/remittance/adrs` -> Medicare beats `/remittance` -> All payers).
+// A subsection with no visible screen is dropped, so it appears the moment its screens are registered.
+//
+// BORROW: any entry or subsection may list `borrow: [{ path, label? }]` — extra links to screens owned
+// elsewhere. A borrowed link renders under its host but takes no ownership: it is not in `children`,
+// the owner keeps the active highlight, and it never carries `aria-current` (one per page). It is
+// dropped when the actor cannot see the target or the host already owns it. Example:
+//   { key: "all-payers", label: "All payers", claims: ["/remittance"],
+//     borrow: [{ path: "/billing/eligibility", label: "Eligibility (Medicare)" }] }
 
 export interface NavScreen {
   id: string;
   path: string;
   title: string;
+}
+
+/** A link to a screen owned by another entry/subsection; shown, never owned. */
+export interface NavBorrowSpec {
+  path: string;
+  label?: string;
+}
+
+export interface NavSubsectionSpec {
+  key: string;
+  label: string;
+  /** Path prefixes owned by this subsection (same longest-prefix rule as entry claims). */
+  claims: string[];
+  childOrder?: string[];
+  borrow?: NavBorrowSpec[];
 }
 
 export interface NavEntrySpec {
@@ -23,6 +52,10 @@ export interface NavEntrySpec {
   activeOn?: string[];
   /** Child display order by path prefix (first match wins); children matching none keep their order, last. */
   childOrder?: string[];
+  /** Headed groups of children inside this entry; their claims count as this entry's claims. */
+  subsections?: NavSubsectionSpec[];
+  /** Links to screens owned elsewhere, rendered under this entry without taking ownership. */
+  borrow?: NavBorrowSpec[];
 }
 
 export interface NavSectionSpec {
@@ -113,15 +146,31 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
         to: "/billing",
         // Eligibility (Medicare HETS and Medicaid) is a Billing tab, so it stays under Billing — no
         // separate sidebar entry for the highlight to jump to.
-        claims: [
-          "/billing",
-          "/medicaid",
-          "/commercial",
-          "/remittance",
-          "/cap",
-          "/cost-reports",
-          "/platform/cap",
-          "/admin/billing-audit",
+        claims: [],
+        // Payer lanes inside the one Billing entry. Eligibility (Medicare HETS and Medicaid) is a Billing
+        // tab, so it stays here. Surveyor views (/admin/billing-audit, /admin/medicaid-billing-audit)
+        // live under the Audit Log entry. Cap and cost reports are Medicare-only (42 CFR 418.309 cap
+        // counts Medicare beneficiaries; M27 produces CMS-1984-14, the Medicare hospice cost report).
+        subsections: [
+          {
+            key: "medicare",
+            label: "Medicare",
+            claims: [
+              "/billing",
+              "/remittance/adrs",
+              "/remittance/audits",
+              "/remittance/tpe",
+              "/remittance/report",
+              "/cap",
+              "/platform/cap",
+              "/cost-reports",
+            ],
+          },
+          { key: "medicaid", label: "Medicaid", claims: ["/medicaid"] },
+          // M41 (ADR-0100): the screens live under /commercial/billing.
+          { key: "commercial", label: "Commercial", claims: ["/commercial"] },
+          // Shared M25 remittance screens; the Medicare-only review-chain paths above win by length.
+          { key: "all-payers", label: "All payers", claims: ["/remittance"] },
         ],
       },
       {
@@ -198,7 +247,15 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
         label: "Audit Log",
         icon: "scroll",
         to: "/audit",
-        claims: ["/audit", "/compliance/audit", "/compliance/legal-holds", "/compliance/ai"],
+        claims: [
+          "/audit",
+          "/compliance/audit",
+          "/compliance/legal-holds",
+          "/compliance/ai",
+          // Surveyor views of Billing (Medicare, Medicaid) are audit surfaces, not Billing screens.
+          "/admin/billing-audit",
+          "/admin/medicaid-billing-audit",
+        ],
       },
       {
         key: "settings",
@@ -211,6 +268,14 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
   },
 ];
 
+export interface NavSubsection {
+  key: string;
+  label: string;
+  /** Owned visible screens, landing screen included (the renderer skips the entry row's own target). */
+  screens: NavScreen[];
+  borrowed: NavScreen[];
+}
+
 /** A resolved nav entry: its landing href (null when the actor can see none of its screens) + children. */
 export interface NavEntry {
   key: string;
@@ -220,6 +285,10 @@ export interface NavEntry {
   /** Every visible static destination owned by this entry, including its landing screen. */
   screens: NavScreen[];
   children: NavScreen[];
+  /** Headed groups (only entries with `subsections`); empty subsections are dropped. */
+  subsections?: NavSubsection[];
+  /** Borrowed links shown under the entry; not owned, not in `children`. */
+  borrowed?: NavScreen[];
   /** Every prefix that makes this entry "current": its own target, its claims, and `activeOn`. */
   matchPrefixes: string[];
 }
@@ -255,24 +324,56 @@ export function buildPrimaryNav(
   spec: NavSectionSpec[] = PRIMARY_NAV,
 ): NavSection[] {
   const allEntries = spec.flatMap((s) => s.entries);
-  const owned = new Map<string, NavScreen[]>(allEntries.map((e) => [e.key, []]));
+  // Owner slot = entry key, or `${entryKey}/${subsectionKey}` for a subsection.
+  const owned = new Map<string, NavScreen[]>();
+  const claimRules: { slot: string; claim: string }[] = [];
+  for (const entry of allEntries) {
+    owned.set(entry.key, []);
+    for (const claim of entry.claims) claimRules.push({ slot: entry.key, claim });
+    for (const sub of entry.subsections ?? []) {
+      const slot = `${entry.key}/${sub.key}`;
+      owned.set(slot, []);
+      for (const claim of sub.claims) claimRules.push({ slot, claim });
+    }
+  }
   for (const screen of visibleScreens) {
     if (screen.path.includes(":") || screen.path === "/") continue;
-    let best: { key: string; len: number } | null = null;
-    for (const entry of allEntries) {
-      for (const claim of entry.claims) {
-        const len = matchLength(screen.path, claim);
-        if (len > 0 && (!best || len > best.len)) best = { key: entry.key, len };
-      }
+    let best: { slot: string; len: number } | null = null;
+    for (const { slot, claim } of claimRules) {
+      const len = matchLength(screen.path, claim);
+      if (len > 0 && (!best || len > best.len)) best = { slot, len };
     }
-    owned.get(best?.key ?? "administration")?.push(screen);
+    owned.get(best?.slot ?? "administration")?.push(screen);
   }
+  const resolveBorrowed = (borrow: NavBorrowSpec[] | undefined, own: NavScreen[]): NavScreen[] =>
+    (borrow ?? []).flatMap((b) => {
+      const target = visibleScreens.find((s) => s.path === b.path);
+      if (!target || own.some((s) => s.path === b.path)) return [];
+      return [{ ...target, title: b.label ?? target.title }];
+    });
   return spec
     .map((section) => ({
       label: section.label,
       entries: section.entries
         .map((entry): NavEntry => {
-          const children = sortChildren(owned.get(entry.key) ?? [], entry.childOrder);
+          const subsections = (entry.subsections ?? [])
+            .map((sub): NavSubsection => {
+              const screens = sortChildren(
+                owned.get(`${entry.key}/${sub.key}`) ?? [],
+                sub.childOrder,
+              );
+              return {
+                key: sub.key,
+                label: sub.label,
+                screens,
+                borrowed: resolveBorrowed(sub.borrow, screens),
+              };
+            })
+            .filter((sub) => sub.screens.length > 0);
+          const children = [
+            ...sortChildren(owned.get(entry.key) ?? [], entry.childOrder),
+            ...subsections.flatMap((sub) => sub.screens),
+          ];
           const landing =
             entry.key === "home"
               ? "/"
@@ -290,12 +391,15 @@ export function buildPrimaryNav(
             screens: orderedScreens,
             // The landing screen is the entry row itself; list only the others under it.
             children: children.filter((c) => c.path !== landing),
+            ...(entry.subsections ? { subsections } : {}),
+            borrowed: resolveBorrowed(entry.borrow, children),
             // Include resolved child paths as well as declared claims. This keeps the parent current
             // for fallback-owned screens such as `/telehealth`, whose route deliberately has no
             // broad `/telehealth` claim of its own.
             matchPrefixes: [
               entry.to,
               ...entry.claims,
+              ...(entry.subsections ?? []).flatMap((sub) => sub.claims),
               ...(entry.activeOn ?? []),
               ...children.map((child) => child.path),
             ],

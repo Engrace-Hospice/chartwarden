@@ -28,7 +28,7 @@ import { clearAllDrafts } from "./ceremony-drafts";
 import { ModuleNavigationTabs } from "./module-navigation-tabs";
 import { NotificationBell } from "./notification-bell";
 import { clearPendingNotificationLink } from "./pending-deep-link";
-import { type NavEntry, activeEntryKey, buildPrimaryNav } from "./primary-nav";
+import { type NavEntry, type NavScreen, activeEntryKey, buildPrimaryNav } from "./primary-nav";
 import { RedirectRememberingLink } from "./redirect-remembering-link";
 import type { WebScreenDescriptor } from "./screen-registry";
 import type { Session } from "./session";
@@ -214,7 +214,7 @@ export function PrimaryNavEntry({
   useEffect(() => {
     if (active) setOpen(true);
   }, [active]);
-  const hasChildren = entry.children.length > 0;
+  const hasChildren = entry.children.length > 0 || (entry.borrowed?.length ?? 0) > 0;
   const listId = `wx-nav-${entry.key}`;
   return (
     <div className="wx-nav-entry">
@@ -246,21 +246,70 @@ export function PrimaryNavEntry({
         ) : null}
       </div>
       {hasChildren && open ? (
-        <ul id={listId} className="wx-nav-children">
-          {entry.children.map((c) => (
-            <li key={c.id}>
-              <Link
-                to={c.path}
-                className={pathname === c.path ? "wx-nav-child active" : "wx-nav-child"}
-                aria-current={pathname === c.path ? "page" : undefined}
-              >
-                {c.title}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <div id={listId}>
+          {/* Screens in no subsection (or every screen, for entries without subsections). */}
+          <NavLinkList
+            links={entry.children.filter(
+              (c) => !entry.subsections?.some((sub) => sub.screens.some((s) => s.path === c.path)),
+            )}
+            pathname={pathname}
+          />
+          {entry.subsections?.map((sub) => {
+            const links = sub.screens.filter((s) => s.path !== entry.href);
+            if (links.length === 0 && sub.borrowed.length === 0) return null;
+            return (
+              <div key={sub.key} role="group" aria-labelledby={`${listId}-${sub.key}`}>
+                <div
+                  id={`${listId}-${sub.key}`}
+                  className="wx-nav-section-label wx-nav-subsection-label"
+                >
+                  {sub.label}
+                </div>
+                <NavLinkList links={links} borrowed={sub.borrowed} pathname={pathname} />
+              </div>
+            );
+          })}
+          {entry.borrowed?.length ? (
+            <NavLinkList links={[]} borrowed={entry.borrowed} pathname={pathname} />
+          ) : null}
+        </div>
       ) : null}
     </div>
+  );
+}
+
+/** Owned links (active highlight + aria-current) then borrowed ones (plain links: the owner is current). */
+function NavLinkList({
+  links,
+  borrowed = [],
+  pathname,
+}: {
+  links: NavScreen[];
+  borrowed?: NavScreen[];
+  pathname: string;
+}): JSX.Element | null {
+  if (links.length === 0 && borrowed.length === 0) return null;
+  return (
+    <ul className="wx-nav-children">
+      {links.map((c) => (
+        <li key={c.id}>
+          <Link
+            to={c.path}
+            className={pathname === c.path ? "wx-nav-child active" : "wx-nav-child"}
+            aria-current={pathname === c.path ? "page" : undefined}
+          >
+            {c.title}
+          </Link>
+        </li>
+      ))}
+      {borrowed.map((c) => (
+        <li key={`borrowed:${c.id}`}>
+          <Link to={c.path} className="wx-nav-child">
+            {c.title}
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }
 

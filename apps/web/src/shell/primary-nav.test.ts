@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeEntryKey, buildPrimaryNav } from "./primary-nav";
+import { type NavSectionSpec, activeEntryKey, buildPrimaryNav } from "./primary-nav";
 
 const screen = (path: string, title = path) => ({ id: path, path, title });
 
@@ -132,5 +132,148 @@ describe("buildPrimaryNav", () => {
     expect(visits?.children.map((c) => c.path)).toEqual(
       expect.arrayContaining(["/triage/intake", "/safety/incidents/new", "/me/oncall"]),
     );
+  });
+
+  describe("Billing sub-sections", () => {
+    const billingPaths = [
+      "/billing",
+      "/billing/claims",
+      "/billing/eligibility",
+      "/billing/mac-credentials",
+      "/cap",
+      "/platform/cap/constants",
+      "/cost-reports",
+      "/medicaid/billing/claims",
+      "/medicaid/billing/trading-partner-credentials",
+      "/remittance",
+      "/remittance/denials",
+      "/remittance/appeals",
+      "/remittance/adrs",
+      "/remittance/audits",
+      "/remittance/tpe",
+      "/remittance/report",
+      "/commercial/billing/claims",
+      "/admin/billing-audit",
+    ];
+    const billing = () =>
+      buildPrimaryNav(billingPaths.map((p) => screen(p)))
+        .flatMap((s) => s.entries)
+        .find((e) => e.key === "billing");
+    const subPaths = (key: string) =>
+      billing()
+        ?.subsections?.find((x) => x.key === key)
+        ?.screens.map((x) => x.path);
+
+    it("splits Billing into Medicare, Medicaid, Commercial and All payers", () => {
+      expect(billing()?.subsections?.map((x) => x.label)).toEqual([
+        "Medicare",
+        "Medicaid",
+        "Commercial",
+        "All payers",
+      ]);
+      expect(subPaths("medicaid")).toEqual(["/medicaid/billing/claims"]);
+      expect(subPaths("commercial")).toEqual(["/commercial/billing/claims"]);
+    });
+
+    it("puts the Medicare-only review chain, cap and cost reports in Medicare; shared M25 screens in All payers", () => {
+      expect(subPaths("medicare")).toEqual(
+        expect.arrayContaining([
+          "/billing",
+          "/billing/claims",
+          "/billing/eligibility",
+          "/remittance/adrs",
+          "/remittance/audits",
+          "/remittance/tpe",
+          "/remittance/report",
+          "/cap",
+          "/platform/cap/constants",
+          "/cost-reports",
+        ]),
+      );
+      expect(subPaths("all-payers")).toEqual(
+        expect.arrayContaining(["/remittance", "/remittance/denials", "/remittance/appeals"]),
+      );
+      expect(subPaths("all-payers")).not.toContain("/remittance/adrs");
+    });
+
+    it("keeps credentials in Integrations and surveyor views in Audit Log, never in Billing", () => {
+      const nav = buildPrimaryNav(billingPaths.map((p) => screen(p)));
+      const byKey = new Map(nav.flatMap((s) => s.entries).map((e) => [e.key, e]));
+      const billingPlaced = byKey.get("billing")?.screens.map((x) => x.path) ?? [];
+      for (const p of [
+        "/billing/mac-credentials",
+        "/medicaid/billing/trading-partner-credentials",
+        "/admin/billing-audit",
+      ]) {
+        expect(billingPlaced).not.toContain(p);
+      }
+      expect(byKey.get("integrations")?.screens.map((x) => x.path)).toEqual(
+        expect.arrayContaining(["/billing/mac-credentials"]),
+      );
+      expect(byKey.get("audit-log")?.screens.map((x) => x.path)).toContain("/admin/billing-audit");
+      expect(activeEntryKey(nav, "/admin/medicaid-billing-audit")).toBe("audit-log");
+    });
+
+    it("places every screen under exactly one entry and one subsection, one entry active", () => {
+      const nav = buildPrimaryNav(billingPaths.map((p) => screen(p)));
+      const placed = nav.flatMap((s) => s.entries).flatMap((e) => e.screens.map((x) => x.path));
+      for (const p of billingPaths) expect(placed.filter((x) => x === p)).toHaveLength(1);
+      const inSubs = billing()?.subsections?.flatMap((x) => x.screens.map((y) => y.path)) ?? [];
+      expect(new Set(inSubs).size).toBe(inSubs.length);
+      expect(activeEntryKey(nav, "/remittance/adrs")).toBe("billing");
+      expect(activeEntryKey(nav, "/remittance/denials")).toBe("billing");
+      expect(activeEntryKey(nav, "/cost-reports/workspace")).toBe("billing");
+    });
+
+    it("drops a subsection with no visible screens", () => {
+      const nav = buildPrimaryNav([screen("/billing"), screen("/remittance")]);
+      const b = nav.flatMap((s) => s.entries).find((e) => e.key === "billing");
+      expect(b?.subsections?.map((x) => x.key)).toEqual(["medicare", "all-payers"]);
+    });
+  });
+
+  describe("borrow", () => {
+    const spec: NavSectionSpec[] = [
+      {
+        entries: [
+          { key: "home", label: "Home", icon: "home", to: "/", claims: [] },
+          {
+            key: "a",
+            label: "A",
+            icon: "home",
+            to: "/a",
+            claims: ["/a"],
+            borrow: [{ path: "/b/x", label: "B x (borrowed)" }, { path: "/nope" }],
+            subsections: [
+              {
+                key: "s",
+                label: "S",
+                claims: ["/a/s"],
+                borrow: [{ path: "/b/y" }, { path: "/a/s/own" }],
+              },
+            ],
+          },
+          { key: "b", label: "B", icon: "home", to: "/b", claims: ["/b"] },
+        ],
+      },
+    ];
+    const nav = buildPrimaryNav(
+      ["/a", "/a/s/own", "/b", "/b/x", "/b/y"].map((p) => screen(p)),
+      spec,
+    );
+    const byKey = new Map(nav.flatMap((s) => s.entries).map((e) => [e.key, e]));
+
+    it("lists borrowed links under the host without taking ownership", () => {
+      expect(byKey.get("a")?.borrowed?.map((x) => [x.path, x.title])).toEqual([
+        ["/b/x", "B x (borrowed)"],
+      ]);
+      expect(byKey.get("a")?.subsections?.[0]?.borrowed.map((x) => x.path)).toEqual(["/b/y"]);
+      expect(byKey.get("a")?.screens.map((x) => x.path)).not.toContain("/b/x");
+      expect(byKey.get("b")?.screens.map((x) => x.path)).toEqual(["/b", "/b/x", "/b/y"]);
+    });
+
+    it("keeps the active highlight on the owner", () => {
+      expect(activeEntryKey(nav, "/b/x")).toBe("b");
+    });
   });
 });

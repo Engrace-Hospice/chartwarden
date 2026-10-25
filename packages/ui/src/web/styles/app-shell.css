@@ -99,6 +99,9 @@
     font-weight: 600;
     color: var(--color-muted);
   }
+  .wx-nav-subsection-label {
+    padding-left: 2.375rem; /* sits over the indented child links it heads */
+  }
   .wx-nav-row {
     display: flex;
     align-items: center;

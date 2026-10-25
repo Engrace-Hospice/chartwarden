@@ -62,4 +62,38 @@ describe("PrimaryNavEntry", () => {
     fireEvent.click(screen.getByRole("button", { name: "Hide Admissions pages" }));
     expect(screen.queryByRole("link", { name: "Referral Inbox" })).toBeNull();
   });
+
+  it("renders headed subsections and borrowed links; only owned links carry aria-current", () => {
+    const grouped: NavEntry = {
+      ...entry,
+      children: [
+        { id: "referrals", path: "/referrals", title: "Referral Inbox" },
+        { id: "intake", path: "/intake", title: "Intake" },
+      ],
+      subsections: [
+        {
+          key: "s",
+          label: "Group S",
+          screens: [{ id: "referrals", path: "/referrals", title: "Referral Inbox" }],
+          borrowed: [{ id: "intake", path: "/intake", title: "Intake (borrowed)" }],
+        },
+      ],
+    };
+    render(
+      <MemoryRouter>
+        <PrimaryNavEntry entry={grouped} active pathname="/referrals" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText("Group S")).toBeTruthy();
+    // A named group, not a region landmark: the sidebar must not grow one landmark per sub-section.
+    expect(screen.getByRole("group", { name: "Group S" })).toBeTruthy();
+    expect(screen.queryByRole("region")).toBeNull();
+    expect(screen.getByRole("link", { name: "Referral Inbox" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    expect(
+      screen.getByRole("link", { name: "Intake (borrowed)" }).getAttribute("aria-current"),
+    ).toBeNull();
+    expect(screen.getByRole("link", { name: "Intake" })).toBeTruthy();
+  });
 });
