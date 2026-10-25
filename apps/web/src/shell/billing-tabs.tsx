@@ -76,13 +76,17 @@ function currentPlace(pathname: string): Place | null {
   return best;
 }
 
+type Current = "page" | "area" | false;
+
+// An area's own link points at its first view, so on any other view of the area it is "in" the area, not "the page":
+// only one element on the screen carries aria-current="page".
 function BillingLink({
   to,
   label,
   current,
-}: { to: string; label: string; current: boolean }): JSX.Element {
+}: { to: string; label: string; current: Current }): JSX.Element {
   return current ? (
-    <Link to={to} aria-current="page" className="is-current">
+    <Link to={to} aria-current={current === "page" ? "page" : "true"} className="is-current">
       {label}
     </Link>
   ) : (
@@ -100,7 +104,7 @@ export function BillingTabs(): JSX.Element {
             key={area.label}
             to={areaTo(area)}
             label={area.label}
-            current={place?.area === area}
+            current={place?.area === area && (place.view ? "area" : "page")}
           />
         ))}
       </nav>
@@ -111,7 +115,7 @@ export function BillingTabs(): JSX.Element {
               key={view.to}
               to={view.to}
               label={view.label}
-              current={place.view === view}
+              current={place.view === view && "page"}
             />
           ))}
         </nav>
