@@ -67,8 +67,8 @@ after Track 1 step 1.2 so the port is not fitted to Stedi alone.
 | Step | Output |
 |---|---|
 | 4.1 Spike (written comparison) | First pass done: [`CLEARINGHOUSE_VENDOR_COMPARISON_20261023.md`](../clearinghouse-integration/CLEARINGHOUSE_VENDOR_COMPARISON_20261023.md) from vendor documentation; the written vendor answers it lists are still outstanding. Original scope: Claim.MD vs Availity vs Office Ally vs Stedi on: hospice 837I, NOE (81A) and NOTR (81B) support; whether their route is an API or file-based; 999/277CA/835 return path; whether one platform account can serve many provider entities (Claim.MD's pages describe provider records on one account and a vendor-link setting, not a platform model; Stedi describes one integrated account per provider; both need written confirmation); BAA; sandbox; price at roughly 100-170 transactions a month per tenant. Facts from vendor documentation are unverified until the vendor confirms them |
-| 4.2 Decision | Go or no-go recorded in an ADR amendment |
-| 4.3 Adapter | Gated on written Claim.MD confirmation of hospice 837I and payer-stage visibility. `claimmd` factory in `buildClearinghouseFactories`, new `CLEARINGHOUSE_VENDOR` value, reusing `attempt-store` for durable idempotency |
+| 4.2 Decision | **Conditional, not yet go** (2026-10-24), recorded in the ADR-0053 amendment; go criteria G1-G5 in comparison section 7. Awaiting the product owner sending the vendor question list and BAA request |
+| 4.3 Adapter | **Blocked** on 4.2 go and a synthetic-patient sandbox run; checklist in comparison section 7. Gated on written Claim.MD confirmation of hospice 837I and payer-stage visibility. `claimmd` factory in `buildClearinghouseFactories`, new `CLEARINGHOUSE_VENDOR` value, reusing `attempt-store` for durable idempotency |
 | 4.4 Conformance | Passes every `CLEARINGHOUSE_CONFORMANCE_CASES` entry with the vendor stubbed; capability-tag any case the vendor cannot meet and record why |
 | 4.5 Per-agency choice | Platform setting first; an agency-owned account can follow through the same port (ADR-0053 D3) |
 

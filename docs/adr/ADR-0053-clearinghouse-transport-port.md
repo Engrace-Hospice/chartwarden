@@ -145,8 +145,31 @@ entity (two permanent code paths and a per-entity switch to get wrong), (c) skip
 - The port makes no promise about hospice rules (NOE timeliness, benefit periods, revenue/HCPCS pairing); those stay
   in the §11.A validation rules because clearinghouses do not check them.
 
+## Amendment (2026-10-24) — second clearinghouse (#718): conditional, not yet go
+
+**Decision.** Do **not** build a second vendor adapter yet (#719 stays blocked). Stedi remains the sole production
+clearinghouse (D3 unchanged); `direct_mac` remains the non-Stedi adapter that exercises the port. Claim.MD is the leading
+candidate, but a build needs four written vendor answers plus a BAA that the vendor alone can give. The spike
+(`docs/audits/clearinghouse-integration/CLEARINGHOUSE_VENDOR_COMPARISON_20261023.md`, section 7) read vendor
+documentation only; every vendor fact in it is unverified, and the user-supplied answers in its section 6 are not vendor
+confirmations.
+
+**Go criteria (all in writing from the vendor).** (G1) hospice 837I (TOB 81x) and NOE/NOTR accepted, with payer list;
+(G2) full response-status list and a payer-stage sample mappable onto D2; (G3) a platform account may serve many unrelated
+agencies on one key (D8 isolation is then proven by a conformance case: unmatched or conflicting responses are quarantined
+and post nothing); (G4) duplicate-upload behaviour and the held-for-approval setting; (G5) a BAA. Then a sandbox run with
+synthetic patients (#719).
+
+**Owner action.** Product owner sends the question lists (comparison section 5, plus the BAA request) to Claim.MD and
+Stedi. **Flips to go:** G1-G5 answered with no disqualifier, by amending this paragraph. **Flips to no-go:** hospice or
+NOE/NOTR not accepted, no platform model, or no BAA; Availity and Office Ally (not yet assessed) are then evaluated.
+
+**Unchanged by this decision.** D6: the attempt store, not any vendor idempotency key, is the idempotency authority, so
+no vendor's key lifetime blocks a build.
+
 ## Open questions
 
 1. Whether Original Medicare accepts frequency 7/8 replacements through Stedi (docs say no; their edit says yes) — Q17.
 2. Whether the Stedi account can submit claims at all in the sandbox (`ACCOUNT_NOT_PROVISIONED`) — Q14.
 3. Where the shared breaker/`DegradedError` kit lives once four packages stop carrying their own copies (plan A4).
+4. Second vendor go/no-go: conditional on G1-G5 in the 2026-10-24 amendment (#718, #719).

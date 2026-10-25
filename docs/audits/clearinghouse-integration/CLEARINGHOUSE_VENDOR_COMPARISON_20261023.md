@@ -1,5 +1,7 @@
 # Clearinghouse comparison: Claim.MD and Stedi against `ClearinghouseTransport`
 
+**Update 2026-10-24:** sections 2-4 contain statements that section 7 corrects or qualifies (Stedi test-claim wording, idempotency key lifetime, "settled" duplicate handling); read section 7 for the decision.
+
 **Date:** 2026-10-23 · **Status:** documentation review, **no account was opened and no call was made**. Facts come from
 the vendors' public documentation and pricing pages as fetched on 2026-10-23; each is the vendor's statement, not a test
 result. "Not stated" means the pages read did not say, not that the answer is no. Several Claim.MD pages link to a separate
@@ -97,3 +99,57 @@ Design consequences for an adapter, whichever vendor:
   (frequency 7 or 8 with the payer claim number) instead of a second original.
 - Cross-tenant matching is proven in a conformance case: a response or ERA that cannot be tied to exactly one tenant and
   claim is quarantined and posts nothing.
+
+## 7. Critical review and decision (2026-10-24, #718)
+
+A second read on 2026-10-24 against Stedi's public docs (stedi.com/docs/healthcare, stedi.com/test-mode, stedi.com/pricing.md; no per-page retrieval log was kept, re-fetch before relying on them) (Stedi test-mode, claims and pricing pages; a Claim.MD search that returned
+nothing usable). Everything below is a vendor-document fact and is **unverified** until the vendor confirms it in writing.
+
+**Corrections and gaps in sections 1-6**
+- **Scope gap.** The issue asked for Claim.MD, Availity, Office Ally and Stedi. Only Claim.MD and Stedi were read. Availity
+  and Office Ally are **not assessed**; they are not ruled out. If Claim.MD's written answers disappoint, they are the
+  next candidates and need the same section-5 list.
+- **BAA is a blocker, not a footnote.** Section 1 lists the Claim.MD BAA as "Not stated"; a search found no public BAA terms
+  either. No PHI (and no synthetic-but-realistic claim data in a vendor-hosted account) may go to a vendor without a signed
+  BAA, so this is a hard go criterion (G5 below). Stedi's BAA status is also not recorded in this repo and is confirmed
+  with the same request.
+- **Stedi test mode wording.** Section 2 says test claims work only on production accounts. Stedi's pages say a claim is
+  production unless explicitly marked test (`usageIndicator` `T`, or ISA15 `T`), and describe a 277CA for every test claim;
+  one page says `T` claims get no 835 while another says the Stedi Test Payer returns test ERAs. Treat both statements as
+  unverified and keep Q14 open. Operational consequence for any adapter: an unmarked API claim is a **production** claim, so
+  `usage: "test"` must always set the indicator (follows from ADR-0053 D3, which requires test usage to reach only vendor test mode).
+- **Stedi per-claim price.** The pricing figures in section 2 were not all re-found on the page read (one changelog page says
+  split claims are billed per claim and points to sales for the rate). Use the section 2 figures only as an estimate.
+- **Idempotency.** Stedi's 24-hour `Idempotency-Key` lifetime was not re-found; its resubmission guidance is a new patient
+  control number plus frequency 7. Either way the repo's attempt store is the idempotency authority (ADR-0053 D6), so no
+  decision depends on the vendor key lifetime.
+- **Section 6 provenance.** The four user-supplied answers have no source and no vendor signature. They are design input
+  only and satisfy none of the go criteria.
+- **Status text in section 4 is stale.** It says duplicate handling is "settled"; that is settled only as a design rule
+  (assume no vendor dedupe), not as a vendor fact, and the vendor should still be asked.
+
+**Decision: CONDITIONAL, not yet go.** No build starts. Stedi stays the sole production vendor and `direct_mac` remains the
+non-Stedi adapter that proves the port. Recorded in the [ADR-0053 amendment of 2026-10-24](../../adr/ADR-0053-clearinghouse-transport-port.md).
+
+**Go criteria (all in writing from the vendor, filed under this folder):**
+- G1 hospice 837I (type of bill 81x) and NOE/NOTR (81A/81B) accepted, with the payer list for hospice.
+- G2 full response-status code list and a recorded payer-stage response sample, so D2 stages map without guessing.
+- G3 a platform (software-vendor) account may serve many unrelated agencies on one key (API pricing is also requested but is not an ADR criterion).
+- G4 duplicate-upload behaviour and the held-for-approval ("Transmit Approval") setting.
+- G5 a signed or signable BAA.
+- Not an ADR criterion: a sandbox/test run with synthetic patients is #719's acceptance, after G1-G5.
+
+**Owner action:** send the section 5 Claim.MD list plus the BAA request (and the section 5 Stedi list) to the vendors; file
+each reply here. Owner: product owner (vendor relationship). Engineering cannot obtain these.
+
+**What flips it to go:** G1-G5 answered in writing with no disqualifying answer, then the ADR amendment is updated to
+"Go" and #719 unblocks. **What flips it to no-go:** hospice 837I or NOE/NOTR not accepted, no platform account model, or
+no BAA; then repeat the questions for Availity and Office Ally before closing #718.
+
+**Adapter-ready checklist (for #719 once G1-G5 hold).** Already provided: the `ClearinghouseTransport` port, the
+`CLEARINGHOUSE_CONFORMANCE_CASES` suite with capability tags, the durable `attempt-store` (reserve, send, store vendor id;
+timeout is unknown, never failed), the fail-closed `NOT_WIRED_TRANSPORT` registry and boot validation, and the `direct_mac`
+precedent for declaring unmet capabilities as named skips. Still to build: a `claimmd` factory and `CLEARINGHOUSE_VENDOR`
+value; response/ERA matching on billing NPI plus tax id with a quarantine case for unmatched or conflicting items; enrollment
+as a first-class "not enrolled" state (never a generic error); `Transmit Approval` detection so an uploaded-but-held claim is
+not reported as sent; env-only secrets; a sandbox run with synthetic patients attached to the PR.
