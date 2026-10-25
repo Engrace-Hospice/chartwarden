@@ -2,7 +2,7 @@
 // review (milestone 10a). RECORD-KEEPING ONLY: staff type what the notice or the QIO's call said (a local date AND a
 // time of day, plus where it came from) and the server converts it in the organization's zone. The server owns every
 // refusal; its message is shown verbatim.
-import type { ApiClient } from "@chartwarden/ui";
+import { type ApiClient, isStepUpRequired } from "@chartwarden/ui";
 
 export type RecipientKind = "beneficiary" | "representative";
 export type AcknowledgementKind = "signed" | "refused" | "other";
@@ -168,6 +168,8 @@ export class NomncApiError extends Error {
   constructor(
     message: string,
     readonly conflict: boolean,
+    /** 403 STEP_UP_REQUIRED: the session is not fresh enough for this irreversible write (see `isStepUp`). */
+    readonly stepUp = false,
   ) {
     super(message);
     this.name = "NomncApiError";
@@ -177,12 +179,19 @@ export class NomncApiError extends Error {
 /** True when the server answered 409: reload and rebind instead of retrying blind. */
 export const isConflict = (e: unknown): boolean => e instanceof NomncApiError && e.conflict;
 
+/** True when the server wants a fresh second factor first: send the user through `/step-up?returnTo=`. */
+export const isStepUp = (e: unknown): boolean => e instanceof NomncApiError && e.stepUp;
+
 function unwrap<T>(
   res: { data?: unknown; error?: unknown; response?: { status?: number } },
   fallback: string,
 ): T {
   if (res.error || res.data === undefined) {
-    throw new NomncApiError(apiMessage(res.error, fallback), res.response?.status === 409);
+    throw new NomncApiError(
+      apiMessage(res.error, fallback),
+      res.response?.status === 409,
+      isStepUpRequired(res.error),
+    );
   }
   return res.data as T;
 }

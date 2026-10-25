@@ -7,14 +7,14 @@
 //   GET    /api/v1/admissions/:id/nomnc                                           notice, history, review, deadlines, prompts
 //   POST   /api/v1/admissions/:id/nomnc                                           record (optionally superseding the active one)
 //   PATCH  /api/v1/admissions/:id/nomnc/:noticeId                                 acknowledgement / copy / delivery note
-//   POST   /api/v1/admissions/:id/nomnc/:noticeId/withdraw
+//   POST   /api/v1/admissions/:id/nomnc/:noticeId/withdraw                        (step-up)
 //   POST   /api/v1/admissions/:id/nomnc/:noticeId/expedited-review                open the QIO review (publishes opened)
 //   POST   /api/v1/admissions/:id/nomnc/:noticeId/deadlines                       type an appeal-request / other deadline
 //   PATCH  /api/v1/admissions/:id/expedited-reviews/:reviewId                     DENC / records facts, decision
 //   POST   /api/v1/admissions/:id/expedited-reviews/:reviewId/withdraw
 //   POST   /api/v1/admissions/:id/expedited-reviews/:reviewId/deadlines           type a DENC / records / decision deadline
 //   PATCH  /api/v1/admissions/:id/expedited-deadlines/:deadlineId                 edit or satisfy
-import { requireAbac, requirePermission } from "@chartwarden/auth";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { admissionScopeAccessOf } from "../abac-predicates";
@@ -45,6 +45,22 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 const NOMNC_READ = P("nomnc.read");
 const NOMNC_RECORD = P("nomnc.record");
+// The irreversible writes need a FRESH second factor (M3 `step_up_recent`, 403 STEP_UP_REQUIRED — never a header):
+// withdrawing a notice or a review ends the record, and a decision closes the review for good (its deadlines stop
+// running). Order: permission, admission scope, THEN step-up. The step-up policy is one platform floor (webauthn / totp,
+// 300 s; a tenant may only tighten it), so the keys below need no registration.
+const WITHDRAW_NOTICE_STEP_UP = requireStepUp("nomnc.withdraw") as PreHandler;
+const WITHDRAW_REVIEW_STEP_UP = requireStepUp("nomnc.review.withdraw") as PreHandler;
+const DECIDE_REVIEW_STEP_UP = requireStepUp("nomnc.review.decide") as PreHandler;
+/** PATCH …/expedited-reviews/:reviewId also records DENC / records facts (reversible, no step-up): only a body that
+ *  carries a `decision` is the irreversible write. */
+const decisionStepUp: PreHandler = async (request, reply) => {
+  const body = request.body as { decision?: unknown } | null | undefined;
+  if (body && typeof body === "object" && body.decision !== undefined) {
+    await DECIDE_REVIEW_STEP_UP(request, reply);
+  }
+};
+
 /** `admission.scope` on the path's admission id (404 on deny — the §2.2 existence non-leak). */
 const scope = (action: string): PreHandler =>
   requireAbac(action, "admission.scope", {
@@ -117,7 +133,7 @@ export function registerNomncRoutes(app: FastifyInstance, deps: NomncRouteDeps):
 
   app.post(
     "/api/v1/admissions/:id/nomnc/:noticeId/withdraw",
-    { ...write, schema: { response: { 200: NoticeViewSchema } } },
+    { preHandler: [...write.preHandler, WITHDRAW_NOTICE_STEP_UP], schema: { response: { 200: NoticeViewSchema } } },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id, noticeId } = parse(NoticeParamsSchema, request.params);
@@ -167,7 +183,7 @@ export function registerNomncRoutes(app: FastifyInstance, deps: NomncRouteDeps):
 
   app.patch(
     "/api/v1/admissions/:id/expedited-reviews/:reviewId",
-    { ...write, schema: { response: { 200: ReviewViewSchema } } },
+    { preHandler: [...write.preHandler, decisionStepUp], schema: { response: { 200: ReviewViewSchema } } },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id, reviewId } = parse(ReviewParamsSchema, request.params);
@@ -183,7 +199,7 @@ export function registerNomncRoutes(app: FastifyInstance, deps: NomncRouteDeps):
 
   app.post(
     "/api/v1/admissions/:id/expedited-reviews/:reviewId/withdraw",
-    { ...write, schema: { response: { 200: ReviewViewSchema } } },
+    { preHandler: [...write.preHandler, WITHDRAW_REVIEW_STEP_UP], schema: { response: { 200: ReviewViewSchema } } },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id, reviewId } = parse(ReviewParamsSchema, request.params);
