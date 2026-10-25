@@ -100,6 +100,7 @@ export function BillingWorkQueue(): JSX.Element {
   const settled = states.every(([, s]) => s.status !== "loading");
   const failed = states.filter(([, s]) => s.status === "error");
   const refused = states.filter(([, s]) => s.status === "denied");
+  const paged = states.filter(([, s]) => s.status === "ok" && s.hasMore);
 
   const clearFilters = () => {
     setType("all");
@@ -208,7 +209,7 @@ export function BillingWorkQueue(): JSX.Element {
         ) : (
           <EmptyRegion
             settled={settled}
-            anyProblem={failed.length + refused.length > 0}
+            anyProblem={failed.length + refused.length + paged.length > 0}
             hasWork={items.length > 0}
             onClear={clearFilters}
           />
@@ -334,7 +335,7 @@ function EmptyRegion({
       {anyProblem ? (
         <EmptyState
           title="Nothing to show yet"
-          description="Some sources could not be read, so this is not a complete picture."
+          description="Some sources could not be read or have more pages than were loaded, so this is not a complete picture."
         />
       ) : (
         <EmptyState

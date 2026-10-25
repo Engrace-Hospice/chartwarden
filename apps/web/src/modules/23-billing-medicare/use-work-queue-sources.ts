@@ -34,7 +34,8 @@ async function readPage<T>(call: Promise<unknown>): Promise<SourceState<T>> {
     const r = (await call) as RawResult;
     if (r.error || !r.data) return { status: r.response?.status === 403 ? "denied" : "error" };
     const page = r.data as Page<T>;
-    return { status: "ok", items: page.items ?? [], hasMore: page.hasMore === true };
+    if (!Array.isArray(page.items)) return { status: "error" };
+    return { status: "ok", items: page.items, hasMore: page.hasMore === true };
   } catch {
     return { status: "error" };
   }
@@ -53,6 +54,15 @@ function combine<T>(parts: SourceState<T>[]): SourceState<T> {
     hasMore: ok.some((p) => p.hasMore),
   };
 }
+
+/** The DDE states that still need a person; finished items would only crowd the first page. */
+export const ACTIONABLE_DDE_STATES = [
+  "queued",
+  "assigned",
+  "in_progress",
+  "submitted",
+  "returned",
+] as const;
 
 export interface WorkQueueSources {
   claims: SourceState<ClaimRow>;
@@ -100,7 +110,18 @@ export function useWorkQueueSources(client: ApiClient): {
     );
     land("noe", readPage<NoticeRow>(client.GET("/api/v1/noe-records" as never, query as never)));
     land("notr", readPage<NoticeRow>(client.GET("/api/v1/notr-records" as never, query as never)));
-    land("dde", readPage<DdeItem>(client.GET("/api/v1/billing/dde-items", query as never)));
+    land(
+      "dde",
+      Promise.all(
+        ACTIONABLE_DDE_STATES.map((state) =>
+          readPage<DdeItem>(
+            client.GET("/api/v1/billing/dde-items", {
+              params: { query: { limit: QUEUE_PAGE_SIZE, state } },
+            } as never),
+          ),
+        ),
+      ).then(combine),
+    );
     return () => {
       active = false;
     };

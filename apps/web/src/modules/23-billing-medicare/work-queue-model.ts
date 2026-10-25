@@ -113,9 +113,10 @@ const DDE_TYPE_LABEL: Record<DdeItemType, string> = {
 function noticeUrgency(row: NoticeRow, now: Date): Urgency {
   if (row.windowBreachedAt) return "overdue";
   if (!row.windowTargetAt) return "none";
-  const days = Math.floor((new Date(row.windowTargetAt).getTime() - now.getTime()) / DAY_MS);
-  if (days < 0) return "overdue";
-  return days <= AT_RISK_DAYS ? "at_risk" : "on_track";
+  const left = new Date(row.windowTargetAt).getTime() - now.getTime();
+  if (Number.isNaN(left)) return "none";
+  if (left < 0) return "overdue";
+  return left <= AT_RISK_DAYS * DAY_MS ? "at_risk" : "on_track";
 }
 
 function ddeUrgency(item: DdeItem): Urgency {
@@ -145,7 +146,8 @@ function ddeInfo(item: DdeItem): NonNullable<WorkItem["dde"]> {
   };
 }
 
-const ddeHref = (item: DdeItem): string => `/billing/dde?item=${item.ddeWorkItemId}`;
+const ddeHref = (item: DdeItem): string =>
+  `/billing/dde?item=${encodeURIComponent(item.ddeWorkItemId)}`;
 
 /** Fold a DDE item into the row it files for: its step becomes the row's step, the more urgent deadline wins. */
 function withDde(base: WorkItem, item: DdeItem): WorkItem {
@@ -173,7 +175,7 @@ function claimItem(row: ClaimRow): WorkItem | null {
     deadlineAt: null,
     urgency: "none",
     nextAction,
-    href: `/billing/claims/${row.claimId}`,
+    href: `/billing/claims/${encodeURIComponent(row.claimId)}`,
     subjectHref: null,
     dde: null,
   };
@@ -192,7 +194,7 @@ function noticeItem(kind: "noe" | "notr", row: NoticeRow, now: Date): WorkItem |
     deadlineAt: row.windowTargetAt,
     urgency: noticeUrgency(row, now),
     nextAction: NOTICE_NEXT[row.state] ?? "Open the notice",
-    href: `/billing/${kind}/${id}`,
+    href: `/billing/${kind}/${encodeURIComponent(id)}`,
     subjectHref: null,
     dde: null,
   };
@@ -222,12 +224,22 @@ function ddeSubjectKey(item: DdeItem): string {
   return `${prefix}:${item.subjectId}`;
 }
 
+function ddeBefore(a: DdeItem, b: DdeItem): boolean {
+  const rank = URGENCY_RANK[ddeUrgency(a)] - URGENCY_RANK[ddeUrgency(b)];
+  if (rank !== 0) return rank < 0;
+  const at = Date.parse(a.deadlineAt ?? "");
+  const bt = Date.parse(b.deadlineAt ?? "");
+  if (!Number.isNaN(at) && !Number.isNaN(bt) && at !== bt) return at < bt;
+  return a.ddeWorkItemId < b.ddeWorkItemId;
+}
+
 function byUrgency(a: WorkItem, b: WorkItem): number {
   const rank = URGENCY_RANK[a.urgency] - URGENCY_RANK[b.urgency];
   if (rank !== 0) return rank;
-  if (a.deadlineAt && b.deadlineAt && a.deadlineAt !== b.deadlineAt)
-    return a.deadlineAt < b.deadlineAt ? -1 : 1;
-  if (a.deadlineAt !== b.deadlineAt) return a.deadlineAt ? -1 : 1;
+  const at = a.deadlineAt ? Date.parse(a.deadlineAt) : Number.NaN;
+  const bt = b.deadlineAt ? Date.parse(b.deadlineAt) : Number.NaN;
+  if (!Number.isNaN(at) && !Number.isNaN(bt) && at !== bt) return at - bt;
+  if (Number.isNaN(at) !== Number.isNaN(bt)) return Number.isNaN(at) ? 1 : -1;
   return a.key < b.key ? -1 : 1;
 }
 
@@ -239,10 +251,18 @@ export function buildWorkItems(sources: QueueSources, now: Date): WorkItem[] {
   for (const c of sources.claims) add(claimItem(c));
   for (const n of sources.noe) add(noticeItem("noe", n, now));
   for (const n of sources.notr) add(noticeItem("notr", n, now));
+  // One DDE item speaks for a subject (the most urgent, then the earliest deadline), so the row never depends on the
+  // order the server listed them in.
+  const lead = new Map<string, DdeItem>();
   for (const item of sources.dde) {
     if (DDE_DONE.has(item.state)) continue;
-    const base = rows.get(ddeSubjectKey(item));
-    if (base) rows.set(base.key, withDde(base, item));
+    const key = ddeSubjectKey(item);
+    const held = lead.get(key);
+    if (!held || ddeBefore(item, held)) lead.set(key, item);
+  }
+  for (const [key, item] of lead) {
+    const base = rows.get(key);
+    if (base) rows.set(key, withDde(base, item));
     else add(ddeOnlyItem(item));
   }
   return [...rows.values()].sort(byUrgency);

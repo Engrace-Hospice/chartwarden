@@ -203,6 +203,39 @@ describe("DDE items", () => {
   });
 });
 
+describe("review fixes", () => {
+  it("lets one DDE item speak for a subject, whatever order the server lists them, and keeps the notice link", () => {
+    const a = dde({ ddeWorkItemId: "a", deadlineStatus: "on_track", state: "queued" });
+    const b = dde({ ddeWorkItemId: "b", deadlineStatus: "overdue", state: "returned" });
+    for (const order of [
+      [a, b],
+      [b, a],
+    ]) {
+      const [item] = build({ noe: [notice()], dde: order });
+      expect(item?.dde?.id).toBe("b");
+      expect(item?.subjectHref).toBe("/billing/noe/n1");
+    }
+  });
+
+  it("marks a notice at risk only within two days, and an unparseable date as no deadline", () => {
+    const urgency = (windowTargetAt: string) =>
+      build({ noe: [notice({ windowTargetAt })] })[0]?.urgency;
+    expect(urgency(day(2))).toBe("at_risk");
+    expect(urgency(day(2.5))).toBe("on_track");
+    expect(urgency("not-a-date")).toBe("none");
+  });
+
+  it("orders mixed date and date-time deadlines by time", () => {
+    const items = build({
+      noe: [notice({ id: "later", windowTargetAt: "2026-11-20T00:00:00+05:00" })],
+      dde: [
+        dde({ subjectId: "x", deadlineAt: "2026-11-19T12:00:00Z", deadlineStatus: "on_track" }),
+      ],
+    });
+    expect(items.map((i) => i.key)).toEqual(["noe:later", "dde:d1"]);
+  });
+});
+
 describe("source counts", () => {
   const ok = (n: number, hasMore = false): SourceState<number> => ({
     status: "ok",
