@@ -45,6 +45,7 @@ describe("committed .835 samples", () => {
   it("03 reversal + rebill + PLB: the PLB recoupment is netted into the payment", () => {
     const v = ok(SAMPLES["03-reversal-rebill-plb"]);
     expect(v.totalPaymentAmount).toBe(80);
+    expect(v.providerAdjustmentTotal).toBe(120);
     expect(v.claims).toHaveLength(2);
     expect(v.claims[0]).toMatchObject({ statusCode: 22, totalPayment: -700 });
   });

@@ -107,6 +107,16 @@ function money(n: number): string {
  * (the appeal clock reads the UTC date back), ignoring any time or offset the clearinghouse appended; a
  * value that is not date-led is parsed as an instant.
  */
+/** Order-independent digest of a set's claim payments; two files with the same digest pay the same claims the same way. */
+function contentDigestOf(parsed: ParsedRemittanceAdvice): string {
+  const rows = parsed.claims
+    .map((c) =>
+      [c.patientControlNumber ?? "", c.statusCode, c.totalCharge, c.totalPayment, c.payerIcn ?? ""].join("|"),
+    )
+    .sort();
+  return createHash("sha256").update(rows.join("\n"), "utf8").digest("hex");
+}
+
 export function productionDay(raw: string): Date {
   const m = /^(\d{4}-\d{2}-\d{2})/.exec(raw);
   return m ? new Date(`${m[1]}T00:00:00Z`) : new Date(raw);
@@ -221,6 +231,13 @@ export function buildDrizzleM25IngestService(
         matchState,
         matchStrategy: bound ? (match.strategy ?? null) : null,
         matchConfidence: bound ? (match.confidence ?? null) : null,
+        unmatchedReason: bound
+          ? null
+          : candidates.length === 0
+            ? "no_candidate"
+            : match.matched
+              ? "needs_review" // a heuristic proposal a person must confirm
+              : "ambiguous",
         matchedAt: bound ? sql`now()` : null,
         receivedAt: advice.receivedAt,
       })
@@ -515,6 +532,32 @@ export function buildDrizzleM25IngestService(
     input: ReceiveAdviceInput,
     parsed: ParsedRemittanceAdvice,
   ): Promise<ReceiveAdviceResult> {
+    // A clearinghouse resend carries NEW ISA13/ST02 control numbers, so the unique index above cannot see it.
+    // The payment itself is identified by TRN02 + payer + payee + amount: the same payment is never posted twice.
+    // Same-file sets are excluded (their sha matches) - they are separate payments sharing a file.
+    const trace = parsed.checkOrEftTraceNumber;
+    const digest = contentDigestOf(parsed);
+    if (trace) {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${actor.organizationId}|${input.providerEntityId}|${input.payerId}|${trace}`}, 0))`,
+      );
+      const [same] = await tx
+        .select({ id: RA.id })
+        .from(RA)
+        .where(
+          and(
+            eq(RA.providerEntityId, input.providerEntityId),
+            eq(RA.payerId, input.payerId),
+            eq(RA.checkOrEftTraceNumber, trace),
+            eq(RA.totalPaymentAmount, money(parsed.totalPaymentAmount)),
+            eq(RA.contentDigest, digest),
+            sql`${RA.parseStatus} <> 'failed'`, // a failed original posted nothing: the resend may be the only good copy
+            sql`${RA.fileSha256} <> ${input.fileSha256}`,
+          ),
+        )
+        .limit(1);
+      if (same) return { outcome: "duplicate", existingAdviceId: same.id };
+    }
     const [row] = await tx
       .insert(RA)
       .values({
@@ -527,6 +570,8 @@ export function buildDrizzleM25IngestService(
         checkOrEftTraceNumber: parsed.checkOrEftTraceNumber ?? null,
         paymentMethod: parsed.paymentMethod,
         totalPaymentAmount: money(parsed.totalPaymentAmount),
+        plbTotalAmount: money(parsed.providerAdjustmentTotal ?? 0),
+        contentDigest: digest,
         productionDate: productionDay(parsed.productionDate),
         minioObjectKey: input.minioObjectKey,
         fileSha256: input.fileSha256,

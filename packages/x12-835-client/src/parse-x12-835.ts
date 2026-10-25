@@ -462,6 +462,7 @@ function build(
     payee: b.parties.PE as ParsedRemittanceParty,
     paymentMethod: method,
     totalPaymentAmount: total / 100,
+    ...(b.plb.length > 0 ? { providerAdjustmentTotal: b.plb.reduce((a, c) => a + c, 0) / 100 } : {}),
     productionDate: `${b.production}T00:00:00Z`,
     claims: b.claims.map(toClaim),
   };
