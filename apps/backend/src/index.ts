@@ -1040,6 +1040,9 @@ import {
   buildM23WorkQueueEnqueuePort,
   buildM23WorkRequestConsumer,
   buildM23WorkerDeps,
+  buildClearinghouseContextPort,
+  buildDirectMacGateway,
+  buildSubmissionControlNumberReader,
   buildMacJurisdictionLister,
   buildMacSecretCipherFromEnv,
   buildNoticeWindowPort,
@@ -3541,6 +3544,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // named with no adapter in this build throws here, so a misconfigured deploy refuses to boot.
   const clearinghouseBinding = bindPlatformClearinghouse(process.env, {
     attempts: dbHandle ? createDrizzleAttemptStore(dbHandle.db) : null,
+    // #706 - direct_mac is the launch gateway re-expressed behind the port (it needs the gateway AND a database).
+    directMacGateway:
+      m23LaunchGateway && dbHandle
+        ? buildDirectMacGateway({
+            x12: m23LaunchGateway.x12,
+            macPortal: m23LaunchGateway.macPortal,
+            controlNumberOf: buildSubmissionControlNumberReader(dbHandle.db),
+          })
+        : null,
     onAnomaly: (anomaly) => app.log.warn({ anomaly }, "Clearinghouse anomaly"),
   });
   const m23SubmissionQueues =
@@ -8141,6 +8153,17 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       revalidationTargets: buildDrizzleRevalidationTargetResolver(),
       // The revalidate consumer's `validation-run` fan-out producer (GAP-070).
       enqueue: m23WorkQueues?.port,
+      // #707 - the clearinghouse binding. With CLEARINGHOUSE_VENDOR set the submit/retry workers and the ack crons use
+      // it instead of the legacy MAC portal; unset keeps the legacy path. registerM23LaunchWorkers refuses to build
+      // without it while a vendor is configured.
+      transport: {
+        binding: clearinghouseBinding,
+        contexts: buildClearinghouseContextPort({
+          db: dbHandle.db,
+          env: process.env,
+          providerNpi: m25PayeeNpi,
+        }),
+      },
       // §4.4 HETS 270/271 — bound only when configured (see `m23HetsConfig` above).
       hets: m23Hets,
       // ADR-0052 — the window-watch crons file a DDE work item for each at-risk NOE/NOTR (idempotent).
@@ -8172,6 +8195,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         ...registerM23LaunchWorkers(m23LaunchWorkerDeps),
         ...registerM23PortalHealthWorker(m23LaunchWorkerDeps),
       ];
+    } else if (clearinghouseBinding.vendor) {
+      // A bound vendor still needs the X12 generator behind the launch gateway; without it nothing would be sent
+      // while the platform believes it is bound.
+      throw new Error(
+        `CLEARINGHOUSE_VENDOR=${clearinghouseBinding.vendor} needs the M23 launch gateway (X12 generation); it is not configured`,
+      );
     } else {
       app.log.warn(
         "M23 launch workers disabled: configure X12 and MAC gateway URLs and bearer tokens",

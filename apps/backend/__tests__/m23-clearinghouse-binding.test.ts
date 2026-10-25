@@ -13,11 +13,20 @@ import {
   describeClearinghouseBinding,
 } from "../src/modules/23-billing-medicare/clearinghouse-binding";
 
+const gateway = {
+  generate: async () => ({ x12: "" }),
+  upload: async () => ({ accepted: true, fileId: "f" }),
+  pullAcknowledgments: async () => [],
+};
+
 describe("platform clearinghouse binding", () => {
   const deps = () => ({ attempts: new InMemoryAttemptStore() });
 
   it("registers exactly the adapters compiled into this build", () => {
-    expect(Object.keys(buildClearinghouseFactories(deps())).sort()).toEqual(["stedi"]);
+    expect(Object.keys(buildClearinghouseFactories(deps())).sort()).toEqual([
+      "direct_mac",
+      "stedi",
+    ]);
   });
 
   it("binds stedi from STEDI_API_KEY and logs the vendor, never the key", () => {
@@ -47,9 +56,20 @@ describe("platform clearinghouse binding", () => {
   });
 
   it("a vendor without an adapter in this build still fails the boot", () => {
-    expect(() => bindPlatformClearinghouse({ CLEARINGHOUSE_VENDOR: "direct_mac" }, deps())).toThrow(
+    expect(() => bindPlatformClearinghouse({ CLEARINGHOUSE_VENDOR: "in_memory" }, deps())).toThrow(
       /no adapter/i,
     );
+  });
+
+  it("direct_mac fails closed without the launch gateway or the attempt store, and binds with both", () => {
+    const env = { CLEARINGHOUSE_VENDOR: "direct_mac" };
+    expect(() => bindPlatformClearinghouse(env, deps())).toThrow(/launch gateway/i);
+    expect(() =>
+      bindPlatformClearinghouse(env, { attempts: null, directMacGateway: gateway }),
+    ).toThrow(/attempt store|database/i);
+    const binding = bindPlatformClearinghouse(env, { ...deps(), directMacGateway: gateway });
+    expect(binding.vendor).toBe("direct_mac");
+    expect(describeClearinghouseBinding(binding)).toBe("Clearinghouse binding: direct_mac");
   });
 
   it("unset is the logged, unbound state and every call answers CH_NOT_WIRED", async () => {

@@ -266,3 +266,9 @@ export {
 } from "./clearinghouse/stedi-transport";
 export type { StediAnomaly, StediTransportOptions } from "./clearinghouse/stedi-transport";
 export { scopeKey } from "./clearinghouse/submission-identity";
+export { DirectMacTransport } from "./clearinghouse/direct-mac-transport";
+export type {
+  DirectMacAnomaly,
+  DirectMacGateway,
+  DirectMacTransportOptions,
+} from "./clearinghouse/direct-mac-transport";
