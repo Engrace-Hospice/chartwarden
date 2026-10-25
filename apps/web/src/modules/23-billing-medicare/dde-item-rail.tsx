@@ -70,6 +70,8 @@ const inDoubtKey = (n: Pick<DdeItem, "ddeWorkItemId" | "attemptNumber">) =>
   `dde-in-doubt:${n.ddeWorkItemId}:${n.attemptNumber}`;
 
 interface RunOptions {
+  /** A send that may have reached the provider: a lost response leaves it in doubt, so never offer another send. */
+  sends?: boolean;
   /** A provider call: map the DDE_* refusals to plain language (and remember an in-doubt send). */
   provider?: boolean;
   /** The success body, before the item is reloaded. */
@@ -115,6 +117,7 @@ export function ItemRail({
   // Escape is owned by an edited form; the flag resets when the form closes or the item changes under it.
   const drawer = useDrawerA11y<HTMLElement>(onClose, `${n.version}:${drafts.panel}`);
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false); // synchronous guard: `busy` state is stale within one event tick
   const [actionError, setActionError] = useState<string | null>(null);
   const [syncNote, setSyncNote] = useState<string | null>(null);
   const [, bumpInDoubt] = useState(0);
@@ -149,9 +152,11 @@ export function ItemRail({
     fallback: string,
     opts: RunOptions = {},
   ): Promise<void> => {
-    if (busy) return;
+    if (busy || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setActionError(null);
+    setSyncNote(null);
     try {
       const { data, error, response } = await call();
       if (error) {
@@ -181,8 +186,15 @@ export function ItemRail({
       opts.onData?.(data);
       onChanged();
     } catch {
-      setActionError(`${fallback} Check your connection.`);
+      if (opts.sends) {
+        saveDraft(inDoubtKey(n), true);
+        bumpInDoubt((v) => v + 1);
+        setActionError(
+          providerRefusal({ error: { code: "DDE_IN_DOUBT" } }, fallback)?.message ?? fallback,
+        );
+      } else setActionError(`${fallback} Check your connection.`);
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
@@ -217,7 +229,7 @@ export function ItemRail({
           body: { expectedVersion: n.version },
         }),
       "The item could not be sent through the provider.",
-      { provider: true },
+      { provider: true, sends: true },
     );
 
   const syncProvider = (): Promise<void> =>

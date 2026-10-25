@@ -228,8 +228,11 @@ describe("DDE item rail: send via provider", () => {
   });
 
   it("disables the button while pending so a double click posts once", async () => {
-    const gate = Promise.withResolvers<unknown>();
-    const post = vi.fn(() => gate.promise);
+    const gate: { resolve: (v: unknown) => void } = { resolve: () => undefined };
+    const pending = new Promise((res) => {
+      gate.resolve = res;
+    });
+    const post = vi.fn(() => pending);
     const { api } = setup({ post });
     mount(api);
     const r = await rail();
@@ -285,6 +288,18 @@ describe("DDE item rail: send via provider", () => {
     expect((await r.findByRole("alert")).textContent).toMatch(/Do not send it again/);
     expect(r.queryByRole("button", SEND)).toBeNull();
     expect(r.getByRole("button", { name: "Record as keyed in DDE" })).toBeTruthy();
+  });
+
+  it("treats a lost response on Send as in doubt: no second send is offered", async () => {
+    const post = vi.fn(async () => {
+      throw new Error("network");
+    });
+    const { api } = setup({ post });
+    mount(api);
+    const r = await rail();
+    fireEvent.click(r.getByRole("button", SEND));
+    expect((await r.findByRole("alert")).textContent).toMatch(/Do not send it again/);
+    expect(r.queryByRole("button", SEND)).toBeNull();
   });
 
   it("reloads on a version conflict instead of retrying", async () => {

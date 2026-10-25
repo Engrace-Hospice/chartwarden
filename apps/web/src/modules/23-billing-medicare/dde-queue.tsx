@@ -317,6 +317,7 @@ export function DdeQueue(): JSX.Element {
                 <tbody>
                   {items.map((n) => {
                     const isSelected = n.ddeWorkItemId === selectedId;
+                    const badge = providerBadge(n);
                     return (
                       <tr
                         key={n.ddeWorkItemId}
@@ -351,12 +352,7 @@ export function DdeQueue(): JSX.Element {
                           {n.respawnedFromId ? (
                             <StatusPill label={REQUEUED_LABEL} tone="warning" />
                           ) : null}
-                          {providerBadge(n) ? (
-                            <StatusPill
-                              label={providerBadge(n)?.label ?? ""}
-                              tone={providerBadge(n)?.tone ?? "neutral"}
-                            />
-                          ) : null}
+                          {badge ? <StatusPill label={badge.label} tone={badge.tone} /> : null}
                         </td>
                       </tr>
                     );
