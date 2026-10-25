@@ -84,10 +84,17 @@ export type WriteResult<T> =
  */
 function failure<T>(status: number | undefined, body: unknown): WriteResult<T> {
   const code = typeof status === "number" ? status : null;
-  const detail =
-    body && typeof body === "object" && "message" in body && typeof body.message === "string"
-      ? body.message
-      : null;
+  // The server's envelope nests the reason (`{ error: { code, message } }`); a flat `{ message }` is also read.
+  const nested =
+    body &&
+    typeof body === "object" &&
+    "error" in body &&
+    body.error &&
+    typeof body.error === "object"
+      ? (body.error as { message?: unknown }).message
+      : undefined;
+  const flat = body && typeof body === "object" && "message" in body ? body.message : undefined;
+  const detail = [nested, flat].find((m): m is string => typeof m === "string") ?? null;
   const message =
     code === 403
       ? (detail ?? "You are not permitted to change this document.")

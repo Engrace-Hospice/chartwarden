@@ -122,4 +122,31 @@ describe("ABAC boot wiring (wireModuleSeams)", () => {
       requireStepUp("documents.export_phi_bundle")(makeRequest({ attributes: {} })),
     ).rejects.toBeInstanceOf(StepUpRequiredError);
   });
+
+  // §4.12 — `documents.disclose_external` is an operation key, not a permission, and there is no per-key
+  // platform row: every key resolves to the platform floor unless a tenant tightens it
+  // (`tenant_step_up_policy_override`, tighten-only). Pin that, so an external disclosure is exactly as
+  // strict as the bulk export and does not quietly depend on a row nobody wrote.
+  describe("documents.disclose_external resolves to the platform floor", () => {
+    it("allows a fresh webauthn step-up", async () => {
+      bootWithSession(new Date(Date.now() - 60_000), "webauthn");
+      await expect(
+        requireStepUp("documents.disclose_external")(makeRequest()),
+      ).resolves.toBeUndefined();
+    });
+
+    it("denies a step-up older than the floor window", async () => {
+      bootWithSession(new Date(Date.now() - 10 * 60_000), "totp");
+      await expect(
+        requireStepUp("documents.disclose_external")(makeRequest()),
+      ).rejects.toMatchObject({ code: "STEP_UP_REQUIRED", statusCode: 403 });
+    });
+
+    it("denies SMS even when fresh", async () => {
+      bootWithSession(new Date(Date.now() - 5_000), "sms");
+      await expect(
+        requireStepUp("documents.disclose_external")(makeRequest()),
+      ).rejects.toBeInstanceOf(StepUpRequiredError);
+    });
+  });
 });

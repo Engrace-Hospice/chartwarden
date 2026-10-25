@@ -19,10 +19,18 @@ import {
 // Card, mono identifiers (§3.1), No-Line table (§6.7), warm-paper surfaces, the §6.6 status pill. The SERVER
 // owns authz + legal-hold (ADR-0030); reads GET /api/v1/documents/:id (header) + GET
 // /api/v1/documents/:id/versions (cursor-paginated chain) via the typed client. Leaves only (@chartwarden/ui).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import { DocumentEditDialog, DocumentPreviewDialog } from "./document-actions";
+import { clearStepUpDraft, findStepUpDraftResourceId } from "../../shell/step-up-redirect";
+import { useStepUpOwner, useStepUpReturn } from "../../shell/use-step-up-return";
+import {
+  DISCLOSE_ACTION,
+  DISCLOSE_ACTIONS,
+  DocumentEditDialog,
+  DocumentPreviewDialog,
+  disclosureDraftKey,
+} from "./document-actions";
 import { DocumentTags } from "./document-tags";
 import { DocumentUploadDialog } from "./document-upload-dialog";
 import type { DocumentView } from "./documents-api";
@@ -79,6 +87,25 @@ export function VersionHistory(): JSX.Element {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Back from /step-up after an external open was refused: reopen that version's dialog (its stashed
+  // reason and recipient restore themselves). Only on a verified return — an abandoned draft is discarded.
+  const owner = useStepUpOwner();
+  const returning = useStepUpReturn(owner, DISCLOSE_ACTIONS);
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (!returning || resumed.current || versions.length === 0) return;
+    const versionId = findStepUpDraftResourceId(owner, DISCLOSE_ACTION);
+    const match = versions.find((v) => v.id === versionId);
+    if (match) {
+      resumed.current = true;
+      setPreviewing(match);
+    } else if (versionId) {
+      // The refused version is not in this chain (another document, or past the first page): it cannot
+      // be reopened here, so do not leave its choices lingering in storage.
+      clearStepUpDraft(disclosureDraftKey(owner, versionId));
+    }
+  }, [returning, owner, versions]);
 
   if (error) return <EmptyState title="Unavailable" description={error} />;
   if (loading && !doc) return <LoadingSpinner />;
