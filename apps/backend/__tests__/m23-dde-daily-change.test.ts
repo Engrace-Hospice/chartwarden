@@ -426,6 +426,38 @@ describe("DDE daily change ingest", () => {
     expect(a.calls.map((o) => o.eventId)).toEqual(["e-3"]);
   });
 
+  it("refuses an MBI-shaped event id and a cursor outside the plain token alphabet", async () => {
+    const provider = new InMemoryDdeProvider();
+    provider.injectOutcome(SCOPE, {
+      eventId: MBI,
+      providerReference: "ref-1",
+      controlNumber: "cn",
+      disposition: "accepted",
+      occurredAt: "2026-01-01",
+      reasonCodes: [],
+    });
+    const s = fakeStore([{ providerEntityId: PE, operatorMembershipId: OP_A }]);
+    const a = fakeApplier(() => "applied");
+    const r = await ingestDdeChanges(deps(provider, s.store, a.applier), ORG);
+    expect(r.malformed).toBe(1);
+    expect(a.calls).toEqual([]);
+    const odd: DdeAccessProvider = {
+      ...provider,
+      vendor: "in_memory",
+      submitOperation: (c, o) => provider.submitOperation(c, o),
+      fetchOperationStatus: (c, ref) => provider.fetchOperationStatus(c, ref),
+      fetchOutcomes: async () => ({
+        ok: true,
+        data: { items: [], nextCursor: `${MBI} Doe`, hasMore: false },
+      }),
+    };
+    const s2 = fakeStore([{ providerEntityId: PE, operatorMembershipId: OP_A }]);
+    const bad = await ingestDdeChanges(deps(odd, s2.store, a.applier), ORG);
+    expect(bad.failures).toHaveLength(1);
+    expect(JSON.stringify(bad)).not.toContain(MBI);
+    expect(s2.cursors.size).toBe(0);
+  });
+
   it("keeps one cursor per operator (a DDE ID is per person) and one operator's failure does not stop another", async () => {
     const provider = new InMemoryDdeProvider({ unenrolledOperators: new Set([OP_B]) });
     await seeded(provider, 2, OP_A);

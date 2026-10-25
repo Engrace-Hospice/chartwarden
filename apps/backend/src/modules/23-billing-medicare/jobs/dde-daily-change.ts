@@ -42,6 +42,10 @@ export const UNMATCHED_SIGHTINGS_BEFORE_IGNORE = 2;
 export const DDE_CHANGE_CALL_TIMEOUT_MS = 30_000;
 const MAX_CURSOR_LENGTH = 512;
 const EVENT_ID_PATTERN = /^[A-Za-z0-9:._-]{1,128}$/;
+/** An event id that looks like a Medicare MBI is refused: ids are stored, logged and audited, an MBI never is. */
+const MBI_SHAPE = /^[1-9][AC-HJ-NP-RT-Y][0-9AC-HJ-NP-RT-Y]{9}$/;
+/** The provider's cursor is opaque; it is stored and audited, so only a plain token alphabet is accepted. */
+const CURSOR_PATTERN = /^[A-Za-z0-9._~:=+/-]+$/;
 const DISPOSITIONS: ReadonlySet<string> = new Set(["accepted", "returned", "rejected"]);
 /** The code `ddeProviderAnswerRejected` throws; the unit test pins the two together. */
 export const ANSWER_INVALID_CODE = "DDE_PROVIDER_ANSWER_INVALID";
@@ -138,6 +142,7 @@ function isUsableOutcome(value: unknown): value is DdeOutcome {
   return (
     typeof o.eventId === "string" &&
     EVENT_ID_PATTERN.test(o.eventId) &&
+    !MBI_SHAPE.test(o.eventId) &&
     typeof o.providerReference === "string" &&
     PROVIDER_REFERENCE_PATTERN.test(o.providerReference) &&
     typeof o.controlNumber === "string" &&
@@ -251,7 +256,7 @@ async function pullOperator(
       throw failure(
         label,
         refused ? "change report request refused (cursor not reset)" : "change report pull",
-        result.degraded.code,
+        CODE_SHAPE.test(result.degraded.code) ? result.degraded.code : UNKNOWN_FAILURE_CODE,
       );
     }
     pages += 1;
@@ -261,7 +266,8 @@ async function pullOperator(
       typeof page.hasMore !== "boolean" ||
       typeof page.nextCursor !== "string" ||
       page.nextCursor.length < 1 ||
-      page.nextCursor.length > MAX_CURSOR_LENGTH
+      page.nextCursor.length > MAX_CURSOR_LENGTH ||
+      !CURSOR_PATTERN.test(page.nextCursor)
     ) {
       throw failure(label, "the provider's page is unusable", DDE.INVALID_REQUEST);
     }

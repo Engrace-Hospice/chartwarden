@@ -50,6 +50,8 @@ export class EpisodeAlertDdeProvider implements DdeAccessProvider {
   private readonly doFetch: typeof fetch;
 
   constructor(private readonly options: EpisodeAlertDdeOptions) {
+    // The credential and the beneficiary travel to this URL: refuse an unsafe one however the provider is built.
+    assertSafeBaseUrl(options.baseUrl);
     this.wire = options.wire ?? EA_DDE_WIRE;
     this.doFetch = options.fetch ?? fetch;
   }
@@ -64,17 +66,18 @@ export class EpisodeAlertDdeProvider implements DdeAccessProvider {
   }
 
   private async call<T>(
+    signal: AbortSignal | undefined,
     request: WireResult<WireRequest>,
     parse: (body: string) => WireResult<T>,
   ): Promise<X12WorkerResult<T>> {
     if (!request.ok) return wireFailure(request.code);
-    const sent = await this.send(request.value);
+    const sent = await this.send(request.value, signal);
     if (!sent.ok) return sent;
     const parsed = parse(sent.data);
     return parsed.ok ? { ok: true, data: parsed.value } : wireFailure(parsed.code);
   }
 
-  private async send(req: WireRequest): Promise<X12WorkerResult<string>> {
+  private async send(req: WireRequest, caller?: AbortSignal): Promise<X12WorkerResult<string>> {
     const base = new URL(`${this.options.baseUrl.replace(/\/+$/, "")}/`);
     let url: URL;
     try {
@@ -92,7 +95,10 @@ export class EpisodeAlertDdeProvider implements DdeAccessProvider {
         headers: req.headers,
         ...(req.body !== undefined ? { body: req.body } : {}),
         redirect: "error",
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        // The caller's deadline (the queue's bound on one vendor call) and the adapter's own both apply.
+        signal: caller
+          ? AbortSignal.any([caller, AbortSignal.timeout(REQUEST_TIMEOUT_MS)])
+          : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       if (!response.ok) {
         // The body of a failure is never read, kept or echoed.
@@ -112,7 +118,7 @@ export class EpisodeAlertDdeProvider implements DdeAccessProvider {
   submitOperation(ctx: DdeContext, op: DdeOperation): Promise<X12WorkerResult<DdeReceipt>> {
     const refused = this.refuseTest<DdeReceipt>(ctx);
     if (refused) return Promise.resolve(refused);
-    return this.call(this.wire.buildSubmit(this.options.apiKey, ctx, op), (body) =>
+    return this.call(ctx.signal, this.wire.buildSubmit(this.options.apiKey, ctx, op), (body) =>
       this.wire.parseReceipt(body, op),
     );
   }
@@ -123,8 +129,10 @@ export class EpisodeAlertDdeProvider implements DdeAccessProvider {
   ): Promise<X12WorkerResult<Page<DdeOutcome>>> {
     const refused = this.refuseTest<Page<DdeOutcome>>(ctx);
     if (refused) return Promise.resolve(refused);
-    return this.call(this.wire.buildChangeReport(this.options.apiKey, ctx, cursor), (body) =>
-      this.wire.parseChangeReport(body),
+    return this.call(
+      ctx.signal,
+      this.wire.buildChangeReport(this.options.apiKey, ctx, cursor),
+      (body) => this.wire.parseChangeReport(body),
     );
   }
 
@@ -134,8 +142,10 @@ export class EpisodeAlertDdeProvider implements DdeAccessProvider {
   ): Promise<X12WorkerResult<DdeOperationStatus>> {
     const refused = this.refuseTest<DdeOperationStatus>(ctx);
     if (refused) return Promise.resolve(refused);
-    return this.call(this.wire.buildStatus(this.options.apiKey, ctx, providerReference), (body) =>
-      this.wire.parseStatus(body, providerReference),
+    return this.call(
+      ctx.signal,
+      this.wire.buildStatus(this.options.apiKey, ctx, providerReference),
+      (body) => this.wire.parseStatus(body, providerReference),
     );
   }
 }
@@ -192,8 +202,16 @@ export function assertSafeBaseUrl(raw: string): void {
   } catch {
     throw new Error(`${EPISODE_ALERT_DDE_BASE_URL_ENV} is not a URL`);
   }
-  if (url.protocol !== "https:" || url.username !== "" || url.password !== "") {
-    throw new Error(`${EPISODE_ALERT_DDE_BASE_URL_ENV} must be an https URL without credentials`);
+  if (
+    url.protocol !== "https:" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.search !== "" ||
+    url.hash !== ""
+  ) {
+    throw new Error(
+      `${EPISODE_ALERT_DDE_BASE_URL_ENV} must be an https URL without credentials, query or fragment`,
+    );
   }
 }
 

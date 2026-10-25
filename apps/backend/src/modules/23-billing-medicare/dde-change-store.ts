@@ -145,6 +145,8 @@ export function createDrizzleDdeChangeStore(db: DbClient): DdeChangeStore {
             target: [X.organizationId, X.providerEntityId, X.vendor, X.usage, X.eventId],
             // A refused/quarantined row keeps its kind: an event we once refused is not "unknown".
             set: { seenCount: sql`${X.seenCount} + 1`, updatedAt: sql`now()` },
+            // Only an unmatched row counts sightings: a refused row's count is its refusal count.
+            setWhere: eq(X.kind, UNMATCHED),
           })
           .returning({ inserted: sql<boolean>`(xmax = 0)`, seen: X.seenCount });
         return { firstSeen: rows[0]?.inserted === true, seenCount: rows[0]?.seen ?? 1 };

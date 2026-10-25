@@ -169,7 +169,11 @@ called before the item records its reference, so an answer can beat the submit's
 page, is retried, and after 5 refusals is quarantined and skipped (operator release is a database action, as for 835 files). Only
 `VERSION_CONFLICT` (a stale version), a 5xx and an outage are transient and never count. The cron runs one attempt per tick so a
 retry seconds later cannot defeat the hold. Nothing from an unknown error reaches a job record, log or row: failures carry ids
-and a fixed code. The two tables have no retention job (no DELETE grant by design); pruning is an admin task to schedule when
+and a fixed code. Event ids that look like an MBI and cursors outside a plain token alphabet are refused (they are stored and audited). Known
+limits: an error that is neither a 4xx nor a stale version (a bug, a DB outage) is not counted, so it stalls that operator's
+stream until fixed, failing and alerting each tick (the by-item `sync-provider` route still works); the submitter's membership
+is not re-checked for liveness or permission before the report is read under their DDE ID; quarantine is keyed on the event id.
+The two tables have no retention job (no DELETE grant by design); pruning is an admin task to schedule when
 volume shows.
 
 **MBI seam.** The only source of the beneficiary is M5's audited `MbiUnlockReader` (the MBI is `patient_payer.subscriber_id` of the
