@@ -3,7 +3,14 @@
 // so it stays mounted across reloads; its form state is reset EXPLICITLY when the item's version changes. A 412 is
 // reported to the parent (which holds the notice in its own state, so a reload cannot wipe it). A step-up round trip
 // stashes the open form in process memory (never browser storage) and restores it on return.
-import { Button, Glyph, InlineAlert, StatusPill, useApiClient, useDrawerA11y } from "@chartwarden/ui";
+import {
+  Button,
+  Glyph,
+  InlineAlert,
+  StatusPill,
+  useApiClient,
+  useDrawerA11y,
+} from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
@@ -259,6 +266,26 @@ export function ItemRail({
             {n.notes ? <Row term="Notes">{n.notes}</Row> : null}
           </dl>
         </section>
+
+        {n.keying ? (
+          <section className="wx-drawer-card" aria-label="Key into DDE">
+            <h3>Key into DDE</h3>
+            <p className="wx-row-sub">{n.keying.screenHint}</p>
+            <dl className="wx-kv">
+              {n.keying.fields.map((f) => (
+                <Row key={f.label} term={f.label}>
+                  <span className="wx-nums">{f.value}</span>
+                </Row>
+              ))}
+              <Row term="Medicare ID">Open the patient chart to reveal it</Row>
+              {n.keying.rejectionCodes.map((c) => (
+                <Row key={c.code} term={`Reject ${c.code}`}>
+                  {c.meaning ?? "Look this code up on the DDE screen"}
+                </Row>
+              ))}
+            </dl>
+          </section>
+        ) : null}
 
         <section className="wx-drawer-card" aria-label="History">
           <h3>History</h3>

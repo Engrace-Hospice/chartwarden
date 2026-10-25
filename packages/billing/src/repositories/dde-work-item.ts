@@ -107,6 +107,26 @@ export class DdeWorkItemRepository {
     return row ?? null;
   }
 
+  /** Every OPEN item on the subject (optionally only of these types), oldest first. */
+  async listOpenForSubject(
+    subjectKind: schema.DdeSubjectKindValue,
+    subjectId: string,
+    itemTypes?: readonly schema.DdeItemTypeValue[],
+  ): Promise<readonly DdeWorkItemRecord[]> {
+    return this.db
+      .select()
+      .from(I)
+      .where(
+        and(
+          eq(I.subjectKind, subjectKind),
+          eq(I.subjectId, subjectId),
+          inArray(I.state, OPEN_STATES),
+          ...(itemTypes ? [inArray(I.itemType, [...itemTypes])] : []),
+        ),
+      )
+      .orderBy(asc(I.createdAt), asc(I.id));
+  }
+
   /**
    * What the filing-window watch should do for a notice (ADR-0052 D4):
    *   - `none`    an OPEN item exists, or the latest item was cancelled (an explicit human decision that stays),

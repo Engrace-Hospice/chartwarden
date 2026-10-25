@@ -5,6 +5,7 @@ import {
   DDE_ITEM_TYPES,
   DDE_NOTES_MAX_LENGTH,
   DDE_WORK_ITEM_STATES,
+  buildDdeKeyingSheet,
   type DdeWorkItemState,
   ddeDeadlineStatus,
   ddeWorkItemMachine,
@@ -64,6 +65,14 @@ describe("ddeWorkItemMachine", () => {
 
   it("lets a returned item be closed without another attempt", () => {
     expect(m.reduce("returned", "close").state).toBe("closed");
+  });
+
+  it("supersede (system only) closes every open state and nothing else", () => {
+    for (const s of m.DDE_WORK_ITEM_OPEN_STATES)
+      expect(m.reduce(s, "supersede").state).toBe("closed");
+    expect(m.reduce("accepted", "supersede").error).toBe("INVALID_TRANSITION");
+    expect(m.reduce("closed", "supersede").error).toBe("INVALID_TRANSITION");
+    expect(m.reduce("cancelled", "supersede").error).toBe("INVALID_TRANSITION");
   });
 
   it("lets an assigned item go back to the queue", () => {

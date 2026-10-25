@@ -126,7 +126,7 @@ function makeServer() {
     },
     async get() {
       calls.push("get");
-      return { ...VIEW, events: [] };
+      return { ...VIEW, events: [], keying: { screenHint: "", fields: [], rejectionCodes: [] } };
     },
     create: (_a, body) => view(`create:${body.itemType}`),
     claim: () => view("claim"),

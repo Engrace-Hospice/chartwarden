@@ -153,8 +153,21 @@ Non-partitioned; retention class `compliance`.
   sanitised X12 status codes ride in the `create` history detail, **not** in `rtp_reason_code`, because a 277CA status code
   is not a FISS RTP reason code (the operator keys that from DDE). A 999 or clearinghouse-stage rejection is a front-end
   syntax or edit failure that never reached the MAC's claim file, so it queues nothing. The 36-month hold is how long FISS
-  keeps a returned claim, not a filing window ChartWarden tracks, so no deadline is set. A later acceptance of the claim does
-  **not** close the item; closing stays the operator's call.
+  keeps a returned claim, not a filing window ChartWarden tracks, so no deadline is set. (Superseded in part by the
+  2026-10 amendment below: a later 277CA acceptance now closes the item.)
+  **Amendment 2026-10 (DDE audit).** (1) *Payer acceptance supersedes open items.* A 277CA acceptance of a claim, NOE or
+  NOTR closes every open item on that subject through a system-only `supersede` edge (open state -> `closed`), history
+  event `close` with `actor_kind = system` and detail `trigger = payer_accepted`, plus the usual
+  `m23.dde_item.state_changed`; it runs in a savepoint after the acknowledgment, so a failure is logged and never undoes
+  it. Accepted / closed / cancelled items are untouched, so a replay closes nothing. (2) *A payer-stage (277CA) NOE/NOTR
+  rejection files the item at once* with the notice's window deadline: the rejected row is terminal and so never reached
+  the window-watch, while the 5-day clock keeps running. 999 / clearinghouse rejections still queue nothing. (3) *Keying
+  sheet.* `GET /dde-items/:id` returns `keying`: a screen hint, the TOB (81A NOE / 81B NOTR / the claim's), statement or
+  election dates, the filing deadline, ChartWarden and payer control numbers, patient status / admission codes, and the
+  rejection codes with a plain meaning for the standard X12 277CA category codes (others say to look them up in DDE).
+  Still no MBI (D7: the UI points to the patient chart) and no automation. **Not built / tracked:** provider CCN / NPI on
+  the sheet (needs an M40 reader seam), triggers for FISS-side status that has no electronic signal in the codebase
+  (RTP status T from DDE itself, suspended S claims, adjustment / cancel / NOE-correction prompts), aging escalation.
   **Not built:** `adr_response` auto-queueing (the codebase has no additional-documentation-request signal; items of that
   type stay manual), attachments via M22, tenant separation of duties, and any correction of an accepted NOE.
 - The UI spec's NOE Submission Manager is updated when the screen is built (Phase 2).

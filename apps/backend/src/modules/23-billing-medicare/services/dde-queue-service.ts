@@ -16,7 +16,9 @@ import type { Static } from "@sinclair/typebox";
 import {
   DDE_AT_RISK_DAYS,
   type DdeItemType,
+  type DdeKeyingSheet,
   type DdeWorkItemEvent,
+  buildDdeKeyingSheet,
   type DdeWorkItemState,
   ddeDeadlineStatus,
   ddeWorkItemMachine,
@@ -252,6 +254,68 @@ async function loadSubject(
   };
 }
 
+/** Keep only code-shaped strings from a stored ack payload (they were sanitised on the way in; belt and braces). */
+function codesOf(payload: unknown): string[] {
+  const raw = (payload as { reasonCodes?: unknown } | null)?.reasonCodes;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((c): c is string => typeof c === "string" && /^[A-Za-z0-9:._-]{1,24}$/.test(c));
+}
+
+/** The DDE keying sheet for an item's subject (ids, dates and codes only; never an MBI). Org-scoped by RLS. */
+async function loadKeyingSheet(tx: BillingTx, item: Item): Promise<DdeKeyingSheet> {
+  if (item.subjectKind === "claim") {
+    const claim = await new repositories.ClaimRepository(tx).findById(item.subjectId);
+    if (!claim || claim.organizationId !== item.organizationId) {
+      return buildDdeKeyingSheet(item.itemType, {});
+    }
+    const acks = await new repositories.ClaimAcknowledgmentRepository(tx).listForClaim(claim.id, {
+      limit: 10,
+    });
+    const rejected = acks.find((a) => a.stage === "payer" && a.outcomeStatus === "rejected");
+    return buildDdeKeyingSheet(item.itemType, {
+      claim: {
+        tob: String(claim.tob),
+        serviceFrom: claim.serviceFrom,
+        serviceTo: claim.serviceTo,
+        controlNumber: claim.claimControlNumber,
+        payerControlNumber: claim.payerClaimControlNumber,
+        patientStatusCode: claim.patientStatusCode,
+        admissionTypeCode: claim.admissionTypeCode,
+        admissionSourceCode: claim.admissionSourceCode,
+        rejectionCodes: rejected ? codesOf(rejected.parsedPayload) : [],
+      },
+    });
+  }
+  const isNoe = item.subjectKind === "noe_record";
+  const notice = isNoe
+    ? await new repositories.NoeRepository(tx).findById(item.subjectId)
+    : await new repositories.NotrRepository(tx).findById(item.subjectId);
+  if (!notice || notice.organizationId !== item.organizationId) {
+    return buildDdeKeyingSheet(item.itemType, {});
+  }
+  const base = {
+    kind: isNoe ? ("noe" as const) : ("notr" as const),
+    windowTargetAt: notice.windowTargetAt,
+    rejectionCodes: notice.rejectionCodes ?? [],
+  };
+  return buildDdeKeyingSheet(item.itemType, {
+    notice:
+      "noeControlNumber" in notice
+        ? {
+            ...base,
+            controlNumber: notice.noeControlNumber,
+            payerControlNumber: notice.payerNoeControlNumber,
+            effectiveDate: notice.electionEffectiveDate,
+          }
+        : {
+            ...base,
+            controlNumber: notice.notrControlNumber,
+            payerControlNumber: notice.payerNotrControlNumber,
+            effectiveDate: notice.effectiveEndDate,
+          },
+  });
+}
+
 export function buildDdeQueueService(
   db: BillingDb,
   ports: DdeQueueServicePorts = {},
@@ -413,7 +477,7 @@ export function buildDdeQueueService(
     },
 
     async get(actor, id) {
-      const { row, events } = await inOrg(actor, async (tx) => {
+      const { row, events, keying } = await inOrg(actor, async (tx) => {
         const found = await new repositories.DdeWorkItemRepository(tx).findById(id);
         if (!found || found.organizationId !== actor.organizationId) {
           throw new NotFoundError("dde work item");
@@ -421,10 +485,12 @@ export function buildDdeQueueService(
         return {
           row: found,
           events: await new repositories.DdeWorkEventRepository(tx).listForItem(id),
+          keying: await loadKeyingSheet(tx, found),
         };
       });
       return {
         ...viewOf(row, toIsoDate(now())),
+        keying,
         events: events.map((e) => ({
           eventId: e.id,
           event: e.event,

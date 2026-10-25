@@ -950,3 +950,162 @@ describe("claim 277CA rejection queues an RTP correction (ADR-0052)", () => {
     expect(fakes.claims.get("claim-1")?.state).toBe("ack_rejected");
   });
 });
+
+// ── ADR-0052 amendment: a notice's 277CA answer drives the DDE queue ────────────────────────────────────────────
+describe("notice 277CA answer follows up the DDE queue (ADR-0052)", () => {
+  const seedNoe = (state = "ack_pending") => {
+    fakes.noes.set("noe-1", {
+      id: "noe-1",
+      organizationId: ORG,
+      providerEntityId: PE,
+      patientId: "patient-1",
+      admissionId: ADMISSION,
+      windowTargetAt: "2026-10-09",
+      state,
+      version: 3,
+      latestSubmissionId: "sub-noe",
+      latestAcknowledgmentId: null,
+    });
+    fakes.submissions.set("sub-noe", {
+      id: "sub-noe",
+      organizationId: ORG,
+      kind: "noe",
+      claimId: null,
+      noeId: "noe-1",
+    });
+  };
+  const spy = () => {
+    const notices: Record<string, unknown>[] = [];
+    const superseded: Record<string, unknown>[] = [];
+    return {
+      notices,
+      superseded,
+      port: {
+        ensureNoticeItem: async (_tx: unknown, n: Record<string, unknown>) => {
+          notices.push(n);
+          return { created: true };
+        },
+        ensureClaimRtpItem: async () => ({ created: false }),
+        supersedeForSubject: async (_tx: unknown, s: Record<string, unknown>) => {
+          superseded.push(s);
+          return { closed: 1 };
+        },
+      },
+    };
+  };
+  const withPort = (h: ReturnType<typeof harness>, port: unknown) =>
+    ({ ...h.deps, ddeWatchdog: port }) as unknown as M23WorkerDeps;
+
+  it("a payer-stage rejection files the NOE item with the window deadline, even though the row is terminal", async () => {
+    seedNoe();
+    const s = spy();
+    const h = harness();
+    h.set277([ack277("sub-noe", "rejected")]);
+    await runAckPull277ca(withPort(h, s.port));
+    expect(s.notices).toEqual([
+      {
+        organizationId: ORG,
+        itemType: "noe",
+        noticeId: "noe-1",
+        providerEntityId: PE,
+        patientId: "patient-1",
+        deadlineAt: "2026-10-09",
+      },
+    ]);
+    expect(s.superseded).toEqual([]);
+  });
+
+  it("a 999 (clearinghouse-stage) rejection files nothing", async () => {
+    seedNoe("submitted");
+    const s = spy();
+    const h = harness();
+    h.set999([ack999("sub-noe", false)]);
+    await runAckPull999(withPort(h, s.port));
+    expect(s.notices).toEqual([]);
+  });
+
+  it("a 277CA acceptance supersedes the open items of that notice", async () => {
+    seedNoe();
+    const s = spy();
+    const h = harness();
+    h.set277([ack277("sub-noe", "accepted")]);
+    await runAckPull277ca(withPort(h, s.port));
+    expect(s.superseded).toEqual([
+      { organizationId: ORG, subjectKind: "noe_record", subjectId: "noe-1" },
+    ]);
+    expect(s.notices).toEqual([]);
+  });
+
+  it("a claim 277CA acceptance supersedes the open items of that claim", async () => {
+    fakes.claims.set("claim-1", {
+      id: "claim-1",
+      state: "ack_pending",
+      version: 2,
+      providerEntityId: PE,
+      patientId: "patient-1",
+    });
+    fakes.submissions.set("sub-claim", {
+      id: "sub-claim",
+      organizationId: ORG,
+      kind: "claim_837i",
+      claimId: "claim-1",
+    });
+    const s = spy();
+    const h = harness();
+    h.set277([ack277("sub-claim", "accepted", { claimId: "claim-1" })]);
+    await runAckPull277ca(withPort(h, s.port));
+    expect(s.superseded).toEqual([
+      {
+        organizationId: ORG,
+        subjectKind: "claim",
+        subjectId: "claim-1",
+        acknowledgmentId: "ack-1",
+      },
+    ]);
+  });
+
+  it("a failing follow-up is logged without the error message and never undoes the acknowledgment", async () => {
+    seedNoe();
+    const errors: Record<string, unknown>[] = [];
+    const boom = {
+      ensureNoticeItem: async () => ({ created: false }),
+      ensureClaimRtpItem: async () => ({ created: false }),
+      supersedeForSubject: async () => {
+        throw Object.assign(new Error("secret 1EG4TE5MK73"), { code: "23505" });
+      },
+    };
+    const h = harness();
+    h.set277([ack277("sub-noe", "accepted")]);
+    await runAckPull277ca({
+      ...withPort(h, boom),
+      logger: { error: (f: Record<string, unknown>) => errors.push(f) },
+    } as unknown as M23WorkerDeps);
+    expect(fakes.noes.get("noe-1")?.state).toBe("ack_accepted");
+    expect(errors).toHaveLength(1);
+    expect(JSON.stringify(errors)).not.toContain("1EG4TE5MK73");
+  });
+
+  it("a late 999 acceptance catching up a stored 277CA rejection still files the item (stage read off the notice)", async () => {
+    seedNoe("submitted");
+    const filed: Record<string, unknown>[] = [];
+    const port = {
+      ensureNoticeItem: async (_tx: unknown, n: Record<string, unknown>) => {
+        filed.push(n);
+        return { created: true };
+      },
+      ensureClaimRtpItem: async () => ({ created: false }),
+      supersedeForSubject: async () => ({ closed: 0 }),
+    };
+    const h = harness();
+    // the 277CA rejection arrives first and fits no transition from `submitted`; the 999 acceptance then catches it up
+    h.set277([ack277("sub-noe", "rejected")]);
+    await runAckPull277ca(withPort(h, port));
+    h.set999([ack999("sub-noe", true)]);
+    await runAckPull999(withPort(h, port));
+    expect(fakes.noes.get("noe-1")).toMatchObject({
+      state: "ack_rejected",
+      rejectionStage: "277ca",
+    });
+    expect(filed).toHaveLength(1);
+  });
+});

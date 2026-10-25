@@ -69573,7 +69573,8 @@
                     "version",
                     "createdAt",
                     "updatedAt",
-                    "events"
+                    "events",
+                    "keying"
                   ],
                   "properties": {
                     "ddeWorkItemId": {
@@ -69949,6 +69950,62 @@
                           "occurredAt": {
                             "format": "date-time",
                             "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "keying": {
+                      "type": "object",
+                      "required": [
+                        "screenHint",
+                        "fields",
+                        "rejectionCodes"
+                      ],
+                      "properties": {
+                        "screenHint": {
+                          "type": "string"
+                        },
+                        "fields": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "label",
+                              "value"
+                            ],
+                            "properties": {
+                              "label": {
+                                "type": "string"
+                              },
+                              "value": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "rejectionCodes": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "code",
+                              "meaning"
+                            ],
+                            "properties": {
+                              "code": {
+                                "type": "string"
+                              },
+                              "meaning": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
                           }
                         }
                       }
