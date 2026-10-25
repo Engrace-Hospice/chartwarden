@@ -77,7 +77,7 @@ export {
   type Claim837iPartiesDeps,
   type ProviderBillingFacts,
   type SealedProviderFacts,
-  buildClaim837iPartiesPort,
+  buildClaim837iPartiesPortFactory,
   buildClaim837iProviderReader,
   buildDrizzleEdiProfileReader,
 } from "./services/claim-837i-parties";

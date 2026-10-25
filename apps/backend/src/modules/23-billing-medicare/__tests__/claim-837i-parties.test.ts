@@ -4,10 +4,11 @@ import {
   type EdiProfileFacts,
   type ProviderBillingFacts,
   billingAddressFrom,
-  buildClaim837iPartiesPort,
+  buildClaim837iPartiesPortFactory,
   buildClaim837iProviderReader,
 } from "../services/claim-837i-parties";
 
+const TX = {} as never;
 const ARGS = {
   organizationId: "11111111-1111-4111-8111-111111111111",
   providerEntityId: "22222222-2222-4222-8222-222222222222",
@@ -42,7 +43,7 @@ const deps = (over: Partial<Claim837iPartiesDeps> = {}): Claim837iPartiesDeps =>
 
 describe("buildClaim837iPartiesPort", () => {
   it("assembles all four parties from their sources", async () => {
-    const res = await buildClaim837iPartiesPort(deps()).partiesFor(ARGS);
+    const res = await buildClaim837iPartiesPortFactory(deps())(TX).partiesFor(ARGS);
 
     expect(res).toEqual({
       submitter: PROFILE.submitter,
@@ -60,14 +61,14 @@ describe("buildClaim837iPartiesPort", () => {
   it("passes the bound route to the profile read", async () => {
     const seen: string[] = [];
 
-    await buildClaim837iPartiesPort(
+    await buildClaim837iPartiesPortFactory(
       deps({
-        profile: async (_o, _p, route) => {
+        profile: async (_tx, _o, _p, route) => {
           seen.push(route);
           return PROFILE;
         },
       }),
-    ).partiesFor(ARGS);
+    )(TX).partiesFor(ARGS);
 
     expect(seen).toEqual(["claim_md"]);
   });
@@ -75,7 +76,7 @@ describe("buildClaim837iPartiesPort", () => {
   it("returns null submitter and receiver, without reading, when no route is bound", async () => {
     let read = false;
 
-    const res = await buildClaim837iPartiesPort(
+    const res = await buildClaim837iPartiesPortFactory(
       deps({
         routeKey: null,
         profile: async () => {
@@ -83,7 +84,7 @@ describe("buildClaim837iPartiesPort", () => {
           return PROFILE;
         },
       }),
-    ).partiesFor(ARGS);
+    )(TX).partiesFor(ARGS);
 
     expect(read).toBe(false);
     expect(res.submitter).toBeNull();
@@ -91,9 +92,9 @@ describe("buildClaim837iPartiesPort", () => {
   });
 
   it("returns null for each section its source cannot supply", async () => {
-    const res = await buildClaim837iPartiesPort(
+    const res = await buildClaim837iPartiesPortFactory(
       deps({ profile: async () => null, provider: async () => null, payerName: async () => null }),
-    ).partiesFor(ARGS);
+    )(TX).partiesFor(ARGS);
 
     expect(res).toEqual({ submitter: null, receiver: null, billingProvider: null, payer: null });
   });
@@ -103,9 +104,9 @@ describe("buildClaim837iPartiesPort", () => {
     ["a blank NPI", { npi: " " }],
     ["no usable address", { address: [] }],
   ])("returns a null billing provider for %s", async (_name, patch) => {
-    const res = await buildClaim837iPartiesPort(
+    const res = await buildClaim837iPartiesPortFactory(
       deps({ provider: async () => ({ ...PROVIDER, ...patch }) }),
-    ).partiesFor(ARGS);
+    )(TX).partiesFor(ARGS);
 
     expect(res.billingProvider).toBeNull();
   });
@@ -154,7 +155,7 @@ describe("buildClaim837iProviderReader", () => {
         seen.push(input);
         return "123456789";
       },
-    })(ARGS.organizationId, ARGS.providerEntityId);
+    })(TX, ARGS.organizationId, ARGS.providerEntityId);
 
     expect(res).toMatchObject({ taxId: "123456789", npi: "1234567893" });
     expect(seen).toEqual([
@@ -175,7 +176,7 @@ describe("buildClaim837iProviderReader", () => {
         decrypted = true;
         return "";
       },
-    })(ARGS.organizationId, ARGS.providerEntityId);
+    })(TX, ARGS.organizationId, ARGS.providerEntityId);
 
     expect(res).toBeNull();
     expect(decrypted).toBe(false);

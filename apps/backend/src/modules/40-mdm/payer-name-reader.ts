@@ -7,12 +7,13 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { and, eq } from "drizzle-orm";
 
-export function buildPayerNameByX12IdReader(
-  db: DbClient,
-): (x12PayerId: string) => Promise<string | null> {
+export function buildPayerNameByX12IdReader(): (
+  tx: DbClient,
+  x12PayerId: string,
+) => Promise<string | null> {
   const t = schema.payers;
-  return async (x12PayerId) => {
-    const [row] = await db
+  return async (tx, x12PayerId) => {
+    const [row] = await tx
       .select({ name: t.name })
       .from(t)
       .where(and(eq(t.payerId, x12PayerId), eq(t.status, "active")))

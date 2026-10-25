@@ -64,7 +64,6 @@ import {
   getRequestContext,
   registerPlatformJob,
   runWithRequestContext,
-  systemOrgContext,
   withOrgContext,
   withPlatformContext,
 } from "@chartwarden/tenancy";
@@ -1055,7 +1054,7 @@ import {
   buildM23WorkQueueEnqueuePort,
   buildM23WorkRequestConsumer,
   buildM23WorkerDeps,
-  buildClaim837iPartiesPort,
+  buildClaim837iPartiesPortFactory,
   buildClaim837iProviderReader,
   buildDrizzleEdiProfileReader,
   buildMacJurisdictionLister,
@@ -8359,17 +8358,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         mbiUnlock: () => getSeam("MbiUnlockReader"),
         patients: lazyPatientReader(),
         addresses: lazyPatientAddressReader(),
-        parties: buildClaim837iPartiesPort({
+        parties: buildClaim837iPartiesPortFactory({
           routeKey: clearinghouseBinding.vendor,
-          profile: buildDrizzleEdiProfileReader(dbHandle.db),
+          profile: buildDrizzleEdiProfileReader(),
           provider: buildClaim837iProviderReader({
-            sealedFacts: (organizationId, providerEntityId) =>
-              withOrgContext(dbHandle.db, systemOrgContext(organizationId), (tx) =>
-                buildFoundationSiteReader().providerEntityBillingFacts(
-                  tx as unknown as DbClient,
-                  organizationId,
-                  providerEntityId,
-                ),
+            sealedFacts: (tx, organizationId, providerEntityId) =>
+              buildFoundationSiteReader().providerEntityBillingFacts(
+                tx,
+                organizationId,
+                providerEntityId,
               ),
             decryptTaxId: (input) =>
               createTaxIdCipher({
@@ -8378,7 +8375,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   getTenantKeyProvider().dekForOrgVersion(orgId, version),
               }).decrypt(input),
           }),
-          payerName: buildPayerNameByX12IdReader(dbHandle.db),
+          payerName: buildPayerNameByX12IdReader(),
         }),
       },
       // #707 - the clearinghouse binding. With CLEARINGHOUSE_VENDOR set the submit/retry workers and the ack crons use

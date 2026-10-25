@@ -6,7 +6,6 @@
 //     the sealed EIN through an injected decrypt, so this module never touches the cipher or M1's table).
 //   • payer (2010BB): the payer's X12 name through an injected reader keyed by the clearinghouse payer id.
 import { type DbClient, schema } from "@chartwarden/db";
-import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { Claim837iPartiesPort } from "./claim-837i-loader";
 import type { Claim837iParties } from "./claim-837i-mapper";
@@ -28,20 +27,29 @@ export interface ProviderBillingFacts {
   readonly address: unknown;
 }
 
+/**
+ * Every read runs on the CALLER'S transaction (the submit worker's per-job tx). A read that opened its own
+ * `withOrgContext` would take a second pooled connection while the worker already holds one, which can starve the pool
+ * when every submit worker is mid-job.
+ */
+export type PartiesTx = DbClient;
+
 export interface Claim837iPartiesDeps {
   /** The bound `CLEARINGHOUSE_VENDOR`, or null when unbound (then submitter and receiver are gaps). */
   readonly routeKey: string | null;
   readonly profile: (
+    tx: PartiesTx,
     organizationId: string,
     providerEntityId: string,
     routeKey: string,
   ) => Promise<EdiProfileFacts | null>;
   readonly provider: (
+    tx: PartiesTx,
     organizationId: string,
     providerEntityId: string,
   ) => Promise<ProviderBillingFacts | null>;
   /** The payer's name for an X12 payer id, or null when the payer is unknown. */
-  readonly payerName: (x12PayerId: string) => Promise<string | null>;
+  readonly payerName: (tx: PartiesTx, x12PayerId: string) => Promise<string | null>;
 }
 
 const EIN_PATTERN = /^\d{9}$/;
@@ -87,6 +95,7 @@ export interface SealedProviderFacts {
 /** Composes M1's sealed read with M2's tax-id decrypt (both injected) into the parties port's `provider` source. */
 export function buildClaim837iProviderReader(deps: {
   readonly sealedFacts: (
+    tx: PartiesTx,
     organizationId: string,
     providerEntityId: string,
   ) => Promise<SealedProviderFacts | null>;
@@ -96,8 +105,8 @@ export function buildClaim837iProviderReader(deps: {
     sealed: string;
   }) => Promise<string>;
 }): Claim837iPartiesDeps["provider"] {
-  return async (organizationId, providerEntityId) => {
-    const facts = await deps.sealedFacts(organizationId, providerEntityId);
+  return async (tx, organizationId, providerEntityId) => {
+    const facts = await deps.sealedFacts(tx, organizationId, providerEntityId);
     if (!facts) return null;
     const taxId = await deps.decryptTaxId({
       organizationId,
@@ -118,16 +127,17 @@ function billingProviderFrom(facts: ProviderBillingFacts | null): Parties["billi
   return { organizationName: facts.legalName.trim(), npi: facts.npi, taxId, address };
 }
 
-export function buildClaim837iPartiesPort(deps: Claim837iPartiesDeps): Claim837iPartiesPort {
-  return {
+/** The port for one worker transaction; its three reads run in sequence on that tx. */
+export function buildClaim837iPartiesPortFactory(
+  deps: Claim837iPartiesDeps,
+): (tx: PartiesTx) => Claim837iPartiesPort {
+  return (tx) => ({
     async partiesFor({ organizationId, providerEntityId, payerId }) {
-      const [profile, provider, payerName] = await Promise.all([
-        deps.routeKey
-          ? deps.profile(organizationId, providerEntityId, deps.routeKey)
-          : Promise.resolve(null),
-        deps.provider(organizationId, providerEntityId),
-        deps.payerName(payerId),
-      ]);
+      const profile = deps.routeKey
+        ? await deps.profile(tx, organizationId, providerEntityId, deps.routeKey)
+        : null;
+      const provider = await deps.provider(tx, organizationId, providerEntityId);
+      const payerName = await deps.payerName(tx, payerId);
       return {
         submitter: profile?.submitter ?? null,
         receiver: profile?.receiver ?? null,
@@ -135,39 +145,38 @@ export function buildClaim837iPartiesPort(deps: Claim837iPartiesDeps): Claim837i
         payer: nonBlank(payerName) ? { name: payerName.trim(), payerId } : null,
       };
     },
-  };
+  });
 }
 
-/** `billing_edi_profile` as the loader reads it (RLS-scoped; the worker has no user, so `userId` is empty). */
-export function buildDrizzleEdiProfileReader(db: DbClient): Claim837iPartiesDeps["profile"] {
+/** `billing_edi_profile` as the loader reads it, on the caller's org-scoped transaction (RLS applies). */
+export function buildDrizzleEdiProfileReader(): Claim837iPartiesDeps["profile"] {
   const t = schema.billingEdiProfile;
-  return (organizationId, providerEntityId, routeKey) =>
-    withOrgContext(db, systemOrgContext(organizationId), async (tx) => {
-      const [row] = await tx
-        .select()
-        .from(t)
-        .where(
-          and(
-            eq(t.organizationId, organizationId),
-            eq(t.providerEntityId, providerEntityId),
-            eq(t.routeKey, routeKey),
-          ),
-        )
-        .limit(1);
-      if (!row) return null;
-      const receiver: Claim837iParties["receiver"] = {
-        name: row.receiverName,
-        id: row.receiverId,
-        applicationCode: row.receiverApplicationCode,
-      };
-      return {
-        submitter: {
-          name: row.submitterName,
-          id: row.submitterId,
-          contactName: row.submitterContactName,
-          contactPhone: row.submitterContactPhone,
-        },
-        receiver,
-      };
-    });
+  return async (tx, organizationId, providerEntityId, routeKey) => {
+    const [row] = await tx
+      .select()
+      .from(t)
+      .where(
+        and(
+          eq(t.organizationId, organizationId),
+          eq(t.providerEntityId, providerEntityId),
+          eq(t.routeKey, routeKey),
+        ),
+      )
+      .limit(1);
+    if (!row) return null;
+    const receiver: Claim837iParties["receiver"] = {
+      name: row.receiverName,
+      id: row.receiverId,
+      applicationCode: row.receiverApplicationCode,
+    };
+    return {
+      submitter: {
+        name: row.submitterName,
+        id: row.submitterId,
+        contactName: row.submitterContactName,
+        contactPhone: row.submitterContactPhone,
+      },
+      receiver,
+    };
+  };
 }

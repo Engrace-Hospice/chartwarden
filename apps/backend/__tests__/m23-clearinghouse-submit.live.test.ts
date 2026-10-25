@@ -446,14 +446,14 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         mbiUnlock: unreachable("the MBI"),
         patients: { findById: unreachable("the patient") } as never,
         addresses: { primaryAddress: unreachable("the address") } as never,
-        parties: {
+        parties: () => ({
           partiesFor: async () => ({
             submitter: null,
             receiver: null,
             billingProvider: null,
             payer: null,
           }),
-        },
+        }),
       },
     } satisfies M23WorkerDeps;
   }

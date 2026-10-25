@@ -15,9 +15,12 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { buildFoundationSiteReader } from "../src/bootstrap/foundation-site-reader";
 import type { M23WriteActor } from "../src/modules/23-billing-medicare/routes/actor";
 import { buildDrizzleEdiProfileService } from "../src/modules/23-billing-medicare/routes/edi-profile-service";
 import type { UpsertEdiProfileBody } from "../src/modules/23-billing-medicare/routes/edi-profile-typebox";
+import { buildDrizzleEdiProfileReader } from "../src/modules/23-billing-medicare/services/claim-837i-parties";
+import { buildPayerNameByX12IdReader } from "../src/modules/40-mdm";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -97,6 +100,8 @@ describe.skipIf(!DB_URL)("M23 EDI profile — LIVE Postgres", () => {
 
   beforeEach(async () => {
     await admin.query("TRUNCATE billing_edi_profile");
+    await admin.query("DELETE FROM payer");
+    await admin.query("DELETE FROM provider_entity");
   });
 
   afterAll(async () => {
@@ -187,6 +192,60 @@ describe.skipIf(!DB_URL)("M23 EDI profile — LIVE Postgres", () => {
     await expect(
       asApp(ORG_A, (tx) => tx.execute(sql`DELETE FROM billing_edi_profile`)),
     ).rejects.toThrow();
+  });
+
+  it("the loader's profile reader returns the stored parties on the caller's tx, and nothing across tenants", async () => {
+    await service().upsertProfile(actorFor(ORG_A), key, BODY, undefined);
+    const read = buildDrizzleEdiProfileReader();
+
+    const own = await asApp(ORG_A, (tx) => read(tx, ORG_A, PE_A, "claim_md"));
+    const other = await asApp(ORG_B, (tx) => read(tx, ORG_A, PE_A, "claim_md"));
+    const wrongRoute = await asApp(ORG_A, (tx) => read(tx, ORG_A, PE_A, "stedi"));
+
+    expect(own).toEqual({
+      submitter: {
+        name: BODY.submitterName,
+        id: BODY.submitterId,
+        contactName: BODY.submitterContactName,
+        contactPhone: BODY.submitterContactPhone,
+      },
+      receiver: {
+        name: BODY.receiverName,
+        id: BODY.receiverId,
+        applicationCode: BODY.receiverApplicationCode,
+      },
+    });
+    expect(other).toBeNull();
+    expect(wrongRoute).toBeNull();
+  });
+
+  it("reads a provider entity's sealed billing facts and an active payer's name as the app role", async () => {
+    await admin.query(
+      `INSERT INTO provider_entity (id, organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+       VALUES ($1,$2,'ABC123','Test Hospice LLC','1234567893','v2.1.n.t.c','1231')`,
+      [PE_A, ORG_A],
+    );
+    await admin.query(
+      `INSERT INTO payer (kind, payer_id, name, status) VALUES ('medicare','MAC01','Test MAC','active'),('medicare','MAC02','Old MAC','deactivated')`,
+    );
+
+    const facts = await asApp(ORG_A, (tx) =>
+      buildFoundationSiteReader().providerEntityBillingFacts(tx, ORG_A, PE_A),
+    );
+    const otherTenant = await asApp(ORG_B, (tx) =>
+      buildFoundationSiteReader().providerEntityBillingFacts(tx, ORG_B, PE_A),
+    );
+    const payerName = buildPayerNameByX12IdReader();
+
+    expect(facts).toMatchObject({
+      legalName: "Test Hospice LLC",
+      npi: "1234567893",
+      taxIdSealed: "v2.1.n.t.c",
+    });
+    expect(otherTenant).toBeNull();
+    expect(await asApp(ORG_A, (tx) => payerName(tx, "MAC01"))).toBe("Test MAC");
+    expect(await asApp(ORG_A, (tx) => payerName(tx, "MAC02"))).toBeNull();
+    expect(await asApp(ORG_A, (tx) => payerName(tx, "NOPE"))).toBeNull();
   });
 
   it("records the write in the audit trail", async () => {

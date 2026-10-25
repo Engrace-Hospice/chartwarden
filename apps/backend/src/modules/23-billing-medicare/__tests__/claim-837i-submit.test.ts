@@ -16,7 +16,7 @@ const CONTEXT = {
 } as ClearinghouseContext;
 const ARGS = {
   tx: {} as never,
-  deps: {} as never,
+  deps: { parties: () => ({}) } as never,
   contextFor: async () => CONTEXT,
   organizationId: "o",
   claim: { id: "claim-1", providerEntityId: "p" },

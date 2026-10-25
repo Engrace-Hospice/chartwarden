@@ -4,6 +4,7 @@
 // (field and reason only, never a value), which the caller's catch records as a `failed_worker` attempt.
 import { createHash } from "node:crypto";
 import type { repositories } from "@chartwarden/billing";
+import type { DbClient } from "@chartwarden/db";
 import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
 import {
   type Claim837iLoaderDeps,
@@ -12,7 +13,10 @@ import {
 } from "./claim-837i-loader";
 
 /** What the workers bind beyond the claim persistence (which is built per job on the worker's tx). */
-export type Claim837iSubmitDeps = Omit<Claim837iLoaderDeps, "persistence">;
+export type Claim837iSubmitDeps = Omit<Claim837iLoaderDeps, "persistence" | "parties"> & {
+  /** The parties port for one worker tx (its reads share that tx, not the pool). */
+  readonly parties: (tx: DbClient) => Claim837iLoaderDeps["parties"];
+};
 
 /** ISA13 is 1..999 999 999. */
 const MAX_INTERCHANGE_CONTROL_NUMBER = 999_999_999;
@@ -44,7 +48,11 @@ export async function renderClaimForTransport(args: {
 }): Promise<string> {
   const context = await args.contextFor(args.organizationId, args.claim.providerEntityId);
   const loaded = await loadAndRender837i(
-    { ...args.deps, persistence: buildClaim837iPersistencePort(args.tx) },
+    {
+      ...args.deps,
+      persistence: buildClaim837iPersistencePort(args.tx),
+      parties: args.deps.parties(args.tx as unknown as DbClient),
+    },
     {
       claimId: args.claim.id,
       context,
