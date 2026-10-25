@@ -25,7 +25,6 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m25-835-ingestion.live.test.ts
  * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set CHARTWARDEN_TEST_NO_PGVECTOR=1.)
  */
-import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { repositories } from "@chartwarden/billing";
@@ -42,7 +41,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";
 import { buildM23ClaimSubmissionReader } from "../src/modules/23-billing-medicare/cost-report-seams";
 import type { MatchCandidate } from "../src/modules/25-remittance/domain/match";
-import { buildM23BackedClaimMatchCandidateProvider } from "../src/modules/25-remittance/index";
+import {
+  buildDrizzleM25ReadService,
+  buildM23BackedClaimMatchCandidateProvider,
+} from "../src/modules/25-remittance/index";
 import type {
   ClaimMatchCandidateProvider,
   M25IngestActor,
@@ -53,9 +55,8 @@ import {
   PAYEE_UNCHECKED,
   buildDrizzleM25IngestService,
 } from "../src/modules/25-remittance/ingest/service-drizzle";
+import { buildFullEdi, buildRawEdi, sha256Hex } from "./_edi835-fixture";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
-
-const sha256Hex = (text: string): string => createHash("sha256").update(text, "utf8").digest("hex");
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
@@ -72,35 +73,6 @@ const CLAIM_PR_NOPATIENT = "00000000-0000-0000-0000-00000000ca04";
 const CLAIM_UNMAPPED = "00000000-0000-0000-0000-00000000ca05";
 const CLAIM_RECOUP = "00000000-0000-0000-0000-00000000ca06";
 const PATIENT_1 = "00000000-0000-0000-0000-0000000e0001";
-
-// ── ISA/ST envelope construction (real, fixed-width — see @chartwarden/x12-835-client/envelope-header) ──────
-function buildRawEdi(isa13: string, st02: string): string {
-  const sep = "*";
-  const elems = [
-    "00",
-    "          ",
-    "00",
-    "          ",
-    "ZZ",
-    "SENDERID       ",
-    "ZZ",
-    "RECEIVERID     ",
-    "250101",
-    "1200",
-    "^",
-    "00501",
-    isa13.padStart(9, "0").slice(0, 9),
-    "0",
-    "P",
-    ":",
-  ];
-  const isaBody = `ISA${sep}${elems.join(sep)}`;
-  if (isaBody.length !== 105)
-    throw new Error(`test ISA header must be 105 chars, got ${isaBody.length}`);
-  const isaSegment = `${isaBody}~`;
-  const gsSt = `GS${sep}HP${sep}SENDER${sep}RECEIVER${sep}20250101${sep}1200${sep}1${sep}X${sep}005010X221A1~ST${sep}835${sep}${st02}~`;
-  return isaSegment + gsSt;
-}
 
 // ── controllable fakes ────────────────────────────────────────────────────────────────────────────────
 function fakeClient(byKey: Map<string, ParsedRemittanceAdvice | "degraded">): X12835WorkerClient {
@@ -702,20 +674,6 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     const replayed = await replayService.postAdvice(actor, received.adviceId);
     expect(replayed.outcome).toBe("posted");
   });
-
-  /** A complete, balanced 835 (ISA..IEA) around the existing fixed-width header; no sidecar involved. */
-  function buildFullEdi(isa13: string, st02: string, bpr02: string): string {
-    const body = [
-      `BPR*I*${bpr02}*C*ACH*CCP*01*999999992*DA*123456789*1512345678**01*999988880*DA*98765*20260615`,
-      "TRN*1*EFT-RAW*1512345678",
-      "N1*PR*SYNTHETIC MAC",
-      "N1*PE*SYNTH HOSPICE",
-      "CLP*PCN-RAW*1*500.00*500.00*0.00*MC*ICN-PAID",
-      "SVC*HC:T1005*500.00*500.00",
-    ];
-    // ST..SE inclusive = body + ST + SE
-    return `${buildRawEdi(isa13, st02)}${body.map((x) => `${x}~`).join("")}SE*${body.length + 2}*${st02}~GE*1*1~IEA*1*${isa13.padStart(9, "0")}~`;
-  }
 
   it("RAW 835 text flows receive -> post through the in-process TypeScript parser (no sidecar configured)", async () => {
     const actor: M25IngestActor = { organizationId: ORG_A };
@@ -1341,6 +1299,93 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       );
       expect(lineRow.rows[0].claim_id).toBeNull();
       expect(lineRow.rows[0].match_state).toBe("unmatched");
+    });
+  });
+
+  describe("a commercial 835 fails closed to manual review (S12, #710)", () => {
+    it("auto-posts nothing, queues every line for manual match, and the queue is tenant-isolated", async () => {
+      const ccn = "COMM-CCN-1001";
+      // A REAL Medicare claim in the same tenant + provider entity carrying the very control number the
+      // commercial file will name: a payer-blind matcher would bind it. Production wires only `medicare`.
+      const medicareClaimId = await seedClaim({
+        organizationId: ORG_A,
+        providerEntityId: PE_A,
+        patientId: crypto.randomUUID(),
+        claimControlNumber: ccn,
+      });
+      const isa = "000000951";
+      const st = "0951";
+      const raw = buildFullEdi(isa, st, "450.00", {
+        clp01: ccn,
+        icn: "ICN-COMM-1",
+        charge: "500.00",
+        paid: "450.00",
+        patientResponsibility: "50.00",
+      });
+      const service = buildDrizzleM25IngestService(handle.db, {
+        payeeNpi: PAYEE_UNCHECKED,
+        client: createX12835Client(),
+        rawStore: {
+          put: async () => {},
+          get: async () => raw,
+          delete: async () => {},
+        },
+        claims: { medicare: buildM23BackedClaimMatchCandidateProvider() },
+      });
+      const received = await service.receiveAdvice(
+        { organizationId: ORG_A },
+        {
+          providerEntityId: PE_A,
+          payerId: PAYER,
+          payerKind: "commercial",
+          minioObjectKey: "minio/commercial.835",
+          fileSha256: sha256Hex(raw),
+          rawEdi: raw,
+        },
+      );
+      expect(received).toEqual({ outcome: "queued", adviceId: expect.any(String) });
+      if (received.outcome !== "queued") throw new Error("unreachable");
+      const posted = await service.postAdvice({ organizationId: ORG_A }, received.adviceId);
+      expect(posted).toMatchObject({
+        outcome: "partial_posted",
+        postedLineCount: 0,
+        unmatchedLineCount: 1,
+      });
+
+      const line = await admin.query(
+        "SELECT id, match_state, claim_id FROM remittance_line WHERE remittance_advice_id=$1",
+        [received.adviceId],
+      );
+      expect(line.rows).toHaveLength(1);
+      expect(line.rows[0].match_state).toBe("unmatched");
+      expect(line.rows[0].claim_id).toBeNull();
+      // Nothing was posted against the Medicare claim or the patient ledger.
+      const ledger = await admin.query(
+        "SELECT count(*)::int AS n FROM patient_responsibility_ledger WHERE remittance_line_id=$1",
+        [line.rows[0].id],
+      );
+      expect(ledger.rows[0].n).toBe(0);
+      const paidEvents = await admin.query(
+        "SELECT count(*)::int AS n FROM outbox_event WHERE event_type LIKE 'm25.remittance.claim_%' AND organization_id=$1 AND payload::text LIKE '%' || $2 || '%'",
+        [ORG_A, medicareClaimId],
+      );
+      expect(paidEvents.rows[0].n).toBe(0);
+      const claimState = await admin.query("SELECT state FROM claim WHERE id=$1", [
+        medicareClaimId,
+      ]);
+      expect(claimState.rows[0].state).toBe("DRAFT");
+
+      // The manual-match queue shows it to its own tenant only.
+      const reads = buildDrizzleM25ReadService(handle.db);
+      const actorOf = (organizationId: string) => ({
+        organizationId,
+        userId: "",
+        roles: ["billing_manager"],
+      });
+      const queueA = await reads.listUnmatched(actorOf(ORG_A), undefined, undefined, 50);
+      expect(queueA.items.map((l) => l.id)).toContain(line.rows[0].id);
+      const queueB = await reads.listUnmatched(actorOf(ORG_B), undefined, undefined, 50);
+      expect(queueB.items.map((l) => l.id)).not.toContain(line.rows[0].id);
     });
   });
 

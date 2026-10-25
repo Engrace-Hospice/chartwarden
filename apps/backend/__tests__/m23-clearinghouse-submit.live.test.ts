@@ -6,6 +6,10 @@
  * clearinghouse (the executable specification of the port), with a legacy portal that fails the test if touched, and the
  * real catalog-validating outbox publisher (a payload that drifts from the `m23.*` catalog rolls the worker back).
  *
+ * Also: S01 (#708) the whole Medicare claim cycle (submit -> two-stage ack -> 835 matched by CLP01 -> posted once ->
+ * claim state and ledger agree) and S05 (#709) worker kills against the durable attempt store (no blind resend, an
+ * operator settles the in-doubt attempt, the audit trail names them).
+ *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m23:clearinghouse-submit:live
  * Local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
@@ -14,12 +18,27 @@ import { join } from "node:path";
 import { deriveControlNumber, type repositories } from "@chartwarden/billing";
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
+import {
+  CONTRACT_OPERATOR_ID,
+  type ClearinghouseContext,
+  type ClearinghouseTransport,
+  type DirectMacGateway,
+  DirectMacTransport,
+  type SubmissionAttemptStore,
+} from "@chartwarden/x12-837-client";
 import { InMemoryClearinghouse } from "@chartwarden/x12-837-client/testing";
+import { createX12835Client } from "@chartwarden/x12-835-client";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { registerSeam } from "../src/bootstrap/index";
+import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
-import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
+import { createDrizzleAttemptStore } from "../src/modules/23-billing-medicare/clearinghouse-attempt-store";
+import { buildM23ClaimSubmissionReader } from "../src/modules/23-billing-medicare/cost-report-seams";
+import {
+  M23_OUTBOX_EVENTS,
+  buildM23RemittanceConsumer,
+} from "../src/modules/23-billing-medicare/index";
 import {
   type ClaimSubmitJob,
   type ClaimSubmitRetryJob,
@@ -29,6 +48,16 @@ import {
   runClaimSubmit,
   runClaimSubmitRetry,
 } from "../src/modules/23-billing-medicare/jobs/m23-jobs";
+import { buildClearinghouseAttemptResolutionService } from "../src/modules/23-billing-medicare/services/clearinghouse-attempt-resolution-service";
+import {
+  M25_OUTBOX_EVENTS,
+  buildM23BackedClaimMatchCandidateProvider,
+} from "../src/modules/25-remittance/index";
+import {
+  PAYEE_UNCHECKED,
+  buildDrizzleM25IngestService,
+} from "../src/modules/25-remittance/ingest/service-drizzle";
+import { buildFullEdi, sha256Hex } from "./_edi835-fixture";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -158,7 +187,12 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     throw new Error("the legacy MAC portal must not be reached when a vendor is bound");
   };
 
-  function depsFor(clearinghouse: InMemoryClearinghouse): M23WorkerDeps {
+  function depsFor(
+    clearinghouse: ClearinghouseTransport,
+    vendor: "in_memory" | "direct_mac" = "in_memory",
+    x12Text?: string,
+    attempts?: SubmissionAttemptStore,
+  ): M23WorkerDeps {
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M23_OUTBOX_EVENTS]));
     return {
       connection: {} as never,
@@ -169,7 +203,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       alerts: { dispatch: async () => {} },
       activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG }] },
       x12: {
-        generate837i: async () => ({ x12: "ISA*00*...~", correlationId: "corr-1" }),
+        generate837i: async () => ({ x12: x12Text ?? "ISA*00*...~", correlationId: "corr-1" }),
         generateNoe: async () => ({ x12: "", correlationId: "" }),
         generateNotr: async () => ({ x12: "", correlationId: "" }),
         parse999: legacyMustNotRun as never,
@@ -182,8 +216,9 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         probeHealth: async () => true,
       },
       transport: {
-        binding: { vendor: "in_memory", transport: clearinghouse },
+        binding: { vendor, transport: clearinghouse },
         contexts: { contextFor: async () => CTX, providerEntitiesFor: async () => [PE] },
+        ...(attempts ? { attempts } : {}),
       },
     };
   }
@@ -209,7 +244,12 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       [ORG],
     );
     await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'op@m23-ch.test')`, [
+      CONTRACT_OPERATOR_ID,
+    ]);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
+    // The registration production boot makes, so M25's CLP01 matcher reaches the real `claim` table.
+    registerSeam("ClaimSubmissionReader", buildM23ClaimSubmissionReader(handle.db));
   }, 240_000);
 
   afterAll(async () => {
@@ -356,5 +396,322 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       { kind: "ack_277ca", stage: "payer" },
       { kind: "ack_999", stage: "clearinghouse" },
     ]);
+  });
+
+  it("S01 (#708): submit -> clearinghouse ack -> payer ack -> 835 matched by CLP01 -> posted exactly once; claim state and ledger agree", async () => {
+    const clearinghouse = new InMemoryClearinghouse();
+    const deps = depsFor(clearinghouse);
+    const { claimId, submissionId, ccn } = await seedReadyClaim({
+      patient: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+      attemptIndex: 0,
+      withBlockingFailure: false,
+    });
+    await runInOrg((tx) =>
+      runClaimSubmit(tx, deps, {
+        organizationId: ORG,
+        claimId,
+        submissionId,
+        claimControlNumber: ccn,
+        attemptIndex: 0,
+      }),
+    );
+    await clearinghouse.control.clearinghouseAccepts(ccn, SCOPE);
+    await runAckPull999(deps);
+    await clearinghouse.control.payerAccepts(ccn, "ICN-CYCLE-1", SCOPE);
+    await runAckPull277ca(deps);
+    expect(await claimState(claimId)).toBe("ACK_ACCEPTED");
+
+    // The payer pays: the clearinghouse delivers an 835 whose CLP01 is our claim control number.
+    const raw = buildFullEdi("000000811", "0811", "1000.00", {
+      clp01: ccn,
+      icn: "ICN-CYCLE-1",
+      charge: "1000.50",
+      paid: "1000.00",
+      patientResponsibility: "0.50",
+    });
+    await clearinghouse.control.deliverRemittance("rem-cycle-1", raw, SCOPE);
+    const delivered = await clearinghouse.fetchRemittances(CTX, null);
+    if (!delivered.ok) throw new Error("the in-memory clearinghouse must deliver the 835");
+    const file = delivered.data.items.find((r) => r.remittanceId === "rem-cycle-1");
+    expect(file?.rawX12).toBe(raw);
+
+    const catalog = buildBootOutboxCatalog([M23_OUTBOX_EVENTS, M25_OUTBOX_EVENTS]);
+    const publisher = buildTxOutboxPublisher(catalog);
+    const staged = new Map<string, string>();
+    const m25 = buildDrizzleM25IngestService(handle.db, {
+      payeeNpi: PAYEE_UNCHECKED,
+      client: createX12835Client(),
+      rawStore: {
+        put: async (_org, id, text) => void staged.set(id, text),
+        get: async (_org, id) => staged.get(id) ?? null,
+        delete: async (_org, id) => void staged.delete(id),
+      },
+      // CARC 1 (deductible, PR) is informational: it seeds the patient-responsibility ledger, not a denial.
+      terminology: {
+        lookup: async () => ({
+          category: "informational",
+          plainLanguage: "patient responsibility",
+        }),
+      },
+      claims: { medicare: buildM23BackedClaimMatchCandidateProvider() },
+      outbox: {
+        publish: (tx, e) => publisher.publish(tx as never, { ...e, callerModule: "m25" } as never),
+      },
+    });
+    const ingest = {
+      providerEntityId: PE,
+      payerId: PE,
+      payerKind: "medicare" as const,
+      minioObjectKey: "minio/cycle.835",
+      fileSha256: sha256Hex(raw),
+      rawEdi: raw,
+    };
+    const received = await m25.receiveAdvice({ organizationId: ORG }, ingest);
+    expect(received).toEqual({ outcome: "queued", adviceId: expect.any(String) });
+    if (received.outcome !== "queued") throw new Error("unreachable");
+    expect(await m25.postAdvice({ organizationId: ORG }, received.adviceId)).toMatchObject({
+      outcome: "posted",
+      postedLineCount: 1,
+      unmatchedLineCount: 0,
+    });
+
+    const dispatcher = createOutboxDispatcher({
+      db: handle.db,
+      orgs: { listActiveOrgs: async () => [{ organizationId: ORG }] },
+      eventCatalog: catalog,
+      consumers: [
+        buildM23RemittanceConsumer({
+          db: handle.db,
+          outbox: {
+            publish: (tx, input) =>
+              publisher.publish(tx as never, { ...input, callerModule: "m23" } as never),
+          },
+        }),
+      ],
+    });
+    await dispatcher.tick();
+    expect(await claimState(claimId)).toBe("PAID");
+
+    // Redelivery of the file, a second post and a second drain change nothing.
+    expect(await m25.receiveAdvice({ organizationId: ORG }, ingest)).toMatchObject({
+      outcome: "duplicate",
+    });
+    expect(await m25.postAdvice({ organizationId: ORG }, received.adviceId)).toMatchObject({
+      outcome: "already_posted",
+    });
+    await dispatcher.tick();
+
+    const lines = await admin.query(
+      `SELECT match_state, claim_id, clp04_total_payment_amount::text AS paid
+         FROM remittance_line WHERE remittance_advice_id = $1`,
+      [received.adviceId],
+    );
+    expect(lines.rows).toEqual([{ match_state: "posted", claim_id: claimId, paid: "1000.00" }]);
+    const ledger = await admin.query(
+      `SELECT count(*)::int AS n FROM patient_responsibility_ledger pl
+         JOIN remittance_line rl ON pl.remittance_line_id = rl.id WHERE rl.remittance_advice_id = $1`,
+      [received.adviceId],
+    );
+    expect(ledger.rows[0].n).toBe(1);
+    // The claim moved to PAID once, from ACK_ACCEPTED, on this very advice (the state service's history row).
+    const paidHistory = await admin.query(
+      `SELECT from_state::text AS from_state, remittance_advice_id
+         FROM claim_state_history WHERE claim_id = $1 AND to_state = 'PAID'`,
+      [claimId],
+    );
+    expect(paidHistory.rows).toEqual([
+      { from_state: "ACK_ACCEPTED", remittance_advice_id: received.adviceId },
+    ]);
+    const paidEvents = await admin.query(
+      "SELECT count(*)::int AS n FROM outbox_event WHERE event_type = 'm25.remittance.claim_paid' AND organization_id = $1 AND payload->>'claimId' = $2",
+      [ORG, claimId],
+    );
+    expect(paidEvents.rows[0].n).toBe(1);
+  });
+
+  describe("S05 (#709): a killed worker never causes a blind resend", () => {
+    const X12_CLAIM = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "packages",
+        "x12-837-client",
+        "src",
+        "clearinghouse",
+        "__fixtures__",
+        "stedi-claim.x12",
+      ),
+      "utf8",
+    );
+    const KILLED = "worker killed";
+
+    function rig(opts?: { dropAfterLanding?: boolean }) {
+      const uploads: string[] = [];
+      const anomalies: unknown[] = [];
+      const gateway: DirectMacGateway = {
+        generate: async () => ({ x12: X12_CLAIM }),
+        upload: async ({ controlNumber }) => {
+          uploads.push(controlNumber);
+          // The file is at the MAC portal, but the answer never reaches the worker.
+          if (opts?.dropAfterLanding) throw new Error("connection reset after the upload landed");
+          return { accepted: true, fileId: `file-${uploads.length}` };
+        },
+        pullAcknowledgments: async () => [],
+      };
+      const store = createDrizzleAttemptStore(handle.db);
+      return {
+        uploads,
+        anomalies,
+        store,
+        deps: (attempts: SubmissionAttemptStore = store) =>
+          depsFor(
+            new DirectMacTransport({ attempts, gateway, onAnomaly: (a) => anomalies.push(a) }),
+            "direct_mac",
+            X12_CLAIM,
+            store,
+          ),
+      };
+    }
+
+    async function seed(patient: string) {
+      const seeded = await seedReadyClaim({ patient, attemptIndex: 0, withBlockingFailure: false });
+      const job: ClaimSubmitJob = {
+        organizationId: ORG,
+        claimId: seeded.claimId,
+        submissionId: seeded.submissionId,
+        claimControlNumber: seeded.ccn,
+        attemptIndex: 0,
+      };
+      const retry: ClaimSubmitRetryJob = {
+        organizationId: ORG,
+        claimId: seeded.claimId,
+        submissionId: seeded.submissionId,
+        attemptIndex: 0,
+      };
+      return { ...seeded, job, retry };
+    }
+
+    /** Run the worker and then "kill" it: its database transaction never commits. */
+    const runThenKill = (deps: M23WorkerDeps, job: ClaimSubmitJob) =>
+      runInOrg(async (tx) => {
+        await runClaimSubmit(tx, deps, job);
+        throw new Error(KILLED);
+      });
+
+    const attemptStatus = async (ccn: string) =>
+      (
+        await admin.query(
+          "SELECT status::text AS status FROM clearinghouse_submission_attempt WHERE idempotency_key = $1",
+          [`m23.claim.${ccn}`],
+        )
+      ).rows.map((r) => r.status);
+
+    const operator = (store: SubmissionAttemptStore) =>
+      buildClearinghouseAttemptResolutionService(
+        store,
+        () => new Date(Date.now() + 48 * 60 * 60_000),
+      );
+
+    const resolveInput = (ccn: string) =>
+      ({ providerEntityId: PE, usage: "test", idempotencyKey: `m23.claim.${ccn}` }) as const;
+
+    /** After the kill, the redelivered job surfaces the in-doubt attempt and sends nothing. */
+    async function expectSurfacedNotResent(
+      r: ReturnType<typeof rig>,
+      c: Awaited<ReturnType<typeof seed>>,
+      sentBefore: number,
+    ) {
+      expect(await attemptStatus(c.ccn)).toEqual(["reserved"]);
+      expect(await claimState(c.claimId)).toBe("READY");
+      expect((await submissionRow(c.submissionId)).outcome).toBe("queued");
+
+      await runInOrg((tx) => runClaimSubmit(tx, r.deps(), c.job));
+      const sub = await submissionRow(c.submissionId);
+      expect(sub.outcome).toBe("failed_portal");
+      expect(sub.outcome_reason).toMatch(/CH_IN_DOUBT/);
+      expect(await claimState(c.claimId)).toBe("READY");
+      await expect(runInOrg((tx) => runClaimSubmitRetry(tx, r.deps(), c.retry))).rejects.toThrow(
+        /in doubt/,
+      );
+      expect(r.uploads).toHaveLength(sentBefore);
+      expect(await attemptStatus(c.ccn)).toEqual(["reserved"]);
+    }
+
+    it("killed after the reservation, before the send: surfaced, not resent; 'not filed' lets the retry send once under a new number", async () => {
+      const r = rig();
+      const c = await seed("f1f1f1f1-f1f1-f1f1-f1f1-f1f1f1f1f1f1");
+      // The worker dies right after the reservation commits: the store write is the last thing that happened.
+      const dyingStore: SubmissionAttemptStore = {
+        ...r.store,
+        reserve: async (a) => {
+          const held = await r.store.reserve(a);
+          throw new Error(`${KILLED} after ${held.attempt.status}`);
+        },
+      };
+      await expect(runThenKill(r.deps(dyingStore), c.job)).rejects.toThrow(KILLED);
+      expect(r.uploads).toHaveLength(0);
+      await expectSurfacedNotResent(r, c, 0);
+
+      const settled = await operator(r.store).resolveStale(
+        { organizationId: ORG, userId: CONTRACT_OPERATOR_ID },
+        { ...resolveInput(c.ccn), outcome: "not_filed" },
+      );
+      expect(settled.status).toBe("voided");
+      const audit = await admin.query(
+        "SELECT actor_user_id FROM audit_event WHERE resource_kind='clearinghouse_submission_attempt' AND event_type='clearinghouse_submission_attempt.update' ORDER BY created_at DESC LIMIT 1",
+      );
+      expect(audit.rows[0]?.actor_user_id).toBe(CONTRACT_OPERATOR_ID);
+
+      await runInOrg((tx) => runClaimSubmitRetry(tx, r.deps(), c.retry));
+      expect(await claimState(c.claimId)).toBe("SUBMITTED");
+      expect(r.uploads).toHaveLength(1);
+      expect(r.uploads[0]).not.toBe(c.ccn);
+    });
+
+    it("killed after the send, before the response: surfaced, not resent; 'filed' completes the claim without a second upload", async () => {
+      const r = rig({ dropAfterLanding: true });
+      const c = await seed("f2f2f2f2-f2f2-f2f2-f2f2-f2f2f2f2f2f2");
+      await expect(runThenKill(r.deps(), c.job)).rejects.toThrow(KILLED);
+      expect(r.uploads).toEqual([c.ccn]);
+      expect(r.anomalies).toHaveLength(1);
+      await expectSurfacedNotResent(r, c, 1);
+
+      const settled = await operator(r.store).resolveStale(
+        { organizationId: ORG, userId: CONTRACT_OPERATOR_ID },
+        { ...resolveInput(c.ccn), outcome: "sent", clearinghouseSubmissionId: "portal-file-77" },
+      );
+      expect(settled).toMatchObject({
+        status: "sent",
+        clearinghouseSubmissionId: "portal-file-77",
+      });
+
+      await runInOrg((tx) => runClaimSubmitRetry(tx, r.deps(), c.retry));
+      expect(await claimState(c.claimId)).toBe("SUBMITTED");
+      expect(r.uploads).toEqual([c.ccn]);
+      const rows = await admin.query(
+        "SELECT outcome::text AS outcome, generated_file_uri FROM claim_submission WHERE claim_id = $1 AND outcome = 'submitted'",
+        [c.claimId],
+      );
+      expect(rows.rows).toEqual([
+        { outcome: "submitted", generated_file_uri: "clearinghouse:direct_mac:portal-file-77" },
+      ]);
+    });
+
+    it("killed after the response, before the commit: the redelivered job replays the recorded send and files nothing twice", async () => {
+      const r = rig();
+      const c = await seed("f3f3f3f3-f3f3-f3f3-f3f3-f3f3f3f3f3f3");
+      await expect(runThenKill(r.deps(), c.job)).rejects.toThrow(KILLED);
+      expect(r.uploads).toEqual([c.ccn]);
+      expect(await attemptStatus(c.ccn)).toEqual(["sent"]);
+      expect(await claimState(c.claimId)).toBe("READY");
+      expect((await submissionRow(c.submissionId)).outcome).toBe("queued");
+
+      await runInOrg((tx) => runClaimSubmit(tx, r.deps(), c.job));
+      expect(await claimState(c.claimId)).toBe("SUBMITTED");
+      expect((await submissionRow(c.submissionId)).outcome).toBe("submitted");
+      expect(r.uploads).toEqual([c.ccn]);
+    });
   });
 });

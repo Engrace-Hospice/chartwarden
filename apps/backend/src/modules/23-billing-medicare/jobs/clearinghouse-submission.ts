@@ -7,9 +7,11 @@ import type {
   AckEvent,
   ClearinghouseBinding,
   ClearinghouseContext,
+  SubmissionAttempt,
+  SubmissionAttemptStore,
   SubmissionKind,
 } from "@chartwarden/x12-837-client";
-import { routeAckEvent } from "@chartwarden/x12-837-client";
+import { routeAckEvent, scopeKey } from "@chartwarden/x12-837-client";
 
 /** Resolves the per-call clearinghouse context (the composition root reads provider entity + MAC credential). */
 export interface ClearinghouseContextPort {
@@ -23,6 +25,31 @@ export interface ClearinghouseContextPort {
 export interface M23TransportDeps {
   readonly binding: ClearinghouseBinding;
   readonly contexts: ClearinghouseContextPort;
+  /**
+   * The durable attempt store behind the binding. Lets a retry see how an operator settled an in-doubt attempt
+   * (filed or not filed); absent, an in-doubt attempt can never be judged settled and the retry stays blocked.
+   */
+  readonly attempts?: SubmissionAttemptStore;
+}
+
+/** The idempotency key {@link transportUpload} files a submission under. */
+export const submissionKeyFor = (kind: SubmissionKind, controlNumber: string): string =>
+  `m23.${kind}.${controlNumber}`;
+
+/** The attempt record of a claim's earlier send, or null when there is none (or no store is bound). */
+export async function priorClaimAttempt(
+  transport: M23TransportDeps,
+  organizationId: string,
+  providerEntityId: string,
+  controlNumber: string,
+): Promise<SubmissionAttempt | null> {
+  if (!transport.attempts) return null;
+  const ctx = await transport.contexts.contextFor(organizationId, providerEntityId);
+  return transport.attempts.find(
+    organizationId,
+    scopeKey(ctx),
+    submissionKeyFor("claim", controlNumber),
+  );
 }
 
 /** The vendor the workers must use, or null for the legacy ports. */
@@ -70,7 +97,7 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
     const submission = {
       kind,
       controlNumber: input.controlNumber,
-      idempotencyKey: `m23.${kind}.${input.controlNumber}`,
+      idempotencyKey: submissionKeyFor(kind, input.controlNumber),
       payload: { format: "x12", x12: input.x12 },
     } as const;
     const result =

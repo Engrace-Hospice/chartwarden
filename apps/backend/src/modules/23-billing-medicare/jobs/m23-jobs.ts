@@ -60,6 +60,7 @@ import type { DdeWatchdogPort } from "../services/dde-watchdog";
 import {
   type M23TransportDeps,
   activeTransport,
+  priorClaimAttempt,
   pullTransportAcks,
   transportUpload,
 } from "./clearinghouse-submission";
@@ -1022,10 +1023,24 @@ export async function runClaimSubmitRetry(
 
   // #706/#707: a prior attempt left IN DOUBT at the clearinghouse (the file may have reached the MAC portal, which does
   // not dedupe) must be reconciled, not re-sent under a fresh control number.
-  if (activeTransport(deps) && priorSubmission.outcomeReason?.includes(CH.IN_DOUBT)) {
-    throw new Error(
-      `claim submission ${job.submissionId} is in doubt at the clearinghouse (${CH.IN_DOUBT}); reconcile it before retrying`,
+  // An operator's settlement (the clearinghouse-attempt resolve route) is the way out: "not filed" voids the key so a
+  // fresh control number may be sent; "filed" means the claim is already at the MAC and must not be sent again.
+  let filedAs: string | null = null;
+  const transport = activeTransport(deps);
+  if (transport && priorSubmission.outcomeReason?.includes(CH.IN_DOUBT)) {
+    const earlier = await priorClaimAttempt(
+      transport,
+      job.organizationId,
+      claim.providerEntityId,
+      priorSubmission.claimControlNumber,
     );
+    if (earlier?.status === "sent" && earlier.clearinghouseSubmissionId) {
+      filedAs = `clearinghouse:${transport.binding.vendor}:${earlier.clearinghouseSubmissionId}`;
+    } else if (earlier?.status !== "voided") {
+      throw new Error(
+        `claim submission ${job.submissionId} is in doubt at the clearinghouse (${CH.IN_DOUBT}); reconcile it before retrying`,
+      );
+    }
   }
 
   // Preflight the §2.3 submit guard BEFORE transmitting anything — mirrors {@link runClaimSubmit}. A
@@ -1067,12 +1082,16 @@ export async function runClaimSubmitRetry(
   if (!parsedControlNumber) {
     throw new Error(`claim submission ${job.submissionId} has an invalid control number`);
   }
-  const claimControlNumber = deriveControlNumber({
-    ccn: parsedControlNumber.ccn,
-    serviceFrom: claim.serviceFrom,
-    claimId: claim.id,
-    attemptIndex,
-  });
+  // A claim settled as filed keeps its control number: the MAC's acknowledgments arrive under it.
+  const claimControlNumber =
+    filedAs === null
+      ? deriveControlNumber({
+          ccn: parsedControlNumber.ccn,
+          serviceFrom: claim.serviceFrom,
+          claimId: claim.id,
+          attemptIndex,
+        })
+      : priorSubmission.claimControlNumber;
 
   let generated: {
     readonly x12: string;
@@ -1084,20 +1103,24 @@ export async function runClaimSubmitRetry(
   } | null = null;
   let failureReason: string | null = null;
   try {
-    generated = await x12Of(deps).generate837i({
-      organizationId: job.organizationId,
-      claimId: job.claimId,
-      claimControlNumber,
-      claimDocument: claimDocumentFor(claim, claimControlNumber),
-    });
-    uploaded = await macPortalOf(deps).upload({
-      organizationId: job.organizationId,
-      providerEntityId: claim.providerEntityId,
-      kind: "claim_837i",
-      x12: generated.x12,
-      controlNumber: claimControlNumber,
-    });
-    if (!uploaded.accepted) failureReason = "MAC portal rejected the retry upload";
+    if (filedAs !== null) {
+      uploaded = { accepted: true, generatedFileUri: filedAs };
+    } else {
+      generated = await x12Of(deps).generate837i({
+        organizationId: job.organizationId,
+        claimId: job.claimId,
+        claimControlNumber,
+        claimDocument: claimDocumentFor(claim, claimControlNumber),
+      });
+      uploaded = await macPortalOf(deps).upload({
+        organizationId: job.organizationId,
+        providerEntityId: claim.providerEntityId,
+        kind: "claim_837i",
+        x12: generated.x12,
+        controlNumber: claimControlNumber,
+      });
+      if (!uploaded.accepted) failureReason = "MAC portal rejected the retry upload";
+    }
   } catch (err) {
     failureReason = err instanceof Error ? err.message : String(err);
   }
@@ -1763,7 +1786,9 @@ async function runTransportAckPull(
     failures.push(err instanceof Error ? err.message : "apply failed");
   }
   if (failures.length > 0) {
-    throw new Error(`clearinghouse ack pull: ${failures.length} failure(s): ${failures.join("; ")}`);
+    throw new Error(
+      `clearinghouse ack pull: ${failures.length} failure(s): ${failures.join("; ")}`,
+    );
   }
 }
 

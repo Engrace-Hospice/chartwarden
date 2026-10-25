@@ -8158,6 +8158,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       // without it while a vendor is configured.
       transport: {
         binding: clearinghouseBinding,
+        attempts: createDrizzleAttemptStore(dbHandle.db),
         contexts: buildClearinghouseContextPort({
           db: dbHandle.db,
           env: process.env,
