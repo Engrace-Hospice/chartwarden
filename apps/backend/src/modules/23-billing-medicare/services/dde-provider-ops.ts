@@ -19,6 +19,58 @@ export function ddeIdempotencyKey(itemId: string, attemptNumber: number): string
   return `dde:${itemId}:${attemptNumber}`;
 }
 
+/**
+ * How long one provider call may take before we stop waiting (and abort the signal handed to the port). A send that
+ * hits this bound is IN DOUBT, not failed: the vendor may still have keyed it.
+ */
+export const DDE_PROVIDER_CALL_TIMEOUT_MS = 30_000;
+
+/**
+ * The degraded codes that PROVE the operation never left for FISS (refused or unconfigured before send). Everything else
+ * (UNAVAILABLE may be a timeout after the request was written; IDEMPOTENCY_CONFLICT means a vendor operation exists;
+ * unknown codes) leaves the item "possibly sent".
+ */
+export const REFUSED_BEFORE_SEND: ReadonlySet<string> = new Set([
+  DDE.NOT_WIRED,
+  DDE.NOT_PROVISIONED,
+  DDE.OPERATOR_NOT_ENROLLED,
+  DDE.INVALID_REQUEST,
+]);
+
+export type BoundedCall<T> =
+  | { readonly kind: "done"; readonly value: T }
+  | { readonly kind: "timeout" }
+  | { readonly kind: "threw" };
+
+/**
+ * Run one provider call under a bound. The port's contract is to return a degraded envelope rather than throw, so a
+ * throw is a defect we cannot interpret ("threw"); neither it nor a timeout says whether the vendor acted.
+ */
+export async function runWithTimeout<T>(
+  run: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+): Promise<BoundedCall<T>> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<{ kind: "timeout" }>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve({ kind: "timeout" });
+    }, timeoutMs);
+  });
+  const call = Promise.resolve()
+    .then(() => run(controller.signal))
+    .then(
+      (value): BoundedCall<T> => ({ kind: "done", value }),
+      (): BoundedCall<T> => ({ kind: "threw" }),
+    );
+  try {
+    return await Promise.race([call, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 interface Refusal {
   readonly status: number;
   readonly message: string;

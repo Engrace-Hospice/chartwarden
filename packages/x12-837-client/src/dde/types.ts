@@ -63,6 +63,8 @@ export interface DdeContext {
   readonly correlationId: string;
   /** `test` MUST reach only vendor test mode. */
   readonly usage: "test" | "production";
+  /** Aborted when the caller stops waiting; an adapter passes it to its HTTP client. The vendor may still have acted. */
+  readonly signal?: AbortSignal;
 }
 
 /** The isolation boundary of every piece of provider state. */

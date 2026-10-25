@@ -17,7 +17,7 @@ export const ddeWorkEvent = pgTable(
     workItemId: uuid("work_item_id")
       .notNull()
       .references(() => ddeWorkItem.id, { onDelete: "restrict" }), // intra-M23 parent
-    event: text("event").notNull(), // 'create'|'assign'|'unassign'|'start'|'submit'|'accept'|'return'|'retry'|'close'|'cancel'|'reassign'
+    event: text("event").notNull(), // 'create'|'assign'|'unassign'|'start'|'submit'|'accept'|'return'|'retry'|'close'|'cancel'|'reassign'|'provider_send_started'|'provider_send_refused'|'provider_in_doubt'
     fromState: text("from_state"), // NULL on the creation row
     toState: text("to_state").notNull(),
     attemptNumber: integer("attempt_number").notNull(),

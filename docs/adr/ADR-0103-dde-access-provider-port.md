@@ -94,3 +94,47 @@ The platform binds `DDE_PROVIDER` at boot (`bindDdeProvider`); no vendor adapter
 unset or `manual` and the routes answer `DDE_NOT_WIRED`. **Not built:** a batch ingest of the cursor-paged daily change report
 (`fetchOutcomes` needs a persisted cursor), and the beneficiary identifier: the queue holds no MBI (ADR-0052 D7), so the
 operation document is the keying sheet (ids, dates, codes) and a real adapter will need an MBI seam before it can key anything.
+
+## Amendment 2026-10-25 (2) — no transaction across the vendor call, and the "possibly sent" marker (issue #760 follow-up)
+
+`submit-via-provider` is three steps, never one transaction. (1) A short org-scoped transaction checks the ownership rule,
+the version and the state, refuses an item that is already possibly sent, and durably stamps `provider_in_doubt_at` and
+`provider_operator_membership_id` (history event `provider_send_started`, version bump). (2) The vendor call runs with no
+connection held, bounded by `DDE_PROVIDER_CALL_TIMEOUT_MS` (30 s); an `AbortSignal` is passed as the optional `DdeContext.signal`
+(an adapter hands it to its HTTP client). (3) A second short transaction applies the outcome to the item as it is then, with a
+fresh version: a receipt becomes `submitted` and clears the marker; only `DDE_NOT_WIRED`, `DDE_NOT_PROVISIONED`, `DDE_OPERATOR_NOT_ENROLLED` and `DDE_INVALID_REQUEST` prove the
+operation never left, so only they clear the marker (`provider_send_refused`), and only for the very send that set it (same
+state, attempt and marker timestamp). `DDE_UNAVAILABLE` (it may be a timeout after the request was written),
+`DDE_IDEMPOTENCY_CONFLICT` and unknown codes stay in doubt. A timeout, a throwing adapter,
+`DDE_IN_DOUBT`, an unusable receipt, or an item that moved while the vendor worked (for example a cancel) leaves the marker set
+and appends `provider_in_doubt`; the caller gets `409 DDE_IN_DOUBT`. The idempotency key (`dde:<item>:<attempt>`) and the
+optimistic version are unchanged; a double click loses the phase 1 version check (`412`) before any vendor call.
+
+While the marker is set the item reads `providerInDoubt: true` and a second provider send is refused with `409 DDE_IN_DOUBT`
+(the port says an in-doubt send must never be retried). The way out is a manual `record-submission`, which clears the marker and
+notes `resolvedProviderInDoubt` in the history. A sync cannot resolve it: an in-doubt item holds no provider reference to ask
+about (the port has no lookup by idempotency key), and `sync-provider` answers 409 with a message saying so.
+
+**Whose DDE ID.** A DDE ID is per person and an operation is keyed under one person's ID, so a status inquiry is made as the
+operator who submitted (`provider_operator_membership_id`), not as whoever clicks sync (an admin stepping in for an absent
+assignee). Rows submitted before migration 1272 have no recorded operator; sync falls back to the syncing operator for those.
+The audit trail still names the person who synced.
+
+**Still not built:** the batch ingest of the cursor-paged daily change report (`fetchOutcomes` needs a persisted cursor and a real
+adapter) and the MBI seam; and the port has no status lookup by idempotency key, so a possibly-sent operation can only be
+settled by a person checking DDE.
+
+Phase 3 is applied as the operator who started the send, without re-running the ownership rule: that person's DDE ID keyed the
+operation, so recording its outcome against the item is right even if the item was reassigned meanwhile. If a manual
+`record-submission` raced the vendor call and the call then succeeded, the marker is put back (history `provider_send_started`
+with `restored`, and the opaque provider reference in the `provider_in_doubt` detail) so the live vendor operation is never
+invisible. The marker events publish `m23.dde_item.state_changed` with `fromState = toState`; the catalog accepts them and
+consumers (none declared) must treat `event` as open. A thrown adapter error is reported only as "in doubt" (no logger is
+injected into the queue service); an adapter should log its own failures.
+
+While the marker is set, `cancel` and `retry` are refused with `409 DDE_IN_DOUBT` (either would free the subject for a second
+keying); a manual `record-submission`, `record-acceptance` or `record-outcome` by a person who checked DDE settles it. Known
+limits: a manual `record-submission` is allowed while a send is still in flight (the marker alone cannot tell a live call from a
+crashed one), and if that call then times out the item shows no doubt; the success case is covered by the restored marker. The
+`REFUSED_BEFORE_SEND` allowlist is only as sound as the adapter contract: a real adapter must return those four codes only when
+nothing left for the vendor, and its conformance test must pin that before it is bound.

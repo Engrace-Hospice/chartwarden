@@ -15,9 +15,13 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m23:dde-queue-provider:live
  */
 import {
+  DDE,
   type DdeAccessProvider,
   type DdeContext,
   type DdeOperation,
+  type DdeReceipt,
+  type X12WorkerResult,
+  degraded,
 } from "@chartwarden/x12-837-client";
 import { InMemoryDdeProvider } from "@chartwarden/x12-837-client/testing";
 import type { FastifyInstance } from "fastify";
@@ -27,12 +31,14 @@ import {
   BASE,
   type DdeLiveDb,
   MEMBERSHIP_A,
+  MEMBERSHIP_D,
   ORG_A,
   ORG_B,
   PE_A,
   USER_A,
   USER_B,
   USER_C,
+  USER_D,
   buildDdeApp,
   connectDdeLiveDb,
   seedNoe,
@@ -42,11 +48,20 @@ const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const SCOPE = { organizationId: ORG_A, providerEntityId: PE_A, usage: "production" as const };
 const MAC_DAY = new Date("2026-01-17T15:00:00Z");
 
+type SubmitHook = (
+  ctx: DdeContext,
+  op: DdeOperation,
+) => Promise<X12WorkerResult<DdeReceipt>> | undefined;
+
 /** Records what the queue sent (calls only; never payloads) and delegates to the in-memory reference. */
 class SpyProvider implements DdeAccessProvider {
   readonly vendor = "in_memory" as const;
   readonly submits: { key: string; operatorMembershipId: string; usage: string; kind: string }[] =
     [];
+  readonly statusOperators: string[] = [];
+  readonly signals: (AbortSignal | undefined)[] = [];
+  /** Replaces the answer of the next submits (return undefined to delegate). */
+  onSubmit?: SubmitHook;
   constructor(readonly inner: InMemoryDdeProvider) {}
   submitOperation(ctx: DdeContext, op: DdeOperation) {
     this.submits.push({
@@ -55,12 +70,14 @@ class SpyProvider implements DdeAccessProvider {
       usage: ctx.usage,
       kind: op.kind,
     });
-    return this.inner.submitOperation(ctx, op);
+    this.signals.push(ctx.signal);
+    return this.onSubmit?.(ctx, op) ?? this.inner.submitOperation(ctx, op);
   }
   fetchOutcomes(ctx: DdeContext, cursor: string | null) {
     return this.inner.fetchOutcomes(ctx, cursor);
   }
   fetchOperationStatus(ctx: DdeContext, ref: string) {
+    this.statusOperators.push(ctx.operatorMembershipId);
     return this.inner.fetchOperationStatus(ctx, ref);
   }
 }
@@ -96,12 +113,16 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
   const submitProvider = (id: string, version: number, headers = asA(stepUp)) =>
     post(`/${id}/submit-via-provider`, headers, { expectedVersion: version });
 
-  async function rebuild(provider: DdeAccessProvider | undefined) {
+  async function rebuild(
+    provider: DdeAccessProvider | undefined,
+    extra: { ddeProviderTimeoutMs?: number } = {},
+  ) {
     await app?.close();
     app = await buildDdeApp(live, {
       ...(provider ? { ddeProvider: provider } : {}),
       ddeUsage: "production",
       now: () => MAC_DAY,
+      ...extra,
     });
   }
 
@@ -178,7 +199,7 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
       provider_reference: "dde-ref-1",
     });
     // A second click on the now-submitted item never reaches the provider.
-    const again = await submitProvider(id, 3);
+    const again = await submitProvider(id, 4);
     expect(again.statusCode).toBe(409);
     expect(spy.submits).toHaveLength(1);
 
@@ -377,5 +398,328 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
     } finally {
       await appClient.end();
     }
+  });
+  // ── #760 follow-up: the vendor call holds no transaction; a send that may have reached FISS leaves a durable marker ──
+
+  const claimAs = async (id: string, user: string, version: number) => {
+    const h = { "x-test-user": user, "idempotency-key": `dde-prov-x-${++counter}` };
+    expect((await post(`/${id}/claim`, h, { expectedVersion: version })).statusCode).toBe(200);
+    expect(
+      (
+        await post(
+          `/${id}/start`,
+          { ...h, "idempotency-key": `dde-prov-x-${++counter}` },
+          { expectedVersion: version + 1 },
+        )
+      ).statusCode,
+    ).toBe(200);
+  };
+  const asD = (extra: Record<string, string> = {}) => ({
+    "x-test-user": USER_D,
+    "idempotency-key": `dde-prov-d-${++counter}`,
+    ...extra,
+  });
+  /** Item created by A, claimed and started by D (version 2). */
+  async function inProgressForD(): Promise<string> {
+    const noeId = await seedNoe(admin, { windowTarget: "2026-01-20", electionDate: "2026-01-15" });
+    const created = await post("", asA(), { itemType: "noe", subjectId: noeId });
+    const id = created.json().ddeWorkItemId as string;
+    await claimAs(id, USER_D, 0);
+    return id;
+  }
+  const eventsOf = async (id: string, event: string) =>
+    (
+      await admin.query("SELECT detail FROM dde_work_event WHERE work_item_id=$1 AND event=$2", [
+        id,
+        event,
+      ])
+    ).rows;
+  const idleInTx = async () =>
+    (
+      await admin.query(
+        "SELECT count(*)::int AS n FROM pg_stat_activity WHERE state LIKE 'idle in transaction%' AND usename = 'chartwarden_app'",
+      )
+    ).rows[0].n as number;
+  const getItem = (id: string) =>
+    app.inject({ method: "GET", url: `${BASE}/${id}`, headers: { "x-test-user": USER_A } });
+
+  it("holds no database transaction while the vendor call is in flight", async () => {
+    const { id } = await inProgress();
+    let idleDuringCall = -1;
+    spy.onSubmit = (ctx, op) =>
+      (async () => {
+        idleDuringCall = await idleInTx();
+        return spy.inner.submitOperation(ctx, op);
+      })();
+    const res = await submitProvider(id, 2);
+    expect(res.statusCode).toBe(200);
+    expect(idleDuringCall).toBe(0);
+    const stored = await row(id);
+    expect(stored).toMatchObject({ state: "submitted", provider_in_doubt_at: null });
+    expect(stored.provider_operator_membership_id).toBe(MEMBERSHIP_A);
+    expect(res.json()).toMatchObject({ providerInDoubt: false });
+    expect(await eventsOf(id, "provider_send_started")).toHaveLength(1);
+  });
+
+  it("a timeout leaves a durable possibly-sent marker, aborts the call and blocks a second send", async () => {
+    await rebuild(spy, { ddeProviderTimeoutMs: 50 });
+    const { id } = await inProgress();
+    spy.onSubmit = () => new Promise(() => undefined);
+    const res = await submitProvider(id, 2);
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("DDE_IN_DOUBT");
+    expect(spy.signals[0]?.aborted).toBe(true);
+    const stored = await row(id);
+    expect(stored.state).toBe("in_progress");
+    expect(stored.provider_in_doubt_at).not.toBeNull();
+    expect(stored.provider_operator_membership_id).toBe(MEMBERSHIP_A);
+    expect(await eventsOf(id, "provider_in_doubt")).toHaveLength(1);
+
+    const view = await getItem(id);
+    expect(view.json()).toMatchObject({ providerInDoubt: true });
+    expect(view.json().providerInDoubtAt).toEqual(expect.any(String));
+
+    // Another click is refused before the vendor is reached again; a sync has nothing to ask about.
+    spy.onSubmit = undefined;
+    const again = await submitProvider(id, stored.version);
+    expect(again.statusCode).toBe(409);
+    expect(again.json().error.code).toBe("DDE_IN_DOUBT");
+    expect(spy.submits).toHaveLength(1);
+    expect((await post(`/${id}/sync-provider`, asA())).statusCode).toBe(409);
+  });
+
+  it("DDE_IN_DOUBT from the provider, a throwing adapter and an unusable receipt all leave the marker", async () => {
+    const cases: SubmitHook[] = [
+      () => Promise.resolve(degraded(DDE.IN_DOUBT, "unconfirmed")),
+      () => Promise.reject(new Error("socket hang up")),
+      (_ctx, op) =>
+        Promise.resolve({
+          ok: true,
+          data: {
+            providerReference: "has space",
+            idempotencyKey: op.idempotencyKey,
+            controlNumber: op.controlNumber,
+            receivedAt: "2026-01-17T15:00:00Z",
+            replayed: false,
+          },
+        } as X12WorkerResult<DdeReceipt>),
+    ];
+    for (const hook of cases) {
+      const { id } = await inProgress();
+      spy.onSubmit = hook;
+      const res = await submitProvider(id, 2);
+      expect([409, 502]).toContain(res.statusCode);
+      expect((await row(id)).provider_in_doubt_at).not.toBeNull();
+      expect(await eventsOf(id, "provider_in_doubt")).toHaveLength(1);
+    }
+  });
+
+  it("a refusal that provably never reached FISS clears the marker and the item can be sent again", async () => {
+    const { id } = await inProgress();
+    spy.onSubmit = () => Promise.resolve(degraded(DDE.INVALID_REQUEST, "malformed"));
+    const res = await submitProvider(id, 2);
+    expect(res.statusCode).toBe(422);
+    const stored = await row(id);
+    expect(stored).toMatchObject({
+      state: "in_progress",
+      provider_in_doubt_at: null,
+      provider_operator_membership_id: null,
+    });
+    expect(await eventsOf(id, "provider_send_refused")).toHaveLength(1);
+    spy.onSubmit = undefined;
+    const retry = await submitProvider(id, stored.version);
+    expect(retry.statusCode).toBe(200);
+    expect(retry.json()).toMatchObject({ state: "submitted", providerInDoubt: false });
+  });
+
+  it("a manual record-submission resolves the marker and says so in the history", async () => {
+    const { id } = await inProgress();
+    spy.onSubmit = () => Promise.reject(new Error("boom"));
+    await submitProvider(id, 2);
+    const inDoubt = await row(id);
+    expect(inDoubt.provider_in_doubt_at).not.toBeNull();
+    const res = await post(`/${id}/record-submission`, asA(stepUp), {
+      expectedVersion: inDoubt.version,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      state: "submitted",
+      submissionMode: "manual",
+      providerInDoubt: false,
+    });
+    expect(await row(id)).toMatchObject({
+      provider_in_doubt_at: null,
+      provider_operator_membership_id: null,
+    });
+    const submit = await eventsOf(id, "submit");
+    expect(submit[0].detail).toMatchObject({ resolvedProviderInDoubt: true });
+  });
+
+  it("cancel and retry are refused while the item is possibly sent; the vendor call that was in flight still lands", async () => {
+    const { id } = await inProgress();
+    let release: () => void = () => undefined;
+    const hold = new Promise<void>((r) => {
+      release = r;
+    });
+    let calling: () => void = () => undefined;
+    const called = new Promise<void>((r) => {
+      calling = r;
+    });
+    spy.onSubmit = (ctx, op) => {
+      calling();
+      return hold.then(() => spy.inner.submitOperation(ctx, op));
+    };
+    const pending = submitProvider(id, 2);
+    await called;
+    // The marker write bumped the version to 3: a cancel now would free the subject for a second keying.
+    const cancel = await post(`/${id}/cancel`, asA(), { expectedVersion: 3 });
+    expect(cancel.statusCode).toBe(409);
+    expect(cancel.json().error.code).toBe("DDE_IN_DOUBT");
+    release();
+    const res = await pending;
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ state: "submitted", providerInDoubt: false });
+  });
+
+  it("a double click still keys one operation (the marker write is version-checked)", async () => {
+    const { id } = await inProgress();
+    const [a, b] = await Promise.all([submitProvider(id, 2), submitProvider(id, 2)]);
+    expect([a.statusCode, b.statusCode].sort()).toEqual([200, 412]);
+    expect(spy.submits).toHaveLength(1);
+  });
+
+  it("ownership: another operator's item is 403 on submit and sync unless billing.dde.admin; admin override works", async () => {
+    const id = await inProgressForD();
+    const { id: ownedByA } = await inProgress();
+    const deniedSubmit = await submitProvider(ownedByA, 2, asD(stepUp));
+    expect(deniedSubmit.statusCode).toBe(403);
+    expect(spy.submits).toHaveLength(0);
+    expect((await row(ownedByA)).state).toBe("in_progress");
+
+    // D submits its own item; A (admin) syncs it and the provider is asked as D, the submitting operator.
+    const own = await submitProvider(id, 2, asD(stepUp));
+    expect(own.statusCode).toBe(200);
+    expect(spy.submits[0].operatorMembershipId).toBe(MEMBERSHIP_D);
+    expect((await row(id)).provider_operator_membership_id).toBe(MEMBERSHIP_D);
+    const adminSync = await post(`/${id}/sync-provider`, asA());
+    expect(adminSync.statusCode).toBe(200);
+    expect(spy.statusOperators).toEqual([MEMBERSHIP_D]);
+
+    // A's own submitted item: D is refused on sync (not an admin, not the assignee).
+    expect((await submitProvider(ownedByA, 2)).statusCode).toBe(200);
+    const deniedSync = await post(`/${ownedByA}/sync-provider`, asD());
+    expect(deniedSync.statusCode).toBe(403);
+    expect(spy.statusOperators).toEqual([MEMBERSHIP_D]);
+
+    // Admin override of the send itself: D's second item is sent by A, recorded as A.
+    const other = await inProgressForD();
+    const adminSend = await submitProvider(other, 2);
+    expect(adminSend.statusCode).toBe(200);
+    expect(spy.submits[2].operatorMembershipId).toBe(MEMBERSHIP_A);
+  });
+
+  it("sync falls back to the syncing operator for a row submitted before the operator was recorded", async () => {
+    const { id } = await inProgress();
+    expect((await submitProvider(id, 2)).statusCode).toBe(200);
+    await admin.query("UPDATE dde_work_item SET provider_operator_membership_id=NULL WHERE id=$1", [
+      id,
+    ]);
+    expect((await post(`/${id}/sync-provider`, asA())).statusCode).toBe(200);
+    expect(spy.statusOperators).toEqual([MEMBERSHIP_A]);
+  });
+  it("UNAVAILABLE and IDEMPOTENCY_CONFLICT may follow a send, so they leave the item possibly sent", async () => {
+    for (const code of [DDE.UNAVAILABLE, DDE.IDEMPOTENCY_CONFLICT, "SOMETHING_NEW"]) {
+      const { id } = await inProgress();
+      spy.onSubmit = () => Promise.resolve(degraded(code, "x"));
+      const res = await submitProvider(id, 2);
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe("DDE_IN_DOUBT");
+      expect((await row(id)).provider_in_doubt_at).not.toBeNull();
+    }
+  });
+
+  /** Hold the next vendor call open; resolves `started` when it is reached and `finish(result)` answers it. */
+  function holdNextSubmit() {
+    let finish: (r: "ok" | string) => void = () => undefined;
+    const answer = new Promise<"ok" | string>((r) => {
+      finish = r;
+    });
+    let reached: () => void = () => undefined;
+    const started = new Promise<void>((r) => {
+      reached = r;
+    });
+    spy.onSubmit = (ctx, op) => {
+      reached();
+      return answer.then((r) =>
+        r === "ok" ? spy.inner.submitOperation(ctx, op) : degraded<DdeReceipt>(r, "held"),
+      );
+    };
+    return { started, finish };
+  }
+
+  it("a refusal never clears a newer attempt's marker (second send marked in doubt between mark and clear)", async () => {
+    const { id } = await inProgress();
+    const held = holdNextSubmit();
+    const pending = submitProvider(id, 2);
+    await held.started;
+    // While send 1 is in flight: a person keys it by hand, it is returned, retried (attempt 2) ...
+    let v = (await row(id)).version as number;
+    expect(
+      (await post(`/${id}/record-submission`, asA(stepUp), { expectedVersion: v })).statusCode,
+    ).toBe(200);
+    v = (await row(id)).version;
+    expect(
+      (
+        await post(`/${id}/record-outcome`, asA(), {
+          expectedVersion: v,
+          outcome: "returned",
+          rtpReasonCode: "T0001",
+        })
+      ).statusCode,
+    ).toBe(200);
+    v = (await row(id)).version;
+    expect((await post(`/${id}/retry`, asA(), { expectedVersion: v })).statusCode).toBe(200);
+    // ... and a second send (attempt 2) has marked the item possibly sent.
+    await admin.query(
+      "UPDATE dde_work_item SET provider_in_doubt_at=now(), provider_operator_membership_id=$2 WHERE id=$1",
+      [id, MEMBERSHIP_A],
+    );
+    const marker = (await row(id)).provider_in_doubt_at;
+    held.finish(DDE.INVALID_REQUEST); // send 1's definitive refusal arrives late
+    expect((await pending).statusCode).toBe(422);
+    const after = await row(id);
+    expect(after.attempt_number).toBe(2);
+    expect(after.provider_in_doubt_at).toEqual(marker);
+    expect(await eventsOf(id, "provider_send_refused")).toHaveLength(0);
+  });
+
+  it("a manual submit that races a successful vendor call restores the marker: the vendor holds a live operation", async () => {
+    const { id } = await inProgress();
+    const held = holdNextSubmit();
+    const pending = submitProvider(id, 2);
+    await held.started;
+    const v = (await row(id)).version as number;
+    expect(
+      (await post(`/${id}/record-submission`, asA(stepUp), { expectedVersion: v })).statusCode,
+    ).toBe(200);
+    expect((await row(id)).provider_in_doubt_at).toBeNull();
+    held.finish("ok");
+    const res = await pending;
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("DDE_IN_DOUBT");
+    const after = await row(id);
+    expect(after).toMatchObject({ state: "submitted", submission_mode: "manual" });
+    expect(after.provider_in_doubt_at).not.toBeNull();
+    const inDoubtEvents = await eventsOf(id, "provider_in_doubt");
+    expect(inDoubtEvents[0].detail.reason).toMatch(/^item_changed:dde-ref-/);
+    // Retry is refused while possibly sent; a person recording the real outcome settles the marker.
+    const v2 = after.version as number;
+    const outcome = await post(`/${id}/record-outcome`, asA(), {
+      expectedVersion: v2,
+      outcome: "returned",
+      rtpReasonCode: "T0001",
+    });
+    expect(outcome.statusCode).toBe(200);
+    expect(outcome.json()).toMatchObject({ providerInDoubt: false });
   });
 });
