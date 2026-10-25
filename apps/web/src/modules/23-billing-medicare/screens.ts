@@ -59,6 +59,9 @@ const WageIndexes = lazy(() => import("./wage-indexes").then((m) => ({ default: 
 const ValidationWorklist = lazy(() =>
   import("./validation-worklist").then((m) => ({ default: m.ValidationWorklist })),
 );
+const BillingWorkQueue = lazy(() =>
+  import("./work-queue").then((m) => ({ default: m.BillingWorkQueue })),
+);
 
 export const billingScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 23,
@@ -72,6 +75,15 @@ export const billingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "billing.claim.read_ar_dashboard",
       screen: ArDashboard,
+    },
+    // --- the unified work queue: claims, NOE/NOTR notices and DDE items in one list (read-only; links out) ---
+    {
+      id: "billing.work-queue",
+      path: "/billing/queue",
+      title: "Billing Work Queue",
+      navGroup: "Billing",
+      requiredPermission: "billing.claim.read",
+      screen: BillingWorkQueue,
     },
     // --- claim workbench (Work Queue) (§5.1 #2) ---
     {

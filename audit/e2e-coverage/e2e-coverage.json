@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 205,
+  "totalStaticWebScreens": 206,
   "e2eReachedCount": 22,
-  "axeReachedCount": 193,
+  "axeReachedCount": 194,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -265,6 +265,14 @@
       "module": "23-billing-medicare",
       "path": "/billing/overrides",
       "permission": "billing.validation.read_override",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "billing.work-queue",
+      "module": "23-billing-medicare",
+      "path": "/billing/queue",
+      "permission": "billing.claim.read",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1861,6 +1869,14 @@
       "module": "23-billing-medicare",
       "path": "/billing/overrides",
       "permission": "billing.validation.read_override",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "billing.work-queue",
+      "module": "23-billing-medicare",
+      "path": "/billing/queue",
+      "permission": "billing.claim.read",
       "e2eReached": false,
       "axeReached": true
     },
