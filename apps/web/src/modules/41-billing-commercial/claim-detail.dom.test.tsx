@@ -133,7 +133,7 @@ describe("CommercialClaimDetail", () => {
     const rail = screen.getByRole("complementary", { name: /Payer, authorization/ });
     await within(rail).findByText("Synthetic Health Plan");
     expect(within(rail).getByText("Synthetic PPO")).toBeTruthy();
-    expect(within(rail).getByText("1 approved on file")).toBeTruthy();
+    expect(within(rail).getByText("Covers every billed day")).toBeTruthy();
     expect(within(rail).getByText("Commercial + Medicaid secondary")).toBeTruthy();
     expect(within(rail).getByText(/Medicaid other-payer loop is on the 837I/)).toBeTruthy();
     await screen.findByText("Vance, Ada", { exact: false });
@@ -224,6 +224,24 @@ describe("CommercialClaimDetail", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Mark ready" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Blocked: record an authorization first.");
+  });
+
+  it("announces a successful action politely and moves focus into the void confirmation", async () => {
+    mount(() => ({ body: view() }), {
+      [`POST ${BASE}/validate`]: () => ({
+        body: { runId: "run-2", outcome: "all_pass", results: [] },
+      }),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Re-validate" }));
+    await screen.findByText("Validation re-run. The results below are current.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Void claim" }));
+    const confirm = await screen.findByRole("button", { name: "Confirm void" });
+    await waitFor(() => expect(document.activeElement).toBe(confirm));
+    fireEvent.click(screen.getByRole("button", { name: "Keep claim" }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Void claim" })),
+    );
   });
 
   it("asks for confirmation before voiding", async () => {

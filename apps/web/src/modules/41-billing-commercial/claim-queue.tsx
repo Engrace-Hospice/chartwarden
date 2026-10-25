@@ -189,6 +189,13 @@ export function CommercialClaimQueue(): JSX.Element {
                   Try again
                 </Button>
               </div>
+            ) : load.items.length === 0 && load.hasMore ? (
+              <div className="wx-list-state">
+                <EmptyState
+                  title="Too many claims to scan"
+                  description="Nothing in the newest claims is in your caseload, and more claims exist. Narrow the filters (state, payer kind) to find yours."
+                />
+              </div>
             ) : load.items.length === 0 ? (
               <div className="wx-list-state">
                 <EmptyState

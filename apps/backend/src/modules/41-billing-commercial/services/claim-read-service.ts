@@ -4,7 +4,7 @@
 import { schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { NotFoundError } from "@chartwarden/types";
-import { and, asc, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lt, lte, or } from "drizzle-orm";
 import { isBlocking } from "../domain/rules";
 import { assertPatientReachable, assertProviderInScope, assertRowReachable } from "./scope-guard";
 import type { CommercialActor, CommercialClaimSeams, CommercialDb, CommercialTx } from "./types";
@@ -47,7 +47,9 @@ type ReadActor = Pick<CommercialActor, "organizationId" | "userId" | "billingSco
 
 /** The work queue is one page; `hasMore` tells the screen to narrow its filters (no cursor yet). */
 const QUEUE_PAGE_DEFAULT = 50;
-const QUEUE_SCAN_FACTOR = 2;
+const QUEUE_CHUNK = 100;
+const QUEUE_SCAN_CAP = 500;
+const PLAN_LIST_CAP = 200;
 
 export interface ClaimListFilter {
   readonly providerEntityId: string;
@@ -108,7 +110,6 @@ export function buildCommercialClaimReadService(
     async listClaims(actor, f) {
       assertProviderInScope(actor, f.providerEntityId);
       const limit = f.limit ?? QUEUE_PAGE_DEFAULT;
-      const scan = limit * QUEUE_SCAN_FACTOR;
       const c = schema.commercialClaims;
       const conds = [
         eq(c.organizationId, actor.organizationId),
@@ -119,43 +120,78 @@ export function buildCommercialClaimReadService(
       if (f.payerKind === "commercial_only") conds.push(isNull(c.secondaryPayerKind));
       if (f.payerKind === "medicare_secondary") conds.push(eq(c.secondaryPayerKind, "medicare"));
       if (f.payerKind === "medicaid_secondary") conds.push(eq(c.secondaryPayerKind, "medicaid"));
-      const rows = await inOrg(actor, (tx) =>
-        tx
-          .select({ claim: c, planName: schema.commercialPayerPlan.planName })
-          .from(c)
-          .innerJoin(schema.commercialPayerPlan, eq(schema.commercialPayerPlan.id, c.planId))
-          .where(and(...conds))
-          .orderBy(desc(c.updatedAt), desc(c.id))
-          .limit(scan + 1),
-      );
-      // Over-fetch so rows dropped by the caseload axis do not shrink the page below `limit`.
-      const items: Record<string, string | number | null>[] = [];
-      let hasMore = rows.length > scan;
-      for (const { claim, planName } of rows.slice(0, scan)) {
-        if (items.length === limit) {
-          hasMore = true;
-          break;
-        }
+      // Keyset pages over (updated_at, id), newest first. The caseload axis runs per page and per distinct patient; a page that
+      // yields nothing reachable moves on to the next one, up to QUEUE_SCAN_CAP rows, so a scoped actor's claims are never
+      // hidden behind other people's newer ones. Hitting the cap reports `hasMore` (narrow the filters).
+      const reachable = new Map<string, boolean>();
+      const isReachable = async (patientId: string): Promise<boolean> => {
+        const known = reachable.get(patientId);
+        if (known !== undefined) return known;
+        let ok = true;
         try {
-          await assertPatientReachable(actor, seams.caseload, claim.patientId);
-        } catch {
-          continue; // outside the caseload: absent from the queue, never an error
+          await assertPatientReachable(actor, seams.caseload, patientId);
+        } catch (error) {
+          if (!(error instanceof NotFoundError)) throw error; // a seam failure is a 5xx, not "not in caseload"
+          ok = false;
         }
-        items.push({
-          id: claim.id,
-          claimControlNumber: claim.claimControlNumber,
-          state: claim.state,
-          patientId: claim.patientId,
-          planId: claim.planId,
-          planName,
-          tob: claim.tob,
-          serviceFrom: claim.serviceFrom,
-          serviceTo: claim.serviceTo,
-          secondaryPayerKind: claim.secondaryPayerKind,
-          totalChargeCents: claim.totalChargeCents,
-          expectedPaymentCents: claim.expectedPaymentCents,
-          updatedAt: claim.updatedAt.toISOString(),
-        });
+        reachable.set(patientId, ok);
+        return ok;
+      };
+      const items: Record<string, string | number | null>[] = [];
+      let hasMore = false;
+      let scanned = 0;
+      let after: { updatedAt: Date; id: string } | null = null;
+      while (items.length < limit && !hasMore) {
+        const page: { claim: typeof c.$inferSelect; planName: string }[] = await inOrg(
+          actor,
+          (tx) =>
+            tx
+              .select({ claim: c, planName: schema.commercialPayerPlan.planName })
+              .from(c)
+              .innerJoin(schema.commercialPayerPlan, eq(schema.commercialPayerPlan.id, c.planId))
+              .where(
+                and(
+                  ...conds,
+                  after
+                    ? or(
+                        lt(c.updatedAt, after.updatedAt),
+                        and(eq(c.updatedAt, after.updatedAt), lt(c.id, after.id)),
+                      )
+                    : undefined,
+                ),
+              )
+              .orderBy(desc(c.updatedAt), desc(c.id))
+              .limit(QUEUE_CHUNK),
+        );
+        if (page.length === 0) break;
+        await Promise.all(page.map((r) => isReachable(r.claim.patientId)));
+        for (const { claim, planName } of page) {
+          scanned += 1;
+          if (!(await isReachable(claim.patientId))) continue;
+          if (items.length === limit) {
+            hasMore = true;
+            break;
+          }
+          items.push({
+            id: claim.id,
+            claimControlNumber: claim.claimControlNumber,
+            state: claim.state,
+            patientId: claim.patientId,
+            planId: claim.planId,
+            planName,
+            tob: claim.tob,
+            serviceFrom: claim.serviceFrom,
+            serviceTo: claim.serviceTo,
+            secondaryPayerKind: claim.secondaryPayerKind,
+            totalChargeCents: claim.totalChargeCents,
+            expectedPaymentCents: claim.expectedPaymentCents,
+            updatedAt: claim.updatedAt.toISOString(),
+          });
+        }
+        const last = page[page.length - 1];
+        if (page.length < QUEUE_CHUNK || !last) break;
+        after = { updatedAt: last.claim.updatedAt, id: last.claim.id };
+        if (!hasMore && items.length < limit && scanned >= QUEUE_SCAN_CAP) hasMore = true;
       }
       return { items, hasMore };
     },
@@ -167,14 +203,19 @@ export function buildCommercialClaimReadService(
           .select()
           .from(schema.commercialPayerPlan)
           .where(eq(schema.commercialPayerPlan.organizationId, actor.organizationId))
-          .orderBy(asc(schema.commercialPayerPlan.planName), asc(schema.commercialPayerPlan.id));
+          .orderBy(asc(schema.commercialPayerPlan.planName), asc(schema.commercialPayerPlan.id))
+          .limit(PLAN_LIST_CAP);
         const routes = await tx
           .select()
           .from(schema.commercialPayerRoute)
           .where(eq(schema.commercialPayerRoute.organizationId, actor.organizationId));
         const items: PayerPlanView[] = [];
+        const payerStates = new Map<string, string | null>();
+        for (const payerId of new Set(plans.map((p) => p.payerId))) {
+          payerStates.set(payerId, (await readPayerState(tx, payerId))?.status ?? null);
+        }
         for (const p of plans) {
-          const state = await readPayerState(tx, p.payerId);
+          const state = { status: payerStates.get(p.payerId) ?? null };
           items.push({
             id: p.id,
             payerId: p.payerId,
@@ -186,7 +227,7 @@ export function buildCommercialClaimReadService(
             eligibilityMaxAgeDays: p.eligibilityMaxAgeDays,
             effectiveFrom: p.effectiveFrom,
             effectiveTo: p.effectiveTo,
-            payerStatus: state?.status ?? null,
+            payerStatus: state.status,
             routes: routes
               .filter((r) => r.planId === p.id)
               .map((r) => ({

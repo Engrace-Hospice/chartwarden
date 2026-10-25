@@ -1,10 +1,11 @@
-import { Button, InlineAlert, StatusPill, TextAreaField, useApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/41-billing-commercial — the validation panel of a commercial claim (M41, issue #726). Every rule of the
 // latest run with its severity and the actionable message the server wrote. A SOFT block (overridable) can be overridden with a
 // reason of at least 40 characters; a HARD block cannot, only a data or policy change clears it. The override needs a fresh
 // step-up: a step-up denial sends the user to /step-up and back, and the reason survives the round trip in the in-memory ceremony
 // draft store (never browser storage: a reason can carry PHI). Messages are server text; this panel never logs them.
-import { useState } from "react";
+import { COMMERCIAL_OVERRIDE_REASON_MIN_LENGTH } from "@chartwarden/types";
+import { Button, InlineAlert, StatusPill, TextAreaField, useApiClient } from "@chartwarden/ui";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { clearDraft, loadDraft, saveDraft } from "../../shell/ceremony-drafts";
@@ -16,7 +17,7 @@ import {
   statusLabel,
 } from "./commercial-model";
 
-export const OVERRIDE_REASON_MIN_LENGTH = 40;
+export const OVERRIDE_REASON_MIN_LENGTH = COMMERCIAL_OVERRIDE_REASON_MIN_LENGTH;
 
 export interface ValidationRun {
   readonly runId: string;
@@ -88,13 +89,29 @@ function OverrideForm({
   const [reason, setReason] = useState(restored ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const long = reason.trim().length >= OVERRIDE_REASON_MIN_LENGTH;
+  const length = reason.trim().length;
+  const long = length >= OVERRIDE_REASON_MIN_LENGTH;
+  const form = useRef<HTMLFormElement>(null);
+  const trigger = useRef<HTMLSpanElement>(null);
+  const opened = useRef(false);
+
+  // Opening swaps the trigger for the form: focus the reason; closing hands focus back to the trigger.
+  useEffect(() => {
+    if (open) {
+      form.current?.querySelector("textarea")?.focus();
+      opened.current = true;
+    } else if (opened.current) {
+      trigger.current?.querySelector("button")?.focus();
+    }
+  }, [open]);
 
   if (!open) {
     return (
-      <Button tone="secondary" size="sm" onClick={() => setOpen(true)}>
-        Override {ruleLabel}
-      </Button>
+      <span ref={trigger}>
+        <Button tone="secondary" size="sm" onClick={() => setOpen(true)}>
+          Override {ruleLabel}
+        </Button>
+      </span>
     );
   }
 
@@ -142,6 +159,7 @@ function OverrideForm({
 
   return (
     <form
+      ref={form}
       className="wx-form-stack"
       onSubmit={(e) => {
         e.preventDefault();
@@ -152,7 +170,7 @@ function OverrideForm({
         label={`Reason to override ${ruleLabel}`}
         value={reason}
         onChange={(e) => setReason(e.target.value)}
-        hint={`At least ${OVERRIDE_REASON_MIN_LENGTH} characters. Recorded in the audit trail; do not include patient identifiers.`}
+        hint={`${length} of ${OVERRIDE_REASON_MIN_LENGTH} characters. Recorded in the audit trail; do not include patient identifiers.`}
         rows={3}
       />
       {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}

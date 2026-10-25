@@ -17,7 +17,7 @@ import type { paths } from "@chartwarden/ui";
 //   POST .../validate | .../ready | .../void                the lifecycle (Idempotency-Key is added by the client)
 // An authorization is shown by status and period, never its number. A blocked "ready" is a 409 whose message tells the user what
 // to fix; it is shown inline, never as a toast. Authorization to write is the server's; the buttons follow the session's grants.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
@@ -57,8 +57,19 @@ const ACTION_PATH = {
   void: "/api/v1/billing/commercial/claims/{id}/void",
 } as const;
 
+/** Keyed by claim id so a navigation between claims starts clean (no stale claim, payer name, notice or action error). */
 export function CommercialClaimDetail(): JSX.Element {
   const { claimId = "" } = useParams();
+  return <ClaimDetailView key={claimId} claimId={claimId} />;
+}
+
+const ACTION_NOTICE: Record<Action, string> = {
+  validate: "Validation re-run. The results below are current.",
+  ready: "The claim is marked ready.",
+  void: "The claim is void.",
+};
+
+function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const permissions = useSession()?.permissions ?? [];
@@ -67,8 +78,17 @@ export function CommercialClaimDetail(): JSX.Element {
   const [busy, setBusy] = useState<Action | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmVoid, setConfirmVoid] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const voidControls = useRef<HTMLSpanElement>(null);
+  const voidWasOpen = useRef(false);
   const [reloadKey, setReloadKey] = useState(0);
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  // Void swaps one button for Confirm / Keep: move focus into the pair, and back to the first control when it closes.
+  useEffect(() => {
+    if (confirmVoid || voidWasOpen.current) voidControls.current?.querySelector("button")?.focus();
+    voidWasOpen.current = confirmVoid;
+  }, [confirmVoid]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is a retry trigger, not a value the effect reads.
   useEffect(() => {
@@ -109,6 +129,7 @@ export function CommercialClaimDetail(): JSX.Element {
   const run = async (action: Action): Promise<void> => {
     setBusy(action);
     setActionError(null);
+    setNotice(null);
     try {
       const { error, response } = await client.POST(ACTION_PATH[action], {
         params: { path: { id: claimId }, header: { "Idempotency-Key": crypto.randomUUID() } },
@@ -128,6 +149,7 @@ export function CommercialClaimDetail(): JSX.Element {
               : "That did not go through. Reload the claim and try again.",
         );
       }
+      if (!error) setNotice(ACTION_NOTICE[action]);
       setConfirmVoid(false);
       reload();
     } catch {
@@ -147,6 +169,7 @@ export function CommercialClaimDetail(): JSX.Element {
   if (load.status !== "ready" || !view) {
     return (
       <div className="wx-list-state" role="alert">
+        <h1 className="wx-sr-only">Commercial claim</h1>
         <EmptyState
           title={load.status === "missing" ? "Claim not found" : "Claim unavailable"}
           description={
@@ -166,7 +189,11 @@ export function CommercialClaimDetail(): JSX.Element {
   const isDraft = claim.state === "draft";
   const canWrite = permissions.includes("commercial_billing.write");
   const canOverride = permissions.includes("commercial_billing.override_validation");
-  const auth = authorizationPosture(plan.authorizationRequirement, authorizations);
+  const auth = authorizationPosture(plan.authorizationRequirement, authorizations, {
+    from: claim.serviceFrom,
+    to: claim.serviceTo,
+    levelsOfCare: lines.map((l) => l.levelOfCare),
+  });
   const payerLabel = payerName ?? `Payer ${shortId(plan.payerId)}`;
 
   return (
@@ -202,7 +229,7 @@ export function CommercialClaimDetail(): JSX.Element {
             ) : null}
             {canWrite && claim.state !== "void" ? (
               confirmVoid ? (
-                <>
+                <span ref={voidControls} style={{ display: "inline-flex", gap: "0.625rem" }}>
                   <Button
                     tone="secondary"
                     disabled={busy !== null}
@@ -213,11 +240,13 @@ export function CommercialClaimDetail(): JSX.Element {
                   <Button tone="tertiary" onClick={() => setConfirmVoid(false)}>
                     Keep claim
                   </Button>
-                </>
+                </span>
               ) : (
-                <Button tone="tertiary" onClick={() => setConfirmVoid(true)}>
-                  Void claim
-                </Button>
+                <span ref={voidControls}>
+                  <Button tone="tertiary" onClick={() => setConfirmVoid(true)}>
+                    Void claim
+                  </Button>
+                </span>
               )
             ) : null}
           </div>
@@ -226,6 +255,7 @@ export function CommercialClaimDetail(): JSX.Element {
         <BillingTabs />
 
         {actionError ? <InlineAlert tone="error">{actionError}</InlineAlert> : null}
+        {notice ? <InlineAlert tone="success">{notice}</InlineAlert> : null}
         {claim.state === "ready" ? (
           <InlineAlert tone="success">
             This claim is validated and ready. Sending arrives with the submission slice.
@@ -302,7 +332,12 @@ export function CommercialClaimDetail(): JSX.Element {
             claimId={claim.id}
             validation={validation}
             canOverride={canOverride && isDraft}
-            onChanged={reload}
+            onChanged={() => {
+              setNotice(
+                "Override recorded in the audit trail. Re-validate to see the claim's status.",
+              );
+              reload();
+            }}
           />
         </Panel>
       </div>

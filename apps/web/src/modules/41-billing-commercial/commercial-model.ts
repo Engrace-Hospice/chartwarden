@@ -98,16 +98,55 @@ export interface AuthorizationFact {
   readonly effectiveTo: string | null;
 }
 
+export interface ClaimWindow {
+  readonly from: string;
+  readonly to: string;
+  /** The level of care of each billed line; a per-level plan needs every one of them covered. */
+  readonly levelsOfCare: readonly string[];
+}
+
+const DAY_MS = 86_400_000;
+const dayNumber = (iso: string): number => Math.floor(Date.parse(`${iso}T00:00:00Z`) / DAY_MS);
+
+/** Whether the approved authorizations together cover every day of [from, to] (an open end is unbounded). */
+function coversWindow(auths: readonly AuthorizationFact[], from: string, to: string): boolean {
+  let next = dayNumber(from);
+  const end = dayNumber(to);
+  const sorted = [...auths].sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
+  for (const a of sorted) {
+    if (dayNumber(a.effectiveFrom) > next) break;
+    next = Math.max(next, a.effectiveTo === null ? end + 1 : dayNumber(a.effectiveTo) + 1);
+  }
+  return next > end;
+}
+
 /**
- * One line for the claim's authorization posture. An approved authorization is evidence; a requirement with none on file is the
- * thing a biller must fix; `confirm_with_payer` is unknown, not "no" (ADR-0100).
+ * One line for the claim's authorization posture. Approved authorizations are evidence only when together they cover every billed
+ * day (and, for a per-level plan, every billed level of care); anything less is a warning, never a green "on file". A requirement
+ * with none approved is the thing a biller must fix; `confirm_with_payer` is unknown, not "no" (ADR-0100). The server's validation
+ * rules stay authoritative; this is the reader's summary of the same facts.
  */
 export function authorizationPosture(
   requirement: string,
   authorizations: readonly AuthorizationFact[],
+  window?: ClaimWindow,
 ): { label: string; tone: StatusTone } {
   const approved = authorizations.filter((a) => a.status === "approved");
-  if (approved.length > 0) return { label: `${approved.length} approved on file`, tone: "success" };
+  if (approved.length > 0) {
+    if (!window) return { label: `${approved.length} approved on file`, tone: "success" };
+    const levels =
+      requirement === "required_per_level_of_care" ? [...new Set(window.levelsOfCare)] : [null];
+    const covered = levels.every((level) =>
+      coversWindow(
+        approved.filter((a) => level === null || a.levelOfCare === null || a.levelOfCare === level),
+        window.from,
+        window.to,
+      ),
+    );
+    return covered
+      ? { label: "Covers every billed day", tone: "success" }
+      : { label: "Approved, but not every billed day is covered", tone: "warning" };
+  }
   if (requirement === "not_required")
     return { label: "Not required by this plan", tone: "neutral" };
   if (requirement === "confirm_with_payer") {

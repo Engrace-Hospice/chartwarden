@@ -95,6 +95,12 @@ describe("CommercialClaimQueue", () => {
     await screen.findByText(/More claims match than this page shows/);
   });
 
+  it("does not call an unscanned queue empty: nothing reachable but more exist says to narrow the filters", async () => {
+    mount(() => ({ body: { items: [], hasMore: true } }), []);
+    await screen.findByText("Too many claims to scan");
+    expect(screen.queryByText("No commercial claims yet")).toBeNull();
+  });
+
   it("shows a loading status first, then a retryable error that announces itself", async () => {
     let attempt = 0;
     mount(

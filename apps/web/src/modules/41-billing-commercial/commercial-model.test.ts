@@ -52,6 +52,27 @@ describe("authorizationPosture", () => {
       tone: "success",
     });
   });
+  const window = { from: "2026-03-01", to: "2026-03-31", levelsOfCare: ["routine_home_care"] };
+  it("is green only when approved authorizations cover every billed day", () => {
+    expect(authorizationPosture("required_at_admission", [approved], window).label).toBe(
+      "Covers every billed day",
+    );
+    const early = { ...approved, effectiveTo: "2026-03-15" };
+    expect(authorizationPosture("required_at_admission", [early], window)).toEqual({
+      label: "Approved, but not every billed day is covered",
+      tone: "warning",
+    });
+    const lateRest = { ...approved, effectiveFrom: "2026-03-16", effectiveTo: "2026-03-31" };
+    expect(authorizationPosture("required_at_admission", [early, lateRest], window).tone).toBe(
+      "success",
+    );
+  });
+  it("needs every billed level of care covered under a per-level plan", () => {
+    const rhc = { ...approved, levelOfCare: "routine_home_care" };
+    const both = { ...window, levelsOfCare: ["routine_home_care", "general_inpatient"] };
+    expect(authorizationPosture("required_per_level_of_care", [rhc], both).tone).toBe("warning");
+    expect(authorizationPosture("required_per_level_of_care", [rhc], window).tone).toBe("success");
+  });
   it("flags a requirement with nothing approved, and a denied one does not count", () => {
     const denied = { ...approved, status: "denied" };
     expect(authorizationPosture("required_at_admission", [denied]).tone).toBe("error");
