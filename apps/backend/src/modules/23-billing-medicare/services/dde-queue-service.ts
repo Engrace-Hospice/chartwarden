@@ -700,8 +700,9 @@ export function buildDdeQueueService(
 
     submitViaProvider(actor, id, expectedVersion) {
       assertNotAiActor(actor);
-      requireStepUp(actor);
+      // Unbound first: never ask for a second factor for an operation that cannot run.
       const provider = requireProvider();
+      requireStepUp(actor);
       return mutate(actor, id, async (tx, item) => {
         // Refuse before any vendor call: a stale view or a wrong state must never reach FISS.
         staleVersion(item, expectedVersion);
@@ -775,6 +776,14 @@ export function buildDdeQueueService(
         const recordedAt = now();
         const plan = planProviderOutcome(latest, toIsoDate(recordedAt));
         if (plan.kind === "invalid") throw ddeProviderAnswerRejected(plan.reason);
+        // An answer cannot predate the submission it answers (Eastern day): a stale provider date would corrupt timeliness.
+        if (
+          plan.kind === "accepted" &&
+          current.submittedAt &&
+          plan.macAcceptedOn < toIsoDate(current.submittedAt)
+        ) {
+          throw ddeProviderAnswerRejected("the provider's acceptance date predates the submission");
+        }
         const detail = { submissionMode: "provider", providerReference: reference };
         if (plan.kind === "returned") {
           return applyEvent(
