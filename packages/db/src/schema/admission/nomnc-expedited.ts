@@ -162,6 +162,7 @@ export const expeditedDeadlines = pgTable(
       .on(t.organizationId, t.dueAt)
       .where(sql`satisfied_at IS NULL`),
     admissionIdx: index("expedited_deadline_admission_idx").on(t.organizationId, t.admissionId),
+    admissionFkIdx: index("expedited_deadline_admission_id_idx").on(t.admissionId),
   }),
 );
 
