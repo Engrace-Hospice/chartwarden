@@ -102,6 +102,7 @@ type Ceremony = "submit" | "replace" | "void" | null;
 const REASON_MIN = 40;
 /** §2.2: submission is only offered from READY (the validated, eligibility-fresh state). */
 const SUBMITTABLE = new Set(["READY"]);
+const NO_GATEWAY_CODE = "MEDICAID_STATE_NO_ELECTRONIC_GATEWAY";
 /** §2.3: a replacement/void is only meaningful once the payer has adjudicated the claim. */
 const REPLACEABLE = new Set(["ACK_ACCEPTED", "PAID", "DENIED"]);
 
@@ -183,7 +184,13 @@ export function MedicaidClaimEditor(): JSX.Element {
       };
       setBusy(false);
       if (err) {
-        setActionError(writeErrorMessage(response?.status));
+        const env = (err as { error?: { code?: string; message?: string } }).error;
+        // S11: the server message names the manual/paper alternative; show it verbatim.
+        setActionError(
+          env?.code === NO_GATEWAY_CODE && env.message
+            ? env.message
+            : writeErrorMessage(response?.status),
+        );
         return;
       }
       closeCeremony();

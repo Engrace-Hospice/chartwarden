@@ -81,3 +81,23 @@ export class MedicaidAdapterRegistry {
     return [...this.byVendor.values()];
   }
 }
+
+/** Stable error code for a submit attempt against a state with no live electronic gateway (S11 / #711). */
+export const MEDICAID_NO_ELECTRONIC_GATEWAY_CODE = "MEDICAID_STATE_NO_ELECTRONIC_GATEWAY";
+
+const GATEWAY_PROBE_REGISTRY = new MedicaidAdapterRegistry();
+
+/**
+ * Null when `state` has a non-deny-stub adapter (today: Oregon only; does not prove its gateway is bound), else the refusal:
+ * a stable code plus a message naming the manual/paper alternative. WA/ID/CA/NV are deny-stubs and every
+ * other state has no adapter at all — both are refused (fail closed). PURE: no I/O.
+ */
+export function electronicSubmissionRefusal(
+  state: string,
+): { readonly code: string; readonly message: string } | null {
+  if (!GATEWAY_PROBE_REGISTRY.isPhaseOneDenyStub(state as StateCode)) return null;
+  return {
+    code: MEDICAID_NO_ELECTRONIC_GATEWAY_CODE,
+    message: `Electronic Medicaid submission is not available for ${state}: no live state gateway is configured. Submit this claim manually through the ${state} Medicaid provider portal or on paper (UB-04), then record the outcome on the claim.`,
+  };
+}
