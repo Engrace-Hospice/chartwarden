@@ -1366,8 +1366,8 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       );
       expect(ledger.rows[0].n).toBe(0);
       const paidEvents = await admin.query(
-        "SELECT count(*)::int AS n FROM outbox_event WHERE event_type LIKE 'm25.remittance.claim_%' AND aggregate_id=$1",
-        [line.rows[0].id],
+        "SELECT count(*)::int AS n FROM outbox_event WHERE event_type LIKE 'm25.remittance.claim_%' AND organization_id=$1 AND payload::text LIKE '%' || $2 || '%'",
+        [ORG_A, medicareClaimId],
       );
       expect(paidEvents.rows[0].n).toBe(0);
       const claimState = await admin.query("SELECT state FROM claim WHERE id=$1", [
