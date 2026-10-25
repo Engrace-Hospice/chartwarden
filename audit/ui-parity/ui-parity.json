@@ -1584,6 +1584,14 @@
       "app": "web",
       "module": "23-billing-medicare",
       "moduleId": 23,
+      "id": "billing.work-queue",
+      "path": "/billing/queue",
+      "permission": "billing.claim.read"
+    },
+    {
+      "app": "web",
+      "module": "23-billing-medicare",
+      "moduleId": 23,
       "id": "billing.claims",
       "path": "/billing/claims",
       "permission": "billing.claim.read"

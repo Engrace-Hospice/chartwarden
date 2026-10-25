@@ -25,6 +25,7 @@ const AREAS: BillingArea[] = [
   {
     label: "Work Queue",
     views: [
+      { to: "/billing/queue", label: "All work", match: ["/billing/queue"] },
       { to: "/billing/noe", label: "NOE / NOTR", match: ["/billing/noe", "/billing/notr"] },
       { to: "/billing/transfer-notices", label: "Transfers", match: ["/billing/transfer-notices"] },
       { to: "/billing/dde", label: "DDE queue", match: ["/billing/dde"] },

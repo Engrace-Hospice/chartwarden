@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 116 documented screen specs · 45 module screen-sets registered · 373 screens wired across web/portal/admin.
+**Coverage:** 116 documented screen specs · 45 module screen-sets registered · 374 screens wired across web/portal/admin.
 - **admin**: 39 screen(s)
 - **portal**: 18 screen(s)
-- **web**: 316 screen(s)
+- **web**: 317 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -219,6 +219,7 @@
 | web | 22-documents | `documents.intake-batch` | `/intake/:batchId` | `intake.read` | ✅ |
 | web | 22-documents | `documents.template-library` | `/admin/forms/templates` | `documents.read_templates` | ✅ |
 | web | 23-billing-medicare | `billing.ar-dashboard` | `/billing` | `billing.claim.read_ar_dashboard` | ✅ |
+| web | 23-billing-medicare | `billing.work-queue` | `/billing/queue` | `billing.claim.read` | ✅ |
 | web | 23-billing-medicare | `billing.claims` | `/billing/claims` | `billing.claim.read` | ✅ |
 | web | 23-billing-medicare | `billing.patient-claims` | `/patients/:patientId/claims` | `billing.claim.read` | ✅ |
 | web | 23-billing-medicare | `billing.claim.new` | `/billing/claims/new` | `billing.claim.assemble` | ✅ |

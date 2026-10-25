@@ -52,6 +52,7 @@ describe("BillingTabs areas", () => {
     ["/billing/claims/c1", "Claims"],
     ["/billing/claims/new", "Claims"],
     ["/commercial/billing/claims", "Claims"],
+    ["/billing/queue", "Work Queue"],
     ["/billing/noe", "Work Queue"],
     ["/billing/noe/n1", "Work Queue"],
     ["/billing/notr/n1", "Work Queue"],
@@ -77,6 +78,7 @@ describe("BillingTabs areas", () => {
   });
 
   it.each([
+    ["/billing/queue", "All work"],
     ["/billing/claims", "Medicare"],
     ["/billing/claims/c1", "Medicare"],
     ["/commercial/billing/payers", "Commercial"],
@@ -126,7 +128,7 @@ describe("BillingTabs areas", () => {
     );
     expect(hrefs).toEqual({
       Overview: "/billing",
-      "Work Queue": "/billing/noe",
+      "Work Queue": "/billing/queue",
       Claims: "/billing/claims",
       "Revenue Cycle": "/remittance",
       Tools: "/billing/eligibility",
