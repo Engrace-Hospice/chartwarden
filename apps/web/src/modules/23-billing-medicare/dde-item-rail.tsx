@@ -17,6 +17,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { EligibilityPanel } from "./dde-eligibility-panel";
 import { OutcomeForm, SubmissionForm } from "./dde-forms";
 import {
+  IN_DOUBT_GUIDANCE,
   type ProviderState,
   canSyncProvider,
   evidenceOf,
@@ -62,12 +63,6 @@ const emptyOutcome = (item: DdeItem): OutcomeDraft => ({
   notes: "",
 });
 const draftKey = (id: string) => `dde:${id}`;
-
-// Items whose provider send ended DDE_IN_DOUBT in this tab: another send could key a second operation, so the
-// button stays away until the operator has checked DDE and recorded the submission by hand. Kept in the shell's
-// in-memory draft store (never browser storage), which sign-out and the screen lock wipe.
-const inDoubtKey = (n: Pick<DdeItem, "ddeWorkItemId" | "attemptNumber">) =>
-  `dde-in-doubt:${n.ddeWorkItemId}:${n.attemptNumber}`;
 
 interface RunOptions {
   /** A send that may have reached the provider: a lost response leaves it in doubt, so never offer another send. */
@@ -120,8 +115,11 @@ export function ItemRail({
   const inFlight = useRef(false); // synchronous guard: `busy` state is stale within one event tick
   const [actionError, setActionError] = useState<string | null>(null);
   const [syncNote, setSyncNote] = useState<string | null>(null);
-  const [, bumpInDoubt] = useState(0);
-  const inDoubt = loadDraft<boolean>(inDoubtKey(n)) === true;
+  // The server owns the in-doubt marker (durable across reloads and tabs); read defensively from an older server.
+  // `sentUnsure` only bridges until a reload lands: a send whose outcome this tab never saw stays blocked even if
+  // that reload fails, and the server's answer replaces it as soon as the item version changes.
+  const [sentUnsure, setSentUnsure] = useState(false);
+  const inDoubt = n.providerInDoubt === true || sentUnsure;
   const can = (a: DdeItem["allowedActions"][number]) => n.allowedActions.includes(a);
   const note = deadlineNote(n);
   const badge = providerBadge(n);
@@ -141,6 +139,7 @@ export function ItemRail({
     setDrafts({ panel: "none", submit: EMPTY_SUBMISSION, outcome: emptyOutcome(n) });
     setActionError(null);
     setSyncNote(null);
+    setSentUnsure(n.providerInDoubt === true);
   }, [n]);
 
   const setPanel = (panel: Panel) => setDrafts((d) => ({ ...d, panel }));
@@ -176,22 +175,24 @@ export function ItemRail({
           return;
         }
         const refusal = opts.provider ? providerRefusal(error, fallback) : null;
-        if (refusal?.inDoubt) {
-          saveDraft(inDoubtKey(n), true);
-          bumpInDoubt((v) => v + 1);
-        }
         setActionError(refusal?.message ?? errorMessage(error, fallback));
+        // The server marked the send in doubt (a send moves the version by 2): reload to read the marker.
+        if (refusal?.inDoubt) {
+          setSentUnsure(true);
+          onChanged();
+        }
         return;
       }
       opts.onData?.(data);
       onChanged();
     } catch {
       if (opts.sends) {
-        saveDraft(inDoubtKey(n), true);
-        bumpInDoubt((v) => v + 1);
+        // A lost response: the server marks the send in doubt before calling the provider, so reload and trust it.
         setActionError(
           providerRefusal({ error: { code: "DDE_IN_DOUBT" } }, fallback)?.message ?? fallback,
         );
+        setSentUnsure(true);
+        onChanged();
       } else setActionError(`${fallback} Check your connection.`);
     } finally {
       inFlight.current = false;
@@ -283,7 +284,7 @@ export function ItemRail({
             <h2>{patientName}</h2>
             <StatusPill label={STATE_LABEL[n.state]} tone={STATE_TONE[n.state]} />
             {n.respawnedFromId ? <StatusPill label={REQUEUED_LABEL} tone="warning" /> : null}
-            {badge ? <StatusPill label={badge.label} tone={badge.tone} /> : null}
+            <StatusPill label={badge.label} tone={badge.tone} />
           </div>
           <div className="wx-row-sub">
             {TYPE_LABEL[n.itemType]} · attempt {n.attemptNumber}
@@ -393,6 +394,14 @@ export function ItemRail({
         {n.allowedActions.length > 0 ? (
           <section className="wx-drawer-card" aria-label="Actions">
             <h3>Actions</h3>
+            {inDoubt ? (
+              <div role="alert">
+                <InlineAlert tone="warning">
+                  {IN_DOUBT_GUIDANCE} Sending again, checking the provider, reopening and cancelling
+                  are blocked until you record it.
+                </InlineAlert>
+              </div>
+            ) : null}
             {actionError ? <InlineAlert>{actionError}</InlineAlert> : null}
             {syncNote ? (
               <output className="wx-row-sub" aria-label="Provider answer">
@@ -460,7 +469,7 @@ export function ItemRail({
                     Send via provider
                   </Button>
                 ) : null}
-                {canSyncProvider(n) ? (
+                {canSyncProvider(n) && !inDoubt ? (
                   <Button tone="secondary" disabled={busy} onClick={syncProvider}>
                     Check provider status
                   </Button>
@@ -470,7 +479,7 @@ export function ItemRail({
                     Record what came back
                   </Button>
                 ) : null}
-                {can("retry") ? (
+                {can("retry") && !inDoubt ? (
                   <Button
                     disabled={busy}
                     onClick={() => simple("retry", "The item could not be reopened.")}
@@ -487,7 +496,7 @@ export function ItemRail({
                     Close
                   </Button>
                 ) : null}
-                {can("cancel") ? (
+                {can("cancel") && !inDoubt ? (
                   <Button
                     tone="tertiary"
                     disabled={busy}

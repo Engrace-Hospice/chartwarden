@@ -21,7 +21,7 @@ import {
   type ClaimDayProjectionQuery as ClaimDayProjectionQueryType,
   type ClaimDayProjectionResponse,
 } from "@chartwarden/billing";
-import { ForbiddenError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, ForbiddenError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf } from "./actor";
 import { parse } from "./billing-typebox";

@@ -9,14 +9,19 @@ import { errorCode, errorMessage } from "./dde-queue-model";
 export type SubmissionMode = "manual" | "provider";
 export type ProviderState = "not_found" | "received" | "accepted" | "returned" | "rejected";
 
-/** The badge on a queue row: who keyed it. Null while nothing has been recorded yet. */
-export function providerBadge(item: Pick<DdeItem, "submissionMode">): {
+/** The badge on a queue row: who keyed it, or "Not sent" while no submission mode is recorded (text, not colour). */
+export function providerBadge(
+  item: Pick<DdeItem, "submissionMode"> & { state?: DdeItem["state"] },
+): {
   label: string;
   tone: StatusTone;
-} | null {
+} {
   if (item.submissionMode === "provider") return { label: "Via provider", tone: "progress" };
   if (item.submissionMode === "manual") return { label: "Keyed by hand", tone: "neutral" };
-  return null;
+  // An item past submission with no mode (an older row) was keyed, so "Not sent" would be false.
+  const keyed =
+    item.state === "submitted" || item.state === "accepted" || item.state === "returned";
+  return { label: keyed ? "Mode not recorded" : "Not sent", tone: "neutral" };
 }
 
 /**
@@ -51,6 +56,10 @@ export interface ProviderRefusal {
   /** The provider may already hold the operation: do not send again, verify in DDE and record it by hand. */
   inDoubt: boolean;
 }
+
+/** Shown while the server holds the in-doubt marker (#760): the provider may already hold the operation. */
+export const IN_DOUBT_GUIDANCE =
+  "The provider did not confirm whether DDE received this item. Verify it in DDE, then record the submission manually.";
 
 const MANUAL_HINT = "You can still key it in DDE yourself and record it as keyed.";
 

@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -128,7 +128,9 @@ describe("ValidationWorklist — missing discharge details", () => {
       },
     );
     expect(await screen.findByText("Claim held: missing discharge details")).toBeTruthy();
-    expect(screen.getByText(/recorded before ChartWarden captured the place of death/)).toBeTruthy();
+    expect(
+      screen.getByText(/recorded before ChartWarden captured the place of death/),
+    ).toBeTruthy();
     const choices = screen.getByRole("list", { name: "place of death choices" });
     expect(choices.textContent).toMatch(/40.*At home.*41.*In a facility.*42.*Place not known/);
     // The panel's action and the result row's own remediation CTA both lead to the guided M6 screen.

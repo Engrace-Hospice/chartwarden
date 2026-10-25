@@ -30,7 +30,7 @@ import {
   validateCorrectionReason,
 } from "@chartwarden/billing";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import {
   type BillingDb,
   type BillingWriteActor,

@@ -14,7 +14,7 @@
 import { DEFAULT_BILLING_RULES, validateWageIndexEntry } from "@chartwarden/billing";
 import type { repositories } from "@chartwarden/billing";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ValidationError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, ValidationError } from "@chartwarden/types";
 import { sql } from "drizzle-orm";
 import type { M23WriteActor } from "./actor";
 import type {

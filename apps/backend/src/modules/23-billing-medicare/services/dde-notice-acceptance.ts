@@ -14,10 +14,10 @@
 // answer stays the notice's truth and the queue item just records its own outcome.
 import { type NoticeState, noeMachine, notrMachine, repositories } from "@chartwarden/billing";
 import {
+  ChartWardenError,
   ConflictError,
   NotFoundError,
   ValidationError,
-  ChartWardenError,
 } from "@chartwarden/types";
 import type { BillingTx, WriteOutboxPort } from "./claim-state-service";
 
