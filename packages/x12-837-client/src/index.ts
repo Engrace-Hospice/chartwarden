@@ -237,6 +237,46 @@ export type {
   ClearinghouseTransportFactories,
   ClearinghouseTransportFactory,
 } from "./clearinghouse/transport-registry";
+export { DDE, DDE_RETRYABLE_CODES } from "./dde/types";
+export type {
+  DdeAccessProvider,
+  DdeContext,
+  DdeDisposition,
+  DdeErrorCode,
+  DdeOperation,
+  DdeOperationKind,
+  DdeOperationState,
+  DdeOperationStatus,
+  DdeOutcome,
+  DdeProviderReportedVendor,
+  DdeProviderVendor,
+  DdeReceipt,
+  DdeScope,
+} from "./dde/types";
+export {
+  DDE_PROVIDER_ENV,
+  NOT_WIRED_DDE_PROVIDER,
+  PRODUCTION_DDE_PROVIDERS,
+  bindDdeProvider,
+  parseDdeProvider,
+} from "./dde/provider-registry";
+export type {
+  DdeProviderBinding,
+  DdeProviderFactories,
+  DdeProviderFactory,
+} from "./dde/provider-registry";
+export {
+  DDE_CONFORMANCE_CASES,
+  DDE_DEFAULT_SCOPE,
+  DDE_UNENROLLED_OPERATOR,
+  runDdeConformance,
+} from "./dde/conformance";
+export type {
+  DdeConformanceCase,
+  DdeConformanceOutcome,
+  DdeConformanceScript,
+  DdeHarness,
+} from "./dde/conformance";
 export { InMemoryAttemptStore, PlatformControlNumberTaken } from "./clearinghouse/attempt-store";
 export type {
   AttemptResolution,
