@@ -615,5 +615,67 @@ describe.skipIf(!DB_URL)(
         expect(lines.rows).toEqual([{ level_of_care: "RHC", units: 31 }]);
       });
     });
+    describe("S11 (#711): submit refused for states without a Medicaid gateway", () => {
+      it.each(["WA", "ID", "CA", "NV"])(
+        "%s: submit is refused with the stable code, no submission row, no outbox event, state unchanged",
+        async (state) => {
+          const published: unknown[] = [];
+          const svc = buildDrizzleM24WriteService(
+            handle.db,
+            {
+              async publish(_tx: unknown, ev: unknown) {
+                published.push(ev);
+              },
+            } as never,
+            OPEN_CIPHER,
+            coverage,
+            ccnReader,
+            locPeriodReader([
+              {
+                id: LOC_1,
+                levelOfCare: "routine_home_care",
+                effectiveAt: new Date("2026-05-01"),
+                endedAt: new Date("2026-05-10"),
+              },
+            ]),
+            noEncounters(),
+          );
+          const actor = { organizationId: ORG, userId: USER, roles: [], stepUpRecent: true };
+          const claim = await svc.assembleClaim(actor, {
+            patientId: PATIENT,
+            admissionId: "99999999-9999-9999-9999-999999999999",
+            providerEntityId: peId,
+            serviceFrom: "2026-05-01",
+            serviceTo: "2026-05-10",
+            kind: "hospice_only",
+          });
+          await admin.query(
+            "UPDATE medicaid_claim SET state='READY', service_state=$2 WHERE id=$1",
+            [claim.id, state],
+          );
+          published.length = 0; // assembleClaim emits its own events; only submit-time emissions matter
+          const ready = await admin.query("SELECT version FROM medicaid_claim WHERE id=$1", [
+            claim.id,
+          ]);
+          await expect(
+            svc.submitClaim(actor, claim.id, { expectedVersion: ready.rows[0].version }),
+          ).rejects.toMatchObject({
+            code: "MEDICAID_STATE_NO_ELECTRONIC_GATEWAY",
+            statusCode: 422,
+            message: expect.stringMatching(/manually.*paper/),
+          });
+          const subs = await admin.query(
+            "SELECT 1 FROM medicaid_submission WHERE medicaid_claim_id=$1",
+            [claim.id],
+          );
+          expect(subs.rowCount).toBe(0);
+          expect(published).toHaveLength(0);
+          const after = await admin.query("SELECT state FROM medicaid_claim WHERE id=$1", [
+            claim.id,
+          ]);
+          expect(after.rows[0].state).toBe("READY");
+        },
+      );
+    });
   },
 );

@@ -18,6 +18,7 @@ import {
   type PlaceOfServiceFacilityKind,
   type PlaceOfServiceResidenceKind,
   buildHospiceLines,
+  electronicSubmissionRefusal,
   deriveMedicaidControlNumber,
   medicaidClaimMachine,
   parseMedicaidControlNumber,
@@ -903,6 +904,9 @@ export function buildDrizzleM24WriteService(
         });
         if (reduced.error)
           throw new ConflictError("INVALID_TRANSITION", `cannot submit from ${claim.state}`);
+        // S11 (#711): refuse BEFORE any state change, submission row or outbox event, so no submit job is enqueued.
+        const refusal = electronicSubmissionRefusal(claim.serviceState);
+        if (refusal) throw new ChartWardenError(refusal.code, refusal.message, 422);
         const submissionId = randomUUID();
         const submittedAt = new Date();
         const channel = input.channelHint ?? "direct_mmis";

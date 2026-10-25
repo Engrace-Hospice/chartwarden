@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { MedicaidAdapterError } from "../src/errors";
 import { isValidOhpMemberId } from "../src/oregon";
-import { MedicaidAdapterRegistry } from "../src/registry";
+import {
+  MEDICAID_NO_ELECTRONIC_GATEWAY_CODE,
+  MedicaidAdapterRegistry,
+  electronicSubmissionRefusal,
+} from "../src/registry";
 
 describe("MedicaidAdapterRegistry", () => {
   it("registers Oregon (real) + WA/ID/CA/NV deny-stubs", () => {
@@ -108,4 +112,21 @@ describe("isValidOhpMemberId (Oregon mod-10)", () => {
     expect(isValidOhpMemberId(seven + String(check))).toBe(true);
     expect(isValidOhpMemberId(seven + String((check + 1) % 10))).toBe(false);
   });
+});
+
+describe("electronicSubmissionRefusal (S11)", () => {
+  it("allows Oregon, the only live gateway", () => {
+    expect(electronicSubmissionRefusal("OR")).toBeNull();
+  });
+
+  it.each(["WA", "ID", "CA", "NV", "TX"])(
+    "refuses %s with the stable code and a manual/paper alternative",
+    (state) => {
+      const r = electronicSubmissionRefusal(state);
+      expect(r?.code).toBe(MEDICAID_NO_ELECTRONIC_GATEWAY_CODE);
+      expect(r?.message).toContain(state);
+      expect(r?.message).toMatch(/manually/);
+      expect(r?.message).toMatch(/paper/);
+    },
+  );
 });
