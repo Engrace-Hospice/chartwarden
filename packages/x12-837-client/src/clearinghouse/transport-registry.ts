@@ -12,6 +12,7 @@ import { CH, type ClearinghouseTransport, type ClearinghouseVendor } from "./typ
 
 export const CLEARINGHOUSE_VENDOR_ENV = "CLEARINGHOUSE_VENDOR";
 
+// episode_alert is deliberately absent: it is eligibility-only, so binding it platform-wide would stop submission (#758).
 const VENDORS: readonly ClearinghouseVendor[] = ["in_memory", "direct_mac", "stedi"];
 /** The vendors configurable in production (everything but the in_memory test double). */
 export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly ClearinghouseVendor[] = VENDORS.filter(
