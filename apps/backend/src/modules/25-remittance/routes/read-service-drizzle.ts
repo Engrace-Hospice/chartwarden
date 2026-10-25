@@ -11,9 +11,10 @@ import {
   type AgingBucketLabel,
   type AppealTier,
   agingBucketLabel,
-  denialPayerKind,
+  type DenialPayerKind,
   deriveTierDeadline,
 } from "../domain";
+import { type PayerBatchDeps, resolvePayerKinds } from "./denial-payer";
 import type { M25ReadActor } from "./actor";
 import { type CursorPage, decodeCursor, encodeCursor } from "./concurrency";
 import type {
@@ -52,6 +53,7 @@ const AGING_LABELS: AgingBucketLabel[] = ["0-7", "8-15", "16-30", "31-60", "61-9
 export function buildDrizzleM25ReadService(
   db: DbClient,
   terminology: TerminologyLookupPort = DENY_TERMINOLOGY,
+  payerDeps: PayerBatchDeps = {},
 ): M25ReadService {
   const RA = schema.remittanceAdvice;
   const RL = schema.remittanceLine;
@@ -227,11 +229,12 @@ export function buildDrizzleM25ReadService(
           .where(conds.length ? and(...(conds as [])) : undefined)
           .orderBy(desc(DC.openedAt), desc(DC.id))
           .limit(limit + 1);
+        const payers = await payerKindsOf(tx, actor.organizationId, rows);
         return page(
           rows,
           limit,
           (r) => ({ createdAt: iso(r.dc.openedAt), id: r.dc.id }),
-          (r) => toDenialItem(r.dc, r.adviceKind),
+          (r) => toDenialItem(r.dc, payers.get(r.dc.id) ?? "unknown"),
         );
       });
     },
@@ -245,7 +248,9 @@ export function buildDrizzleM25ReadService(
           .leftJoin(RA, eq(RA.id, RL.remittanceAdviceId))
           .where(and(eq(DC.id, id), peScope(DC.providerEntityId, actor)))
           .limit(1);
-        return rows[0] ? toDenialItem(rows[0].dc, rows[0].adviceKind) : null;
+        if (!rows[0]) return null;
+        const payers = await payerKindsOf(tx, actor.organizationId, rows);
+        return toDenialItem(rows[0].dc, payers.get(rows[0].dc.id) ?? "unknown");
       });
     },
 
@@ -412,9 +417,22 @@ export function buildDrizzleM25ReadService(
       receivedAt: iso(r.receivedAt),
     };
   }
-  function toDenialItem(r: typeof DC.$inferSelect, adviceKind: string | null): DenialWorklistItem {
+  /** The payer of the (already scope-filtered) rows: the SAME decision as the appeal guard, batched (denial-payer.ts). */
+  function payerKindsOf(
+    tx: unknown,
+    organizationId: string,
+    rows: readonly { dc: typeof DC.$inferSelect; adviceKind: string | null }[],
+  ) {
+    return resolvePayerKinds(
+      tx,
+      organizationId,
+      rows.map((r) => ({ key: r.dc.id, adviceKind: r.adviceKind, claimId: r.dc.claimId })),
+      payerDeps,
+    );
+  }
+  function toDenialItem(r: typeof DC.$inferSelect, payerKind: DenialPayerKind): DenialWorklistItem {
     return {
-      payerKind: denialPayerKind({ adviceKind }),
+      payerKind,
       id: r.id,
       providerEntityId: r.providerEntityId,
       claimId: r.claimId,
