@@ -181,7 +181,8 @@ describe.each(PARAM_CASES)("$name list behaviour", (c) => {
   it("clears a ?param naming a missing record once the list has loaded, and says so", async () => {
     mount(c.element, `${c.path}?${c.param}=missing`, c.routes);
     expect(await screen.findByText(STALE_NOTICE)).toBeTruthy();
-    expect(search()).toBe("");
+    // The toast (urgent) can commit before the router's location update, so wait for the param to clear.
+    await waitFor(() => expect(search()).toBe(""));
   });
 
   it("opens the drawer for a record that is in the list and keeps the param", async () => {
@@ -203,7 +204,7 @@ describe.each(PARAM_CASES)("$name list behaviour", (c) => {
     expect(search()).toBe(`?${c.param}=${c.id}`);
     fireEvent.keyDown(drawer, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
-    expect(search()).toBe("");
+    await waitFor(() => expect(search()).toBe(""));
     expect(document.activeElement).toBe(firstRow());
   });
 });
@@ -225,7 +226,7 @@ describe("TenantInventory new-tenant link", () => {
     const drawer = await screen.findByRole("complementary", { name: "New tenant" });
     fireEvent.keyDown(drawer, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
-    expect(search()).toBe("");
+    await waitFor(() => expect(search()).toBe(""));
   });
 });
 

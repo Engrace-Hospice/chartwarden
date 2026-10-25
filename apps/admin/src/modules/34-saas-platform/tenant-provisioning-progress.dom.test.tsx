@@ -2,13 +2,16 @@
 // A tenant in `provisioning` used to stay stale in the list until a manual reload, and its overview said nothing
 // about the job. The list refreshes itself while any tenant is provisioning, and the overview shows the
 // provisioning card (job state + retry) for a provisioning tenant only.
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { ApiClientProvider, ToastProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TenantInventory } from "./tenant-inventory";
 import { TenantOverview } from "./tenant-overview";
+
+// Mirrors PROVISIONING_POLL_MS in tenant-inventory.tsx.
+const POLL_MS = 5000;
 
 const summary = (status: string) => ({
   id: "t-1",
@@ -37,7 +40,8 @@ afterEach(() => {
 
 describe("tenant list polling", () => {
   it("refreshes while a tenant is provisioning and stops once none is", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // Pure fake clock: real elapsed time under suite load must not advance it (that fired a second poll early).
+    vi.useFakeTimers();
     const page = (status: string) => ({
       data: { items: [summary(status)], nextCursor: null, hasMore: false },
     });
@@ -53,13 +57,19 @@ describe("tenant list polling", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByText("Cedar Ridge Hospice LLC");
-    await vi.advanceTimersByTimeAsync(5500);
-    const afterRefresh = GET.mock.calls.length;
-    await vi.advanceTimersByTimeAsync(20_000);
+    const advance = (ms: number) =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    await advance(0);
+    expect(screen.getByText("Cedar Ridge Hospice LLC")).toBeTruthy();
+    expect(GET).toHaveBeenCalledTimes(1);
 
-    expect(afterRefresh).toBe(2);
-    expect(GET.mock.calls.length).toBe(afterRefresh);
+    // One poll interval: the refresh returns `onboarding`, which clears the interval on re-render.
+    await advance(POLL_MS);
+    expect(GET).toHaveBeenCalledTimes(2);
+    await advance(POLL_MS * 4);
+    expect(GET).toHaveBeenCalledTimes(2);
   });
 });
 
