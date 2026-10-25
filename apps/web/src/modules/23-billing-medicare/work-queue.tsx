@@ -19,7 +19,7 @@ import {
 } from "@chartwarden/ui";
 import { useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
 import { fmtDay } from "./dde-queue-model";
 import { patientLabel, usePatientNames } from "./use-patient-names";
@@ -52,7 +52,7 @@ const URGENCY_PILL: Partial<Record<Urgency, { label: string; tone: "error" | "wa
   overdue: { label: "Overdue", tone: "error" },
   at_risk: { label: "At risk", tone: "warning" },
 };
-const isUrgent = (i: WorkItem) => i.urgency === "overdue" || i.urgency === "at_risk";
+export const isUrgent = (i: WorkItem) => i.urgency === "overdue" || i.urgency === "at_risk";
 
 function matchesType(item: WorkItem, type: TypeFilter): boolean {
   if (type === "all") return true;
@@ -65,8 +65,13 @@ const itemsOf = <T,>(s: SourceState<T>): T[] => (s.status === "ok" ? s.items : [
 export function BillingWorkQueue(): JSX.Element {
   const client = useApiClient();
   const { sources, reload } = useWorkQueueSources(client);
-  const [type, setType] = useState<TypeFilter>("all");
-  const [urgentOnly, setUrgentOnly] = useState(false);
+  // Billing Home links here pre-filtered (?type=dde&urgent=1); anything else in the URL is ignored.
+  const [params] = useSearchParams();
+  const [type, setType] = useState<TypeFilter>(() => {
+    const t = params.get("type");
+    return TYPE_OPTIONS.find((o) => o.value === t)?.value ?? "all";
+  });
+  const [urgentOnly, setUrgentOnly] = useState(() => params.get("urgent") === "1");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   const items = useMemo(
@@ -227,7 +232,7 @@ export function BillingWorkQueue(): JSX.Element {
   );
 }
 
-function SourceProblems({
+export function SourceProblems({
   failed,
   refused,
   onRetry,
@@ -264,7 +269,7 @@ function SourceProblems({
   );
 }
 
-function SourceCard({
+export function SourceCard({
   label,
   source,
   rows,
@@ -424,7 +429,7 @@ function WorkTable({
   );
 }
 
-function UrgencyPill({ urgency }: { urgency: Urgency }): JSX.Element | null {
+export function UrgencyPill({ urgency }: { urgency: Urgency }): JSX.Element | null {
   const pill = URGENCY_PILL[urgency];
   return pill ? <StatusPill label={pill.label} tone={pill.tone} /> : null;
 }
