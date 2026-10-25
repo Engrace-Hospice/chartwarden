@@ -87,7 +87,11 @@ const LOADING: WorkQueueSources = {
   dde: { status: "loading" },
 };
 
-export function useWorkQueueSources(client: ApiClient): {
+/** `patientId` narrows every read to one patient (the patient chart's panel); omitted, the caller's whole queue. */
+export function useWorkQueueSources(
+  client: ApiClient,
+  patientId?: string,
+): {
   sources: WorkQueueSources;
   reload: () => void;
 } {
@@ -104,13 +108,14 @@ export function useWorkQueueSources(client: ApiClient): {
       void read.then((state) => {
         if (active) setSources((prev) => ({ ...prev, [key]: state }));
       });
+    const scope = patientId ? { patientId } : {};
     land(
       "claims",
       Promise.all(
         ACTIONABLE_CLAIM_STATES.map((state) =>
           readPage<ClaimRow>(
             client.GET("/api/v1/billing/claims", {
-              params: { query: { limit: QUEUE_PAGE_SIZE, state } },
+              params: { query: { limit: QUEUE_PAGE_SIZE, state, ...scope } },
             } as never),
           ),
         ),
@@ -122,7 +127,7 @@ export function useWorkQueueSources(client: ApiClient): {
           readPage<NoticeRow>(
             client.GET(
               path as never,
-              { params: { query: { limit: QUEUE_PAGE_SIZE, state } } } as never,
+              { params: { query: { limit: QUEUE_PAGE_SIZE, state, ...scope } } } as never,
             ),
           ),
         ),
@@ -135,7 +140,7 @@ export function useWorkQueueSources(client: ApiClient): {
         ACTIONABLE_DDE_STATES.map((state) =>
           readPage<DdeItem>(
             client.GET("/api/v1/billing/dde-items", {
-              params: { query: { limit: QUEUE_PAGE_SIZE, state } },
+              params: { query: { limit: QUEUE_PAGE_SIZE, state, ...scope } },
             } as never),
           ),
         ),
@@ -144,7 +149,7 @@ export function useWorkQueueSources(client: ApiClient): {
     return () => {
       active = false;
     };
-  }, [client, reloadKey]);
+  }, [client, patientId, reloadKey]);
 
   return { sources, reload };
 }
