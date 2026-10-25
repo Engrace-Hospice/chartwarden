@@ -22,7 +22,12 @@ export type ClearinghouseAttemptStatusValue = (typeof CLEARINGHOUSE_ATTEMPT_STAT
 export const CLEARINGHOUSE_ATTEMPT_USAGE_VALUES = ["test", "production"] as const;
 export type ClearinghouseAttemptUsageValue = (typeof CLEARINGHOUSE_ATTEMPT_USAGE_VALUES)[number];
 
-export const CLEARINGHOUSE_ATTEMPT_KIND_VALUES = ["claim", "noe", "notr"] as const;
+export const CLEARINGHOUSE_ATTEMPT_KIND_VALUES = [
+  "claim",
+  "noe",
+  "notr",
+  "transfer_notice",
+] as const;
 export type ClearinghouseAttemptKindValue = (typeof CLEARINGHOUSE_ATTEMPT_KIND_VALUES)[number];
 
 export const clearinghouseSubmissionAttempts = pgTable(

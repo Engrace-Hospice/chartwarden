@@ -53,6 +53,12 @@ export interface ConformanceScript {
     reasonCodes: readonly string[],
     scope?: ClearinghouseScope,
   ): Promise<void>;
+  /** The payer accepted part of the claim and rejected the rest (277CA partial); `reasonCodes` name what failed. */
+  payerPartiallyAccepts(
+    controlNumber: string,
+    reasonCodes: readonly string[],
+    scope?: ClearinghouseScope,
+  ): Promise<void>;
   deliverRemittance(
     remittanceId: string,
     rawX12: string,
@@ -284,9 +290,9 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
   {
     id: "C03-notice-kind-routing",
     requires: ["submit"],
-    stage: "3 NOE / 14 NOTR",
+    stage: "3 NOE / 14 NOTR / transfer notice",
     title:
-      "submitNotice accepts noe and notr and refuses a claim or an adjustment; submitClaim refuses a notice",
+      "submitNotice accepts noe, notr and transfer_notice and refuses a claim or an adjustment; submitClaim refuses a notice",
     async run(h) {
       const sub = submissionFor(h);
       const noe = ok(await h.transport.submitNotice(ctxFor(), sub("noe", "NOE-0003")), "noe");
@@ -294,6 +300,33 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
       check(
         noe.clearinghouseSubmissionId !== notr.clearinghouseSubmissionId,
         "distinct submissions",
+      );
+      const transfer = ok(
+        await h.transport.submitNotice(ctxFor(), sub("transfer_notice", "TRN-0003")),
+        "transfer_notice",
+      );
+      check(
+        transfer.clearinghouseSubmissionId !== noe.clearinghouseSubmissionId &&
+          transfer.controlNumber === "TRN-0003",
+        "a transfer notice is its own submission",
+      );
+      const transferAsClaim = await h.transport.submitClaim(
+        ctxFor(),
+        sub("transfer_notice", "TRN-0003b"),
+      );
+      check(
+        degradedCode(transferAsClaim, "submitClaim(transfer_notice)") === CH.INVALID_REQUEST,
+        "submitClaim refuses kind=transfer_notice",
+      );
+      const adjustedTransfer = await h.transport.submitNotice(
+        ctxFor(),
+        sub("transfer_notice", "TRN-0003c", {
+          adjustment: { kind: "void", originalControlNumber: "TRN-0003" },
+        }),
+      );
+      check(
+        degradedCode(adjustedTransfer, "transfer notice with adjustment") === CH.INVALID_REQUEST,
+        "a transfer notice cannot carry a claim adjustment",
       );
       const noticeAsClaim = await h.transport.submitNotice(ctxFor(), sub("claim", "CCN-0003"));
       check(
@@ -419,6 +452,32 @@ export const CLEARINGHOUSE_CONFORMANCE_CASES: readonly ConformanceCase[] = [
       check(
         status.latest?.reasonCodes.includes("A7:562") === true,
         "payer reason codes are carried",
+      );
+    },
+  },
+  {
+    id: "C07b-payer-partial-acceptance",
+    requires: ["submit", "receive"],
+    stage: "6-7 partial acceptance",
+    title:
+      "a payer partial acceptance is its own payer-stage disposition, not a rejection, and carries its reason codes",
+    async run(h) {
+      await submitClaimOk(h, "CCN-0007P");
+      await h.script.clearinghouseAccepts("CCN-0007P");
+      await h.script.payerPartiallyAccepts("CCN-0007P", ["A7:562"]);
+      const status = ok(await h.transport.fetchClaimStatus(ctxFor(), "CCN-0007P"), "status");
+      check(status.state === "payer_partial", "state is payer_partial");
+      check(
+        status.latest?.stage === "payer" && status.latest.disposition === "partial",
+        "the latest event is the payer-stage partial",
+      );
+      check(
+        status.latest.reasonCodes.includes("A7:562"),
+        "the reasons for the rejected part are carried",
+      );
+      check(
+        !status.latest.reasonCodes.includes("PARTIAL"),
+        "no marker convention: the disposition says it",
       );
     },
   },

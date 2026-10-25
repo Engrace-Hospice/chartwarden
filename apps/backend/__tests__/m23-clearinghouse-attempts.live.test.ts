@@ -107,6 +107,26 @@ describe.skipIf(!DB_URL)("M23 durable clearinghouse attempt store — LIVE Postg
     expect(await countAs(IDS.orgB)).toBe(0);
   });
 
+  it("records an attempt of every port submission kind, including the transfer notice (#750), and the CHECK lists them", async () => {
+    const store = createDrizzleAttemptStore(handle.db);
+    for (const kind of ["claim", "noe", "notr", "transfer_notice"] as const) {
+      const r = await store.reserve(
+        attemptReservationFixture(IDS, {
+          kind,
+          idempotencyKey: `idem-${kind}`,
+          controlNumber: `CCN-${kind}`.replace("_", "-"),
+        }),
+      );
+      expect(r.reserved).toBe(true);
+    }
+    expect(await countAs(IDS.orgA)).toBe(4);
+    const def = await admin.query(
+      "SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conname='clearinghouse_submission_attempt_kind_chk'",
+    );
+    expect(def.rows[0]?.d).toContain("transfer_notice");
+    expect(def.rows[0]?.d).not.toContain("bogus");
+  });
+
   it("refuses to change a row's identity or to reopen a final row", async () => {
     const store = createDrizzleAttemptStore(handle.db);
     await store.reserve(attemptReservationFixture(IDS));

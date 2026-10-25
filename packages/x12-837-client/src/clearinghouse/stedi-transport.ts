@@ -304,8 +304,12 @@ export class StediTransport implements ClearinghouseTransport {
     ctx: ClearinghouseContext,
     submission: ClearinghouseSubmission,
   ): Promise<X12WorkerResult<SubmissionReceipt>> {
-    if (submission.kind !== "noe" && submission.kind !== "notr") {
-      return Promise.resolve(refuse("submitNotice accepts kind=noe or notr only"));
+    if (
+      submission.kind !== "noe" &&
+      submission.kind !== "notr" &&
+      submission.kind !== "transfer_notice"
+    ) {
+      return Promise.resolve(refuse("submitNotice accepts kind=noe, notr or transfer_notice only"));
     }
     if (submission.adjustment) {
       return Promise.resolve(refuse("a notice cannot carry a claim adjustment"));

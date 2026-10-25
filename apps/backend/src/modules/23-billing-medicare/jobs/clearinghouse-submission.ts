@@ -61,21 +61,25 @@ export function activeTransport(deps: {
   return deps.transport?.binding.vendor ? deps.transport : null;
 }
 
-const UPLOAD_TO_SUBMISSION_KIND: Record<string, SubmissionKind> = {
+/** Every legacy upload kind has a port kind (the 8xC/8xD transfer notice is `transfer_notice`, ADR-0053 amendment). */
+const UPLOAD_TO_SUBMISSION_KIND: Record<TransportUploadKind, SubmissionKind> = {
   claim_837i: "claim",
   noe: "noe",
   notr: "notr",
+  transfer_notice: "transfer_notice",
 };
 
 function failure(what: string, code: string, reason: string): Error {
   return new Error(`clearinghouse ${what} failed (${code}): ${reason}`);
 }
 
+type TransportUploadKind = "claim_837i" | "noe" | "notr" | "transfer_notice";
+
 /** Structurally `MacPortalPort["upload"]` (declared here so m23-jobs can import this file without a cycle). */
 export type TransportUpload = (input: {
   readonly organizationId: string;
   readonly providerEntityId: string;
-  readonly kind: "claim_837i" | "noe" | "notr" | "transfer_notice";
+  readonly kind: TransportUploadKind;
   readonly x12: string;
   readonly controlNumber: string;
 }) => Promise<{ readonly accepted: boolean; readonly generatedFileUri: string }>;
@@ -87,11 +91,11 @@ export type TransportUpload = (input: {
 export function transportUpload(transport: M23TransportDeps): TransportUpload {
   return async (input) => {
     const kind = UPLOAD_TO_SUBMISSION_KIND[input.kind];
+    // A kind outside the map (a caller bypassing the types) is refused with a typed error, never sent or dropped.
     if (!kind) {
-      // ponytail: 8xC/8xD transfer notices have no SubmissionKind yet; fail closed, never the legacy portal.
       throw failure(
         input.kind,
-        "CH_INVALID_REQUEST",
+        CH.INVALID_REQUEST,
         "this file kind is not routable through the clearinghouse",
       );
     }
@@ -132,7 +136,6 @@ export interface TransportAck {
 }
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}/;
-const PARTIAL_MARKER = "PARTIAL";
 
 /** Map a port event to the M23 ack alphabet (two-stage routing per ADR-0053 D2). Pure. */
 export function ackFromEvent(
@@ -140,16 +143,15 @@ export function ackFromEvent(
   scope: { organizationId: string; providerEntityId: string; macJurisdiction: string },
 ): TransportAck {
   const routed = routeAckEvent(event);
-  const partial = routed.kind === "ack_277ca" && event.reasonCodes[0] === PARTIAL_MARKER;
   return {
     organizationId: scope.organizationId,
     providerEntityId: scope.providerEntityId,
     controlNumber: event.controlNumber,
     kind: routed.kind,
     stage: routed.stage,
-    outcome: partial ? "partial" : routed.outcome,
+    outcome: routed.outcome,
     payerControlNumber: event.payerClaimNumber ?? null,
-    reasonCodes: partial ? event.reasonCodes.slice(1) : event.reasonCodes,
+    reasonCodes: event.reasonCodes,
     macJurisdiction: scope.macJurisdiction,
     ackFileUri: `clearinghouse:${event.eventId}`,
     day: ISO_DAY.test(event.occurredAt) ? event.occurredAt.slice(0, 10) : null,

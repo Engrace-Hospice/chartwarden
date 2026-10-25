@@ -138,6 +138,7 @@ describe("transportUpload (claim / NOE / NOTR submit + retry go through the vend
       ["claim_837i", "CCN1"],
       ["noe", "NOE1"],
       ["notr", "NOTR1"],
+      ["transfer_notice", "TN1"],
     ] as const) {
       const r = await upload(kind, n);
       expect(r.accepted).toBe(true);
@@ -172,8 +173,31 @@ describe("transportUpload (claim / NOE / NOTR submit + retry go through the vend
     expect(worker.macPortal?.upload).toBe(unboundPortal); // the legacy port is only bypassed inside macPortalOf
   });
 
-  it("a transfer notice has no clearinghouse kind: it fails closed instead of using the legacy portal", async () => {
-    await expect(upload("transfer_notice", "TN1")).rejects.toThrow(/not routable/);
+  it("a transfer notice rides submitNotice; a vendor that cannot carry it refuses with a typed error, never the legacy portal", async () => {
+    const inMemory = new InMemoryClearinghouse();
+    await inMemory.control.setOutage(true);
+    await expect(upload("transfer_notice", "TN2", transportDeps(inMemory))).rejects.toThrow(
+      CH.UNAVAILABLE,
+    );
+    const refusing = transportDeps();
+    const refuse = async () => ({
+      ok: false as const,
+      degraded: {
+        code: CH.INVALID_REQUEST,
+        reason: "this transport cannot carry a transfer notice",
+      },
+    });
+    const t = {
+      ...refusing,
+      binding: {
+        ...refusing.binding,
+        transport: Object.assign(Object.create(refusing.binding.transport), {
+          submitNotice: refuse,
+        }),
+      },
+    };
+    await expect(upload("transfer_notice", "TN3", t)).rejects.toThrow(CH.INVALID_REQUEST);
+    await expect(upload("bogus" as never, "TN4")).rejects.toThrow(CH.INVALID_REQUEST);
   });
 });
 
@@ -212,19 +236,28 @@ describe("acknowledgments over the transport", () => {
     expect(ch.ackFileUri).toBe("clearinghouse:e1");
   });
 
-  it("restores a PARTIAL payer answer carried as a marked rejection", () => {
-    const a = ackFromEvent(
-      {
-        eventId: "e3",
-        stage: "payer",
-        disposition: "rejected",
-        controlNumber: "CCN1",
-        reasonCodes: ["PARTIAL", "A7:562"],
-        occurredAt: "2026-10-11",
-      },
-      { organizationId: ORG, providerEntityId: PE, macJurisdiction: "ngs_j6" },
+  it("maps a first-class partial payer disposition, and no longer reads a PARTIAL marker", () => {
+    const scope = { organizationId: ORG, providerEntityId: PE, macJurisdiction: "ngs_j6" };
+    const event = {
+      eventId: "e3",
+      stage: "payer" as const,
+      controlNumber: "CCN1",
+      occurredAt: "2026-10-11",
+    };
+    const partial = ackFromEvent(
+      { ...event, disposition: "partial", reasonCodes: ["A7:562"] },
+      scope,
     );
-    expect(a).toMatchObject({ outcome: "partial", reasonCodes: ["A7:562"] });
+    expect(partial).toMatchObject({
+      kind: "ack_277ca",
+      outcome: "partial",
+      reasonCodes: ["A7:562"],
+    });
+    const marked = ackFromEvent(
+      { ...event, disposition: "rejected", reasonCodes: ["PARTIAL", "A7:562"] },
+      scope,
+    );
+    expect(marked).toMatchObject({ outcome: "rejected", reasonCodes: ["PARTIAL", "A7:562"] });
   });
 
   it("pulls the provider's events from the vendor and filters by stage", async () => {
@@ -419,8 +452,8 @@ describe("buildDirectMacGateway (the launch gateway behind the direct_mac transp
       expect.objectContaining({
         eventId: "277ca:u3:CCN1",
         stage: "payer",
-        disposition: "rejected",
-        reasonCodes: ["PARTIAL", "A7"],
+        disposition: "partial",
+        reasonCodes: ["A7"],
         occurredAt: "2026-10-11",
       }),
     ]);

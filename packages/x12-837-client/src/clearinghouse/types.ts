@@ -89,9 +89,14 @@ export type ClearinghouseScope = Pick<
   "organizationId" | "providerEntityId" | "usage" | "billingNpi"
 >;
 
-// ─── Submission (claims, NOE, NOTR) ─────────────────────────────────────────────────────────────
+// ─── Submission (claims, NOE, NOTR, transfer notices) ─────────────────────────────────────────────────────────────
 
-export type SubmissionKind = "claim" | "noe" | "notr";
+/**
+ * `transfer_notice` is the 837I transfer notice (TOB 8xC change / 8xD cancel, ADR-0053 amendment 2026-10-25): an
+ * NOE-family notice (the CMS 837I NOE companion guide governs TOB 8XA-8XE), so it travels `submitNotice`, never
+ * `submitClaim`, and carries no claim adjustment.
+ */
+export type SubmissionKind = "claim" | "noe" | "notr" | "transfer_notice";
 
 /** Raw X12 or a vendor JSON document. Exactly one is meaningful; the transport rejects a mismatch. */
 export type SubmissionPayload =
@@ -151,7 +156,11 @@ export interface ValidationReport {
 
 /** `clearinghouse` = the vendor accepted/rejected it; `payer` = the MAC accepted/rejected it. Never conflate. */
 export type AckStage = "clearinghouse" | "payer";
-export type AckDisposition = "accepted" | "rejected";
+/**
+ * `partial` is a PAYER-stage answer only (a 277CA that accepted part of the claim and rejected the rest); a
+ * clearinghouse (999) answer is `accepted` or `rejected`. A partial carries the reason codes of what was rejected.
+ */
+export type AckDisposition = "accepted" | "rejected" | "partial";
 
 export interface AckEvent {
   /** Stable and unique per acknowledgment; consumers dedupe on it. */
@@ -197,6 +206,7 @@ export type SubmissionState =
   | "clearinghouse_accepted"
   | "clearinghouse_rejected"
   | "payer_accepted"
+  | "payer_partial"
   | "payer_rejected";
 
 export interface ClaimStatus {
@@ -283,7 +293,7 @@ export interface ClearinghouseTransport {
     submission: ClearinghouseSubmission,
   ): Promise<X12WorkerResult<ValidationReport>>;
 
-  /** NOE (stage 3) or NOTR (stage 14). `submission.kind` must be `noe` or `notr`. */
+  /** NOE (stage 3), NOTR (stage 14) or a transfer notice. `submission.kind` must be `noe`, `notr` or `transfer_notice`. */
   submitNotice(
     ctx: ClearinghouseContext,
     submission: ClearinghouseSubmission,

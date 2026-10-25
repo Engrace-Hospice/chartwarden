@@ -38,9 +38,23 @@ describe("routeAckEvent (ADR-0053 D2)", () => {
     expect(routeAckEvent(ev({ disposition: "rejected" })).kind).toBe("ack_277ca");
   });
 
+  it("routes a payer-stage partial through the 277CA edge as a partial outcome", () => {
+    expect(routeAckEvent(ev({ disposition: "partial", reasonCodes: ["A7"] }))).toEqual({
+      kind: "ack_277ca",
+      stage: "payer",
+      outcome: "partial",
+    });
+  });
+
+  it("refuses a clearinghouse-stage partial (a 999 is accepted or rejected)", () => {
+    expect(() => routeAckEvent(ev({ stage: "clearinghouse", disposition: "partial" }))).toThrow(
+      /payer-stage only/,
+    );
+  });
+
   it("fails closed on an unknown stage or disposition", () => {
     expect(() => routeAckEvent(ev({ stage: "bogus" as never }))).toThrow(/stage/);
-    expect(() => routeAckEvent(ev({ disposition: "partial" as never }))).toThrow(/disposition/);
+    expect(() => routeAckEvent(ev({ disposition: "bogus" as never }))).toThrow(/disposition/);
     expect(() => routeAckEvent(null as never)).toThrow();
   });
 });
