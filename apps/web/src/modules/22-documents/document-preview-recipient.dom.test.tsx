@@ -297,4 +297,33 @@ describe("DocumentPreviewDialog — disclosure recipient", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(window.sessionStorage.length).toBe(0);
   });
+
+  it("does not restore an old external choice after an internal-purpose refusal", async () => {
+    mount({ stepUp: true, session: true });
+    fireEvent.change(screen.getByLabelText("Reason for access"), {
+      target: { value: "disclosure" },
+    });
+    await pickPartner();
+    const open = screen.getByRole("button", { name: "Open" }) as HTMLButtonElement;
+    await waitFor(() => expect(open.disabled).toBe(false));
+    fireEvent.click(open);
+    await screen.findByRole("link", { name: "Verify now" });
+    expect(window.sessionStorage.length).toBeGreaterThan(0);
+
+    fireEvent.change(screen.getByLabelText("Reason for access"), {
+      target: { value: "treatment" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    await screen.findByRole("link", { name: "Verify now" });
+
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it("announces the recipient hint as a status message", () => {
+    mount();
+    fireEvent.change(screen.getByLabelText("Reason for access"), {
+      target: { value: "disclosure" },
+    });
+    expect(screen.getByRole("status").textContent).toContain("Choose a recipient to continue.");
+  });
 });

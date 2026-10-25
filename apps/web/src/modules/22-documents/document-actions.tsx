@@ -199,6 +199,8 @@ export interface DocumentPreviewDialogProps {
   readonly onClose: () => void;
 }
 
+// Mount this dialog only while it is open (the parent renders it conditionally): the restored step-up
+// draft is read once, at mount. The reset effect below clears the form when `open` turns false.
 export function DocumentPreviewDialog({
   open,
   documentId,
@@ -259,8 +261,10 @@ export function DocumentPreviewDialog({
     if (!res.ok) {
       setError(res.message);
       setNeedsStepUp(res.stepUp === true);
-      if (res.stepUp === true && external) {
-        stashStepUpDraft(draftKey, { purpose, recipientKind, recipientId });
+      if (res.stepUp === true) {
+        // An internal-purpose refusal must not leave an earlier external choice to be restored in its place.
+        if (external) stashStepUpDraft(draftKey, { purpose, recipientKind, recipientId });
+        else clearStepUpDraft(draftKey);
       }
       return;
     }
@@ -327,9 +331,9 @@ export function DocumentPreviewDialog({
           </>
         ) : null}
         {external && recipientId === "" ? (
-          <p id={hintId} style={meta}>
+          <output id={hintId} style={{ ...meta, display: "block" }}>
             Choose a recipient to continue.
-          </p>
+          </output>
         ) : null}
         <p style={meta}>
           Opening this document is recorded in the patient's disclosure accounting (§164.528)

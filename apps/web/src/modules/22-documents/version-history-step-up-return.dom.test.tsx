@@ -110,4 +110,22 @@ describe("VersionHistory — back from step-up", () => {
       expect(window.sessionStorage.getItem(`wx.step-up-draft:${draftKey}`)).toBeNull(),
     );
   });
+
+  it("drops a returned draft whose version is not in the loaded chain", async () => {
+    const other = "dddddddd-4444-4444-8444-dddddddddddd";
+    const otherKey = stepUpDraftKey(OWNER, DISCLOSE_ACTION, other);
+    stashStepUpDraft(otherKey, {
+      purpose: "disclosure",
+      recipientKind: "facility",
+      recipientId: PARTNER,
+    });
+    markStepUpReturn(PATH);
+    mount();
+
+    await screen.findByText("Discharge summary");
+    expect(screen.queryByText("Open version 2")).toBeNull();
+    await waitFor(() =>
+      expect(window.sessionStorage.getItem(`wx.step-up-draft:${otherKey}`)).toBeNull(),
+    );
+  });
 });

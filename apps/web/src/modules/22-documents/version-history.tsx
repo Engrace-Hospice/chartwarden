@@ -22,13 +22,14 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useParams } from "react-router-dom";
-import { findStepUpDraftResourceId } from "../../shell/step-up-redirect";
+import { clearStepUpDraft, findStepUpDraftResourceId } from "../../shell/step-up-redirect";
 import { useStepUpOwner, useStepUpReturn } from "../../shell/use-step-up-return";
 import {
   DISCLOSE_ACTION,
   DISCLOSE_ACTIONS,
   DocumentEditDialog,
   DocumentPreviewDialog,
+  disclosureDraftKey,
 } from "./document-actions";
 import { DocumentTags } from "./document-tags";
 import { DocumentUploadDialog } from "./document-upload-dialog";
@@ -94,10 +95,16 @@ export function VersionHistory(): JSX.Element {
   const resumed = useRef(false);
   useEffect(() => {
     if (!returning || resumed.current || versions.length === 0) return;
-    resumed.current = true;
     const versionId = findStepUpDraftResourceId(owner, DISCLOSE_ACTION);
     const match = versions.find((v) => v.id === versionId);
-    if (match) setPreviewing(match);
+    if (match) {
+      resumed.current = true;
+      setPreviewing(match);
+    } else if (versionId) {
+      // The refused version is not in this chain (another document, or past the first page): it cannot
+      // be reopened here, so do not leave its choices lingering in storage.
+      clearStepUpDraft(disclosureDraftKey(owner, versionId));
+    }
   }, [returning, owner, versions]);
 
   if (error) return <EmptyState title="Unavailable" description={error} />;
