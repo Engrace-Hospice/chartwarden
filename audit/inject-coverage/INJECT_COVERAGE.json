@@ -374,6 +374,7 @@
         "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/billing-medicare-inject.test.ts",
         "apps/backend/__tests__/m23-clearinghouse-attempt-routes.test.ts",
+        "apps/backend/__tests__/m23-dde-daily-change.live.test.ts",
         "apps/backend/__tests__/m23-dde-queue-hardening.live.test.ts",
         "apps/backend/__tests__/m23-dde-queue-routes.test.ts",
         "apps/backend/__tests__/m23-dde-queue-scope-respawn.live.test.ts",

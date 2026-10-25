@@ -343,6 +343,18 @@ describe.skipIf(!DB_URL)("M23 DDE daily change ingest, LIVE Postgres (#793)", ()
     expect(await service().applyProviderChange(ORG_A, pe, outcome, MEMBERSHIP_A)).toBe("applied");
   });
 
+  it("never resolves a possibly-sent item: the marker stays for the person who settles it", async () => {
+    const pe = randomUUID();
+    const { id, ref } = await submitted(pe);
+    await submitted(pe); // keeps the operator awaiting
+    await admin.query("UPDATE dde_work_item SET provider_in_doubt_at = now() WHERE id=$1", [id]);
+    spy.inner.fissAnswers(scopeOf(pe), ref, "accepted", []);
+    const r = await tick(pe);
+    expect(r).toMatchObject({ applied: 0, failures: [] });
+    expect(await row(id)).toMatchObject({ state: "submitted" });
+    expect((await row(id)).provider_in_doubt_at).not.toBeNull();
+  });
+
   it("two overlapping ticks cannot regress or double-advance the cursor", async () => {
     const pe = randomUUID();
     const { ref } = await submitted(pe);

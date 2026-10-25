@@ -393,9 +393,10 @@ export function buildDdeQueueService(
       // The change-report ingest (#793) is a system actor: no membership, kind `system`.
       actorMembershipId: isSystemActor(actor) ? null : actor.membershipId,
       actorKind: isSystemActor(actor) ? "system" : "user",
-      detail: isSystemActor(actor)
-        ? historyDetail
-        : { ...historyDetail, actorMembershipId: actor.membershipId },
+      detail: {
+        ...historyDetail,
+        ...(isSystemActor(actor) ? {} : { actorMembershipId: actor.membershipId }),
+      },
     });
     await emit(tx, updated.organizationId, "m23.dde_item.state_changed", updated.id, {
       ddeItemId: updated.id,
