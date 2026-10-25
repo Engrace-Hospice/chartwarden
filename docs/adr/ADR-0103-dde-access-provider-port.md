@@ -131,3 +131,10 @@ with `restored`, and the opaque provider reference in the `provider_in_doubt` de
 invisible. The marker events publish `m23.dde_item.state_changed` with `fromState = toState`; the catalog accepts them and
 consumers (none declared) must treat `event` as open. A thrown adapter error is reported only as "in doubt" (no logger is
 injected into the queue service); an adapter should log its own failures.
+
+While the marker is set, `cancel` and `retry` are refused with `409 DDE_IN_DOUBT` (either would free the subject for a second
+keying); a manual `record-submission`, `record-acceptance` or `record-outcome` by a person who checked DDE settles it. Known
+limits: a manual `record-submission` is allowed while a send is still in flight (the marker alone cannot tell a live call from a
+crashed one), and if that call then times out the item shows no doubt; the success case is covered by the restored marker. The
+`REFUSED_BEFORE_SEND` allowlist is only as sound as the adapter contract: a real adapter must return those four codes only when
+nothing left for the vendor, and its conformance test must pin that before it is bound.

@@ -555,7 +555,7 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
     expect(submit[0].detail).toMatchObject({ resolvedProviderInDoubt: true });
   });
 
-  it("a concurrent cancel during the vendor call: the item stays possibly-sent, nothing is lost silently", async () => {
+  it("cancel and retry are refused while the item is possibly sent; the vendor call that was in flight still lands", async () => {
     const { id } = await inProgress();
     let release: () => void = () => undefined;
     const hold = new Promise<void>((r) => {
@@ -571,17 +571,14 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
     };
     const pending = submitProvider(id, 2);
     await called;
-    // The marker write bumped the version to 3; the cancel wins the race while the vendor is still thinking.
+    // The marker write bumped the version to 3: a cancel now would free the subject for a second keying.
     const cancel = await post(`/${id}/cancel`, asA(), { expectedVersion: 3 });
-    expect(cancel.statusCode).toBe(200);
+    expect(cancel.statusCode).toBe(409);
+    expect(cancel.json().error.code).toBe("DDE_IN_DOUBT");
     release();
     const res = await pending;
-    expect(res.statusCode).toBe(409);
-    expect(res.json().error.code).toBe("DDE_IN_DOUBT");
-    const stored = await row(id);
-    expect(stored.state).toBe("cancelled");
-    expect(stored.provider_in_doubt_at).not.toBeNull();
-    expect(await eventsOf(id, "provider_in_doubt")).toHaveLength(1);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ state: "submitted", providerInDoubt: false });
   });
 
   it("a double click still keys one operation (the marker write is version-checked)", async () => {
@@ -667,10 +664,18 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
     await held.started;
     // While send 1 is in flight: a person keys it by hand, it is returned, retried (attempt 2) ...
     let v = (await row(id)).version as number;
-    expect((await post(`/${id}/record-submission`, asA(stepUp), { expectedVersion: v })).statusCode).toBe(200);
+    expect(
+      (await post(`/${id}/record-submission`, asA(stepUp), { expectedVersion: v })).statusCode,
+    ).toBe(200);
     v = (await row(id)).version;
     expect(
-      (await post(`/${id}/record-outcome`, asA(), { expectedVersion: v, outcome: "returned", rtpReasonCode: "T0001" })).statusCode,
+      (
+        await post(`/${id}/record-outcome`, asA(), {
+          expectedVersion: v,
+          outcome: "returned",
+          rtpReasonCode: "T0001",
+        })
+      ).statusCode,
     ).toBe(200);
     v = (await row(id)).version;
     expect((await post(`/${id}/retry`, asA(), { expectedVersion: v })).statusCode).toBe(200);
@@ -694,7 +699,9 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
     const pending = submitProvider(id, 2);
     await held.started;
     const v = (await row(id)).version as number;
-    expect((await post(`/${id}/record-submission`, asA(stepUp), { expectedVersion: v })).statusCode).toBe(200);
+    expect(
+      (await post(`/${id}/record-submission`, asA(stepUp), { expectedVersion: v })).statusCode,
+    ).toBe(200);
     expect((await row(id)).provider_in_doubt_at).toBeNull();
     held.finish("ok");
     const res = await pending;
@@ -705,5 +712,14 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
     expect(after.provider_in_doubt_at).not.toBeNull();
     const inDoubtEvents = await eventsOf(id, "provider_in_doubt");
     expect(inDoubtEvents[0].detail.reason).toMatch(/^item_changed:dde-ref-/);
+    // Retry is refused while possibly sent; a person recording the real outcome settles the marker.
+    const v2 = after.version as number;
+    const outcome = await post(`/${id}/record-outcome`, asA(), {
+      expectedVersion: v2,
+      outcome: "returned",
+      rtpReasonCode: "T0001",
+    });
+    expect(outcome.statusCode).toBe(200);
+    expect(outcome.json()).toMatchObject({ providerInDoubt: false });
   });
 });

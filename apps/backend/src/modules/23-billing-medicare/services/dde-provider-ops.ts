@@ -58,10 +58,12 @@ export async function runWithTimeout<T>(
       resolve({ kind: "timeout" });
     }, timeoutMs);
   });
-  const call = run(controller.signal).then(
-    (value): BoundedCall<T> => ({ kind: "done", value }),
-    (): BoundedCall<T> => ({ kind: "threw" }),
-  );
+  const call = Promise.resolve()
+    .then(() => run(controller.signal))
+    .then(
+      (value): BoundedCall<T> => ({ kind: "done", value }),
+      (): BoundedCall<T> => ({ kind: "threw" }),
+    );
   try {
     return await Promise.race([call, timeout]);
   } finally {

@@ -192,7 +192,8 @@ export const DdeItemViewSchema = Type.Object({
   providerOperatorMembershipId: nullable(
     Type.String({
       format: "uuid",
-      description: "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
+      description:
+        "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
     }),
   ),
   dcn: nullable(Type.String()),

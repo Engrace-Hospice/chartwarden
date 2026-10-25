@@ -1,4 +1,4 @@
-import type { Static } from "@sinclair/typebox";
+import { randomUUID } from "node:crypto";
 // apps/backend/src/modules/23-billing-medicare/services/dde-queue-service.ts — the M23 DDE work-queue service
 // (ADR-0052): HUMAN WORK TRACKING for Medicare Direct Data Entry (FISS). ChartWarden holds no DDE credential and
 // performs no DDE call; `record submission` is an operator attestation, never a verified fact.
@@ -27,15 +27,15 @@ import {
   validateDdeNotes,
 } from "@chartwarden/billing";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { DDE, type DdeAccessProvider } from "@chartwarden/x12-837-client";
-import { randomUUID } from "node:crypto";
 import {
+  ChartWardenError,
   ConflictError,
   ForbiddenError,
   NotFoundError,
   ValidationError,
-  ChartWardenError,
 } from "@chartwarden/types";
+import { DDE, type DdeAccessProvider } from "@chartwarden/x12-837-client";
+import type { Static } from "@sinclair/typebox";
 import type {
   AssignDdeItemBodySchema,
   CreateDdeItemBodySchema,
@@ -690,6 +690,9 @@ export function buildDdeQueueService(
             rtpReasonCode: body.rtpReasonCode,
             // Always set: a code left from an earlier attempt must not outlive the state it described.
             outcomeCode: body.outcomeCode ?? null,
+            // A person who recorded the real outcome settles any "possibly sent" marker.
+            providerInDoubtAt: null,
+            providerOperatorMembershipId: null,
             ...(body.dcn !== undefined ? { dcn: body.dcn } : {}),
             ...(body.notes !== undefined ? { notes: body.notes } : {}),
           },
@@ -750,6 +753,9 @@ export function buildDdeQueueService(
           {
             ...(macAcceptedOn ? { macAcceptedOn } : {}),
             outcomeCode: body.outcomeCode ?? null,
+            // A person who recorded the real outcome settles any "possibly sent" marker.
+            providerInDoubtAt: null,
+            providerOperatorMembershipId: null,
             ...(body.dcn !== undefined ? { dcn: body.dcn } : {}),
             ...(body.notes !== undefined ? { notes: body.notes } : {}),
           },
@@ -818,12 +824,7 @@ export function buildDdeQueueService(
         providerTimeoutMs,
       );
       if (bounded.kind !== "done") {
-        return leaveInDoubt(
-          actor,
-          marked,
-          bounded.kind,
-          ddeProviderRefusal(DDE.IN_DOUBT),
-        );
+        return leaveInDoubt(actor, marked, bounded.kind, ddeProviderRefusal(DDE.IN_DOUBT));
       }
       const result = bounded.value;
 
@@ -837,7 +838,12 @@ export function buildDdeQueueService(
         // Only a code that PROVES the operation never left (allowlist) clears the marker. UNAVAILABLE may be a
         // timeout after the request was written and IDEMPOTENCY_CONFLICT means a vendor operation exists: both stay in doubt.
         if (!REFUSED_BEFORE_SEND.has(result.degraded.code)) {
-          return leaveInDoubt(actor, marked, result.degraded.code, ddeProviderRefusal(DDE.IN_DOUBT));
+          return leaveInDoubt(
+            actor,
+            marked,
+            result.degraded.code,
+            ddeProviderRefusal(DDE.IN_DOUBT),
+          );
         }
         await inOrg(actor, async (tx) => {
           const current = await loadItem(tx, actor, id);
@@ -1034,22 +1040,26 @@ export function buildDdeQueueService(
     },
 
     retry(actor, id, expectedVersion) {
-      return mutate(actor, id, (tx, item) =>
-        applyEvent(tx, actor, item, expectedVersion, "retry", {
+      return mutate(actor, id, (tx, item) => {
+        // A possibly-sent operation is settled by a person first; a new attempt would key a second one.
+        if (item.providerInDoubtAt) throw ddeProviderRefusal(DDE.IN_DOUBT);
+        return applyEvent(tx, actor, item, expectedVersion, "retry", {
           outcomeCode: null,
           // A new attempt starts unsubmitted: the previous attempt's path and provider operation do not carry over.
           submissionMode: null,
           providerReference: null,
           providerInDoubtAt: null,
           providerOperatorMembershipId: null,
-        }),
-      );
+        });
+      });
     },
 
     cancel(actor, id, expectedVersion) {
-      return mutate(actor, id, (tx, item) =>
-        applyEvent(tx, actor, item, expectedVersion, "cancel", {}),
-      );
+      return mutate(actor, id, (tx, item) => {
+        // Cancelling a possibly-sent item would free its subject for a second keying; resolve it by hand first.
+        if (item.providerInDoubtAt) throw ddeProviderRefusal(DDE.IN_DOUBT);
+        return applyEvent(tx, actor, item, expectedVersion, "cancel", {});
+      });
     },
 
     close(actor, id, expectedVersion) {
