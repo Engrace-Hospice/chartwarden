@@ -77,11 +77,22 @@ describe("a worker cannot be built without the binding while a vendor is configu
   it("passes when the matching binding is injected, and when no vendor is configured", () => {
     expect(() =>
       assertTransportInjected(
-        { CLEARINGHOUSE_VENDOR: "in_memory" },
+        { CLEARINGHOUSE_VENDOR: "in_memory", CLEARINGHOUSE_PAYER_ID: "MCARE" },
         { transport: transportDeps() },
       ),
     ).not.toThrow();
     expect(() => assertTransportInjected({}, {})).not.toThrow();
+  });
+
+  it("refuses a bound vendor with no CLEARINGHOUSE_PAYER_ID (the MAC enum is not an X12 payer id)", () => {
+    for (const payer of [undefined, "  "]) {
+      expect(() =>
+        assertTransportInjected(
+          { CLEARINGHOUSE_VENDOR: "in_memory", CLEARINGHOUSE_PAYER_ID: payer },
+          { transport: transportDeps() },
+        ),
+      ).toThrow(/requires CLEARINGHOUSE_PAYER_ID/);
+    }
   });
 
   it("registerM23LaunchWorkers refuses to build the workers (before opening any queue)", () => {

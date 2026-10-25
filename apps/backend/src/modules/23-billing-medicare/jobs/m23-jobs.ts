@@ -58,6 +58,7 @@ import {
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { type Claim837iSubmitDeps, renderClaimForTransport } from "../services/claim-837i-submit";
 import type { DdeWatchdogPort } from "../services/dde-watchdog";
+import { CLEARINGHOUSE_PAYER_ID_ENV } from "./clearinghouse-context";
 import {
   type M23TransportDeps,
   type TransportAck,
@@ -2644,6 +2645,13 @@ export function assertTransportInjected(
   if (deps.transport?.binding.vendor !== vendor) {
     throw new Error(
       `M23LaunchCapabilityIncomplete: ${CLEARINGHOUSE_VENDOR_ENV}=${vendor} but the workers were built without that clearinghouse binding`,
+    );
+  }
+  // The 837I payer loop (2010BB) is keyed by this id and looked up in M40 by X12 payer id. The MAC-jurisdiction fallback
+  // (`noridian_jf`, ...) is not an X12 payer id, so without this every claim would fail as a payer gap.
+  if (!env[CLEARINGHOUSE_PAYER_ID_ENV]?.trim()) {
+    throw new Error(
+      `M23LaunchCapabilityIncomplete: ${CLEARINGHOUSE_VENDOR_ENV}=${vendor} requires ${CLEARINGHOUSE_PAYER_ID_ENV} (the X12 payer id of an active M40 payer)`,
     );
   }
 }

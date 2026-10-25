@@ -28,6 +28,10 @@ const MAX_INTERCHANGE_CONTROL_NUMBER = 999_999_999;
  * A receiver that enforces ISA13 uniqueness would reject that interchange (TA1 025); the retry derives a new control
  * number and so a new ISA13. Confirm the vendor/MAC does not enforce uniqueness, or replace this with a persisted
  * per-sender counter, before relying on it at volume.
+ *
+ * The Stedi transport additionally requires the submission's control number to BE the ISA13, while the workers submit
+ * under the claim control number (acks route by it), so `CLEARINGHOUSE_VENDOR=stedi` refuses every 837I until the
+ * workers submit under `attempts.allocateControlNumber` and the ack side maps ISA13 back to the claim.
  */
 export function interchangeNumberFor(claimControlNumber: string): number {
   const word = createHash("sha256").update(claimControlNumber).digest().readUInt32BE(0);
