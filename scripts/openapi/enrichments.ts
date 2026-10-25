@@ -900,9 +900,13 @@ import {
   AuthorizationListQuerySchema as M41AuthorizationListQuerySchema,
   AuthorizationListResponseSchema as M41AuthorizationListResponseSchema,
   AuthorizationViewSchema as M41AuthorizationViewSchema,
+  ClaimListQuerySchema as M41ClaimListQuerySchema,
+  ClaimListResponseSchema as M41ClaimListResponseSchema,
   CommercialClaimViewSchema as M41ClaimViewSchema,
   OverrideBodySchema as M41OverrideBodySchema,
   OverrideResponseSchema as M41OverrideResponseSchema,
+  PayerPlanListResponseSchema as M41PayerPlanListResponseSchema,
+  PlanListQuerySchema as M41PlanListQuerySchema,
   ReadyResponseSchema as M41ReadyResponseSchema,
   RecordAuthorizationBodySchema as M41RecordAuthorizationBodySchema,
   SetAuthorizationStatusBodySchema as M41SetAuthorizationStatusBodySchema,
@@ -14669,6 +14673,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "A commercial claim with its lines and the latest validation run (rule, severity, overridable, overridden, blocking, actionable message). Read-audited",
     response: M41ClaimViewSchema,
+  },
+  "GET /api/v1/billing/commercial/claims": {
+    summary:
+      "The commercial claim work queue for one provider entity (commercial_billing.read; provider entity scope, caseload-filtered; read-audited list). Filter by state and payer kind (commercial only, Medicare secondary, Medicaid secondary). One page: `hasMore` says narrow the filters. Ids, dates, plan name and money only",
+    query: M41ClaimListQuerySchema,
+    response: M41ClaimListResponseSchema,
+  },
+  "GET /api/v1/billing/commercial/payer-plans": {
+    summary:
+      "The supported-payers view: the tenant's commercial payer plans with filing indicator, authorization policy, payer state (from M40) and the clearinghouse payer ids each plan routes on (commercial_billing.read; provider entity scope). No patient data",
+    query: M41PlanListQuerySchema,
+    response: M41PayerPlanListResponseSchema,
   },
   "POST /api/v1/billing/commercial/claims/:id/validate": {
     summary:

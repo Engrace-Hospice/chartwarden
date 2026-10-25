@@ -1,0 +1,157 @@
+// e2e/specs/billing-commercial.spec.ts — Billing — Commercial (M41, issue #726): the claim work queue, the payer-kind filter, the
+// claim drawer and the supported-payers view, in a real browser behind a real sign-in.
+//
+// The commercial READ routes are stubbed with `page.route`: no seed scenario assembles a commercial claim (that needs a commercial
+// payer plan, route, contract rates and a commercial patient coverage, covered by the M41 live suites over the real database), so the
+// browser test pins the screens' behaviour, keyboard operation and accessibility against deterministic, synthetic responses. The
+// shell, sign-in, provider-entity list and routing are real. Nothing here touches PHI.
+import { type Page, expect, test } from "@playwright/test";
+import { ADMIN_ACCOUNT } from "../fixtures/credentials";
+import { expectNoAxeViolations, signInAs } from "../fixtures/helpers";
+
+const CLAIMS = "**/api/v1/billing/commercial/claims*";
+const PLANS = "**/api/v1/billing/commercial/payer-plans*";
+const ENROLLMENTS = "**/api/v1/billing/commercial/enrollments*";
+
+const row = (over: Record<string, unknown>) => ({
+  id: "66666666-6666-4666-8666-666666666666",
+  claimControlNumber: "CCN-E2E-0001",
+  state: "draft",
+  patientId: "33333333-3333-4333-8333-333333333333",
+  planId: "44444444-4444-4444-8444-444444444444",
+  planName: "Synthetic PPO",
+  tob: "812",
+  serviceFrom: "2026-03-01",
+  serviceTo: "2026-03-31",
+  secondaryPayerKind: null,
+  totalChargeCents: 620_000,
+  expectedPaymentCents: 620_000,
+  updatedAt: "2026-10-25T10:00:00.000Z",
+  ...over,
+});
+
+const COMMERCIAL_ONLY = row({});
+const MEDICARE_SECONDARY = row({
+  id: "66666666-6666-4666-8666-777777777777",
+  claimControlNumber: "CCN-E2E-0002",
+  state: "ready",
+  secondaryPayerKind: "medicare",
+});
+
+async function stubQueue(page: Page, requests: string[]): Promise<void> {
+  await page.route(CLAIMS, async (route) => {
+    const url = new URL(route.request().url());
+    requests.push(url.search);
+    const kind = url.searchParams.get("payerKind");
+    const items =
+      kind === "medicare_secondary"
+        ? [MEDICARE_SECONDARY]
+        : kind === "commercial_only"
+          ? [COMMERCIAL_ONLY]
+          : [COMMERCIAL_ONLY, MEDICARE_SECONDARY];
+    await route.fulfill({ json: { items, hasMore: false } });
+  });
+}
+
+test.describe("Billing — Commercial claim work queue (M41)", () => {
+  test("main path: lists commercial claims, filters by payer kind and opens the drawer by keyboard", async ({
+    page,
+  }) => {
+    const requests: string[] = [];
+    await stubQueue(page, requests);
+    await signInAs(page, ADMIN_ACCOUNT());
+    await page.goto("/commercial/billing/claims");
+
+    await expect(page.getByRole("heading", { name: "Commercial Claims", level: 1 })).toBeVisible();
+    const table = page.getByRole("table", { name: "Commercial claims" });
+    await expect(table.getByRole("link", { name: "CCN-E2E-0001", exact: true })).toBeVisible();
+    await expect(table.getByRole("link", { name: "CCN-E2E-0002", exact: true })).toBeVisible();
+
+    // The payer-kind filter narrows the queue and is sent to the API, not applied in the browser.
+    await page.getByLabel("Payer kind").selectOption("medicare_secondary");
+    await expect(table.getByRole("link", { name: "CCN-E2E-0001", exact: true })).toHaveCount(0);
+    await expect(table.getByRole("link", { name: "CCN-E2E-0002", exact: true })).toBeVisible();
+    expect(requests.some((q) => q.includes("payerKind=medicare_secondary"))).toBe(true);
+    await expect(table.getByText("Commercial + Medicare secondary")).toBeVisible();
+
+    // Row activation by keyboard opens the drawer; Escape closes it and returns focus to the row.
+    const claimRow = table.getByRole("row", { name: /CCN-E2E-0002/ });
+    await claimRow.focus();
+    await page.keyboard.press("Enter");
+    const drawer = page.getByRole("complementary", { name: "Claim CCN-E2E-0002" });
+    await expect(drawer).toBeVisible();
+    await expect(drawer.getByRole("link", { name: "Open claim detail" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(drawer).toHaveCount(0);
+    await expect(claimRow).toBeFocused();
+  });
+
+  test("failure path: an unavailable queue is announced and Try again recovers", async ({
+    page,
+  }) => {
+    let fail = true;
+    await page.route(CLAIMS, async (route) => {
+      if (fail) await route.fulfill({ status: 500, json: { error: { code: "INTERNAL" } } });
+      else await route.fulfill({ json: { items: [COMMERCIAL_ONLY], hasMore: false } });
+    });
+    await signInAs(page, ADMIN_ACCOUNT());
+    await page.goto("/commercial/billing/claims");
+
+    await expect(page.getByRole("alert").filter({ hasText: "Claims unavailable" })).toBeVisible();
+    fail = false;
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect(
+      page.getByRole("link", { name: "CCN-E2E-0001", exact: true }).first(),
+    ).toBeVisible();
+  });
+
+  test("accessibility: the claim queue has no WCAG 2A/AA violations", async ({ page }) => {
+    await stubQueue(page, []);
+    await signInAs(page, ADMIN_ACCOUNT());
+    await page.goto("/commercial/billing/claims");
+    await expect(
+      page.getByRole("link", { name: "CCN-E2E-0001", exact: true }).first(),
+    ).toBeVisible();
+    await expectNoAxeViolations(page);
+  });
+});
+
+test.describe("Billing — Commercial supported payers (M41)", () => {
+  const plan = {
+    id: "44444444-4444-4444-8444-444444444444",
+    payerId: "55555555-5555-4555-8555-555555555555",
+    planName: "Synthetic PPO",
+    claimFilingIndicator: "CI",
+    authorizationRequirement: "required_at_admission",
+    authorizationLeadDays: 3,
+    eligibilityStalenessPolicy: "warn",
+    eligibilityMaxAgeDays: 30,
+    effectiveFrom: "2026-01-01",
+    effectiveTo: null,
+    payerStatus: "active",
+    routes: [
+      {
+        clearinghouseKey: "stedi",
+        clearinghousePayerId: "SYNTH01",
+        effectiveFrom: "2026-01-01",
+        effectiveTo: null,
+      },
+    ],
+  };
+
+  test("main path: shows the plan with its route and 'Not Enrolled' when no enrollment exists", async ({
+    page,
+  }) => {
+    await page.route(PLANS, (route) => route.fulfill({ json: { items: [plan] } }));
+    await page.route(ENROLLMENTS, (route) => route.fulfill({ json: { items: [] } }));
+    await signInAs(page, ADMIN_ACCOUNT());
+    await page.goto("/commercial/billing/payers");
+
+    await expect(page.getByRole("heading", { name: "Supported Payers", level: 1 })).toBeVisible();
+    const table = page.getByRole("table", { name: "Supported commercial payers" });
+    await expect(table.getByText("Synthetic PPO")).toBeVisible();
+    await expect(table.getByText("stedi: SYNTH01")).toBeVisible();
+    await expect(table.getByText("Not Enrolled")).toBeVisible();
+    await expectNoAxeViolations(page);
+  });
+});

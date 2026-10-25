@@ -409,6 +409,87 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     expect((await call(app, "POST", `${BASE}/claims/${claimId}/void`)).json().state).toBe("void");
   });
 
+  it("serves the work queue, the supported-payers view and the claim detail (plan, authorization, COB) without PHI (#726)", async () => {
+    const s = await seed("required_at_admission");
+    const app = server(s.admissionId);
+    const authorization = await call(app, "POST", `${BASE}/authorizations`, {
+      payload: {
+        providerEntityId,
+        patientId: s.patientId,
+        planId: s.planId,
+        authorizationNumber: "AUTH-SYNTH-7731",
+        obtainedOn: "2026-02-20",
+        effectiveFrom: "2026-03-01",
+        effectiveTo: "2026-03-31",
+      },
+    });
+    expect(authorization.statusCode).toBe(201);
+    const created = await call(app, "POST", `${BASE}/claims/assemble`, {
+      payload: assembleBody(s.patientId),
+    });
+    const claimId = created.json().claimId as string;
+
+    const queue = await call(app, "GET", `${BASE}/claims?providerEntityId=${providerEntityId}`);
+    expect(queue.statusCode).toBe(200);
+    const row = (queue.json().items as { id: string }[]).find((c) => c.id === claimId);
+    expect(row).toMatchObject({
+      state: "draft",
+      planName: "Synthetic PPO",
+      patientId: s.patientId,
+    });
+    expect(queue.body).not.toMatch(/MEM-0001234|Jane|Doe|AUTH-SYNTH-7731/);
+    // payer-kind: this claim has no other payer, so a Medicare-secondary filter excludes it and commercial-only keeps it
+    const medicare = await call(
+      app,
+      "GET",
+      `${BASE}/claims?providerEntityId=${providerEntityId}&payerKind=medicare_secondary`,
+    );
+    expect((medicare.json().items as { id: string }[]).some((c) => c.id === claimId)).toBe(false);
+    const only = await call(
+      app,
+      "GET",
+      `${BASE}/claims?providerEntityId=${providerEntityId}&payerKind=commercial_only&state=draft`,
+    );
+    expect((only.json().items as { id: string }[]).some((c) => c.id === claimId)).toBe(true);
+    // a scoped actor that does not reach the entity gets 404; one outside the caseload sees an empty queue
+    expect(
+      (await call(app, "GET", `${BASE}/claims?providerEntityId=${otherProviderEntityId}`))
+        .statusCode,
+    ).toBe(404);
+    const nocase = await call(app, "GET", `${BASE}/claims?providerEntityId=${providerEntityId}`, {
+      user: "nocase",
+    });
+    expect(nocase.statusCode).toBe(200);
+    expect(nocase.json().items).toEqual([]);
+
+    const plans = await call(
+      app,
+      "GET",
+      `${BASE}/payer-plans?providerEntityId=${providerEntityId}`,
+    );
+    expect(plans.statusCode).toBe(200);
+    const plan = (plans.json().items as { id: string; routes: unknown[] }[]).find(
+      (p) => p.id === s.planId,
+    );
+    expect(plan).toMatchObject({
+      planName: "Synthetic PPO",
+      claimFilingIndicator: "CI",
+      authorizationRequirement: "required_at_admission",
+      payerStatus: "active",
+    });
+    expect(plan?.routes).toEqual([
+      expect.objectContaining({ clearinghouseKey: "stedi", clearinghousePayerId: "SYNTH01" }),
+    ]);
+
+    const detail = (await call(app, "GET", `${BASE}/claims/${claimId}`)).json();
+    expect(detail.plan).toMatchObject({ id: s.planId, planName: "Synthetic PPO" });
+    expect(detail.authorizations).toEqual([
+      expect.objectContaining({ status: "approved", effectiveFrom: "2026-03-01" }),
+    ]);
+    expect(JSON.stringify(detail)).not.toContain("AUTH-SYNTH-7731");
+    expect(detail.claim.claimControlNumber).toEqual(expect.any(String));
+  });
+
   it("scopes the DATA: an entity the actor reaches does not open another entity's patient, claim or authorizations", async () => {
     const s = await seed("required_at_admission");
     const app = server(s.admissionId);

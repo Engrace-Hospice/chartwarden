@@ -47,6 +47,19 @@ describe("buildPrimaryNav", () => {
     expect(activeEntryKey(nav, "/billing/eligibility")).toBe("billing");
   });
 
+  it("files the commercial billing lane under Billing, not under Administration", () => {
+    const nav = buildPrimaryNav([
+      screen("/billing"),
+      screen("/commercial/billing/claims"),
+      screen("/commercial/billing/payers"),
+    ]);
+    const byKey = new Map(nav.flatMap((s) => s.entries).map((e) => [e.key, e]));
+    expect(byKey.get("billing")?.children.map((c) => c.path)).toEqual(
+      expect.arrayContaining(["/commercial/billing/claims", "/commercial/billing/payers"]),
+    );
+    expect(activeEntryKey(nav, "/commercial/billing/payers")).toBe("billing");
+  });
+
   it("drops entries the actor cannot reach but always keeps Home", () => {
     const nav = buildPrimaryNav([screen("/patients")]);
     const keys = nav.flatMap((s) => s.entries).map((e) => e.key);

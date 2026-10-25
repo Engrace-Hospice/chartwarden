@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1855,
-    "coveredRoutes": 1855,
-    "directRoutesReferenced": 1695
+    "routes": 1857,
+    "coveredRoutes": 1857,
+    "directRoutesReferenced": 1697
   },
   "modules": [
     {
@@ -684,13 +684,14 @@
     },
     {
       "module": "41-billing-commercial",
-      "routes": 16,
+      "routes": 18,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m41-commercial-eligibility-routes.test.ts",
+        "apps/backend/__tests__/m41-commercial-queue-routes.test.ts",
         "apps/backend/__tests__/m41-commercial-routes.live.test.ts"
       ],
-      "directRoutesReferenced": 6
+      "directRoutesReferenced": 8
     }
   ]
 }

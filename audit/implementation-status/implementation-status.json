@@ -811,10 +811,10 @@
       "migration": false,
       "routes": true,
       "enriched": {
-        "routes": 16,
-        "enriched": 16
+        "routes": 18,
+        "enriched": 18
       },
-      "screens": false,
+      "screens": true,
       "tests": false,
       "adapter": null,
       "liveInfra": {

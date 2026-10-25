@@ -4,6 +4,7 @@
 // membership id. Responses carry ids, dates, codes, money and rule messages only - never a member id, MBI or authorization number.
 import {
   COMMERCIAL_AUTHORIZATION_STATUS_VALUES,
+  COMMERCIAL_CLAIM_STATE_VALUES,
   COMMERCIAL_HOSPICE_LEVEL_OF_CARE_VALUES,
   COMMERCIAL_OVERRIDE_REASON_MIN_LENGTH,
 } from "@chartwarden/types";
@@ -58,6 +59,27 @@ export const SetAuthorizationStatusBodySchema = Type.Object(
   { additionalProperties: false },
 );
 
+/** Work-queue filter. `payerKind` is the coordination-of-benefits kind: `commercial_only` (no other payer) or the secondary program. */
+export const COMMERCIAL_PAYER_KIND_FILTER_VALUES = [
+  "commercial_only",
+  "medicare_secondary",
+  "medicaid_secondary",
+] as const;
+export const ClaimListQuerySchema = Type.Object(
+  {
+    providerEntityId: uuid(),
+    state: Type.Optional(lit(COMMERCIAL_CLAIM_STATE_VALUES)),
+    payerKind: Type.Optional(lit(COMMERCIAL_PAYER_KIND_FILTER_VALUES)),
+    patientId: Type.Optional(uuid()),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  },
+  { additionalProperties: false },
+);
+export const PlanListQuerySchema = Type.Object(
+  { providerEntityId: uuid() },
+  { additionalProperties: false },
+);
+
 export const AuthorizationListQuerySchema = Type.Object(
   { providerEntityId: uuid(), patientId: uuid() },
   { additionalProperties: false },
@@ -105,9 +127,71 @@ export const CommercialClaimLineViewSchema = Type.Object({
   lineChargeCents: Type.Integer(),
 });
 
+const nullableString = () => Type.Union([Type.String(), Type.Null()]);
+
+export const CommercialClaimSummarySchema = Type.Object({
+  id: Type.String(),
+  claimControlNumber: Type.String(),
+  state: Type.String(),
+  patientId: Type.String(),
+  planId: Type.String(),
+  planName: Type.String(),
+  tob: Type.String(),
+  serviceFrom: Type.String(),
+  serviceTo: Type.String(),
+  secondaryPayerKind: nullableString(),
+  totalChargeCents: Type.Integer(),
+  expectedPaymentCents: Type.Union([Type.Integer(), Type.Null()]),
+  updatedAt: Type.String(),
+});
+export const ClaimListResponseSchema = Type.Object({
+  items: Type.Array(CommercialClaimSummarySchema),
+  hasMore: Type.Boolean(),
+});
+
+export const PayerPlanViewSchema = Type.Object({
+  id: Type.String(),
+  payerId: Type.String(),
+  planName: Type.String(),
+  claimFilingIndicator: Type.String(),
+  authorizationRequirement: Type.String(),
+  authorizationLeadDays: Type.Union([Type.Integer(), Type.Null()]),
+  eligibilityStalenessPolicy: Type.String(),
+  eligibilityMaxAgeDays: Type.Integer(),
+  effectiveFrom: Type.String(),
+  effectiveTo: nullableString(),
+  payerStatus: nullableString(),
+  routes: Type.Array(
+    Type.Object({
+      clearinghouseKey: Type.String(),
+      clearinghousePayerId: Type.String(),
+      effectiveFrom: Type.String(),
+      effectiveTo: nullableString(),
+    }),
+  ),
+});
+export const PayerPlanListResponseSchema = Type.Object({ items: Type.Array(PayerPlanViewSchema) });
+
 export const CommercialClaimViewSchema = Type.Object({
+  plan: Type.Object({
+    id: Type.String(),
+    payerId: Type.String(),
+    planName: Type.String(),
+    authorizationRequirement: Type.String(),
+    payerStatus: nullableString(),
+  }),
+  authorizations: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      status: Type.String(),
+      levelOfCare: nullableString(),
+      effectiveFrom: Type.String(),
+      effectiveTo: nullableString(),
+    }),
+  ),
   claim: Type.Object({
     id: Type.String(),
+    claimControlNumber: Type.String(),
     state: Type.String(),
     patientId: Type.String(),
     providerEntityId: Type.String(),

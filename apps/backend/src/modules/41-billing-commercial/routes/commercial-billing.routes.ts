@@ -1,6 +1,8 @@
 // apps/backend/src/modules/41-billing-commercial/routes/commercial-billing.routes.ts — M41 routes (issue #722, spec section 4.1).
 //
 //   POST /api/v1/billing/commercial/claims/assemble                                  assemble a commercial claim (201)
+//   GET  /api/v1/billing/commercial/claims?providerEntityId&state&payerKind&patientId&limit   work queue (read-audited list)
+//   GET  /api/v1/billing/commercial/payer-plans?providerEntityId                     supported payers: plans, payer state, routes
 //   GET  /api/v1/billing/commercial/claims/:id                                       claim, lines and latest validation (read-audited)
 //   POST /api/v1/billing/commercial/claims/:id/validate                              re-run the rules
 //   POST /api/v1/billing/commercial/claims/:id/ready                                 draft -> ready, or 409 COMMERCIAL_CLAIM_BLOCKED
@@ -30,9 +32,11 @@ import { type CommercialClaimReadService, toRunApiView } from "../services/claim
 import {
   AssembleCommercialClaimBodySchema,
   AuthorizationListQuerySchema,
+  ClaimListQuerySchema,
   IdParamsSchema,
   OverrideBodySchema,
   OverrideParamsSchema,
+  PlanListQuerySchema,
   RecordAuthorizationBodySchema,
   SetAuthorizationStatusBodySchema,
 } from "./commercial-typebox";
@@ -115,6 +119,42 @@ export function registerCommercialBillingRoutes(
       const body = parse(AssembleCommercialClaimBodySchema, request.body);
       const out = await assembly.assemble(writeActor(request), body);
       return reply.code(201).send({ ...out, validation: toRunApiView(out.validation) });
+    },
+  );
+
+  // Work queue: the claims of ONE provider entity (the ABAC pair proves the actor's reach), newest change first.
+  app.get(
+    "/api/v1/billing/commercial/claims",
+    {
+      preHandler: [READ, SCOPE("commercial_billing.read", providerFromQuery)],
+      config: {
+        auditRead: {
+          resourceKind: "commercial_claim",
+          list: true,
+          patientIdQueryParam: "patientId",
+        },
+      },
+    },
+    async (request) => {
+      const q = parse(ClaimListQuerySchema, request.query);
+      return reads.listClaims(readActor(request), q);
+    },
+  );
+
+  // Supported payers: the tenant's commercial plans with payer state and clearinghouse routes. No patient data.
+  app.get(
+    "/api/v1/billing/commercial/payer-plans",
+    {
+      preHandler: [READ, SCOPE("commercial_billing.read", providerFromQuery)],
+      config: {
+        auditRead: {
+          none: "Plan rows: payer id, plan name, filing indicator, authorization policy, routes. No patient, member or coverage data",
+        },
+      },
+    },
+    async (request) => {
+      const q = parse(PlanListQuerySchema, request.query);
+      return reads.listPlans(readActor(request), q.providerEntityId);
     },
   );
 

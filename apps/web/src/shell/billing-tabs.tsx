@@ -1,5 +1,5 @@
 // apps/web/src/shell — the Billing area's tab bar (Claims · Remittances · Denials · NOE / NOTR ·
-// Transfers (8xC) · DDE queue · Eligibility · Rates · Wage index). The tabs are separate screens owned by M23 and M25, so the bar lives in the shell and
+// Commercial · Transfers (8xC) · DDE queue · Eligibility · Rates · Wage index). The tabs are separate screens owned by M23 and M25, so the bar lives in the shell and
 // every one of them renders it: the current tab stays highlighted and Claims is always one click back.
 // The current tab is read from the URL (longest matching prefix), so callers just render <BillingTabs />.
 import type { JSX } from "react";
@@ -9,6 +9,7 @@ const TABS: { to: string; label: string; match: string[] }[] = [
   { to: "/billing", label: "Claims", match: ["/billing"] },
   { to: "/remittance", label: "Remittances", match: ["/remittance"] },
   { to: "/remittance/denials", label: "Denials", match: ["/remittance/denials"] },
+  { to: "/commercial/billing/claims", label: "Commercial", match: ["/commercial/billing"] },
   { to: "/billing/noe", label: "NOE / NOTR", match: ["/billing/noe", "/billing/notr"] },
   { to: "/billing/transfer-notices", label: "Transfers", match: ["/billing/transfer-notices"] },
   { to: "/billing/dde", label: "DDE queue", match: ["/billing/dde"] },

@@ -1,12 +1,12 @@
 {
-  "documentedSpecs": 115,
+  "documentedSpecs": 116,
   "byCategory": {
     "admin": 16,
     "core": 11,
     "clinical": 39,
     "platform": 5,
     "portal": 11,
-    "revenue": 16,
+    "revenue": 17,
     "compliance": 11,
     "staffing": 3,
     "mobile": 1,
@@ -56,7 +56,8 @@
     "web/37-ipu",
     "web/38-terminology",
     "web/39-consent",
-    "web/40-mdm"
+    "web/40-mdm",
+    "web/41-billing-commercial"
   ],
   "screens": [
     {
@@ -2562,6 +2563,30 @@
       "id": "mdm.console",
       "path": "/mdm",
       "permission": "mdm.physician.read"
+    },
+    {
+      "app": "web",
+      "module": "41-billing-commercial",
+      "moduleId": 41,
+      "id": "commercial.claims",
+      "path": "/commercial/billing/claims",
+      "permission": "commercial_billing.read"
+    },
+    {
+      "app": "web",
+      "module": "41-billing-commercial",
+      "moduleId": 41,
+      "id": "commercial.claim",
+      "path": "/commercial/billing/claims/:claimId",
+      "permission": "commercial_billing.read"
+    },
+    {
+      "app": "web",
+      "module": "41-billing-commercial",
+      "moduleId": 41,
+      "id": "commercial.payers",
+      "path": "/commercial/billing/payers",
+      "permission": "commercial_billing.read"
     },
     {
       "app": "admin",

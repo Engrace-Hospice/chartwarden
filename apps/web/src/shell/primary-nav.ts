@@ -116,6 +116,7 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
         claims: [
           "/billing",
           "/medicaid",
+          "/commercial",
           "/remittance",
           "/cap",
           "/cost-reports",

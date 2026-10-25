@@ -68969,6 +68969,190 @@
         }
       }
     },
+    "/api/v1/billing/commercial/claims": {
+      "get": {
+        "operationId": "getApiV1BillingCommercialClaims",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "The commercial claim work queue for one provider entity (commercial_billing.read; provider entity scope, caseload-filtered; read-audited list). Filter by state and payer kind (commercial only, Medicare secondary, Medicaid secondary). One page: `hasMore` says narrow the filters. Ids, dates, plan name and money only",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "draft",
+                  "type": "string"
+                },
+                {
+                  "const": "ready",
+                  "type": "string"
+                },
+                {
+                  "const": "void",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "payerKind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "commercial_only",
+                  "type": "string"
+                },
+                {
+                  "const": "medicare_secondary",
+                  "type": "string"
+                },
+                {
+                  "const": "medicaid_secondary",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "hasMore"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "claimControlNumber",
+                          "state",
+                          "patientId",
+                          "planId",
+                          "planName",
+                          "tob",
+                          "serviceFrom",
+                          "serviceTo",
+                          "secondaryPayerKind",
+                          "totalChargeCents",
+                          "expectedPaymentCents",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "claimControlNumber": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "planId": {
+                            "type": "string"
+                          },
+                          "planName": {
+                            "type": "string"
+                          },
+                          "tob": {
+                            "type": "string"
+                          },
+                          "serviceFrom": {
+                            "type": "string"
+                          },
+                          "serviceTo": {
+                            "type": "string"
+                          },
+                          "secondaryPayerKind": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "totalChargeCents": {
+                            "type": "integer"
+                          },
+                          "expectedPaymentCents": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/billing/commercial/claims/{id}": {
       "get": {
         "operationId": "getApiV1BillingCommercialClaimsById",
@@ -68994,15 +69178,96 @@
                 "schema": {
                   "type": "object",
                   "required": [
+                    "plan",
+                    "authorizations",
                     "claim",
                     "lines",
                     "validation"
                   ],
                   "properties": {
+                    "plan": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "payerId",
+                        "planName",
+                        "authorizationRequirement",
+                        "payerStatus"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "payerId": {
+                          "type": "string"
+                        },
+                        "planName": {
+                          "type": "string"
+                        },
+                        "authorizationRequirement": {
+                          "type": "string"
+                        },
+                        "payerStatus": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "authorizations": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "status",
+                          "levelOfCare",
+                          "effectiveFrom",
+                          "effectiveTo"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "levelOfCare": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "effectiveFrom": {
+                            "type": "string"
+                          },
+                          "effectiveTo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
                     "claim": {
                       "type": "object",
                       "required": [
                         "id",
+                        "claimControlNumber",
                         "state",
                         "patientId",
                         "providerEntityId",
@@ -69018,6 +69283,9 @@
                       ],
                       "properties": {
                         "id": {
+                          "type": "string"
+                        },
+                        "claimControlNumber": {
                           "type": "string"
                         },
                         "state": {
@@ -70956,6 +71224,158 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/payer-plans": {
+      "get": {
+        "operationId": "getApiV1BillingCommercialPayerplans",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "The supported-payers view: the tenant's commercial payer plans with filing indicator, authorization policy, payer state (from M40) and the clearinghouse payer ids each plan routes on (commercial_billing.read; provider entity scope). No patient data",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "payerId",
+                          "planName",
+                          "claimFilingIndicator",
+                          "authorizationRequirement",
+                          "authorizationLeadDays",
+                          "eligibilityStalenessPolicy",
+                          "eligibilityMaxAgeDays",
+                          "effectiveFrom",
+                          "effectiveTo",
+                          "payerStatus",
+                          "routes"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "payerId": {
+                            "type": "string"
+                          },
+                          "planName": {
+                            "type": "string"
+                          },
+                          "claimFilingIndicator": {
+                            "type": "string"
+                          },
+                          "authorizationRequirement": {
+                            "type": "string"
+                          },
+                          "authorizationLeadDays": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "eligibilityStalenessPolicy": {
+                            "type": "string"
+                          },
+                          "eligibilityMaxAgeDays": {
+                            "type": "integer"
+                          },
+                          "effectiveFrom": {
+                            "type": "string"
+                          },
+                          "effectiveTo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "payerStatus": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "routes": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "clearinghouseKey",
+                                "clearinghousePayerId",
+                                "effectiveFrom",
+                                "effectiveTo"
+                              ],
+                              "properties": {
+                                "clearinghouseKey": {
+                                  "type": "string"
+                                },
+                                "clearinghousePayerId": {
+                                  "type": "string"
+                                },
+                                "effectiveFrom": {
+                                  "type": "string"
+                                },
+                                "effectiveTo": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
