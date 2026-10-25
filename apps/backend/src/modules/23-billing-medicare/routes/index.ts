@@ -1,3 +1,4 @@
+import type { DdeProviderVendor } from "@chartwarden/x12-837-client";
 import type { ClaimAssemblyService } from "../services/claim-assembly";
 import type { ClearinghouseAttemptResolutionService } from "../services/clearinghouse-attempt-resolution-service";
 import type { DdeQueueService } from "../services/dde-queue-service";
@@ -97,6 +98,8 @@ export interface M23RouteServices {
   readonly visitChargeService?: VisitChargeRouteService;
   /** F-211 — the tenant-entered wage-index service (absent ⇒ the /billing/wage-indexes routes are not mounted). */
   readonly wageIndexService?: WageIndexRouteService;
+  /** ADR-0103 D2 — the vendor the platform bound for DDE at boot (null = manual); absent => the status route is not mounted. */
+  readonly ddeProviderVendor?: DdeProviderVendor | null;
   /** GAP-144 — the platform-admin commands (#41 platform-rules, #42 wage-index load); absent => not mounted. */
   readonly platformAdminService?: PlatformAdminRouteService;
   /** F-212 — the tenant-entered sequestration-policy service (absent ⇒ the /billing/sequestration-policies routes are not mounted). */

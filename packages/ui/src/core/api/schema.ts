@@ -1017,6 +1017,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/billing/dde-provider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read-only platform status of the DDE access provider binding (manual = none bound, every send answers DDE_NOT_WIRED); platform-admin; no credentials (ADR-0103 D2) */
+        get: operations["getApiV1AdminBillingDdeprovider"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/billing/platform-rules": {
         parameters: {
             query?: never;
@@ -30672,6 +30689,31 @@ export interface operations {
                         prnMinimumIntervalMinutes: number;
                         emarPdfOnCommit: boolean;
                         bcmaWristbandRequired: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdminBillingDdeprovider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        provider: "manual" | "in_memory" | "episode_alert";
+                        wired: boolean;
                     };
                 };
             };

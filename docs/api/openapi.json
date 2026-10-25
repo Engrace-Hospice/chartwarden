@@ -9787,6 +9787,59 @@
         }
       }
     },
+    "/api/v1/admin/billing/dde-provider": {
+      "get": {
+        "operationId": "getApiV1AdminBillingDdeprovider",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Read-only platform status of the DDE access provider binding (manual = none bound, every send answers DDE_NOT_WIRED); platform-admin; no credentials (ADR-0103 D2)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "provider",
+                    "wired"
+                  ],
+                  "properties": {
+                    "provider": {
+                      "anyOf": [
+                        {
+                          "const": "manual",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_memory",
+                          "type": "string"
+                        },
+                        {
+                          "const": "episode_alert",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "wired": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/admin/billing/platform-rules": {
       "post": {
         "operationId": "postApiV1AdminBillingPlatformrules",

@@ -20,6 +20,8 @@ import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
 import { ItemRail } from "./dde-item-rail";
+import { providerBadge } from "./dde-provider-model";
+import { DdeProviderStatus } from "./dde-provider-status";
 import {
   DEADLINE_LABEL,
   DEADLINE_TONE,
@@ -210,14 +212,15 @@ export function DdeQueue(): JSX.Element {
           <div>
             <h1 className="wx-headline-lg">DDE Work Queue</h1>
             <p>
-              Medicare Direct Data Entry work to key by hand. ChartWarden does not connect to DDE:
-              record what you keyed and what came back. A notice is on time only once the MAC
-              acceptance date is recorded.
+              Medicare Direct Data Entry work. Key it by hand and record what you keyed and what
+              came back, or send it through the DDE provider when one is configured. A notice is on
+              time only once the MAC acceptance date is recorded.
             </p>
           </div>
         </header>
 
         <BillingTabs />
+        <DdeProviderStatus />
 
         <div className="wx-filter-panel">
           <label className="wx-filter-field">
@@ -314,6 +317,7 @@ export function DdeQueue(): JSX.Element {
                 <tbody>
                   {items.map((n) => {
                     const isSelected = n.ddeWorkItemId === selectedId;
+                    const badge = providerBadge(n);
                     return (
                       <tr
                         key={n.ddeWorkItemId}
@@ -348,6 +352,7 @@ export function DdeQueue(): JSX.Element {
                           {n.respawnedFromId ? (
                             <StatusPill label={REQUEUED_LABEL} tone="warning" />
                           ) : null}
+                          {badge ? <StatusPill label={badge.label} tone={badge.tone} /> : null}
                         </td>
                       </tr>
                     );
