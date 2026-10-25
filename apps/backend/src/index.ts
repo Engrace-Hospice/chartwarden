@@ -6261,7 +6261,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // M24 (Billing — Medicaid) — mount the §4.1 route plugins over the Drizzle READ + WRITE services;
           // the §4.11 `m24.*` transactional outbox publisher binds here (events persist on the mutation's tx).
           mountM24Routes(app, {
-            readService: buildDrizzleM24ReadService(dbHandle.db),
+            readService: buildDrizzleM24ReadService(
+              dbHandle.db,
+              (state) => state !== "OR" || m24OregonGateway !== null,
+            ),
             // The §8.7 credential cipher port binds here. Absent M24_CREDENTIAL_ENCRYPTION_KEY the port is
             // left unbound and a credential WRITE fails closed (503 CREDENTIAL_CRYPTO_UNBOUND) — every other
             // M24 route is unaffected. Boot never fails on a missing key outside production, where env.ts
@@ -6277,6 +6280,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               m24FacilityKindReader,
               m24ResidenceReader,
               m24FacilityNameResolver,
+              (state) => state !== "OR" || m24OregonGateway !== null,
             ),
           });
           // M15 (Discipline Care Plans) — mount the §4.1 route plugins over the Drizzle READ + WRITE

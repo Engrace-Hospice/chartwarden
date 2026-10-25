@@ -23,6 +23,8 @@ export interface ClaimView {
   version: number;
   validationRunIdLatest: string | null;
   eligibilityOutcomeSnapshot: string | null;
+  /** S11: non-null when the claim's state has no electronic gateway; the manual/paper instruction. */
+  electronicSubmissionRefusal: string | null;
   createdAt: string;
   updatedAt: string;
 }

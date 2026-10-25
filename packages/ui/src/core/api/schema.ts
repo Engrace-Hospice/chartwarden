@@ -69665,6 +69665,7 @@ export interface operations {
                             version: number;
                             validationRunIdLatest: string | null;
                             eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
+                            electronicSubmissionRefusal: string | null;
                             /** Format: date-time */
                             createdAt: string;
                             /** Format: date-time */
@@ -69737,6 +69738,7 @@ export interface operations {
                         version: number;
                         validationRunIdLatest: string | null;
                         eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
+                        electronicSubmissionRefusal: string | null;
                         /** Format: date-time */
                         createdAt: string;
                         /** Format: date-time */
@@ -69789,6 +69791,7 @@ export interface operations {
                         version: number;
                         validationRunIdLatest: string | null;
                         eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
+                        electronicSubmissionRefusal: string | null;
                         /** Format: date-time */
                         createdAt: string;
                         /** Format: date-time */
@@ -69869,6 +69872,7 @@ export interface operations {
                         version: number;
                         validationRunIdLatest: string | null;
                         eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
+                        electronicSubmissionRefusal: string | null;
                         /** Format: date-time */
                         createdAt: string;
                         /** Format: date-time */
@@ -69921,6 +69925,7 @@ export interface operations {
                         version: number;
                         validationRunIdLatest: string | null;
                         eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
+                        electronicSubmissionRefusal: string | null;
                         /** Format: date-time */
                         createdAt: string;
                         /** Format: date-time */
@@ -70061,6 +70066,7 @@ export interface operations {
                         version: number;
                         validationRunIdLatest: string | null;
                         eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
+                        electronicSubmissionRefusal: string | null;
                         /** Format: date-time */
                         createdAt: string;
                         /** Format: date-time */
@@ -70160,6 +70166,7 @@ export interface operations {
                         version: number;
                         validationRunIdLatest: string | null;
                         eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
+                        electronicSubmissionRefusal: string | null;
                         /** Format: date-time */
                         createdAt: string;
                         /** Format: date-time */
@@ -70296,6 +70303,7 @@ export interface operations {
                         version: number;
                         validationRunIdLatest: string | null;
                         eligibilityOutcomeSnapshot: ("active" | "inactive" | "unknown" | "mco_assignment" | "error") | null;
+                        electronicSubmissionRefusal: string | null;
                         /** Format: date-time */
                         createdAt: string;
                         /** Format: date-time */

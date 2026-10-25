@@ -224,6 +224,8 @@ export function buildDrizzleM24WriteService(
   facilityKindReader?: FacilityKindReaderPort,
   residenceReader?: ResidenceReaderPort,
   facilityNames?: FacilityNameResolverPort,
+  /** S11: false when the state's gateway is not wired in this deployment (Oregon with no launch gateway). */
+  isGatewayBound: (state: string) => boolean = () => true,
 ): M24WriteService {
   const C = schema.medicaidClaim;
   const SUB = schema.medicaidSubmission;
@@ -319,6 +321,7 @@ export function buildDrizzleM24WriteService(
       version: r.version,
       validationRunIdLatest: r.validationRunIdLatest ?? null,
       eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
+      electronicSubmissionRefusal: electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState))?.message ?? null,
       createdAt: iso(r.createdAt),
       updatedAt: iso(r.updatedAt),
     };
@@ -905,7 +908,10 @@ export function buildDrizzleM24WriteService(
         if (reduced.error)
           throw new ConflictError("INVALID_TRANSITION", `cannot submit from ${claim.state}`);
         // S11 (#711): refuse BEFORE any state change, submission row or outbox event, so no submit job is enqueued.
-        const refusal = electronicSubmissionRefusal(claim.serviceState);
+        const refusal = electronicSubmissionRefusal(
+          claim.serviceState,
+          isGatewayBound(claim.serviceState),
+        );
         if (refusal) throw new ChartWardenError(refusal.code, refusal.message, 422);
         const submissionId = randomUUID();
         const submittedAt = new Date();

@@ -369,6 +369,7 @@ export const ClaimDto = Type.Object({
   version: Type.Integer(),
   validationRunIdLatest: Type.Union([uuid(), Type.Null()]),
   eligibilityOutcomeSnapshot: Type.Union([lit(ELIGIBILITY_OUTCOME), Type.Null()]),
+  electronicSubmissionRefusal: nullableStr(),
   createdAt: isoInstant(),
   updatedAt: isoInstant(),
 });

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MedicaidAdapterError } from "../src/errors";
 import { isValidOhpMemberId } from "../src/oregon";
@@ -129,4 +131,21 @@ describe("electronicSubmissionRefusal (S11)", () => {
       expect(r?.message).toMatch(/paper/);
     },
   );
+});
+
+describe("electronicSubmissionRefusal follow-ups (S11)", () => {
+  it("refuses Oregon with the same code when its gateway is not bound in the deployment", () => {
+    const r = electronicSubmissionRefusal("OR", false);
+    expect(r?.code).toBe(MEDICAID_NO_ELECTRONIC_GATEWAY_CODE);
+    expect(r?.message).toMatch(/not configured/);
+    expect(r?.message).toMatch(/paper/);
+  });
+
+  it("the web claim editor uses the same code string as the backend", () => {
+    const ui = readFileSync(
+      join(__dirname, "../../../apps/web/src/modules/24-billing-medicaid/claim-editor.tsx"),
+      "utf8",
+    );
+    expect(ui).toContain(`"${MEDICAID_NO_ELECTRONIC_GATEWAY_CODE}"`);
+  });
 });
