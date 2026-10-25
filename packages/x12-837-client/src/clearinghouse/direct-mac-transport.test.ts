@@ -25,7 +25,10 @@ import { type AckEvent, CH, type ClearinghouseContext, RETRYABLE_CODES } from ".
 
 const fixture = (name: string): string =>
   readFileSync(join(__dirname, "__fixtures__", `stedi-${name}.x12`), "utf8");
-const BASE_X12 = { claim: fixture("claim"), noe: fixture("NOE_81A"), notr: fixture("NOTR_81B"),
+const BASE_X12 = {
+  claim: fixture("claim"),
+  noe: fixture("NOE_81A"),
+  notr: fixture("NOTR_81B"),
   transfer_notice: fixture("TRANSFER_81C"),
 };
 
@@ -86,6 +89,7 @@ function createHarness(gw: FakeGateway = fakeGateway()): ClearinghouseHarness {
     clearinghouseRejects: unsupported("clearinghouseRejects"),
     payerAccepts: unsupported("payerAccepts"),
     payerRejects: unsupported("payerRejects"),
+    payerPartiallyAccepts: unsupported("payerPartiallyAccepts"),
     deliverRemittance: unsupported("deliverRemittance"),
     setEnrollment: unsupported("setEnrollment"),
     signedEvent: unsupported("signedEvent"),
@@ -149,6 +153,22 @@ describe("DirectMacTransport", () => {
     });
     expect(json).toMatchObject({ ok: false, degraded: { code: CH.INVALID_REQUEST } });
     expect(gw.uploads).toEqual(["000000041"]);
+  });
+
+  it("passes a payer partial through fetchAcknowledgments unchanged", async () => {
+    const gw = fakeGateway();
+    gw.acks = [
+      {
+        eventId: "277ca:u9:CCN9",
+        stage: "payer",
+        disposition: "partial",
+        controlNumber: "CCN9",
+        reasonCodes: ["A7"],
+        occurredAt: "2026-10-11",
+      },
+    ];
+    const r = await createHarness(gw).transport.fetchAcknowledgments(ctx, null);
+    expect(r).toMatchObject({ ok: true, data: { items: gw.acks } });
   });
 
   const submission = (x12: string, controlNumber = "000000001") => ({

@@ -85,6 +85,7 @@ function stateOf(latest: AckEvent | null): SubmissionState {
   if (latest.stage === "clearinghouse") {
     return latest.disposition === "accepted" ? "clearinghouse_accepted" : "clearinghouse_rejected";
   }
+  if (latest.disposition === "partial") return "payer_partial";
   return latest.disposition === "accepted" ? "payer_accepted" : "payer_rejected";
 }
 
@@ -179,7 +180,10 @@ export class InMemoryClearinghouse implements ClearinghouseTransport {
       submission.kind !== "notr" &&
       submission.kind !== "transfer_notice"
     ) {
-      return degraded(CH.INVALID_REQUEST, "submitNotice requires kind noe, notr or transfer_notice");
+      return degraded(
+        CH.INVALID_REQUEST,
+        "submitNotice requires kind noe, notr or transfer_notice",
+      );
     }
     if (submission.adjustment) {
       return degraded(CH.INVALID_REQUEST, "a notice cannot carry a claim adjustment");
@@ -309,6 +313,8 @@ export class InMemoryClearinghouse implements ClearinghouseTransport {
       this.pushAck(scope, controlNumber, "payer", "accepted", [], payerClaimNumber),
     payerRejects: async (controlNumber, codes, scope = DEFAULT_SCOPE) =>
       this.pushAck(scope, controlNumber, "payer", "rejected", codes),
+    payerPartiallyAccepts: async (controlNumber, codes, scope = DEFAULT_SCOPE) =>
+      this.pushAck(scope, controlNumber, "payer", "partial", codes),
     deliverRemittance: async (remittanceId, rawX12, scope = DEFAULT_SCOPE) => {
       const part = this.partition(scope);
       if (part.remittances.some((r) => r.remittanceId === remittanceId)) return; // the vendor repeats itself

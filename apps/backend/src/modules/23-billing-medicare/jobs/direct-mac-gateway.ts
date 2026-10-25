@@ -133,10 +133,9 @@ export function buildDirectMacGateway(deps: DirectMacGatewayDeps): DirectMacGate
           events.push({
             eventId: `277ca:${r.ackFileUri}:${controlNumber}`,
             stage: "payer",
-            // The port has no "partial": it is carried as a rejection with a PARTIAL marker.
-            disposition: r.outcome === "accepted" ? "accepted" : "rejected",
+            disposition: r.outcome,
             controlNumber,
-            reasonCodes: r.outcome === "partial" ? ["PARTIAL", ...r.reasonCodes] : r.reasonCodes,
+            reasonCodes: r.reasonCodes,
             occurredAt: statusDay && ISO_DAY.test(statusDay) ? statusDay : today,
             ...(r.outcome === "accepted" && r.payerClaimControlNumber
               ? { payerClaimNumber: r.payerClaimControlNumber }

@@ -136,8 +136,9 @@ entity (two permanent code paths and a per-entity switch to get wrong), (c) skip
   so the cursor-replay cases (C08, C17) and everything that needs `fetchClaimStatus` are skipped by name, not passed.
   `validate`, `eligibility`, `adjustment` and `enrollment` have no gateway operation either. Its
   `fetchAcknowledgments` is covered by its own tests. The per-vendor limits are visible as skipped cases, never silent.
-- Known limits of the worker injection (#707): a 277CA "partial" is carried as a rejection marked `PARTIAL`
-  because the port has no partial disposition. Tracked as a follow-up issue. The transfer-notice limit recorded at ratification (8xC/8xD had no `SubmissionKind`) is closed by the 2026-10-25 amendment. The ack crons no longer re-read from a null
+- Known limits of the worker injection (#707): the two limits recorded at ratification (8xC/8xD transfer notices had no
+  `SubmissionKind`; a 277CA "partial" rode as a `PARTIAL`-marked rejection) are closed by the 2026-10-25 amendment. The
+  ack crons no longer re-read from a null
   cursor (#749): the position is persisted per (org, provider entity, vendor, usage, stage) in `clearinghouse_ack_cursor`
   and moved by compare-and-set only after the page was applied (at-least-once; replays collapse on the ack row's unique
   key). A cursor the vendor refuses (`CH_INVALID_REQUEST`) resets to a null re-read once. A page whose apply keeps
@@ -169,7 +170,7 @@ NOE/NOTR not accepted, no platform model, or no BAA; Availity and Office Ally (n
 **Unchanged by this decision.** D6: the attempt store, not any vendor idempotency key, is the idempotency authority, so
 no vendor's key lifetime blocks a build.
 
-## Amendment (2026-10-25) — transfer notices are in the port (#750)
+## Amendment (2026-10-25) — transfer notices are in the port; `partial` is a first-class disposition (#750, #751)
 
 **Transfer notices (#750).** `SubmissionKind` gains `transfer_notice` (837I TOB 8xC change / 8xD cancel). *In the port,
 not out of it,* because (a) the CMS 837I NOE Companion Guide governs every NOE-related TOB (8XA-8XE), so an 8xC/8xD is an
@@ -183,6 +184,15 @@ legacy portal is never the fallback. Conformance: C03 now covers `transfer_notic
 `submitClaim`, refused with an adjustment), and every registered transport (`in_memory`, `direct_mac`, `stedi`) passes it.
 **Unverified:** whether Stedi's payer routing accepts TOB 8xC/8xD (Q30 is open); the adapter sends it as it does an NOE
 and a vendor 4xx surfaces as a typed refusal.
+
+**Partial disposition (#751).** `AckDisposition` is `accepted | rejected | partial`. `partial` is a payer-stage answer
+only (a 277CA that accepted part of the claim); a clearinghouse 999 is accepted or rejected, and `routeAckEvent` fails
+closed on a clearinghouse-stage partial. `SubmissionState` gains `payer_partial`. The in-memory reference scripts it
+(`payerPartiallyAccepts`) and conformance case C07b requires it to surface as `payer_partial` with its reason codes (and no
+marker). `direct_mac`'s gateway maps a 277CA partial to the new disposition and `ackFromEvent` no longer reads a
+`PARTIAL` reason code. Nothing persisted carried the marker (it was only on the transient pulled event, stripped before
+the `claim_acknowledgment` row was written), so no data migration or compatibility shim exists. Stedi has no ack
+receive-side yet, so there is no Stedi mapping to change.
 
 ## Open questions
 

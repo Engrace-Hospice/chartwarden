@@ -156,7 +156,11 @@ export interface ValidationReport {
 
 /** `clearinghouse` = the vendor accepted/rejected it; `payer` = the MAC accepted/rejected it. Never conflate. */
 export type AckStage = "clearinghouse" | "payer";
-export type AckDisposition = "accepted" | "rejected";
+/**
+ * `partial` is a PAYER-stage answer only (a 277CA that accepted part of the claim and rejected the rest); a
+ * clearinghouse (999) answer is `accepted` or `rejected`. A partial carries the reason codes of what was rejected.
+ */
+export type AckDisposition = "accepted" | "rejected" | "partial";
 
 export interface AckEvent {
   /** Stable and unique per acknowledgment; consumers dedupe on it. */
@@ -202,6 +206,7 @@ export type SubmissionState =
   | "clearinghouse_accepted"
   | "clearinghouse_rejected"
   | "payer_accepted"
+  | "payer_partial"
   | "payer_rejected";
 
 export interface ClaimStatus {

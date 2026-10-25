@@ -61,12 +61,28 @@ describe("conformance suite catches broken transports", () => {
     expect(failures.map((f) => f.id)).toContain("C03-notice-kind-routing");
   });
 
+  it("flags a transport that folds a payer partial into a rejection", async () => {
+    const failures = await runClearinghouseConformance(
+      mutant((t) => ({
+        fetchClaimStatus: async (ctx, n) => {
+          const r = await t.fetchClaimStatus(ctx, n);
+          return r.ok && r.data.state === "payer_partial"
+            ? { ok: true, data: { ...r.data, state: "payer_rejected" } }
+            : r;
+        },
+      })),
+    );
+    expect(failures.map((f) => f.id)).toContain("C07b-payer-partial-acceptance");
+  });
+
   it("flags a transport that echoes the MBI", async () => {
     const failures = await runClearinghouseConformance(
       mutant((t) => ({
         checkEligibility: async (ctx, req) => {
           const r = await t.checkEligibility(ctx, req);
-          return r.ok ? { ok: true, data: { ...r.data, mbi: "mbi" in req ? req.mbi : "" } as typeof r.data } : r;
+          return r.ok
+            ? { ok: true, data: { ...r.data, mbi: "mbi" in req ? req.mbi : "" } as typeof r.data }
+            : r;
         },
       })),
     );

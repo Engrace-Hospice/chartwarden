@@ -19,7 +19,10 @@ import { StediTransport } from "./stedi-transport";
 
 const fixture = (name: string): string =>
   readFileSync(join(__dirname, "__fixtures__", `stedi-${name}.x12`), "utf8");
-const BASE_X12 = { claim: fixture("claim"), noe: fixture("NOE_81A"), notr: fixture("NOTR_81B"),
+const BASE_X12 = {
+  claim: fixture("claim"),
+  noe: fixture("NOE_81A"),
+  notr: fixture("NOTR_81B"),
   transfer_notice: fixture("TRANSFER_81C"),
 };
 
@@ -62,6 +65,7 @@ function createStediHarness(): ClearinghouseHarness {
     clearinghouseRejects: unsupported("clearinghouseRejects"),
     payerAccepts: unsupported("payerAccepts"),
     payerRejects: unsupported("payerRejects"),
+    payerPartiallyAccepts: unsupported("payerPartiallyAccepts"),
     deliverRemittance: unsupported("deliverRemittance"),
     setEnrollment: unsupported("setEnrollment"),
     signedEvent: unsupported("signedEvent"),
@@ -103,7 +107,7 @@ describe("StediTransport against the shared conformance suite (submit side)", ()
     expect(skipped).toEqual(
       CLEARINGHOUSE_CONFORMANCE_CASES.map((c) => c.id).filter((id) => !passed.includes(id)),
     );
-    expect(skipped).toHaveLength(15);
+    expect(skipped).toHaveLength(16);
   });
 
   it("answers every unimplemented method with a degraded envelope during an outage, never a throw", async () => {

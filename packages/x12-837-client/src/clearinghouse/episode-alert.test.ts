@@ -281,6 +281,7 @@ function createHarness(): ClearinghouseHarness {
     clearinghouseRejects: unsupported("clearinghouseRejects"),
     payerAccepts: unsupported("payerAccepts"),
     payerRejects: unsupported("payerRejects"),
+    payerPartiallyAccepts: unsupported("payerPartiallyAccepts"),
     deliverRemittance: unsupported("deliverRemittance"),
     setEnrollment: unsupported("setEnrollment"),
     signedEvent: unsupported("signedEvent"),
