@@ -25,6 +25,8 @@ export const DDE_DEFAULT_SCOPE: DdeScope = {
 /** An operator every provider under test must treat as having no DDE ID (the harness arranges it). */
 export const DDE_UNENROLLED_OPERATOR = "op-not-enrolled";
 const ENROLLED_OPERATOR = "op-enrolled";
+/** A second operator the harness must treat as enrolled (a different person with their own DDE ID). */
+export const DDE_SECOND_OPERATOR = "op-enrolled-2";
 
 /** Drives the far side. Resolves once the state is in place. */
 export interface DdeConformanceScript {
@@ -208,6 +210,78 @@ export const DDE_CONFORMANCE_CASES: readonly DdeConformanceCase[] = [
       );
       const tail = must(await provider.fetchOutcomes(ctxFor(OTHER_PE), cursor), "resume");
       assert(tail.items.length === 0, "resuming at the end re-delivered events");
+    },
+  },
+  {
+    id: "D10",
+    title: "an operator with no DDE ID is refused on reads too",
+    run: async ({ provider }) => {
+      const stranger = ctxFor(DDE_DEFAULT_SCOPE, DDE_UNENROLLED_OPERATOR);
+      expectCode(
+        await provider.fetchOutcomes(stranger, null),
+        DDE.OPERATOR_NOT_ENROLLED,
+        "outcomes",
+      );
+      expectCode(
+        await provider.fetchOperationStatus(stranger, "ref-any"),
+        DDE.OPERATOR_NOT_ENROLLED,
+        "status",
+      );
+    },
+  },
+  {
+    id: "D11",
+    title: "the same key from a different operator is a conflict, never a replay",
+    run: async ({ provider }) => {
+      must(await provider.submitOperation(ctxFor(), operation("cn-d11")), "first operator");
+      expectCode(
+        await provider.submitOperation(
+          ctxFor(DDE_DEFAULT_SCOPE, DDE_SECOND_OPERATOR),
+          operation("cn-d11"),
+        ),
+        DDE.IDEMPOTENCY_CONFLICT,
+        "second operator",
+      );
+    },
+  },
+  {
+    id: "D12",
+    title: "the outcome feed is isolated by organization, provider entity and usage",
+    run: async ({ provider, script }) => {
+      const r = must(await provider.submitOperation(ctxFor(), operation("cn-d12")), "submit");
+      await script.fissAnswers(r.providerReference, "accepted", []);
+      assert(
+        must(await provider.fetchOutcomes(ctxFor(), null), "own").items.length === 1,
+        "own feed empty",
+      );
+      for (const scope of [OTHER_ORG, OTHER_PE, PRODUCTION]) {
+        const page = must(await provider.fetchOutcomes(ctxFor(scope), null), "other");
+        assert(page.items.length === 0, "another scope saw this scope's outcome");
+      }
+    },
+  },
+  {
+    id: "D13",
+    title: "a malformed cursor is refused and a saved cursor is repeatable",
+    run: async ({ provider, script }) => {
+      expectCode(
+        await provider.fetchOutcomes(ctxFor(), "not-a-cursor"),
+        DDE.INVALID_REQUEST,
+        "malformed cursor",
+      );
+      for (const n of ["cn-d13a", "cn-d13b", "cn-d13c"]) {
+        const r = must(await provider.submitOperation(ctxFor(OTHER_ORG), operation(n)), "submit");
+        await script.fissAnswers(r.providerReference, "accepted", [], OTHER_ORG);
+      }
+      const first = must(await provider.fetchOutcomes(ctxFor(OTHER_ORG), null), "first");
+      const a = must(await provider.fetchOutcomes(ctxFor(OTHER_ORG), first.nextCursor), "resume a");
+      const b = must(await provider.fetchOutcomes(ctxFor(OTHER_ORG), first.nextCursor), "resume b");
+      const ids = (p: Page<DdeOutcome>): string => p.items.map((o) => o.eventId).join();
+      assert(ids(a) === ids(b), "a saved cursor was not repeatable");
+      assert(
+        first.items.length + a.items.length === 3 && !a.hasMore,
+        "resume lost or repeated events",
+      );
     },
   },
 ];

@@ -4,10 +4,10 @@
 //
 // All state is partitioned by (organizationId, providerEntityId, usage), the port's isolation boundary.
 import { createHash } from "node:crypto";
-import { canonical } from "../clearinghouse/submission-identity";
+import { canonical, scopeKey } from "../clearinghouse/submission-identity";
 import type { Page } from "../clearinghouse/types";
 import { type X12WorkerResult, degraded } from "../types";
-import { DDE_UNENROLLED_OPERATOR, type DdeHarness } from "./conformance";
+import { DDE_DEFAULT_SCOPE, DDE_UNENROLLED_OPERATOR, type DdeHarness } from "./conformance";
 import {
   DDE,
   type DdeAccessProvider,
@@ -22,19 +22,13 @@ import {
 
 const PAGE_SIZE = 2;
 const CURSOR_RE = /^\d+$/;
-const CONFORMANCE_SCOPE: DdeScope = {
-  organizationId: "org-conf",
-  providerEntityId: "pe-conf",
-  usage: "test",
-};
 
 const ok = <T>(data: T): X12WorkerResult<T> => ({ ok: true, data });
-const scopeKey = (s: DdeScope): string =>
-  JSON.stringify([s.organizationId, s.providerEntityId, s.usage]);
-const identityOf = (op: DdeOperation): string =>
+const identityOf = (op: DdeOperation, operatorMembershipId: string): string =>
   createHash("sha256")
     .update(
       canonical({
+        operatorMembershipId,
         kind: op.kind,
         controlNumber: op.controlNumber,
         dcn: op.dcn,
@@ -80,18 +74,21 @@ export class InMemoryDdeProvider implements DdeAccessProvider {
     return fresh;
   }
 
+  private refuseUnenrolled<T>(ctx: DdeContext): X12WorkerResult<T> | null {
+    return this.unenrolled.has(ctx.operatorMembershipId)
+      ? degraded<T>(DDE.OPERATOR_NOT_ENROLLED, "the operator has no DDE ID with this provider")
+      : null;
+  }
+
   submitOperation(ctx: DdeContext, op: DdeOperation): Promise<X12WorkerResult<DdeReceipt>> {
-    if (this.unenrolled.has(ctx.operatorMembershipId)) {
-      return Promise.resolve(
-        degraded(DDE.OPERATOR_NOT_ENROLLED, "the operator has no DDE ID with this provider"),
-      );
-    }
+    const refusal = this.refuseUnenrolled<DdeReceipt>(ctx);
+    if (refusal) return Promise.resolve(refusal);
     const empty = op.payload.format === "x12" ? op.payload.x12 === "" : op.payload.document == null;
     if (empty || !op.controlNumber || !op.idempotencyKey) {
       return Promise.resolve(degraded(DDE.INVALID_REQUEST, "the operation is malformed"));
     }
     const p = this.part(ctx);
-    const identity = identityOf(op);
+    const identity = identityOf(op, ctx.operatorMembershipId);
     const prior = p.byKey.get(op.idempotencyKey);
     if (prior) {
       return Promise.resolve(
@@ -121,6 +118,8 @@ export class InMemoryDdeProvider implements DdeAccessProvider {
     ctx: DdeContext,
     cursor: string | null,
   ): Promise<X12WorkerResult<Page<DdeOutcome>>> {
+    const refusal = this.refuseUnenrolled<Page<DdeOutcome>>(ctx);
+    if (refusal) return Promise.resolve(refusal);
     if (cursor !== null && !CURSOR_RE.test(cursor)) {
       return Promise.resolve(
         degraded(DDE.INVALID_REQUEST, "the cursor is not one this provider issued"),
@@ -138,6 +137,8 @@ export class InMemoryDdeProvider implements DdeAccessProvider {
     ctx: DdeContext,
     providerReference: string,
   ): Promise<X12WorkerResult<DdeOperationStatus>> {
+    const refusal = this.refuseUnenrolled<DdeOperationStatus>(ctx);
+    if (refusal) return Promise.resolve(refusal);
     const p = this.part(ctx);
     if (!p.byRef.has(providerReference)) {
       return Promise.resolve(ok({ providerReference, state: "not_found", latest: null }));
@@ -178,7 +179,7 @@ export function createInMemoryDdeHarness(
     provider,
     script: {
       fissAnswers: (ref, disposition, reasonCodes, scope) => {
-        provider.fissAnswers(scope ?? CONFORMANCE_SCOPE, ref, disposition, reasonCodes);
+        provider.fissAnswers(scope ?? DDE_DEFAULT_SCOPE, ref, disposition, reasonCodes);
         return Promise.resolve();
       },
     },

@@ -45,7 +45,7 @@ CMS-approved vendor to key an operation on the operator's behalf through that ve
 session; ChartWarden holds only the vendor's platform API credential.
 
 **D4 — Per-operator attribution is required.** DDE IDs are issued to individuals and cannot be shared. Every call carries
-`operatorMembershipId`, and a provider answers `DDE_OPERATOR_NOT_ENROLLED` for an operator it has no DDE ID for. An
+`operatorMembershipId`, and a provider answers `DDE_OPERATOR_NOT_ENROLLED` for an operator it has no DDE ID for, on reads as well as submits. An
 adapter must not satisfy a call under another person's ID or a shared vendor ID. If a vendor cannot attribute per
 operator, that adapter is not accepted and the item stays on manual keying.
 
@@ -54,9 +54,10 @@ FISS reason codes) is provider-verified. An operator's "I keyed it" under ADR-00
 must record which it was (`submission_mode`, built in the M23 routes issue, #760) and must never present one as the
 other. A provider acceptance feeds `payer_status_date` with a new source value; `record-acceptance` stays for manual.
 
-**D6 — PHI and idempotency.** No MBI crosses this port. Degraded reasons and outcomes carry codes and ids only. State is
-partitioned by (organization, provider entity, usage), idempotency keys replay an identical operation and conflict on a
-different one, and `usage: "test"` must reach only vendor test mode. These are conformance cases D1 to D9, not
+**D6 — PHI and idempotency.** An operation payload is PHI-bearing (an NOE, NOTR or claim entry names the beneficiary), so an adapter never logs it, echoes it into a reason, or keeps it beyond the vendor call. Receipts, outcomes and degraded reasons carry codes and ids only. State is
+partitioned by (organization, provider entity, usage), idempotency keys replay an identical operation by the same operator and conflict on a
+different operation or a different operator (an operation is keyed under one person's DDE ID). `controlNumber` is not unique per
+operation, so callers derive a deterministic key per queue item and attempt (#760), and `usage: "test"` must reach only vendor test mode. These are conformance cases D1 to D13, not
 adapter-specific promises.
 
 **D7 — Open vendor questions (issue #762).** Does Episode Alert expose NOE/NOTR, RTP correction, cancel and adjustment

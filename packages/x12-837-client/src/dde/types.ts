@@ -7,7 +7,9 @@
 // FISS credential: a vendor adapter reads its own platform credential from the environment.
 //
 // Conventions (same as ../clearinghouse/types): every method returns an `X12WorkerResult`, never throws for an
-// operational failure, and degraded reasons are PHI-free. No MBI crosses this port at all.
+// operational failure, and degraded reasons, receipts and outcomes are PHI-free. A {@link DdeOperation} payload is NOT:
+// an NOE, NOTR or claim entry carries the beneficiary identifier, so an adapter must never log it, echo it into a
+// degraded reason, or store it beyond what the vendor call needs.
 import type { Page, SubmissionPayload } from "../clearinghouse/types";
 import type { X12WorkerResult } from "../types";
 
@@ -51,7 +53,7 @@ export type DdeOperationKind =
 
 /**
  * Who is acting. The provider credential is platform-level but the DDE ID is the operator's own, so every call names
- * the operator; the provider refuses an operator it has no DDE ID for (`OPERATOR_NOT_ENROLLED`).
+ * the operator; the provider refuses an operator it has no DDE ID for (`OPERATOR_NOT_ENROLLED`) on every method, reads included.
  */
 export interface DdeContext {
   readonly organizationId: string;
@@ -68,11 +70,18 @@ export type DdeScope = Pick<DdeContext, "organizationId" | "providerEntityId" | 
 
 export interface DdeOperation {
   readonly kind: DdeOperationKind;
-  /** Our control number of the claim/notice this operation is about. Doubles as the business key. */
+  /**
+   * Our control number of the claim/notice this operation is about. NOT unique per operation (repeat corrections of
+   * one claim are legitimate), so callers MUST derive a deterministic idempotency key per queue item and attempt, or a
+   * double click that mints a fresh key keys a second operation to FISS.
+   */
   readonly controlNumber: string;
   /** The MAC's document control number, when the operation targets an existing FISS record. */
   readonly dcn?: string;
-  /** Same key + identical operation replays the original receipt; same key + a different one is a conflict. */
+  /**
+   * Same key + identical operation by the same operator replays the original receipt; the same key with a different
+   * operation OR a different operator is a conflict (an operation is keyed under one person's DDE ID).
+   */
   readonly idempotencyKey: string;
   readonly payload: SubmissionPayload;
 }
