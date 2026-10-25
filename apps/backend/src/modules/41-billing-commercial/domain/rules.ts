@@ -135,6 +135,39 @@ const covers = (p: { effectiveFrom: string; effectiveTo: string | null }, day: s
 
 // ── rules ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * The statement period and the lines must agree: every day of the window is billed exactly once. A hole in the level-of-care
+ * periods would otherwise save an under-billed claim, and overlapping periods would double-bill a day.
+ */
+function serviceDaysCovered(c: RuleContext): RuleOutcome {
+  const key = "service_days_covered";
+  const counts = new Map<string, number>();
+  for (const l of c.lines)
+    for (const d of eachDay(l.serviceFrom, l.serviceTo)) counts.set(d, (counts.get(d) ?? 0) + 1);
+  const window = eachDay(c.serviceFrom, c.serviceTo);
+  const missing = window.filter((d) => !counts.has(d));
+  const doubled = window.filter((d) => (counts.get(d) ?? 0) > 1);
+  const outside = [...counts.keys()].filter((d) => d < c.serviceFrom || d > c.serviceTo);
+  if (missing.length === 0 && doubled.length === 0 && outside.length === 0) {
+    return pass(key, "Every day of the service window is billed exactly once.");
+  }
+  const text = (label: string, days: string[]): string =>
+    days.length === 0
+      ? ""
+      : ` ${label} ${toRanges([...days].sort())
+          .map((r) => `${r.from} to ${r.to}`)
+          .join(", ")}.`;
+  return hardFail(
+    key,
+    `The lines do not match the service window ${c.serviceFrom} to ${c.serviceTo}.${text("Not billed:", missing)}${text("Billed twice:", doubled)}${text("Outside the window:", outside)} Correct the level-of-care periods for the stay, void this claim and assemble again.`,
+    {
+      missing: toRanges(missing),
+      doubled: toRanges(doubled),
+      outside: toRanges([...outside].sort()),
+    },
+  );
+}
+
 function planInEffect(c: RuleContext): RuleOutcome {
   const key = "plan_in_effect";
   const ok = covers(c.plan, c.serviceFrom) && covers(c.plan, c.serviceTo);
@@ -393,6 +426,7 @@ export function runCommercialRules(c: RuleContext): RuleOutcome[] {
     filingIndicatorCommercial(c),
     payerRouteInEffect(c),
     ...ratesAndCharges(c),
+    serviceDaysCovered(c),
     ...diagnosisAndAttending(c),
     authorizationOnFile(c),
     authorizationLeadTime(c),

@@ -21,6 +21,7 @@ import {
 } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
+import { assertRowReachable } from "./scope-guard";
 import type { CommercialActor, CommercialClaimSeams, CommercialDb, CommercialTx } from "./types";
 import { type ValidationRunView, runAndPersistValidation } from "./validation-runner";
 
@@ -62,6 +63,11 @@ export function buildCommercialClaimLifecycleService(
   const inOrg = <T>(actor: CommercialActor, fn: (tx: CommercialTx) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId: actor.organizationId, userId: actor.userId }, fn);
 
+  /**
+   * Load the claim ROW-LOCKED (`FOR UPDATE`): ready, validate, override and void on one claim serialize, so a void can never be
+   * overtaken by a ready and two validations cannot interleave their run pointers. The claim's provider entity must be in the
+   * actor's scope and its patient in their caseload (the data, not just the request, is scoped).
+   */
   const loadClaim = async (tx: CommercialTx, actor: CommercialActor, claimId: string) => {
     const [claim] = await tx
       .select()
@@ -71,9 +77,26 @@ export function buildCommercialClaimLifecycleService(
           eq(schema.commercialClaims.id, claimId),
           eq(schema.commercialClaims.organizationId, actor.organizationId),
         ),
-      );
+      )
+      .for("update");
     if (!claim) throw new NotFoundError("commercial claim");
+    await assertRowReachable(actor, seams.caseload, claim);
     return claim;
+  };
+
+  /** A ready claim whose facts now block (an authorization voided, a route ended) falls back to draft: nothing stale is sendable. */
+  const demoteIfBlocked = async (
+    tx: CommercialTx,
+    actor: CommercialActor,
+    claim: typeof schema.commercialClaims.$inferSelect,
+    run: ValidationRunView,
+  ): Promise<void> => {
+    if (claim.state !== "ready" || run.blocking.length === 0) return;
+    await tx
+      .update(schema.commercialClaims)
+      .set({ state: "draft", readyAt: null, updatedAt: now() })
+      .where(eq(schema.commercialClaims.id, claim.id));
+    await recordTransition(tx, actor, claim, "ready", "draft", run.runId);
   };
 
   const recordTransition = (
@@ -108,7 +131,10 @@ export function buildCommercialClaimLifecycleService(
         actor.membershipId,
         now(),
       );
-      if (validation.blocking.length > 0) return { claimId, state: "draft" as const, validation };
+      if (validation.blocking.length > 0) {
+        await demoteIfBlocked(tx, actor, claim, validation);
+        return { claimId, state: "draft" as const, validation };
+      }
       if (claim.state === "ready") return { claimId, state: "ready" as const, validation };
       const at = now();
       await tx
@@ -140,14 +166,7 @@ export function buildCommercialClaimLifecycleService(
           actor.membershipId,
           now(),
         );
-        // A ready claim whose facts changed (an authorization voided, a route ended) falls back to draft: nothing stale is sendable.
-        if (claim.state === "ready" && run.blocking.length > 0) {
-          await tx
-            .update(schema.commercialClaims)
-            .set({ state: "draft", readyAt: null, updatedAt: now() })
-            .where(eq(schema.commercialClaims.id, claimId));
-          await recordTransition(tx, actor, claim, "ready", "draft", run.runId);
-        }
+        await demoteIfBlocked(tx, actor, claim, run);
         return run;
       });
     },

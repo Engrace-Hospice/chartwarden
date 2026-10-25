@@ -5,7 +5,9 @@ import { schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { NotFoundError } from "@chartwarden/types";
 import { and, asc, eq } from "drizzle-orm";
-import type { CommercialActor, CommercialDb } from "./types";
+import { isBlocking } from "../domain/rules";
+import { assertRowReachable } from "./scope-guard";
+import type { CommercialActor, CommercialClaimSeams, CommercialDb } from "./types";
 import type { ValidationRunView } from "./validation-runner";
 
 export interface ValidationRunApiView {
@@ -43,7 +45,7 @@ export function toRunApiView(run: ValidationRunView): ValidationRunApiView {
 
 export interface CommercialClaimReadService {
   getClaim(
-    actor: Pick<CommercialActor, "organizationId" | "userId">,
+    actor: Pick<CommercialActor, "organizationId" | "userId" | "billingScope">,
     claimId: string,
   ): Promise<{
     claim: Record<string, string | number | null>;
@@ -52,7 +54,10 @@ export interface CommercialClaimReadService {
   }>;
 }
 
-export function buildCommercialClaimReadService(db: CommercialDb): CommercialClaimReadService {
+export function buildCommercialClaimReadService(
+  db: CommercialDb,
+  seams: Pick<CommercialClaimSeams, "caseload">,
+): CommercialClaimReadService {
   return {
     async getClaim(actor, claimId) {
       return withOrgContext(
@@ -69,6 +74,7 @@ export function buildCommercialClaimReadService(db: CommercialDb): CommercialCla
               ),
             );
           if (!c) throw new NotFoundError("commercial claim");
+          await assertRowReachable(actor, seams.caseload, c);
           const lines = await tx
             .select()
             .from(schema.commercialClaimLines)
@@ -107,7 +113,13 @@ export function buildCommercialClaimReadService(db: CommercialDb): CommercialCla
                   outcome: r.outcome,
                   overridable: r.overridable,
                   overridden: wasOverridden,
-                  blocking: r.outcome === "fail" && r.severity !== "info" && !wasOverridden,
+                  blocking: isBlocking(
+                    {
+                      outcome: r.outcome as "pass" | "fail" | "info",
+                      severity: r.severity as "error" | "warn" | "info",
+                    },
+                    wasOverridden,
+                  ),
                   message: r.message,
                 };
               }),

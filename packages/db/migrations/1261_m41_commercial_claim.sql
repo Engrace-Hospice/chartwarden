@@ -24,6 +24,8 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, public AS $$
   SELECT p.status::text, p.kind::text, p.merged_into_id FROM payer p WHERE p.id = p_payer_id;
 $$;--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION m41_payer_state(uuid) TO chartwarden_app;--> statement-breakpoint
+-- A claim line points at the rate it was priced from through a composite FK (organization stays inside the key).
+CREATE UNIQUE INDEX IF NOT EXISTS "commercial_contract_rate_id_org_uq" ON "commercial_contract_rate" ("id", "organization_id");--> statement-breakpoint
 
 CREATE TABLE IF NOT EXISTS "commercial_authorization" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -91,6 +93,11 @@ CREATE TABLE IF NOT EXISTS "commercial_claim" (
   CONSTRAINT "commercial_claim_window" CHECK ("service_to" >= "service_from"),
   CONSTRAINT "commercial_claim_cob_pair" CHECK (("secondary_patient_payer_id" IS NULL) = ("secondary_payer_kind" IS NULL)),
   CONSTRAINT "commercial_claim_ready_stamp" CHECK (("state" = 'ready') = ("ready_at" IS NOT NULL)),
+  CONSTRAINT "commercial_claim_frequency_matches_tob" CHECK ("frequency_code" = substr("tob", 3, 1)),
+  -- the backstop for the service's overlap check: a patient has at most one live claim on any day (two concurrent assemblies of
+  -- overlapping windows cannot both commit)
+  CONSTRAINT "commercial_claim_no_overlap" EXCLUDE USING gist (
+    "organization_id" WITH =, "patient_id" WITH =, daterange("service_from", "service_to", '[]') WITH &&) WHERE ("state" <> 'void'),
   CONSTRAINT "commercial_claim_id_org_key" UNIQUE ("id", "organization_id"),
   CONSTRAINT "commercial_claim_control_number_key" UNIQUE ("organization_id", "claim_control_number")
 );--> statement-breakpoint
@@ -117,16 +124,18 @@ CREATE TABLE IF NOT EXISTS "commercial_claim_line" (
   "unit_rate_cents" bigint CHECK ("unit_rate_cents" IS NULL OR "unit_rate_cents" >= 0),
   "line_charge_cents" bigint NOT NULL CHECK ("line_charge_cents" >= 0),
   -- the contract rate row this line was priced from (NULL when no rate was in effect: a hard block, the line is unpriced)
-  "contract_rate_id" uuid REFERENCES "commercial_contract_rate"("id") ON DELETE RESTRICT,
+  "contract_rate_id" uuid,
   "created_at" timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT "commercial_claim_line_claim_fk" FOREIGN KEY ("claim_id", "organization_id") REFERENCES "commercial_claim"("id", "organization_id") ON DELETE RESTRICT,
+  -- composite: a line can only be priced from a rate of its own organization (a plain FK check bypasses RLS)
+  CONSTRAINT "commercial_claim_line_rate_fk" FOREIGN KEY ("contract_rate_id", "organization_id") REFERENCES "commercial_contract_rate"("id", "organization_id") ON DELETE RESTRICT,
   CONSTRAINT "commercial_claim_line_window" CHECK ("service_to" >= "service_from"),
   CONSTRAINT "commercial_claim_line_number_key" UNIQUE ("claim_id", "line_number")
 );--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_claim_line_org_ix" ON "commercial_claim_line" ("organization_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_claim_line_pe_ix" ON "commercial_claim_line" ("provider_entity_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_claim_line_location_ix" ON "commercial_claim_line" ("location_id") WHERE "location_id" IS NOT NULL;--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "commercial_claim_line_rate_ix" ON "commercial_claim_line" ("contract_rate_id") WHERE "contract_rate_id" IS NOT NULL;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "commercial_claim_line_rate_ix" ON "commercial_claim_line" ("contract_rate_id", "organization_id") WHERE "contract_rate_id" IS NOT NULL;--> statement-breakpoint
 
 CREATE TABLE IF NOT EXISTS "commercial_claim_state_history" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -190,6 +199,7 @@ CREATE TABLE IF NOT EXISTS "commercial_validation_result" (
   CONSTRAINT "commercial_validation_result_id_org_key" UNIQUE ("id", "organization_id"),
   CONSTRAINT "commercial_validation_result_run_rule_key" UNIQUE ("validation_run_id", "rule_key")
 );--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "commercial_validation_result_fact_uq" ON "commercial_validation_result" ("id", "organization_id", "claim_id", "rule_key", "evidence_hash");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_validation_result_claim_ix" ON "commercial_validation_result" ("claim_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_validation_result_org_ix" ON "commercial_validation_result" ("organization_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_validation_result_pe_ix" ON "commercial_validation_result" ("provider_entity_id");--> statement-breakpoint
@@ -209,7 +219,8 @@ CREATE TABLE IF NOT EXISTS "commercial_validation_override" (
   -- the prominent M4 audit_event written in the same transaction (no FK: audit_event is partitioned)
   "m4_audit_event_id" uuid NOT NULL,
   "created_at" timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT "commercial_validation_override_result_fk" FOREIGN KEY ("validation_result_id", "organization_id") REFERENCES "commercial_validation_result"("id", "organization_id") ON DELETE RESTRICT,
+  -- composite over the fact columns: an override can only point at a result of the SAME claim, rule and evidence
+  CONSTRAINT "commercial_validation_override_result_fk" FOREIGN KEY ("validation_result_id", "organization_id", "claim_id", "rule_key", "evidence_hash") REFERENCES "commercial_validation_result"("id", "organization_id", "claim_id", "rule_key", "evidence_hash") ON DELETE RESTRICT,
   CONSTRAINT "commercial_validation_override_claim_fk" FOREIGN KEY ("claim_id", "organization_id") REFERENCES "commercial_claim"("id", "organization_id") ON DELETE RESTRICT,
   CONSTRAINT "commercial_validation_override_result_uq" UNIQUE ("validation_result_id"),
   CONSTRAINT "commercial_validation_override_fact_uq" UNIQUE ("claim_id", "rule_key", "evidence_hash")
@@ -230,7 +241,29 @@ CREATE INDEX IF NOT EXISTS "commercial_validation_run_fk_ix" ON "commercial_vali
 CREATE INDEX IF NOT EXISTS "commercial_validation_result_fk_ix" ON "commercial_validation_result" ("claim_id", "organization_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_validation_override_fk_ix" ON "commercial_validation_override" ("claim_id", "organization_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_validation_result_run_fk_ix" ON "commercial_validation_result" ("validation_run_id", "organization_id");--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "commercial_validation_override_result_fk_ix" ON "commercial_validation_override" ("validation_result_id", "organization_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "commercial_validation_override_result_fk_ix" ON "commercial_validation_override" ("validation_result_id", "organization_id", "claim_id", "rule_key", "evidence_hash");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "commercial_claim_latest_run_fk_ix" ON "commercial_claim" ("latest_validation_run_id", "organization_id") WHERE "latest_validation_run_id" IS NOT NULL;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "commercial_claim_state_history_run_fk_ix" ON "commercial_claim_state_history" ("validation_run_id", "organization_id") WHERE "validation_run_id" IS NOT NULL;--> statement-breakpoint
+-- The run pointers cannot be declared inline (the run table is created after the claim): nullable composite FKs, added once.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'commercial_claim_latest_run_fk') THEN
+    ALTER TABLE "commercial_claim" ADD CONSTRAINT "commercial_claim_latest_run_fk" FOREIGN KEY ("latest_validation_run_id", "organization_id") REFERENCES "commercial_validation_run"("id", "organization_id") ON DELETE RESTRICT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'commercial_claim_state_history_run_fk') THEN
+    ALTER TABLE "commercial_claim_state_history" ADD CONSTRAINT "commercial_claim_state_history_run_fk" FOREIGN KEY ("validation_run_id", "organization_id") REFERENCES "commercial_validation_run"("id", "organization_id") ON DELETE RESTRICT;
+  END IF;
+END $$;--> statement-breakpoint
+-- Lifecycle backstop: draft <-> ready, and either to void; void is final (the service's row lock is the first line, this is the last).
+CREATE OR REPLACE FUNCTION m41_commercial_claim_state_guard() RETURNS trigger
+LANGUAGE plpgsql AS $fn$
+BEGIN
+  IF NEW.state <> OLD.state AND OLD.state = 'void' THEN
+    RAISE EXCEPTION 'M41_CLAIM_VOID_IS_FINAL: claim % is void and cannot change state', OLD.id;
+  END IF;
+  RETURN NEW;
+END $fn$;--> statement-breakpoint
+DROP TRIGGER IF EXISTS "trg_commercial_claim_state_guard" ON "commercial_claim";--> statement-breakpoint
+CREATE TRIGGER "trg_commercial_claim_state_guard" BEFORE UPDATE OF "state" ON "commercial_claim" FOR EACH ROW EXECUTE FUNCTION m41_commercial_claim_state_guard();--> statement-breakpoint
 
 -- RLS: the canonical single-shape org policy, FORCEd; the app role has no DELETE on any of the seven.
 ALTER TABLE "commercial_authorization" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint

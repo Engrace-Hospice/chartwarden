@@ -6012,6 +6012,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               electionPeriods: m23Seams.electionPeriods,
               levelOfCare: m23Seams.levelOfCare,
               diagnoses: m23Seams.diagnoses,
+              // The per-patient axis for a scoped (not organization-wide) billing actor: M5's live CaseloadProvider, resolved lazily.
+              caseload: {
+                isInCaseload: (q: { organizationId: string; userId: string; patientId: string }) =>
+                  getSeam("CaseloadProvider").isInCaseload(q),
+              },
               clinicalParticipants: m23Seams.mdm,
               outbox: m41OutboxPublisher as unknown as CommercialOutboxPort,
               audit: buildM41OverrideAuditPort(),
@@ -6019,8 +6024,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             registerCommercialBillingRoutes(app, {
               assembly: buildCommercialClaimAssemblyService(dbHandle.db, m41Seams),
               lifecycle: buildCommercialClaimLifecycleService(dbHandle.db, m41Seams),
-              authorizations: buildCommercialAuthorizationService(dbHandle.db),
-              reads: buildCommercialClaimReadService(dbHandle.db),
+              authorizations: buildCommercialAuthorizationService(dbHandle.db, m41Seams),
+              reads: buildCommercialClaimReadService(dbHandle.db, m41Seams),
             });
           }
           // M25 (Remittance & Denials) — mount the §4.1 route plugins over the Drizzle READ + WRITE

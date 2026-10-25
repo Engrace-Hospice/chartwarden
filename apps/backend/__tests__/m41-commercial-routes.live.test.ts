@@ -55,7 +55,7 @@ const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ORG = "00000000-0000-4000-8000-0000000043a1";
 const USER = "00000000-0000-4000-8000-0000000043c1";
 const OTHER_USER = "00000000-0000-4000-8000-0000000043c2";
-const OTHER_PE = "00000000-0000-4000-8000-0000000043d1";
+const NOCASE = "00000000-0000-4000-8000-0000000043c3";
 const REASON =
   "The payer confirmed by telephone that no authorization is needed for this hospice plan.";
 const BASE = "/api/v1/billing/commercial";
@@ -74,14 +74,17 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
   let medicarePayer: string;
   const servers: FastifyInstance[] = [];
   let idem = 0;
+  let otherProviderEntityId: string;
+  // when set, the fake admission reports this provider entity instead of providerEntityId
+  let admissionProvider: string | undefined;
 
   function headerAuth(request: FastifyRequest): void {
     const who = request.headers["x-test-user"];
     if (typeof who !== "string") return;
-    request.context.userId = who === "plain" ? OTHER_USER : USER;
+    request.context.userId = who === "plain" ? OTHER_USER : who === "nocase" ? NOCASE : USER;
     request.context.organizationId = ORG;
     request.context.roles = who === "ineligible" ? ["scheduler"] : ["billing_manager"];
-    request.context.providerEntityIds = [providerEntityId];
+    request.context.providerEntityIds = [who === "pe2" ? otherProviderEntityId : providerEntityId];
     request.context.attributes.membershipId = membershipId;
     request.context.attributes.stepUpRecent = request.headers["x-test-stepup"] === "yes";
     request.context.attributes.actorKind = who === "ai" ? "ai_agent" : "user";
@@ -135,12 +138,20 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
           userId: USER,
           grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: KEYS }],
         },
+        {
+          orgId: ORG,
+          userId: NOCASE,
+          grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: KEYS }],
+        },
         { orgId: ORG, userId: OTHER_USER, grants: [] },
       ]).store,
     );
     const reg = createPredicateRegistry();
     for (const [name, predicate] of Object.entries(
-      buildCommercialAbacPredicates({ db: handle.db, isInCaseload: async () => true }),
+      buildCommercialAbacPredicates({
+        db: handle.db,
+        isInCaseload: async ({ userId }) => userId === USER,
+      }),
     )) {
       reg.register(name, predicate);
     }
@@ -149,9 +160,12 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M41_OUTBOX_EVENTS]));
     const seams: CommercialClaimSeams = {
       coverage: buildPatientCoverageReader(handle.db),
+      // the per-patient axis: only USER has the patients on their caseload
+      caseload: { isInCaseload: async ({ userId }) => userId === USER },
       admission: {
         resolveForRange: async () => ({
           admissionId,
+          providerEntityId: admissionProvider ?? providerEntityId,
           hospiceAdmissionDate: "2026-03-01",
           admissionTypeCode: "1",
           admissionSourceCode: "1",
@@ -223,8 +237,8 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     registerCommercialBillingRoutes(app, {
       assembly: buildCommercialClaimAssemblyService(handle.db, seams),
       lifecycle: buildCommercialClaimLifecycleService(handle.db, seams),
-      authorizations: buildCommercialAuthorizationService(handle.db),
-      reads: buildCommercialClaimReadService(handle.db),
+      authorizations: buildCommercialAuthorizationService(handle.db, seams),
+      reads: buildCommercialClaimReadService(handle.db, seams),
     });
     servers.push(app);
     return app;
@@ -272,10 +286,18 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
       `INSERT INTO "user" (id,email) VALUES ($1,'m41r-a@x.test'),($2,'m41r-b@x.test')`,
       [USER, OTHER_USER],
     );
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m41r-c@x.test')`, [NOCASE]);
     providerEntityId = (
       await admin.query(
         `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
          VALUES ($1,'123456','Synthetic Hospice','1234567893','\\x00','12-31') RETURNING id`,
+        [ORG],
+      )
+    ).rows[0].id as string;
+    otherProviderEntityId = (
+      await admin.query(
+        `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+         VALUES ($1,'654321','Synthetic Hospice Two','1245319599','\\x00','12-31') RETURNING id`,
         [ORG],
       )
     ).rows[0].id as string;
@@ -305,6 +327,7 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     resetAbacRegistry();
   });
   afterEach(async () => {
+    admissionProvider = undefined;
     await Promise.all(servers.splice(0).map((s) => s.close()));
     resetAuthorizationContract();
     resetRbacEngine();
@@ -333,7 +356,7 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     expect(
       (
         await call(app, "POST", `${BASE}/claims/assemble`, {
-          payload: assembleBody(s.patientId, { providerEntityId: OTHER_PE }),
+          payload: assembleBody(s.patientId, { providerEntityId: otherProviderEntityId }),
         })
       ).statusCode,
     ).toBe(404);
@@ -384,6 +407,122 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     expect(ready.statusCode).toBe(200);
     expect(ready.json().state).toBe("ready");
     expect((await call(app, "POST", `${BASE}/claims/${claimId}/void`)).json().state).toBe("void");
+  });
+
+  it("scopes the DATA: an entity the actor reaches does not open another entity's patient, claim or authorizations", async () => {
+    const s = await seed("required_at_admission");
+    const app = server(s.admissionId);
+    const before = await claimCount();
+    // the actor reaches entity 2 and names it, but the patient is admitted under entity 1: the ABAC check alone would pass
+    const crossAssemble = await call(app, "POST", `${BASE}/claims/assemble`, {
+      user: "pe2",
+      payload: assembleBody(s.patientId, { providerEntityId: otherProviderEntityId }),
+    });
+    expect(crossAssemble.statusCode).toBe(404);
+    // a patient outside the actor's caseload (the service applies the caseload axis the route's entity check does not)
+    expect(
+      (
+        await call(app, "POST", `${BASE}/claims/assemble`, {
+          user: "nocase",
+          payload: assembleBody(s.patientId),
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(await claimCount()).toBe(before);
+
+    const claimId = (
+      await call(app, "POST", `${BASE}/claims/assemble`, { payload: assembleBody(s.patientId) })
+    ).json().claimId as string;
+    for (const user of ["pe2", "nocase"]) {
+      expect((await call(app, "GET", `${BASE}/claims/${claimId}`, { user })).statusCode).toBe(404);
+      expect(
+        (await call(app, "POST", `${BASE}/claims/${claimId}/ready`, { user })).statusCode,
+      ).toBe(404);
+      expect((await call(app, "POST", `${BASE}/claims/${claimId}/void`, { user })).statusCode).toBe(
+        404,
+      );
+      expect(
+        (
+          await call(
+            app,
+            "POST",
+            `${BASE}/claims/${claimId}/validation-results/${randomUUID()}/override`,
+            { user, stepUp: true, payload: { reason: REASON } },
+          )
+        ).statusCode,
+      ).toBe(404);
+    }
+
+    const recorded = await call(app, "POST", `${BASE}/authorizations`, {
+      payload: {
+        providerEntityId,
+        patientId: s.patientId,
+        planId: s.planId,
+        authorizationNumber: "AUTH-S1",
+        obtainedOn: "2026-02-20",
+        effectiveFrom: "2026-03-01",
+      },
+    });
+    expect(recorded.statusCode).toBe(201);
+    const authBody = (pe: string) => ({
+      providerEntityId: pe,
+      patientId: s.patientId,
+      planId: s.planId,
+      authorizationNumber: "AUTH-S2",
+      obtainedOn: "2026-02-20",
+      effectiveFrom: "2026-03-01",
+    });
+    expect(
+      (
+        await call(app, "POST", `${BASE}/authorizations`, {
+          user: "pe2",
+          payload: authBody(otherProviderEntityId),
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await call(app, "POST", `${BASE}/authorizations`, {
+          user: "nocase",
+          payload: authBody(providerEntityId),
+        })
+      ).statusCode,
+    ).toBe(404);
+    const listUrl = (pe: string) =>
+      `${BASE}/authorizations?providerEntityId=${pe}&patientId=${s.patientId}`;
+    expect(
+      (await call(app, "GET", listUrl(otherProviderEntityId), { user: "pe2" })).statusCode,
+    ).toBe(404);
+    expect((await call(app, "GET", listUrl(providerEntityId), { user: "pe2" })).statusCode).toBe(
+      404,
+    );
+    expect((await call(app, "GET", listUrl(providerEntityId), { user: "nocase" })).statusCode).toBe(
+      404,
+    );
+    expect(
+      (
+        await call(app, "POST", `${BASE}/authorizations/${recorded.json().id}/status`, {
+          user: "pe2",
+          payload: { status: "voided" },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await call(app, "POST", `${BASE}/authorizations/${recorded.json().id}/status`, {
+          user: "nocase",
+          payload: { status: "voided" },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect((await call(app, "GET", listUrl(providerEntityId))).json().items).toHaveLength(1);
+
+    // an admission recorded under the other entity cannot be billed by this one
+    admissionProvider = otherProviderEntityId;
+    expect(
+      (await call(app, "POST", `${BASE}/authorizations`, { payload: authBody(providerEntityId) }))
+        .statusCode,
+    ).toBe(404);
   });
 
   it("overrides a soft block over HTTP: 404 for an ineligible role, 403 without step-up, 422 for a short reason, 201, then 409", async () => {

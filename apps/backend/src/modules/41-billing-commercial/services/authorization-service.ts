@@ -2,17 +2,27 @@
 // (issue #722). A pre-authorization is the evidence the `authorization_on_file` rule reads; recording or voiding one does not
 // touch any claim, a re-validation picks the change up. The authorization number is an identifier: it is stored in its own
 // column, scrubbed from the row-level audit event, and never placed in a log, an outbox payload or a validation message.
+//
+// SCOPE: every operation checks the DATA against the actor, not just the entity named in the request (scope-guard.ts): the
+// provider entity is in the actor's billing scope, the patient is in their caseload, and the patient's admission belongs to that
+// entity. Reads filter on the provider entity as well as the patient.
 import { schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
   type CommercialAuthorizationStatus,
   type CommercialHospiceLevelOfCare,
-  ConflictError,
   NotFoundError,
 } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
-import type { CommercialActor, CommercialDb, CommercialTx } from "./types";
+import { conflictOnUnique } from "./db-errors";
+import {
+  assertPatientBoundToProvider,
+  assertPatientReachable,
+  assertProviderInScope,
+  assertRowReachable,
+} from "./scope-guard";
+import type { CommercialActor, CommercialClaimSeams, CommercialDb, CommercialTx } from "./types";
 
 export interface RecordAuthorizationInput {
   readonly providerEntityId: string;
@@ -47,6 +57,8 @@ const view = (a: typeof schema.commercialAuthorizations.$inferSelect): Authoriza
   effectiveTo: a.effectiveTo,
 });
 
+type ReadActor = Pick<CommercialActor, "organizationId" | "userId" | "billingScope">;
+
 export interface CommercialAuthorizationService {
   record(actor: CommercialActor, input: RecordAuthorizationInput): Promise<AuthorizationView>;
   setStatus(
@@ -55,19 +67,24 @@ export interface CommercialAuthorizationService {
     status: Exclude<CommercialAuthorizationStatus, "approved">,
   ): Promise<AuthorizationView>;
   listForPatient(
-    actor: Pick<CommercialActor, "organizationId" | "userId">,
+    actor: ReadActor,
+    providerEntityId: string,
     patientId: string,
   ): Promise<AuthorizationView[]>;
 }
 
+/** The authorization service needs only the admission and caseload seams of the claim lane. */
+export type AuthorizationSeams = Pick<CommercialClaimSeams, "admission" | "caseload">;
+
+/** A wide window: the patient's most recent admission, whatever its dates, binds the patient to its provider entity. */
+const ANY_TIME = { from: "1900-01-01", to: "9999-12-31" } as const;
+
 export function buildCommercialAuthorizationService(
   db: CommercialDb,
+  seams: AuthorizationSeams,
   now: () => Date = () => new Date(),
 ): CommercialAuthorizationService {
-  const inOrg = <T>(
-    actor: Pick<CommercialActor, "organizationId" | "userId">,
-    fn: (tx: CommercialTx) => Promise<T>,
-  ): Promise<T> =>
+  const inOrg = <T>(actor: ReadActor, fn: (tx: CommercialTx) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId: actor.organizationId, userId: actor.userId }, fn);
   const refuseAi = (actor: CommercialActor): void => {
     if (actor.actorKind.startsWith("ai_")) {
@@ -78,6 +95,21 @@ export function buildCommercialAuthorizationService(
       );
     }
   };
+  const assertReachable = async (
+    actor: ReadActor,
+    providerEntityId: string,
+    patientId: string,
+  ): Promise<void> => {
+    assertProviderInScope(actor, providerEntityId);
+    await assertPatientReachable(actor, seams.caseload, patientId);
+    await assertPatientBoundToProvider(
+      seams.admission,
+      actor.organizationId,
+      patientId,
+      providerEntityId,
+      ANY_TIME,
+    );
+  };
 
   return {
     async record(actor, input) {
@@ -85,6 +117,7 @@ export function buildCommercialAuthorizationService(
       if (input.effectiveTo != null && input.effectiveTo < input.effectiveFrom) {
         throw new ChartWardenError("VALIDATION_FAILED", "effectiveTo precedes effectiveFrom", 422);
       }
+      await assertReachable(actor, input.providerEntityId, input.patientId);
       return inOrg(actor, async (tx) => {
         const [plan] = await tx
           .select({ id: schema.commercialPayerPlan.id })
@@ -96,35 +129,28 @@ export function buildCommercialAuthorizationService(
             ),
           );
         if (!plan) throw new NotFoundError("payer plan");
-        const [dup] = await tx
-          .select({ id: schema.commercialAuthorizations.id })
-          .from(schema.commercialAuthorizations)
-          .where(
-            and(
-              eq(schema.commercialAuthorizations.planId, input.planId),
-              eq(schema.commercialAuthorizations.patientId, input.patientId),
-              eq(schema.commercialAuthorizations.authorizationNumber, input.authorizationNumber),
-            ),
-          );
-        if (dup)
-          throw new ConflictError(
-            "this authorization number is already recorded for the patient and plan",
-          );
-        const [row] = await tx
-          .insert(schema.commercialAuthorizations)
-          .values({
-            organizationId: actor.organizationId,
-            providerEntityId: input.providerEntityId,
-            patientId: input.patientId,
-            planId: input.planId,
-            authorizationNumber: input.authorizationNumber,
-            levelOfCare: input.levelOfCare ?? null,
-            obtainedOn: input.obtainedOn,
-            effectiveFrom: input.effectiveFrom,
-            effectiveTo: input.effectiveTo ?? null,
-            createdByMembershipId: actor.membershipId,
-          })
-          .returning();
+        // The unique key (org, plan, patient, number) is the backstop: a concurrent duplicate is a 409, not a 500.
+        const row = await conflictOnUnique(
+          "this authorization number is already recorded for the patient and plan",
+          async () =>
+            (
+              await tx
+                .insert(schema.commercialAuthorizations)
+                .values({
+                  organizationId: actor.organizationId,
+                  providerEntityId: input.providerEntityId,
+                  patientId: input.patientId,
+                  planId: input.planId,
+                  authorizationNumber: input.authorizationNumber,
+                  levelOfCare: input.levelOfCare ?? null,
+                  obtainedOn: input.obtainedOn,
+                  effectiveFrom: input.effectiveFrom,
+                  effectiveTo: input.effectiveTo ?? null,
+                  createdByMembershipId: actor.membershipId,
+                })
+                .returning()
+            )[0],
+        );
         if (!row) throw new Error("authorization insert returned no row");
         return view(row);
       });
@@ -133,6 +159,25 @@ export function buildCommercialAuthorizationService(
     async setStatus(actor, id, status) {
       refuseAi(actor);
       return inOrg(actor, async (tx) => {
+        const [existing] = await tx
+          .select()
+          .from(schema.commercialAuthorizations)
+          .where(
+            and(
+              eq(schema.commercialAuthorizations.id, id),
+              eq(schema.commercialAuthorizations.organizationId, actor.organizationId),
+            ),
+          );
+        if (!existing) throw new NotFoundError("authorization");
+        await assertRowReachable(actor, seams.caseload, existing);
+        // approved -> denied | voided only: a denied or voided authorization is final (a new one is recorded instead).
+        if (existing.status !== "approved") {
+          throw new ChartWardenError(
+            "CONFLICT",
+            `this authorization is already ${existing.status}; record a new one instead`,
+            409,
+          );
+        }
         const [row] = await tx
           .update(schema.commercialAuthorizations)
           .set({ status, updatedAt: now() })
@@ -140,6 +185,7 @@ export function buildCommercialAuthorizationService(
             and(
               eq(schema.commercialAuthorizations.id, id),
               eq(schema.commercialAuthorizations.organizationId, actor.organizationId),
+              eq(schema.commercialAuthorizations.status, "approved"),
             ),
           )
           .returning();
@@ -148,7 +194,8 @@ export function buildCommercialAuthorizationService(
       });
     },
 
-    async listForPatient(actor, patientId) {
+    async listForPatient(actor, providerEntityId, patientId) {
+      await assertReachable(actor, providerEntityId, patientId);
       return inOrg(actor, async (tx) => {
         const rows = await tx
           .select()
@@ -156,6 +203,7 @@ export function buildCommercialAuthorizationService(
           .where(
             and(
               eq(schema.commercialAuthorizations.patientId, patientId),
+              eq(schema.commercialAuthorizations.providerEntityId, providerEntityId),
               eq(schema.commercialAuthorizations.organizationId, actor.organizationId),
             ),
           )

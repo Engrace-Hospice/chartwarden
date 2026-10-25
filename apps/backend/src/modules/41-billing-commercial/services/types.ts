@@ -4,7 +4,7 @@
 // Module 23 already binds (ADR-0100 D2): the reader SHAPES are reused from M23's claim-assembly types so one bound adapter
 // serves both lanes. M41 reads no other module's tables.
 import type { DbClient } from "@chartwarden/db";
-import type { PatientCoverageReader } from "@chartwarden/types";
+import type { CaseloadProvider, PatientCoverageReader } from "@chartwarden/types";
 import type {
   AdmissionContextReader,
   DiagnosisSequenceReader,
@@ -26,6 +26,12 @@ export interface CommercialActor {
   readonly actorKind: string;
   /** A recent step-up (re-authentication) was proven for this request; required for an override. */
   readonly stepUpRecent: boolean;
+  /**
+   * The provider entities the actor's billing scope reaches (`billingScopeReach`: `all` for organization-wide billing roles and
+   * the system principal, otherwise the server-assembled entity ids). Services check it against the DATA they touch; absent
+   * fails closed (no reach).
+   */
+  readonly billingScope?: { readonly all: boolean; readonly providerEntityIds: readonly string[] };
   readonly request?: {
     readonly correlationId?: string;
     readonly requestId?: string;
@@ -73,6 +79,7 @@ export interface CommercialClaimSeams {
   readonly electionPeriods: ElectionPeriodReader; // M6
   readonly levelOfCare: LevelOfCareReader; // M6
   readonly diagnoses: DiagnosisSequenceReader; // M7
+  readonly caseload: Pick<CaseloadProvider, "isInCaseload">; // M5 - the per-patient axis for a scoped (not organization-wide) actor
   readonly clinicalParticipants: Pick<MdmEntityProvider, "resolveClinicalParticipants">; // M40
   readonly outbox: CommercialOutboxPort;
   readonly audit: CommercialAuditPort;

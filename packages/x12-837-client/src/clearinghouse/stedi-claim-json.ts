@@ -170,6 +170,10 @@ export function buildStediClaimJson(input: Claim837iInput): StediClaimJson {
   // The JSON field names for loop 2320 and for a line without a procedure code are not verified against Stedi: fail
   // closed rather than send a claim that silently drops the other payer. The raw X12 carries both.
   if ((c.otherPayers ?? []).length > 0) throw new Claim837iBuildError("claim.otherPayers");
+  // The subscriber group number rides SBR03 in the raw X12; its Stedi JSON field name is unverified, so a claim that carries one
+  // fails closed here rather than reaching the payer without it.
+  if ((input.commercial?.groupNumber ?? "").trim() !== "")
+    throw new Claim837iBuildError("commercial.groupNumber");
   if (c.lines.some((l) => l.hcpcs === undefined)) throw new Claim837iBuildError("claim.lines");
   if (c.controlNumber.length > MAX_PATIENT_CONTROL_NUMBER) {
     throw new Claim837iBuildError("claim.controlNumber");

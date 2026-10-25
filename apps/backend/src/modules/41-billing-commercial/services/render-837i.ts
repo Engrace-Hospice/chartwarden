@@ -8,6 +8,7 @@
 import { schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
+  COMMERCIAL_ERROR_CODES,
   ChartWardenError,
   ConflictError,
   NotFoundError,
@@ -23,7 +24,9 @@ import {
   buildStediClaimJson,
 } from "@chartwarden/x12-837-client";
 import { and, asc, eq } from "drizzle-orm";
-import type { CommercialActor, CommercialDb } from "./types";
+import { assertRowReachable } from "./scope-guard";
+import type { CommercialActor, CommercialClaimSeams, CommercialDb } from "./types";
+import { evaluateClaim } from "./validation-runner";
 
 /** The patient demographics one build needs (name, birth date, sex, address). Never persisted or logged. */
 export interface CommercialSubscriberIdentity {
@@ -46,6 +49,7 @@ export interface CommercialRenderParties {
 
 export interface CommercialRenderPorts {
   readonly coverage: Pick<PatientCoverageReader, "coveragesForPatient">;
+  readonly caseload: CommercialClaimSeams["caseload"];
   readonly identity: {
     identityFor(args: {
       organizationId: string;
@@ -101,6 +105,16 @@ export function buildCommercial837iRenderer(db: CommercialDb, ports: CommercialR
               ),
             );
           if (!claim) throw new NotFoundError("commercial claim");
+          await assertRowReachable(actor, ports.caseload, claim);
+          // Re-evaluate on the CURRENT facts: a ready claim whose authorization was voided (or route ended) since is not renderable.
+          const blocking = (await evaluateClaim(tx, claim)).filter((r) => r.blocking);
+          if (blocking.length > 0) {
+            throw new ChartWardenError(
+              COMMERCIAL_ERROR_CODES.claimBlocked,
+              `The claim cannot be rendered: ${blocking.map((b) => b.message).join(" ")}`,
+              409,
+            );
+          }
           const lines = await tx
             .select()
             .from(schema.commercialClaimLines)

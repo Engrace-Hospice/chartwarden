@@ -38,6 +38,7 @@ import {
   buildCommercialAuthorizationService,
   buildCommercialClaimAssemblyService,
   buildCommercialClaimLifecycleService,
+  buildCommercialClaimReadService,
 } from "../src/modules/41-billing-commercial";
 import {
   LIVE_APP_ROLE_PASSWORD,
@@ -60,6 +61,7 @@ describe.skipIf(!DB_URL)("M41 commercial claim assembly and validation - LIVE Po
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let providerEntityId: string;
+  let otherProviderEntityId: string;
   let membershipId: string;
   let medicarePayer: string;
   let medicaidPayer: string;
@@ -100,6 +102,7 @@ describe.skipIf(!DB_URL)("M41 commercial claim assembly and validation - LIVE Po
       planFrom?: string;
       planTo?: string | null;
       siteHcpcs?: boolean;
+      group?: string | null;
     } = {},
   ): Promise<Scenario> {
     const payerId = (
@@ -161,7 +164,7 @@ describe.skipIf(!DB_URL)("M41 commercial claim assembly and validation - LIVE Po
       1,
       "commercial",
       "MEM-0001234",
-      "GRP100",
+      opts.group === undefined ? "GRP100" : opts.group,
     );
     return { patientId, payerId, planId, admissionId: randomUUID(), primaryCoverageId };
   }
@@ -190,9 +193,11 @@ describe.skipIf(!DB_URL)("M41 commercial claim assembly and validation - LIVE Po
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M41_OUTBOX_EVENTS]));
     return {
       coverage: coverageReader,
+      caseload: { isInCaseload: async () => true },
       admission: {
         resolveForRange: async () => ({
           admissionId: s.admissionId,
+          providerEntityId,
           hospiceAdmissionDate: "2026-03-01",
           admissionTypeCode: "1",
           admissionSourceCode: "1",
@@ -346,14 +351,23 @@ describe.skipIf(!DB_URL)("M41 commercial claim assembly and validation - LIVE Po
       membershipId,
       actorKind: "user",
       stepUpRecent: true,
+      billingScope: { all: false, providerEntityIds: [providerEntityId] },
     };
+    otherProviderEntityId = (
+      await admin.query(
+        `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+         VALUES ($1,'654321','Synthetic Hospice Two','1245319599','\\x00','12-31') RETURNING id`,
+        [ORG],
+      )
+    ).rows[0].id as string;
     const dummy = await seedScenario();
     const seams = seamsFor(dummy);
     assembly = buildCommercialClaimAssemblyService(handle.db, seams);
     lifecycle = buildCommercialClaimLifecycleService(handle.db, seams);
-    authorizations = buildCommercialAuthorizationService(handle.db);
+    authorizations = buildCommercialAuthorizationService(handle.db, seams);
     renderer = buildCommercial837iRenderer(handle.db, {
       coverage: coverageReader,
+      caseload: seams.caseload,
       identity: {
         identityFor: async () => ({
           lastName: "Doe",
@@ -463,7 +477,7 @@ describe.skipIf(!DB_URL)("M41 commercial claim assembly and validation - LIVE Po
     });
 
     it("renders HCPCS site-of-service lines through the Stedi JSON route when the plan requires them", async () => {
-      const s = await seedScenario({ siteHcpcs: true });
+      const s = await seedScenario({ siteHcpcs: true, group: null });
       const w = wire(s);
       const out = await w.assembly.assemble(actor, input(s));
       await w.lifecycle.assertReady(actor, out.claimId);
@@ -862,7 +876,7 @@ describe.skipIf(!DB_URL)("M41 commercial claim assembly and validation - LIVE Po
       expect((await w.lifecycle.assertReady(actor, out.claimId)).state).toBe("ready");
 
       // voiding the authorization later drops a READY claim back to draft on the next validation
-      const covering = (await authorizations.listForPatient(actor, s.patientId)).find(
+      const covering = (await authorizations.listForPatient(actor, providerEntityId, s.patientId)).find(
         (a) => a.effectiveFrom === "2026-03-16",
       );
       await authorizations.setStatus(actor, covering?.id as string, "voided");
@@ -1033,6 +1047,360 @@ describe.skipIf(!DB_URL)("M41 commercial claim assembly and validation - LIVE Po
   });
 
   // ── tenancy and constraints ──────────────────────────────────────────────────────────────────────────────────────
+  // ── scope: the DATA is checked against the actor, not only the entity named in the request ──────────────────────
+  describe("scope: provider entity, caseload and admission binding", () => {
+    const scoped = (ids: string[], all = false): CommercialActor => ({
+      ...actor,
+      billingScope: { all, providerEntityIds: ids },
+    });
+    const elsewhere = (): CommercialActor => scoped([otherProviderEntityId]);
+    const noCaseload = { isInCaseload: async () => false };
+    const admissionFor = (s: Scenario, pe: string | null) => ({
+      resolveForRange: async () => ({
+        admissionId: s.admissionId,
+        providerEntityId: pe,
+        hospiceAdmissionDate: "2026-03-01",
+        admissionTypeCode: "1",
+        admissionSourceCode: "1",
+        dischargeDate: null,
+        dischargeReason: null,
+        deceasedDate: null,
+        placeOfDeath: null,
+        transferOut: null,
+      }),
+    });
+    const claimCount = (patientId: string) =>
+      scalar<number>("SELECT count(*)::int AS n FROM commercial_claim WHERE patient_id=$1", [
+        patientId,
+      ]);
+    const authCount = (patientId: string) =>
+      scalar<number>(
+        "SELECT count(*)::int AS n FROM commercial_authorization WHERE patient_id=$1",
+        [patientId],
+      );
+    const notFound = (e: { code?: string } | null) =>
+      expect(e).toMatchObject({ code: "NOT_FOUND" });
+    const recordBody = (s: Scenario, over: Record<string, unknown> = {}) => ({
+      providerEntityId,
+      patientId: s.patientId,
+      planId: s.planId,
+      authorizationNumber: `AUTH-${randomUUID().slice(0, 8)}`,
+      obtainedOn: "2026-02-20",
+      effectiveFrom: "2026-03-01",
+      ...over,
+    });
+
+    it("assemble refuses an entity outside scope, a patient outside the caseload, and an admission under another entity", async () => {
+      const s = await seedScenario();
+      notFound(await failure(wire(s).assembly.assemble(elsewhere(), input(s))));
+      notFound(await failure(wire(s, { caseload: noCaseload }).assembly.assemble(actor, input(s))));
+      // the actor reaches the NAMED entity, but the patient's admission belongs to the other one
+      notFound(
+        await failure(
+          wire(s, { admission: admissionFor(s, otherProviderEntityId) }).assembly.assemble(
+            actor,
+            input(s),
+          ),
+        ),
+      );
+      // an admission with no recorded entity cannot be bound either
+      notFound(
+        await failure(
+          wire(s, { admission: admissionFor(s, null) }).assembly.assemble(actor, input(s)),
+        ),
+      );
+      expect(await claimCount(s.patientId)).toBe(0);
+      // an organization-wide billing actor skips the caseload axis (and only that axis)
+      const broad = scoped([], true);
+      const ok = await wire(s, { caseload: noCaseload }).assembly.assemble(broad, input(s));
+      expect(ok.state).toBe("draft");
+      // no billingScope at all fails closed
+      const none = { ...actor, billingScope: undefined } as CommercialActor;
+      const s2 = await seedScenario();
+      notFound(await failure(wire(s2).assembly.assemble(none, input(s2))));
+    });
+
+    it("recording an authorization needs the entity in scope, the patient in the caseload and admitted under that entity", async () => {
+      const s = await seedScenario({ authorization: "required_at_admission" });
+      const svc = (over: Partial<CommercialClaimSeams> = {}) =>
+        buildCommercialAuthorizationService(handle.db, seamsFor(s, over));
+      notFound(
+        await failure(
+          svc().record(elsewhere(), recordBody(s, { providerEntityId: otherProviderEntityId })),
+        ),
+      );
+      notFound(
+        await failure(
+          svc().record(actor, recordBody(s, { providerEntityId: otherProviderEntityId })),
+        ),
+      );
+      notFound(await failure(svc({ caseload: noCaseload }).record(actor, recordBody(s))));
+      notFound(
+        await failure(
+          svc({ admission: admissionFor(s, otherProviderEntityId) }).record(actor, recordBody(s)),
+        ),
+      );
+      expect(await authCount(s.patientId)).toBe(0);
+      expect((await svc().record(actor, recordBody(s))).status).toBe("approved");
+      // a concurrent duplicate number is a 409, never a 500
+      const dup = recordBody(s, { authorizationNumber: "AUTH-DUPLICATE" });
+      const both = await Promise.all(
+        [svc().record(actor, dup), svc().record(actor, dup)].map(failure),
+      );
+      expect(both.filter((e) => e?.code === "CONFLICT")).toHaveLength(1);
+    });
+
+    it("listing authorizations is filtered by the entity and refused across entities and outside the caseload", async () => {
+      const s = await seedScenario({ authorization: "required_at_admission" });
+      const svc = (over: Partial<CommercialClaimSeams> = {}) =>
+        buildCommercialAuthorizationService(handle.db, seamsFor(s, over));
+      await svc().record(actor, recordBody(s));
+      // another entity's authorization for the same patient never appears in this entity's list
+      await admin.query(
+        `INSERT INTO commercial_authorization (organization_id, provider_entity_id, patient_id, plan_id, authorization_number, obtained_on, effective_from, created_by_membership_id)
+         VALUES ($1,$2,$3,$4,'AUTH-OTHER-ENTITY','2026-02-20','2026-03-01',$5)`,
+        [ORG, otherProviderEntityId, s.patientId, s.planId, membershipId],
+      );
+      const mine = await svc().listForPatient(actor, providerEntityId, s.patientId);
+      expect(mine).toHaveLength(1);
+      // reaching entity B and naming B for a patient admitted under A: refused (the ABAC check on B alone would pass)
+      notFound(
+        await failure(svc().listForPatient(elsewhere(), otherProviderEntityId, s.patientId)),
+      );
+      // naming an entity outside scope
+      notFound(await failure(svc().listForPatient(elsewhere(), providerEntityId, s.patientId)));
+      // outside the caseload
+      notFound(
+        await failure(
+          svc({ caseload: noCaseload }).listForPatient(actor, providerEntityId, s.patientId),
+        ),
+      );
+    });
+
+    it("another entity's authorization never satisfies a claim, and changing one needs scope and caseload", async () => {
+      const s = await seedScenario({ authorization: "required_at_admission" });
+      await admin.query(
+        `INSERT INTO commercial_authorization (organization_id, provider_entity_id, patient_id, plan_id, authorization_number, obtained_on, effective_from, created_by_membership_id)
+         VALUES ($1,$2,$3,$4,'AUTH-OTHER-ENTITY','2026-02-20','2026-03-01',$5)`,
+        [ORG, otherProviderEntityId, s.patientId, s.planId, membershipId],
+      );
+      const out = await wire(s).assembly.assemble(actor, input(s));
+      expect(ruleOf(out.validation, "authorization_on_file")).toMatchObject({
+        outcome: "fail",
+        overridable: false,
+      });
+
+      const svc = (over: Partial<CommercialClaimSeams> = {}) =>
+        buildCommercialAuthorizationService(handle.db, seamsFor(s, over));
+      const mine = await svc().record(actor, recordBody(s));
+      notFound(await failure(svc().setStatus(elsewhere(), mine.id, "voided")));
+      notFound(await failure(svc({ caseload: noCaseload }).setStatus(actor, mine.id, "voided")));
+      expect((await svc().setStatus(actor, mine.id, "denied")).status).toBe("denied");
+      expect((await failure(svc().setStatus(actor, mine.id, "voided")))?.code).toBe("CONFLICT"); // final once denied
+    });
+
+    it("claim lifecycle, reads and the 837I render refuse another entity's claim and a patient outside the caseload", async () => {
+      const s = await seedScenario();
+      const w = wire(s);
+      const out = await w.assembly.assemble(actor, input(s));
+      const soft = wire(s, { caseload: noCaseload });
+      const reads = buildCommercialClaimReadService(handle.db, seamsFor(s));
+      const readsDenied = buildCommercialClaimReadService(
+        handle.db,
+        seamsFor(s, { caseload: noCaseload }),
+      );
+      for (const [label, svc, who] of [
+        ["entity", w.lifecycle, elsewhere()],
+        ["caseload", soft.lifecycle, actor],
+      ] as const) {
+        notFound(await failure(svc.validate(who, out.claimId)));
+        notFound(await failure(svc.markReady(who, out.claimId)));
+        notFound(await failure(svc.voidClaim(who, out.claimId)));
+        notFound(
+          await failure(
+            svc.overrideValidationResult(who, out.claimId, {
+              validationResultId: out.validation.results[0]?.id as string,
+              reason: REASON,
+            }),
+          ),
+        );
+        expect(label).toBeTruthy();
+      }
+      notFound(await failure(reads.getClaim(elsewhere(), out.claimId)));
+      notFound(await failure(readsDenied.getClaim(actor, out.claimId)));
+      expect((await reads.getClaim(actor, out.claimId)).lines).toHaveLength(1);
+      await w.lifecycle.assertReady(actor, out.claimId);
+      const deniedRenderer = buildCommercial837iRenderer(handle.db, {
+        coverage: coverageReader,
+        caseload: noCaseload,
+        identity: { identityFor: async () => null },
+        parties: { partiesFor: async () => null },
+      });
+      const args = {
+        claimId: out.claimId,
+        interchangeControlNumber: 9,
+        usage: "T" as const,
+        createdAt: new Date(),
+      };
+      notFound(await failure(renderer.render(elsewhere(), args)));
+      notFound(await failure(deniedRenderer.render(actor, args)));
+      // the claim is untouched by every refusal
+      expect(
+        (await admin.query("SELECT state FROM commercial_claim WHERE id=$1", [out.claimId])).rows[0]
+          .state,
+      ).toBe("ready");
+    });
+
+    it("a ready claim whose authorization is voided falls back to draft on the ready check and cannot be rendered", async () => {
+      const s = await seedScenario({ authorization: "required_at_admission" });
+      const w = wire(s);
+      const authSvc = buildCommercialAuthorizationService(handle.db, seamsFor(s));
+      const a = await authSvc.record(actor, recordBody(s));
+      const out = await w.assembly.assemble(actor, input(s));
+      await w.lifecycle.assertReady(actor, out.claimId);
+      const args = {
+        claimId: out.claimId,
+        interchangeControlNumber: 10,
+        usage: "T" as const,
+        createdAt: new Date("2026-04-02T15:00:00Z"),
+      };
+      expect((await renderer.render(actor, args)).ok).toBe(true);
+      await authSvc.setStatus(actor, a.id, "voided");
+      expect((await failure(renderer.render(actor, args)))?.code).toBe("COMMERCIAL_CLAIM_BLOCKED");
+      expect((await failure(w.lifecycle.assertReady(actor, out.claimId)))?.code).toBe(
+        "COMMERCIAL_CLAIM_BLOCKED",
+      );
+      expect(
+        (await admin.query("SELECT state FROM commercial_claim WHERE id=$1", [out.claimId])).rows[0]
+          .state,
+      ).toBe("draft");
+    });
+  });
+
+  // ── concurrency and integrity backstops ─────────────────────────────────────────────────────────────────────────
+  describe("concurrency and integrity", () => {
+    it("two concurrent assemblies of the same or overlapping windows: exactly one commits, the other is a 409", async () => {
+      const s = await seedScenario();
+      const w = wire(s);
+      const same = await Promise.all(
+        [w.assembly.assemble(actor, input(s)), w.assembly.assemble(actor, input(s))].map(failure),
+      );
+      expect(same.filter((e) => e === null)).toHaveLength(1);
+      expect(same.find((e) => e !== null)?.code).toBe("CONFLICT");
+      const t = await seedScenario();
+      const wt = wire(t);
+      const overlap = await Promise.all(
+        [
+          wt.assembly.assemble(actor, { ...input(t), serviceTo: "2026-03-20" }),
+          wt.assembly.assemble(actor, { ...input(t), serviceFrom: "2026-03-10" }),
+        ].map(failure),
+      );
+      expect(overlap.filter((e) => e === null)).toHaveLength(1);
+      expect(
+        await scalar<number>(
+          "SELECT count(*)::int AS n FROM commercial_claim WHERE patient_id=$1",
+          [t.patientId],
+        ),
+      ).toBe(1);
+    });
+
+    it("a void claim stays void: ready racing a void cannot revive it, and the database refuses void -> anything", async () => {
+      const s = await seedScenario();
+      const w = wire(s);
+      const out = await w.assembly.assemble(actor, input(s));
+      await Promise.all(
+        [w.lifecycle.markReady(actor, out.claimId), w.lifecycle.voidClaim(actor, out.claimId)].map(
+          failure,
+        ),
+      );
+      expect(
+        (await admin.query("SELECT state FROM commercial_claim WHERE id=$1", [out.claimId])).rows[0]
+          .state,
+      ).toBe("void");
+      const revive = await admin
+        .query("UPDATE commercial_claim SET state='draft' WHERE id=$1", [out.claimId])
+        .then(
+          () => "",
+          (e: Error) => e.message,
+        );
+      expect(revive).toMatch(/M41_CLAIM_VOID_IS_FINAL/);
+    });
+
+    it("blocks a claim whose lines leave a day of the window unbilled or bill one twice", async () => {
+      const hole = await seedScenario();
+      const period = (from: string, to: string) => ({
+        levelOfCarePeriodId: randomUUID(),
+        levelOfCare: "routine_home_care" as const,
+        from,
+        to,
+        chcDocumentedHours: null,
+        gipAdmissionCriteriaDocumented: null,
+      });
+      const gap = await wire(hole, {
+        levelOfCare: {
+          periodsInRange: async () => [
+            period("2026-03-01", "2026-03-10"),
+            period("2026-03-20", "2026-03-31"),
+          ],
+        },
+      }).assembly.assemble(actor, input(hole));
+      const gapRule = ruleOf(gap.validation, "service_days_covered");
+      expect(gapRule).toMatchObject({ outcome: "fail", overridable: false });
+      expect(gapRule?.message).toContain("2026-03-11 to 2026-03-19");
+      const dbl = await seedScenario();
+      const twice = await wire(dbl, {
+        levelOfCare: {
+          periodsInRange: async () => [
+            period("2026-03-01", "2026-03-20"),
+            period("2026-03-15", "2026-03-31"),
+          ],
+        },
+      }).assembly.assemble(actor, input(dbl));
+      expect(ruleOf(twice.validation, "service_days_covered")?.message).toContain("Billed twice");
+    });
+
+    it("keeps a line's rate, an override's result and the run pointers inside their own organization and claim", async () => {
+      const s = await seedScenario({ authorization: "confirm_with_payer" });
+      const out = await wire(s).assembly.assemble(actor, input(s));
+      const other = await seedScenario({ authorization: "confirm_with_payer" });
+      const otherOut = await wire(other).assembly.assemble(actor, input(other));
+      // a claim cannot point at another claim's run (composite FK on the run id plus the organization)
+      const stray = await admin
+        .query("UPDATE commercial_claim SET latest_validation_run_id=$2 WHERE id=$1", [
+          out.claimId,
+          randomUUID(),
+        ])
+        .then(
+          () => "",
+          (e: Error) => e.message,
+        );
+      expect(stray).toMatch(/latest_run_fk|foreign key/);
+      // an override row cannot name a result of different facts (claim / rule / evidence) than its own columns
+      const resultId = otherOut.validation.results.find(
+        (r) => r.ruleKey === "authorization_on_file",
+      )?.id as string;
+      const mismatched = await admin
+        .query(
+          `INSERT INTO commercial_validation_override (organization_id, provider_entity_id, claim_id, validation_result_id, rule_key, evidence_hash, override_membership_id, reason, m4_audit_event_id)
+           VALUES ($1,$2,$3,$4,'authorization_on_file',repeat('a',64),$5,$6,$7)`,
+          [ORG, providerEntityId, out.claimId, resultId, membershipId, REASON, randomUUID()],
+        )
+        .then(
+          () => "",
+          (e: Error) => e.message,
+        );
+      expect(mismatched).toMatch(/override_result_fk|foreign key/);
+      // the frequency code always matches the bill type
+      const freq = await admin
+        .query("UPDATE commercial_claim SET frequency_code='4' WHERE id=$1", [out.claimId])
+        .then(
+          () => "",
+          (e: Error) => e.message,
+        );
+      expect(freq).toMatch(/frequency_matches_tob/);
+    });
+  });
+
   describe("tenancy and constraints", () => {
     const TABLES = [
       "commercial_authorization",

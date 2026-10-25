@@ -73,6 +73,8 @@ export interface AdmissionContext {
   /** M6 `admission.admission_type_code` / `admission_source_code` (UB-04 FL 14 / FL 15, NUBC strings); null/absent = not recorded. */
   readonly admissionTypeCode?: string | null;
   readonly admissionSourceCode?: string | null;
+  /** The provider entity the admission belongs to (`null`/absent = not recorded). M41 binds the patient to the billed entity with it. */
+  readonly providerEntityId?: string | null;
   /** Earlier stays' hospice days carried into the RHC day count (readmission within 60 days); absent = 0. */
   readonly rhcPriorHospiceDays?: number;
   /** M6's earlier stays with us (the facts behind `rhcPriorHospiceDays`), merged with the HETS cross-hospice

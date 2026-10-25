@@ -246,4 +246,30 @@ describe("commercial rules", () => {
     );
     expect(evidenceHash({ a: 1 })).not.toBe(evidenceHash({ a: 2 }));
   });
+
+  it("requires every day of the window to be billed exactly once", () => {
+    expect(byKey(ctx(), "service_days_covered")?.outcome).toBe("pass");
+    const hole = ctx({
+      lines: [
+        line({ serviceTo: "2026-03-10" }),
+        line({ lineNumber: 2, serviceFrom: "2026-03-20" }),
+      ],
+    });
+    expect(byKey(hole, "service_days_covered")).toMatchObject({
+      outcome: "fail",
+      overridable: false,
+    });
+    expect(byKey(hole, "service_days_covered")?.message).toContain("2026-03-11 to 2026-03-19");
+    const twice = ctx({
+      lines: [
+        line({ serviceTo: "2026-03-20" }),
+        line({ lineNumber: 2, serviceFrom: "2026-03-15" }),
+      ],
+    });
+    expect(byKey(twice, "service_days_covered")?.message).toContain(
+      "Billed twice: 2026-03-15 to 2026-03-20",
+    );
+    const outside = ctx({ lines: [line({ serviceFrom: "2026-02-25" })] });
+    expect(byKey(outside, "service_days_covered")?.message).toContain("Outside the window");
+  });
 });

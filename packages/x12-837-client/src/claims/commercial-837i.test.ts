@@ -1,6 +1,7 @@
 // M41 (ADR-0100): the commercial primary shape of the shared 837I builder. The Medicare shape is untouched; its goldens
 // stay byte-identical in build-837i-claim.test.ts.
 import { describe, expect, it } from "vitest";
+import { buildStediClaimJson } from "../clearinghouse/stedi-claim-json";
 import { Claim837iBuildError, type Claim837iInput, build837iClaim } from "./build-837i-claim";
 import { CLAIM_INPUT } from "./claim-fixture-input";
 
@@ -91,5 +92,19 @@ describe("build837iClaim - commercial primary (M41)", () => {
         },
       } as never),
     ).toThrow(Claim837iBuildError);
+  });
+
+  it("the Stedi JSON route fails closed on what it cannot carry: a group number, another payer, a line without HCPCS", () => {
+    expect(() => buildStediClaimJson(commercial)).toThrow(Claim837iBuildError); // group number GRP100
+    const noGroup = { ...commercial, commercial: { claimFilingIndicator: "CI" } } as Claim837iInput;
+    expect(() => buildStediClaimJson(noGroup)).toThrow(Claim837iBuildError); // line without HCPCS
+    const withHcpcs = {
+      ...noGroup,
+      claim: {
+        ...noGroup.claim,
+        lines: noGroup.claim.lines.map((l) => ({ ...l, hcpcs: "Q5001" })),
+      },
+    } as Claim837iInput;
+    expect(buildStediClaimJson(withHcpcs).claimInformation.claimFilingCode).toBe("CI");
   });
 });

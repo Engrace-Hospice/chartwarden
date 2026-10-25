@@ -31,6 +31,7 @@ export const M41_OVERRIDE_ROLES: readonly string[] = [
   "billing_manager",
   "compliance_officer",
   "org_admin",
+  "administrator", // migration 1262 grants the override key to administrator
 ];
 
 export interface CommercialClaimScopeFacts {
@@ -167,7 +168,15 @@ export function buildCommercialAbacPredicates(
       if (!claimId) return false;
       if (!M41_OVERRIDE_ROLES.some((r) => context.roles.includes(r))) return false;
       const f = await resolver.loadClaim(readCtx(context), claimId);
-      return f !== null && reaches(context, f.providerEntityId);
+      if (f === null || !reaches(context, f.providerEntityId)) return false;
+      // the per-patient axis too (an override changes what may be billed for THIS patient)
+      if (isBroad(context)) return true;
+      if (!context.userId) return false;
+      return isInCaseload({
+        organizationId: context.organizationId,
+        userId: context.userId,
+        patientId: f.patientId,
+      });
     },
   };
 }

@@ -67,6 +67,8 @@ function unpricedReasonOf(
 ): UnpricedReason | null {
   if (line.contractRateId === null || rate === undefined) return "no_contract_rate";
   if (rate.rateBasis === "percent_of_charges") return "percent_of_charges_needs_charge_source";
+  // a rate row with no amount is "no contract rate" (as at assembly); an amount that could not be applied is a per-hour gap
+  if (rate.rateCents === null) return "no_contract_rate";
   if (line.unitRateCents === null) return "chc_hours_not_documented";
   return null;
 }
@@ -125,6 +127,8 @@ export async function loadRuleContext(tx: CommercialTx, claim: ClaimRow): Promis
       and(
         eq(schema.commercialAuthorizations.planId, plan.id),
         eq(schema.commercialAuthorizations.patientId, claim.patientId),
+        // scoped to the claim's own provider entity: another entity's authorization for the patient never satisfies this claim
+        eq(schema.commercialAuthorizations.providerEntityId, claim.providerEntityId),
       ),
     );
   const diagnoses = (claim.diagnoses as { icd10Code: string }[]).map((d) => d.icd10Code);
@@ -169,6 +173,44 @@ export interface ValidationRunView {
   readonly blocking: readonly PersistedResult[];
 }
 
+export interface EvaluatedResult extends RuleOutcome {
+  readonly evidenceHash: string;
+  readonly overridden: boolean;
+  readonly blocking: boolean;
+}
+
+/**
+ * Run the rules over the claim's current facts and decide what still blocks, WITHOUT writing anything (the render and the
+ * ready check use it so a ready claim whose facts have since changed is never sendable). An override only counts for a result
+ * that is overridable AND whose rule and evidence hash match the override.
+ */
+export async function evaluateClaim(
+  tx: CommercialTx,
+  claim: ClaimRow,
+  contextOverride?: RuleContext,
+): Promise<EvaluatedResult[]> {
+  const ctx = contextOverride ?? (await loadRuleContext(tx, claim));
+  const overrides = await tx
+    .select({
+      ruleKey: schema.commercialValidationOverrides.ruleKey,
+      evidenceHash: schema.commercialValidationOverrides.evidenceHash,
+    })
+    .from(schema.commercialValidationOverrides)
+    .where(eq(schema.commercialValidationOverrides.claimId, claim.id));
+  const overridden = new Set(overrides.map((o) => `${o.ruleKey}:${o.evidenceHash}`));
+  return runCommercialRules(ctx).map((o) => {
+    const hash = evidenceHash(o.evidence);
+    const wasOverridden =
+      o.outcome === "fail" && o.overridable && overridden.has(`${o.ruleKey}:${hash}`);
+    return {
+      ...o,
+      evidenceHash: hash,
+      overridden: wasOverridden,
+      blocking: isBlocking(o, wasOverridden),
+    };
+  });
+}
+
 /** Run the rules, persist the run and results, point the claim at the run, and report what still blocks. */
 export async function runAndPersistValidation(
   tx: CommercialTx,
@@ -178,9 +220,8 @@ export async function runAndPersistValidation(
   now: Date,
   contextOverride?: RuleContext,
 ): Promise<ValidationRunView> {
-  const ctx = contextOverride ?? (await loadRuleContext(tx, claim));
-  const outcomes = runCommercialRules(ctx);
-  const failed = outcomes.filter((o) => o.outcome === "fail");
+  const evaluated = await evaluateClaim(tx, claim, contextOverride);
+  const failed = evaluated.filter((o) => o.outcome === "fail");
   const [run] = await tx
     .insert(schema.commercialValidationRuns)
     .values({
@@ -191,24 +232,16 @@ export async function runAndPersistValidation(
       trigger,
       outcome: failed.length > 0 ? "failures_present" : "all_pass",
       ruleSetVersion: COMMERCIAL_RULE_SET_VERSION,
-      rulesExecuted: outcomes.length,
+      rulesExecuted: evaluated.length,
       rulesFailed: failed.length,
       initiatedByMembershipId: membershipId,
     })
     .returning({ id: schema.commercialValidationRuns.id });
   if (!run) throw new Error("validation run insert returned no row");
-  const overrides = await tx
-    .select({
-      ruleKey: schema.commercialValidationOverrides.ruleKey,
-      evidenceHash: schema.commercialValidationOverrides.evidenceHash,
-    })
-    .from(schema.commercialValidationOverrides)
-    .where(eq(schema.commercialValidationOverrides.claimId, claim.id));
-  const overridden = new Set(overrides.map((o) => `${o.ruleKey}:${o.evidenceHash}`));
   const rows = await tx
     .insert(schema.commercialValidationResults)
     .values(
-      outcomes.map((o) => ({
+      evaluated.map((o) => ({
         organizationId: claim.organizationId,
         providerEntityId: claim.providerEntityId,
         locationId: claim.locationId,
@@ -218,7 +251,7 @@ export async function runAndPersistValidation(
         severity: o.severity,
         outcome: o.outcome,
         overridable: o.overridable,
-        evidenceHash: evidenceHash(o.evidence),
+        evidenceHash: o.evidenceHash,
         message: o.message.slice(0, 600),
         evidence: o.evidence,
       })),
@@ -232,17 +265,10 @@ export async function runAndPersistValidation(
     .update(schema.commercialClaims)
     .set({ latestValidationRunId: run.id, updatedAt: now })
     .where(eq(schema.commercialClaims.id, claim.id));
-  const results: PersistedResult[] = outcomes.map((o) => {
-    const hash = evidenceHash(o.evidence);
-    const wasOverridden = o.outcome === "fail" && overridden.has(`${o.ruleKey}:${hash}`);
-    return {
-      ...o,
-      id: idByRule.get(o.ruleKey) as string,
-      evidenceHash: hash,
-      overridden: wasOverridden,
-      blocking: isBlocking(o, wasOverridden),
-    };
-  });
+  const results: PersistedResult[] = evaluated.map((o) => ({
+    ...o,
+    id: idByRule.get(o.ruleKey) as string,
+  }));
   return {
     runId: run.id,
     outcome: failed.length > 0 ? "failures_present" : "all_pass",

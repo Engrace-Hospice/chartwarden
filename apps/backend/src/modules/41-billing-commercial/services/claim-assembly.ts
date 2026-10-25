@@ -27,7 +27,7 @@ import {
   ConflictError,
   type PatientCoverage,
 } from "@chartwarden/types";
-import { and, eq, gte, isNull, lte, ne, or } from "drizzle-orm";
+import { and, eq, gte, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { qCodeForPlaceOfService } from "../../23-billing-medicare/services/claim-assembly-lines";
 import { claimDischargeCodes } from "../../23-billing-medicare/services/claim-discharge";
 import {
@@ -35,6 +35,12 @@ import {
   expectedPaymentCents,
   priceClaimLines,
 } from "../domain/pricing";
+import { conflictOnUnique } from "./db-errors";
+import {
+  assertPatientBoundToProvider,
+  assertPatientReachable,
+  assertProviderInScope,
+} from "./scope-guard";
 import type {
   AssembleCommercialClaimInput,
   CommercialActor,
@@ -140,6 +146,20 @@ export function buildCommercialClaimAssemblyService(
       }
       const range = { from: serviceFrom, to: serviceTo };
 
+      // 0. Scope the DATA, not just the entity named in the request: the provider entity is in the actor's billing scope, the
+      // patient is in their caseload, and the patient's admission belongs to THAT entity. Nothing clinical or financial is read
+      // (and no refusal that depends on it is returned) before these hold, so a scoped user cannot probe or bill another
+      // entity's patient by pairing it with their own entity id.
+      assertProviderInScope(actor, providerEntityId);
+      await assertPatientReachable(actor, seams.caseload, patientId);
+      await assertPatientBoundToProvider(
+        seams.admission,
+        orgId,
+        patientId,
+        providerEntityId,
+        range,
+      );
+
       // 1. The commercial-primary gate (the mirror of M23's D15 Medicare-primary gate).
       const coverages = await seams.coverage.coveragesForPatient({
         organizationId: orgId,
@@ -244,7 +264,12 @@ export function buildCommercialClaimAssemblyService(
           whole[0] ?? [...named].sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? 1 : -1))[0];
         if (!plan) throw new Error("unreachable: named plans are non-empty");
 
-        // 4. Overlap and bill-type cadence against this lane's own earlier claims.
+        // 4. Overlap and bill-type cadence against this lane's own earlier claims. One assembly per patient at a time: the
+        // transaction-scoped advisory lock serializes concurrent assemblies, so neither the overlap check nor the bill-type
+        // cadence can be raced (the table's exclusion constraint is the backstop for anything that slips past).
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${`m41:${orgId}:${patientId}`}, 0))`,
+        );
         const earlier = await tx
           .select()
           .from(schema.commercialClaims)
@@ -253,6 +278,13 @@ export function buildCommercialClaimAssemblyService(
               eq(schema.commercialClaims.organizationId, orgId),
               eq(schema.commercialClaims.patientId, patientId),
               ne(schema.commercialClaims.state, "void"),
+              or(
+                and(
+                  lte(schema.commercialClaims.serviceFrom, serviceTo),
+                  gte(schema.commercialClaims.serviceTo, serviceFrom),
+                ),
+                eq(schema.commercialClaims.admissionId, admission.admissionId),
+              ),
             ),
           );
         if (earlier.some((c) => c.serviceFrom <= serviceTo && c.serviceTo >= serviceFrom)) {
@@ -322,39 +354,43 @@ export function buildCommercialClaimAssemblyService(
         const claimId = randomUUID();
         const yymmdd = serviceFrom.slice(2, 4) + serviceFrom.slice(5, 7) + serviceFrom.slice(8, 10);
         const secondaryKind = secondary ? (SECONDARY_KIND[secondary.coverageKind] ?? null) : null;
-        const [claim] = await tx
-          .insert(schema.commercialClaims)
-          .values({
-            id: claimId,
-            organizationId: orgId,
-            providerEntityId,
-            patientId,
-            admissionId: admission.admissionId,
-            planId: plan.id,
-            primaryPatientPayerId: primary.id,
-            secondaryPatientPayerId: secondary?.id ?? null,
-            secondaryPayerKind: secondaryKind,
-            claimFilingIndicator: plan.claimFilingIndicator,
-            clearinghouseKey: route?.clearinghouseKey ?? null,
-            clearinghousePayerId: route?.clearinghousePayerId ?? null,
-            tob,
-            frequencyCode: tob.slice(2),
-            serviceFrom,
-            serviceTo,
-            admissionDate: admission.hospiceAdmissionDate,
-            admissionTypeCode: admissionCodes.admissionTypeCode,
-            admissionSourceCode: admissionCodes.admissionSourceCode,
-            patientStatusCode,
-            claimControlNumber: `${yymmdd}-${claimId.replaceAll("-", "").slice(0, 8)}`,
-            diagnoses: snapshot.diagnosisSnapshot,
-            attendingNpi: npis.attendingPhysicianNpi,
-            attendingFirstName: snapshot.attendingPhysicianFirstName,
-            attendingLastName: snapshot.attendingPhysicianLastName,
-            totalChargeCents,
-            expectedPaymentCents: expected,
-            createdByMembershipId: actor.membershipId,
-          })
-          .returning();
+        const [claim] = await conflictOnUnique(
+          "a commercial claim for this window already exists",
+          async () =>
+            await tx
+              .insert(schema.commercialClaims)
+              .values({
+                id: claimId,
+                organizationId: orgId,
+                providerEntityId,
+                patientId,
+                admissionId: admission.admissionId,
+                planId: plan.id,
+                primaryPatientPayerId: primary.id,
+                secondaryPatientPayerId: secondary?.id ?? null,
+                secondaryPayerKind: secondaryKind,
+                claimFilingIndicator: plan.claimFilingIndicator,
+                clearinghouseKey: route?.clearinghouseKey ?? null,
+                clearinghousePayerId: route?.clearinghousePayerId ?? null,
+                tob,
+                frequencyCode: tob.slice(2),
+                serviceFrom,
+                serviceTo,
+                admissionDate: admission.hospiceAdmissionDate,
+                admissionTypeCode: admissionCodes.admissionTypeCode,
+                admissionSourceCode: admissionCodes.admissionSourceCode,
+                patientStatusCode,
+                claimControlNumber: `${yymmdd}-${claimId.replaceAll("-", "").slice(0, 12)}`,
+                diagnoses: snapshot.diagnosisSnapshot,
+                attendingNpi: npis.attendingPhysicianNpi,
+                attendingFirstName: snapshot.attendingPhysicianFirstName,
+                attendingLastName: snapshot.attendingPhysicianLastName,
+                totalChargeCents,
+                expectedPaymentCents: expected,
+                createdByMembershipId: actor.membershipId,
+              })
+              .returning(),
+        );
         if (!claim) throw new Error("commercial claim insert returned no row");
         await tx.insert(schema.commercialClaimLines).values(
           lines.map((l) => ({

@@ -13,7 +13,8 @@
 // Every mutating route requires `Idempotency-Key`, rejects an AI actor, and carries the RBAC + ABAC pair; the override adds the
 // step-up. Org / membership / step-up are read from the server-assembled request context, never the body.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { billingScopeReach } from "../../23-billing-medicare/abac-predicates";
 import {
   type PreHandler,
   actorOf,
@@ -58,6 +59,23 @@ const providerFromQuery = (r: Req): Target => ({
   providerEntityId: (r.query as { providerEntityId?: string } | undefined)?.providerEntityId ?? "",
 });
 
+/**
+ * The actor the services receive: the server-assembled identity PLUS the provider entities the actor's billing scope reaches
+ * (`billingScopeReach`), so every service checks the DATA it touches against the actor and not only the route's named entity.
+ */
+function billingScopeOf(request: FastifyRequest) {
+  const reach = billingScopeReach(request.context);
+  return { all: reach.all, providerEntityIds: reach.providerEntityIds };
+}
+const writeActor = (request: FastifyRequest) => ({
+  ...writeActorOf(request),
+  billingScope: billingScopeOf(request),
+});
+const readActor = (request: FastifyRequest) => ({
+  ...actorOf(request),
+  billingScope: billingScopeOf(request),
+});
+
 const READ = requirePermission("commercial_billing.read") as PreHandler;
 const WRITE = requirePermission("commercial_billing.write") as PreHandler;
 const OVERRIDE = requirePermission("commercial_billing.override_validation") as PreHandler;
@@ -95,7 +113,7 @@ export function registerCommercialBillingRoutes(
     { preHandler: [WRITE, SCOPE("commercial_billing.write", providerFromBody), NO_AI, IDEMPOTENT] },
     async (request, reply) => {
       const body = parse(AssembleCommercialClaimBodySchema, request.body);
-      const out = await assembly.assemble(writeActorOf(request), body);
+      const out = await assembly.assemble(writeActor(request), body);
       return reply.code(201).send({ ...out, validation: toRunApiView(out.validation) });
     },
   );
@@ -114,7 +132,7 @@ export function registerCommercialBillingRoutes(
     },
     async (request) => {
       const { id } = parse(IdParamsSchema, request.params);
-      return reads.getClaim(actorOf(request), id);
+      return reads.getClaim(readActor(request), id);
     },
   );
 
@@ -123,7 +141,7 @@ export function registerCommercialBillingRoutes(
     { preHandler: [WRITE, CASELOAD("commercial_billing.write"), NO_AI, IDEMPOTENT] },
     async (request) => {
       const { id } = parse(IdParamsSchema, request.params);
-      return toRunApiView(await lifecycle.validate(writeActorOf(request), id));
+      return toRunApiView(await lifecycle.validate(writeActor(request), id));
     },
   );
 
@@ -133,7 +151,7 @@ export function registerCommercialBillingRoutes(
     async (request) => {
       const { id } = parse(IdParamsSchema, request.params);
       // A blocked claim is a 409 COMMERCIAL_CLAIM_BLOCKED carrying every blocking rule and an actionable message.
-      const res = await lifecycle.assertReady(writeActorOf(request), id);
+      const res = await lifecycle.assertReady(writeActor(request), id);
       return { claimId: res.claimId, state: res.state, validation: toRunApiView(res.validation) };
     },
   );
@@ -143,7 +161,7 @@ export function registerCommercialBillingRoutes(
     { preHandler: [WRITE, CASELOAD("commercial_billing.write"), NO_AI, IDEMPOTENT] },
     async (request) => {
       const { id } = parse(IdParamsSchema, request.params);
-      return lifecycle.voidClaim(writeActorOf(request), id);
+      return lifecycle.voidClaim(writeActor(request), id);
     },
   );
 
@@ -153,7 +171,7 @@ export function registerCommercialBillingRoutes(
     async (request, reply) => {
       const { id, resultId } = parse(OverrideParamsSchema, request.params);
       const body = parse(OverrideBodySchema, request.body);
-      const out = await lifecycle.overrideValidationResult(writeActorOf(request), id, {
+      const out = await lifecycle.overrideValidationResult(writeActor(request), id, {
         validationResultId: resultId,
         reason: body.reason,
       });
@@ -166,7 +184,7 @@ export function registerCommercialBillingRoutes(
     { preHandler: [WRITE, SCOPE("commercial_billing.write", providerFromBody), NO_AI, IDEMPOTENT] },
     async (request, reply) => {
       const body = parse(RecordAuthorizationBodySchema, request.body);
-      return reply.code(201).send(await authorizations.record(writeActorOf(request), body));
+      return reply.code(201).send(await authorizations.record(writeActor(request), body));
     },
   );
 
@@ -183,7 +201,7 @@ export function registerCommercialBillingRoutes(
     async (request) => {
       const { id } = parse(IdParamsSchema, request.params);
       const body = parse(SetAuthorizationStatusBodySchema, request.body);
-      return authorizations.setStatus(writeActorOf(request), id, body.status);
+      return authorizations.setStatus(writeActor(request), id, body.status);
     },
   );
 
@@ -201,7 +219,13 @@ export function registerCommercialBillingRoutes(
     },
     async (request) => {
       const q = parse(AuthorizationListQuerySchema, request.query);
-      return { items: await authorizations.listForPatient(actorOf(request), q.patientId) };
+      return {
+        items: await authorizations.listForPatient(
+          readActor(request),
+          q.providerEntityId,
+          q.patientId,
+        ),
+      };
     },
   );
 }

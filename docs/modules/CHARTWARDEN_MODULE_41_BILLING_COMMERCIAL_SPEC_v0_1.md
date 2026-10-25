@@ -93,11 +93,14 @@ Rules are pure functions over loaded facts (`domain/rules.ts`) and run on assemb
 | `plan_payer_active` | hard | the plan's M40 payer is still active; a merged payer names its survivor. This is the guard for ADR-0100's "payer merge or deactivation must repoint or end plans": plans are not rewritten behind the tenant's back, assembly and every re-validation refuse a plan whose payer is gone and say what to do |
 | `claim_filing_indicator_commercial` | hard | SBR09 is a commercial code |
 | `payer_route_in_effect` | hard | exactly one clearinghouse route is in effect on the last service day |
+| `service_days_covered` | hard | every day of the window is billed exactly once (a hole or an overlap in the level-of-care periods would under- or double-bill) |
 | `contract_rate_in_effect`, `charge_priceable` | hard | every billed day has a contract rate that can be priced |
 | `principal_diagnosis_present`, `attending_physician_present`, `site_of_service_hcpcs` | hard | 837I content the plan requires |
 | `authorization_on_file` | hard when the plan requires authorization, soft when the requirement is `confirm_with_payer` | approved authorizations cover every billed day (and the level of care when required per level); an expired one is reported as expired |
 | `authorization_lead_time` | soft | the plan's lead time (days before service) was met |
 | `cob_secondary_declared` | info | Medicare or Medicaid is secondary; the claim carries the other-payer loop |
+
+**Scope of the data (security).** A route-level ABAC predicate proves the actor may act on the provider entity NAMED in the request; every service also checks the DATA it touches (`services/scope-guard.ts`): the entity is in the actor's billing scope, the patient is in their caseload (M5 `CaseloadProvider`, skipped only for organization-wide billing roles and the system principal), and the patient's admission belongs to that entity (`admission.provider_entity_id`, added to the M6 range context). Authorization lookups, lists and the claim read filter on the entity too, and an authorization recorded under another entity never satisfies a claim. Absent scope fails closed. Concurrency: lifecycle operations lock the claim row, assembly takes a per-patient advisory lock, and the table carries an exclusion constraint (one live claim per patient per day) and a trigger that makes `void` final. Idempotency on the mutating routes is presence-only (the `Idempotency-Key` header is required); a retried validate, ready or void re-executes harmlessly, a retried override or assembly is a 409.
 
 Pricing is frozen at assembly: a pricing block is fixed by voiding and re-assembling. Authorization, plan, payer and route facts are re-read on every run.
 

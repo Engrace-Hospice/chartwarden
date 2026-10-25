@@ -678,10 +678,14 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     it("flags a patient recorded only as medicare_advantage so the refusal can say how to record the coverage", async () => {
       const patientId = await seedPatient(ORG_A);
       await seedPatientPayer(ORG_A, patientId, 1, "medicare_advantage", "2020-01-01");
-      const resolved = await buildM23PatientPayerAdapter().medicarePrimaryForRange(ORG_A, patientId, {
-        from: "2026-01-01",
-        to: "2026-01-31",
-      });
+      const resolved = await buildM23PatientPayerAdapter().medicarePrimaryForRange(
+        ORG_A,
+        patientId,
+        {
+          from: "2026-01-01",
+          to: "2026-01-31",
+        },
+      );
       expect(resolved).toMatchObject({ medicarePrimary: false, medicareAdvantageEnrollee: true });
     });
 
@@ -749,6 +753,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       const ctx = await claimAssemblyRangeContextForOrg(handle.db, ORG_A, patientId, range);
       expect(ctx?.admission).toEqual({
         admissionId,
+        providerEntityId: pe, // the entity the stay belongs to (M41 binds the patient to the billed entity with it)
         hospiceAdmissionDate: "2026-01-01",
         rhcPriorHospiceDays: 0, // a first stay: the RHC day count starts here
         rhcPriorStays: [], // …and no earlier stay with us for M23 to merge with the HETS history
