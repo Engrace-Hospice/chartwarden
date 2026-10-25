@@ -20,9 +20,17 @@ import {
 // look as treatment would make the accounting log a fiction, and the log is the point. The URL is
 // opened in a new tab rather than embedded: it points at object storage, and the artifact viewer that
 // would render it inline (DOC.SignedUrlPreview) is a screen this slice does not build.
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { MdmEntityLookupField } from "../../shell/entity-lookups";
+import {
+  type StepUpDraftOwner,
+  clearStepUpDraft,
+  peekStepUpDraft,
+  stashStepUpDraft,
+  stepUpDraftKey,
+} from "../../shell/step-up-redirect";
+import { useStepUpOwner } from "../../shell/use-step-up-return";
 import {
   type AccessPurpose,
   type DisclosureRecipient,
@@ -154,6 +162,35 @@ export function DocumentEditDialog({
   );
 }
 
+/** The step-up draft action for an external open — also the operation key the server steps up on. */
+export const DISCLOSE_ACTION = "documents.disclose_external";
+export const DISCLOSE_ACTIONS: readonly string[] = [DISCLOSE_ACTION];
+
+/** What the dialog stashes across the /step-up round trip: the choices, never the document or the URL. */
+interface DisclosureDraft {
+  readonly purpose: AccessPurpose;
+  readonly recipientKind: DisclosureRecipient["kind"];
+  readonly recipientId: string;
+}
+
+export const disclosureDraftKey = (owner: StepUpDraftOwner | null, versionId: string) =>
+  stepUpDraftKey(owner, DISCLOSE_ACTION, versionId);
+
+function readDisclosureDraft(key: string | null): DisclosureDraft | null {
+  const d = peekStepUpDraft<Record<string, unknown>>(key);
+  if (!d) return null;
+  const { purpose, recipientKind, recipientId } = d;
+  if (typeof purpose !== "string" || !EXTERNAL_PURPOSES.includes(purpose as AccessPurpose))
+    return null;
+  if (typeof recipientKind !== "string" || !(recipientKind in RECIPIENT_KIND_LABEL)) return null;
+  if (typeof recipientId !== "string") return null;
+  return {
+    purpose: purpose as AccessPurpose,
+    recipientKind: recipientKind as DisclosureRecipient["kind"],
+    recipientId,
+  };
+}
+
 export interface DocumentPreviewDialogProps {
   readonly open: boolean;
   readonly documentId: string;
@@ -170,16 +207,23 @@ export function DocumentPreviewDialog({
   onClose,
 }: DocumentPreviewDialogProps): JSX.Element | null {
   const client = useApiClient();
-  const [purpose, setPurpose] = useState<AccessPurpose>("treatment");
-  const [recipientKind, setRecipientKind] = useState<DisclosureRecipient["kind"]>("facility");
-  const [recipientId, setRecipientId] = useState("");
+  const owner = useStepUpOwner();
+  const draftKey = disclosureDraftKey(owner, versionId);
+  // Back from /step-up the parent remounts this dialog; the choices made before the refusal come back with it.
+  const [resume] = useState(() => readDisclosureDraft(draftKey));
+  const [purpose, setPurpose] = useState<AccessPurpose>(resume?.purpose ?? "treatment");
+  const [recipientKind, setRecipientKind] = useState<DisclosureRecipient["kind"]>(
+    resume?.recipientKind ?? "facility",
+  );
+  const [recipientId, setRecipientId] = useState(resume?.recipientId ?? "");
+  const hintId = useId();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsStepUp, setNeedsStepUp] = useState(false);
   const external = EXTERNAL_PURPOSES.includes(purpose);
 
   useEffect(() => {
-    if (!open) return;
+    if (open) return;
     setPurpose("treatment");
     setRecipientKind("facility");
     setRecipientId("");
@@ -196,6 +240,11 @@ export function DocumentPreviewDialog({
     setNeedsStepUp(false);
   }
 
+  function close(): void {
+    clearStepUpDraft(draftKey);
+    onClose();
+  }
+
   async function submit(): Promise<void> {
     setBusy(true);
     clearFailure();
@@ -210,8 +259,12 @@ export function DocumentPreviewDialog({
     if (!res.ok) {
       setError(res.message);
       setNeedsStepUp(res.stepUp === true);
+      if (res.stepUp === true && external) {
+        stashStepUpDraft(draftKey, { purpose, recipientKind, recipientId });
+      }
       return;
     }
+    clearStepUpDraft(draftKey);
     // `noopener` because the target is object storage, not this origin.
     globalThis.open(res.value.url, "_blank", "noopener,noreferrer");
     onClose();
@@ -220,7 +273,7 @@ export function DocumentPreviewDialog({
   return (
     <Modal
       open={open}
-      onClose={busy ? undefined : onClose}
+      onClose={busy ? undefined : close}
       ariaLabel="Open document content"
       width="28rem"
       accent={t.primary}
@@ -274,7 +327,9 @@ export function DocumentPreviewDialog({
           </>
         ) : null}
         {external && recipientId === "" ? (
-          <p style={meta}>Choose a recipient to continue.</p>
+          <p id={hintId} style={meta}>
+            Choose a recipient to continue.
+          </p>
         ) : null}
         <p style={meta}>
           Opening this document is recorded in the patient's disclosure accounting (§164.528)
@@ -292,10 +347,14 @@ export function DocumentPreviewDialog({
           </p>
         ) : null}
         <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-          <Button tone="tertiary" onClick={onClose} disabled={busy}>
+          <Button tone="tertiary" onClick={close} disabled={busy}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={busy || (external && recipientId === "")}>
+          <Button
+            onClick={submit}
+            disabled={busy || (external && recipientId === "")}
+            aria-describedby={external && recipientId === "" ? hintId : undefined}
+          >
             {busy ? "Opening…" : "Open"}
           </Button>
         </div>
