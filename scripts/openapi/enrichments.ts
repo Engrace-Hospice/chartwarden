@@ -13,6 +13,22 @@ import {
   ManualValidateRequest,
 } from "@chartwarden/billing";
 import { type TSchema, Type } from "@sinclair/typebox";
+// M41 Billing - Commercial (#722): the claim / authorization route contracts.
+import {
+  AssembleCommercialClaimBodySchema as M41AssembleBodySchema,
+  AssembleCommercialClaimResponseSchema as M41AssembleResponseSchema,
+  AuthorizationListQuerySchema as M41AuthorizationListQuerySchema,
+  AuthorizationListResponseSchema as M41AuthorizationListResponseSchema,
+  AuthorizationViewSchema as M41AuthorizationViewSchema,
+  CommercialClaimViewSchema as M41ClaimViewSchema,
+  OverrideBodySchema as M41OverrideBodySchema,
+  OverrideResponseSchema as M41OverrideResponseSchema,
+  ReadyResponseSchema as M41ReadyResponseSchema,
+  RecordAuthorizationBodySchema as M41RecordAuthorizationBodySchema,
+  SetAuthorizationStatusBodySchema as M41SetAuthorizationStatusBodySchema,
+  ValidationRunViewSchema as M41ValidationRunViewSchema,
+  VoidResponseSchema as M41VoidResponseSchema,
+} from "../../apps/backend/src/modules/41-billing-commercial/routes/commercial-typebox";
 import {
   HealthResponseSchema as M1HealthResponseSchema,
   ReadyResponseSchema as M1ReadyResponseSchema,
@@ -14624,5 +14640,67 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Decline a proposal (WP 3.7; idg.coordinate + meeting scope). Writes nothing in M14 except the `m14.chart_promotion.decided` outbox event (rejected + reason code). 422 PROMOTION_NOT_AVAILABLE as for add",
     body: M14RejectChartPromotionRequest,
     response: M14RejectChartPromotionResponseSchema,
+  },
+});
+
+// ── M41 Billing - Commercial (#722): claim assembly, validation, pre-authorization, audited override ───────────────────
+// Ids, dates, codes, money and rule messages only; never a member id, MBI, authorization number or patient name.
+Object.assign(ROUTE_ENRICHMENTS, {
+  "POST /api/v1/billing/commercial/claims/assemble": {
+    summary:
+      "Assemble a hospice 837I claim for a COMMERCIAL primary payer from the shared claim facts, priced from the plan's contract rates (plan, route and rate periods intersected with the window); records COB when Medicare or Medicaid is secondary. 409 NON_COMMERCIAL_PRIMARY_PAYER when the primary payer is not a commercial plan (Medicare is Module 23, Medicaid Module 24); 422 COMMERCIAL_PLAN_NOT_FOUND",
+    body: M41AssembleBodySchema,
+    response: M41AssembleResponseSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "GET /api/v1/billing/commercial/claims/:id": {
+    summary:
+      "A commercial claim with its lines and the latest validation run (rule, severity, overridable, overridden, blocking, actionable message). Read-audited",
+    response: M41ClaimViewSchema,
+  },
+  "POST /api/v1/billing/commercial/claims/:id/validate": {
+    summary:
+      "Re-run the payer-specific rules (plan, payer state, route, contract rate, authorization, diagnosis, attending). A ready claim that now has a block drops back to draft",
+    response: M41ValidationRunViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "POST /api/v1/billing/commercial/claims/:id/ready": {
+    summary:
+      "Move a draft claim to ready after a fresh validation. 409 COMMERCIAL_CLAIM_BLOCKED (with the blocking rules and what to do) while a hard block fails or a soft block lacks an audited override",
+    response: M41ReadyResponseSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "POST /api/v1/billing/commercial/claims/:id/void": {
+    summary: "Void a commercial claim (frees its service window for a corrected re-assembly)",
+    response: M41VoidResponseSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "POST /api/v1/billing/commercial/claims/:id/validation-results/:resultId/override": {
+    summary:
+      "Override ONE failing soft-block (warn) validation result with a reason of at least 40 characters; step-up, never an AI actor, one override per result, bound to the exact facts. A hard block is refused (403). Writes a prominent M4 audit event and an m41.claim.override_applied outbox event in the same transaction",
+    body: M41OverrideBodySchema,
+    response: M41OverrideResponseSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "POST /api/v1/billing/commercial/authorizations": {
+    summary:
+      "Record a pre-authorization for a patient and plan (optionally for one level of care). The authorization number is stored but never shown in a rule message or audit event",
+    body: M41RecordAuthorizationBodySchema,
+    response: M41AuthorizationViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "POST /api/v1/billing/commercial/authorizations/:id/status": {
+    summary: "Mark a pre-authorization denied or voided; the next validation sees the change",
+    body: M41SetAuthorizationStatusBodySchema,
+    response: M41AuthorizationViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "GET /api/v1/billing/commercial/authorizations": {
+    summary: "A patient's pre-authorizations, newest first. Read-audited (list)",
+    query: M41AuthorizationListQuerySchema,
+    response: M41AuthorizationListResponseSchema,
   },
 });

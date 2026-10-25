@@ -15,6 +15,7 @@ export * from "./care-plan";
 export * from "./election-addendum";
 export * from "./hospice-coverage";
 export * from "./commercial-billing";
+export * from "./commercial-claim";
 export * from "./encounter";
 export * from "./assessment";
 export * from "./hope";

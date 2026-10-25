@@ -15,6 +15,7 @@ describe("assembleErrorMessage", () => {
     ["VALIDATION_FAILED", 422, /service-to date/],
     ["AI_ACTOR_FORBIDDEN", 403, /AI actor/],
     ["NON_MEDICARE_PRIMARY_PAYER", 409, /not Medicare/],
+    ["MEDICARE_ADVANTAGE_NEEDS_ORIGINAL_MEDICARE_COVERAGE", 409, /Original Medicare/],
   ])("maps %s to a specific, actionable message", (code, status, expected) => {
     const message = assembleErrorMessage(code, status);
     expect(message).toMatch(expected);

@@ -5483,6 +5483,143 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/commercial/authorizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A patient's pre-authorizations, newest first. Read-audited (list) */
+        get: operations["getApiV1BillingCommercialAuthorizations"];
+        put?: never;
+        /** Record a pre-authorization for a patient and plan (optionally for one level of care). The authorization number is stored but never shown in a rule message or audit event */
+        post: operations["postApiV1BillingCommercialAuthorizations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/authorizations/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a pre-authorization denied or voided; the next validation sees the change */
+        post: operations["postApiV1BillingCommercialAuthorizationsByIdStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/claims/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A commercial claim with its lines and the latest validation run (rule, severity, overridable, overridden, blocking, actionable message). Read-audited */
+        get: operations["getApiV1BillingCommercialClaimsById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/claims/{id}/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Move a draft claim to ready after a fresh validation. 409 COMMERCIAL_CLAIM_BLOCKED (with the blocking rules and what to do) while a hard block fails or a soft block lacks an audited override */
+        post: operations["postApiV1BillingCommercialClaimsByIdReady"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/claims/{id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-run the payer-specific rules (plan, payer state, route, contract rate, authorization, diagnosis, attending). A ready claim that now has a block drops back to draft */
+        post: operations["postApiV1BillingCommercialClaimsByIdValidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/claims/{id}/validation-results/{resultId}/override": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Override ONE failing soft-block (warn) validation result with a reason of at least 40 characters; step-up, never an AI actor, one override per result, bound to the exact facts. A hard block is refused (403). Writes a prominent M4 audit event and an m41.claim.override_applied outbox event in the same transaction */
+        post: operations["postApiV1BillingCommercialClaimsByIdValidationresultsByResultIdOverride"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/claims/{id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Void a commercial claim (frees its service window for a corrected re-assembly) */
+        post: operations["postApiV1BillingCommercialClaimsByIdVoid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/claims/assemble": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Assemble a hospice 837I claim for a COMMERCIAL primary payer from the shared claim facts, priced from the plan's contract rates (plan, route and rate periods intersected with the window); records COB when Medicare or Medicaid is secondary. 409 NON_COMMERCIAL_PRIMARY_PAYER when the primary payer is not a commercial plan (Medicare is Module 23, Medicaid Module 24); 422 COMMERCIAL_PLAN_NOT_FOUND */
+        post: operations["postApiV1BillingCommercialClaimsAssemble"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/dde-items": {
         parameters: {
             query?: never;
@@ -43673,6 +43810,416 @@ export interface operations {
                         controlNumber: string;
                         status: "sent" | "voided";
                         clearinghouseSubmissionId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingCommercialAuthorizations: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                patientId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            patientId: string;
+                            planId: string;
+                            levelOfCare: string | null;
+                            status: string;
+                            obtainedOn: string;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialAuthorizations: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: uuid */
+                    planId: string;
+                    authorizationNumber: string;
+                    levelOfCare?: ("routine_home_care" | "continuous_home_care" | "inpatient_respite" | "general_inpatient") | null;
+                    /** Format: date */
+                    obtainedOn: string;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    effectiveTo?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        planId: string;
+                        levelOfCare: string | null;
+                        status: string;
+                        obtainedOn: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialAuthorizationsByIdStatus: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    status: "denied" | "voided";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        planId: string;
+                        levelOfCare: string | null;
+                        status: string;
+                        obtainedOn: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingCommercialClaimsById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        claim: {
+                            id: string;
+                            state: string;
+                            patientId: string;
+                            providerEntityId: string;
+                            planId: string;
+                            tob: string;
+                            serviceFrom: string;
+                            serviceTo: string;
+                            claimFilingIndicator: string;
+                            secondaryPayerKind: string | null;
+                            totalChargeCents: number;
+                            expectedPaymentCents: number | null;
+                            readyAt: string | null;
+                        };
+                        lines: {
+                            lineNumber: number;
+                            levelOfCare: string;
+                            revenueCode: string;
+                            hcpcsCode: string | null;
+                            serviceFrom: string;
+                            serviceTo: string;
+                            units: number;
+                            unitRateCents: number | null;
+                            lineChargeCents: number;
+                        }[];
+                        validation: {
+                            runId: string;
+                            outcome: string;
+                            results: {
+                                id: string;
+                                ruleKey: string;
+                                severity: string;
+                                outcome: string;
+                                overridable: boolean;
+                                overridden: boolean;
+                                blocking: boolean;
+                                message: string;
+                            }[];
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialClaimsByIdReady: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        claimId: string;
+                        state: string;
+                        validation: {
+                            runId: string;
+                            outcome: string;
+                            results: {
+                                id: string;
+                                ruleKey: string;
+                                severity: string;
+                                outcome: string;
+                                overridable: boolean;
+                                overridden: boolean;
+                                blocking: boolean;
+                                message: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialClaimsByIdValidate: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        runId: string;
+                        outcome: string;
+                        results: {
+                            id: string;
+                            ruleKey: string;
+                            severity: string;
+                            outcome: string;
+                            overridable: boolean;
+                            overridden: boolean;
+                            blocking: boolean;
+                            message: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialClaimsByIdValidationresultsByResultIdOverride: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+                resultId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        overrideId: string;
+                        auditEventId: string;
+                        ruleKey: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialClaimsByIdVoid: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        claimId: string;
+                        state: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialClaimsAssemble: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** Format: uuid */
+                    patientId: string;
+                    /** Format: date */
+                    serviceFrom: string;
+                    /** Format: date */
+                    serviceTo: string;
+                    /** Format: uuid */
+                    planId?: string;
+                    clearinghouseKey?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        claimId: string;
+                        state: string;
+                        tob: string;
+                        totalChargeCents: number;
+                        expectedPaymentCents: number | null;
+                        lineCount: number;
+                        secondaryPayerKind: string | null;
+                        validation: {
+                            runId: string;
+                            outcome: string;
+                            results: {
+                                id: string;
+                                ruleKey: string;
+                                severity: string;
+                                outcome: string;
+                                overridable: boolean;
+                                overridden: boolean;
+                                blocking: boolean;
+                                message: string;
+                            }[];
+                        };
                     };
                 };
             };

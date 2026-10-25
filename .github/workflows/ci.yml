@@ -748,6 +748,10 @@ jobs:
           - { name: "M25 playbooks", scripts: "test:m25:playbook:live" }
           # M41 commercial payer and plan model (#721) - tenant isolation as chartwarden_app, commercial-payer guard, effective dating.
           - { name: "M41 payer plan", scripts: "test:m41:payer-plan:live" }
+          # M41 commercial claim assembly + validation (#722) - S15/S16/S17, effective-period intersection, audited override, RLS.
+          - { name: "M41 commercial claim", scripts: "test:m41:commercial-claim:live" }
+          # M41 commercial routes (#722) - the HTTP layer: guards, step-up, AI block, idempotency, error envelope, read audit.
+          - { name: "M41 commercial routes", scripts: "test:m41:commercial-routes:live" }
           # Milestone 9a-2 - the leadership medical-review report (figures only; no table, no target or benchmark).
           - { name: "M25 medical-review report", scripts: "test:m25:medical-review-report:live" }
           # F-158 (#248) — the `handlers-unbound` denial-worklist seed: m23.claim.rejected +

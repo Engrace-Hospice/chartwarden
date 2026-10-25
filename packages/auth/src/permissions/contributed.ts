@@ -1056,7 +1056,12 @@ export const M6_CONTRIBUTED_PERMISSIONS = {
   },
   // --- Milestone 10a: NOMNC delivery + BFCC-QIO expedited review record-keeping (mig 1230 grants `nomnc.read` to the
   //     roles holding admission.read and `nomnc.record` to those holding discharge.no_longer_terminal / for_cause) ---
-  "nomnc.read": { resource: "nomnc", action: "read", category: "clinical", abac: "admission.scope" },
+  "nomnc.read": {
+    resource: "nomnc",
+    action: "read",
+    category: "clinical",
+    abac: "admission.scope",
+  },
   "nomnc.record": {
     resource: "nomnc",
     action: "record",
@@ -6695,6 +6700,43 @@ export function m37ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
   return mirrorRowsFor(M37_CONTRIBUTED_PERMISSIONS);
 }
 
+/**
+ * The permission keys Module 41 (Billing - Commercial) registers into Module 3's catalog (ADR-0100, spec section 6). The `abac`
+ * field is the dominant predicate per key; the routes compose it: `commercial_billing_provider_scope` (assemble and
+ * authorizations: the actor's membership is scoped to the provider entity), `commercial_claim_in_billing_caseload` (claim
+ * reads and writes: provider scope AND caseload) and `commercial_override_eligible` (the override: a billing override role in
+ * scope). Step-up on the override is enforced at the route. `submit` and `manage_enrollment` arrive with the submission and
+ * enrollment issues.
+ */
+export const M41_CONTRIBUTED_PERMISSIONS = {
+  "commercial_billing.read": {
+    resource: "commercial_billing",
+    action: "read",
+    category: "billing",
+    abac: "commercial_claim_in_billing_caseload",
+  },
+  "commercial_billing.write": {
+    resource: "commercial_billing",
+    action: "write",
+    category: "billing",
+    abac: "commercial_billing_provider_scope",
+  },
+  "commercial_billing.override_validation": {
+    resource: "commercial_billing",
+    action: "override_validation",
+    category: "billing",
+    abac: "commercial_override_eligible",
+  },
+} as const satisfies Record<string, PermissionDef>;
+
+/** Union of the M41 contributed permission keys. */
+export type M41ContributedPermissionKey = keyof typeof M41_CONTRIBUTED_PERMISSIONS;
+
+/** Project the M41 contributed keys into `permission`-table mirror rows. */
+export function m41ContributedPermissionMirrorRows(): PermissionMirrorRow[] {
+  return mirrorRowsFor(M41_CONTRIBUTED_PERMISSIONS);
+}
+
 export function allPermissionMirrorRows(): PermissionMirrorRow[] {
   return [
     ...permissionMirrorRows(),
@@ -6736,5 +6778,6 @@ export function allPermissionMirrorRows(): PermissionMirrorRow[] {
     ...m35ContributedPermissionMirrorRows(),
     ...m29ContributedPermissionMirrorRows(),
     ...m37ContributedPermissionMirrorRows(),
+    ...m41ContributedPermissionMirrorRows(),
   ];
 }

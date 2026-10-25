@@ -68,7 +68,7 @@ export interface StediClaimJson {
     readonly address: StediAddress;
   };
   readonly claimInformation: {
-    readonly claimFilingCode: "MA";
+    readonly claimFilingCode: string;
     readonly claimChargeAmount: string;
     readonly claimFrequencyCode: string;
     readonly placeOfServiceCode: "81";
@@ -167,6 +167,10 @@ const money = (amount: string): string => {
 export function buildStediClaimJson(input: Claim837iInput): StediClaimJson {
   build837iClaim(input);
   const c = input.claim;
+  // The JSON field names for loop 2320 and for a line without a procedure code are not verified against Stedi: fail
+  // closed rather than send a claim that silently drops the other payer. The raw X12 carries both.
+  if ((c.otherPayers ?? []).length > 0) throw new Claim837iBuildError("claim.otherPayers");
+  if (c.lines.some((l) => l.hcpcs === undefined)) throw new Claim837iBuildError("claim.lines");
   if (c.controlNumber.length > MAX_PATIENT_CONTROL_NUMBER) {
     throw new Claim837iBuildError("claim.controlNumber");
   }
@@ -241,7 +245,7 @@ export function buildStediClaimJson(input: Claim837iInput): StediClaimJson {
       address: address(s.address, "subscriber.address"),
     },
     claimInformation: {
-      claimFilingCode: "MA",
+      claimFilingCode: input.commercial?.claimFilingIndicator ?? "MA",
       claimChargeAmount: dollars(totalCents),
       claimFrequencyCode: c.frequency,
       placeOfServiceCode: "81",
@@ -278,7 +282,7 @@ export function buildStediClaimJson(input: Claim837iInput): StediClaimJson {
         institutionalService: {
           serviceLineRevenueCode: l.revenueCode,
           procedureIdentifier: "HC" as const,
-          procedureCode: l.hcpcs,
+          procedureCode: l.hcpcs ?? "",
           ...(l.modifiers && l.modifiers.length > 0
             ? { procedureModifiers: [...l.modifiers] }
             : {}),

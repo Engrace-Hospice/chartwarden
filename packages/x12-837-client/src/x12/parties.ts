@@ -39,7 +39,30 @@ export interface Parties837i {
     readonly sex: "M" | "F";
   };
   readonly payer: { readonly name: string; readonly payerId: string };
+  /**
+   * M41 commercial primary payer (ADR-0100). Absent = the Medicare shape (SBR09 `MA`, `subscriber.mbi` is an MBI).
+   * Present: SBR09 is `claimFilingIndicator`, `subscriber.mbi` holds the plan MEMBER ID (not an MBI) and
+   * `groupNumber` (optional) rides SBR03. Medicare, Medicaid and self-pay filing codes are refused: those are
+   * Module 23 / 24 claims.
+   */
+  readonly commercial?: {
+    readonly claimFilingIndicator: string;
+    readonly groupNumber?: string | null;
+  };
 }
+
+/** SBR09 values a commercial claim must never carry (Medicare A/B, Medicaid, Medicare risk, self-pay, central cert, Title V). */
+const NON_COMMERCIAL_FILING_INDICATORS: readonly string[] = [
+  "MA",
+  "MB",
+  "MC",
+  "16",
+  "09",
+  "10",
+  "TV",
+];
+const FILING_INDICATOR = /^[A-Z0-9]{1,2}$/;
+const MEMBER_ID = /^[A-Za-z0-9-]{2,60}$/;
 
 const submitterOrReceiver = (
   role: "41" | "40",
@@ -66,7 +89,19 @@ export function partySegments(p: Parties837i, onOrAfterBirth: string): string[][
   const s = p.subscriber;
   if (typeof s.mbi !== "string") throw new X12BuildError("subscriber.mbi");
   const mbi = s.mbi.trim().toUpperCase();
-  if (!MBI_PATTERN.test(mbi)) throw new X12BuildError("subscriber.mbi");
+  const commercial = p.commercial;
+  if (commercial === undefined) {
+    if (!MBI_PATTERN.test(mbi)) throw new X12BuildError("subscriber.mbi");
+  } else {
+    if (!MEMBER_ID.test(mbi)) throw new X12BuildError("subscriber.memberId");
+    if (
+      !FILING_INDICATOR.test(commercial.claimFilingIndicator) ||
+      NON_COMMERCIAL_FILING_INDICATORS.includes(commercial.claimFilingIndicator)
+    ) {
+      throw new X12BuildError("commercial.claimFilingIndicator");
+    }
+  }
+  const group = optionalText(commercial?.groupNumber, "commercial.groupNumber", 50);
   if (s.sex !== "M" && s.sex !== "F") throw new X12BuildError("subscriber.sex");
   const dob = d8(s.birthDate, "subscriber.birthDate");
   if (dob > onOrAfterBirth) throw new X12BuildError("subscriber.birthDate");
@@ -100,7 +135,7 @@ export function partySegments(p: Parties837i, onOrAfterBirth: string): string[][
     ...addressSegments(p.billingProvider.address, "billingProvider.address"),
     ["REF", "EI", p.billingProvider.taxId],
     ["HL", "2", "1", "22", "0"],
-    ["SBR", "P", "18", "", "", "", "", "", "", "MA"],
+    ["SBR", "P", "18", group, "", "", "", "", "", commercial?.claimFilingIndicator ?? "MA"],
     [
       "NM1",
       "IL",

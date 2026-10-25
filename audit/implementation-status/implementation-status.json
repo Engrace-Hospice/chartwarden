@@ -1,7 +1,7 @@
 {
   "totals": {
-    "Implemented": 40,
-    "Partial": 1,
+    "Implemented": 41,
+    "Partial": 0,
     "Placeholder": 0
   },
   "rows": [
@@ -805,18 +805,21 @@
     {
       "id": 41,
       "module": "M41 Billing — Commercial",
-      "status": "Partial",
+      "status": "Implemented",
       "spec": true,
       "schema": true,
       "migration": false,
-      "routes": false,
-      "enriched": null,
+      "routes": true,
+      "enriched": {
+        "routes": 9,
+        "enriched": 9
+      },
       "screens": false,
       "tests": false,
       "adapter": null,
       "liveInfra": {
         "tables": 14,
-        "covered": 3
+        "covered": 10
       }
     }
   ],

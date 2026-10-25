@@ -256,4 +256,8 @@ export {
   type M37ContributedPermissionKey,
   M37_CONTRIBUTED_PERMISSIONS,
   m37ContributedPermissionMirrorRows,
+  // M41 - Module 41's Billing - Commercial permission keys (ADR-0100).
+  type M41ContributedPermissionKey,
+  M41_CONTRIBUTED_PERMISSIONS,
+  m41ContributedPermissionMirrorRows,
 } from "./contributed";

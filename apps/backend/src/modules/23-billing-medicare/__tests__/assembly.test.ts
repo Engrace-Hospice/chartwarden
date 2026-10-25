@@ -234,6 +234,34 @@ describe("D15 — non-Medicare-primary window is rejected before any write", () 
     expect(store.emitted).toHaveLength(0);
   });
 
+  it("names the Original Medicare coverage a Medicare Advantage enrollee needs (#772)", async () => {
+    const seams = buildSeams({
+      patientPayer: {
+        medicarePrimaryForRange: async () => ({
+          patientPayerId: "pp-ma",
+          medicarePrimary: false,
+          medicareAdvantageEnrollee: true,
+        }),
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await expect(svc.assemble(ACTOR, REQUEST)).rejects.toMatchObject({
+      code: "MEDICARE_ADVANTAGE_NEEDS_ORIGINAL_MEDICARE_COVERAGE",
+      statusCode: 409,
+    });
+    expect(store.claims.size).toBe(0);
+  });
+
+  it("points a commercial-primary refusal at Module 41 (ADR-0100)", async () => {
+    const seams = buildSeams({
+      patientPayer: {
+        medicarePrimaryForRange: async () => ({ patientPayerId: "pp-1", medicarePrimary: false }),
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await expect(svc.assemble(ACTOR, REQUEST)).rejects.toThrow(/Module 41/);
+  });
+
   it("rejects when no payer resolution is returned at all (fail-closed)", async () => {
     const seams = buildSeams({
       patientPayer: { medicarePrimaryForRange: async () => null },

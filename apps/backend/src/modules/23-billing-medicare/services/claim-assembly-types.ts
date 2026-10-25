@@ -49,6 +49,12 @@ export interface MedicarePrimaryResolution {
   readonly patientPayerId: string;
   /** True iff Medicare FFS Part A is the PRIMARY payer across the window (D15 assembly gate). */
   readonly medicarePrimary: boolean;
+  /**
+   * True when Medicare is NOT primary but a Medicare Advantage coverage ranks ahead of (or stands in for) the missing
+   * Original Medicare row (#772). Hospice for such a patient is an Original Medicare claim to the MAC (42 CFR 422.320(c)),
+   * so the refusal says how to record the coverage instead of the generic "Medicare is not primary".
+   */
+  readonly medicareAdvantageEnrollee?: boolean;
 }
 
 export interface PatientPayerReader {
