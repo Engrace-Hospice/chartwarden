@@ -1867,7 +1867,20 @@ async function runTransportAckPull(
               t.controlNumber,
             ),
         );
-        if (!submission) continue;
+        if (!submission) {
+          // The cursor moves past this page, so an ack with no submission is not seen again: leave a trail (our own
+          // control number and ids only, never PHI). Attempts are written before the send, so this is not expected.
+          deps.logger?.error(
+            {
+              kind,
+              organizationId,
+              providerEntityId: t.providerEntityId,
+              controlNumber: t.controlNumber,
+            },
+            "clearinghouse acknowledgment has no submission to record against; skipped",
+          );
+          continue;
+        }
         acks.push({
           submissionId: submission.id,
           ack: {
