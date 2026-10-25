@@ -3,7 +3,8 @@
 // `commercial-billing.test.ts` fails if the two drift. No PHI lives in any of these tables (ADR-0100, issue #721).
 
 /**
- * X12 837I SBR09 claim filing indicator codes M41 may carry. Deliberately EXCLUDES the government and self-pay codes:
+ * X12 837I SBR09 claim filing indicator codes M41 may carry. Deliberately EXCLUDES Medicare, Medicaid, Medicare-risk and self-pay codes (TRICARE, FEHBP and VA stay allowed;
+ * their M40 payers have kind 'other'):
  * MA/MB (Medicare, M23), MC (Medicaid, M24), 16 (HMO Medicare risk — hospice for a Medicare Advantage enrollee is billed
  * to the Medicare contractor, ADR-0100 D7), 09 (self-pay), 10 (central certification), TV (Title V).
  */

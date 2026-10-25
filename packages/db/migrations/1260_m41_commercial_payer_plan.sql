@@ -3,7 +3,8 @@
 --
 --   commercial_payer_plan       one tenant's plan for an M40 payer: claim filing indicator (837I SBR09), the authorization
 --                               requirement and effective dating. `payer_id` is a LOGICAL id of an M40 canonical `payer`
---                               (no cross-module FK); a trigger proves it names an active COMMERCIAL payer, so a Medicare,
+--                               (no cross-module FK); a trigger proves it names an active payer of kind 'commercial' or 'other'
+--                               ('other' carries TRICARE, FEHBP, VA, workers' comp and similar programs), so a Medicare,
 --                               Medicaid or Medicare Advantage payer can never carry a commercial plan (hospice for a
 --                               Medicare Advantage enrollee is billed to the Medicare contractor - ADR-0100 D7).
 --   commercial_payer_route      the payer id a given clearinghouse routes this plan on (837I NM109 of loop 2010BB),
@@ -77,6 +78,7 @@ CREATE TABLE IF NOT EXISTS "commercial_contract_rate" (
   "created_at" timestamptz NOT NULL DEFAULT now(),
   "updated_at" timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT "commercial_contract_rate_plan_fk" FOREIGN KEY ("plan_id", "organization_id") REFERENCES "commercial_payer_plan"("id", "organization_id") ON DELETE RESTRICT,
+  CONSTRAINT "commercial_contract_rate_hourly" CHECK ("rate_basis" <> 'per_hour' OR "level_of_care" = 'continuous_home_care'),
   CONSTRAINT "commercial_contract_rate_dates" CHECK ("effective_to" IS NULL OR "effective_to" >= "effective_from"),
   -- exactly the amount the basis names
   CONSTRAINT "commercial_contract_rate_amount" CHECK (
@@ -120,12 +122,15 @@ GRANT SELECT, INSERT ON "commercial_contract_rate" TO chartwarden_app;--> statem
 GRANT UPDATE ("revenue_code", "rate_basis", "rate_cents", "percent_of_charges", "effective_to", "updated_at") ON "commercial_contract_rate" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "commercial_contract_rate" TO chartwarden_admin;--> statement-breakpoint
 
--- The plan's payer must be an ACTIVE COMMERCIAL M40 payer (no cross-module FK, so the database proves it here).
+-- The plan's payer must be an ACTIVE commercial (or other non-Medicare program) M40 payer; no cross-module FK, so the
+-- database proves it here. Checked on INSERT only: a payer merged or deactivated later leaves its plans in place and M40
+-- merge handling must repoint them. Route and rate periods are NOT bounded by the plan's period here; claim assembly (#722)
+-- intersects all three.
 CREATE OR REPLACE FUNCTION m41_commercial_payer_plan_payer_guard() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM payer WHERE id = NEW.payer_id AND kind = 'commercial' AND status = 'active') THEN
-    RAISE EXCEPTION 'M41_PLAN_PAYER_NOT_COMMERCIAL: payer % is not an active commercial payer', NEW.payer_id;
+  IF NOT EXISTS (SELECT 1 FROM payer WHERE id = NEW.payer_id AND kind IN ('commercial','other') AND status = 'active') THEN
+    RAISE EXCEPTION 'M41_PLAN_PAYER_NOT_COMMERCIAL: payer % is not an active commercial or other-program payer', NEW.payer_id;
   END IF;
   RETURN NEW;
 END $$;--> statement-breakpoint
