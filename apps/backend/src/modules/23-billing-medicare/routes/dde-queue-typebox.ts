@@ -184,6 +184,17 @@ export const DdeItemViewSchema = Type.Object({
       description: "The provider's opaque operation id; set iff submissionMode is 'provider'.",
     }),
   ),
+  providerInDoubt: Type.Boolean({
+    description:
+      "True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it.",
+  }),
+  providerInDoubtAt: nullable(Type.String({ format: "date-time" })),
+  providerOperatorMembershipId: nullable(
+    Type.String({
+      format: "uuid",
+      description: "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
+    }),
+  ),
   dcn: nullable(Type.String()),
   rtpReasonCode: nullable(Type.String()),
   outcomeCode: nullable(Type.String()),

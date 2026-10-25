@@ -44934,6 +44934,10 @@ export interface operations {
                             /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
                             submissionMode: "manual" | "provider" | null;
                             providerReference: string | null;
+                            /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
+                            providerInDoubt: boolean;
+                            providerInDoubtAt: string | null;
+                            providerOperatorMembershipId: string | null;
                             dcn: string | null;
                             rtpReasonCode: string | null;
                             outcomeCode: string | null;
@@ -45014,6 +45018,10 @@ export interface operations {
                         /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
+                        /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
+                        providerInDoubt: boolean;
+                        providerInDoubtAt: string | null;
+                        providerOperatorMembershipId: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
@@ -45074,6 +45082,10 @@ export interface operations {
                         /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
+                        /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
+                        providerInDoubt: boolean;
+                        providerInDoubtAt: string | null;
+                        providerOperatorMembershipId: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
@@ -45172,6 +45184,10 @@ export interface operations {
                         /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
+                        /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
+                        providerInDoubt: boolean;
+                        providerInDoubtAt: string | null;
+                        providerOperatorMembershipId: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
@@ -45242,6 +45258,10 @@ export interface operations {
                         /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
+                        /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
+                        providerInDoubt: boolean;
+                        providerInDoubtAt: string | null;
+                        providerOperatorMembershipId: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
@@ -45312,6 +45332,10 @@ export interface operations {
                         /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
+                        /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
+                        providerInDoubt: boolean;
+                        providerInDoubtAt: string | null;
+                        providerOperatorMembershipId: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
@@ -45382,6 +45406,10 @@ export interface operations {
                         /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
+                        /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
+                        providerInDoubt: boolean;
+                        providerInDoubtAt: string | null;
+                        providerOperatorMembershipId: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
@@ -45463,6 +45491,10 @@ export interface operations {
                         /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
+                        /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
+                        providerInDoubt: boolean;
+                        providerInDoubtAt: string | null;
+                        providerOperatorMembershipId: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
@@ -45543,6 +45575,10 @@ export interface operations {
                         /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
+                        /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
+                        providerInDoubt: boolean;
+                        providerInDoubtAt: string | null;
+                        providerOperatorMembershipId: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
@@ -45617,6 +45653,10 @@ export interface operations {
                         /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
+                        /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
+                        providerInDoubt: boolean;
+                        providerInDoubtAt: string | null;
+                        providerOperatorMembershipId: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
@@ -45687,6 +45727,10 @@ export interface operations {
                         /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
+                        /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
+                        providerInDoubt: boolean;
+                        providerInDoubtAt: string | null;
+                        providerOperatorMembershipId: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
@@ -45757,6 +45801,10 @@ export interface operations {
                         /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
+                        /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
+                        providerInDoubt: boolean;
+                        providerInDoubtAt: string | null;
+                        providerOperatorMembershipId: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
@@ -45827,6 +45875,10 @@ export interface operations {
                         /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
                         submissionMode: "manual" | "provider" | null;
                         providerReference: string | null;
+                        /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
+                        providerInDoubt: boolean;
+                        providerInDoubtAt: string | null;
+                        providerOperatorMembershipId: string | null;
                         dcn: string | null;
                         rtpReasonCode: string | null;
                         outcomeCode: string | null;
@@ -45891,6 +45943,10 @@ export interface operations {
                             /** @description Who vouches for 'submitted' on the current attempt: 'manual' is an operator's attestation, 'provider' was answered by the bound DDE access provider. Null until submitted (and again after a retry). */
                             submissionMode: "manual" | "provider" | null;
                             providerReference: string | null;
+                            /** @description True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it. */
+                            providerInDoubt: boolean;
+                            providerInDoubtAt: string | null;
+                            providerOperatorMembershipId: string | null;
                             dcn: string | null;
                             rtpReasonCode: string | null;
                             outcomeCode: string | null;

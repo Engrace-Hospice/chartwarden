@@ -71749,6 +71749,9 @@
                           "macAcceptedOn",
                           "submissionMode",
                           "providerReference",
+                          "providerInDoubt",
+                          "providerInDoubtAt",
+                          "providerOperatorMembershipId",
                           "dcn",
                           "rtpReasonCode",
                           "outcomeCode",
@@ -71981,6 +71984,33 @@
                               }
                             ]
                           },
+                          "providerInDoubt": {
+                            "description": "True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it.",
+                            "type": "boolean"
+                          },
+                          "providerInDoubtAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "providerOperatorMembershipId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "description": "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "dcn": {
                             "anyOf": [
                               {
@@ -72166,6 +72196,9 @@
                     "macAcceptedOn",
                     "submissionMode",
                     "providerReference",
+                    "providerInDoubt",
+                    "providerInDoubtAt",
+                    "providerOperatorMembershipId",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -72391,6 +72424,33 @@
                       "anyOf": [
                         {
                           "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerInDoubt": {
+                      "description": "True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it.",
+                      "type": "boolean"
+                    },
+                    "providerInDoubtAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerOperatorMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "description": "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
                           "type": "string"
                         },
                         {
@@ -72635,6 +72695,9 @@
                     "macAcceptedOn",
                     "submissionMode",
                     "providerReference",
+                    "providerInDoubt",
+                    "providerInDoubtAt",
+                    "providerOperatorMembershipId",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -72862,6 +72925,33 @@
                       "anyOf": [
                         {
                           "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerInDoubt": {
+                      "description": "True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it.",
+                      "type": "boolean"
+                    },
+                    "providerInDoubtAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerOperatorMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "description": "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
                           "type": "string"
                         },
                         {
@@ -73182,6 +73272,9 @@
                     "macAcceptedOn",
                     "submissionMode",
                     "providerReference",
+                    "providerInDoubt",
+                    "providerInDoubtAt",
+                    "providerOperatorMembershipId",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -73407,6 +73500,33 @@
                       "anyOf": [
                         {
                           "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerInDoubt": {
+                      "description": "True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it.",
+                      "type": "boolean"
+                    },
+                    "providerInDoubtAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerOperatorMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "description": "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
                           "type": "string"
                         },
                         {
@@ -73618,6 +73738,9 @@
                     "macAcceptedOn",
                     "submissionMode",
                     "providerReference",
+                    "providerInDoubt",
+                    "providerInDoubtAt",
+                    "providerOperatorMembershipId",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -73843,6 +73966,33 @@
                       "anyOf": [
                         {
                           "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerInDoubt": {
+                      "description": "True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it.",
+                      "type": "boolean"
+                    },
+                    "providerInDoubtAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerOperatorMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "description": "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
                           "type": "string"
                         },
                         {
@@ -74049,6 +74199,9 @@
                     "macAcceptedOn",
                     "submissionMode",
                     "providerReference",
+                    "providerInDoubt",
+                    "providerInDoubtAt",
+                    "providerOperatorMembershipId",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -74274,6 +74427,33 @@
                       "anyOf": [
                         {
                           "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerInDoubt": {
+                      "description": "True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it.",
+                      "type": "boolean"
+                    },
+                    "providerInDoubtAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerOperatorMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "description": "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
                           "type": "string"
                         },
                         {
@@ -74480,6 +74660,9 @@
                     "macAcceptedOn",
                     "submissionMode",
                     "providerReference",
+                    "providerInDoubt",
+                    "providerInDoubtAt",
+                    "providerOperatorMembershipId",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -74705,6 +74888,33 @@
                       "anyOf": [
                         {
                           "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerInDoubt": {
+                      "description": "True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it.",
+                      "type": "boolean"
+                    },
+                    "providerInDoubtAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerOperatorMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "description": "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
                           "type": "string"
                         },
                         {
@@ -74911,6 +75121,9 @@
                     "macAcceptedOn",
                     "submissionMode",
                     "providerReference",
+                    "providerInDoubt",
+                    "providerInDoubtAt",
+                    "providerOperatorMembershipId",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -75136,6 +75349,33 @@
                       "anyOf": [
                         {
                           "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerInDoubt": {
+                      "description": "True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it.",
+                      "type": "boolean"
+                    },
+                    "providerInDoubtAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerOperatorMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "description": "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
                           "type": "string"
                         },
                         {
@@ -75374,6 +75614,9 @@
                     "macAcceptedOn",
                     "submissionMode",
                     "providerReference",
+                    "providerInDoubt",
+                    "providerInDoubtAt",
+                    "providerOperatorMembershipId",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -75599,6 +75842,33 @@
                       "anyOf": [
                         {
                           "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerInDoubt": {
+                      "description": "True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it.",
+                      "type": "boolean"
+                    },
+                    "providerInDoubtAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerOperatorMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "description": "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
                           "type": "string"
                         },
                         {
@@ -75847,6 +76117,9 @@
                     "macAcceptedOn",
                     "submissionMode",
                     "providerReference",
+                    "providerInDoubt",
+                    "providerInDoubtAt",
+                    "providerOperatorMembershipId",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -76072,6 +76345,33 @@
                       "anyOf": [
                         {
                           "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerInDoubt": {
+                      "description": "True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it.",
+                      "type": "boolean"
+                    },
+                    "providerInDoubtAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerOperatorMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "description": "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
                           "type": "string"
                         },
                         {
@@ -76288,6 +76588,9 @@
                     "macAcceptedOn",
                     "submissionMode",
                     "providerReference",
+                    "providerInDoubt",
+                    "providerInDoubtAt",
+                    "providerOperatorMembershipId",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -76513,6 +76816,33 @@
                       "anyOf": [
                         {
                           "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerInDoubt": {
+                      "description": "True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it.",
+                      "type": "boolean"
+                    },
+                    "providerInDoubtAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerOperatorMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "description": "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
                           "type": "string"
                         },
                         {
@@ -76719,6 +77049,9 @@
                     "macAcceptedOn",
                     "submissionMode",
                     "providerReference",
+                    "providerInDoubt",
+                    "providerInDoubtAt",
+                    "providerOperatorMembershipId",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -76944,6 +77277,33 @@
                       "anyOf": [
                         {
                           "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerInDoubt": {
+                      "description": "True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it.",
+                      "type": "boolean"
+                    },
+                    "providerInDoubtAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerOperatorMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "description": "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
                           "type": "string"
                         },
                         {
@@ -77150,6 +77510,9 @@
                     "macAcceptedOn",
                     "submissionMode",
                     "providerReference",
+                    "providerInDoubt",
+                    "providerInDoubtAt",
+                    "providerOperatorMembershipId",
                     "dcn",
                     "rtpReasonCode",
                     "outcomeCode",
@@ -77375,6 +77738,33 @@
                       "anyOf": [
                         {
                           "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerInDoubt": {
+                      "description": "True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it.",
+                      "type": "boolean"
+                    },
+                    "providerInDoubtAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerOperatorMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "description": "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
                           "type": "string"
                         },
                         {
@@ -77588,6 +77978,9 @@
                         "macAcceptedOn",
                         "submissionMode",
                         "providerReference",
+                        "providerInDoubt",
+                        "providerInDoubtAt",
+                        "providerOperatorMembershipId",
                         "dcn",
                         "rtpReasonCode",
                         "outcomeCode",
@@ -77813,6 +78206,33 @@
                           "anyOf": [
                             {
                               "description": "The provider's opaque operation id; set iff submissionMode is 'provider'.",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "providerInDoubt": {
+                          "description": "True while a send through the DDE access provider may have reached FISS without a recorded outcome (timeout, crash, DDE_IN_DOUBT). A second provider send is refused; check DDE and record the submission by hand to resolve it.",
+                          "type": "boolean"
+                        },
+                        "providerInDoubtAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "providerOperatorMembershipId": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "description": "The membership whose DDE ID keyed the provider operation (null before it was recorded).",
                               "type": "string"
                             },
                             {

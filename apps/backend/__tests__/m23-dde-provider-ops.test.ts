@@ -4,6 +4,7 @@ import {
   ddeIdempotencyKey,
   ddeProviderRefusal,
   planProviderOutcome,
+  runWithTimeout,
 } from "../src/modules/23-billing-medicare/services/dde-provider-ops";
 
 const outcome = (over: Partial<DdeOutcome>): DdeOutcome => ({
@@ -81,5 +82,26 @@ describe("DDE provider ops (#760)", () => {
       outcomeCode: "rtp",
       rtpReasonCode: null,
     });
+  });
+
+  it("runWithTimeout returns the value when the call settles in time", async () => {
+    expect(await runWithTimeout(async () => 7, 1000)).toEqual({ kind: "done", value: 7 });
+  });
+
+  it("runWithTimeout aborts the signal and reports a timeout past the bound", async () => {
+    let seen: AbortSignal | undefined;
+    const r = await runWithTimeout((signal) => {
+      seen = signal;
+      return new Promise<number>(() => undefined);
+    }, 10);
+    expect(r).toEqual({ kind: "timeout" });
+    expect(seen?.aborted).toBe(true);
+  });
+
+  it("runWithTimeout reports a throw as 'threw' instead of rejecting", async () => {
+    const r = await runWithTimeout(async () => {
+      throw new Error("boom");
+    }, 1000);
+    expect(r).toEqual({ kind: "threw" });
   });
 });

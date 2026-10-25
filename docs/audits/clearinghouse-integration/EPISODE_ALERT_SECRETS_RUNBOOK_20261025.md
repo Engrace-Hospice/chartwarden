@@ -42,8 +42,8 @@ and are read at boot (`CHARTWARDEN_INTEGRATIONS_v0_1.md` section 3.4). The opera
 section 8.1) describes the store as SOPS-encrypted env files with an inventory at `infra/secrets/inventory.yaml`. **That
 directory is not in this repository** (checked 2026-10-25), so the platform operator keeps the real files wherever production
 secrets live today and adds the inventory row (section 8.1 now lists these names). `.env.example` takes placeholders only, in the
-style of `STEDI_API_KEY=replace-with-...`; add the `EPISODE_ALERT_*` placeholder lines in the PR that wires them (#760), not
-before.
+style of `STEDI_API_KEY=replace-with-...`; the `EPISODE_ALERT_*` and `DDE_PROVIDER` placeholder lines were added in the #760 follow-up PR
+(commented out, no values).
 
 ## Procedure for the platform operator
 

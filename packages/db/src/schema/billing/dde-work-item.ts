@@ -86,6 +86,10 @@ export const ddeWorkItem = pgTable(
     // operation id; set iff `submission_mode = 'provider'` (CHECK). Migration 1271.
     submissionMode: text("submission_mode").$type<DdeSubmissionModeValue>(),
     providerReference: text("provider_reference"),
+    // Durable "possibly sent" marker: set before a provider call, cleared when its outcome is applied. Migration 1272.
+    providerInDoubtAt: timestamp("provider_in_doubt_at", { withTimezone: true }),
+    // The membership whose DDE ID keyed the provider operation (status inquiries are made as that person).
+    providerOperatorMembershipId: uuid("provider_operator_membership_id"),
 
     // Outcome facts (codes only; never names or free text).
     dcn: text("dcn"),

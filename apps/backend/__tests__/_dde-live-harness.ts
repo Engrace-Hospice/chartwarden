@@ -39,6 +39,9 @@ export const USER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 /** A second member of ORG_A holding read / work / mark_submitted but NOT `billing.dde.admin`. */
 export const USER_C = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 export const MEMBERSHIP_C = "c1c1c1c1-c1c1-41c1-81c1-c1c1c1c1c1c1";
+/** A third member of ORG_A: works DDE items and may send through the provider, but is NOT `billing.dde.admin`. */
+export const USER_D = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+export const MEMBERSHIP_D = "d1d1d1d1-d1d1-41d1-81d1-d1d1d1d1d1d1";
 export const MEMBERSHIP_A = "a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1";
 export const MEMBERSHIP_B = "b1b1b1b1-b1b1-41b1-81b1-b1b1b1b1b1b1";
 export const PE_A = "77777777-7777-4777-8777-777777777777";
@@ -63,7 +66,9 @@ export function headerAuth(request: FastifyRequest): void {
     ? MEMBERSHIP_B
     : user === USER_C
       ? MEMBERSHIP_C
-      : MEMBERSHIP_A;
+      : user === USER_D
+        ? MEMBERSHIP_D
+        : MEMBERSHIP_A;
   if (request.headers["x-test-step-up"] === "1") request.context.attributes.stepUpRecent = true;
 }
 
@@ -103,8 +108,8 @@ export async function connectDdeLiveDb(dbUrl: string): Promise<DdeLiveDb> {
     );
   }
   await admin.query(
-    `INSERT INTO "user" (id,email) VALUES ($1,'dde-a@x.test'),($2,'dde-b@x.test'),($3,'dde-c@x.test')`,
-    [USER_A, USER_B, USER_C],
+    `INSERT INTO "user" (id,email) VALUES ($1,'dde-a@x.test'),($2,'dde-b@x.test'),($3,'dde-c@x.test'),($4,'dde-d@x.test')`,
+    [USER_A, USER_B, USER_C, USER_D],
   );
   const appUrl = await appRoleConnectionString(admin, dbUrl);
   const handle = createDbClient({ connectionString: appUrl });
@@ -150,6 +155,23 @@ export async function buildDdeApp(
             enabled: true,
             expiresAt: null,
             permissionKeys: ["billing.dde.read", "billing.dde.work", "billing.dde.mark_submitted"],
+          },
+        ],
+      },
+      {
+        orgId: ORG_A,
+        userId: USER_D,
+        grants: [
+          {
+            roleKey: "seed",
+            enabled: true,
+            expiresAt: null,
+            permissionKeys: [
+              "billing.dde.read",
+              "billing.dde.work",
+              "billing.dde.mark_submitted",
+              "billing.dde.submit_via_provider",
+            ],
           },
         ],
       },

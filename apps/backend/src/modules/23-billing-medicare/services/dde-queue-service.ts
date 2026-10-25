@@ -57,11 +57,13 @@ import {
 } from "./claim-state-service";
 import { applyDdeNoticeAcceptance } from "./dde-notice-acceptance";
 import {
+  DDE_PROVIDER_CALL_TIMEOUT_MS,
   PROVIDER_REFERENCE_PATTERN,
   ddeIdempotencyKey,
   ddeProviderAnswerRejected,
   ddeProviderRefusal,
   planProviderOutcome,
+  runWithTimeout,
 } from "./dde-provider-ops";
 import { loadControlNumber, loadKeyingSheet, loadSubject } from "./dde-queue-subject";
 
@@ -116,6 +118,8 @@ export interface DdeQueueServicePorts {
   readonly ddeProvider?: DdeAccessProvider;
   /** `test` MUST reach only vendor test mode. Defaults to `test` so a mis-wired caller can never reach production FISS. */
   readonly ddeUsage?: "test" | "production";
+  /** Bound on one vendor call (default {@link DDE_PROVIDER_CALL_TIMEOUT_MS}); past it the send is in doubt. */
+  readonly ddeProviderTimeoutMs?: number;
   readonly assigneeCanWork?: (
     organizationId: string,
     membershipId: string,
@@ -236,6 +240,9 @@ function viewOf(row: Item, asOf: string): DdeItemView {
     macAcceptedOn: row.macAcceptedOn,
     submissionMode: row.submissionMode,
     providerReference: row.providerReference,
+    providerInDoubt: row.providerInDoubtAt !== null,
+    providerInDoubtAt: row.providerInDoubtAt?.toISOString() ?? null,
+    providerOperatorMembershipId: row.providerOperatorMembershipId,
     dcn: row.dcn,
     rtpReasonCode: row.rtpReasonCode,
     outcomeCode: row.outcomeCode,
@@ -295,7 +302,7 @@ export function buildDdeQueueService(
     expectedVersion: number,
     event: DdeWorkItemEvent,
     patch: repositories.DdeWorkItemPatch,
-    historyDetail: Record<string, string | number | null> = {},
+    historyDetail: Record<string, string | number | boolean | null> = {},
   ): Promise<Item> => {
     const reduced = ddeWorkItemMachine.reduce(item.state, event, {
       attemptNumber: item.attemptNumber,
@@ -325,7 +332,7 @@ export function buildDdeQueueService(
     nextState: DdeWorkItemState,
     attemptNumber: number,
     patch: repositories.DdeWorkItemPatch,
-    historyDetail: Record<string, string | number | null>,
+    historyDetail: Record<string, string | number | boolean | null>,
   ): Promise<Item> => {
     const versioned = await new repositories.DdeWorkItemRepository(tx).transitionToState(
       item.id,
@@ -371,13 +378,14 @@ export function buildDdeQueueService(
     return updated;
   };
 
-  const mutate = async (
+  /** One short org-scoped transaction on an item the actor may work (ADR-0052 D6 ownership rule). */
+  const withOwnedItem = <T>(
     actor: DdeWriteActor,
     id: string,
-    fn: (tx: BillingTx, item: Item) => Promise<Item>,
-  ): Promise<DdeItemView> => {
+    fn: (tx: BillingTx, item: Item) => Promise<T>,
+  ): Promise<T> => {
     assertNotAiActor(actor);
-    const row = await inOrg(actor, async (tx) => {
+    return inOrg(actor, async (tx) => {
       const item = await loadItem(tx, actor, id);
       // An assigned item belongs to its assignee; an admin may step in. Reassigning (admin-gated) hands it over.
       if (
@@ -389,6 +397,14 @@ export function buildDdeQueueService(
       }
       return fn(tx, item);
     });
+  };
+
+  const mutate = async (
+    actor: DdeWriteActor,
+    id: string,
+    fn: (tx: BillingTx, item: Item) => Promise<Item>,
+  ): Promise<DdeItemView> => {
+    const row = await withOwnedItem(actor, id, fn);
     return viewOf(row, toIsoDate(now()));
   };
 
@@ -399,13 +415,50 @@ export function buildDdeQueueService(
   };
 
   /** The provider call context: the ACTING operator's membership (DDE IDs are per person, ADR-0103 D4). */
-  const providerContext = (actor: DdeWriteActor, item: Item) => ({
+  const providerContext = (operatorMembershipId: string, actor: DdeWriteActor, item: Item) => ({
     organizationId: item.organizationId,
     providerEntityId: item.providerEntityId,
-    operatorMembershipId: actor.membershipId,
+    operatorMembershipId,
     correlationId: actor.request?.correlationId ?? randomUUID(),
     usage: ports.ddeUsage ?? ("test" as const),
   });
+
+  const providerTimeoutMs = ports.ddeProviderTimeoutMs ?? DDE_PROVIDER_CALL_TIMEOUT_MS;
+
+  /** Append a lifecycle row to the item's history (no state change, no version bump), in its own transaction. */
+  const recordLifecycle = (
+    actor: DdeWriteActor,
+    item: Item,
+    event: "provider_send_refused" | "provider_in_doubt",
+    detail: Record<string, string | number | boolean | null>,
+  ): Promise<void> =>
+    inOrg(actor, async (tx) => {
+      await new repositories.DdeWorkEventRepository(tx).append({
+        organizationId: item.organizationId,
+        workItemId: item.id,
+        event,
+        fromState: item.state,
+        toState: item.state,
+        attemptNumber: item.attemptNumber,
+        actorMembershipId: actor.membershipId,
+        actorKind: "user",
+        detail: { ...detail, actorMembershipId: actor.membershipId },
+      });
+    });
+
+  /**
+   * The send may have reached FISS and we hold no outcome. The durable marker (set before the call) stays; this adds
+   * the history row, then refuses with `refusal`.
+   */
+  const leaveInDoubt = async (
+    actor: DdeWriteActor,
+    item: Item,
+    reason: string,
+    refusal: ChartWardenError,
+  ): Promise<never> => {
+    await recordLifecycle(actor, item, "provider_in_doubt", { reason });
+    throw refusal;
+  };
 
   const staleVersion = (item: Item, expectedVersion: number): void => {
     if (item.version === expectedVersion) return;
@@ -596,10 +649,16 @@ export function buildDdeQueueService(
           {
             submittedAt: now(),
             submissionMode: "manual",
+            // An operator who keyed it by hand settles any "possibly sent" provider attempt.
+            providerInDoubtAt: null,
+            providerOperatorMembershipId: null,
             ...(body.dcn !== undefined ? { dcn: body.dcn } : {}),
             ...(body.notes !== undefined ? { notes: body.notes } : {}),
           },
-          { dcn: body.dcn ?? null },
+          {
+            dcn: body.dcn ?? null,
+            ...(item.providerInDoubtAt ? { resolvedProviderInDoubt: true } : {}),
+          },
         ),
       );
     },
@@ -698,14 +757,18 @@ export function buildDdeQueueService(
       });
     },
 
-    submitViaProvider(actor, id, expectedVersion) {
+    async submitViaProvider(actor, id, expectedVersion) {
       assertNotAiActor(actor);
       // Unbound first: never ask for a second factor for an operation that cannot run.
       const provider = requireProvider();
       requireStepUp(actor);
-      return mutate(actor, id, async (tx, item) => {
-        // Refuse before any vendor call: a stale view or a wrong state must never reach FISS.
+
+      // Phase 1 (short transaction): refuse a stale/wrong-state/in-doubt item, then durably mark it "possibly sent"
+      // BEFORE the vendor is reached, so no outcome of phase 2 (timeout, crash, throw) can leave it unmarked.
+      const started = await withOwnedItem(actor, id, async (tx, item) => {
         staleVersion(item, expectedVersion);
+        // A send that may have reached FISS is never repeated through the provider (resolve it by hand first).
+        if (item.providerInDoubtAt) throw ddeProviderRefusal(DDE.IN_DOUBT);
         if (
           ddeWorkItemMachine.reduce(item.state, "submit", { attemptNumber: item.attemptNumber })
             .error
@@ -714,75 +777,188 @@ export function buildDdeQueueService(
         }
         const controlNumber = await loadControlNumber(tx, item);
         if (!controlNumber) throw new NotFoundError("dde subject");
-        const result = await provider.submitOperation(providerContext(actor, item), {
-          kind: item.itemType,
-          controlNumber,
-          ...(item.dcn ? { dcn: item.dcn } : {}),
-          // Derived, never minted: a double click replays the first operation instead of keying a second one.
-          idempotencyKey: ddeIdempotencyKey(item.id, item.attemptNumber),
-          payload: {
-            format: "json",
-            document: {
-              itemType: item.itemType,
-              attemptNumber: item.attemptNumber,
-              keying: await loadKeyingSheet(tx, item),
-            },
-          },
-        });
-        if (!result.ok) throw ddeProviderRefusal(result.degraded.code);
-        const reference = result.data.providerReference;
-        if (!PROVIDER_REFERENCE_PATTERN.test(reference)) {
-          throw ddeProviderAnswerRejected("the provider's operation reference is not usable");
-        }
-        return applyEvent(
+        const keying = await loadKeyingSheet(tx, item);
+        const marked = await persist(
           tx,
           actor,
           item,
           expectedVersion,
+          "provider_send_started",
+          item.state,
+          item.attemptNumber,
+          { providerInDoubtAt: now(), providerOperatorMembershipId: actor.membershipId },
+          { idempotencyKey: ddeIdempotencyKey(item.id, item.attemptNumber) },
+        );
+        return { marked, controlNumber, keying };
+      });
+      const { marked, controlNumber, keying } = started;
+
+      // Phase 2 (NO transaction held): the vendor call, bounded; the signal is handed to the port.
+      const bounded = await runWithTimeout(
+        (signal) =>
+          provider.submitOperation(
+            { ...providerContext(actor.membershipId, actor, marked), signal },
+            {
+              kind: marked.itemType,
+              controlNumber,
+              ...(marked.dcn ? { dcn: marked.dcn } : {}),
+              // Derived, never minted: a replay (double click, retry of a lost answer) is the same operation.
+              idempotencyKey: ddeIdempotencyKey(marked.id, marked.attemptNumber),
+              payload: {
+                format: "json",
+                document: {
+                  itemType: marked.itemType,
+                  attemptNumber: marked.attemptNumber,
+                  keying,
+                },
+              },
+            },
+          ),
+        providerTimeoutMs,
+      );
+      if (bounded.kind !== "done") {
+        return leaveInDoubt(
+          actor,
+          marked,
+          bounded.kind,
+          ddeProviderRefusal(DDE.IN_DOUBT),
+        );
+      }
+      const result = bounded.value;
+
+      // Phase 3 (short transaction): apply the outcome against the item as it is NOW (fresh version).
+      if (!result.ok) {
+        if (result.degraded.code === DDE.IN_DOUBT) {
+          return leaveInDoubt(actor, marked, DDE.IN_DOUBT, ddeProviderRefusal(DDE.IN_DOUBT));
+        }
+        // Any other degraded code says the operation was refused before send: clear the marker.
+        await inOrg(actor, async (tx) => {
+          const current = await loadItem(tx, actor, id);
+          if (!current.providerInDoubtAt) return;
+          await persist(
+            tx,
+            actor,
+            current,
+            current.version,
+            "provider_send_refused",
+            current.state,
+            current.attemptNumber,
+            { providerInDoubtAt: null, providerOperatorMembershipId: null },
+            { code: result.degraded.code },
+          );
+        });
+        throw ddeProviderRefusal(result.degraded.code);
+      }
+      const reference = result.data.providerReference;
+      if (!PROVIDER_REFERENCE_PATTERN.test(reference)) {
+        return leaveInDoubt(
+          actor,
+          marked,
+          "unusable_reference",
+          ddeProviderAnswerRejected("the provider's operation reference is not usable"),
+        );
+      }
+      const applied = await inOrg(actor, async (tx) => {
+        const current = await loadItem(tx, actor, id);
+        // Someone moved the item while the vendor worked (e.g. a cancel): the operation exists at the vendor but
+        // cannot be attached to this attempt, so the marker stays and the item reads "possibly sent".
+        if (
+          current.state !== marked.state ||
+          current.attemptNumber !== marked.attemptNumber ||
+          !current.providerInDoubtAt
+        ) {
+          return null;
+        }
+        return applyEvent(
+          tx,
+          actor,
+          current,
+          current.version,
           "submit",
-          { submittedAt: now(), submissionMode: "provider", providerReference: reference },
+          {
+            submittedAt: now(),
+            submissionMode: "provider",
+            providerReference: reference,
+            providerInDoubtAt: null,
+          },
           { submissionMode: "provider", providerReference: reference },
         );
       });
+      if (!applied) {
+        return leaveInDoubt(actor, marked, "item_changed", ddeProviderRefusal(DDE.IN_DOUBT));
+      }
+      return viewOf(applied, toIsoDate(now()));
     },
 
     async syncProviderOutcome(actor, id) {
       assertNotAiActor(actor);
       const provider = requireProvider();
-      let providerState: DdeProviderSyncView["providerState"] = "received";
-      const item = await mutate(actor, id, async (tx, current) => {
+
+      // Phase 1 (short transaction): ownership and eligibility. Provider calls about an operation are made as the
+      // person whose DDE ID keyed it (ADR-0103 D4); older rows without one fall back to the syncing operator.
+      const target = await withOwnedItem(actor, id, async (_tx, current) => {
         const reference = current.providerReference;
         if (current.state !== "submitted" || current.submissionMode !== "provider" || !reference) {
           throw new ConflictError(
-            "only a provider-submitted item awaiting an answer can be synced",
+            current.providerInDoubtAt
+              ? "this item may already have been sent through the provider; check DDE and record the submission by hand"
+              : "only a provider-submitted item awaiting an answer can be synced",
           );
         }
-        const result = await provider.fetchOperationStatus(
-          providerContext(actor, current),
+        return {
           reference,
-        );
-        if (!result.ok) throw ddeProviderRefusal(result.degraded.code);
-        const status = result.data;
-        providerState = status.state;
-        const latest = status.latest;
-        if (status.state === "received" || status.state === "not_found") return current;
-        if (
-          !latest ||
-          latest.providerReference !== reference ||
-          latest.disposition !== status.state
-        ) {
-          throw ddeProviderAnswerRejected("the provider's answer does not match this operation");
-        }
-        const recordedAt = now();
-        const plan = planProviderOutcome(latest, toIsoDate(recordedAt));
-        if (plan.kind === "invalid") throw ddeProviderAnswerRejected(plan.reason);
-        // An answer cannot predate the submission it answers (Eastern day): a stale provider date would corrupt timeliness.
-        if (
-          plan.kind === "accepted" &&
-          current.submittedAt &&
-          plan.macAcceptedOn < toIsoDate(current.submittedAt)
-        ) {
-          throw ddeProviderAnswerRejected("the provider's acceptance date predates the submission");
+          operatorMembershipId: current.providerOperatorMembershipId ?? actor.membershipId,
+          item: current,
+        };
+      });
+
+      // Phase 2 (NO transaction held): the status inquiry, bounded. Nothing is sent, so a timeout is just unavailable.
+      const bounded = await runWithTimeout(
+        (signal) =>
+          provider.fetchOperationStatus(
+            {
+              ...providerContext(target.operatorMembershipId, actor, target.item),
+              signal,
+            },
+            target.reference,
+          ),
+        providerTimeoutMs,
+      );
+      if (bounded.kind !== "done") throw ddeProviderRefusal(DDE.UNAVAILABLE);
+      const result = bounded.value;
+      if (!result.ok) throw ddeProviderRefusal(result.degraded.code);
+      const status = result.data;
+      const reference = target.reference;
+      const providerState: DdeProviderSyncView["providerState"] = status.state;
+      const latest = status.latest;
+      if (status.state === "received" || status.state === "not_found") {
+        return { item: viewOf(target.item, toIsoDate(now())), providerState };
+      }
+      if (
+        !latest ||
+        latest.providerReference !== reference ||
+        latest.disposition !== status.state
+      ) {
+        throw ddeProviderAnswerRejected("the provider's answer does not match this operation");
+      }
+      const recordedAt = now();
+      const plan = planProviderOutcome(latest, toIsoDate(recordedAt));
+      if (plan.kind === "invalid") throw ddeProviderAnswerRejected(plan.reason);
+      // An answer cannot predate the submission it answers (Eastern day): a stale provider date would corrupt timeliness.
+      if (
+        plan.kind === "accepted" &&
+        target.item.submittedAt &&
+        plan.macAcceptedOn < toIsoDate(target.item.submittedAt)
+      ) {
+        throw ddeProviderAnswerRejected("the provider's acceptance date predates the submission");
+      }
+
+      // Phase 3 (short transaction): apply to the item as it is now; the reducer refuses anything but `submitted`
+      // (a concurrent sync or manual outcome got there first => 409), and the reference must be unchanged.
+      const row = await inOrg(actor, async (tx) => {
+        const current = await loadItem(tx, actor, id);
+        if (current.providerReference !== reference) {
+          throw new ConflictError("the item's provider operation changed while syncing");
         }
         const detail = { submissionMode: "provider", providerReference: reference };
         if (plan.kind === "returned") {
@@ -826,7 +1002,7 @@ export function buildDdeQueueService(
           { ...detail, macAcceptedOn, dcn: plan.dcn },
         );
       });
-      return { item, providerState };
+      return { item: viewOf(row, toIsoDate(now())), providerState };
     },
 
     retry(actor, id, expectedVersion) {
@@ -836,6 +1012,8 @@ export function buildDdeQueueService(
           // A new attempt starts unsubmitted: the previous attempt's path and provider operation do not carry over.
           submissionMode: null,
           providerReference: null,
+          providerInDoubtAt: null,
+          providerOperatorMembershipId: null,
         }),
       );
     },
