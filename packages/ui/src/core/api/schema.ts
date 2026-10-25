@@ -43888,6 +43888,17 @@ export interface operations {
                             /** Format: date-time */
                             occurredAt: string;
                         }[];
+                        keying: {
+                            screenHint: string;
+                            fields: {
+                                label: string;
+                                value: string;
+                            }[];
+                            rejectionCodes: {
+                                code: string;
+                                meaning: string | null;
+                            }[];
+                        };
                     };
                 };
             };

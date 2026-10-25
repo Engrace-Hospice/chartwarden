@@ -82,6 +82,12 @@ interface Setup {
   listError?: boolean;
 }
 
+const KEYING = {
+  screenHint: "FISS hint text",
+  fields: [{ label: "Type of bill", value: "81A" }],
+  rejectionCodes: [{ code: "A7:21", meaning: "Rejected for invalid information" }],
+};
+
 function setup(o: Setup = {}) {
   const pages = o.pages ?? [{ items: [item()], hasMore: false, nextCursor: null }];
   const post = o.post ?? vi.fn(async () => ok({}));
@@ -94,7 +100,7 @@ function setup(o: Setup = {}) {
     }
     if (path === "/api/v1/billing/dde-items/{id}") {
       if (o.detail === "missing") return fail(404, "NOT_FOUND");
-      return ok({ ...(o.detail ?? pages[0]?.items[0] ?? item()), events: EVENTS });
+      return ok({ ...(o.detail ?? pages[0]?.items[0] ?? item()), events: EVENTS, keying: KEYING });
     }
     return ok({ firstName: "Pat", lastName: "Patient" });
   });
@@ -225,6 +231,16 @@ describe("DdeQueue deep links", () => {
     mount(api);
     const r = await rail();
     expect(await r.findByText("This item is no longer in the list.")).toBeTruthy();
+  });
+
+  it("shows the keying sheet: hint, fields, explained reject codes and a pointer to the chart for the Medicare ID", async () => {
+    const { api } = setup({});
+    mount(api);
+    const r = await rail();
+    expect(await r.findByText("FISS hint text")).toBeTruthy();
+    expect(r.getByText("81A")).toBeTruthy();
+    expect(r.getByText("Rejected for invalid information")).toBeTruthy();
+    expect(r.getByText("Open the patient chart to reveal it")).toBeTruthy();
   });
 
   it("explains an item that cannot be found", async () => {

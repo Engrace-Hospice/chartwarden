@@ -41,7 +41,8 @@ export type DdeWorkItemEvent =
   | "return"
   | "retry"
   | "close"
-  | "cancel";
+  | "cancel"
+  | "supersede";
 
 export interface DdeWorkItemTransition {
   readonly from: DdeWorkItemState;
@@ -63,6 +64,13 @@ export const DDE_WORK_ITEM_TRANSITIONS: readonly DdeWorkItemTransition[] = [
   { from: "queued", event: "cancel", to: "cancelled" },
   { from: "assigned", event: "cancel", to: "cancelled" },
   { from: "in_progress", event: "cancel", to: "cancelled" },
+  // Supersede is SYSTEM-only: the payer's own electronic acknowledgment (a 277CA acceptance of the claim / notice)
+  // resolved the subject, so any open item for it is moot. Recorded in history as a system `close`.
+  { from: "queued", event: "supersede", to: "closed" },
+  { from: "assigned", event: "supersede", to: "closed" },
+  { from: "in_progress", event: "supersede", to: "closed" },
+  { from: "submitted", event: "supersede", to: "closed" },
+  { from: "returned", event: "supersede", to: "closed" },
 ] as const;
 
 /** Terminal states: no outbound edge. */

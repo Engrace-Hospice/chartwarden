@@ -184,9 +184,18 @@ export const DdeItemViewSchema = Type.Object({
   updatedAt: Type.String({ format: "date-time" }),
 });
 
+/** What the operator keys into DDE (ADR-0052 amendment): identifiers and dates only; never an MBI or free text. */
+export const DdeKeyingSheetSchema = Type.Object({
+  screenHint: Type.String(),
+  fields: Type.Array(Type.Object({ label: Type.String(), value: Type.String() })),
+  rejectionCodes: Type.Array(
+    Type.Object({ code: Type.String(), meaning: nullable(Type.String()) }),
+  ),
+});
+
 export const DdeItemDetailViewSchema = Type.Composite([
   DdeItemViewSchema,
-  Type.Object({ events: Type.Array(DdeEventViewSchema) }),
+  Type.Object({ events: Type.Array(DdeEventViewSchema), keying: DdeKeyingSheetSchema }),
 ]);
 
 export const DdeItemListViewSchema = Type.Object({

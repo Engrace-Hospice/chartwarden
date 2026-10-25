@@ -18,7 +18,7 @@
 //
 // Runs on the cron's org-scoped tx (system actor, `source = 'watchdog'`, no membership). Payloads carry ids, type and
 // the deadline only.
-import { repositories } from "@chartwarden/billing";
+import { ddeWorkItemMachine, repositories } from "@chartwarden/billing";
 import type { BillingTx, WriteOutboxPort } from "./claim-state-service";
 
 /** Priority 1 (high): a notice already in its filing window outranks routine claim work. */
@@ -48,8 +48,23 @@ export interface DdeClaimRejected {
   readonly rejectionCodes: readonly string[];
 }
 
+/** A subject the payer's own electronic acknowledgment resolved (a 277CA acceptance): its open items are moot. */
+export interface DdeSubjectResolved {
+  readonly organizationId: string;
+  readonly subjectKind: "claim" | "noe_record" | "notr_record";
+  readonly subjectId: string;
+  /** The acknowledgment that resolved it (history detail only). */
+  readonly acknowledgmentId?: string;
+}
+
 /** What the window-watch crons and the claim-ack cron call. */
 export interface DdeWatchdogPort {
+  /**
+   * Close every open item on a subject the MAC accepted electronically (ADR-0052 amendment 2026-10): the operator
+   * must not key work the payer already accepted. System actor, history event `close` with
+   * `trigger = payer_accepted`; an accepted/closed/cancelled item is untouched, so a replay closes nothing.
+   */
+  supersedeForSubject(tx: BillingTx, subject: DdeSubjectResolved): Promise<{ readonly closed: number }>;
   ensureNoticeItem(tx: BillingTx, notice: DdeNoticeAtRisk): Promise<{ readonly created: boolean }>;
   ensureClaimRtpItem(
     tx: BillingTx,
@@ -97,6 +112,57 @@ export function buildDdeWatchdog(
   };
 
   return {
+    async supersedeForSubject(tx, subject) {
+      const items = new repositories.DdeWorkItemRepository(tx);
+      let closed = 0;
+      for (const item of await items.listOpenForSubject(subject.subjectKind, subject.subjectId)) {
+        const reduced = ddeWorkItemMachine.reduce(item.state, "supersede", {
+          attemptNumber: item.attemptNumber,
+        });
+        if (reduced.error) continue;
+        const res = await items.transitionToState(item.id, item.version, reduced.state, {});
+        // A concurrent human edit won the version race: leave it to them, they are working it right now.
+        if (!res.ok) continue;
+        closed += 1;
+        await new repositories.DdeWorkEventRepository(tx).append({
+          organizationId: item.organizationId,
+          workItemId: item.id,
+          event: "close",
+          fromState: item.state,
+          toState: "closed",
+          attemptNumber: item.attemptNumber,
+          actorMembershipId: null,
+          actorKind: "system",
+          detail: {
+            trigger: "payer_accepted",
+            ...(subject.acknowledgmentId ? { acknowledgmentId: subject.acknowledgmentId } : {}),
+          },
+        });
+        if (!ports.outbox) continue;
+        await ports.outbox.publish(tx, {
+          eventName: "m23.dde_item.state_changed",
+          organizationId: item.organizationId,
+          aggregateKind: "dde_work_item",
+          aggregateId: item.id,
+          payload: {
+            ddeItemId: item.id,
+            itemType: item.itemType,
+            providerEntityId: item.providerEntityId,
+            event: "close",
+            fromState: item.state,
+            toState: "closed",
+            attemptNumber: item.attemptNumber,
+            deadlineAt: item.deadlineAt,
+            macAcceptedOn: item.macAcceptedOn,
+            dcn: item.dcn,
+            rtpReasonCode: item.rtpReasonCode,
+            outcomeCode: item.outcomeCode,
+          },
+        });
+      }
+      return { closed };
+    },
+
     async ensureClaimRtpItem(tx, claim) {
       const created = await new repositories.DdeWorkItemRepository(tx).insertIfNoOpen({
         organizationId: claim.organizationId,

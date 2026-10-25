@@ -15,6 +15,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { createDbActorEnrichmentReader } from "@chartwarden/auth";
+import { withOrgContext } from "@chartwarden/tenancy";
 import type { FastifyInstance } from "fastify";
 import type { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -39,9 +40,11 @@ import {
   ORG_B,
   PE_A,
   USER_A,
+  USER_B,
   USER_C,
   buildDdeApp,
   connectDdeLiveDb,
+  seedClaimWithSubmission,
   seedNoe,
   seedNotr,
 } from "./_dde-live-harness";
@@ -654,6 +657,7 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
             return real.ensureNoticeItem(tx, notice);
           },
           ensureClaimRtpItem: real.ensureClaimRtpItem,
+          supersedeForSubject: real.supersedeForSubject,
         },
         logger: { error: (fields) => void logged.push(fields) },
       });
@@ -684,6 +688,7 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
             throw new Error("down");
           },
           ensureClaimRtpItem: async () => ({ created: false }),
+          supersedeForSubject: async () => ({ closed: 0 }),
         },
       });
       const err = (await runNoeWindowWatch(deps).then(
@@ -704,6 +709,7 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
             throw new Error("dde watchdog down");
           },
           ensureClaimRtpItem: async () => ({ created: false }),
+          supersedeForSubject: async () => ({ closed: 0 }),
         },
       });
       const failed = (await runNoeWindowWatch(failing).then(
@@ -718,6 +724,95 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
       );
       expect(warned.rowCount).toBe(1);
       expect(await itemFor(noe)).toBe(0);
+    });
+  });
+
+  describe("keying sheet and payer-acceptance supersede (ADR-0052 amendment)", () => {
+    const watchdog = () => buildDdeWatchdog({ outbox: live.bound("m23") });
+    const supersede = (org: string, subjectKind: "claim" | "noe_record", subjectId: string) =>
+      withOrgContext(live.handle.db as never, { organizationId: org, userId: USER_A }, (tx) =>
+        watchdog().supersedeForSubject(tx as never, {
+          organizationId: org,
+          subjectKind,
+          subjectId,
+        }),
+      );
+
+    it("the detail route carries the NOE keying sheet (TOB, election date, deadline), never an MBI", async () => {
+      const noe = await seedNoe(admin, { electionDate: "2026-07-01", windowTarget: "2026-07-06" });
+      const item = (await post("", asA(), { itemType: "noe", subjectId: noe })).json();
+      const detail = (await get(`/${item.ddeWorkItemId}`)).json();
+      const fields = Object.fromEntries(
+        detail.keying.fields.map((f: { label: string; value: string }) => [f.label, f.value]),
+      );
+      expect(fields["Type of bill"]).toBe("81A");
+      expect(fields["Election / admission date"]).toBe("2026-07-01");
+      expect(fields["Filing deadline (MAC acceptance)"]).toBe("2026-07-06");
+      expect(detail.keying.screenHint).toContain("81A");
+      expect(JSON.stringify(detail.keying)).not.toMatch(/mbi/i);
+    });
+
+    it("the detail route carries the claim keying sheet for an RTP correction", async () => {
+      const { claimId } = await seedClaimWithSubmission(admin);
+      const item = (await post("", asA(), { itemType: "rtp_correction", subjectId: claimId })).json();
+      const detail = (await get(`/${item.ddeWorkItemId}`)).json();
+      const labels = detail.keying.fields.map((f: { label: string }) => f.label);
+      expect(labels).toEqual(
+        expect.arrayContaining(["Type of bill", "Statement from", "Statement through"]),
+      );
+      expect(detail.keying.screenHint).toContain("B9997");
+    });
+
+    it("supersede closes the open item with a system history row and a catalog-valid event; a replay closes nothing", async () => {
+      const noe = await seedNoe(admin);
+      const item = (await post("", asA(), { itemType: "noe", subjectId: noe })).json();
+      const id = item.ddeWorkItemId as string;
+
+      expect(await supersede(ORG_A, "noe_record", noe)).toEqual({ closed: 1 });
+      expect(await supersede(ORG_A, "noe_record", noe)).toEqual({ closed: 0 });
+
+      const row = (await admin.query("SELECT state FROM dde_work_item WHERE id=$1", [id])).rows[0];
+      expect(row.state).toBe("closed");
+      const ev = (
+        await admin.query(
+          "SELECT event, actor_kind, actor_membership_id, detail FROM dde_work_event WHERE work_item_id=$1 ORDER BY occurred_at DESC, id DESC LIMIT 1",
+          [id],
+        )
+      ).rows[0];
+      expect(ev).toMatchObject({ event: "close", actor_kind: "system", actor_membership_id: null });
+      expect(ev.detail).toMatchObject({ trigger: "payer_accepted" });
+      const out = await admin.query(
+        "SELECT payload FROM outbox_event WHERE event_type='m23.dde_item.state_changed' AND payload->>'ddeItemId'=$1 AND payload->>'toState'='closed'",
+        [id],
+      );
+      expect(out.rowCount).toBe(1);
+    });
+
+    it("supersede leaves a finished (accepted / cancelled) item alone", async () => {
+      const noe = await seedNoe(admin);
+      const item = (await post("", asA(), { itemType: "noe", subjectId: noe })).json();
+      await post(`/${item.ddeWorkItemId}/cancel`, asA(), { expectedVersion: 0 });
+      expect(await supersede(ORG_A, "noe_record", noe)).toEqual({ closed: 0 });
+      const row = (
+        await admin.query("SELECT state FROM dde_work_item WHERE id=$1", [item.ddeWorkItemId])
+      ).rows[0];
+      expect(row.state).toBe("cancelled");
+    });
+
+    it("tenant isolation (as chartwarden_app): another org's acceptance cannot close this org's item, and cannot read its keying sheet", async () => {
+      const noe = await seedNoe(admin);
+      const item = (await post("", asA(), { itemType: "noe", subjectId: noe })).json();
+      expect(await supersede(ORG_B, "noe_record", noe)).toEqual({ closed: 0 });
+      const row = (
+        await admin.query("SELECT state FROM dde_work_item WHERE id=$1", [item.ddeWorkItemId])
+      ).rows[0];
+      expect(row.state).toBe("queued");
+      const asB = await app.inject({
+        method: "GET",
+        url: `${BASE}/${item.ddeWorkItemId}`,
+        headers: { "x-test-user": USER_B },
+      });
+      expect(asB.statusCode).toBe(404);
     });
   });
 });

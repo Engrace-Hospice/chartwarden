@@ -74,7 +74,14 @@ export interface DdeEvent {
 }
 
 /** The detail response: the item plus its append-only history. */
-export type DdeItemDetail = DdeItem & { events: DdeEvent[] };
+export type DdeItemDetail = DdeItem & { events: DdeEvent[]; keying?: DdeKeyingSheet };
+
+/** What to key into DDE (ids, dates and codes only; the MBI comes from the patient chart). */
+export interface DdeKeyingSheet {
+  screenHint: string;
+  fields: { label: string; value: string }[];
+  rejectionCodes: { code: string; meaning: string | null }[];
+}
 
 export const TYPE_LABEL: Record<DdeItemType, string> = {
   noe: "Notice of Election",

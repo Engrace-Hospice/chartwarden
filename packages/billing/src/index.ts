@@ -56,6 +56,7 @@ export {
 } from "./machines/dde-work-item";
 export * from "./dde/notes";
 export * from "./dde/deadline";
+export * from "./dde/keying";
 export * from "./transfer-notice";
 // D7 the pure HIPPS calculator (LOC-segment → per-diem, days-1-7 vs days-8+, wage-index snapshot).
 export * from "./per-diem-class";

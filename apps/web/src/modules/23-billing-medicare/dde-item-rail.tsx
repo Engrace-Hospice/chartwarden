@@ -260,6 +260,26 @@ export function ItemRail({
           </dl>
         </section>
 
+        {n.keying ? (
+          <section className="wx-drawer-card" aria-label="Key into DDE">
+            <h3>Key into DDE</h3>
+            <p className="wx-row-sub">{n.keying.screenHint}</p>
+            <dl className="wx-kv">
+              {n.keying.fields.map((f) => (
+                <Row key={f.label} term={f.label}>
+                  <span className="wx-nums">{f.value}</span>
+                </Row>
+              ))}
+              <Row term="Medicare ID">Open the patient chart to reveal it</Row>
+              {n.keying.rejectionCodes.map((c) => (
+                <Row key={c.code} term={`Reject ${c.code}`}>
+                  {c.meaning ?? "Look this code up on the DDE screen"}
+                </Row>
+              ))}
+            </dl>
+          </section>
+        ) : null}
+
         <section className="wx-drawer-card" aria-label="History">
           <h3>History</h3>
           {n.events.length === 0 ? (

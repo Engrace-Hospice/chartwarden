@@ -1545,7 +1545,7 @@ async function routeAck(
     return;
   }
   if (submission.kind === "noe" || submission.kind === "notr") {
-    await applyNoticeAck(
+    const state = await applyNoticeAck(
       tx,
       { outbox: outboxOf(deps), alerts: alertsOf(deps) },
       {
@@ -1556,6 +1556,16 @@ async function routeAck(
       },
       ack,
     );
+    const noticeId = submission.kind === "noe" ? submission.noeId : submission.notrId;
+    if (noticeId && state) {
+      await followUpNoticeAck(deps, tx, {
+        kind: submission.kind,
+        noticeId,
+        state,
+        payerStage: ack.kind === "ack_277ca" && ack.stage !== "clearinghouse",
+        organizationId: ack.organizationId,
+      });
+    }
     return;
   }
   await applyClaimAck(tx, deps, submission, ack);
@@ -1605,6 +1615,105 @@ async function queueRtpCorrection(
       },
       "dde rtp queueing failed",
     );
+  }
+}
+
+/** Log a savepoint-isolated DDE follow-up failure: ids, error class and SQLSTATE only (never `err.message`). */
+function logDdeFollowUpFailure(
+  deps: M23WorkerDeps,
+  fields: Record<string, string>,
+  err: unknown,
+  message: string,
+): void {
+  const pgError = err as { code?: unknown; constraint?: unknown } | null;
+  deps.logger?.error(
+    {
+      ...fields,
+      errorName: err instanceof Error ? err.name : typeof err,
+      ...(typeof pgError?.code === "string" ? { code: pgError.code } : {}),
+      ...(typeof pgError?.constraint === "string" ? { constraint: pgError.constraint } : {}),
+    },
+    message,
+  );
+}
+
+/**
+ * ADR-0052 amendment: what a notice's electronic acknowledgment means for the DDE queue. A payer-stage (277CA) REJECTION
+ * of an NOE/NOTR files its DDE item immediately (the notice row is terminal-rejected and never reaches the window-watch,
+ * yet the 5-day clock is still running); a 277CA ACCEPTANCE closes any open item (the MAC already has it). Own savepoint:
+ * a failure is logged and never undoes the acknowledgment.
+ */
+async function followUpNoticeAck(
+  deps: M23WorkerDeps,
+  tx: BillingDb,
+  notice: {
+    readonly kind: "noe" | "notr";
+    readonly noticeId: string;
+    readonly state: string;
+    readonly payerStage: boolean;
+    readonly organizationId: string;
+  },
+): Promise<void> {
+  const watchdog = deps.ddeWatchdog;
+  if (!watchdog) return;
+  const subjectKind = notice.kind === "noe" ? "noe_record" : "notr_record";
+  try {
+    await tx.transaction(async (savepoint) => {
+      const sp = savepoint as unknown as BillingDb;
+      if (notice.state === "ack_accepted") {
+        await watchdog.supersedeForSubject(sp, {
+          organizationId: notice.organizationId,
+          subjectKind,
+          subjectId: notice.noticeId,
+        });
+        return;
+      }
+      if (notice.state !== "ack_rejected" || !notice.payerStage) return;
+      const row =
+        notice.kind === "noe"
+          ? await new NoeRepository(sp).findById(notice.noticeId)
+          : await new NotrRepository(sp).findById(notice.noticeId);
+      if (!row) return;
+      await watchdog.ensureNoticeItem(sp, {
+        organizationId: notice.organizationId,
+        itemType: notice.kind,
+        noticeId: row.id,
+        providerEntityId: row.providerEntityId,
+        patientId: row.patientId,
+        deadlineAt: row.windowTargetAt,
+      });
+    });
+  } catch (err) {
+    logDdeFollowUpFailure(
+      deps,
+      { organizationId: notice.organizationId, kind: notice.kind, noticeId: notice.noticeId },
+      err,
+      "dde notice follow-up failed",
+    );
+  }
+}
+
+/** A 277CA acceptance of a claim closes its open DDE items (an RTP/entry the MAC has since accepted). */
+async function supersedeClaimItems(
+  deps: M23WorkerDeps,
+  tx: BillingDb,
+  organizationId: string,
+  claimId: string,
+  acknowledgmentId: string,
+): Promise<void> {
+  const watchdog = deps.ddeWatchdog;
+  if (!watchdog) return;
+  try {
+    await tx.transaction(async (savepoint) => {
+      await watchdog.supersedeForSubject(savepoint as unknown as BillingDb, {
+        organizationId,
+        subjectKind: "claim",
+        subjectId: claimId,
+        acknowledgmentId,
+      });
+    });
+  } catch (err) {
+    logDdeFollowUpFailure(deps, { organizationId, claimId }, err, "dde claim supersede failed");
   }
 }
 
@@ -1690,6 +1799,7 @@ async function applyClaimAck(
     }
   } else if (event === "ack_277ca_accepted") {
     await emit("m23.claim.acknowledged", { payerClaimControlNumber: ack.payerControlNumber ?? "" });
+    await supersedeClaimItems(deps, tx, ack.organizationId, claimId, recorded.id);
   } else if (event === "ack_277ca_partial") {
     // The 277CA parse carries no per-line accept/reject sets yet.
     await emit("m23.claim.acknowledgment_partial", {
