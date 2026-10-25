@@ -6,6 +6,8 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useState } from "react";
+import type { JSX } from "react";
 // apps/web/src/modules/24-billing-medicaid — M24, the ORG-WIDE VALIDATION WORKLIST (R2, §5.1 #5). The
 // compliance/biller view of every claim sitting in FAILED_VALIDATION or ACK_PARTIAL, grouped by the rule
 // key that is holding it, with a remediation hint per group and a per-claim drill-in.
@@ -16,8 +18,7 @@ import {
 // blocked" from "blocked, but attributable to no readable rule" — and reports `truncated` when its scan hit
 // the cap. Nothing here is silently dropped: on a compliance surface a quiet truncation reads as
 // "nothing else is failing". Lantern: WorkQueueLayout + No-Line table (§6.7); CSS-var tokens only.
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import { humanize, shortId } from "./medicaid-status";
 import {
   linkMonoStyle,
@@ -126,7 +127,11 @@ export function MedicaidValidationQueue(): JSX.Element {
               Open claim workbench →
             </a>
           }
-        />
+        >
+          <div style={{ marginTop: "0.75rem" }}>
+            <MedicaidBillingTabs />
+          </div>
+        </PageHeader>
       }
       filters={
         <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>

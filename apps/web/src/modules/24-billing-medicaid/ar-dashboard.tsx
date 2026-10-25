@@ -8,14 +8,15 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useState } from "react";
+import type { JSX } from "react";
 // apps/web/src/modules/24-billing-medicaid — M24, the MEDICAID AR DASHBOARD (R2, §5.1 #1). The billing
 // manager's landing surface: open-AR totals, aging buckets, per-state AR balance, and the rolling denial
 // rate + MCO breakdown from the metrics read. Backed by GET /api/v1/medicaid-ar-dashboard (+ /metrics);
 // the metrics read is best-effort (a manager may hold claim.read_ar_dashboard without read_metrics), so it
 // degrades to an inline note rather than failing the page. Lantern: DashboardLayout + KpiStrip + No-Line
 // tables (§6.7), tabular-nums money, CSS-var tokens only. The server is the only authz point (ADR-0030).
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import { money, pct, shortId } from "./medicaid-status";
 import {
   Card,
@@ -110,6 +111,9 @@ export function MedicaidArDashboard(): JSX.Element {
         >
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review Medicaid open AR by aging bucket, service state, and MCO attribution.
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <MedicaidBillingTabs />
           </div>
         </PageHeader>
       }

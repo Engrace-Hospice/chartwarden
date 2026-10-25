@@ -11,14 +11,15 @@ import {
   StatusPill,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { JSX } from "react";
 // apps/web/src/modules/24-billing-medicaid — M24, the METRICS SURFACE (R2, §5.1 #18). The billing manager's
 // M33-fed read: denial rate, open AR aging, MCO breakdown, and per-state channel availability. Channel
 // availability is derived from the trading-partner credentials (a state with no active credential cannot be
 // submitted to) and is read best-effort — a manager without org-admin access sees the metrics without the
 // channel panel rather than an error. Backed by GET /api/v1/medicaid-ar-dashboard/metrics (+ the credential
 // read). Lantern: DashboardLayout + KpiStrip + No-Line tables (§6.7); CSS-var tokens only.
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { JSX } from "react";
+import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import { channelLabel, money, pct, shortDate, shortId } from "./medicaid-status";
 import {
   FilterRow,
@@ -186,6 +187,9 @@ export function MedicaidMetricsSurface(): JSX.Element {
         >
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Monitor denial pressure, open AR exposure, MCO routing, and state channel readiness.
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <MedicaidBillingTabs />
           </div>
         </PageHeader>
       }

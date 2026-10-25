@@ -9,6 +9,9 @@ import {
   StatusPill,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useState } from "react";
+import type { JSX } from "react";
+import { useParams } from "react-router-dom";
 // apps/web/src/modules/24-billing-medicaid — M24, the R&B ARRANGEMENT DETAIL (R2, §5.1 #12 + the #13 day
 // override modal). One NF Room & Board arrangement: the contract facts, the activate/terminate lifecycle
 // actions, and the day-by-day status table. A single day's status can be flipped (pending ↔ billable ↔
@@ -17,9 +20,7 @@ import {
 // /api/v1/rb-days; writes POST :activate / :terminate and PATCH /api/v1/rb-days/{id}, each carrying the
 // row version as If-Match (§2.5). The server is the only authz point (ADR-0030) — a 412/409/403 surfaces
 // inline (role="alert"). Lantern: DetailPageLayout + No-Line table (§6.7); CSS-var tokens only.
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
-import { useParams } from "react-router-dom";
+import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import {
   RB_ARRANGEMENT_STATE_TONE,
   RB_DAY_STATUS_TONE,
@@ -209,7 +210,11 @@ export function MedicaidRbArrangementDetail(): JSX.Element {
               </button>
             </div>
           }
-        />
+        >
+          <div style={{ marginTop: "0.75rem" }}>
+            <MedicaidBillingTabs />
+          </div>
+        </PageHeader>
       }
       aside={
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>

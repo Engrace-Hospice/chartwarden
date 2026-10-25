@@ -6,14 +6,15 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useState } from "react";
+import type { JSX } from "react";
+import { useParams } from "react-router-dom";
 // apps/web/src/modules/24-billing-medicaid — M24, the SUBMISSIONS TIMELINE (R2, §5.1 #8). Every submission
 // attempt for one claim: attempt index, resolved channel, adapter vendor + version, result, error code, and
 // the next poll time for an async channel. Backed by GET /api/v1/medicaid-claims/{id}/submissions. Read-only
 // — retry is a server-side worker decision, not a button (§4.9). Lantern: WorkQueueLayout + No-Line table
 // (§6.7) + §6.6 StatusPill; mono control numbers and adapter versions; CSS-var tokens only.
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
-import { useParams } from "react-router-dom";
+import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import { SUBMISSION_RESULT_TONE, channelLabel, humanize, toneOf } from "./medicaid-status";
 import {
   linkStyle,
@@ -92,7 +93,11 @@ export function MedicaidSubmissionsTimeline(): JSX.Element {
               ← Back to claim
             </a>
           }
-        />
+        >
+          <div style={{ marginTop: "0.75rem" }}>
+            <MedicaidBillingTabs />
+          </div>
+        </PageHeader>
       }
       table={
         ordered.length === 0 ? (

@@ -8,6 +8,9 @@ import {
   StatusPill,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useState } from "react";
+import type { JSX } from "react";
+import { useParams } from "react-router-dom";
 // apps/web/src/modules/24-billing-medicaid — M24, the MEDICAID CLAIM EDITOR (R2, §5.1 #3, #7, #10). The
 // single-claim surface: the claim_line projection (rev/Q code, LOC, units, rate — with the R&B lines called
 // out), the R&B context panel, the COB context panel (populated only when the claim carries an M23 Medicare
@@ -18,9 +21,7 @@ import {
 // claim version as If-Match (§2.5 optimistic concurrency). The server is the only authz point (ADR-0030):
 // a 412 (stale), 422 (validation), 503 (adapter/seam unbound — the Phase-1 ADAPTER_NOT_WIRED deferral) or
 // 401/403 (step-up) surfaces INLINE (role="alert"), never a toast. Lantern: DetailPageLayout + No-Line table.
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
-import { useParams } from "react-router-dom";
+import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import {
   CLAIM_STATE_TONE,
   VALIDATION_OUTCOME_TONE,
@@ -255,7 +256,11 @@ export function MedicaidClaimEditor(): JSX.Element {
               </button>
             </div>
           }
-        />
+        >
+          <div style={{ marginTop: "0.75rem" }}>
+            <MedicaidBillingTabs />
+          </div>
+        </PageHeader>
       }
       aside={
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>

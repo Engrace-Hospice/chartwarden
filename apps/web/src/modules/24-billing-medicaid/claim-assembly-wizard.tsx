@@ -23,6 +23,7 @@ import {
   PatientLookupField,
   ProviderEntityLookupField,
 } from "../../shell/entity-lookups";
+import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import { ELIGIBILITY_OUTCOME_TONE, humanize, kindLabel, shortId, toneOf } from "./medicaid-status";
 import { Card, Field, alertStyle, inputStyle, mutedStyle, selectStyle } from "./medicaid-ui";
 
@@ -158,7 +159,11 @@ export function MedicaidAssemblyWizard(): JSX.Element {
                 Claim workbench
               </a>
             }
-          />
+          >
+            <div style={{ marginTop: "0.75rem" }}>
+              <MedicaidBillingTabs />
+            </div>
+          </PageHeader>
         }
         steps={
           <GateStepper items={gates} surfaceBlockersFirst={false} ariaLabel="Assembly steps" />
@@ -194,6 +199,9 @@ export function MedicaidAssemblyWizard(): JSX.Element {
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Assemble a server-authoritative Medicaid draft from patient, episode, R&B, and COB
             inputs.
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <MedicaidBillingTabs />
           </div>
         </PageHeader>
       }

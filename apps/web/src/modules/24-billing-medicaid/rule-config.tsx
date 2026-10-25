@@ -12,6 +12,8 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { JSX } from "react";
 // apps/web/src/modules/24-billing-medicaid — M24, the VALIDATION RULE CONFIG (R2, §5.1 #14). The compliance
 // officer's per-tenant overlay on the platform rule floor: each rule's enabled state, severity, override
 // role, and the applicable states from the platform default. A REGULATORY-REQUIRED rule shows a lock glyph
@@ -20,8 +22,7 @@ import {
 // + PATCH /api/v1/medicaid-rule-config/{ruleKey}. Custom-rule authoring (the §11 predicate DSL) is a
 // deliberate follow-up — the surface links to it rather than shipping a half DSL editor. Lantern:
 // WorkQueueLayout + No-Line table (§6.7) + §6.6 StatusPill; CSS-var tokens only.
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { JSX } from "react";
+import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import { humanize } from "./medicaid-status";
 import {
   FilterRow,
@@ -167,6 +168,9 @@ export function MedicaidRuleConfig(): JSX.Element {
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review the active validation floor, tenant overrides, regulatory locks, and audited
             toggles.
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <MedicaidBillingTabs />
           </div>
         </PageHeader>
       }

@@ -11,14 +11,15 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { JSX } from "react";
 // apps/web/src/modules/24-billing-medicaid — M24, the OVERRIDE AUDIT VIEW (R2, §5.1 #17). The compliance /
 // surveyor read of every validation override applied in the organization: actor, claimed role, rule key,
 // full rationale, and the claim it unblocked. This is the surface a surveyor asks for, so nothing is
 // summarised away — the rationale renders in full, and rules can be filtered to the ones that recur.
 // Backed by GET /api/v1/medicaid-validation-overrides. Read-only by construction (there is no un-override;
 // the audit trail is append-only). Lantern: WorkQueueLayout + No-Line table (§6.7); CSS-var tokens only.
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { JSX } from "react";
+import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import { humanize, shortId } from "./medicaid-status";
 import {
   FilterRow,
@@ -122,6 +123,9 @@ export function MedicaidOverrideAudit(): JSX.Element {
         <PageHeader title="Override Audit" breadcrumb="Billing — Medicaid · validation overrides">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review append-only validation overrides by rule, actor, claim, and full rationale.
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <MedicaidBillingTabs />
           </div>
         </PageHeader>
       }

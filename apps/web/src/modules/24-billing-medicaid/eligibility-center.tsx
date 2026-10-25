@@ -12,15 +12,16 @@ import {
   WorkQueueLayout,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { JSX } from "react";
+import { PatientLookupField, PatientPayerLookupField } from "../../shell/entity-lookups";
 // apps/web/src/modules/24-billing-medicaid — M24, the ELIGIBILITY CENTER (R2, §5.1 #15). Per-patient
 // Medicaid eligibility history with the MCO assignment timeline and a refresh action. The Recipient ID is
 // NEVER returned by the API — only the masked last-4 fact (D12 / §3.6) — so it renders through the shared
 // MaskedIdentifier primitive, which is the system's one honest way to show "we hold this, masked". A check
 // past its staleness horizon is called out because assembly and submission both validate freshness.
 // Backed by GET/POST /api/v1/medicaid-eligibility-checks. Lantern: WorkQueueLayout + No-Line table (§6.7).
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { JSX } from "react";
-import { PatientLookupField, PatientPayerLookupField } from "../../shell/entity-lookups";
+import { MedicaidBillingTabs } from "../../shell/medicaid-billing-tabs";
 import { ELIGIBILITY_OUTCOME_TONE, humanize, shortDate, shortId, toneOf } from "./medicaid-status";
 import {
   FilterRow,
@@ -142,6 +143,9 @@ export function MedicaidEligibilityCenter(): JSX.Element {
         >
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review eligibility history, masked recipient identifiers, MCO routing, and freshness.
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <MedicaidBillingTabs />
           </div>
         </PageHeader>
       }
