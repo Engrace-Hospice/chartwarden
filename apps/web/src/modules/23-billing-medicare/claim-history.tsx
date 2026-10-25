@@ -45,8 +45,10 @@ function Section<T>({
   children: (rows: T[]) => JSX.Element;
 }): JSX.Element {
   return (
-    <section aria-label={title} aria-busy={rows === "loading"}>
-      <h2 style={headingStyle}>{title}</h2>
+    <section aria-labelledby={`history-${title}`} aria-busy={rows === "loading"}>
+      <h2 id={`history-${title}`} style={headingStyle}>
+        {title}
+      </h2>
       {rows === "loading" ? (
         <LoadingSpinner />
       ) : rows === "error" ? (
@@ -54,7 +56,7 @@ function Section<T>({
       ) : rows.length === 0 ? (
         <EmptyState title={`No ${title.toLowerCase()}`} description={empty} />
       ) : (
-        children(rows)
+        <div style={{ overflowX: "auto" }}>{children(rows)}</div>
       )}
     </section>
   );

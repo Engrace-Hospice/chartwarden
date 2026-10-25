@@ -53,10 +53,10 @@ function mount(post: ReturnType<typeof vi.fn>) {
 function fill(over: { from?: string; to?: string } = {}) {
   fireEvent.change(screen.getByLabelText("Provider entity"), { target: { value: "pe1" } });
   fireEvent.change(screen.getByLabelText("Patient"), { target: { value: "pt1" } });
-  fireEvent.change(screen.getByLabelText("Service date from"), {
+  fireEvent.change(screen.getByLabelText("Service from"), {
     target: { value: over.from ?? "2026-10-01" },
   });
-  fireEvent.change(screen.getByLabelText("Service date to"), {
+  fireEvent.change(screen.getByLabelText("Service to"), {
     target: { value: over.to ?? "2026-10-31" },
   });
 }
@@ -110,5 +110,22 @@ describe("ClaimAssemblyWizard", () => {
     );
     expect(screen.queryByText("editor opened")).toBeNull();
     expect((button() as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("recovers from a thrown request: says so inline and lets the user try again", async () => {
+    mount(vi.fn(async () => Promise.reject(new Error("network"))));
+    fill();
+    fireEvent.click(button());
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect((button() as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("restores the in-progress form after leaving and coming back", () => {
+    mount(vi.fn());
+    fill();
+    cleanup();
+    mount(vi.fn());
+    expect((screen.getByLabelText("Patient") as HTMLInputElement).value).toBe("pt1");
+    expect((screen.getByLabelText("Service to") as HTMLInputElement).value).toBe("2026-10-31");
   });
 });

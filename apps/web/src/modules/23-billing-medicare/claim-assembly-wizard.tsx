@@ -81,17 +81,21 @@ export function ClaimAssemblyWizard(): JSX.Element {
       serviceTo: form.serviceTo,
       tob: form.tob,
     };
-    const {
-      data,
-      error: err,
-      response,
-    } = (await client.POST("/api/v1/billing/claims/assemble", {
-      body,
-    } as never)) as {
+    let outcome: {
       data?: unknown;
       error?: { error?: { code?: string; message?: string } };
       response?: Response;
     };
+    try {
+      outcome = (await client.POST("/api/v1/billing/claims/assemble", {
+        body,
+      } as never)) as typeof outcome;
+    } catch {
+      setError(assembleErrorMessage(undefined, 503));
+      setBusy(false);
+      return;
+    }
+    const { data, error: err, response } = outcome;
     if (err || !data) {
       const redirect = authFailureRedirect(
         response?.status,
@@ -157,14 +161,14 @@ export function ClaimAssemblyWizard(): JSX.Element {
           >
             <LabeledInput
               label="Service from"
-              ariaLabel="Service date from"
+              ariaLabel="Service from"
               type="date"
               value={form.serviceFrom}
               onChange={(v) => setForm((f) => ({ ...f, serviceFrom: v }))}
             />
             <LabeledInput
               label="Service to"
-              ariaLabel="Service date to"
+              ariaLabel="Service to"
               type="date"
               value={form.serviceTo}
               onChange={(v) => setForm((f) => ({ ...f, serviceTo: v }))}
@@ -246,7 +250,7 @@ function TobChoice({
   setForm: React.Dispatch<React.SetStateAction<AssemblyForm>>;
 }): JSX.Element {
   return (
-    <fieldset style={{ border: "none", margin: 0, padding: 0 }}>
+    <fieldset aria-describedby="tob-help" style={{ border: "none", margin: 0, padding: 0 }}>
       <legend style={{ ...hintStyle, padding: 0, marginBottom: "0.4rem" }}>
         Type of bill — <strong>811</strong> when the whole stay is one claim, or the interim
         sequence (812 first → 813 continuing → 814 last). The server re-derives the final TOB from

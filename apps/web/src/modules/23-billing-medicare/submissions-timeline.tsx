@@ -90,6 +90,9 @@ export function SubmissionsTimeline(): JSX.Element {
   );
 }
 
+/** The presigned file link comes from the server; only https or same-site links are opened. */
+const isSafeLink = (uri: string): boolean => uri.startsWith("https://") || uri.startsWith("/");
+
 /** The submissions table, shared by this screen and the claim page's history section. */
 export function SubmissionsTable({ rows }: { rows: ClaimSubmission[] }): JSX.Element {
   return rows.length === 0 ? (
@@ -130,7 +133,7 @@ export function SubmissionsTable({ rows }: { rows: ClaimSubmission[] }): JSX.Ele
               {r.submittedAt ?? r.createdAt}
             </td>
             <td style={tdStyle}>
-              {r.generatedFileUri ? (
+              {r.generatedFileUri && isSafeLink(r.generatedFileUri) ? (
                 <a
                   href={r.generatedFileUri}
                   target="_blank"
