@@ -205,7 +205,7 @@ describe.each(PARAM_CASES)("$name list behaviour", (c) => {
     fireEvent.keyDown(drawer, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("complementary")).toBeNull());
     await waitFor(() => expect(search()).toBe(""));
-    expect(document.activeElement).toBe(firstRow());
+    await waitFor(() => expect(document.activeElement).toBe(firstRow()));
   });
 });
 
