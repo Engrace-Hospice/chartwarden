@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { clearinghouseUsageFromEnv } from "../src/modules/23-billing-medicare/jobs/clearinghouse-context";
 import {
   type M23TransportDeps,
+  type TransportAck,
   ackFromEvent,
   activeTransport,
   pullTransportAcks,
@@ -175,6 +176,15 @@ describe("transportUpload (claim / NOE / NOTR submit + retry go through the vend
   });
 });
 
+/** Collects every page handed to `onPage` (the shape these tests assert on). */
+async function pulledAcks(t: M23TransportDeps, kind: "ack_999" | "ack_277ca") {
+  const acks: TransportAck[] = [];
+  const { failures } = await pullTransportAcks(t, ORG, kind, async (page) => {
+    acks.push(...page);
+  });
+  return { acks, failures };
+}
+
 describe("acknowledgments over the transport", () => {
   it("rides the 999 edge for the clearinghouse stage and the 277CA edge for the payer stage", () => {
     const scope = { organizationId: ORG, providerEntityId: PE, macJurisdiction: "ngs_j6" };
@@ -229,8 +239,8 @@ describe("acknowledgments over the transport", () => {
     const scope = { organizationId: ORG, providerEntityId: PE, usage: "test" as const };
     await inMemory.control.clearinghouseAccepts("CCN7", scope);
     await inMemory.control.payerAccepts("CCN7", "ICN7", scope);
-    const first = await pullTransportAcks(t, ORG, "ack_999");
-    const second = await pullTransportAcks(t, ORG, "ack_277ca");
+    const first = await pulledAcks(t, "ack_999");
+    const second = await pulledAcks(t, "ack_277ca");
     expect(first.acks.map((a) => a.stage)).toEqual(["clearinghouse"]);
     expect(second.acks.map((a) => [a.stage, a.payerControlNumber])).toEqual([["payer", "ICN7"]]);
   });
@@ -238,7 +248,7 @@ describe("acknowledgments over the transport", () => {
   it("a degraded pull is reported as a failure (the cron then fails and BullMQ retries it)", async () => {
     const inMemory = new InMemoryClearinghouse();
     await inMemory.control.setOutage(true);
-    const pulled = await pullTransportAcks(transportDeps(inMemory), ORG, "ack_999");
+    const pulled = await pulledAcks(transportDeps(inMemory), "ack_999");
     expect(pulled.acks).toEqual([]);
     expect(pulled.failures).toEqual([expect.stringContaining(CH.UNAVAILABLE)]);
   });
@@ -268,7 +278,7 @@ describe("acknowledgments over the transport", () => {
       providerEntityId: PE,
       usage: "test",
     });
-    const pulled = await pullTransportAcks(t, ORG, "ack_999");
+    const pulled = await pulledAcks(t, "ack_999");
     expect(pulled.acks).toHaveLength(1);
     expect(pulled.failures).toEqual([expect.stringContaining("no NPI on file")]);
   });

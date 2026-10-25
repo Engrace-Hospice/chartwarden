@@ -72,6 +72,12 @@ with 837I, 835 and eligibility all `ENROLLMENT_REQUIRED`. NGS `MFPWU` (13001) sh
 14. Our sandbox key returns `ACCOUNT_NOT_PROVISIONED` (HTTP 400) on every 837I that passes your edits,
     and on 277/835 report fetches and the polling endpoint. Your reply says test claims to any payer ID
     return test 277CAs. What provisioning does this account need, and can you enable it?
+    **Note (2026-10-25, Stedi docs, [test claims workflow](https://www.stedi.com/docs/healthcare/test-claims-workflow)):**
+    the page says "Sandbox accounts can't submit test claims", that the test claim workflows are "only available for
+    production accounts", that "Stedi infers the mode - test or production - from the API key type" (a test API key is
+    required; a production key on a test endpoint returns HTTP 404), and that `usageIndicator`, if present, must be `T`
+    (otherwise HTTP 403). So `ACCOUNT_NOT_PROVISIONED` on a sandbox key is probably expected, not a fault. We still ask
+    Stedi to confirm this in writing and to say what we need to do (open a production account and create a test key).
 15. Is `MDCKC` / `12M41` the right payer for Oregon hospice 837I and for NOE/NOTR (TOB 81A/81B, 82A/82B)?
     Our CCN is 381588 (Pendleton, OR 97801). Do NOE/NOTR use the same payer ID and the same 837I
     transaction?
@@ -118,3 +124,18 @@ the receive side.
 30. Is TOB 82A/82B and 8xC/8xD (transfer) accepted? Not yet exercised in the sandbox.
 31. Why does NGS `MFPWU` show 837I `NOT_SUPPORTED` while Medicare Oregon Part A (`MDCKC`, `12M41`) does not?
     Which is correct for an Oregon hospice (CCN 381588)?
+
+## Added 2026-10-25 (#727)
+
+32. **(blocking, ADR-0053 D3)** ChartWarden is a software vendor serving many hospices (tenants). ADR-0053 D3 assumes one
+    platform Stedi account holds the clearinghouse credential and the provider records (NPI, tax id, enrollments) of
+    every tenant, with our own code keeping the tenants apart. Your integrated-account documentation
+    ([overview](https://stedi.com/docs/healthcare/integrated-account-overview)) describes one Stedi account per provider
+    connected through an OAuth app, as an alternative to "a single Stedi account to manage transactions and enrollments
+    across all providers". May a reseller use one platform account with provider records, or must we use an integrated
+    account per customer? If a single account is allowed: are there limits (number of providers, enrollments, BAA
+    scope), and does an 835 or 277CA carry a per-provider identifier we can attribute to a tenant (see Q27)? If
+    integrated accounts are required: who signs the BAA, who owns each provider's enrollments and billing, and how do a
+    test key and the production key relate per integrated account? This decides whether D3 stands or needs a new ADR.
+33. Is a BAA available for the account type we would use, and does it cover test-mode traffic? (No PHI or
+    realistic claim data goes to the vendor without one.)

@@ -11,7 +11,7 @@ import type {
   SubmissionAttemptStore,
   SubmissionKind,
 } from "@chartwarden/x12-837-client";
-import { routeAckEvent, scopeKey } from "@chartwarden/x12-837-client";
+import { CH, routeAckEvent, scopeKey } from "@chartwarden/x12-837-client";
 
 /** Resolves the per-call clearinghouse context (the composition root reads provider entity + MAC credential). */
 export interface ClearinghouseContextPort {
@@ -30,6 +30,8 @@ export interface M23TransportDeps {
    * (filed or not filed); absent, an in-doubt attempt can never be judged settled and the retry stays blocked.
    */
   readonly attempts?: SubmissionAttemptStore;
+  /** Durable ack cursors (#749); absent, every ack pull starts from a null cursor. */
+  readonly ackCursors?: AckCursorStore;
 }
 
 /** The idempotency key {@link transportUpload} files a submission under. */
@@ -154,44 +156,56 @@ export function ackFromEvent(
   };
 }
 
-/** What one org's pull produced: the acknowledgments, and PHI-free labels of the provider entities that failed. */
-export interface TransportAckPull {
-  readonly acks: readonly TransportAck[];
-  readonly failures: readonly string[];
+/** The identity of one persisted ack cursor. `kind` is the cron (each filters the one shared event stream). */
+export interface AckCursorKey {
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly usage: "test" | "production";
+  readonly vendor: string;
+  readonly kind: TransportAck["kind"];
+}
+
+/** A stored position; `version` is 0 when no row exists yet. */
+export interface AckCursorState {
+  readonly cursor: string | null;
+  readonly version: number;
 }
 
 /**
- * Every pending acknowledgment of one stage for the org's credentialed provider entities. One provider entity that
- * cannot be pulled (no NPI on file, a degraded vendor answer) is recorded in `failures` and does not stop the others;
- * the caller applies what arrived and then fails the run so BullMQ retries.
- * ponytail: each tick re-reads from a null cursor (no persisted cursor yet); replays collapse on the ack row's unique
- * `(jurisdiction, ack_file_uri)` and the transition guards. Persist the cursor per provider entity when chains grow.
+ * Durable ack cursors (#749). `advance` is a compare-and-set on `version`: it returns false when another tick moved the
+ * cursor first, so two ticks can neither double-advance nor regress it.
+ */
+export interface AckCursorStore {
+  read(key: AckCursorKey): Promise<AckCursorState>;
+  advance(key: AckCursorKey, expectedVersion: number, next: string | null): Promise<boolean>;
+}
+
+/** What one org's pull produced: PHI-free labels of the provider entities that failed (acks went to `onPage`). */
+export interface TransportAckPull {
+  readonly failures: readonly string[];
+}
+
+type PageHandler = (acks: readonly TransportAck[]) => Promise<void>;
+
+/**
+ * Walk every pending acknowledgment of one stage for the org's credentialed provider entities, one page at a time.
+ * Each page's acks of this stage go to `onPage`, which must have applied them durably (it throws otherwise); only then
+ * is the stored cursor advanced, so a crash replays at most the page in flight (replays are idempotent: the ack row's
+ * unique `(jurisdiction, ack_file_uri)` and the transition guards). A cursor the vendor refuses (`CH_INVALID_REQUEST`:
+ * malformed or expired) is reset and the stream re-read from the start. One provider entity that fails (no NPI, a
+ * degraded answer, a failed `onPage`) is recorded in `failures` without moving its cursor and does not stop the others.
+ * Without `transport.ackCursors` every tick starts from a null cursor.
  */
 export async function pullTransportAcks(
   transport: M23TransportDeps,
   organizationId: string,
   kind: TransportAck["kind"],
+  onPage: PageHandler,
 ): Promise<TransportAckPull> {
-  const acks: TransportAck[] = [];
   const failures: string[] = [];
   for (const providerEntityId of await transport.contexts.providerEntitiesFor(organizationId)) {
     try {
-      const ctx = await transport.contexts.contextFor(organizationId, providerEntityId);
-      const macJurisdiction = ctx.jurisdiction;
-      if (!macJurisdiction) continue;
-      let cursor: string | null = null;
-      for (let page = 0; page < MAX_PAGES; page++) {
-        const result = await transport.binding.transport.fetchAcknowledgments(ctx, cursor);
-        if (!result.ok) {
-          throw failure("acknowledgment pull", result.degraded.code, result.degraded.reason);
-        }
-        for (const event of result.data.items) {
-          const ack = ackFromEvent(event, { organizationId, providerEntityId, macJurisdiction });
-          if (ack.kind === kind) acks.push(ack);
-        }
-        if (!result.data.hasMore) break;
-        cursor = result.data.nextCursor;
-      }
+      await pullEntity(transport, organizationId, providerEntityId, kind, onPage);
     } catch (err) {
       // Ids and the (PHI-free) failure text only.
       failures.push(
@@ -199,7 +213,62 @@ export async function pullTransportAcks(
       );
     }
   }
-  return { acks, failures };
+  return { failures };
 }
 
-const MAX_PAGES = 100;
+async function pullEntity(
+  transport: M23TransportDeps,
+  organizationId: string,
+  providerEntityId: string,
+  kind: TransportAck["kind"],
+  onPage: PageHandler,
+): Promise<void> {
+  const ctx = await transport.contexts.contextFor(organizationId, providerEntityId);
+  const macJurisdiction = ctx.jurisdiction;
+  if (!macJurisdiction) return;
+  const { vendor, transport: port } = transport.binding;
+  const store = transport.ackCursors;
+  const key: AckCursorKey = {
+    organizationId,
+    providerEntityId,
+    usage: ctx.usage,
+    vendor: vendor ?? "",
+    kind,
+  };
+  let state: AckCursorState = store ? await store.read(key) : { cursor: null, version: 0 };
+  let retriedFromStart = false;
+  for (;;) {
+    const result = await port.fetchAcknowledgments(ctx, state.cursor);
+    if (!result.ok) {
+      const refused = result.degraded.code === CH.INVALID_REQUEST;
+      if (state.cursor === null || retriedFromStart || !refused) {
+        throw failure("acknowledgment pull", result.degraded.code, result.degraded.reason);
+      }
+      retriedFromStart = true;
+      // The vendor no longer honours the stored position: start over (replays are idempotent).
+      if (store) {
+        if (!(await store.advance(key, state.version, null))) return;
+        state = await store.read(key);
+      } else {
+        state = { cursor: null, version: 0 };
+      }
+      continue;
+    }
+    const { items, nextCursor, hasMore } = result.data;
+    if (hasMore && nextCursor === state.cursor) {
+      throw failure("acknowledgment pull", CH.INVALID_REQUEST, "the vendor cursor did not advance");
+    }
+    const acks = items
+      .map((event) => ackFromEvent(event, { organizationId, providerEntityId, macJurisdiction }))
+      .filter((ack) => ack.kind === kind);
+    if (acks.length > 0) await onPage(acks);
+    if (store && nextCursor !== state.cursor) {
+      // Lost the race: another tick owns this stream now and its position stands. (An unchanged position is no write.)
+      if (!(await store.advance(key, state.version, nextCursor))) return;
+      state = { cursor: nextCursor, version: state.version + 1 };
+    } else if (!store) {
+      state = { cursor: nextCursor, version: 0 };
+    }
+    if (!hasMore) return;
+  }
+}

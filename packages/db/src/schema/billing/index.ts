@@ -47,3 +47,4 @@ export * from "./tenant-wage-index";
 export * from "./mac-submitter-credential";
 export * from "./eligibility-check";
 export * from "./unmapped-taxonomy-occurrence";
+export * from "./clearinghouse-ack-cursor";

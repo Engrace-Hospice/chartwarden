@@ -136,10 +136,13 @@ entity (two permanent code paths and a per-entity switch to get wrong), (c) skip
   so the cursor-replay cases (C08, C17) and everything that needs `fetchClaimStatus` are skipped by name, not passed.
   `validate`, `eligibility`, `adjustment` and `enrollment` have no gateway operation either. Its
   `fetchAcknowledgments` is covered by its own tests. The per-vendor limits are visible as skipped cases, never silent.
-- Known limits of the worker injection (#707): the ack crons re-read from a null cursor each tick (replays collapse on
-  the ack row's unique key); 8xC/8xD transfer notices have no `SubmissionKind`, so with a vendor set they fail closed
-  rather than use the legacy portal; a 277CA "partial" is carried as a rejection marked `PARTIAL` because the port has
-  no partial disposition. The first two are tracked as follow-up issues.
+- Known limits of the worker injection (#707): 8xC/8xD transfer notices have no `SubmissionKind`, so with a vendor set
+  they fail closed rather than use the legacy portal; a 277CA "partial" is carried as a rejection marked `PARTIAL`
+  because the port has no partial disposition. Tracked as follow-up issues. The ack crons no longer re-read from a null
+  cursor (#749): the position is persisted per (org, provider entity, vendor, usage, stage) in `clearinghouse_ack_cursor`
+  and moved by compare-and-set only after the page was applied (at-least-once; replays collapse on the ack row's unique
+  key). A cursor the vendor refuses (`CH_INVALID_REQUEST`) resets to a null re-read once. A page whose apply keeps
+  failing holds that stream's cursor, so it is surfaced as a failure every tick rather than skipped. There is no page cap.
 - Follow-up work (separate PRs): the ack-state split (A6), binding
   `fetchRemittances` to the M25 835 worker port (A5), the Stedi adapter (B2).
 - The port makes no promise about hospice rules (NOE timeliness, benefit periods, revenue/HCPCS pairing); those stay

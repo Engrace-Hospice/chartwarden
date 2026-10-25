@@ -59,6 +59,7 @@ import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import type { DdeWatchdogPort } from "../services/dde-watchdog";
 import {
   type M23TransportDeps,
+  type TransportAck,
   activeTransport,
   priorClaimAttempt,
   pullTransportAcks,
@@ -1850,13 +1851,13 @@ async function runTransportAckPull(
   kind: "ack_999" | "ack_277ca",
 ): Promise<void> {
   const now = deps.now ?? (() => new Date());
-  const acks: { submissionId: string; ack: RoutedAck }[] = [];
   const failures: string[] = [];
   for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
-    try {
-      const pulled = await pullTransportAcks(transport, organizationId, kind);
-      failures.push(...pulled.failures);
-      for (const t of pulled.acks) {
+    // Each page is applied before its cursor advances (#749), so a failed apply throws out of the handler and the
+    // page is read again next tick.
+    const onPage = async (page: readonly TransportAck[]): Promise<void> => {
+      const acks: { submissionId: string; ack: RoutedAck }[] = [];
+      for (const t of page) {
         const submission = await withOrgContext(
           deps.db,
           { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
@@ -1886,14 +1887,14 @@ async function runTransportAckPull(
           },
         });
       }
+      await applyAcks(deps, acks);
+    };
+    try {
+      const pulled = await pullTransportAcks(transport, organizationId, kind, onPage);
+      failures.push(...pulled.failures);
     } catch (err) {
       failures.push(`org ${organizationId}: ${err instanceof Error ? err.message : "failed"}`);
     }
-  }
-  try {
-    await applyAcks(deps, acks);
-  } catch (err) {
-    failures.push(err instanceof Error ? err.message : "apply failed");
   }
   if (failures.length > 0) {
     throw new Error(
