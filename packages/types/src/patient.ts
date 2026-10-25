@@ -545,7 +545,12 @@ export interface EligibilitySubscriberIdentity {
 }
 
 /** Why an MBI was unlocked (a closed set: the purpose is audited, so it is never free text). */
-export const MBI_DISCLOSURE_PURPOSES = ["claim_837i_submission", "hets_270_eligibility"] as const;
+export const MBI_DISCLOSURE_PURPOSES = [
+  "claim_837i_submission",
+  "hets_270_eligibility",
+  /** A DDE queue item sent through the DdeAccessProvider (ADR-0103, #793); `subjectId` is the DDE work item. */
+  "dde_provider_operation",
+] as const;
 export type MbiDisclosurePurpose = (typeof MBI_DISCLOSURE_PURPOSES)[number];
 
 /**

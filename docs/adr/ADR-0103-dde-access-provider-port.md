@@ -138,3 +138,57 @@ limits: a manual `record-submission` is allowed while a send is still in flight 
 crashed one), and if that call then times out the item shows no doubt; the success case is covered by the restored marker. The
 `REFUSED_BEFORE_SEND` allowlist is only as sound as the adapter contract: a real adapter must return those four codes only when
 nothing left for the vendor, and its conformance test must pin that before it is bound.
+
+## Amendment 2026-10-25 — the daily change report ingest, the MBI seam and the Episode Alert skeleton (issue #793)
+
+Built (this closes the "Not built" list of the #760 amendment except the real vendor adapter).
+
+**Ingest.** A cron on the queue `m23.dde-daily-change` (every 30 minutes, registered only when `DDE_PROVIDER` binds a provider)
+reads `fetchOutcomes` for each operator who has a provider-submitted item awaiting its answer and applies every outcome through
+`DdeQueueService.applyProviderChange`: the same plan-and-apply code as `sync-provider` (source `dde_provider`, the same `accept`
+and `return` edges), as the system actor (history rows say `system`, no membership) and through the real catalog-validating outbox
+(`m23.dde_item.state_changed`). Items are matched by (provider entity, provider reference), never by a beneficiary identifier; an
+answer naming a different control number is refused. Nothing is read for an org with nothing awaiting, and no vendor call is made
+inside a database transaction (the read has its own bounded signal; the store and the apply step are short transactions).
+
+**Identity.** Ingest is not operator-initiated, so the report is read under the DDE ID of the operator who submitted the item
+(`provider_operator_membership_id`, set when the send was marked, the same identity `sync-provider` uses for its inquiry); one
+cursor per operator. An item is applied only on its submitter's stream.
+
+**In-doubt items.** A possibly-sent item (the durable marker of the #795 amendment) has no recorded provider reference, so a
+change cannot be matched to it; it is `unmatched` (traced, then ignored) and stays for the person who settles it by hand. The
+ingest never resolves a marker: a marker plus a reference-bearing answer cannot co-occur today, and if it ever did the item is
+left alone (`already`). Resolving would turn the vendor's word into the person's check of DDE that the marker exists to force.
+
+**Cursor and poison policy** (migration 1273, `dde_change_cursor`, `dde_change_exception`; forced RLS, audit triggers, no DELETE
+grant): per (org, provider entity, vendor, usage, operator), moved page by page as a compare-and-set on `version`. A cursor the
+provider refuses is reported and never reset; a chain returning to a position read this tick is a cycle and fails; at most 20 pages
+per tick (the rest is a reported backlog). An unknown reference holds its page for one tick before it is ignored (the vendor is
+called before the item records its reference, so an answer can beat the submit's commit), then gets one deduped trace row (at most
+100 new per tick). An event the apply step refuses (unusable answer, or any 4xx including a deterministic 409 `CONFLICT`) stops its
+page, is retried, and after 5 refusals is quarantined and skipped (operator release is a database action, as for 835 files). Only
+`VERSION_CONFLICT` (a stale version), a 5xx and an outage are transient and never count. The cron runs one attempt per tick so a
+retry seconds later cannot defeat the hold. Nothing from an unknown error reaches a job record, log or row: failures carry ids
+and a fixed code. Event ids that look like an MBI and cursors outside a plain token alphabet are refused (they are stored and audited). Known
+limits: an error that is neither a 4xx nor a stale version (a bug, a DB outage) is not counted, so it stalls that operator's
+stream until fixed, failing and alerting each tick (the by-item `sync-provider` route still works); the submitter's membership
+is not re-checked for liveness or permission before the report is read under their DDE ID; quarantine is keyed on the event id.
+The two tables have no retention job (no DELETE grant by design); pruning is an admin task to schedule when
+volume shows.
+
+**MBI seam.** The only source of the beneficiary is M5's audited `MbiUnlockReader` (the MBI is `patient_payer.subscriber_id` of the
+patient's `medicare_ffs` coverage). `buildDdeBeneficiaryPort` unlocks it per send with the new disclosure purpose
+`dde_provider_operation` (subject = the DDE item), audited by the reader (`patient_payer.mbi_disclosed`, ids only) in its own
+committed transaction. It runs in the send's first phase, before the in-doubt marker, so a refused unlock leaves the item
+untouched. The identity rides `DdeOperation.beneficiary` in the provider call's memory only: not in the queue row, history,
+outbox event, audit entry or log (asserted live). No MBI on file refuses the send with 422; an unavailable reader refuses with
+503 and no detail.
+
+**Episode Alert adapter: a skeleton, deliberately.** `EpisodeAlertDdeProvider` is built to the port with the generic plumbing
+(credential and https base URL from the environment, timeout, no redirects, same-origin paths, byte-bounded bodies, HTTP status
+to port code). Every vendor-specific fact is isolated in `episode-alert-dde-wire.ts`, which invents nothing: its functions answer
+"unverified", so the adapter fails closed with `DDE_NOT_WIRED` and `createEpisodeAlertDdeProviderFromEnv` throws, which keeps
+`DDE_PROVIDER=episode_alert` refusing to boot. D7 stays unanswered (issue #759): whether write operations exist, per-operator
+DDE IDs, a sandbox, push or poll, paging and cursor shape, authentication and idempotency. A contract kit
+(`episode-alert-dde-contract.test.ts`) is skipped unless a trial key is supplied. The conformance suite gained D14 (an outcome
+names the operation it answers) and has mutant tests.

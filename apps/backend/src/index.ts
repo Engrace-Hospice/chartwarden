@@ -1015,8 +1015,12 @@ import {
   buildClaimValidationContextPort,
   buildClaimValidationRunner,
   buildClaimValidationService,
+  buildDdeBeneficiaryPort,
   buildDdeQueueService,
   buildDdeWatchdog,
+  createDrizzleDdeChangeStore,
+  registerDdeDailyChangeWorker,
+  scheduleDdeDailyChange,
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
   buildDrizzleOrgMacJurisdictionReader,
@@ -5994,6 +5998,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               outbox: m23OutboxPublisher,
               ddeProvider: ddeBinding.provider,
               ddeUsage: process.env.NODE_ENV === "production" ? "production" : "test",
+              // #793 - the MBI for a provider operation comes only from M5's audited unlock seam, per call.
+              ddeBeneficiary: buildDdeBeneficiaryPort(() => getSeam("MbiUnlockReader")),
               // Assignable only to an active member whose role grants billing.dde.work (M3's holder reader).
               assigneeCanWork: buildDdeAssigneeEligibility(
                 dbHandle.db,
@@ -8342,6 +8348,35 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       });
     } catch (err) {
       app.log.error(err, "M23 cron schedule registration failed");
+    }
+    // #793 - the DDE provider's daily change report. Only when a provider is bound (DDE_PROVIDER): with `manual`
+    // nothing is registered and nothing is scheduled. Applies outcomes as the system actor through the same service
+    // code as the by-item sync route; the MBI never enters this path (outcomes carry ids and codes).
+    if (ddeBinding.vendor !== null) {
+      const ddeChangeWorker = registerDdeDailyChangeWorker({
+        connection: queueConnection,
+        provider: ddeBinding.provider,
+        usage: process.env.NODE_ENV === "production" ? "production" : "test",
+        store: createDrizzleDdeChangeStore(dbHandle.db),
+        applier: buildDdeQueueService(dbHandle.db, {
+          outbox: m23OutboxPublisher,
+          ddeProvider: ddeBinding.provider,
+        }),
+        activeOrgs: m23ActiveOrgs,
+        logger: app.log,
+      });
+      attachDlqAlertsToAll([ddeChangeWorker], "m23");
+      app.addHook("onClose", async () => {
+        await ddeChangeWorker.close();
+      });
+      try {
+        const ddeChangeSchedule = await scheduleDdeDailyChange(queueConnection);
+        app.addHook("onClose", async () => {
+          await ddeChangeSchedule.close();
+        });
+      } catch (err) {
+        app.log.error(err, "M23 DDE daily change schedule registration failed");
+      }
     }
     app.log.info(
       { queues: m23Workers.length },

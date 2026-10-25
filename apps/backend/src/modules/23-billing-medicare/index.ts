@@ -214,6 +214,13 @@ export {
   type DdeItemView,
   buildDdeQueueService,
 } from "./services/dde-queue-service";
+export { buildDdeBeneficiaryPort } from "./services/dde-beneficiary";
+// #793 — the DDE provider's daily change report ingest (cursor store + cron worker).
+export { createDrizzleDdeChangeStore } from "./dde-change-store";
+export {
+  registerDdeDailyChangeWorker,
+  scheduleDdeDailyChange,
+} from "./jobs/dde-daily-change";
 export {
   type DdeNoticeAtRisk,
   type DdeWatchdogPort,

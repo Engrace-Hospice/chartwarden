@@ -929,6 +929,8 @@ export const MODULES: ModuleDef[] = [
       "claim_submission",
       "clearinghouse_ack_cursor",
       "clearinghouse_submission_attempt",
+      "dde_change_cursor",
+      "dde_change_exception",
       "dde_work_event",
       "dde_work_item",
       "eligibility_check",
