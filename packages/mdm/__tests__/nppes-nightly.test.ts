@@ -216,6 +216,7 @@ describe("§3.8 payer seed", () => {
     const rows = toPayerCanonicalSeed();
     const medicare = rows.find((r) => r.id === "payer_medicare");
     expect(medicare?.x12PayerId).toBe("MEDICARE");
+    expect(medicare?.kind).toBe("medicare");
     expect(new Set(rows.map((r) => r.id)).size).toBe(rows.length); // unique ids
   });
 });
