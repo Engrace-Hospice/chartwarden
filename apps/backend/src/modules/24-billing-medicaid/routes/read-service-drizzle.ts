@@ -43,7 +43,11 @@ const dayN = (d: Date | string | null): string | null => (d === null ? null : da
 
 const RULES_BY_KEY = new Map(DEFAULT_MEDICAID_RULES.map((r) => [r.key, r]));
 
-export function buildDrizzleM24ReadService(db: DbClient): M24ReadService {
+export function buildDrizzleM24ReadService(
+  db: DbClient,
+  /** S11: false when the state's gateway is not wired in this deployment (see the write service). */
+  isGatewayBound: (state: string) => boolean = () => true,
+): M24ReadService {
   const C = schema.medicaidClaim;
   const CL = schema.medicaidClaimLine;
   const SUB = schema.medicaidSubmission;
@@ -75,7 +79,7 @@ export function buildDrizzleM24ReadService(db: DbClient): M24ReadService {
     version: r.version,
     validationRunIdLatest: r.validationRunIdLatest ?? null,
     eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
-    electronicSubmissionRefusal: electronicSubmissionRefusal(r.serviceState)?.message ?? null,
+    electronicSubmissionRefusal: electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState))?.message ?? null,
     createdAt: iso(r.createdAt),
     updatedAt: iso(r.updatedAt),
   });
