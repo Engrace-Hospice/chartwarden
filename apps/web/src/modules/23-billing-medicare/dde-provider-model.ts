@@ -52,6 +52,10 @@ export interface ProviderRefusal {
   inDoubt: boolean;
 }
 
+/** Shown while the server holds the in-doubt marker (#760): the provider may already hold the operation. */
+export const IN_DOUBT_GUIDANCE =
+  "The provider did not confirm whether DDE received this item. Verify it in DDE, then record the submission manually.";
+
 const MANUAL_HINT = "You can still key it in DDE yourself and record it as keyed.";
 
 const REFUSALS: Record<string, ProviderRefusal> = {

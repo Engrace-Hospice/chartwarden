@@ -93,7 +93,7 @@ interface Setup {
 }
 
 function setup(o: Setup = {}) {
-  const detail = o.detail ?? item();
+  let detail = o.detail ?? item();
   const post = o.post ?? vi.fn(async () => ok({}));
   const get = vi.fn(async (path: string) => {
     if (path === "/api/v1/billing/dde-items")
@@ -105,7 +105,11 @@ function setup(o: Setup = {}) {
       return o.hospice === "forbidden" ? fail(403, "FORBIDDEN") : ok(o.hospice ?? HOSPICE);
     return ok({ firstName: "Pat", lastName: "Patient" });
   });
-  return { api: { GET: get, POST: post } as unknown as ApiClient, get, post };
+  // Stands in for the server: a refused-in-doubt send leaves the durable marker (and moves the version by 2).
+  const markInDoubt = () => {
+    detail = { ...detail, providerInDoubt: true, version: detail.version + 2 };
+  };
+  return { api: { GET: get, POST: post } as unknown as ApiClient, get, post, markInDoubt };
 }
 
 function Where(): JSX.Element {
@@ -280,26 +284,67 @@ describe("DDE item rail: send via provider", () => {
   });
 
   it("offers no retry after DDE_IN_DOUBT but keeps recording by hand", async () => {
-    const post = vi.fn(async () => fail(409, "DDE_IN_DOUBT"));
-    const { api } = setup({ post });
+    const hold: { mark?: () => void } = {};
+    const post = vi.fn(async () => {
+      hold.mark?.();
+      return fail(409, "DDE_IN_DOUBT");
+    });
+    const { api, markInDoubt } = setup({ post });
+    hold.mark = markInDoubt;
     mount(api);
     const r = await rail();
     fireEvent.click(r.getByRole("button", SEND));
     expect((await r.findByRole("alert")).textContent).toMatch(/Do not send it again/);
-    expect(r.queryByRole("button", SEND)).toBeNull();
+    await waitFor(() => expect(r.queryByRole("button", SEND)).toBeNull());
     expect(r.getByRole("button", { name: "Record as keyed in DDE" })).toBeTruthy();
   });
 
-  it("treats a lost response on Send as in doubt: no second send is offered", async () => {
+  it("treats a lost response on Send as in doubt once the server shows its marker", async () => {
+    const hold: { mark?: () => void } = {};
     const post = vi.fn(async () => {
+      hold.mark?.();
       throw new Error("network");
     });
-    const { api } = setup({ post });
+    const { api, markInDoubt } = setup({ post });
+    hold.mark = markInDoubt;
     mount(api);
     const r = await rail();
     fireEvent.click(r.getByRole("button", SEND));
     expect((await r.findByRole("alert")).textContent).toMatch(/Do not send it again/);
+    await waitFor(() => expect(r.queryByRole("button", SEND)).toBeNull());
+  });
+
+  it("keeps an in-doubt item blocked after a reload, with guidance and the manual path", async () => {
+    const detail = item({
+      providerInDoubt: true,
+      providerInDoubtAt: "2026-10-25T10:00:00.000Z",
+      allowedActions: [
+        "record_submission",
+        "submit_via_provider",
+        "sync_provider",
+        "retry",
+        "cancel",
+      ],
+      submissionMode: "provider",
+    });
+    const { api, post } = setup({ detail });
+    mount(api);
+    const r = await rail();
+    expect(
+      await r.findByText(/Verify it in DDE, then record the submission manually/),
+    ).toBeTruthy();
     expect(r.queryByRole("button", SEND)).toBeNull();
+    expect(r.queryByRole("button", { name: "Check provider status" })).toBeNull();
+    expect(r.queryByRole("button", { name: "Reopen as a new attempt" })).toBeNull();
+    expect(r.queryByRole("button", { name: "Cancel item" })).toBeNull();
+    expect(r.getByRole("button", { name: "Record as keyed in DDE" })).toBeTruthy();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("offers Send again once the marker is cleared (older server: field absent)", async () => {
+    const { api } = setup({ detail: item({ providerInDoubt: false }) });
+    mount(api);
+    expect((await rail()).getByRole("button", SEND)).toBeTruthy();
   });
 
   it("reloads on a version conflict instead of retrying", async () => {

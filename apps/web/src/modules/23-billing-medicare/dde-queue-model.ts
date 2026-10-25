@@ -58,6 +58,9 @@ export interface DdeItem {
   /** How the submission was recorded: by hand, or through the DDE access provider (ADR-0103). Absent on an older server. */
   submissionMode?: "manual" | "provider" | null;
   providerReference?: string | null;
+  /** The server's durable marker that a provider send may have reached DDE (#760). Absent on an older server. */
+  providerInDoubt?: boolean;
+  providerInDoubtAt?: string | null;
   dcn: string | null;
   rtpReasonCode: string | null;
   outcomeCode: string | null;
