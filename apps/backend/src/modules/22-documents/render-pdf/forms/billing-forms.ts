@@ -44,6 +44,7 @@ const STAGE_LABELS: Readonly<Record<string, string>> = {
 
 const OUTCOME_LABELS: Readonly<Record<string, string>> = {
   resolved_no_appeal: "Resolved without appeal",
+  resolved_via_appeal: "Resolved through appeal",
   written_off: "Written off",
 };
 

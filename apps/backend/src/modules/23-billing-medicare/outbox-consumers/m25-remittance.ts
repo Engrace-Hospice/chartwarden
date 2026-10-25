@@ -44,8 +44,8 @@ export const M23_REMITTANCE_CONSUMER = {
  * consumer can complete the row with a reason instead of failing it into an endless retry.
  */
 const LEGAL_FROM: Readonly<Record<RemittanceTransitionPlan["transition"], readonly string[]>> = {
-  remittance_paid: ["ack_accepted"],
-  remittance_partial_paid: ["ack_accepted"],
+  remittance_paid: ["ack_accepted", "denied", "partial_paid"],
+  remittance_partial_paid: ["ack_accepted", "denied"],
   remittance_denied: ["ack_accepted"],
   remittance_recouped: ["paid", "partial_paid"],
 };
@@ -161,7 +161,12 @@ export function buildM23RemittanceConsumer(deps: M23RemittanceConsumerDeps) {
                 await claimState.applyInTx(tx, actor, {
                   claimId: plan.claimId,
                   expectedVersion: claim.version,
-                  event: plan.transition,
+                  // A full payment on a claim already denied or underpaid is a supplemental 835 (the
+                  // won-appeal payment); the machine models it as `appeal_succeeded`, not a first payment.
+                  event:
+                    plan.transition === "remittance_paid" && claim.state !== "ack_accepted"
+                      ? "appeal_succeeded"
+                      : plan.transition,
                   context: { remittanceAdviceId: plan.remittanceAdviceId },
                   extra: {
                     remittanceAdviceId: plan.remittanceAdviceId,

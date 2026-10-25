@@ -315,6 +315,11 @@ export function buildDrizzleM25WriteService(
     },
 
     async resolveDenial(actor, id, _input: ReasonInput, ifMatch) {
+      // A denial on the appeal track (`appealed`) that is resolved was won through the appeal; recording it as
+      // "no appeal" would misreport the outcome in the medical-review closure counts and the resolution letter.
+      const closureOutcome = await withOrgContext(db, actor, async (tx) =>
+        (await denialState(tx, id)).state === "appealed" ? "resolved_via_appeal" : "resolved_no_appeal",
+      );
       return transitionDenial(
         actor,
         id,
@@ -322,7 +327,7 @@ export function buildDrizzleM25WriteService(
         ifMatch,
         {
           resolvedAt: sql`now()`,
-          closureOutcome: "resolved_no_appeal",
+          closureOutcome,
         },
         async (tx, cur) => {
           // F-144 (#248) — `m25.denial_resolution_letter.render_requested` is catalogued
@@ -349,7 +354,7 @@ export function buildDrizzleM25WriteService(
                 patientId: claim?.patientId ?? null,
                 claimId: cur.claimId ?? null,
                 resolvedAt: new Date().toISOString(),
-                closureOutcome: "resolved_no_appeal",
+                closureOutcome,
               },
             },
           });
