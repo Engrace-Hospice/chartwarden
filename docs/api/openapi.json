@@ -79214,19 +79214,19 @@
                           "submitterName": {
                             "minLength": 1,
                             "maxLength": 60,
-                            "pattern": "^(?=.*\\S)[^*~:^|\\\\]+$",
+                            "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
                             "type": "string"
                           },
                           "submitterId": {
                             "minLength": 1,
-                            "maxLength": 80,
-                            "pattern": "^(?=.*\\S)[^*~:^|\\\\]+$",
+                            "maxLength": 15,
+                            "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
                             "type": "string"
                           },
                           "submitterContactName": {
                             "minLength": 1,
                             "maxLength": 60,
-                            "pattern": "^(?=.*\\S)[^*~:^|\\\\]+$",
+                            "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
                             "type": "string"
                           },
                           "submitterContactPhone": {
@@ -79236,13 +79236,13 @@
                           "receiverName": {
                             "minLength": 1,
                             "maxLength": 60,
-                            "pattern": "^(?=.*\\S)[^*~:^|\\\\]+$",
+                            "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
                             "type": "string"
                           },
                           "receiverId": {
                             "minLength": 1,
-                            "maxLength": 80,
-                            "pattern": "^(?=.*\\S)[^*~:^|\\\\]+$",
+                            "maxLength": 15,
+                            "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
                             "type": "string"
                           },
                           "receiverApplicationCode": {
@@ -79357,19 +79357,19 @@
                     "submitterName": {
                       "minLength": 1,
                       "maxLength": 60,
-                      "pattern": "^(?=.*\\S)[^*~:^|\\\\]+$",
+                      "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
                       "type": "string"
                     },
                     "submitterId": {
                       "minLength": 1,
-                      "maxLength": 80,
-                      "pattern": "^(?=.*\\S)[^*~:^|\\\\]+$",
+                      "maxLength": 15,
+                      "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
                       "type": "string"
                     },
                     "submitterContactName": {
                       "minLength": 1,
                       "maxLength": 60,
-                      "pattern": "^(?=.*\\S)[^*~:^|\\\\]+$",
+                      "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
                       "type": "string"
                     },
                     "submitterContactPhone": {
@@ -79379,13 +79379,13 @@
                     "receiverName": {
                       "minLength": 1,
                       "maxLength": 60,
-                      "pattern": "^(?=.*\\S)[^*~:^|\\\\]+$",
+                      "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
                       "type": "string"
                     },
                     "receiverId": {
                       "minLength": 1,
-                      "maxLength": 80,
-                      "pattern": "^(?=.*\\S)[^*~:^|\\\\]+$",
+                      "maxLength": 15,
+                      "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
                       "type": "string"
                     },
                     "receiverApplicationCode": {
@@ -79435,19 +79435,19 @@
                   "submitterName": {
                     "minLength": 1,
                     "maxLength": 60,
-                    "pattern": "^(?=.*\\S)[^*~:^|\\\\]+$",
+                    "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
                     "type": "string"
                   },
                   "submitterId": {
                     "minLength": 1,
-                    "maxLength": 80,
-                    "pattern": "^(?=.*\\S)[^*~:^|\\\\]+$",
+                    "maxLength": 15,
+                    "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
                     "type": "string"
                   },
                   "submitterContactName": {
                     "minLength": 1,
                     "maxLength": 60,
-                    "pattern": "^(?=.*\\S)[^*~:^|\\\\]+$",
+                    "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
                     "type": "string"
                   },
                   "submitterContactPhone": {
@@ -79457,13 +79457,13 @@
                   "receiverName": {
                     "minLength": 1,
                     "maxLength": 60,
-                    "pattern": "^(?=.*\\S)[^*~:^|\\\\]+$",
+                    "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
                     "type": "string"
                   },
                   "receiverId": {
                     "minLength": 1,
-                    "maxLength": 80,
-                    "pattern": "^(?=.*\\S)[^*~:^|\\\\]+$",
+                    "maxLength": 15,
+                    "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
                     "type": "string"
                   },
                   "receiverApplicationCode": {

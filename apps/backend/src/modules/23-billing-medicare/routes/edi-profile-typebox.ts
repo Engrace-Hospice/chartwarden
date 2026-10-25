@@ -5,9 +5,11 @@ import { type Static, Type } from "@sinclair/typebox";
 import { parse } from "./billing-typebox";
 
 const uuid = () => Type.String({ format: "uuid" });
-// Non-blank and free of the X12 delimiters (* ~ : ^ | \) the 837I writer cannot carry, so a bad value is refused here
-// rather than failing a claim render later.
-const X12_SAFE_TEXT = "^(?=.*\\S)[^*~:^|\\\\]+$";
+// Non-blank printable ASCII free of the X12 delimiters (* ~ : ^ | \) the 837I writer cannot carry, so a bad value is
+// refused here rather than failing a claim render later.
+const X12_SAFE_TEXT = "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$";
+/** The id becomes ISA06/ISA08 (15 characters) as well as NM109. */
+const ENVELOPE_ID_MAX = 15;
 const name = () => Type.String({ minLength: 1, maxLength: 60, pattern: X12_SAFE_TEXT });
 
 /** The CLEARINGHOUSE_VENDOR value the profile applies to (`stedi`, `claim_md`, `direct_mac`, ...). */
@@ -22,12 +24,12 @@ export const EdiProfileListParamsSchema = Type.Object({ providerEntityId: uuid()
 
 export const UpsertEdiProfileBodySchema = Type.Object({
   submitterName: name(),
-  submitterId: Type.String({ minLength: 1, maxLength: 80, pattern: X12_SAFE_TEXT }),
+  submitterId: Type.String({ minLength: 1, maxLength: ENVELOPE_ID_MAX, pattern: X12_SAFE_TEXT }),
   submitterContactName: name(),
   /** 10 digits, no punctuation (the PER segment's contact number). */
   submitterContactPhone: Type.String({ pattern: "^[0-9]{10}$" }),
   receiverName: name(),
-  receiverId: Type.String({ minLength: 1, maxLength: 80, pattern: X12_SAFE_TEXT }),
+  receiverId: Type.String({ minLength: 1, maxLength: ENVELOPE_ID_MAX, pattern: X12_SAFE_TEXT }),
   /** GS03, 2-15 alphanumerics. */
   receiverApplicationCode: Type.String({ pattern: "^[A-Za-z0-9]{2,15}$" }),
 });

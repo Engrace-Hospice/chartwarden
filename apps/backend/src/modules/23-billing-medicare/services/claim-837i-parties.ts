@@ -58,30 +58,30 @@ const STATE_PATTERN = /^[A-Za-z]{2}$/;
 const nonBlank = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
 
 /**
- * The billing address from a provider entity's `addresses` jsonb: the first entry that carries every required X12
- * field (line1, city, a 2-letter state, postalCode). A partial address is null, never completed.
+ * The billing address from a provider entity's `addresses` jsonb: the FIRST entry (the one M2's billing-address PATCH
+ * writes and its detail view reads), and only if it carries every required X12 field (line1, city, a 2-letter state,
+ * postalCode). A partial address is null, never completed, and a later entry is never substituted for it.
  */
 export function billingAddressFrom(addresses: unknown): BillingProvider["address"] | null {
   if (!Array.isArray(addresses)) return null;
-  for (const a of addresses as Record<string, unknown>[]) {
-    if (
-      a &&
-      nonBlank(a.line1) &&
-      nonBlank(a.city) &&
-      nonBlank(a.state) &&
-      STATE_PATTERN.test(a.state.trim()) &&
-      nonBlank(a.postalCode)
-    ) {
-      return {
-        line1: a.line1.trim(),
-        ...(nonBlank(a.line2) ? { line2: a.line2.trim() } : {}),
-        city: a.city.trim(),
-        state: a.state.trim().toUpperCase(),
-        postalCode: a.postalCode.trim(),
-      };
-    }
+  const a = addresses[0] as Record<string, unknown> | undefined;
+  if (
+    !a ||
+    !nonBlank(a.line1) ||
+    !nonBlank(a.city) ||
+    !nonBlank(a.state) ||
+    !STATE_PATTERN.test(a.state.trim()) ||
+    !nonBlank(a.postalCode)
+  ) {
+    return null;
   }
-  return null;
+  return {
+    line1: a.line1.trim(),
+    ...(nonBlank(a.line2) ? { line2: a.line2.trim() } : {}),
+    city: a.city.trim(),
+    state: a.state.trim().toUpperCase(),
+    postalCode: a.postalCode.trim(),
+  };
 }
 
 /** The sealed provider facts M1 publishes (`FoundationSiteReader.providerEntityBillingFacts`), bound to one org tx. */

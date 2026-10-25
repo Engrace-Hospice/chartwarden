@@ -113,19 +113,17 @@ describe("buildClaim837iPartiesPort", () => {
 });
 
 describe("billingAddressFrom", () => {
-  it("skips an incomplete entry and takes the first complete one", () => {
-    const res = billingAddressFrom([
-      { line1: "PO Box", city: "Salem" },
-      { line1: "2 Oak Ave", line2: "Ste 4", city: "Salem", state: "OR", postalCode: "97301-1234" },
-    ]);
-
-    expect(res).toEqual({
+  it("reads the first entry and never substitutes a later one for an incomplete first", () => {
+    const later = {
       line1: "2 Oak Ave",
       line2: "Ste 4",
       city: "Salem",
       state: "OR",
       postalCode: "97301-1234",
-    });
+    };
+
+    expect(billingAddressFrom([later, { line1: "x" }])).toEqual(later);
+    expect(billingAddressFrom([{ line1: "PO Box", city: "Salem" }, later])).toBeNull();
   });
 
   it.each([
