@@ -116,6 +116,14 @@ describe("BillingTabs areas", () => {
     expect(screen.queryByRole("navigation", { name: /views$/ })).toBeNull();
   });
 
+  it.each(["/remittance/tpe", "/remittance/playbooks", "/remittance/report"])(
+    "%s, a Revenue Cycle screen with no view of its own, falls under Remittances",
+    (path) => {
+      renderAt(path);
+      expect(currentView()).toBe("Remittances");
+    },
+  );
+
   it("falls back to Overview for billing screens outside the views", () => {
     const nav = renderAt("/billing/rule-config");
     expect(currentArea(nav)).toBe("Overview");

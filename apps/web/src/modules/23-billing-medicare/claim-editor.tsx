@@ -346,7 +346,7 @@ export function ClaimEditor(): JSX.Element {
             </a>
           </nav>
           <nav
-            aria-label="Revenue cycle"
+            aria-label="Related remittance and denial work"
             style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}
           >
             <Link to="/remittance" style={linkStyle}>

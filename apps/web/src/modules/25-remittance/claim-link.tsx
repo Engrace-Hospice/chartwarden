@@ -11,7 +11,7 @@ export function ClaimLink({
   return (
     <Link
       to={`/billing/claims/${encodeURIComponent(claimId)}`}
-      style={{ color: "var(--color-primary)" }}
+      style={{ color: "var(--color-primary)", textDecoration: "underline" }}
     >
       Open claim
     </Link>
