@@ -158,6 +158,17 @@ export type { Ack999TransactionSet, Parsed999Detail } from "./acks/parse-999";
 
 // ─── ClearinghouseTransport port and conformance cases (ADR-0053; the in-memory reference is in ./testing) ─────────
 export { CH, CLEARINGHOUSE_EVENT_KINDS, RETRYABLE_CODES } from "./clearinghouse/types";
+export {
+  EPISODE_ALERT_API_KEY_ENV,
+  EPISODE_ALERT_BASE_URL_ENV,
+  EpisodeAlertTransport,
+  createEpisodeAlertTransportFromEnv,
+} from "./clearinghouse/episode-alert-transport";
+export type { EpisodeAlertTransportOptions } from "./clearinghouse/episode-alert-transport";
+export {
+  EPISODE_ALERT_ELIGIBILITY_FIELDS,
+  eligibilityOutcomeFromXml,
+} from "./clearinghouse/episode-alert-eligibility";
 export { checkStediEdits } from "./clearinghouse/stedi-edit-rules";
 export type { StediEditFinding, StediEditRule } from "./clearinghouse/stedi-edit-rules";
 export type {

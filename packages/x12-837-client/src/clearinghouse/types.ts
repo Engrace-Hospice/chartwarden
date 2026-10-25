@@ -22,7 +22,7 @@ import type {
 } from "../types";
 
 /** The implementations that exist or are planned. A new vendor adds its literal here (and a conformance runner). */
-export type ClearinghouseVendor = "in_memory" | "direct_mac" | "stedi";
+export type ClearinghouseVendor = "in_memory" | "direct_mac" | "stedi" | "episode_alert";
 
 /** What a transport reports: a vendor, or `not_wired` for the unbound fail-closed transport (never configurable). */
 export type ClearinghouseTransportVendor = ClearinghouseVendor | "not_wired";

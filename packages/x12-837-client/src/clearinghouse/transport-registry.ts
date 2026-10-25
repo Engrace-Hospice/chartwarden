@@ -12,7 +12,12 @@ import { CH, type ClearinghouseTransport, type ClearinghouseVendor } from "./typ
 
 export const CLEARINGHOUSE_VENDOR_ENV = "CLEARINGHOUSE_VENDOR";
 
-const VENDORS: readonly ClearinghouseVendor[] = ["in_memory", "direct_mac", "stedi"];
+const VENDORS: readonly ClearinghouseVendor[] = [
+  "in_memory",
+  "direct_mac",
+  "stedi",
+  "episode_alert",
+];
 /** The vendors configurable in production (everything but the in_memory test double). */
 export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly ClearinghouseVendor[] = VENDORS.filter(
   (v) => v !== "in_memory",
