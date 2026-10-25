@@ -61,7 +61,16 @@ export interface ReceiveAdviceInput {
 export type ReceiveAdviceResult =
   | { readonly outcome: "queued"; readonly adviceId: string }
   | { readonly outcome: "duplicate"; readonly existingAdviceId: string }
-  | { readonly outcome: "malformed"; readonly reason: string };
+  | {
+      readonly outcome: "malformed";
+      readonly reason: string;
+      /**
+       * "content": the file itself is bad (no ISA/ST, unparseable, control numbers disagree) - only these count toward the
+       * 835 pull's quarantine cap. "environment" (payee/NPI config, parser outage) is transient and never counts.
+       * Absent = treated as "environment" (fail safe: never quarantine on an unclassified refusal).
+       */
+      readonly cause?: "content" | "environment";
+    };
 
 export type PostAdviceResult =
   | {
