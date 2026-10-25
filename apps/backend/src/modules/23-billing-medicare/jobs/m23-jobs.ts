@@ -48,9 +48,21 @@ import {
   repositories,
 } from "@chartwarden/billing";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { type HospiceHistory, assertNoMbi } from "@chartwarden/x12-837-client";
+import {
+  CH,
+  CLEARINGHOUSE_VENDOR_ENV,
+  type HospiceHistory,
+  assertNoMbi,
+  parseClearinghouseVendor,
+} from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import type { DdeWatchdogPort } from "../services/dde-watchdog";
+import {
+  type M23TransportDeps,
+  activeTransport,
+  pullTransportAcks,
+  transportUpload,
+} from "./clearinghouse-submission";
 import { type AckPayerDates, applyNoticeAck, sanitizeAckReasonCodes } from "./notice-ack-jobs";
 import {
   type M23CronQueueName,
@@ -496,6 +508,12 @@ export interface M23WorkerDeps {
   readonly alerts?: WorkerAlertPort;
   readonly x12?: X12ClientPort;
   readonly macPortal?: MacPortalPort;
+  /**
+   * The bound clearinghouse transport (ADR-0053, #707). When `transport.binding.vendor` is set the claim/NOE/NOTR submit
+   * and retry workers and the ack pulls use it and never the legacy `macPortal` (X12 generation still comes from `x12`).
+   * Unset or an unbound binding keeps the legacy ports.
+   */
+  readonly transport?: M23TransportDeps;
   readonly hets?: HetsEligibilityPort;
   readonly noticeWindow?: NoticeWindowPort;
   readonly validationRunner?: ClaimValidationRunnerPort;
@@ -561,14 +579,16 @@ function macPortalOf(deps: M23WorkerDeps): MacPortalPort {
       `macPortal.${fn}`,
       "bind the MAC-portal transport (x12-837-client/mac-portal/<juris>.ts)",
     );
-  return (
-    deps.macPortal ?? {
-      upload: () => u("upload"),
-      pullPending999: () => u("pullPending999"),
-      pullPending277ca: () => u("pullPending277ca"),
-      probeHealth: () => u("probeHealth"),
-    }
-  );
+  const legacy: MacPortalPort = deps.macPortal ?? {
+    upload: () => u("upload"),
+    pullPending999: () => u("pullPending999"),
+    pullPending277ca: () => u("pullPending277ca"),
+    probeHealth: () => u("probeHealth"),
+  };
+  // #707: a configured vendor owns every upload; the legacy portal is never the fallback. (The pending-file pulls and
+  // the health probe stay legacy: the ack crons branch on `activeTransport` before they reach the portal.)
+  const transport = activeTransport(deps);
+  return transport ? { ...legacy, upload: transportUpload(transport) } : legacy;
 }
 
 function hetsOf(deps: M23WorkerDeps): HetsEligibilityPort {
@@ -998,6 +1018,14 @@ export async function runClaimSubmitRetry(
       },
     });
     return;
+  }
+
+  // #706/#707: a prior attempt left IN DOUBT at the clearinghouse (the file may have reached the MAC portal, which does
+  // not dedupe) must be reconciled, not re-sent under a fresh control number.
+  if (activeTransport(deps) && priorSubmission.outcomeReason?.includes(CH.IN_DOUBT)) {
+    throw new Error(
+      `claim submission ${job.submissionId} is in doubt at the clearinghouse (${CH.IN_DOUBT}); reconcile it before retrying`,
+    );
   }
 
   // Preflight the §2.3 submit guard BEFORE transmitting anything — mirrors {@link runClaimSubmit}. A
@@ -1678,8 +1706,71 @@ async function applyAcks(
   }
 }
 
+/**
+ * The ack crons over the bound transport (#707): pull each credentialed provider entity's acknowledgments, map the
+ * transport's control number back to our submission row, and hand the result to the same router as the legacy path.
+ * An acknowledgment for a control number we have no submission for is skipped (nothing to record it against).
+ */
+async function runTransportAckPull(
+  deps: M23WorkerDeps,
+  transport: M23TransportDeps,
+  kind: "ack_999" | "ack_277ca",
+): Promise<void> {
+  const now = deps.now ?? (() => new Date());
+  const acks: { submissionId: string; ack: RoutedAck }[] = [];
+  const failures: string[] = [];
+  for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
+    try {
+      const pulled = await pullTransportAcks(transport, organizationId, kind);
+      failures.push(...pulled.failures);
+      for (const t of pulled.acks) {
+        const submission = await withOrgContext(
+          deps.db,
+          { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+          (txAny) =>
+            new ClaimSubmissionRepository(txAny as unknown as BillingDb).findLatestAttempt(
+              t.providerEntityId,
+              t.controlNumber,
+            ),
+        );
+        if (!submission) continue;
+        acks.push({
+          submissionId: submission.id,
+          ack: {
+            organizationId,
+            kind: t.kind,
+            stage: t.stage,
+            outcome: t.outcome,
+            payerControlNumber: t.payerControlNumber,
+            reasonCodes: t.reasonCodes,
+            macJurisdiction: t.macJurisdiction,
+            ackFileUri: t.ackFileUri,
+            receivedAt: now(),
+            payerDates:
+              t.kind === "ack_999"
+                ? { functionalGroupDate: t.day, interchangeDate: null }
+                : { statusEffectiveDate: t.day },
+          },
+        });
+      }
+    } catch (err) {
+      failures.push(`org ${organizationId}: ${err instanceof Error ? err.message : "failed"}`);
+    }
+  }
+  try {
+    await applyAcks(deps, acks);
+  } catch (err) {
+    failures.push(err instanceof Error ? err.message : "apply failed");
+  }
+  if (failures.length > 0) {
+    throw new Error(`clearinghouse ack pull: ${failures.length} failure(s): ${failures.join("; ")}`);
+  }
+}
+
 /** `ack.pull-999` (§4.8 cron). Exported for the transfer-notice and NOE/NOTR live suites. */
 export async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
+  const transport = activeTransport(deps);
+  if (transport) return runTransportAckPull(deps, transport, "ack_999");
   const portal = macPortalOf(deps);
   const x12 = x12Of(deps);
   const now = deps.now ?? (() => new Date());
@@ -1713,6 +1804,8 @@ export async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
 
 /** `ack.pull-277ca` (§4.8 cron): the 277CA twin of {@link runAckPull999} (accepted/rejected/partial outcomes). */
 export async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
+  const transport = activeTransport(deps);
+  if (transport) return runTransportAckPull(deps, transport, "ack_277ca");
   const portal = macPortalOf(deps);
   const x12 = x12Of(deps);
   const now = deps.now ?? (() => new Date());
@@ -2320,13 +2413,37 @@ export function registerM23PortalHealthWorker(deps: M23WorkerDeps): Worker[] {
   ];
 }
 
+/**
+ * #707: a deployment that names a clearinghouse vendor must hand the workers that binding. Building them without it
+ * would quietly send through the legacy portal while the platform believes it is bound; refuse instead.
+ */
+export function assertTransportInjected(
+  env: Readonly<Record<string, string | undefined>>,
+  deps: Pick<M23WorkerDeps, "transport">,
+): void {
+  const vendor = parseClearinghouseVendor(
+    env[CLEARINGHOUSE_VENDOR_ENV],
+    env.NODE_ENV === "production",
+  );
+  if (vendor === null) return;
+  if (deps.transport?.binding.vendor !== vendor) {
+    throw new Error(
+      `M23LaunchCapabilityIncomplete: ${CLEARINGHOUSE_VENDOR_ENV}=${vendor} but the workers were built without that clearinghouse binding`,
+    );
+  }
+}
+
 /** Launch slice: one claim submission worker plus the 999/277CA reconciliation workers. */
-export function registerM23LaunchWorkers(deps: M23WorkerDeps): Worker[] {
+export function registerM23LaunchWorkers(
+  deps: M23WorkerDeps,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): Worker[] {
   if (!deps.x12 || !deps.macPortal || !deps.outbox || !deps.jurisdictions) {
     throw new Error(
       "M23LaunchCapabilityIncomplete: x12, macPortal, outbox, and jurisdictions are required",
     );
   }
+  assertTransportInjected(env, deps);
   const orgWorker = <D extends { organizationId: string }>(
     queue: string,
     concurrency: number,
@@ -2529,6 +2646,7 @@ export function buildM23WorkerDeps(deps: {
   alerts?: WorkerAlertPort;
   x12?: X12ClientPort;
   macPortal?: MacPortalPort;
+  transport?: M23TransportDeps;
   hets?: HetsEligibilityPort;
   noticeWindow?: NoticeWindowPort;
   validationRunner?: ClaimValidationRunnerPort;
@@ -2547,6 +2665,7 @@ export function buildM23WorkerDeps(deps: {
     alerts: deps.alerts,
     x12: deps.x12,
     macPortal: deps.macPortal,
+    transport: deps.transport,
     hets: deps.hets,
     noticeWindow: deps.noticeWindow,
     validationRunner: deps.validationRunner,

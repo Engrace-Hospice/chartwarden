@@ -72,6 +72,8 @@ export type StediAnomaly =
       readonly clearinghouseSubmissionId: string;
     }
   | { readonly type: "stale_reservation"; readonly idempotencyKey: string }
+  /** direct_mac: an upload may have reached the MAC portal, which does not dedupe; an operator must settle it. */
+  | { readonly type: "in_doubt"; readonly idempotencyKey: string }
   | { readonly type: "derived_submission_id"; readonly idempotencyKey: string };
 
 const RECORD_ATTEMPTS = 3;

@@ -60,6 +60,9 @@ export {
   scheduleM23WatchJobs,
   unboundWorkerPort,
 } from "./m23-jobs";
+export { buildClearinghouseContextPort } from "./clearinghouse-context";
+export { buildDirectMacGateway, buildSubmissionControlNumberReader } from "./direct-mac-gateway";
+export type { ClearinghouseContextPort, M23TransportDeps } from "./clearinghouse-submission";
 export {
   buildClaimValidationRunner,
   buildM23ValidationRunner,

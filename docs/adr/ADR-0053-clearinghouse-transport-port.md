@@ -1,8 +1,9 @@
 # ADR-0053 — The claim cycle runs through one `ClearinghouseTransport` port; ChartWarden resells one clearinghouse (platform configuration); an adapter is done only when it passes the shared conformance cases
 
-- **Status:** **Proposed** — D3 (platform configuration, ChartWarden resells one clearinghouse) was decided by the
-  product owner 2026-10-11; D1, D2 and D4–D9 are proposed with the first implementation (port, conformance
-  suite and in-memory reference) and are ratified when the first real adapter passes the suite.
+- **Status:** **Accepted** — D3 (platform configuration, ChartWarden resells one clearinghouse) was decided by the
+  product owner 2026-10-11. D1, D2 and D4–D9 are ratified 2026-10-24 now that a second, non-Stedi adapter
+  (`direct_mac`, #706) passes the shared conformance cases for the capabilities it implements. D10 (one submission
+  port per lane, 2026-10-24, #705) completes the decision.
 - **Date:** 2026-10-11
 - **Phase:** post-launch billing work (Medicare submission paths); precedes the Stedi adapter (Phase 4/5).
 - **Extends:** [ADR-0028](ADR-0028-adapter-package-codepaths.md) (adapter package code paths) and
@@ -53,8 +54,8 @@ vendor binding is deployment/platform configuration. The credential is platform-
 attributed to a ProviderEntity (the payer sees the provider) through `ClearinghouseContext`. A per-ProviderEntity
 override can be added later without changing the port. `usage: "test"` must reach only vendor test mode. The
 fail-closed default (an unbound production transport answering `CH_NOT_WIRED`) and the boot validation that rejects
-an active vendor with no adapter are **not built yet** — they are plan items A3/B2, and `CH.NOT_WIRED` /
-`CH.NOT_PROVISIONED` are reserved codes until then.
+an active vendor with no adapter are built (`transport-registry.ts`, `NOT_WIRED_TRANSPORT`; the binding is
+injected into the M23 workers, D10).
 
 **D4 — Conformance is the definition of done.** `CLEARINGHOUSE_CONFORMANCE_CASES` (18 behavioural cases covering
 eligibility, dry-run, notices, idempotency identity, both ack stages, out-of-order acks, rejections, paging and
@@ -110,12 +111,36 @@ here so they become golden-test inputs:
 | Frequency 7/8 needs `REF*F8` directly after CL1 | adjustment generator orders it so (Stedi accepts it; whether Original Medicare does is Q17, open) |
 | JSON route needs occurrence/value/condition lists as arrays of arrays and requires `attending` | JSON mapper builds that shape |
 
+**D10 — One submission port per lane (decided 2026-10-24, #705; option (a)).** The transport is the only submission
+path for **Medicare and commercial** claims, NOE and NOTR. The legacy launch gateway (`M23_MAC_GATEWAY_*` /
+`M23_X12_GATEWAY_*` wired straight into the workers) is **retired after the pilot**; until then it is the default path
+*only while `CLEARINGHOUSE_VENDOR` is unset*. The switch is that single variable: unset = legacy ports; set = the
+bound transport for submit/retry and for the 999/277CA ack crons, with **no silent fallback** between the two (a
+degraded transport answer fails the job, and `registerM23LaunchWorkers` refuses to build workers without the binding
+while a vendor is configured). The launch gateway is not discarded meanwhile: it is re-expressed as the `direct_mac`
+transport, which keeps generation (the X12 sidecar) and the MAC portal drop behind the port. Commercial (M41, ADR-0100)
+uses the transport from the start. **Medicaid is decided per state and is not rewritten:** M24 keeps its per-provider
+state credentials; **Oregon stays a state-direct adapter** (`packages/medicaid-adapters`) behind the same fail-closed
+capability gate (an unconfigured or unprovisioned state answers closed, never falls through to another channel). A
+state channel is wrapped as a transport only if and when a state's channel is a clearinghouse in the sense of D1; the
+decision for each further state is recorded with that state's adapter. Rejected: (b) both paths chosen per provider
+entity (two permanent code paths and a per-entity switch to get wrong), (c) skip direct-MAC and cut over to Stedi
+(Stedi cannot yet submit on this account, Q14, and the port would be proven against one vendor only).
+
 ## Consequences
 
 - A new clearinghouse is one class plus a conformance run; no module changes.
-- Direct-MAC is re-expressed as a transport (plan B1) before the port is declared stable, so it is not fitted to
-  Stedi alone.
-- Follow-up work (separate PRs): the ack-state split (A6), the platform binding and boot validation (A3), binding
+- Direct-MAC is re-expressed as a transport (plan B1, `direct-mac-transport.ts`) so the port is not fitted to Stedi
+  alone. It declares the `submit` conformance capability only: the legacy portal has no claim-status inquiry, no 835
+  delivery on this path (M25's worker port), no signed push, and its pending-file ack list is consumed as it is read,
+  so the cursor-replay cases (C08, C17) and everything that needs `fetchClaimStatus` are skipped by name, not passed.
+  `validate`, `eligibility`, `adjustment` and `enrollment` have no gateway operation either. Its
+  `fetchAcknowledgments` is covered by its own tests. The per-vendor limits are visible as skipped cases, never silent.
+- Known limits of the worker injection (#707): the ack crons re-read from a null cursor each tick (replays collapse on
+  the ack row's unique key); 8xC/8xD transfer notices have no `SubmissionKind`, so with a vendor set they fail closed
+  rather than use the legacy portal; a 277CA "partial" is carried as a rejection marked `PARTIAL` because the port has
+  no partial disposition. The first two are tracked as follow-up issues.
+- Follow-up work (separate PRs): the ack-state split (A6), binding
   `fetchRemittances` to the M25 835 worker port (A5), the Stedi adapter (B2).
 - The port makes no promise about hospice rules (NOE timeliness, benefit periods, revenue/HCPCS pairing); those stay
   in the §11.A validation rules because clearinghouses do not check them.
