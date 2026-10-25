@@ -64,6 +64,15 @@ export const ACTIONABLE_DDE_STATES = [
   "returned",
 ] as const;
 
+/** The notice states (NOE and NOTR share them) that have not left the filing window. */
+export const ACTIONABLE_NOTICE_STATES = [
+  "draft",
+  "ready",
+  "submitted",
+  "ack_pending",
+  "ack_rejected",
+] as const;
+
 export interface WorkQueueSources {
   claims: SourceState<ClaimRow>;
   noe: SourceState<NoticeRow>;
@@ -95,7 +104,6 @@ export function useWorkQueueSources(client: ApiClient): {
       void read.then((state) => {
         if (active) setSources((prev) => ({ ...prev, [key]: state }));
       });
-    const query = { params: { query: { limit: QUEUE_PAGE_SIZE } } };
     land(
       "claims",
       Promise.all(
@@ -108,8 +116,19 @@ export function useWorkQueueSources(client: ApiClient): {
         ),
       ).then(combine),
     );
-    land("noe", readPage<NoticeRow>(client.GET("/api/v1/noe-records" as never, query as never)));
-    land("notr", readPage<NoticeRow>(client.GET("/api/v1/notr-records" as never, query as never)));
+    const notices = (path: string) =>
+      Promise.all(
+        ACTIONABLE_NOTICE_STATES.map((state) =>
+          readPage<NoticeRow>(
+            client.GET(
+              path as never,
+              { params: { query: { limit: QUEUE_PAGE_SIZE, state } } } as never,
+            ),
+          ),
+        ),
+      ).then(combine);
+    land("noe", notices("/api/v1/noe-records"));
+    land("notr", notices("/api/v1/notr-records"));
     land(
       "dde",
       Promise.all(
