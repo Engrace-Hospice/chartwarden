@@ -29,6 +29,7 @@ import { Link, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 import { ChartBanner, PatientSummaryPanel, useChartIdentity } from "../../shell/patient-context";
 import { claimStateTone, dollars, statusLabel } from "./billing-status";
+import { PatientWorkPanel } from "./patient-work-panel";
 
 interface MedicareClaim {
   claimId: string;
@@ -307,6 +308,7 @@ export function PatientClaims(): JSX.Element {
         patientId ? (
           <>
             <PatientSummaryPanel identity={identity} />
+            <PatientWorkPanel patientId={patientId} />
             <NoticesPanel notices={notices} />
           </>
         ) : undefined
