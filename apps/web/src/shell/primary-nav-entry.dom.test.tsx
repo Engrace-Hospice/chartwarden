@@ -85,6 +85,9 @@ describe("PrimaryNavEntry", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("Group S")).toBeTruthy();
+    // A named group, not a region landmark: the sidebar must not grow one landmark per sub-section.
+    expect(screen.getByRole("group", { name: "Group S" })).toBeTruthy();
+    expect(screen.queryByRole("region")).toBeNull();
     expect(screen.getByRole("link", { name: "Referral Inbox" }).getAttribute("aria-current")).toBe(
       "page",
     );

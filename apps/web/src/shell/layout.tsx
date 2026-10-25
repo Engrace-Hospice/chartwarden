@@ -258,10 +258,15 @@ export function PrimaryNavEntry({
             const links = sub.screens.filter((s) => s.path !== entry.href);
             if (links.length === 0 && sub.borrowed.length === 0) return null;
             return (
-              <section key={sub.key} aria-label={sub.label}>
-                <div className="wx-nav-section-label">{sub.label}</div>
+              <div key={sub.key} role="group" aria-labelledby={`${listId}-${sub.key}`}>
+                <div
+                  id={`${listId}-${sub.key}`}
+                  className="wx-nav-section-label wx-nav-subsection-label"
+                >
+                  {sub.label}
+                </div>
                 <NavLinkList links={links} borrowed={sub.borrowed} pathname={pathname} />
-              </section>
+              </div>
             );
           })}
           {entry.borrowed?.length ? (
