@@ -5518,6 +5518,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/commercial/claims": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The commercial claim work queue for one provider entity (commercial_billing.read; provider entity scope, caseload-filtered; read-audited list). Filter by state and payer kind (commercial only, Medicare secondary, Medicaid secondary). Keyset paging: `limit` (default 50, max 100) and an opaque `cursor`; `nextCursor` is null on the last page. A page may hold fewer than `limit` rows (and even none) when claims outside the caseload were skipped; keep following `nextCursor`. Ids, dates, plan name and money only */
+        get: operations["getApiV1BillingCommercialClaims"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/commercial/claims/{id}": {
         parameters: {
             query?: never;
@@ -5704,6 +5721,23 @@ export interface paths {
         head?: never;
         /** Change an enrollment's status, end date or evidence reference (commercial_billing.manage_enrollment + a fresh step-up; Idempotency-Key required). The body names the provider entity; an enrollment of another provider entity or tenant is a 404 */
         patch: operations["patchApiV1BillingCommercialEnrollmentsById"];
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/payer-plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The supported-payers view: the tenant's commercial payer plans with filing indicator, authorization policy, payer state (from M40) and the clearinghouse payer ids each plan routes on (commercial_billing.read; provider entity scope). No patient data */
+        get: operations["getApiV1BillingCommercialPayerplans"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/billing/commercial/payer-plans/{id}/eligibility-policy": {
@@ -44050,6 +44084,53 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingCommercialClaims: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                state?: "draft" | "ready" | "void";
+                payerKind?: "commercial_only" | "medicare_secondary" | "medicaid_secondary";
+                patientId?: string;
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            claimControlNumber: string;
+                            state: string;
+                            patientId: string;
+                            planId: string;
+                            planName: string;
+                            tob: string;
+                            serviceFrom: string;
+                            serviceTo: string;
+                            secondaryPayerKind: string | null;
+                            totalChargeCents: number;
+                            expectedPaymentCents: number | null;
+                            updatedAt: string;
+                        }[];
+                        hasMore: boolean;
+                        nextCursor: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingCommercialClaimsById: {
         parameters: {
             query?: never;
@@ -44068,8 +44149,23 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        plan: {
+                            id: string;
+                            payerId: string;
+                            planName: string;
+                            authorizationRequirement: string;
+                            payerStatus: string | null;
+                        };
+                        authorizations: {
+                            id: string;
+                            status: string;
+                            levelOfCare: string | null;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                        }[];
                         claim: {
                             id: string;
+                            claimControlNumber: string;
                             state: string;
                             patientId: string;
                             providerEntityId: string;
@@ -44621,6 +44717,50 @@ export interface operations {
                         evidenceRef: string | null;
                         createdAt: string;
                         updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingCommercialPayerplans: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            payerId: string;
+                            planName: string;
+                            claimFilingIndicator: string;
+                            authorizationRequirement: string;
+                            authorizationLeadDays: number | null;
+                            eligibilityStalenessPolicy: string;
+                            eligibilityMaxAgeDays: number;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            payerStatus: string | null;
+                            routes: {
+                                clearinghouseKey: string;
+                                clearinghousePayerId: string;
+                                effectiveFrom: string;
+                                effectiveTo: string | null;
+                            }[];
+                        }[];
                     };
                 };
             };

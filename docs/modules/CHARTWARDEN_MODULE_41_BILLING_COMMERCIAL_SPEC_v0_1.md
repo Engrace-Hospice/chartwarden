@@ -10,6 +10,7 @@
 **Sibling specs read into context:** M23 v0.2 (D15), M24 v0.2.1 (structure), M25 v0.2 (D9), M40 v0.4
 
 ## Changelog
+- **0.4 (2026-10-25)** - UI built (issue #726): the commercial claim work queue with a payer-kind filter, the claim detail (payer, plan, authorization, coordination of benefits, validation with audited overrides) and the supported-payers view, all under `apps/web/src/modules/41-billing-commercial` (spec `docs/design/screens/revenue/CHARTWARDEN_UI_COMMERCIAL_BILLING.md`). Two read routes added for them (`GET /claims`, `GET /payer-plans`, section 4.1) and the claim read gained `plan` and `authorizations`. Browser test: `e2e/specs/billing-commercial.spec.ts`.
 - **0.3 (2026-10-24)** - Claim assembly and validation built (issue #722). Tables `commercial_authorization`, `commercial_claim`, `commercial_claim_line`, `commercial_claim_state_history`, `commercial_validation_run`, `_result` and `_override` (migration 1261; role grants in 1266); the plan gains `site_of_service_hcpcs_required`. Routes under `/api/v1/billing/commercial` (section 4.1), the three-key permission set, three ABAC predicates, three `m41.claim.*` events. The shared 837I builder gained the commercial shape (SBR09 filing indicator, group number, member id, revenue-code-only lines, loop 2320/2330 for a Medicare or Medicaid secondary). M40 payer merge or deactivation is handled by a read-time guard (section 4.2), not by rewriting plans.
 - **0.2 (2026-10-24)** — ADR-0100 ratified; UNVERIFIED claim-shape and COB statements corrected (Medicare Advantage hospice is billed to the MAC, not M41). Payer and plan model built: `commercial_payer_plan`, plus two tables added to the owned set, `commercial_payer_route` (clearinghouse payer id) and `commercial_contract_rate` (rate terms; no longer deferred).
 - **0.1 (2026-10-23)** — First draft. Skeleton and decision record only; no tables, routes or events exist.
@@ -82,7 +83,9 @@ Built (#722), all under `/api/v1/billing/commercial`, permission `commercial_bil
 - `POST /claims/:id/validation-results/:resultId/override` (201; step-up, reason of at least 40 characters)
 - `POST /authorizations`, `POST /authorizations/:id/status`, `GET /authorizations?providerEntityId&patientId` (read-audited)
 
-Proposed, with their own issues: payer-plan and enrollment CRUD, `POST /eligibility/check`, `POST .../submit`, `GET .../timeline`.
+Built (#726, read only): `GET /claims?providerEntityId&state&payerKind&patientId&limit` (the work queue: one provider entity, caseload-filtered, read-audited list; keyset paging by an opaque `cursor`, `limit` 1 to 100, answering `items`, `hasMore` and `nextCursor`. The caseload axis runs after the SQL page, so a page can be short or even empty while `nextCursor` is set: clients keep following it. A scan stops at 500 rows per request and answers a cursor to continue from) and `GET /payer-plans?providerEntityId` (plans with payer state and clearinghouse routes, no patient data). `GET /claims/:id` also returns `plan` and the `authorizations` touching the claim window (status and period, never the number).
+
+Proposed, with their own issues: payer-plan CRUD, `POST /eligibility/check`, `POST .../submit`, `GET .../timeline`.
 
 ### 4.2 Validation
 Rules are pure functions over loaded facts (`domain/rules.ts`) and run on assembly, on `validate` and on every `ready`. A result is a **hard block** (`error`, never overridable: no role can move the claim past it, only a data or policy change can) or a **soft block** (`warn`, overridable with permission, step-up and a reason). Only a failing, overridable result of the claim's latest run can be overridden; the override is bound to the exact facts (rule key plus evidence hash), so it does not carry to different facts after a re-run, and there is one per result. The override writes the override row, a prominent M4 audit event (ids, rule key and reason LENGTH only) and an `m41.claim.override_applied` event in one transaction; the reason text exists only on the override row.
@@ -115,10 +118,10 @@ Submit and retry, acknowledgment pull, claim-status poll, enrollment-expiry watc
 seam functions in workers (workers are not requests). Durable idempotency comes from the existing clearinghouse attempt
 store; an ambiguous send is UNKNOWN and reconciled before any resend.
 
-## 5. UI Surfaces (proposed)
+## 5. UI Surfaces (built, #726)
 Payer plans and enrollment status (supported-payers view), authorization list, commercial claim work queue (payer-kind
 filter, validation panel, send gate reasons), claim detail (payer, plan, authorization, COB, timeline). Uses the shared kit
-and the flat rail/drawer pattern; screens are added to the UI corpus so `docs:ui` and `ui:parity` stay green.
+and the flat rail/drawer pattern; screens are in the UI corpus so `docs:ui` and `ui:parity` stay green. Built: the claim queue (payer-kind and state filters, drawer), claim detail with override ceremony, supported payers with enrollment ("not enrolled" is a state). The default provider entity is the first one the user can actually bill for (probed with the payer-plans read). Not built, and why: send-gate reasons and the timeline (they depend on the submission slice, issue 5 of section 10, which needs the Medicare submission-path decision); an authorization list screen and editor (the routes exist, no screen was in the issue scope). The browser test `e2e/specs/billing-commercial.spec.ts` stubs the commercial READ routes with `page.route`: no seed scenario can assemble a commercial claim (it needs a commercial payer plan, route, contract rates and patient coverage, and claim assembly's admission, election and diagnosis seams are not all bound in the dev seed), so the screens' behaviour, keyboard operation and accessibility are pinned against synthetic responses while sign-in, shell, provider-entity list and routing are real. The real routes, including the paging loop with more than 100 reachable claims and the 500-row scan cap, are proven by `m41-commercial-routes.live.test.ts` against the real schema.
 
 ## 6. Permissions
 `commercial_billing.read`, `.write` and `.override_validation` are built (created by migration 1265; migration 1266 also grants them to every role holding the Medicare analogue); `.submit` and `.manage_enrollment` arrive with their issues. ABAC: `commercial_billing_provider_scope`, `commercial_claim_in_billing_caseload`, `commercial_override_eligible`. `submit` and enrollment
@@ -152,7 +155,7 @@ a `ci.yml` job row. Conformance for the transport is owned by ADR-0053.
 5. Submission and acknowledgment workers through the transport (S15, S18); requires the Medicare submission-path decision.
 6. Eligibility.
 7. `CommercialClaimReader` seam and the M25 payer-keyed candidate provider (S15, S19).
-8. UI and browser tests.
+8. UI and browser tests. **Done (#726), except send-gate reasons, the timeline and an authorization editor.**
 9. Regenerate `status:matrix` and `ui:parity`; run `build`, `typecheck`, `arch:fitness`, tests and `check:boot:platform`.
 
 ## 11. Resolved decisions

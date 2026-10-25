@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 115 documented screen specs · 44 module screen-sets registered · 370 screens wired across web/portal/admin.
+**Coverage:** 116 documented screen specs · 45 module screen-sets registered · 373 screens wired across web/portal/admin.
 - **admin**: 39 screen(s)
 - **portal**: 18 screen(s)
-- **web**: 313 screen(s)
+- **web**: 316 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -22,7 +22,7 @@
 - **mobile**: 1 spec(s)
 - **platform**: 5 spec(s)
 - **portal**: 11 spec(s)
-- **revenue**: 16 spec(s)
+- **revenue**: 17 spec(s)
 - **staffing**: 3 spec(s)
 
 ## Implemented surface (registered screens)
@@ -342,6 +342,9 @@
 | web | 39-consent | `consent.expiration-renewal` | `/patients/:patientId/consents/expiring` | `consent.read` | ✅ |
 | web | 39-consent | `consent.recipients-dpoa` | `/consents/:consentId/recipients` | `consent.read` | ✅ |
 | web | 40-mdm | `mdm.console` | `/mdm` | `mdm.physician.read` | ✅ |
+| web | 41-billing-commercial | `commercial.claims` | `/commercial/billing/claims` | `commercial_billing.read` | ✅ |
+| web | 41-billing-commercial | `commercial.claim` | `/commercial/billing/claims/:claimId` | `commercial_billing.read` | ✅ |
+| web | 41-billing-commercial | `commercial.payers` | `/commercial/billing/payers` | `commercial_billing.read` | ✅ |
 | admin | 01-ops | `admin.ops.outbox` | `/admin/ops/outbox` | `member.manage` | ✅ |
 | admin | 01-ops | `admin.ops.outbox-detail` | `/admin/ops/outbox/:id` | `member.manage` | ✅ |
 | admin | 23-billing-medicare | `admin.billing.wage-index-load` | `/admin/billing/wage-indexes/load` | `billing.rule_config.platform_admin` | ✅ |

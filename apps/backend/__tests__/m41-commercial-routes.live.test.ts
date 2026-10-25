@@ -409,6 +409,182 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
     expect((await call(app, "POST", `${BASE}/claims/${claimId}/void`)).json().state).toBe("void");
   });
 
+  it("serves the work queue, the supported-payers view and the claim detail (plan, authorization, COB) without PHI (#726)", async () => {
+    const s = await seed("required_at_admission");
+    const app = server(s.admissionId);
+    const authorization = await call(app, "POST", `${BASE}/authorizations`, {
+      payload: {
+        providerEntityId,
+        patientId: s.patientId,
+        planId: s.planId,
+        authorizationNumber: "AUTH-SYNTH-7731",
+        obtainedOn: "2026-02-20",
+        effectiveFrom: "2026-03-01",
+        effectiveTo: "2026-03-31",
+      },
+    });
+    expect(authorization.statusCode).toBe(201);
+    const created = await call(app, "POST", `${BASE}/claims/assemble`, {
+      payload: assembleBody(s.patientId),
+    });
+    const claimId = created.json().claimId as string;
+
+    const queue = await call(app, "GET", `${BASE}/claims?providerEntityId=${providerEntityId}`);
+    expect(queue.statusCode).toBe(200);
+    const row = (queue.json().items as { id: string }[]).find((c) => c.id === claimId);
+    expect(row).toMatchObject({
+      state: "draft",
+      planName: "Synthetic PPO",
+      patientId: s.patientId,
+    });
+    expect(queue.body).not.toMatch(/MEM-0001234|Jane|Doe|AUTH-SYNTH-7731/);
+    // payer-kind: this claim has no other payer, so a Medicare-secondary filter excludes it and commercial-only keeps it
+    const medicare = await call(
+      app,
+      "GET",
+      `${BASE}/claims?providerEntityId=${providerEntityId}&payerKind=medicare_secondary`,
+    );
+    expect((medicare.json().items as { id: string }[]).some((c) => c.id === claimId)).toBe(false);
+    const only = await call(
+      app,
+      "GET",
+      `${BASE}/claims?providerEntityId=${providerEntityId}&payerKind=commercial_only&state=draft`,
+    );
+    expect((only.json().items as { id: string }[]).some((c) => c.id === claimId)).toBe(true);
+    // a scoped actor that does not reach the entity gets 404; one outside the caseload sees an empty queue
+    expect(
+      (await call(app, "GET", `${BASE}/claims?providerEntityId=${otherProviderEntityId}`))
+        .statusCode,
+    ).toBe(404);
+    const nocase = await call(app, "GET", `${BASE}/claims?providerEntityId=${providerEntityId}`, {
+      user: "nocase",
+    });
+    expect(nocase.statusCode).toBe(200);
+    expect(nocase.json().items).toEqual([]);
+
+    const plans = await call(
+      app,
+      "GET",
+      `${BASE}/payer-plans?providerEntityId=${providerEntityId}`,
+    );
+    expect(plans.statusCode).toBe(200);
+    const plan = (plans.json().items as { id: string; routes: unknown[] }[]).find(
+      (p) => p.id === s.planId,
+    );
+    expect(plan).toMatchObject({
+      planName: "Synthetic PPO",
+      claimFilingIndicator: "CI",
+      authorizationRequirement: "required_at_admission",
+      payerStatus: "active",
+    });
+    expect(plan?.routes).toEqual([
+      expect.objectContaining({ clearinghouseKey: "stedi", clearinghousePayerId: "SYNTH01" }),
+    ]);
+
+    const detail = (await call(app, "GET", `${BASE}/claims/${claimId}`)).json();
+    expect(detail.plan).toMatchObject({ id: s.planId, planName: "Synthetic PPO" });
+    expect(detail.authorizations).toEqual([
+      expect.objectContaining({ status: "approved", effectiveFrom: "2026-03-01" }),
+    ]);
+    expect(JSON.stringify(detail)).not.toContain("AUTH-SYNTH-7731");
+    expect(detail.claim.claimControlNumber).toEqual(expect.any(String));
+  });
+
+  /** Bulk-insert VOID claims (exempt from the one-live-claim-per-day rule), three per timestamp so the keyset tie-break is exercised. */
+  async function bulkClaims(
+    entity: string,
+    planId: string,
+    count: number,
+    tag: string,
+  ): Promise<void> {
+    await admin.query(
+      `INSERT INTO commercial_claim (organization_id, provider_entity_id, patient_id, admission_id, plan_id, primary_patient_payer_id,
+         claim_filing_indicator, tob, frequency_code, service_from, service_to, admission_date, patient_status_code,
+         claim_control_number, total_charge_cents, state, created_by_membership_id, updated_at)
+       SELECT $1, $2, gen_random_uuid(), gen_random_uuid(), $3, gen_random_uuid(), 'CI', '812', '2',
+         DATE '2026-03-01', DATE '2026-03-31', DATE '2026-03-01', '30', $4 || '-' || i, 1000, 'void', $5,
+         now() - make_interval(secs => (i / 3)::int)
+       FROM generate_series(1, $6::int) AS i`,
+      [ORG, entity, planId, tag, membershipId, count],
+    );
+  }
+  const follow = async (app: FastifyInstance, base: string, user?: string) => {
+    const ids: string[] = [];
+    const pages: { size: number; cursor: string | null }[] = [];
+    let cursor: string | null = null;
+    for (let guard = 0; guard < 40; guard += 1) {
+      const res = await call(
+        app,
+        "GET",
+        `${base}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+        user ? { user } : {},
+      );
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as {
+        items: { id: string }[];
+        hasMore: boolean;
+        nextCursor: string | null;
+      };
+      expect(body.hasMore).toBe(body.nextCursor !== null);
+      ids.push(...body.items.map((i) => i.id));
+      pages.push({ size: body.items.length, cursor: body.nextCursor });
+      cursor = body.nextCursor;
+      if (cursor === null) break;
+    }
+    return { ids, pages };
+  };
+
+  it("pages a queue of more than 100 reachable claims by keyset cursor without gaps or repeats (#726)", async () => {
+    const s = await seed("not_required");
+    const app = server(s.admissionId);
+    await bulkClaims(otherProviderEntityId, s.planId, 230, "PGA");
+    const { ids, pages } = await follow(
+      app,
+      `${BASE}/claims?providerEntityId=${otherProviderEntityId}&limit=100`,
+      "pe2",
+    );
+    expect(new Set(ids).size).toBe(ids.length); // no repeats, even across equal timestamps
+    const stored = await admin.query(
+      "SELECT count(*)::int AS n FROM commercial_claim WHERE provider_entity_id = $1",
+      [otherProviderEntityId],
+    );
+    expect(ids.length).toBe(stored.rows[0].n as number); // no gaps
+    expect(pages[0]?.size).toBe(100);
+    expect(pages.length).toBeGreaterThanOrEqual(3);
+    expect(pages.at(-1)?.cursor).toBeNull();
+    // a malformed cursor is a 422 and never reaches SQL
+    const bad = await call(
+      app,
+      "GET",
+      `${BASE}/claims?providerEntityId=${otherProviderEntityId}&cursor=AAAA`,
+      { user: "pe2" },
+    );
+    expect(bad.statusCode).toBe(422);
+  });
+
+  it("hits the scan cap for an actor whose caseload holds none of a long queue: empty page, hasMore, a cursor that continues (#726)", async () => {
+    const s = await seed("not_required");
+    const app = server(s.admissionId);
+    await bulkClaims(providerEntityId, s.planId, 620, "CAP");
+    const first = await call(app, "GET", `${BASE}/claims?providerEntityId=${providerEntityId}`, {
+      user: "nocase",
+    });
+    expect(first.statusCode).toBe(200);
+    const body = first.json() as { items: unknown[]; hasMore: boolean; nextCursor: string | null };
+    expect(body.items).toEqual([]); // nothing reachable in the first 500 rows scanned
+    expect(body.hasMore).toBe(true);
+    expect(body.nextCursor).not.toBeNull();
+    // following the cursor reaches the end (still nothing reachable) and then stops
+    const { ids, pages } = await follow(
+      app,
+      `${BASE}/claims?providerEntityId=${providerEntityId}`,
+      "nocase",
+    );
+    expect(ids).toEqual([]);
+    expect(pages.length).toBeGreaterThanOrEqual(2);
+    expect(pages.at(-1)?.cursor).toBeNull();
+  });
+
   it("scopes the DATA: an entity the actor reaches does not open another entity's patient, claim or authorizations", async () => {
     const s = await seed("required_at_admission");
     const app = server(s.admissionId);

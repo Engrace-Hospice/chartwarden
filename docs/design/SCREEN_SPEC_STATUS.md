@@ -86,6 +86,7 @@
 | `screens/portal/CHARTWARDEN_UI_PORTAL_VISIT_SCHEDULE.md` | built | `portal/31-portal` | visits |
 | `screens/portal/CHARTWARDEN_UI_TELEHEALTH_VISIT_ROOM.md` | built | `portal/31-portal` | telehealth |
 | `screens/revenue/CHARTWARDEN_UI_CAP_MANAGEMENT.md` | built | `web/26-cap` | read views only (no cap write is wired in the SPA) |
+| `screens/revenue/CHARTWARDEN_UI_COMMERCIAL_BILLING.md` | built | `web/41-billing-commercial` | Claim queue, claim detail, supported payers. Sending is not a screen yet (submission slice) |
 | `screens/revenue/CHARTWARDEN_UI_CLAIMS_BILLING.md` | built | `web/23-billing-medicare` `web/24-billing-medicaid` |  |
 | `screens/revenue/CHARTWARDEN_UI_COST_REPORT_WORKSPACE.md` | built | `web/27-cost-report` |  |
 | `screens/revenue/CHARTWARDEN_UI_DENIALS_MANAGEMENT.md` | built | `web/25-remittance` | denials, appeals |
