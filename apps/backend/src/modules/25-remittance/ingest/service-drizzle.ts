@@ -221,6 +221,13 @@ export function buildDrizzleM25IngestService(
         matchState,
         matchStrategy: bound ? (match.strategy ?? null) : null,
         matchConfidence: bound ? (match.confidence ?? null) : null,
+        unmatchedReason: bound
+          ? null
+          : candidates.length === 0
+            ? "no_candidate"
+            : match.matched
+              ? "needs_review" // a heuristic proposal a person must confirm
+              : "ambiguous",
         matchedAt: bound ? sql`now()` : null,
         receivedAt: advice.receivedAt,
       })
@@ -515,6 +522,29 @@ export function buildDrizzleM25IngestService(
     input: ReceiveAdviceInput,
     parsed: ParsedRemittanceAdvice,
   ): Promise<ReceiveAdviceResult> {
+    // A clearinghouse resend carries NEW ISA13/ST02 control numbers, so the unique index above cannot see it.
+    // The payment itself is identified by TRN02 + payer + payee + amount: the same payment is never posted twice.
+    // Same-file sets are excluded (their sha matches) - they are separate payments sharing a file.
+    const trace = parsed.checkOrEftTraceNumber;
+    if (trace) {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.providerEntityId}|${input.payerId}|${trace}`}, 0))`,
+      );
+      const [same] = await tx
+        .select({ id: RA.id })
+        .from(RA)
+        .where(
+          and(
+            eq(RA.providerEntityId, input.providerEntityId),
+            eq(RA.payerId, input.payerId),
+            eq(RA.checkOrEftTraceNumber, trace),
+            eq(RA.totalPaymentAmount, money(parsed.totalPaymentAmount)),
+            sql`${RA.fileSha256} <> ${input.fileSha256}`,
+          ),
+        )
+        .limit(1);
+      if (same) return { outcome: "duplicate", existingAdviceId: same.id };
+    }
     const [row] = await tx
       .insert(RA)
       .values({
@@ -527,6 +557,7 @@ export function buildDrizzleM25IngestService(
         checkOrEftTraceNumber: parsed.checkOrEftTraceNumber ?? null,
         paymentMethod: parsed.paymentMethod,
         totalPaymentAmount: money(parsed.totalPaymentAmount),
+        plbTotalAmount: money(parsed.providerAdjustmentTotal ?? 0),
         productionDate: productionDay(parsed.productionDate),
         minioObjectKey: input.minioObjectKey,
         fileSha256: input.fileSha256,

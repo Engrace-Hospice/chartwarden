@@ -55,7 +55,7 @@ export function buildFullEdi(
   const pr = claim.patientResponsibility ?? "0.00";
   const body = [
     `BPR*I*${bpr02}*C*ACH*CCP*01*999999992*DA*123456789*1512345678**01*999988880*DA*98765*20260615`,
-    "TRN*1*EFT-RAW*1512345678",
+    `TRN*1*EFT-RAW-${isa13}*1512345678`,
     "N1*PR*SYNTHETIC MAC",
     "N1*PE*SYNTH HOSPICE",
     `CLP*${clp01}*1*${charge}*${paid}*${pr}*MC*${icn}`,

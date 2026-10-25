@@ -25,6 +25,7 @@ import {
   numeric,
   pgTable,
   smallint,
+  text,
   timestamp,
   unique,
   uuid,
@@ -59,6 +60,8 @@ export const remittanceAdvice = pgTable(
     checkOrEftTraceNumber: varchar("check_or_eft_trace_number", { length: 50 }), // TRN02
     paymentMethod: m25PaymentMethodKind("payment_method").notNull(),
     totalPaymentAmount: numeric("total_payment_amount", { precision: 12, scale: 2 }).notNull(),
+    // PLB provider-level adjustments, positive = reduces the payment: sum(CLP04) - plb = BPR02.
+    plbTotalAmount: numeric("plb_total_amount", { precision: 12, scale: 2 }).notNull().default("0"),
     productionDate: timestamp("production_date", { withTimezone: true }).notNull(),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
     minioObjectKey: varchar("minio_object_key", { length: 500 }).notNull(),
@@ -116,6 +119,8 @@ export const remittanceLine = pgTable(
     matchState: m25MatchState("match_state").notNull().default("unmatched"),
     matchStrategy: m25MatchStrategy("match_strategy"),
     matchConfidence: smallint("match_confidence"),
+    // Why the line is unmatched: no_candidate | ambiguous | needs_review. NULL once bound.
+    unmatchedReason: text("unmatched_reason"),
     matchedAt: timestamp("matched_at", { withTimezone: true }),
     matchedByMembershipId: uuid("matched_by_membership_id"),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull(), // partition key (denormalized from advice)
