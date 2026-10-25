@@ -190,10 +190,15 @@ export function DocumentPreviewDialog({
 
   if (!open) return null;
 
-  async function submit(): Promise<void> {
-    setBusy(true);
+  // A failure describes the selection that produced it; once the user changes it, the message is stale.
+  function clearFailure(): void {
     setError(null);
     setNeedsStepUp(false);
+  }
+
+  async function submit(): Promise<void> {
+    setBusy(true);
+    clearFailure();
     const res = await mintContentUrl(
       client,
       documentId,
@@ -228,6 +233,7 @@ export function DocumentPreviewDialog({
           disabled={busy}
           onChange={(e) => {
             const next = e.target.value as AccessPurpose;
+            clearFailure();
             setPurpose(next);
             // A partner picked for one external reason must not survive a detour through an internal one:
             // the remounted lookup would show a bare id for a recipient the user can no longer read.
@@ -242,6 +248,7 @@ export function DocumentPreviewDialog({
               value={recipientKind}
               disabled={busy}
               onChange={(e) => {
+                clearFailure();
                 setRecipientKind(e.target.value as DisclosureRecipient["kind"]);
                 setRecipientId("");
               }}
@@ -255,7 +262,10 @@ export function DocumentPreviewDialog({
               kind={recipientKind}
               label="Recipient"
               value={recipientId}
-              onChange={(id) => setRecipientId(id)}
+              onChange={(id) => {
+                clearFailure();
+                setRecipientId(id);
+              }}
               disabled={busy}
               required
               appearance="modal"

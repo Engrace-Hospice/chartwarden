@@ -15,6 +15,7 @@ import {
   resolveActorPermissions,
 } from "@chartwarden/auth";
 import {
+  type DocumentAccessPurpose,
   DegradedError,
   NotFoundError,
   UnauthorizedError,
@@ -82,7 +83,7 @@ import {
 } from "./list-scope";
 import { decodeBase64Content } from "./server-upload";
 import type { DocumentRouteService, DocumentWriteActor, WriteBasis } from "./service";
-import type { SignedUrlService } from "./signed-url-service";
+import { type SignedUrlService, isExternalDisclosure } from "./signed-url-service";
 
 /** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -190,12 +191,12 @@ const STEP_UP_OVERLAY = requireStepUp("documents.manage_overlay") as PreHandler;
 // §4.12 — handing a document to an outside recipient is a disclosure: a fresh step-up, like the bulk export.
 // The operation key has no tenant override row, so it resolves to the platform floor.
 const STEP_UP_DISCLOSE = requireStepUp("documents.disclose_external") as PreHandler;
-const EXTERNAL_PURPOSES: readonly unknown[] = ["disclosure", "survey_export"];
 const STEP_UP_IF_EXTERNAL: PreHandler = async (request, reply) => {
   const purpose = (request.query as { purpose?: unknown } | undefined)?.purpose;
   // Only a plain string that is not external skips the ceremony; an array/object/odd value is stepped up
-  // (the handler's schema would reject it anyway, but the guard must not rely on that).
-  if (typeof purpose !== "string" || EXTERNAL_PURPOSES.includes(purpose)) {
+  // (the handler's schema would reject it anyway, but the guard must not rely on that). "External" is the
+  // service's own definition, so the MFA guard and the BAA gate cannot drift apart.
+  if (typeof purpose !== "string" || isExternalDisclosure(purpose as DocumentAccessPurpose)) {
     await STEP_UP_DISCLOSE(request, reply);
   }
 };

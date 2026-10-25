@@ -8,6 +8,7 @@ import { bigint, date, index, integer, pgTable, text, timestamp, uuid } from "dr
 import { organizations } from "../organizations";
 import { appealCase } from "./appeal";
 import { auditRequest } from "./audit-request";
+import { beneficiaryAppeal } from "./beneficiary-representative";
 import { payerAppealCase } from "./payer-appeal";
 
 export const appealTierDetail = pgTable(
@@ -55,6 +56,10 @@ export const recordedDeadline = pgTable(
     payerAppealCaseId: uuid("payer_appeal_case_id").references(() => payerAppealCase.id, {
       onDelete: "restrict",
     }),
+    // Migration 1241: the fourth subject (exactly one of the four is set).
+    beneficiaryAppealId: uuid("beneficiary_appeal_id").references(() => beneficiaryAppeal.id, {
+      onDelete: "restrict",
+    }),
     label: text("label").notNull(), // denylisted
     dueOn: date("due_on").notNull(),
     zone: text("zone").notNull(),
@@ -71,5 +76,6 @@ export const recordedDeadline = pgTable(
     byAppeal: index("ix_recorded_deadline_appeal").on(t.appealCaseId),
     byAudit: index("ix_recorded_deadline_audit").on(t.auditRequestId),
     byPayerAppeal: index("ix_recorded_deadline_payer_appeal").on(t.payerAppealCaseId),
+    byBeneficiaryAppeal: index("ix_recorded_deadline_beneficiary_appeal").on(t.beneficiaryAppealId),
   }),
 );

@@ -36,8 +36,10 @@ import {
   ReasonField,
 } from "./action-ui";
 import { isLaterTier } from "./audit-api";
+import { BeneficiarySection } from "./beneficiary-section";
 import { CaseViewPanel } from "./case-view-panel";
 import { LaterTierPanel } from "./later-tier-panel";
+import { PlaybookPanel } from "./playbook-panel";
 import {
   EMPTY_RECONSIDERATION_SUBMIT,
   ReconsiderationSubmitFields,
@@ -391,6 +393,17 @@ export function AppealDetailPanel({
             key={`cv-${appeal.claimId}`}
             claimId={appeal.claimId}
             refreshKey={`${appeal.version}:${caseTick}`}
+          />
+          <BeneficiarySection
+            key={`beneficiary-${appeal.claimId}`}
+            claimId={appeal.claimId}
+            refreshKey={caseTick}
+            onChanged={() => setCaseTick((n) => n + 1)}
+          />
+          <PlaybookPanel
+            key={`pb-${appeal.denialCaseId}`}
+            denialId={appeal.denialCaseId}
+            refreshToken={caseTick}
           />
           {appeal.state !== "draft" ? (
             <SubmissionPanel key={appealId} kind="appeal" subjectId={appealId} />

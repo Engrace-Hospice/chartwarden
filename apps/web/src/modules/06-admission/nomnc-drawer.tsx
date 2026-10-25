@@ -15,6 +15,7 @@ import {
   useDrawerA11y,
 } from "@chartwarden/ui";
 import { useEffect, useId, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { FormEvent, JSX } from "react";
 import {
   type DeadlineKind,
@@ -23,7 +24,15 @@ import {
   type NoticeView,
   type ReviewView,
   isConflict,
+  isStepUp,
 } from "./nomnc-api";
+import {
+  clearStepUpDraft,
+  peekStepUpDraft,
+  stashStepUpDraft,
+  stepUpDraftKey,
+} from "../../shell/step-up-redirect";
+import { useStepUpOwner } from "../../shell/use-step-up-return";
 import {
   ACK_LABEL,
   DEADLINE_KIND_LABEL,
@@ -59,6 +68,24 @@ const TITLE: Record<NomncDrawerMode["kind"], string> = {
   add_deadline: "Type a deadline",
   edit_deadline: "Edit deadline",
 };
+
+/**
+ * The irreversible writes that need a FRESH second factor (the server answers 403 STEP_UP_REQUIRED otherwise): the
+ * form is stashed under `(action, target id)`, the user goes through `/step-up`, and the panel reopens it on return.
+ */
+export const NOMNC_STEP_UP_ACTIONS = {
+  withdraw_notice: "m6-nomnc-withdraw-notice",
+  decision: "m6-nomnc-decision",
+  withdraw_review: "m6-nomnc-withdraw-review",
+} as const;
+export const NOMNC_DRAFT_ACTIONS: readonly string[] = Object.values(NOMNC_STEP_UP_ACTIONS);
+
+/** `[action, target id]` when this form is a step-up write, else null. */
+export function stepUpTargetOf(mode: NomncDrawerMode): readonly [string, string] | null {
+  if (mode.kind === "withdraw_notice") return [NOMNC_STEP_UP_ACTIONS.withdraw_notice, mode.notice.id];
+  if (mode.kind === "decision") return [NOMNC_STEP_UP_ACTIONS.decision, mode.review.id];
+  return null;
+}
 
 /** The id of what the drawer acts on: a different target is a different form (its state must not carry over). */
 export function drawerTargetKey(mode: NomncDrawerMode): string {
@@ -151,6 +178,7 @@ export function NomncDrawer({
   onConflict,
   onDirty,
   onClose,
+  restore = false,
 }: {
   admissionId: string;
   mode: NomncDrawerMode;
@@ -161,13 +189,21 @@ export function NomncDrawer({
   onConflict: () => Promise<void>;
   onDirty: (dirty: boolean) => void;
   onClose: () => void;
+  /** Back from `/step-up`: start from the form the user had typed (stashed before the redirect). */
+  restore?: boolean;
 }): JSX.Element {
-  const drawer = useDrawerA11y<HTMLElement>(onClose);
   const needsId = useId();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // one flat form state: every field starts EMPTY (no default date, no default time)
-  const [f, setF] = useState<Record<string, string>>({});
+  const navigate = useNavigate();
+  const location = useLocation();
+  const owner = useStepUpOwner();
+  const target = stepUpTargetOf(mode);
+  const draftKey = target ? stepUpDraftKey(owner, target[0], target[1]) : null;
+  const [f, setF] = useState<Record<string, string>>(
+    () => (restore ? peekStepUpDraft<Record<string, string>>(draftKey) : null) ?? {},
+  );
   const v = (k: string, fallback = "") => f[k] ?? fallback;
   const set = (k: string) => (value: string) => setF((s) => ({ ...s, [k]: value }));
 
@@ -546,9 +582,16 @@ export function NomncDrawer({
     setError(null);
     try {
       await submit();
+      clearStepUpDraft(draftKey);
       await onChanged();
       onClose();
     } catch (err) {
+      if (isStepUp(err) && draftKey) {
+        // not fresh enough: keep what was typed, verify, and come back to this very form
+        stashStepUpDraft(draftKey, f);
+        navigate(`/step-up?returnTo=${encodeURIComponent(`${location.pathname}${location.search}`)}`);
+        return;
+      }
       if (isConflict(err)) {
         await onConflict();
         setError(
@@ -562,6 +605,12 @@ export function NomncDrawer({
     }
   };
 
+  const close = (): void => {
+    clearStepUpDraft(draftKey); // closing abandons the draft: free text must not linger
+    onClose();
+  };
+  const drawer = useDrawerA11y<HTMLElement>(close);
+
   return (
     <aside className="wx-admission-drawer" {...drawer} aria-label={TITLE[mode.kind]}>
       <header className="wx-drawer-head">
@@ -571,7 +620,7 @@ export function NomncDrawer({
         <div className="wx-addendum-head-text">
           <h2>{TITLE[mode.kind]}</h2>
         </div>
-        <IconButton tone="tertiary" size="sm" aria-label="Close" onClick={onClose}>
+        <IconButton tone="tertiary" size="sm" aria-label="Close" onClick={close}>
           <Glyph name="close" size={16} />
         </IconButton>
       </header>
@@ -594,7 +643,7 @@ export function NomncDrawer({
             >
               Save
             </Button>
-            <Button type="button" tone="tertiary" onClick={onClose}>
+            <Button type="button" tone="tertiary" onClick={close}>
               Cancel
             </Button>
           </div>

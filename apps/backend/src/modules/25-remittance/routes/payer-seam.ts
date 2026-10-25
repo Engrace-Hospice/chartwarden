@@ -22,7 +22,7 @@ interface MdmPayerProviderView {
     id: string,
   ): Promise<{
     id: string;
-    canonical: { name?: unknown; kind?: unknown };
+    canonical: { displayName?: unknown; kind?: unknown };
   } | null>;
 }
 
@@ -32,18 +32,12 @@ export function buildSeamPayerSeam(): PayerSeam {
       try {
         const provider = getSeam("MdmEntityProvider") as MdmPayerProviderView;
         const found = await provider.resolvePayer(organizationId, payerId);
-        if (
-          !found ||
-          typeof found.canonical.name !== "string" ||
-          found.canonical.name.trim() === ""
-        ) {
-          return null;
-        }
-        return {
-          id: found.id,
-          name: found.canonical.name,
-          kind: typeof found.canonical.kind === "string" ? found.canonical.kind : "other",
-        };
+        const { displayName, kind } = found?.canonical ?? {};
+        // A payer with no name or no program kind is "not resolved": the Medicare/Medicaid guard branches on `kind`,
+        // so a missing kind must never be defaulted to a program that passes it.
+        if (!found || typeof displayName !== "string" || displayName.trim() === "") return null;
+        if (typeof kind !== "string" || kind === "") return null;
+        return { id: found.id, name: displayName, kind };
       } catch {
         return null;
       }

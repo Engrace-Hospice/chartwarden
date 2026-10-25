@@ -79,7 +79,7 @@ const ACCESS_KIND_FOR_PURPOSE: Readonly<Record<DocumentAccessPurpose, DocumentAc
 };
 
 /** Whether a purpose targets an out-of-network recipient → the §4.12 BAA gate applies. */
-function isExternalDisclosure(purpose: DocumentAccessPurpose): boolean {
+export function isExternalDisclosure(purpose: DocumentAccessPurpose): boolean {
   return purpose === "disclosure" || purpose === "survey_export";
 }
 

@@ -6,9 +6,16 @@ import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { JSX } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import type { Session } from "../../../shell/session";
+import {
+  clearAllStepUpDrafts,
+  markStepUpReturn,
+  peekStepUpDraft,
+  stepUpDraftKey,
+} from "../../../shell/step-up-redirect";
 import { NomncApiError } from "../nomnc-api";
 import type {
   DeadlineView,
@@ -108,11 +115,28 @@ function fakeApi(ov: NomncOverview = overview()): NomncApi {
   };
 }
 
+const PATH = "/admissions/adm-1";
+const OWNER = { userId: "11111111-1111-4111-8111-111111111111", organizationId: "org-1" };
+
+/** Shows where the router is, so a test can see the redirect to /step-up. */
+function Where(): JSX.Element {
+  const l = useLocation();
+  return <output data-testid="where">{`${l.pathname}${l.search}`}</output>;
+}
+
 const wrap = (ui: JSX.Element, permissions: string[]) => (
   <ApiClientProvider client={{} as ApiClient}>
-    <SessionProvider session={session(permissions)}>{ui}</SessionProvider>
+    <SessionProvider session={session(permissions)}>
+      <MemoryRouter initialEntries={[PATH]}>
+        {ui}
+        <Where />
+      </MemoryRouter>
+    </SessionProvider>
   </ApiClientProvider>
 );
+afterEach(() => clearAllStepUpDrafts());
+const where = () => screen.getByTestId("where").textContent;
+const stepUpError = () => new NomncApiError("Step-up required", false, true);
 const renderWith = (ui: JSX.Element, permissions: string[] = READ_RECORD) =>
   render(wrap(ui, permissions));
 
@@ -549,7 +573,7 @@ describe("NomncPanel", () => {
       for (const perms of [["admission.read"], [] as string[]]) {
         const api = fakeApi();
         const { container, unmount } = renderWith(<NomncPanel admissionId="adm-1" api={api} />, perms);
-        expect(container.textContent).toBe("");
+        expect(container.textContent).toBe(PATH); // only the router probe: the panel renders nothing
         expect(api.overview).not.toHaveBeenCalled();
         unmount();
       }
@@ -557,13 +581,126 @@ describe("NomncPanel", () => {
       const { container } = render(
         <ApiClientProvider client={{} as ApiClient}>
           <SessionProvider session={{ ...session([]), permissions: undefined }}>
-            <NomncPanel admissionId="adm-1" api={api} />
+            <MemoryRouter>
+              <NomncPanel admissionId="adm-1" api={api} />
+            </MemoryRouter>
           </SessionProvider>
         </ApiClientProvider>,
       );
       expect(container.textContent).toBe("");
       expect(api.overview).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("step-up on the irreversible writes", () => {
+  const returnTo = encodeURIComponent(PATH);
+  const NOTICE_ONLY = overview({ activeNotice: notice({ acknowledgementKind: "signed" }) });
+
+  it("withdraw notice: a stale session goes to /step-up, the typed reason survives, and the form reopens on return", async () => {
+    const api = fakeApi(NOTICE_ONLY);
+    vi.mocked(api.withdrawNotice).mockRejectedValueOnce(stepUpError());
+    const first = renderWith(<NomncPanel admissionId="adm-1" api={api} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Withdraw" }));
+    fill(/^Why is this record being withdrawn/, "entered on the wrong chart");
+    fireEvent.click(save());
+    await waitFor(() => expect(where()).toBe(`/step-up?returnTo=${returnTo}`));
+    expect(peekStepUpDraft(stepUpDraftKey(OWNER, "m6-nomnc-withdraw-notice", "n-1"))).toEqual({
+      reason: "entered on the wrong chart",
+    });
+    first.unmount();
+
+    // back from the ceremony: the one-shot marker names this path
+    markStepUpReturn(PATH);
+    renderWith(<NomncPanel admissionId="adm-1" api={api} />);
+    expect(await screen.findByRole("complementary", { name: "Withdraw NOMNC record" })).toBeTruthy();
+    expect((screen.getByLabelText(/^Why is this record being withdrawn/) as HTMLTextAreaElement).value).toBe(
+      "entered on the wrong chart",
+    );
+    fireEvent.click(save());
+    await waitFor(() =>
+      expect(api.withdrawNotice).toHaveBeenLastCalledWith("adm-1", expect.objectContaining({ id: "n-1" }), "entered on the wrong chart"),
+    );
+    await waitFor(() =>
+      expect(peekStepUpDraft(stepUpDraftKey(OWNER, "m6-nomnc-withdraw-notice", "n-1"))).toBeNull(),
+    );
+  });
+
+  it("record decision: outcome, time and note survive the round trip", async () => {
+    const api = fakeApi(FULL);
+    vi.mocked(api.recordReviewFacts).mockRejectedValueOnce(stepUpError());
+    const first = renderWith(<NomncPanel admissionId="adm-1" api={api} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Record decision" }));
+    fireEvent.change(screen.getByLabelText("Outcome"), { target: { value: "other" } });
+    fill(/^Date/, "2026-01-10");
+    fill(/^Time of day/, "18:00");
+    fill(/^Note/, "QIO asked for more records");
+    fireEvent.click(save());
+    await waitFor(() => expect(where()).toBe(`/step-up?returnTo=${returnTo}`));
+    first.unmount();
+
+    markStepUpReturn(PATH);
+    renderWith(<NomncPanel admissionId="adm-1" api={api} />);
+    await screen.findByRole("complementary", { name: "Record the QIO decision" });
+    expect((screen.getByLabelText("Outcome") as HTMLSelectElement).value).toBe("other");
+    expect((screen.getByLabelText(/^Date/) as HTMLInputElement).value).toBe("2026-01-10");
+    expect((screen.getByLabelText(/^Time of day/) as HTMLInputElement).value).toBe("18:00");
+    expect((screen.getByLabelText(/^Note/) as HTMLTextAreaElement).value).toBe("QIO asked for more records");
+    expect(needs()).toBeNull();
+    fireEvent.click(save());
+    await waitFor(() =>
+      expect(api.recordReviewFacts).toHaveBeenLastCalledWith("adm-1", expect.objectContaining({ id: "r-1" }), {
+        decision: { outcome: "other", received: { date: "2026-01-10", time: "18:00" }, note: "QIO asked for more records" },
+      }),
+    );
+  });
+
+  it("withdraw review: a stale session goes to /step-up and the confirmation is back on return", async () => {
+    const api = fakeApi(FULL);
+    vi.mocked(api.withdrawReview).mockRejectedValueOnce(stepUpError());
+    const first = renderWith(<NomncPanel admissionId="adm-1" api={api} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Withdraw review" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm withdraw" }));
+    await waitFor(() => expect(where()).toBe(`/step-up?returnTo=${returnTo}`));
+    first.unmount();
+
+    markStepUpReturn(PATH);
+    renderWith(<NomncPanel admissionId="adm-1" api={api} />);
+    expect(await screen.findByRole("group", { name: "Confirm withdrawing the review" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm withdraw" }));
+    await waitFor(() => expect(api.withdrawReview).toHaveBeenCalledTimes(2));
+  });
+
+  it("an abandoned step-up (no return marker) reopens nothing and the stale draft is discarded", async () => {
+    const api = fakeApi(NOTICE_ONLY);
+    vi.mocked(api.withdrawNotice).mockRejectedValueOnce(stepUpError());
+    const first = renderWith(<NomncPanel admissionId="adm-1" api={api} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Withdraw" }));
+    fill(/^Why is this record being withdrawn/, "free text that must not linger");
+    fireEvent.click(save());
+    await waitFor(() => expect(where()).toBe(`/step-up?returnTo=${returnTo}`));
+    first.unmount();
+
+    renderWith(<NomncPanel admissionId="adm-1" api={api} />);
+    await screen.findByText("NOMNC and QIO review");
+    expect(screen.queryByRole("complementary", { name: "Withdraw NOMNC record" })).toBeNull();
+    await waitFor(() =>
+      expect(peekStepUpDraft(stepUpDraftKey(OWNER, "m6-nomnc-withdraw-notice", "n-1"))).toBeNull(),
+    );
+  });
+
+  it("closing the form clears its draft; a non-step-up failure shows the message and stashes nothing", async () => {
+    const api = fakeApi(NOTICE_ONLY);
+    vi.mocked(api.withdrawNotice).mockRejectedValueOnce(new NomncApiError("a reason is required", false));
+    renderWith(<NomncPanel admissionId="adm-1" api={api} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Withdraw" }));
+    fill(/^Why is this record being withdrawn/, "typed");
+    fireEvent.click(save());
+    expect(await screen.findByText("a reason is required")).toBeTruthy();
+    expect(where()).toBe(PATH);
+    expect(peekStepUpDraft(stepUpDraftKey(OWNER, "m6-nomnc-withdraw-notice", "n-1"))).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("complementary", { name: "Withdraw NOMNC record" })).toBeNull();
   });
 });
 
@@ -605,7 +742,7 @@ describe("NomncPromptStrip (discharge stepper)", () => {
   it("renders nothing without nomnc.read", () => {
     const api = fakeApi();
     const { container } = renderWith(<NomncPromptStrip admissionId="adm-1" api={api} />, ["admission.read"]);
-    expect(container.textContent).toBe("");
+    expect(container.textContent).toBe(PATH);
     expect(api.overview).not.toHaveBeenCalled();
   });
 });

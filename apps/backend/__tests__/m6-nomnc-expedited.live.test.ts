@@ -191,7 +191,10 @@ describe.skipIf(!DB_URL)(
       sourceNote: "NOMNC copy, signed page 2",
       ...over,
     });
-    const as = (userId: string, org = ORG_A) => ({
+    /** `stepUp` = a FRESH second factor on the session (the stub below reads it; the real ceremony is proven by
+     *  ac-03 / gap-003). Default fresh so the rest of the suite is unchanged; the step-up test passes false. */
+    const as = (userId: string, org = ORG_A, stepUp = true) => ({
+      "x-test-stepup": stepUp ? "1" : "0",
       "x-test-user": userId,
       "x-test-org": org,
       "x-test-roles": "nomnc_role",
@@ -302,6 +305,8 @@ describe.skipIf(!DB_URL)(
         }),
       ))
         registry.register(name, fn);
+      // the M3 `step_up_recent` predicate, stubbed to the session attribute the header sets
+      registry.register("step_up_recent", async (context) => context.attributes.stepUpRecent === true);
       registerAbacRegistry(registry);
       app = buildServer({
         db: handle.db,
@@ -314,6 +319,10 @@ describe.skipIf(!DB_URL)(
           const pe = String(request.headers["x-test-pe"] ?? "");
           request.context.providerEntityIds = pe ? [pe] : [];
           request.context.locationIds = [];
+          request.context.attributes = {
+            ...request.context.attributes,
+            stepUpRecent: request.headers["x-test-stepup"] === "1",
+          };
         },
         security: { rateLimitEnabled: false },
       });
@@ -880,6 +889,63 @@ describe.skipIf(!DB_URL)(
       await admin.query("DELETE FROM membership WHERE user_id=$1", [author]);
       await admin.query(`DELETE FROM "user" WHERE id=$1`, [author]);
       expect(await col()).toEqual({ d: null, c: null });
+    });
+
+    it("withdraw notice, withdraw review and record decision need a FRESH step-up; everything else does not", async () => {
+      const { admissionId } = await activate();
+      const base = `/api/v1/admissions/${admissionId}`;
+      const stale = as(recorder, ORG_A, false);
+      const fresh = as(recorder);
+      const n = (await call("POST", `${base}/nomnc`, stale, noticeBody())).json() as { id: string; version: number };
+      const rv = (await call("POST", `${base}/nomnc/${n.id}/expedited-review`, stale, {
+        qioName: "Example BFCC-QIO", qioNotified: { date: PAST_DATE, time: "14:20" }, requestedByKind: "unknown",
+      })).json() as { id: string; version: number };
+      // reversible writes need no step-up
+      const facts = await call("PATCH", `${base}/expedited-reviews/${rv.id}`, stale, { ifVersion: rv.version, recordsSentNote: "faxed" });
+      expect(facts.statusCode).toBe(200);
+      const v2 = (facts.json() as { version: number }).version;
+      expect((await call("PATCH", `${base}/nomnc/${n.id}`, stale, { ifVersion: n.version, deliveryNote: "in person" })).statusCode).toBe(200);
+
+      const state = async () => ({
+        review: (await one<{ state: string }>("SELECT state FROM expedited_review WHERE id=$1", [rv.id])).state,
+        notice: (await one<{ status: string }>("SELECT status FROM nomnc_notice WHERE id=$1", [n.id])).status,
+      });
+      const decision = { ifVersion: v2, decision: { outcome: "discharge_upheld", received: { date: PAST_DATE, time: "18:00" } } };
+      // DECISION: stale session is refused with the standard step-up error and nothing is written
+      const noDecision = await call("PATCH", `${base}/expedited-reviews/${rv.id}`, stale, decision);
+      expect(noDecision.statusCode).toBe(403);
+      expect(codeOf(noDecision)).toBe("STEP_UP_REQUIRED");
+      expect((await state()).review).toBe("open");
+      expect((await events("m6.expedited_review.decided", admissionId)).length).toBe(0);
+      // WITHDRAW REVIEW
+      const noWr = await call("POST", `${base}/expedited-reviews/${rv.id}/withdraw`, stale, { ifVersion: v2 });
+      expect([noWr.statusCode, codeOf(noWr)]).toEqual([403, "STEP_UP_REQUIRED"]);
+      expect((await state()).review).toBe("open");
+      // a bad-permission caller is refused as a permission failure BEFORE step-up is considered
+      const lowPriv = await call("PATCH", `${base}/expedited-reviews/${rv.id}`, as(reader, ORG_A, false), decision);
+      expect(lowPriv.statusCode).toBe(403);
+      expect(codeOf(lowPriv)).not.toBe("STEP_UP_REQUIRED");
+
+      // with a fresh step-up the decision succeeds
+      expect((await call("PATCH", `${base}/expedited-reviews/${rv.id}`, fresh, decision)).statusCode).toBe(200);
+      expect((await state()).review).toBe("decided");
+
+      // WITHDRAW NOTICE (the review is decided, so the notice may be withdrawn)
+      const noWn = await call("POST", `${base}/nomnc/${n.id}/withdraw`, stale, { ifVersion: 3, reason: "entered on the wrong chart" });
+      expect([noWn.statusCode, codeOf(noWn)]).toEqual([403, "STEP_UP_REQUIRED"]);
+      expect((await state()).notice).toBe("active");
+      const cur = (await one<{ version: number }>("SELECT version FROM nomnc_notice WHERE id=$1", [n.id])).version;
+      expect((await call("POST", `${base}/nomnc/${n.id}/withdraw`, fresh, { ifVersion: cur, reason: "entered on the wrong chart" })).statusCode).toBe(200);
+      expect((await state()).notice).toBe("withdrawn");
+
+      // WITHDRAW REVIEW with a fresh step-up, on a second admission
+      const b = await activate();
+      const bb = `/api/v1/admissions/${b.admissionId}`;
+      const n2 = (await call("POST", `${bb}/nomnc`, fresh, noticeBody())).json() as { id: string };
+      const r2 = (await call("POST", `${bb}/nomnc/${n2.id}/expedited-review`, fresh, {
+        qioName: "Example BFCC-QIO", qioNotified: { date: PAST_DATE, time: "14:20" }, requestedByKind: "unknown",
+      })).json() as { id: string; version: number };
+      expect((await call("POST", `${bb}/expedited-reviews/${r2.id}/withdraw`, fresh, { ifVersion: r2.version })).statusCode).toBe(200);
     });
 
     it("the nomnc routes are not on the auditor enrolment allowlist (an auditor session reaches none of them)", () => {

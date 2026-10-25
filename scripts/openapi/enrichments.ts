@@ -568,6 +568,12 @@ import {
   VoidClaimBody as M24VoidClaimBody,
 } from "../../apps/backend/src/modules/24-billing-medicaid/routes/m24-typebox";
 import {
+  AdrReadinessDispositionRequestSchema as M25AdrReadinessDispositionRequestSchema,
+  AdrReadinessDispositionResultSchema as M25AdrReadinessDispositionResultSchema,
+  AdrReadinessRequestResultSchema as M25AdrReadinessRequestResultSchema,
+  AdrReadinessViewSchema as M25AdrReadinessViewSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/adr-readiness.routes";
+import {
   AdrAttachDocumentRequestSchema as M25AdrAttachDocumentRequestSchema,
   AdrChecklistRequestSchema as M25AdrChecklistRequestSchema,
   AdrCreateRequestSchema as M25AdrCreateRequestSchema,
@@ -579,12 +585,6 @@ import {
   MacRulePageSchema as M25MacRulePageSchema,
   MacRuleRequestSchema as M25MacRuleRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/adr.routes";
-import {
-  AdrReadinessDispositionRequestSchema as M25AdrReadinessDispositionRequestSchema,
-  AdrReadinessDispositionResultSchema as M25AdrReadinessDispositionResultSchema,
-  AdrReadinessRequestResultSchema as M25AdrReadinessRequestResultSchema,
-  AdrReadinessViewSchema as M25AdrReadinessViewSchema,
-} from "../../apps/backend/src/modules/25-remittance/routes/adr-readiness.routes";
 import {
   AuditClaimRequestSchema as M25AuditClaimRequestSchema,
   AuditCreateRequestSchema as M25AuditCreateRequestSchema,
@@ -622,6 +622,28 @@ import {
   PayerAppealVersionedSchema as M25PayerAppealVersionedSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/payer-appeal.routes";
 import {
+  BeneficiaryAppealDocumentRequestSchema as M25BeneficiaryAppealDocumentRequestSchema,
+  BeneficiaryAppealIntakeRequestSchema as M25BeneficiaryAppealIntakeRequestSchema,
+  BeneficiaryAppealMoveRequestSchema as M25BeneficiaryAppealMoveRequestSchema,
+  BeneficiaryAppealPatchRequestSchema as M25BeneficiaryAppealPatchRequestSchema,
+  BeneficiaryAppealVersionedSchema as M25BeneficiaryAppealVersionedSchema,
+  BeneficiaryAppealViewSchema as M25BeneficiaryAppealViewSchema,
+  ClaimBeneficiaryAppealsSchema as M25ClaimBeneficiaryAppealsSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/beneficiary-appeal.routes";
+import {
+  AppointmentActivatedSchema as M25AppointmentActivatedSchema,
+  AppointmentDocumentRequestSchema as M25AppointmentDocumentRequestSchema,
+  AppointmentDraftRequestSchema as M25AppointmentDraftRequestSchema,
+  AppointmentElementsRequestSchema as M25AppointmentElementsRequestSchema,
+  AppointmentPatchRequestSchema as M25AppointmentPatchRequestSchema,
+  AppointmentRevokeRequestSchema as M25AppointmentRevokeRequestSchema,
+  AppointmentViewSchema as M25AppointmentViewSchema,
+  ClaimAppointmentsSchema as M25ClaimAppointmentsSchema,
+  RepresentativeFormVersionPageSchema as M25RepresentativeFormVersionPageSchema,
+  RepresentativeFormVersionRequestSchema as M25RepresentativeFormVersionRequestSchema,
+  RepresentativeVersionedResultSchema as M25RepresentativeVersionedResultSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/representative.routes";
+import {
   LaterTierViewSchema as M25LaterTierViewSchema,
   RecordedDeadlinePageSchema as M25RecordedDeadlinePageSchema,
   RecordedDeadlinePatchSchema as M25RecordedDeadlinePatchSchema,
@@ -631,6 +653,23 @@ import {
   TierDetailRequestSchema as M25TierDetailRequestSchema,
 } from "../../apps/backend/src/modules/25-remittance/routes/later-tier.routes";
 import { M25ListQuerySchema } from "../../apps/backend/src/modules/25-remittance/routes/m25-typebox";
+import {
+  MedicalReviewReportQuerySchema as M25MedicalReviewReportQuerySchema,
+  MedicalReviewReportSchema as M25MedicalReviewReportSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/medical-review-report.routes";
+import {
+  DenialPlaybookViewSchema as M25DenialPlaybookViewSchema,
+  PlaybookContentRequestSchema as M25PlaybookContentRequestSchema,
+  PlaybookCreateRequestSchema as M25PlaybookCreateRequestSchema,
+  PlaybookCreatedSchema as M25PlaybookCreatedSchema,
+  PlaybookDetailSchema as M25PlaybookDetailSchema,
+  PlaybookDraftCreatedSchema as M25PlaybookDraftCreatedSchema,
+  PlaybookListSchema as M25PlaybookListSchema,
+  PlaybookPublishResultSchema as M25PlaybookPublishResultSchema,
+  PlaybookStepRequestSchema as M25PlaybookStepRequestSchema,
+  PlaybookStepResultSchema as M25PlaybookStepResultSchema,
+  PlaybookVersionResultSchema as M25PlaybookVersionResultSchema,
+} from "../../apps/backend/src/modules/25-remittance/routes/playbook.routes";
 import {
   CitedEvidenceRequestSchema as M25CitedEvidenceRequestSchema,
   EscalationConfirmRequestSchema as M25EscalationConfirmRequestSchema,
@@ -1399,6 +1438,14 @@ import {
   VerifyEmailAckSchema as M34VerifyEmailAckSchema,
 } from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/typebox";
 
+import { AckBroadcastAcknowledgedSchema as M36AckBroadcastAcknowledgedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastCreateBodySchema as M36AckBroadcastCreateBodySchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastCreatedSchema as M36AckBroadcastCreatedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastWithdrawnSchema as M36AckBroadcastWithdrawnSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastDetailQuerySchema as M36AckBroadcastDetailQuerySchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastDetailSchema as M36AckBroadcastDetailSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastListSchema as M36AckBroadcastListSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
+import { AckBroadcastMineSchema as M36AckBroadcastMineSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
 // M36 WP 4.2 acknowledgment requests.
 import {
   AckChannelListResponseSchema as M36AckChannelListResponseSchema,
@@ -1426,15 +1473,16 @@ import {
   ReviewListResponseSchema as M36BreakGlassReviewListResponseSchema,
   ListReviewsQuerySchema as M36BreakGlassReviewsQuerySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/break-glass-typebox";
-import { AckBroadcastAcknowledgedSchema as M36AckBroadcastAcknowledgedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastCreateBodySchema as M36AckBroadcastCreateBodySchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastCreatedSchema as M36AckBroadcastCreatedSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastWithdrawnSchema as M36AckBroadcastWithdrawnSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastDetailQuerySchema as M36AckBroadcastDetailQuerySchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastDetailSchema as M36AckBroadcastDetailSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastListSchema as M36AckBroadcastListSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
-import { AckBroadcastMineSchema as M36AckBroadcastMineSchema } from "../../apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox";
 import { ClinicalLinkResolveResponseSchema as M36ClinicalLinkResolveResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/clinical-link-typebox";
+// M36 WP 6.9 death-event coordination board (ADR-0098, PROPOSED).
+import {
+  DeathBoardHistoryResponseSchema as M36DeathBoardHistoryResponseSchema,
+  DeathBoardItemResponseSchema as M36DeathBoardItemResponseSchema,
+  DeathBoardListResponseSchema as M36DeathBoardListResponseSchema,
+  DeathBoardResponseSchema as M36DeathBoardResponseSchema,
+  ListDeathBoardsQuerySchema as M36ListDeathBoardsQuerySchema,
+  ReassignDeathBoardItemBodySchema as M36ReassignDeathBoardItemBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/death-board-typebox";
 // M36 WP 4.8 deep-link resolver.
 import { DeliveryTargetResponseSchema as M36DeliveryTargetResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/delivery-target-typebox";
 import {
@@ -1457,15 +1505,6 @@ import {
   AiStatusResponseSchema as M36AiStatusResponseSchema,
   AiSummaryResponseSchema as M36AiSummaryResponseSchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/ai-typebox";
-// M36 WP 6.9 death-event coordination board (ADR-0098, PROPOSED).
-import {
-  DeathBoardHistoryResponseSchema as M36DeathBoardHistoryResponseSchema,
-  DeathBoardItemResponseSchema as M36DeathBoardItemResponseSchema,
-  DeathBoardListResponseSchema as M36DeathBoardListResponseSchema,
-  DeathBoardResponseSchema as M36DeathBoardResponseSchema,
-  ListDeathBoardsQuerySchema as M36ListDeathBoardsQuerySchema,
-  ReassignDeathBoardItemBodySchema as M36ReassignDeathBoardItemBodySchema,
-} from "../../apps/backend/src/modules/36-messaging/routes/death-board-typebox";
 // M36 WP 6.10 alarm ingest, watch only (ADR-0102, PROPOSED).
 import {
   AlarmEventBodySchema as M36AlarmEventBodySchema,
@@ -8621,6 +8660,60 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M25AdrReadinessDispositionRequestSchema,
     response: M25AdrReadinessDispositionResultSchema,
   },
+  // ── medical-review-report.routes.ts (hospice ADR/TPE/QIC PRD, milestone 9a-2; figures only, no target or benchmark) ──
+  "GET /api/v1/medical-review/report": {
+    summary:
+      "Leadership medical-review report for a window: ADR, denial, appeal, reopening, TPE, audit and playbook-coverage figures with change against the previous equal period",
+    query: M25MedicalReviewReportQuerySchema,
+    response: M25MedicalReviewReportSchema,
+  },
+  // ── playbook.routes.ts (hospice ADR/TPE/QIC PRD, milestone 9a-1; organization-authored guidance, gates nothing) ──
+  "GET /api/v1/playbooks": {
+    summary: "The organization's denial playbooks and which version is published (none are seeded)",
+    response: M25PlaybookListSchema,
+  },
+  "GET /api/v1/playbooks/:id": {
+    summary: "One playbook with every version, newest first",
+    response: M25PlaybookDetailSchema,
+  },
+  "POST /api/v1/playbooks": {
+    summary:
+      "Write a playbook for one denial reason (code kind, code, optional MAC) as its first draft; a source note is required",
+    body: M25PlaybookCreateRequestSchema,
+    response: M25PlaybookCreatedSchema,
+    status: 201,
+  },
+  "POST /api/v1/playbooks/:id/versions": {
+    summary: "Start a new draft version of a playbook (one draft at a time)",
+    body: M25PlaybookContentRequestSchema,
+    response: M25PlaybookDraftCreatedSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/playbook-versions/:id": {
+    summary: "Edit a draft version (If-Match); a published version is never edited",
+    body: M25PlaybookContentRequestSchema,
+    response: M25PlaybookVersionResultSchema,
+  },
+  "POST /api/v1/playbook-versions/:id/publish": {
+    summary:
+      "Publish a draft (If-Match); someone other than the author must publish, and the previous version is retired",
+    response: M25PlaybookPublishResultSchema,
+  },
+  "POST /api/v1/playbook-versions/:id/retire": {
+    summary: "Retire a published version (If-Match)",
+    response: M25PlaybookVersionResultSchema,
+  },
+  "GET /api/v1/denials/:id/playbook": {
+    summary:
+      "The published playbook that applies to this denial with its step ticks, or playbook null when the organization has not written one",
+    response: M25DenialPlaybookViewSchema,
+  },
+  "PUT /api/v1/denials/:id/playbook-steps/:stepKey": {
+    summary:
+      "Tick a playbook step on this denial (advisory; changes no case state); versionId must be the version now in force (409 otherwise)",
+    body: M25PlaybookStepRequestSchema,
+    response: M25PlaybookStepResultSchema,
+  },
   // ── audit-request.routes.ts / later-tier.routes.ts / case-view.routes.ts (hospice ADR/TPE/QIC PRD, milestone 7a-1) ──
   "GET /api/v1/audit-requests": {
     summary: "RAC / UPIC / SMRC audit request worklist, newest first",
@@ -8790,6 +8883,120 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M25RecordedDeadlineResultSchema,
   },
   "POST /api/v1/payer-appeals/:id/recorded-deadlines/:deadlineId/satisfy": {
+    summary: "Mark a recorded deadline satisfied (If-Match)",
+    body: M25RecordedDeadlineSatisfyRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
+  },
+  // ── representative.routes.ts / beneficiary-appeal.routes.ts (hospice ADR/TPE/QIC PRD, milestone 13a) ──
+  "GET /api/v1/representative-form-versions": {
+    summary:
+      "The organization's own appointment form versions (typed by a person with a source note; none are seeded)",
+    response: M25RepresentativeFormVersionPageSchema,
+  },
+  "POST /api/v1/representative-form-versions": {
+    summary:
+      "Enter an appointment form version exactly as compliance supplies it (source note required; frozen once written)",
+    body: M25RepresentativeFormVersionRequestSchema,
+    response: M25RepresentativeVersionedResultSchema,
+    status: 201,
+  },
+  "POST /api/v1/representative-form-versions/:id/retire": {
+    summary: "Retire a form version so new drafts cannot use it; existing appointments keep their checklist (If-Match)",
+    response: M25RepresentativeVersionedResultSchema,
+  },
+  "GET /api/v1/claims/:claimId/representative-appointments": {
+    summary:
+      "The appointments of representative recorded for the claim's patient, each with a status derived from typed dates only",
+    response: M25ClaimAppointmentsSchema,
+  },
+  "POST /api/v1/claims/:claimId/representative-appointments": {
+    summary:
+      "Record an appointment of representative as a draft from a claim (patient and provider entity come from the claim); a second person activates it",
+    body: M25AppointmentDraftRequestSchema,
+    response: M25RepresentativeVersionedResultSchema,
+    status: 201,
+  },
+  "GET /api/v1/representative-appointments/:id": {
+    summary: "One appointment of representative with its element checklist, signed document and activation record",
+    response: M25AppointmentViewSchema,
+  },
+  "PATCH /api/v1/representative-appointments/:id": {
+    summary: "Edit a draft appointment (If-Match); an active appointment can only be revoked",
+    body: M25AppointmentPatchRequestSchema,
+    response: M25RepresentativeVersionedResultSchema,
+  },
+  "PUT /api/v1/representative-appointments/:id/document": {
+    summary:
+      "Attach the signed appointment document: validated against the patient and M22's active version, and the validated version id is stored (If-Match)",
+    body: M25AppointmentDocumentRequestSchema,
+    response: M25RepresentativeVersionedResultSchema,
+  },
+  "PUT /api/v1/representative-appointments/:id/elements": {
+    summary: "Confirm which of the form version's required elements are present on the signed document (If-Match)",
+    body: M25AppointmentElementsRequestSchema,
+    response: M25RepresentativeVersionedResultSchema,
+  },
+  "POST /api/v1/representative-appointments/:id/activate": {
+    summary:
+      "Activate a draft as a person other than the one who recorded it, with a fresh step-up; needs the signed document and every element confirmed (If-Match)",
+    response: M25AppointmentActivatedSchema,
+  },
+  "POST /api/v1/representative-appointments/:id/revoke": {
+    summary: "Record a revocation (typed date and note); needs a step-up but never a second person (If-Match)",
+    body: M25AppointmentRevokeRequestSchema,
+    response: M25RepresentativeVersionedResultSchema,
+  },
+  "GET /api/v1/claims/:claimId/beneficiary-appeals": {
+    summary: "Appeals the beneficiary or their representative filed on this claim, as recorded by the hospice",
+    response: M25ClaimBeneficiaryAppealsSchema,
+  },
+  "POST /api/v1/claims/:claimId/beneficiary-appeals": {
+    summary:
+      "Record a beneficiary-filed appeal (ChartWarden records it; it computes no deadline and files nothing)",
+    body: M25BeneficiaryAppealIntakeRequestSchema,
+    response: M25BeneficiaryAppealVersionedSchema,
+    status: 201,
+  },
+  "GET /api/v1/beneficiary-appeals/:id": {
+    summary: "One beneficiary appeal with its representative status, documents and recorded deadlines",
+    response: M25BeneficiaryAppealViewSchema,
+  },
+  "PATCH /api/v1/beneficiary-appeals/:id": {
+    summary: "Correct a beneficiary appeal record until it is closed or withdrawn (If-Match)",
+    body: M25BeneficiaryAppealPatchRequestSchema,
+    response: M25BeneficiaryAppealVersionedSchema,
+  },
+  "POST /api/v1/beneficiary-appeals/:id/state": {
+    summary: "Record that the hospice is supporting the appeal, that it was decided, closed or withdrawn (If-Match)",
+    body: M25BeneficiaryAppealMoveRequestSchema,
+    response: M25BeneficiaryAppealVersionedSchema,
+  },
+  "POST /api/v1/beneficiary-appeals/:id/documents": {
+    summary: "Attach a document, validated against the claim's patient and admission and M22's active version (If-Match)",
+    body: M25BeneficiaryAppealDocumentRequestSchema,
+    response: M25BeneficiaryAppealVersionedSchema,
+    status: 201,
+  },
+  "POST /api/v1/beneficiary-appeals/:id/documents/:documentId/remove": {
+    summary: "Detach a document from a beneficiary appeal (If-Match)",
+    response: M25BeneficiaryAppealVersionedSchema,
+  },
+  "GET /api/v1/beneficiary-appeals/:id/recorded-deadlines": {
+    summary: "Deadlines typed from a notice for this beneficiary appeal, each with its source note",
+    response: M25RecordedDeadlinePageSchema,
+  },
+  "POST /api/v1/beneficiary-appeals/:id/recorded-deadlines": {
+    summary: "Record a due date typed from a notice (the source note is required; none is computed)",
+    body: M25RecordedDeadlineRequestSchema,
+    response: M25RecordedDeadlineResultSchema,
+    status: 201,
+  },
+  "PATCH /api/v1/beneficiary-appeals/:id/recorded-deadlines/:deadlineId": {
+    summary: "Correct a recorded deadline until it is satisfied (If-Match)",
+    body: M25RecordedDeadlinePatchSchema,
+    response: M25RecordedDeadlineResultSchema,
+  },
+  "POST /api/v1/beneficiary-appeals/:id/recorded-deadlines/:deadlineId/satisfy": {
     summary: "Mark a recorded deadline satisfied (If-Match)",
     body: M25RecordedDeadlineSatisfyRequestSchema,
     response: M25RecordedDeadlineResultSchema,

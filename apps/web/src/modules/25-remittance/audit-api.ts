@@ -45,8 +45,11 @@ export const isLaterTier = (tier: string): boolean =>
 /** A 409 on a versioned write means the record moved: reload it so the next attempt carries the fresh version. */
 export const isConflict = (res: { readonly status: number | null }): boolean => res.status === 409;
 
-/** The two subjects a recorded deadline can hang off; each has its own route family and permission. */
-export type DeadlineSubject = { kind: "appeal" | "audit" | "payer_appeal"; id: string };
+/** The subjects a recorded deadline can hang off; each has its own route family and permission. */
+export type DeadlineSubject = {
+  kind: "appeal" | "audit" | "payer_appeal" | "beneficiary_appeal";
+  id: string;
+};
 
 export async function loadCaseView(
   client: ApiClient,
@@ -101,7 +104,9 @@ export async function addRecordedDeadline(
         ? await client.POST("/api/v1/appeals/{id}/recorded-deadlines", params)
         : subject.kind === "payer_appeal"
           ? await client.POST("/api/v1/payer-appeals/{id}/recorded-deadlines", params)
-          : await client.POST("/api/v1/audit-requests/{id}/recorded-deadlines", params);
+          : subject.kind === "beneficiary_appeal"
+            ? await client.POST("/api/v1/beneficiary-appeals/{id}/recorded-deadlines", params)
+            : await client.POST("/api/v1/audit-requests/{id}/recorded-deadlines", params);
     return res.error || !res.data ? failure(res.response?.status, res.error) : ok(res.data);
   });
 }
@@ -121,7 +126,15 @@ export async function editRecordedDeadline(
         ? await client.PATCH("/api/v1/appeals/{id}/recorded-deadlines/{deadlineId}", args)
         : subject.kind === "payer_appeal"
           ? await client.PATCH("/api/v1/payer-appeals/{id}/recorded-deadlines/{deadlineId}", args)
-          : await client.PATCH("/api/v1/audit-requests/{id}/recorded-deadlines/{deadlineId}", args);
+          : subject.kind === "beneficiary_appeal"
+            ? await client.PATCH(
+                "/api/v1/beneficiary-appeals/{id}/recorded-deadlines/{deadlineId}",
+                args,
+              )
+            : await client.PATCH(
+                "/api/v1/audit-requests/{id}/recorded-deadlines/{deadlineId}",
+                args,
+              );
     return res.error || !res.data ? failure(res.response?.status, res.error) : ok(res.data);
   });
 }
@@ -145,10 +158,15 @@ export async function satisfyRecordedDeadline(
               "/api/v1/payer-appeals/{id}/recorded-deadlines/{deadlineId}/satisfy",
               args,
             )
-          : await client.POST(
-              "/api/v1/audit-requests/{id}/recorded-deadlines/{deadlineId}/satisfy",
-              args,
-            );
+          : subject.kind === "beneficiary_appeal"
+            ? await client.POST(
+                "/api/v1/beneficiary-appeals/{id}/recorded-deadlines/{deadlineId}/satisfy",
+                args,
+              )
+            : await client.POST(
+                "/api/v1/audit-requests/{id}/recorded-deadlines/{deadlineId}/satisfy",
+                args,
+              );
     return res.error || !res.data ? failure(res.response?.status, res.error) : ok(res.data);
   });
 }
