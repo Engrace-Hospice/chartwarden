@@ -43,7 +43,7 @@ export const itemsOf = <T,>(s: SourceState<T>): T[] => (s.status === "ok" ? s.it
 
 function matchesType(item: MedicaidWorkItem, type: TypeFilter): boolean {
   if (type === "blocked") return item.blocked;
-  if (type === "denied") return item.statusLabel === "Denied";
+  if (type === "denied") return item.state === "DENIED";
   return true;
 }
 
@@ -55,7 +55,10 @@ export function MedicaidSourceProblems({
   const states = Object.entries(sources) as [keyof MedicaidWorkSources, SourceState<unknown>][];
   const failed = states.filter(([, s]) => s.status === "error").map(([k]) => SOURCE_NOUN[k]);
   const refused = states.filter(([, s]) => s.status === "denied").map(([k]) => SOURCE_NOUN[k]);
-  if (failed.length === 0 && refused.length === 0) return null;
+  const paged = states
+    .filter(([, s]) => s.status === "ok" && s.hasMore)
+    .map(([k]) => SOURCE_NOUN[k]);
+  if (failed.length === 0 && refused.length === 0 && paged.length === 0) return null;
   return (
     <div style={{ display: "grid", gap: "0.5rem" }}>
       {failed.length > 0 ? (
@@ -75,6 +78,12 @@ export function MedicaidSourceProblems({
       {refused.length > 0 ? (
         <output style={bannerStyle}>
           {refused.map((n) => `You do not have access to ${n}, so it is not shown.`).join(" ")}
+        </output>
+      ) : null}
+      {paged.length > 0 ? (
+        <output style={bannerStyle}>
+          {paged.map((n) => capitalize(n)).join(" and ")} have more entries than were loaded, so
+          counts show "+" and the list is not complete.
         </output>
       ) : null}
     </div>
@@ -283,7 +292,11 @@ function EmptyRegion({
       <div style={{ padding: "2rem 1.5rem" }}>
         <EmptyState
           title="No matching work"
-          description="Nothing matches the current filters."
+          description={
+            anyProblem
+              ? "Nothing loaded matches the current filters, but some sources failed, were refused or have more entries than were loaded."
+              : "Nothing matches the current filters."
+          }
           action={
             <Button tone="secondary" size="sm" onClick={onClear}>
               Clear filters
@@ -322,6 +335,7 @@ function WorkTable({
 }): JSX.Element {
   return (
     <table
+      aria-label="Medicaid work"
       style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}
     >
       <thead>
@@ -334,10 +348,18 @@ function WorkTable({
             background: "var(--color-surface-low)",
           }}
         >
-          <th style={thStyle}>Patient</th>
-          <th style={thStyle}>Work</th>
-          <th style={thStyle}>Status</th>
-          <th style={thStyle}>Next step</th>
+          <th scope="col" style={thStyle}>
+            Patient
+          </th>
+          <th scope="col" style={thStyle}>
+            Work
+          </th>
+          <th scope="col" style={thStyle}>
+            Status
+          </th>
+          <th scope="col" style={thStyle}>
+            Next step
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -364,6 +386,7 @@ function WorkTable({
             <td style={tdStyle}>
               <Link
                 to={i.href}
+                aria-label={`${i.nextAction} — ${nameOf(i)}`}
                 style={{ color: "var(--color-primary)", fontWeight: 600 }}
                 onClick={(event) => event.stopPropagation()}
               >

@@ -2,8 +2,10 @@
 // worklist become one list. Medicaid has no server deadline, so rows are ranked by what is stuck (state) and then by how
 // long they have waited (oldest first) — nothing is labelled "at risk" or "overdue". A claim in both sources is one row.
 import { describe, expect, it } from "vitest";
+import { WORKLIST_CLAIM_STATES } from "../medicaid-status";
 import {
   type BlockedClaim,
+  MEDICAID_WORK_STATES,
   type MedicaidClaimRow,
   buildMedicaidWork,
   isUrgentMedicaid,
@@ -96,5 +98,19 @@ describe("buildMedicaidWork", () => {
       blocked: [],
     });
     expect(items.filter(isUrgentMedicaid).map((i) => i.key)).toEqual(["claim:d"]);
+  });
+});
+
+describe("work states", () => {
+  it("cover every claim state the validation worklist can hold", () => {
+    for (const state of WORKLIST_CLAIM_STATES) expect(MEDICAID_WORK_STATES).toContain(state);
+  });
+
+  it("counts a FAILED_VALIDATION claim as blocked even when the worklist did not list it", () => {
+    const [item] = buildMedicaidWork({
+      claims: [claim({ state: "FAILED_VALIDATION" })],
+      blocked: [],
+    });
+    expect(item?.blocked).toBe(true);
   });
 });

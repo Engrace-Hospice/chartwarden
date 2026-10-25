@@ -35,7 +35,7 @@ export function MedicaidNeedsAttention(): JSX.Element {
   const settled = states.every(([, s]) => s.status !== "loading");
   const whole = states.every(([, s]) => s.status === "ok" && !s.hasMore);
   const blockedCount = items.filter((i) => i.blocked).length;
-  const deniedCount = items.filter((i) => i.statusLabel === "Denied").length;
+  const deniedCount = items.filter((i) => i.state === "DENIED").length;
   const go = (query: string) => navigate(`/medicaid/billing/queue${query}`);
 
   return (

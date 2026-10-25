@@ -29,6 +29,8 @@ export interface BlockedClaim {
 
 export interface MedicaidWorkItem {
   key: string;
+  /** The raw claim state, so filters never depend on the display label. */
+  state: string;
   patientId: string | null;
   what: string;
   statusLabel: string;
@@ -62,11 +64,15 @@ export const isUrgentMedicaid = (i: MedicaidWorkItem): boolean => i.rank < FIRST
 
 const claimHref = (id: string) => `/medicaid/billing/claims/${encodeURIComponent(id)}`;
 
-function fromClaim(row: MedicaidClaimRow, isBlocked: boolean): MedicaidWorkItem | null {
+function fromClaim(row: MedicaidClaimRow, onWorklist: boolean): MedicaidWorkItem | null {
   const work = STATE_WORK[row.state];
   if (!work) return null;
+  // The worklist only lists claims with an un-overridden failing rule result; a claim in FAILED_VALIDATION is blocked
+  // even when the worklist has not attributed it to a rule, so the count never undercounts.
+  const isBlocked = onWorklist || row.state === "FAILED_VALIDATION";
   return {
     key: `claim:${row.id}`,
+    state: row.state,
     patientId: row.patientId,
     what: `${tobLabel(row.tob)} · ${row.serviceFrom} → ${row.serviceTo}`,
     statusLabel: humanize(row.state),
@@ -82,6 +88,7 @@ function fromClaim(row: MedicaidClaimRow, isBlocked: boolean): MedicaidWorkItem 
 function fromBlocked(row: BlockedClaim): MedicaidWorkItem {
   return {
     key: `claim:${row.claimId}`,
+    state: row.state,
     patientId: row.patientId,
     what: `Claim ${row.medicaidClaimControlNumber}`,
     statusLabel: humanize(row.state),
