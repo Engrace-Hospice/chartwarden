@@ -7,6 +7,7 @@ import type { DbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type AckEvent,
+  CredentialRejectedError,
   type DirectMacGateway,
   type SubmissionKind,
   UploadNotSentError,
@@ -33,6 +34,16 @@ const UPLOAD_KIND = {
 
 /** `launch-gateway.ts` reports a non-2xx answer as "... returned HTTP <status>". */
 const DEFINITE_REFUSAL = /returned HTTP 4\d\d$/;
+/** The portal refused the submitter credential itself (#714): terminal until it is fixed, not an outage. */
+const CREDENTIAL_REJECTION = /returned HTTP (401|403)$/;
+
+function rethrowCredentialRejection(err: unknown): never {
+  if (err instanceof Error && CREDENTIAL_REJECTION.test(err.message)) {
+    // The original message is dropped: it never reaches a result or a log.
+    throw new CredentialRejectedError();
+  }
+  throw err;
+}
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -92,6 +103,9 @@ export function buildDirectMacGateway(deps: DirectMacGatewayDeps): DirectMacGate
         });
         return { accepted: uploaded.accepted, fileId: uploaded.generatedFileUri };
       } catch (err) {
+        if (err instanceof Error && CREDENTIAL_REJECTION.test(err.message)) {
+          throw new CredentialRejectedError();
+        }
         // A 4xx answer proves the portal took nothing; anything else (5xx, timeout, reset) is in doubt.
         if (err instanceof Error && DEFINITE_REFUSAL.test(err.message)) {
           throw new UploadNotSentError("the MAC gateway refused the upload");
@@ -101,51 +115,59 @@ export function buildDirectMacGateway(deps: DirectMacGatewayDeps): DirectMacGate
     },
 
     async pullAcknowledgments(ctx) {
-      const jurisdiction = ctx.jurisdiction;
-      if (!jurisdiction) throw new Error("direct_mac: the context carries no MAC jurisdiction");
-      const today = now().toISOString().slice(0, 10);
-      const events: AckEvent[] = [];
-      for (const file of await deps.macPortal.pullPending999(jurisdiction)) {
-        for (const r of await deps.x12.parse999({
-          macJurisdiction: jurisdiction,
-          rawFileUri: file.rawFileUri,
-        })) {
-          if (r.organizationId !== ctx.organizationId) continue;
-          events.push({
-            eventId: `999:${r.ackFileUri}:${r.claimControlNumber}`,
-            stage: "clearinghouse",
-            disposition: r.accepted ? "accepted" : "rejected",
-            controlNumber: r.claimControlNumber,
-            reasonCodes: r.reasonCodes,
-            occurredAt: r.functionalGroupDate ?? r.interchangeDate ?? today,
-          });
-        }
+      try {
+        return await pullAll(ctx);
+      } catch (err) {
+        return rethrowCredentialRejection(err);
       }
-      for (const file of await deps.macPortal.pullPending277ca(jurisdiction)) {
-        for (const r of await deps.x12.parse277ca({
-          macJurisdiction: jurisdiction,
-          rawFileUri: file.rawFileUri,
-        })) {
-          if (r.organizationId !== ctx.organizationId) continue;
-          const controlNumber = await deps.controlNumberOf(r.organizationId, r.submissionId);
-          if (controlNumber === null) continue;
-          const statusDay = r.statusEffectiveDate;
-          events.push({
-            eventId: `277ca:${r.ackFileUri}:${controlNumber}`,
-            stage: "payer",
-            disposition: r.outcome,
-            controlNumber,
-            reasonCodes: r.reasonCodes,
-            occurredAt: statusDay && ISO_DAY.test(statusDay) ? statusDay : today,
-            ...(r.outcome === "accepted" && r.payerClaimControlNumber
-              ? { payerClaimNumber: r.payerClaimControlNumber }
-              : {}),
-          });
-        }
-      }
-      return events;
     },
   };
+
+  async function pullAll(ctx: Parameters<DirectMacGateway["pullAcknowledgments"]>[0]) {
+    const jurisdiction = ctx.jurisdiction;
+    if (!jurisdiction) throw new Error("direct_mac: the context carries no MAC jurisdiction");
+    const today = now().toISOString().slice(0, 10);
+    const events: AckEvent[] = [];
+    for (const file of await deps.macPortal.pullPending999(jurisdiction)) {
+      for (const r of await deps.x12.parse999({
+        macJurisdiction: jurisdiction,
+        rawFileUri: file.rawFileUri,
+      })) {
+        if (r.organizationId !== ctx.organizationId) continue;
+        events.push({
+          eventId: `999:${r.ackFileUri}:${r.claimControlNumber}`,
+          stage: "clearinghouse",
+          disposition: r.accepted ? "accepted" : "rejected",
+          controlNumber: r.claimControlNumber,
+          reasonCodes: r.reasonCodes,
+          occurredAt: r.functionalGroupDate ?? r.interchangeDate ?? today,
+        });
+      }
+    }
+    for (const file of await deps.macPortal.pullPending277ca(jurisdiction)) {
+      for (const r of await deps.x12.parse277ca({
+        macJurisdiction: jurisdiction,
+        rawFileUri: file.rawFileUri,
+      })) {
+        if (r.organizationId !== ctx.organizationId) continue;
+        const controlNumber = await deps.controlNumberOf(r.organizationId, r.submissionId);
+        if (controlNumber === null) continue;
+        const statusDay = r.statusEffectiveDate;
+        events.push({
+          eventId: `277ca:${r.ackFileUri}:${controlNumber}`,
+          stage: "payer",
+          disposition: r.outcome,
+          controlNumber,
+          reasonCodes: r.reasonCodes,
+          occurredAt: statusDay && ISO_DAY.test(statusDay) ? statusDay : today,
+          ...(r.outcome === "accepted" && r.payerClaimControlNumber
+            ? { payerClaimNumber: r.payerClaimControlNumber }
+            : {}),
+        });
+      }
+    }
+    return events;
+  }
 }
 
 /** Our control number for a submission row, read under the org's RLS envelope (system actor); null when unknown. */

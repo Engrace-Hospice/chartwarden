@@ -11,6 +11,7 @@ import {
   runConformance,
 } from "./conformance";
 import {
+  CredentialRejectedError,
   type DirectMacGateway,
   DirectMacTransport,
   UploadNotSentError,
@@ -311,5 +312,49 @@ describe("DirectMacTransport", () => {
         degraded: { code: CH.UNAVAILABLE },
       });
     });
+  });
+});
+
+// #714 (S14): a MAC credential the portal REJECTS (401/403) is not an outage: a stable non-retryable code, nothing
+// sent, the reservation released so the same submission can go once the credential is fixed.
+describe("DirectMacTransport - a rejected MAC credential", () => {
+  const SECRET = "mac-secret-sentinel";
+  const rejecting = (): FakeGateway => {
+    const gw = fakeGateway();
+    gw.upload = async () => {
+      throw new CredentialRejectedError(`HTTP 401 ${SECRET}`);
+    };
+    gw.pullAcknowledgments = async () => {
+      throw new CredentialRejectedError(`HTTP 403 ${SECRET}`);
+    };
+    return gw;
+  };
+
+  it("submit: CH_NOT_WIRED (not retryable), no secret in the reason, reservation released", async () => {
+    const gw = rejecting();
+    const t = createHarness(gw).transport;
+    const s = {
+      kind: "claim" as const,
+      controlNumber: "000000077",
+      idempotencyKey: "idem-77",
+      payload: { format: "x12" as const, x12: x12For("claim", "A", "test", "000000077") },
+    };
+    const r = await t.submitClaim(ctx, s);
+    expect(r).toMatchObject({ ok: false, degraded: { code: CH.NOT_WIRED } });
+    expect(JSON.stringify(r)).not.toContain(SECRET);
+    expect(RETRYABLE_CODES.has(CH.NOT_WIRED)).toBe(false);
+    // released, not in doubt: once the credential works the same submission is sent
+    gw.upload = async ({ controlNumber }) => {
+      gw.uploads.push(controlNumber);
+      return { accepted: true, fileId: "f" };
+    };
+    expect(await t.submitClaim(ctx, s)).toMatchObject({ ok: true });
+    expect(gw.uploads).toEqual(["000000077"]);
+  });
+
+  it("acknowledgment pull: CH_NOT_WIRED, no secret in the reason", async () => {
+    const r = await createHarness(rejecting()).transport.fetchAcknowledgments(ctx, null);
+    expect(r).toMatchObject({ ok: false, degraded: { code: CH.NOT_WIRED } });
+    expect(JSON.stringify(r)).not.toContain(SECRET);
   });
 });

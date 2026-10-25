@@ -138,6 +138,7 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m23.eligibility.expired",
       "m23.mac_portal.unavailable",
       "m23.mac_portal.recovered",
+      "m23.clearinghouse.credential_rejected",
       "m23.taxonomy.unmapped_taxonomy_alert",
       "denial.aging_threshold_breached",
       "denial.high_value",

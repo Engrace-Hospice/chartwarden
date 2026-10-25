@@ -1282,6 +1282,93 @@ describe("837I claim header — physician NPIs (UB-04 FL 76 attending / FL 78 ce
     expect([...store.claims.values()][0].valueCodes).toEqual([{ code: "61", cbsaCode: "99938" }]);
   });
 
+  // #713 (S13) - a claim across the real FY2026 -> FY2027 boundary (2026-10-01), priced with the CMS FY2027 national
+  // reference rate and the seeded Oregon rural index of each year (migration 1058: 99938 = 1.0209 FY2026,
+  // 1.0285 FY2027). The FY2026 national rates are not on file, so that year's rate is a synthetic round number; the
+  // RHC labor share 0.66 is a synthetic tenant entry. Source register: docs/audits/billing-e2e/FY2027_CMS_SOURCE_REGISTER.md.
+  it("a claim straddling 2026-10-01 splits its days and prices each side with its own fiscal year's rate and index", async () => {
+    const base = buildSeams();
+    const fy2027Rhc = billing.CMS_NATIONAL_RATES_FY2027.hqrpCompliant.rhcDays1to60PerDiemCents;
+    expect(fy2027Rhc).toBe(23_633); // golden: $236.33
+    const seams = buildSeams({
+      admission: {
+        resolveForRange: async (...args) =>
+          ({
+            ...((await base.admission.resolveForRange(...args)) as object),
+            hospiceAdmissionDate: "2026-09-01",
+          }) as never,
+      },
+      electionPeriods: {
+        coveringRange: async () => [
+          {
+            electionPeriodId: "ep-1",
+            sequence: 1,
+            effectiveFrom: "2026-09-01",
+            effectiveTo: null,
+            revoked: false,
+            revocationDate: null,
+          },
+        ],
+      },
+      levelOfCare: {
+        periodsInRange: async () => [
+          {
+            levelOfCarePeriodId: "loc-1",
+            levelOfCare: "routine_home_care",
+            from: "2026-09-28",
+            to: "2026-10-03",
+            chcDocumentedHours: null,
+            gipAdmissionCriteriaDocumented: null,
+          },
+        ],
+      },
+      billableEncounters: { forRange: async () => [] },
+      referenceData: {
+        ...base.referenceData,
+        perDiemRateTable: async (_mac, fiscalYearStarting) => ({
+          ...RATE_TABLE,
+          rhcDays1to60PerDiemCents: fiscalYearStarting === 2025 ? 20_000 : fy2027Rhc,
+        }),
+      },
+      cbsa: {
+        wageIndexForArea: async (_code, fiscalYearStarting) =>
+          fiscalYearStarting === 2025 ? "1.0209" : "1.0285",
+        areasFor: async () => ({
+          residence: {
+            status: "resolved",
+            cbsaCode: "99938",
+            areaKind: "rural",
+            countyFips: "41059",
+            via: "zip",
+            wageIndex: "1.0285",
+          },
+          facility: null,
+        }),
+      },
+    });
+    await buildClaimAssemblyService(makeFakeDb() as never, seams).assemble(ACTOR, {
+      ...REQUEST,
+      serviceFrom: "2026-09-28",
+      serviceTo: "2026-10-03",
+    });
+    const rhc = store.lines.filter((l: { revenueCode: string }) => l.revenueCode === "0651");
+    expect(
+      rhc.map((l: { unitCount: number; unitRateCents: number }) => [l.unitCount, l.unitRateCents]),
+    ).toEqual([
+      [3, 20_276], // 28-30 Sep, FY2026: 20000 x (0.66 x 1.0209 + 0.34)
+      [3, 24_078], // 1-3 Oct, FY2027: 23633 x (0.66 x 1.0285 + 0.34)
+    ]);
+    const segments = store.perDiemClass[0].segments as {
+      dateFrom: string;
+      wageIndexFiscalYear: number;
+      wageIndexFactor: string;
+    }[];
+    expect(segments.map((s) => [s.dateFrom, s.wageIndexFiscalYear, s.wageIndexFactor])).toEqual([
+      ["2026-09-28", 2025, "1.0209"],
+      ["2026-10-01", 2026, "1.0285"],
+    ]);
+  });
+
   it("prices a home level of care with the beneficiary's area index, not the provider's", async () => {
     const seams = buildSeams({
       cbsa: {

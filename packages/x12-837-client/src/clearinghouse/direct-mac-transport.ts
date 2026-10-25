@@ -68,6 +68,20 @@ export class UploadNotSentError extends Error {
   }
 }
 
+/**
+ * Thrown by a {@link DirectMacGateway} when the MAC portal rejected the submitter credential (HTTP 401/403). Nothing
+ * was sent, and a retry cannot succeed until the credential is fixed, so the transport reports `CH_NOT_WIRED`
+ * (terminal) rather than the retryable `CH_UNAVAILABLE`. The message is never copied into a result.
+ */
+export class CredentialRejectedError extends Error {
+  constructor(message = "the MAC portal rejected the submitter credential") {
+    super(message);
+    this.name = "CredentialRejectedError";
+  }
+}
+
+const CREDENTIAL_REJECTED_REASON = "the MAC portal rejected the submitter credential";
+
 export interface DirectMacTransportOptions {
   readonly attempts: SubmissionAttemptStore;
   readonly gateway: DirectMacGateway;
@@ -265,6 +279,10 @@ export class DirectMacTransport implements ClearinghouseTransport {
         x12,
       });
     } catch (e) {
+      if (e instanceof CredentialRejectedError) {
+        await this.release(ctx.organizationId, scope, submission);
+        return degraded(CH.NOT_WIRED, CREDENTIAL_REJECTED_REASON);
+      }
       if (e instanceof UploadNotSentError) {
         await this.release(ctx.organizationId, scope, submission);
         return degraded(CH.UNAVAILABLE, "the MAC portal could not be reached");
@@ -392,7 +410,10 @@ export class DirectMacTransport implements ClearinghouseTransport {
     try {
       const items = await this.gateway.pullAcknowledgments(ctx);
       return { ok: true, data: { items, nextCursor: String(items.length), hasMore: false } };
-    } catch {
+    } catch (e) {
+      if (e instanceof CredentialRejectedError) {
+        return degraded(CH.NOT_WIRED, CREDENTIAL_REJECTED_REASON);
+      }
       return degraded(CH.UNAVAILABLE, "the MAC portal acknowledgments could not be pulled");
     }
   }

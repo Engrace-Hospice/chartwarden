@@ -73,6 +73,9 @@ export const BILLING_CAP_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   // Platform-status events: the composition root fans them out once per active org.
   rule("m23.mac_portal.unavailable", "critical", TENANT_ADMINS),
   rule("m23.mac_portal.recovered", "info", TENANT_ADMINS),
+  // #714: the clearinghouse (Stedi) or MAC submitter credential was rejected at runtime (401/403); filings and ack
+  // pulls for that provider entity are held until it is fixed.
+  rule("m23.clearinghouse.credential_rejected", "critical", BILLING_AND_COMPLIANCE),
   rule("m23.taxonomy.unmapped_taxonomy_alert", "warn", BILLING_MANAGERS),
   // ── M25 denial aging + appeal deadline crons ──────────────────────────────────────────────────
   rule("denial.aging_threshold_breached", "warn", BILLING_MANAGERS),
