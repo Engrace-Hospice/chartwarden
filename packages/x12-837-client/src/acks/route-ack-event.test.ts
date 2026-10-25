@@ -2,15 +2,17 @@ import { describe, expect, it } from "vitest";
 import type { AckEvent } from "../clearinghouse/types";
 import { routeAckEvent } from "./route-ack-event";
 
-const ev = (over: Partial<AckEvent>): AckEvent => ({
-  eventId: "e1",
-  stage: "payer",
-  disposition: "accepted",
-  controlNumber: "000000001",
-  reasonCodes: [],
-  occurredAt: "2026-10-09T12:00:00Z",
-  ...over,
-});
+// Typed loosely on purpose: the runtime guards exist for vendor JSON the compiler never saw.
+const ev = (over: Record<string, unknown>): AckEvent =>
+  ({
+    eventId: "e1",
+    stage: "payer",
+    disposition: "accepted",
+    controlNumber: "000000001",
+    reasonCodes: [],
+    occurredAt: "2026-10-09T12:00:00Z",
+    ...over,
+  }) as AckEvent;
 
 describe("routeAckEvent (ADR-0053 D2)", () => {
   it("routes a payer-stage accept through the 277CA edge", () => {
@@ -53,7 +55,7 @@ describe("routeAckEvent (ADR-0053 D2)", () => {
   });
 
   it("fails closed on an unknown stage or disposition", () => {
-    expect(() => routeAckEvent(ev({ stage: "bogus" as never }))).toThrow(/stage/);
+    expect(() => routeAckEvent(ev({ stage: "bogus" }))).toThrow(/stage/);
     expect(() => routeAckEvent(ev({ disposition: "bogus" as never }))).toThrow(/disposition/);
     expect(() => routeAckEvent(null as never)).toThrow();
   });

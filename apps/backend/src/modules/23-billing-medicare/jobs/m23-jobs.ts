@@ -1911,6 +1911,13 @@ async function runTransportAckPull(
     try {
       const pulled = await pullTransportAcks(transport, organizationId, kind, onPage);
       failures.push(...pulled.failures);
+      for (const q of pulled.quarantined) {
+        // Skipped, not retried: the cursor moves past it (a retry would only re-read the same unroutable event).
+        deps.logger?.error(
+          { ...q },
+          "clearinghouse acknowledgment is unroutable; quarantined and skipped",
+        );
+      }
       if (pulled.backlog.length > 0) {
         // Visible and prompt: log it and fail the run so BullMQ retries (with backoff) instead of waiting a full
         // cron interval. Every page read so far was applied and its cursor stored, so the retry resumes.

@@ -14,7 +14,8 @@ export interface RoutedAckEvent {
 
 export function routeAckEvent(event: AckEvent): RoutedAckEvent {
   if (event === null || typeof event !== "object") throw new Error("ack event: not an object");
-  const { stage, disposition } = event;
+  // Widened: the type forbids a clearinghouse partial, but vendor JSON is not typed.
+  const { stage, disposition }: { stage: unknown; disposition: unknown } = event;
   if (stage !== "clearinghouse" && stage !== "payer") throw new Error("ack event: unknown stage");
   if (disposition !== "accepted" && disposition !== "rejected" && disposition !== "partial") {
     throw new Error("ack event: unknown disposition");
