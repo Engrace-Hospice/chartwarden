@@ -216,6 +216,7 @@ export function buildRemittanceCommands(deps: RemittanceCommandDeps): {
             matchState: decision.nextState,
             matchStrategy: "manual",
             matchConfidence: 100,
+            unmatchedReason: null,
             matchedAt: sql`now()`,
             matchedByMembershipId: actor.membershipId,
           })

@@ -62,6 +62,8 @@ export const remittanceAdvice = pgTable(
     totalPaymentAmount: numeric("total_payment_amount", { precision: 12, scale: 2 }).notNull(),
     // PLB provider-level adjustments, positive = reduces the payment: sum(CLP04) - plb = BPR02.
     plbTotalAmount: numeric("plb_total_amount", { precision: 12, scale: 2 }).notNull().default("0"),
+    // sha256 of the set's claim payments: a resend (new ISA/ST, same TRN) is recognised by content.
+    contentDigest: varchar("content_digest", { length: 64 }),
     productionDate: timestamp("production_date", { withTimezone: true }).notNull(),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
     minioObjectKey: varchar("minio_object_key", { length: 500 }).notNull(),

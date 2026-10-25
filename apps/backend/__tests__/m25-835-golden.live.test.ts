@@ -164,6 +164,10 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
     return { received, posted: await ingest.postAdvice(ACTOR, received.adviceId) };
   }
 
+  /** The dispatcher takes a bounded batch per tick; earlier tests leave undeliverable rows, so tick until the queue is quiet. */
+  const drain = async () => {
+    for (let i = 0; i < 6; i++) await dispatcher.tick();
+  };
   const one = async (sql: string, args: unknown[] = []) => (await admin.query(sql, args)).rows[0];
   const rows = async (sql: string, args: unknown[] = []) => (await admin.query(sql, args)).rows;
   const stateOf = async (claimId: string) =>
@@ -485,8 +489,52 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
       expect([a.received.outcome, b.received.outcome, c.received.outcome]).toEqual(["queued", "queued", "queued"]);
     });
 
+    it("two different $0 remits that share a placeholder TRN are both posted (content, not just TRN, identifies a resend)", async () => {
+      await seedClaim("PCN-G-Z1", "ACK_ACCEPTED");
+      await seedClaim("PCN-G-Z2", "ACK_ACCEPTED");
+      const z1 = await postEra(
+        era("000007201", "0001", "0.00", ["CLP*PCN-G-Z1*4*100.00*0.00*0.00*MC*ICN-Z1", "CAS*CO*50*100.00"], undefined, "0"),
+        "minio/z1.835",
+      );
+      const z2 = await postEra(
+        era("000007202", "0001", "0.00", ["CLP*PCN-G-Z2*4*80.00*0.00*0.00*MC*ICN-Z2", "CAS*CO*50*80.00"], undefined, "0"),
+        "minio/z2.835",
+      );
+      expect([z1.received.outcome, z2.received.outcome]).toEqual(["queued", "queued"]);
+      expect(z2.posted).toMatchObject({ outcome: "posted" });
+    });
+
+    it("two concurrent resends of one payment under different control numbers queue exactly one advice", async () => {
+      await seedClaim("PCN-G-C2", "ACK_ACCEPTED");
+      const body = ["CLP*PCN-G-C2*1*70.00*70.00*0.00*MC*ICN-G-C2"];
+
+      const results = await Promise.all(
+        ["000007501", "000007502", "000007503"].map((isa) =>
+          postEra(era(isa, "0001", "70.00", body, undefined, "CHK-RACE"), `minio/race-${isa}.835`),
+        ),
+      );
+
+      expect(results.filter((r) => r.received.outcome === "queued")).toHaveLength(1);
+      expect(
+        Number((await one("SELECT count(*)::int AS n FROM remittance_advice WHERE check_or_eft_trace_number='CHK-RACE'")).n),
+      ).toBe(1);
+    });
+
+    it("a resend of an advice that FAILED is not swallowed: it is queued", async () => {
+      await seedClaim("PCN-G-F", "ACK_ACCEPTED");
+      const body = ["CLP*PCN-G-F*1*60.00*60.00*0.00*MC*ICN-G-F"];
+      const first = await postEra(era("000007301", "0001", "60.00", body, undefined, "CHK-FAIL"), "minio/f1.835");
+      await admin.query("UPDATE remittance_advice SET parse_status='failed' WHERE id=$1", [
+        (first.received as { adviceId: string }).adviceId,
+      ]);
+
+      const resend = await postEra(era("000007302", "0001", "60.00", body, undefined, "CHK-FAIL"), "minio/f2.835");
+
+      expect(resend.received.outcome).toBe("queued");
+    });
+
     it("keeps claim A's state: a partial payment lands once", async () => {
-      await dispatcher.tick();
+      await drain();
       expect(await stateOf(claimA)).toBe("PARTIAL_PAID");
     });
   });
@@ -512,7 +560,7 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
       ]);
       const first = await postEra(denial, "minio/s09-denial.835");
       expect(first.posted).toMatchObject({ outcome: "posted" });
-      await dispatcher.tick();
+      await drain();
       expect(await stateOf(claimId)).toBe("DENIED");
 
       const denialCase = await one(
@@ -551,7 +599,7 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
       ]);
       const second = await postEra(supplemental, "minio/s09-supplemental.835");
       expect(second.posted).toMatchObject({ outcome: "posted" });
-      await dispatcher.tick();
+      await drain();
 
       // Financial position: the extra payment is reflected, the claim is paid.
       expect(await stateOf(claimId)).toBe("PAID");
@@ -618,14 +666,14 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
         ]),
         "minio/s09b-partial.835",
       );
-      await dispatcher.tick();
+      await drain();
       expect(await stateOf(claimId)).toBe("PARTIAL_PAID");
 
       await postEra(
         era("000009004", "0001", "300.00", ["CLP*PCN-S09B*1*300.00*300.00*0.00*MC*ICN-S09B"]),
         "minio/s09b-supplemental.835",
       );
-      await dispatcher.tick();
+      await drain();
 
       expect(await stateOf(claimId)).toBe("PAID");
       const paid = await one(
@@ -655,12 +703,12 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
         era("000009007", "0001", "500.00", ["CLP*PCN-S09E*1*1000.00*500.00*0.00*MC*ICN-S09E", "CAS*CO*45*500.00"]),
         "minio/s09e-1.835",
       );
-      await dispatcher.tick();
+      await drain();
       await postEra(
         era("000009008", "0001", "200.00", ["CLP*PCN-S09E*1*500.00*200.00*0.00*MC*ICN-S09E2", "CAS*CO*45*300.00"]),
         "minio/s09e-2.835",
       );
-      await dispatcher.tick();
+      await drain();
 
       expect(await stateOf(claimId)).toBe("PARTIAL_PAID");
       const paid = await one(
@@ -682,7 +730,7 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
         ]),
         "minio/s09d.835",
       );
-      await dispatcher.tick();
+      await drain();
       expect(await stateOf(claimId)).toBe("PARTIAL_PAID");
     });
 
@@ -692,7 +740,7 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
         era("000009005", "0001", "50.00", ["CLP*PCN-S09C*1*50.00*50.00*0.00*MC*ICN-S09C"]),
         "minio/s09c.835",
       );
-      await dispatcher.tick();
+      await drain();
       expect(await stateOf(claimId)).toBe("DRAFT");
     });
   });
