@@ -283,7 +283,7 @@ export function ItemRail({
             <h2>{patientName}</h2>
             <StatusPill label={STATE_LABEL[n.state]} tone={STATE_TONE[n.state]} />
             {n.respawnedFromId ? <StatusPill label={REQUEUED_LABEL} tone="warning" /> : null}
-            {badge ? <StatusPill label={badge.label} tone={badge.tone} /> : null}
+            <StatusPill label={badge.label} tone={badge.tone} />
           </div>
           <div className="wx-row-sub">
             {TYPE_LABEL[n.itemType]} · attempt {n.attemptNumber}

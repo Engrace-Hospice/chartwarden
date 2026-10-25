@@ -39,7 +39,7 @@ import {
 } from "@chartwarden/billing";
 import * as schema from "@chartwarden/db/schema";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ConflictError, DegradedError, NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, ConflictError, DegradedError, NotFoundError } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { M23_QUEUES } from "../jobs/queues";
 import { buildNoticeCorrectionService } from "../services/notice-correction-service";
@@ -316,7 +316,11 @@ const mapUniqueViolation =
 
 const denyCcn: ProviderCcnPort = {
   ccnForProviderEntity: async () => {
-    throw new ChartWardenError("SEAM_UNBOUND", "the provider-entity CCN resolver is not bound", 503);
+    throw new ChartWardenError(
+      "SEAM_UNBOUND",
+      "the provider-entity CCN resolver is not bound",
+      503,
+    );
   },
 };
 const denyCipher: SecretCipherPort = {

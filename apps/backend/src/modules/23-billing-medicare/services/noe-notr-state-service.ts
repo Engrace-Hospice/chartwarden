@@ -17,7 +17,7 @@
 // DB pgEnum at the boundary. NO PHI / NO MBI on any surface (D13). D13 AI-actor reject guard applies here too.
 import { type NoticeState, noeMachine, notrMachine, repositories } from "@chartwarden/billing";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ConflictError, NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
 import {
   type BillingDb,
   type BillingTx,
@@ -420,7 +420,11 @@ export function buildNoeNotrStateService(
             windowBreachedAt: breachedAt.slice(0, 10),
           });
           if (!versioned.ok) {
-            throw new ChartWardenError("VERSION_CONFLICT", "the NOE was modified concurrently", 412);
+            throw new ChartWardenError(
+              "VERSION_CONFLICT",
+              "the NOE was modified concurrently",
+              412,
+            );
           }
           await emit(tx, actor.organizationId, {
             eventName: `${n.prefix}.window_breached`,

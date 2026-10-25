@@ -66,8 +66,8 @@ export function SubmissionForm({
       aria-label="Record as keyed in DDE"
     >
       <p className="wx-row-sub">
-        This records that you keyed the item in DDE. ChartWarden cannot check it, so it is your word and
-        it is audited. It needs a recent re-authentication.
+        This records that you keyed the item in DDE. ChartWarden cannot check it, so it is your word
+        and it is audited. It needs a recent re-authentication.
       </p>
       <TextField
         label="DCN / ICN / receipt number"

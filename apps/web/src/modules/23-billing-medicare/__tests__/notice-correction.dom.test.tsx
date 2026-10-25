@@ -1,9 +1,9 @@
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 // "File corrected NOE / NOTR" (CMS Pub. 100-04 ch. 11 §20.1.1 / §20.1.2): a rejected notice offers a correction
 // that shows the rejection, lets the biller keep or fix the notice date with a reason, posts it with an
 // Idempotency-Key, and links both ways between the rejected notice and its correction.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import {

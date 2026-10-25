@@ -1,10 +1,10 @@
+import { VISIT_CHARGE_MAX_CENTS } from "@chartwarden/billing";
+import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/23-billing-medicare/routes/visit-charge-typebox.ts — M23 hospice VISIT-CHARGE SCHEDULE
 // request/response TypeBox shapes (migration 1056). Named `*-typebox` (not `*schema*`) for the same table-ownership-
 // heuristic reason as `billing-typebox.ts`. All money is WHOLE INTEGER CENTS per 15-minute unit. Org / actor /
 // membership binding is server-side — no body field carries an org id or the entering membership.
 import { type Static, Type } from "@sinclair/typebox";
-import { VISIT_CHARGE_MAX_CENTS } from "@chartwarden/billing";
-import { ValidationError } from "@chartwarden/types";
 import { parse } from "./billing-typebox";
 
 const uuid = () => Type.String({ format: "uuid" });

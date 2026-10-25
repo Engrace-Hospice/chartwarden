@@ -352,7 +352,7 @@ export function DdeQueue(): JSX.Element {
                           {n.respawnedFromId ? (
                             <StatusPill label={REQUEUED_LABEL} tone="warning" />
                           ) : null}
-                          {badge ? <StatusPill label={badge.label} tone={badge.tone} /> : null}
+                          <StatusPill label={badge.label} tone={badge.tone} />
                         </td>
                       </tr>
                     );

@@ -1,7 +1,8 @@
 // apps/web/src/modules/23-billing-medicare — the hospice section of the patient's latest Medicare eligibility check,
 // read-only inside the DDE item drawer (#761). It reads GET /billing/eligibility/hospice-periods, the same read the
-// admission benefit-period field uses, so it shows whatever the bound eligibility provider (HETS, Episode Alert)
-// recorded and nothing is invented. A failed or forbidden read says so; it never blocks the DDE work.
+// admission benefit-period field uses: the latest HETS check the eligibility worker recorded. The Episode Alert
+// adapter is not wired into that record and yields only a Part A active/inactive answer (no hospice section), so the
+// card says so rather than implying it. Nothing is invented. A failed or forbidden read says so; it never blocks the DDE work.
 import { InlineAlert, StatusPill, useApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
@@ -41,7 +42,7 @@ function Body({ view }: { view: HetsHospicePeriodsView }): JSX.Element {
           {view.stale ? <StatusPill label="Stale" tone="warning" /> : null}
         </dd>
         <dt>Result</dt>
-        <dd>{view.outcome ?? "—"}</dd>
+        <dd>{view.outcome ? view.outcome.replaceAll("_", " ") : "—"}</dd>
         <dt>Hospice history</dt>
         <dd>{view.hospiceHistoryReturned ? "Returned" : "Not returned"}</dd>
         <dt>Election</dt>
@@ -62,6 +63,10 @@ function Body({ view }: { view: HetsHospicePeriodsView }): JSX.Element {
       {view.lastAttempt?.reason ? (
         <p className="wx-row-sub">Latest attempt: {view.lastAttempt.reason}</p>
       ) : null}
+      <p className="wx-row-sub">
+        Source: the Medicare HETS eligibility check recorded for this patient. Episode Alert answers
+        are not recorded here and carry no hospice history.
+      </p>
     </>
   );
 }

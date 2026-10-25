@@ -1,8 +1,8 @@
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 // The NOE / NOTR detail shows the MAC's answer: a rejection (when, at which stage, the reason codes, and that the
 // notice was NOT filed) and an acceptance date. Before, a rejected notice showed only its state pill.
 import { render, screen } from "@testing-library/react";
-import { ApiClientProvider } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { NOE_CONFIG, NOTR_CONFIG, NoticeWindowDetail } from "../notice-window";
 

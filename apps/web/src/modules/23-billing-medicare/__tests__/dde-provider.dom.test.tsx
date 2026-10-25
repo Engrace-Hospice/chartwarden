@@ -144,11 +144,11 @@ const rail = async () => within(await screen.findByRole("complementary"));
 const SEND = { name: "Send via provider" };
 
 describe("provider model", () => {
-  it("badges who keyed it and says nothing before anything is recorded", () => {
+  it("badges who keyed it and says Not sent before anything is recorded", () => {
     expect(providerBadge({ submissionMode: "provider" })?.label).toBe("Via provider");
     expect(providerBadge({ submissionMode: "manual" })?.label).toBe("Keyed by hand");
-    expect(providerBadge({ submissionMode: null })).toBeNull();
-    expect(providerBadge({})).toBeNull();
+    expect(providerBadge({ submissionMode: null })).toEqual({ label: "Not sent", tone: "neutral" });
+    expect(providerBadge({})).toEqual({ label: "Not sent", tone: "neutral" });
   });
 
   it("only calls an answer verified when the provider gave it", () => {
@@ -375,6 +375,13 @@ describe("DDE item rail: provider status check and evidence", () => {
     expect((await rail()).getByText(/Attested by the operator/)).toBeTruthy();
   });
 
+  it("badges a row with no recorded submission mode as Not sent", async () => {
+    const { api } = setup({ detail: providerItem({ submissionMode: null }) });
+    mount(api);
+    const row = within(await screen.findByRole("table"));
+    expect(await row.findByText("Not sent")).toBeTruthy();
+  });
+
   it("badges each row with how it was keyed", async () => {
     const { api } = setup({ detail: providerItem() });
     mount(api);
@@ -415,6 +422,20 @@ describe("DDE queue: platform provider status and hospice eligibility", () => {
     mount(api);
     const panel = within(await screen.findByRole("region", { name: "Hospice eligibility" }));
     expect(await panel.findByText(/No eligibility check on file/)).toBeTruthy();
+  });
+
+  it("states that hospice history comes only from the recorded HETS check, not Episode Alert", async () => {
+    const { api } = setup();
+    mount(api);
+    const panel = within(await screen.findByRole("region", { name: "Hospice eligibility" }));
+    expect(await panel.findByText(/Episode Alert answers are not recorded here/)).toBeTruthy();
+  });
+
+  it("shows the check result in words, not as an enum token", async () => {
+    const { api } = setup({ hospice: { ...HOSPICE, outcome: "active_part_a" } });
+    mount(api);
+    const panel = within(await screen.findByRole("region", { name: "Hospice eligibility" }));
+    expect(await panel.findByText("active part a")).toBeTruthy();
   });
 
   it("labels a sandbox answer synthetic", async () => {
