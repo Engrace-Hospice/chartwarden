@@ -19,7 +19,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { statusLabel, submissionStatusTone } from "./billing-status";
 
-interface ClaimSubmission {
+export interface ClaimSubmission {
   submissionId: string;
   kind: string;
   claimControlNumber: string;
@@ -85,69 +85,71 @@ export function SubmissionsTimeline(): JSX.Element {
         />
       }
     >
-      {rows.length === 0 ? (
-        <EmptyState
-          title="No submissions"
-          description="No dispatch attempts have been recorded for this claim."
-        />
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.84rem" }}>
-          <thead>
-            <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
-              <th style={{ ...thStyle, textAlign: "right" }}>Attempt</th>
-              <th style={thStyle}>Kind</th>
-              <th style={thStyle}>Outcome</th>
-              <th style={thStyle}>Reason</th>
-              <th style={thStyle}>Submitted</th>
-              <th style={thStyle}>File</th>
-              <th style={thStyle}>Reference</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr
-                key={r.submissionId}
-                style={{ background: i % 2 === 1 ? "var(--color-surface-low)" : "transparent" }}
-              >
-                <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                  {r.attemptIndex}
-                </td>
-                <td style={tdStyle}>{statusLabel(r.kind)}</td>
-                <td style={tdStyle}>
-                  <StatusPill
-                    label={statusLabel(r.outcome)}
-                    tone={submissionStatusTone(r.outcome)}
-                  />
-                </td>
-                <td style={{ ...tdStyle, color: "var(--color-on-surface-variant)" }}>
-                  {r.outcomeReason ?? "—"}
-                </td>
-                <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                  {r.submittedAt ?? r.createdAt}
-                </td>
-                <td style={tdStyle}>
-                  {r.generatedFileUri ? (
-                    <a
-                      href={r.generatedFileUri}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: "var(--color-primary)" }}
-                    >
-                      Download →
-                    </a>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td style={tdStyle}>
-                  <CorrelationIdBadge correlationId={r.submissionId} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <SubmissionsTable rows={rows} />
     </DetailPageLayout>
+  );
+}
+
+/** The submissions table, shared by this screen and the claim page's history section. */
+export function SubmissionsTable({ rows }: { rows: ClaimSubmission[] }): JSX.Element {
+  return rows.length === 0 ? (
+    <EmptyState
+      title="No submissions"
+      description="No dispatch attempts have been recorded for this claim."
+    />
+  ) : (
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.84rem" }}>
+      <thead>
+        <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
+          <th style={{ ...thStyle, textAlign: "right" }}>Attempt</th>
+          <th style={thStyle}>Kind</th>
+          <th style={thStyle}>Outcome</th>
+          <th style={thStyle}>Reason</th>
+          <th style={thStyle}>Submitted</th>
+          <th style={thStyle}>File</th>
+          <th style={thStyle}>Reference</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, i) => (
+          <tr
+            key={r.submissionId}
+            style={{ background: i % 2 === 1 ? "var(--color-surface-low)" : "transparent" }}
+          >
+            <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+              {r.attemptIndex}
+            </td>
+            <td style={tdStyle}>{statusLabel(r.kind)}</td>
+            <td style={tdStyle}>
+              <StatusPill label={statusLabel(r.outcome)} tone={submissionStatusTone(r.outcome)} />
+            </td>
+            <td style={{ ...tdStyle, color: "var(--color-on-surface-variant)" }}>
+              {r.outcomeReason ?? "—"}
+            </td>
+            <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+              {r.submittedAt ?? r.createdAt}
+            </td>
+            <td style={tdStyle}>
+              {r.generatedFileUri ? (
+                <a
+                  href={r.generatedFileUri}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "var(--color-primary)" }}
+                >
+                  Download →
+                </a>
+              ) : (
+                "—"
+              )}
+            </td>
+            <td style={tdStyle}>
+              <CorrelationIdBadge correlationId={r.submissionId} />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

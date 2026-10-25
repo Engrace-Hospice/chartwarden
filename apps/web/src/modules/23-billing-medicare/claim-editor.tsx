@@ -28,6 +28,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { BillingTabs } from "../../shell/billing-tabs";
 import type { RhcCarryOver } from "../../shell/rhc-carry-over";
 import {
   claimStateTone,
@@ -36,6 +37,7 @@ import {
   tobLabel,
   validationRunTone,
 } from "./billing-status";
+import { ClaimHistory } from "./claim-history";
 import { ClaimStayEndPanels } from "./claim-stay-end-panels";
 import type { ClaimAttention } from "./discharge-attention";
 import { RhcDayCount } from "./rhc-day-count";
@@ -314,7 +316,9 @@ export function ClaimEditor(): JSX.Element {
               </button>
             </div>
           }
-        />
+        >
+          <BillingTabs />
+        </PageHeader>
       }
       aside={
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -360,6 +364,7 @@ export function ClaimEditor(): JSX.Element {
             <LinesTable lines={lines} />
           )}
         </div>
+        <ClaimHistory claimId={claim.claimId} />
       </section>
 
       {/* §10 Submit ceremony (#7): control number + active MAC + latest validation outcome. A STEP_UP_REQUIRED
