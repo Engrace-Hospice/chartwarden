@@ -1,7 +1,7 @@
-// @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
+// @vitest-environment jsdom
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { AdmissionHopeOverview } from "../admission-hope-overview";
@@ -114,6 +114,12 @@ function clientFor(data = workflow()): ApiClient {
   } as unknown as ApiClient;
 }
 
+// The "HOPE" page heading is also in the loading skeleton, so it is NOT proof the data arrived; wait for the skeleton to go.
+async function loaded(): Promise<void> {
+  await waitFor(() => expect(screen.queryByLabelText("Loading HOPE workflow")).toBeNull());
+  expect(screen.getByRole("heading", { name: "HOPE" })).toBeTruthy();
+}
+
 function LocationProbe(): JSX.Element {
   const location = useLocation();
   return <output aria-label="location">{location.pathname}</output>;
@@ -150,7 +156,7 @@ describe("Admission HOPE overview", () => {
   it("renders backend-provided fixed RFAs, SFVs, and distinct M9/M10 admission assessment labels", async () => {
     renderOverview(clientFor());
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "HOPE" })).toBeTruthy());
+    await loaded();
     expect(screen.getByText("HOPE Admission Assessment")).toBeTruthy();
     expect(screen.getByText("Admission RFA")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "HUV1" })).toBeTruthy();
@@ -205,7 +211,7 @@ describe("Admission HOPE overview", () => {
       ),
     );
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "HOPE" })).toBeTruthy());
+    await loaded();
     expect(screen.getAllByText("Workflow issue").length).toBeGreaterThan(0);
     expect(screen.getByText("1 workflow issue")).toBeTruthy();
     expect(screen.getByText("Overdue/missed")).toBeTruthy();
@@ -259,7 +265,7 @@ describe("Admission HOPE overview", () => {
       ),
     );
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "HOPE" })).toBeTruthy());
+    await loaded();
     expect(screen.getByText("Draft in progress")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Continue draft" }));
     expect(screen.getByLabelText("location").textContent).toBe("/hope/assessments/draft-adm");
@@ -268,7 +274,7 @@ describe("Admission HOPE overview", () => {
   it("navigates to a contextual HUV workflow without requiring raw RFA selection", async () => {
     renderOverview(clientFor());
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "HOPE" })).toBeTruthy());
+    await loaded();
     fireEvent.click(screen.getByRole("button", { name: "Complete HUV1" }));
     expect(screen.getByLabelText("location").textContent).toBe(
       `/admissions/${admissionId}/hope/timepoints/02_huv1`,
@@ -277,7 +283,7 @@ describe("Admission HOPE overview", () => {
 
   it("navigates to a contextual SFV workflow without manufacturing a trigger", async () => {
     renderOverview(clientFor());
-    await waitFor(() => expect(screen.getByRole("heading", { name: "HOPE" })).toBeTruthy());
+    await loaded();
     fireEvent.click(screen.getByRole("button", { name: "Complete Follow-Up" }));
     expect(screen.getByLabelText("location").textContent).toBe(
       `/admissions/${admissionId}/hope/sfv/sfv-1`,
@@ -302,7 +308,7 @@ describe("Admission HOPE overview", () => {
       ),
     );
 
-    await waitFor(() => expect(screen.getByRole("heading", { name: "HOPE" })).toBeTruthy());
+    await loaded();
     fireEvent.click(screen.getByRole("button", { name: "Complete Discharge Assessment" }));
     expect(screen.getByLabelText("location").textContent).toBe(
       `/admissions/${admissionId}/hope/timepoints/05_discharge`,

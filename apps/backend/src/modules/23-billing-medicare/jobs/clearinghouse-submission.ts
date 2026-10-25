@@ -197,7 +197,26 @@ const MAX_CURSOR_LENGTH = 512;
 export interface TransportAckPull {
   readonly failures: readonly string[];
   readonly backlog: readonly string[];
+  /**
+   * Events the vendor sent that cannot be routed (unknown stage/disposition, or a clearinghouse-stage `partial`),
+   * reported by the `ack_999` pull only (both crons read the one stream; an unroutable event has no kind). Each is
+   * skipped so it cannot stall the stream behind it; the caller must log them. PHI-free: id, control number, reason.
+   */
+  readonly quarantined: readonly QuarantinedAck[];
 }
+
+/** One unroutable vendor event, identified by our own fixed reason text and ids only. */
+export interface QuarantinedAck {
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly eventId: string;
+  readonly controlNumber: string;
+  readonly reason: string;
+}
+
+const MAX_QUARANTINE_FIELD = 128;
+const clip = (value: unknown): string =>
+  typeof value === "string" ? value.slice(0, MAX_QUARANTINE_FIELD) : "";
 
 type PageHandler = (acks: readonly TransportAck[]) => Promise<void>;
 
@@ -218,9 +237,17 @@ export async function pullTransportAcks(
 ): Promise<TransportAckPull> {
   const failures: string[] = [];
   const backlog: string[] = [];
+  const quarantined: QuarantinedAck[] = [];
   for (const providerEntityId of await transport.contexts.providerEntitiesFor(organizationId)) {
     try {
-      const outcome = await pullEntity(transport, organizationId, providerEntityId, kind, onPage);
+      const outcome = await pullEntity(
+        transport,
+        organizationId,
+        providerEntityId,
+        kind,
+        onPage,
+        quarantined,
+      );
       if (outcome === "backlog") backlog.push(`org ${organizationId} provider ${providerEntityId}`);
     } catch (err) {
       // Ids and the (PHI-free) failure text only.
@@ -229,7 +256,7 @@ export async function pullTransportAcks(
       );
     }
   }
-  return { failures, backlog };
+  return { failures, backlog, quarantined };
 }
 
 async function pullEntity(
@@ -238,6 +265,7 @@ async function pullEntity(
   providerEntityId: string,
   kind: TransportAck["kind"],
   onPage: PageHandler,
+  quarantined: QuarantinedAck[],
 ): Promise<"done" | "backlog"> {
   const ctx = await transport.contexts.contextFor(organizationId, providerEntityId);
   const macJurisdiction = ctx.jurisdiction;
@@ -290,9 +318,25 @@ async function pullEntity(
         "the vendor cursor did not advance (repeated position)",
       );
     }
-    const acks = items
-      .map((event) => ackFromEvent(event, { organizationId, providerEntityId, macJurisdiction }))
-      .filter((ack) => ack.kind === kind);
+    const acks: TransportAck[] = [];
+    for (const event of items) {
+      try {
+        const ack = ackFromEvent(event, { organizationId, providerEntityId, macJurisdiction });
+        if (ack.kind === kind) acks.push(ack);
+      } catch (err) {
+        // An event we cannot route must not stall every ack behind it (fail closed per event, not per stream): it is
+        // skipped, never applied, and reported by the 999 cron so it leaves a trail.
+        if (kind === "ack_999") {
+          quarantined.push({
+            organizationId,
+            providerEntityId,
+            eventId: clip(event?.eventId),
+            controlNumber: clip(event?.controlNumber),
+            reason: err instanceof Error ? err.message : "unroutable acknowledgment",
+          });
+        }
+      }
+    }
     if (acks.length > 0) await onPage(acks);
     if (store && nextCursor !== state.cursor) {
       // Lost the race: another tick owns this stream now and its position stands. (An unchanged position is no write.)

@@ -35,6 +35,8 @@ describe("expired portal session", () => {
       await waitFor(() => expect(window.location.pathname).toMatch(/^\/portal\/?$/));
       const next = new URLSearchParams(window.location.search).get("next");
       expect(next).toBe(path.replace("/portal", ""));
+      // The URL changes before React re-renders; assert the shell's absence only once the sign-in screen is up.
+      await screen.findByLabelText(/email/i);
       expect(screen.queryByRole("navigation", { name: "Portal navigation" })).toBeNull();
       expect(screen.queryByText(/Viewing care for/)).toBeNull();
       expect(screen.queryByText(/Your session has ended/)).toBeNull();

@@ -351,7 +351,8 @@ export class InMemoryClearinghouse implements ClearinghouseTransport {
       reasonCodes: [...reasonCodes],
       occurredAt: this.stamp(),
       ...(payerClaimNumber === undefined ? {} : { payerClaimNumber }),
-    });
+      // The test control surface may deliberately inject an event the type forbids (a clearinghouse-stage partial).
+    } as AckEvent);
   }
 
   private webhook(

@@ -78,7 +78,10 @@ async function seed(
 function setup(entities: readonly string[] = [PE]) {
   const inMemory = new InMemoryClearinghouse();
   const { store, rows } = fakeStore();
-  const binding: ClearinghouseBinding = { vendor: "in_memory", transport: inMemory };
+  const binding: ClearinghouseBinding = {
+    vendor: "in_memory",
+    transport: inMemory,
+  };
   const t: M23TransportDeps = {
     binding,
     ackCursors: store,
@@ -236,7 +239,11 @@ describe("pullTransportAcks with a persisted cursor (#749)", () => {
         transport: {
           fetchAcknowledgments: async () => ({
             ok: true,
-            data: { items: [], nextCursor: chain[n++ % chain.length], hasMore: true },
+            data: {
+              items: [],
+              nextCursor: chain[n++ % chain.length],
+              hasMore: true,
+            },
           }),
         } as never,
       },
@@ -279,5 +286,49 @@ describe("pullTransportAcks with a persisted cursor (#749)", () => {
     };
     const pulled = await pullTransportAcks(bad, ORG, "ack_999", async () => {});
     expect(pulled.failures).toEqual([expect.stringContaining("unusable length")]);
+  });
+
+  it("quarantines an unroutable event (clearinghouse-stage partial) instead of stalling the stream behind it", async () => {
+    const { t, rows } = setup();
+    const ev = (eventId: string, stage: string, disposition: string) => ({
+      eventId,
+      stage,
+      disposition,
+      controlNumber: `CN-${eventId}`,
+      reasonCodes: [],
+      occurredAt: "2026-10-11",
+    });
+    const items = [
+      ev("e1", "clearinghouse", "accepted"),
+      ev("e2", "clearinghouse", "partial"),
+      ev("e3", "clearinghouse", "accepted"),
+    ];
+    const bad: M23TransportDeps = {
+      ...t,
+      binding: {
+        vendor: "in_memory",
+        transport: {
+          fetchAcknowledgments: async () => ({
+            ok: true,
+            data: { items, nextCursor: "3", hasMore: false },
+          }),
+        } as never,
+      },
+    };
+    const c = collect();
+    const pulled = await pullTransportAcks(bad, ORG, "ack_999", c.onPage);
+    expect(pulled.failures).toEqual([]);
+    expect(c.pages.flat().map((a) => a.controlNumber)).toEqual(["CN-e1", "CN-e3"]);
+    expect(pulled.quarantined).toEqual([
+      expect.objectContaining({
+        eventId: "e2",
+        controlNumber: "CN-e2",
+        reason: expect.stringContaining("payer-stage only"),
+      }),
+    ]);
+    expect([...rows.values()][0]?.cursor).toBe("3"); // the cursor moved past it
+    // the 277CA cron reads the same stream but does not double-report
+    const other = await pullTransportAcks(bad, ORG, "ack_277ca", async () => {});
+    expect(other.quarantined).toEqual([]);
   });
 });

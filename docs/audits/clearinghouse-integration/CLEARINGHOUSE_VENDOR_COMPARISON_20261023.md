@@ -76,7 +76,8 @@ account can disable "Transmit Approval" by API; BAA availability; sandbox limits
 
 **Stedi:** written confirmation that test claims need a production account; enrollment unit for Medicare Part A hospice
 (NPI, entity or TIN) and lead time; whether a reseller may use one platform account with provider records instead of an
-integrated account per customer; Medicare frequency 7/8 replacements (Q17); NOE/NOTR channel for Original Medicare.
+integrated account per customer; Medicare frequency 7/8 replacements (Q17); NOE/NOTR channel for Original Medicare. **Q30 (open, unverified):** whether payer routing accepts Medicare transfer-notice type-of-bill 8xC/8xD (and 82A/82B) over the Stedi
+837I route; the adapter sends it as it does an NOE/NOTR, so it is unproven until Stedi answers (ADR-0053 amendment 2026-10-25, #750).
 
 ## 6. Answers received 2026-10-23 (user-supplied, not vendor-confirmed)
 

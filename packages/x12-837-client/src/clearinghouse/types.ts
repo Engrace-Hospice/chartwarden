@@ -162,11 +162,19 @@ export type AckStage = "clearinghouse" | "payer";
  */
 export type AckDisposition = "accepted" | "rejected" | "partial";
 
-export interface AckEvent {
+/**
+ * A clearinghouse-stage `partial` is unrepresentable in typed code (the union below); `routeAckEvent` still rejects it
+ * at runtime because vendor JSON is not typed.
+ */
+export type AckEvent = AckEventBase &
+  (
+    | { readonly stage: "clearinghouse"; readonly disposition: Exclude<AckDisposition, "partial"> }
+    | { readonly stage: "payer"; readonly disposition: AckDisposition }
+  );
+
+interface AckEventBase {
   /** Stable and unique per acknowledgment; consumers dedupe on it. */
   readonly eventId: string;
-  readonly stage: AckStage;
-  readonly disposition: AckDisposition;
   /** The control number of the submission this answers (999-level acks map to the interchange's submission). */
   readonly controlNumber: string;
   /** X12 / vendor reason codes (STC, AK9, edit ids). Codes only. */
