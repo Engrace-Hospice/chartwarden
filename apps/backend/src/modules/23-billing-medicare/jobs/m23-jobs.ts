@@ -1038,6 +1038,10 @@ export async function runClaimSubmitRetry(
     if (earlier?.status === "sent" && earlier.clearinghouseSubmissionId) {
       filedAs = `clearinghouse:${transport.binding.vendor}:${earlier.clearinghouseSubmissionId}`;
     } else if (earlier?.status !== "voided") {
+      // Deliberate dead end (#754): `released` (the vendor provably did not take it) is NOT retryable here. `find`
+      // hides released rows, so it is indistinguishable from "no record", and a submission still marked in doubt
+      // beside a released attempt is a state no worker path produces (a redelivered submit overwrites the reason).
+      // Fail closed and let the stalled alert page a human; the resolve routes only act on reserved rows.
       throw new Error(
         `claim submission ${job.submissionId} is in doubt at the clearinghouse (${CH.IN_DOUBT}); reconcile it before retrying`,
       );

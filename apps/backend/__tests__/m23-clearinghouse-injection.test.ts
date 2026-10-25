@@ -14,6 +14,7 @@ import {
   type TransportAck,
   ackFromEvent,
   activeTransport,
+  priorClaimAttempt,
   pullTransportAcks,
   transportUpload,
 } from "../src/modules/23-billing-medicare/jobs/clearinghouse-submission";
@@ -445,5 +446,15 @@ describe("clearinghouseUsageFromEnv", () => {
     expect(() =>
       clearinghouseUsageFromEnv({ NODE_ENV: "production", CLEARINGHOUSE_USAGE: "test" }),
     ).toThrow(/refused in production/);
+  });
+});
+
+describe("the retry's view of an earlier attempt fails closed (#754)", () => {
+  it("priorClaimAttempt is null without an attempt store, so an in-doubt retry cannot be judged settled", async () => {
+    const withoutStore = transportDeps(); // no `attempts`
+    expect(withoutStore.attempts).toBeUndefined();
+    await expect(
+      priorClaimAttempt(withoutStore, ORG, PE, "ABC123-260101-8zde6-00"),
+    ).resolves.toBeNull();
   });
 });
