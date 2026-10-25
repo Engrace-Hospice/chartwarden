@@ -70,6 +70,19 @@ export interface DdeContext {
 /** The isolation boundary of every piece of provider state. */
 export type DdeScope = Pick<DdeContext, "organizationId" | "providerEntityId" | "usage">;
 
+/**
+ * The beneficiary an operation is keyed for. PHI: handed to the provider call in memory only (ADR-0103 D6, #793). The
+ * queue stores no MBI (ADR-0052 D7), so the caller unlocks it through M5's audited MBI seam per call; an adapter MUST
+ * NOT log it, echo it into a degraded reason, put it in a receipt or outcome, or keep it past the vendor call.
+ */
+export interface DdeBeneficiary {
+  readonly mbi: string;
+  readonly lastName: string;
+  readonly firstName: string;
+  /** `YYYY-MM-DD`. */
+  readonly dateOfBirth: string;
+}
+
 export interface DdeOperation {
   readonly kind: DdeOperationKind;
   /**
@@ -86,6 +99,8 @@ export interface DdeOperation {
    */
   readonly idempotencyKey: string;
   readonly payload: SubmissionPayload;
+  /** Absent only where the caller has no MBI seam bound; an adapter whose wire needs it refuses with INVALID_REQUEST. */
+  readonly beneficiary?: DdeBeneficiary;
 }
 
 export interface DdeReceipt {

@@ -284,6 +284,32 @@ export const DDE_CONFORMANCE_CASES: readonly DdeConformanceCase[] = [
       );
     },
   },
+  {
+    id: "D14",
+    title: "a change-report outcome names the operation it answers, in codes and ids only",
+    run: async ({ provider, script }) => {
+      const r = must(
+        await provider.submitOperation(ctxFor(OTHER_ORG), operation("cn-d14")),
+        "submit",
+      );
+      await script.fissAnswers(r.providerReference, "returned", ["U5003"], OTHER_ORG);
+      const page = must(await provider.fetchOutcomes(ctxFor(OTHER_ORG), null), "feed");
+      const o = page.items[0];
+      if (page.items.length !== 1 || o === undefined) {
+        throw new Error("the answered operation is not on the feed");
+      }
+      assert(o.eventId.length > 0, "an outcome has no event id");
+      assert(
+        o.providerReference === r.providerReference && o.controlNumber === r.controlNumber,
+        "an outcome does not name the operation it answers",
+      );
+      assert(o.disposition === "returned", "the disposition was not carried");
+      assert(!Number.isNaN(Date.parse(o.occurredAt)), "the MAC date is unreadable");
+      assert(o.reasonCodes.includes("U5003"), "the FISS reason code was not carried");
+      const again = must(await provider.fetchOutcomes(ctxFor(OTHER_ORG), null), "feed again");
+      assert(again.items[0]?.eventId === o.eventId, "an event id is not stable across reads");
+    },
+  },
 ];
 
 export interface DdeConformanceOutcome {

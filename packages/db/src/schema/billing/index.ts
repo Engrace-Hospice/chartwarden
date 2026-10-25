@@ -30,6 +30,7 @@ export * from "./noe-record";
 export * from "./notr-record";
 export * from "./transfer-notice-record";
 export * from "./clearinghouse-submission-attempt";
+export * from "./dde-change-cursor";
 export * from "./dde-work-item";
 export * from "./dde-work-event";
 export * from "./per-diem-rate-calculation";

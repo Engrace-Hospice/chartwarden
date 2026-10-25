@@ -26,7 +26,7 @@ import {
   validateDdeCodes,
   validateDdeNotes,
 } from "@chartwarden/billing";
-import { withOrgContext } from "@chartwarden/tenancy";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
   ConflictError,
@@ -34,7 +34,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "@chartwarden/types";
-import { DDE, type DdeAccessProvider } from "@chartwarden/x12-837-client";
+import { DDE, type DdeAccessProvider, type DdeOutcome } from "@chartwarden/x12-837-client";
 import type { Static } from "@sinclair/typebox";
 import type {
   AssignDdeItemBodySchema,
@@ -55,9 +55,11 @@ import {
   assertNotAiActor,
   requireStepUp,
 } from "./claim-state-service";
+import type { DdeBeneficiaryPort } from "./dde-beneficiary";
 import { applyDdeNoticeAcceptance } from "./dde-notice-acceptance";
 import {
   DDE_PROVIDER_CALL_TIMEOUT_MS,
+  type PlannedOutcome,
   PROVIDER_REFERENCE_PATTERN,
   REFUSED_BEFORE_SEND,
   ddeIdempotencyKey,
@@ -117,6 +119,12 @@ export interface DdeQueueServicePorts {
    * (fail closed; manual keying is the baseline).
    */
   readonly ddeProvider?: DdeAccessProvider;
+  /**
+   * The audited MBI seam (#793): unlocks the beneficiary for ONE provider operation, in memory only. Absent => the
+   * operation carries no beneficiary (the composition root always binds it; a real adapter refuses an operation
+   * without one). Bound but failing => the send is refused before the in-doubt marker is set or any vendor call.
+   */
+  readonly ddeBeneficiary?: DdeBeneficiaryPort;
   /** `test` MUST reach only vendor test mode. Defaults to `test` so a mis-wired caller can never reach production FISS. */
   readonly ddeUsage?: "test" | "production";
   /** Bound on one vendor call (default {@link DDE_PROVIDER_CALL_TIMEOUT_MS}); past it the send is in doubt. */
@@ -167,6 +175,20 @@ export interface DdeQueueService {
    * acceptance with source `dde_provider`; returned/rejected -> the RTP path). A still-pending answer changes nothing.
    */
   syncProviderOutcome(actor: DdeWriteActor, id: string): Promise<DdeProviderSyncView>;
+  /**
+   * Apply one change-report outcome from the provider (#793, the daily-change ingest) as the system actor. Matches the
+   * item by (provider entity, provider reference): none => `unmatched`; an item no longer awaiting an answer (already
+   * accepted/returned/closed, a manual item, one possibly sent and not yet settled by a person, or one a DIFFERENT
+   * operator submitted) => `already`, never moved backwards; otherwise the same edges as `syncProviderOutcome`.
+   * `operatorMembershipId` is the operator whose DDE ID the change report was read under. Throws
+   * DDE_PROVIDER_ANSWER_INVALID for an answer we will not act on (nothing is written). No vendor call is made here.
+   */
+  applyProviderChange(
+    organizationId: string,
+    providerEntityId: string,
+    outcome: DdeOutcome,
+    operatorMembershipId: string,
+  ): Promise<"applied" | "already" | "unmatched">;
   retry(actor: DdeWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
   cancel(actor: DdeWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
   close(actor: DdeWriteActor, id: string, expectedVersion: number): Promise<DdeItemView>;
@@ -255,6 +277,18 @@ function viewOf(row: Item, asOf: string): DdeItemView {
     updatedAt: row.updatedAt.toISOString(),
   };
 }
+
+/** The actor of work no person triggered (the daily-change-report ingest): history rows say `system`, no membership. */
+const SYSTEM_ACTOR_KIND = "system";
+const isSystemActor = (actor: BillingWriteActor): boolean => actor.actorKind === SYSTEM_ACTOR_KIND;
+const systemDdeActor = (organizationId: string): BillingWriteActor => ({
+  organizationId,
+  userId: "",
+  roles: [],
+  membershipId: "",
+  stepUpRecent: false,
+  actorKind: SYSTEM_ACTOR_KIND,
+});
 
 export function buildDdeQueueService(
   db: BillingDb,
@@ -356,9 +390,12 @@ export function buildDdeQueueService(
       fromState: item.state,
       toState: updated.state,
       attemptNumber: updated.attemptNumber,
-      actorMembershipId: actor.membershipId,
-      actorKind: "user",
-      detail: { ...historyDetail, actorMembershipId: actor.membershipId },
+      // The change-report ingest (#793) is a system actor: no membership, kind `system`.
+      actorMembershipId: isSystemActor(actor) ? null : actor.membershipId,
+      actorKind: isSystemActor(actor) ? "system" : "user",
+      detail: isSystemActor(actor)
+        ? historyDetail
+        : { ...historyDetail, actorMembershipId: actor.membershipId },
     });
     await emit(tx, updated.organizationId, "m23.dde_item.state_changed", updated.id, {
       ddeItemId: updated.id,
@@ -377,6 +414,72 @@ export function buildDdeQueueService(
       providerReference: updated.providerReference,
     });
     return updated;
+  };
+
+  /**
+   * Validate and plan a provider's FINAL answer (pure: no IO). Shared by the by-item sync route and the daily change
+   * ingest (#793). Throws DDE_PROVIDER_ANSWER_INVALID for an answer we will not act on.
+   */
+  const planAnswer = (latest: DdeOutcome, submittedAt: Date | null) => {
+    const recordedAt = now();
+    const plan = planProviderOutcome(latest, toIsoDate(recordedAt));
+    if (plan.kind === "invalid") throw ddeProviderAnswerRejected(plan.reason);
+    // An answer cannot predate the submission it answers (Eastern day): a stale provider date would corrupt timeliness.
+    if (plan.kind === "accepted" && submittedAt && plan.macAcceptedOn < toIsoDate(submittedAt)) {
+      throw ddeProviderAnswerRejected("the provider's acceptance date predates the submission");
+    }
+    return { plan, recordedAt };
+  };
+
+  /** Apply a planned answer to the item as it is now (the reducer refuses anything but `submitted`). */
+  const applyPlanned = async (
+    tx: BillingTx,
+    actor: BillingWriteActor,
+    current: Item,
+    plan: Exclude<PlannedOutcome, { kind: "invalid" }>,
+    recordedAt: Date,
+    detail: Record<string, string | number | boolean | null>,
+  ): Promise<Item> => {
+    if (plan.kind === "returned") {
+      return applyEvent(
+        tx,
+        actor,
+        current,
+        current.version,
+        "return",
+        {
+          rtpReasonCode: plan.rtpReasonCode,
+          outcomeCode: plan.outcomeCode,
+          ...(plan.dcn ? { dcn: plan.dcn } : {}),
+        },
+        { ...detail, rtpReasonCode: plan.rtpReasonCode, dcn: plan.dcn },
+      );
+    }
+    let macAcceptedOn = plan.macAcceptedOn;
+    if (current.itemType === "noe" || current.itemType === "notr") {
+      const applied = await applyDdeNoticeAcceptance(tx, {
+        organizationId: actor.organizationId,
+        kind: current.itemType,
+        noticeId: current.subjectId,
+        macAcceptedOn,
+        recordedAt,
+        outbox: ports.outbox,
+        source: "dde_provider",
+      });
+      // The electronic path got there first: the notice's own date is the truth, so the item takes it.
+      if (!applied.applied && applied.existingPayerStatusDate) {
+        macAcceptedOn = applied.existingPayerStatusDate;
+      }
+    }
+    return applyEvent(
+      tx,
+      actor,
+      current,
+      current.version,
+      "accept",
+      { macAcceptedOn, outcomeCode: "accepted", ...(plan.dcn ? { dcn: plan.dcn } : {}) },
+      { ...detail, macAcceptedOn, dcn: plan.dcn },
+    );
   };
 
   /** One short org-scoped transaction on an item the actor may work (ADR-0052 D6 ownership rule). */
@@ -785,6 +888,16 @@ export function buildDdeQueueService(
         const controlNumber = await loadControlNumber(tx, item);
         if (!controlNumber) throw new NotFoundError("dde subject");
         const keying = await loadKeyingSheet(tx, item);
+        // The MBI is unlocked per call, audited by the seam, and rides only this call's memory: never an event, log or
+        // row. Before the marker, so a refused unlock leaves the item untouched instead of falsely "possibly sent".
+        const beneficiary = await ports.ddeBeneficiary?.unlock({
+          organizationId: item.organizationId,
+          patientId: item.patientId,
+          ddeItemId: item.id,
+          actorUserId: actor.userId,
+          ...(actor.request?.correlationId ? { correlationId: actor.request.correlationId } : {}),
+          onDate: toIsoDate(now()),
+        });
         const marked = await persist(
           tx,
           actor,
@@ -796,9 +909,9 @@ export function buildDdeQueueService(
           { providerInDoubtAt: now(), providerOperatorMembershipId: actor.membershipId },
           { idempotencyKey: ddeIdempotencyKey(item.id, item.attemptNumber) },
         );
-        return { marked, controlNumber, keying };
+        return { marked, controlNumber, keying, beneficiary };
       });
-      const { marked, controlNumber, keying } = started;
+      const { marked, controlNumber, keying, beneficiary } = started;
 
       // Phase 2 (NO transaction held): the vendor call, bounded; the signal is handed to the port.
       const bounded = await runWithTimeout(
@@ -808,6 +921,7 @@ export function buildDdeQueueService(
             {
               kind: marked.itemType,
               controlNumber,
+              ...(beneficiary ? { beneficiary } : {}),
               ...(marked.dcn ? { dcn: marked.dcn } : {}),
               // Derived, never minted: a replay (double click, retry of a lost answer) is the same operation.
               idempotencyKey: ddeIdempotencyKey(marked.id, marked.attemptNumber),
@@ -970,17 +1084,7 @@ export function buildDdeQueueService(
       ) {
         throw ddeProviderAnswerRejected("the provider's answer does not match this operation");
       }
-      const recordedAt = now();
-      const plan = planProviderOutcome(latest, toIsoDate(recordedAt));
-      if (plan.kind === "invalid") throw ddeProviderAnswerRejected(plan.reason);
-      // An answer cannot predate the submission it answers (Eastern day): a stale provider date would corrupt timeliness.
-      if (
-        plan.kind === "accepted" &&
-        target.item.submittedAt &&
-        plan.macAcceptedOn < toIsoDate(target.item.submittedAt)
-      ) {
-        throw ddeProviderAnswerRejected("the provider's acceptance date predates the submission");
-      }
+      const { plan, recordedAt } = planAnswer(latest, target.item.submittedAt);
 
       // Phase 3 (short transaction): apply to the item as it is now; the reducer refuses anything but `submitted`
       // (a concurrent sync or manual outcome got there first => 409), and the reference must be unchanged.
@@ -989,54 +1093,53 @@ export function buildDdeQueueService(
         if (current.providerReference !== reference) {
           throw new ConflictError("the item's provider operation changed while syncing");
         }
-        const detail = {
+        return applyPlanned(tx, actor, current, plan, recordedAt, {
           submissionMode: "provider",
           providerReference: reference,
           // Whose DDE ID the inquiry ran under (may differ from the actor who synced).
           inquiryOperatorMembershipId: target.operatorMembershipId,
-        };
-        if (plan.kind === "returned") {
-          return applyEvent(
-            tx,
-            actor,
-            current,
-            current.version,
-            "return",
-            {
-              rtpReasonCode: plan.rtpReasonCode,
-              outcomeCode: plan.outcomeCode,
-              ...(plan.dcn ? { dcn: plan.dcn } : {}),
-            },
-            { ...detail, rtpReasonCode: plan.rtpReasonCode, dcn: plan.dcn },
-          );
-        }
-        let macAcceptedOn = plan.macAcceptedOn;
-        if (current.itemType === "noe" || current.itemType === "notr") {
-          const applied = await applyDdeNoticeAcceptance(tx, {
-            organizationId: actor.organizationId,
-            kind: current.itemType,
-            noticeId: current.subjectId,
-            macAcceptedOn,
-            recordedAt,
-            outbox: ports.outbox,
-            source: "dde_provider",
-          });
-          // The electronic path got there first: the notice's own date is the truth, so the item takes it.
-          if (!applied.applied && applied.existingPayerStatusDate) {
-            macAcceptedOn = applied.existingPayerStatusDate;
-          }
-        }
-        return applyEvent(
-          tx,
-          actor,
-          current,
-          current.version,
-          "accept",
-          { macAcceptedOn, outcomeCode: "accepted", ...(plan.dcn ? { dcn: plan.dcn } : {}) },
-          { ...detail, macAcceptedOn, dcn: plan.dcn },
-        );
+        });
       });
       return { item: viewOf(row, toIsoDate(now())), providerState };
+    },
+
+    async applyProviderChange(organizationId, providerEntityId, outcome, operatorMembershipId) {
+      const actor = systemDdeActor(organizationId);
+      return withOrgContext<BillingTx, "applied" | "already" | "unmatched">(
+        db,
+        systemOrgContext(organizationId),
+        async (tx) => {
+          const matches = await new repositories.DdeWorkItemRepository(tx).findByProviderReference(
+            organizationId,
+            providerEntityId,
+            outcome.providerReference,
+          );
+          const [item, second] = matches;
+          if (!item) return "unmatched";
+          if (second) {
+            throw ddeProviderAnswerRejected(
+              "more than one queue item carries the provider's reference",
+            );
+          }
+          if (item.state !== "submitted" || item.submissionMode !== "provider") return "already";
+          // A possibly-sent item is settled by a person first (ADR-0103): the ingest never resolves it. It cannot carry
+          // a provider reference today (the reference is recorded only on a confirmed receipt); this is the guard.
+          if (item.providerInDoubtAt) return "already";
+          // The change report was read under one operator's DDE ID: only that operator's items are answered by it.
+          if (item.providerOperatorMembershipId !== operatorMembershipId) return "already";
+          if ((await loadControlNumber(tx, item)) !== outcome.controlNumber) {
+            throw ddeProviderAnswerRejected(
+              "the provider's answer names a different control number",
+            );
+          }
+          const { plan, recordedAt } = planAnswer(outcome, item.submittedAt);
+          await applyPlanned(tx, actor, item, plan, recordedAt, {
+            submissionMode: "provider",
+            providerReference: outcome.providerReference,
+          });
+          return "applied";
+        },
+      );
     },
 
     retry(actor, id, expectedVersion) {

@@ -33,6 +33,7 @@ const identityOf = (op: DdeOperation, operatorMembershipId: string): string =>
         controlNumber: op.controlNumber,
         dcn: op.dcn,
         payload: op.payload,
+        beneficiary: op.beneficiary,
       }),
     )
     .digest("hex");
@@ -148,6 +149,16 @@ export class InMemoryDdeProvider implements DdeAccessProvider {
     return Promise.resolve(
       ok({ providerReference, state: latest?.disposition ?? "received", latest }),
     );
+  }
+
+  /** Test-side: the whole feed of a scope, unpaged. */
+  feed(scope: DdeScope): readonly DdeOutcome[] {
+    return [...this.part(scope).outcomes];
+  }
+
+  /** Test-side: put a raw outcome on the feed (an unknown reference, a malformed answer): the change report is not ours. */
+  injectOutcome(scope: DdeScope, outcome: DdeOutcome): void {
+    this.part(scope).outcomes.push(outcome);
   }
 
   /** Test-side: play FISS answering an operation. */

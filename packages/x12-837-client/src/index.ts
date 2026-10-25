@@ -260,6 +260,7 @@ export type {
 export { DDE, DDE_RETRYABLE_CODES } from "./dde/types";
 export type {
   DdeAccessProvider,
+  DdeBeneficiary,
   DdeContext,
   DdeDisposition,
   DdeErrorCode,
@@ -273,6 +274,14 @@ export type {
   DdeReceipt,
   DdeScope,
 } from "./dde/types";
+export {
+  EPISODE_ALERT_DDE_API_KEY_ENV,
+  EPISODE_ALERT_DDE_BASE_URL_ENV,
+  EpisodeAlertDdeProvider,
+  createEpisodeAlertDdeProviderFromEnv,
+} from "./dde/episode-alert-dde-provider";
+export { EA_DDE_FACTS, EA_DDE_WIRE, WIRE_UNVERIFIED } from "./dde/episode-alert-dde-wire";
+export type { EpisodeAlertDdeWire } from "./dde/episode-alert-dde-wire";
 export {
   DDE_PROVIDER_ENV,
   NOT_WIRED_DDE_PROVIDER,

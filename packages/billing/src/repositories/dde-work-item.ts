@@ -228,6 +228,61 @@ export class DdeWorkItemRepository {
   }
 
   /**
+   * The items (any state) that carry this provider operation reference, newest first, at most two (a reference is
+   * the provider's opaque id for ONE operation; a second match is an ambiguity the caller refuses). #793.
+   */
+  async findByProviderReference(
+    organizationId: string,
+    providerEntityId: string,
+    providerReference: string,
+  ): Promise<readonly DdeWorkItemRecord[]> {
+    return this.db
+      .select()
+      .from(I)
+      .where(
+        and(
+          eq(I.organizationId, organizationId),
+          eq(I.providerEntityId, providerEntityId),
+          eq(I.providerReference, providerReference),
+        ),
+      )
+      .orderBy(desc(I.createdAt), desc(I.id))
+      .limit(2);
+  }
+
+  /**
+   * Who to read the provider's change report as (#793): the operators who submitted a provider item that still awaits
+   * its answer, per provider entity (`provider_operator_membership_id`, set when the send was marked). A DDE ID is per
+   * person (ADR-0103 D4), so the report is read under the submitter's. Bounded; nothing is returned when no provider
+   * item is waiting, so an idle org makes no vendor call. A possibly-sent item (no confirmed receipt) is not waiting.
+   */
+  async awaitingProviderOperators(
+    limit: number,
+  ): Promise<readonly { providerEntityId: string; operatorMembershipId: string }[]> {
+    const rows = await this.db
+      .selectDistinct({
+        providerEntityId: I.providerEntityId,
+        operatorMembershipId: I.providerOperatorMembershipId,
+      })
+      .from(I)
+      .where(
+        and(
+          eq(I.state, "submitted"),
+          eq(I.submissionMode, "provider"),
+          sql`${I.providerOperatorMembershipId} IS NOT NULL`,
+          sql`${I.providerInDoubtAt} IS NULL`,
+        ),
+      )
+      .orderBy(asc(I.providerEntityId), asc(I.providerOperatorMembershipId))
+      .limit(limit);
+    return rows.flatMap((r) =>
+      r.operatorMembershipId
+        ? [{ providerEntityId: r.providerEntityId, operatorMembershipId: r.operatorMembershipId }]
+        : [],
+    );
+  }
+
+  /**
    * REDUCER-DRIVEN, version-checked write (§2.5). `nextState` may equal the current state for a same-state edit
    * (a reassignment). VERSION_CONFLICT carries the persisted version (or null when the row vanished).
    */

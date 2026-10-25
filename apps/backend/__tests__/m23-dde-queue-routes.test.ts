@@ -149,6 +149,7 @@ function makeServer() {
       calls.push("sync-provider");
       return { item: VIEW, providerState: "received" };
     },
+    applyProviderChange: async () => "unmatched",
     retry: () => view("retry"),
     cancel: () => view("cancel"),
     close: () => view("close"),
