@@ -807,3 +807,7 @@ export * from "./external-interfaces/index";
 // daily ipu_census_snapshot feeds M23/M26/M27 via outbox, and the ipu_iv_safety_overlay closes the M13
 // IV-pump overlay deferral. Enums in enums.ts; tables + RLS/grants + M4 triggers in migrations 0149–0153.
 export * from "./ipu/index";
+
+// M41 Billing - Commercial: payer and plan model (migration 1260, issue #721): commercial_payer_plan,
+// commercial_payer_route, commercial_contract_rate. Org-scoped, no PHI.
+export * from "./billing-commercial/index";

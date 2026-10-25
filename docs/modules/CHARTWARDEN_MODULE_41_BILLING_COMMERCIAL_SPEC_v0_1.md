@@ -1,15 +1,16 @@
 # ChartWarden — Module 41: Billing — Commercial — Specification
 
-> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) win on as-built behaviour. Nothing in this module is built yet beyond the empty skeleton. Billing-domain statements marked **UNVERIFIED** need a billing-expert review before they are relied on.
+> **Authority note:** This spec is an **implementation proposal** (repo authority rule): [`docs/architecture/`](../architecture/) and the ratified ADRs in [`docs/adr/`](../adr/) win on conflict, and the code plus [`docs/BUSINESS_LOGIC.md`](../BUSINESS_LOGIC.md) win on as-built behaviour. Built so far: the payer and plan model (migration 1260, issue #721). Billing-domain facts were reviewed against primary sources on 2026-10-24 (ADR-0100 "Billing facts review"); items that depend on a payer's contract are **confirm-with-payer-contract** configuration, not assumptions in code.
 
 **Version:** 0.1
-**Status:** Draft (proposal)
+**Status:** Draft (proposal); ADR-0100 Accepted
 **Owner:** Fabrice V. Adjam (ChartWarden)
 **Dependencies (manifest):** M1 Foundation, M23 Billing — Medicare (shared 837I builder and `ClearinghouseTransport` in `x12-837-client`), M40 MDM (payer master)
 **Decision record:** [ADR-0100](../adr/ADR-0100-commercial-billing-module-41.md); transport contract [ADR-0053](../adr/ADR-0053-clearinghouse-transport-port.md)
 **Sibling specs read into context:** M23 v0.2 (D15), M24 v0.2.1 (structure), M25 v0.2 (D9), M40 v0.4
 
 ## Changelog
+- **0.2 (2026-10-24)** — ADR-0100 ratified; UNVERIFIED claim-shape and COB statements corrected (Medicare Advantage hospice is billed to the MAC, not M41). Payer and plan model built: `commercial_payer_plan`, plus two tables added to the owned set, `commercial_payer_route` (clearinghouse payer id) and `commercial_contract_rate` (rate terms; no longer deferred).
 - **0.1 (2026-10-23)** — First draft. Skeleton and decision record only; no tables, routes or events exist.
 
 ---
@@ -24,8 +25,7 @@ authorization, submit it through the platform clearinghouse, track acknowledgmen
 assembly and validation with audited overrides, submission, acknowledgments (999 and 277CA, both stages), claim status,
 coordination-of-benefits data, and a claim-ownership seam for M25.
 
-**Out of scope.** Medicare FFS (M23; its `NON_MEDICARE_PRIMARY_PAYER` guard stays), Medicaid (M24), payer contract rate
-terms (deferred, ADR-0100 Open question 2), direct-to-payer channels (ADR-0100 D4), patient statements and collections.
+**Out of scope.** Medicare FFS (M23; its `NON_MEDICARE_PRIMARY_PAYER` guard stays), Medicaid (M24), direct-to-payer channels (ADR-0100 D4), patient statements and collections.
 
 **Not a promise of coverage.** M41 can submit only for payers the active clearinghouse routes and for provider entities
 that are enrolled with that payer. Everything else refuses to send (§4.3).
@@ -40,7 +40,9 @@ acceptance stamps `clearinghouse_accepted_at` and never advances the claim to ac
 ### 2.2 Entities
 | Entity | Purpose |
 |---|---|
-| `commercial_payer_plan` | Per-tenant plan for an M40 payer: claim filing indicator, the payer id each clearinghouse routes on, authorization requirement, effective dating |
+| `commercial_payer_plan` | Per-tenant plan for an active commercial M40 payer: claim filing indicator, authorization requirement, effective dating (no overlap per payer and plan name). No PHI. Built |
+| `commercial_payer_route` | The payer id a clearinghouse routes a plan on, effective dated, one in effect per plan and clearinghouse. Built |
+| `commercial_contract_rate` | Contract rate per level of care: revenue code, basis (per diem, per hour, percent of charges), amount, effective dated. Built |
 | `commercial_payer_enrollment` | Per provider entity, per payer, per clearinghouse: `not_enrolled`, `pending`, `enrolled`, `suspended`, with dates and evidence reference |
 | `commercial_authorization` | Pre-authorization: number, patient, payer, approved level of care and dates, units, status |
 | `commercial_eligibility_check` | A 270/271 exchange: request id, outcome, as-of date, no member id in logs |
@@ -55,9 +57,8 @@ All PHI tables carry `organization_id`, `provider_entity_id` and nullable `locat
 `app.org_id` (ADR-0010); provider-entity narrowing is ABAC. Children inherit scope from the PE-scoped claim root. Exact
 columns are fixed when each migration is written.
 
-### 2.3 Claim shape (UNVERIFIED)
-837I, type of bill in the 081x family, revenue and HCPCS codes per payer contract, payer-specific edits. Do not assume the
-Medicare hospice code set or rate logic applies; confirm per payer.
+### 2.3 Claim shape
+837I (005010X223A2), type of bill 081x (082x if hospital-based), default revenue codes 0651/0652/0655/0656. Whether a payer also wants HCPCS site-of-service lines, hourly continuous care, 0657, or other edits is **confirm-with-payer-contract** and is stored in the plan and rate rows; Medicare rules are not assumed. Medicare Advantage enrollees are not billed here: hospice for them goes to the MAC through M23 (ADR-0100 D7). Filing indicators are limited to the commercial set in `@chartwarden/types` (`COMMERCIAL_CLAIM_FILING_INDICATOR_VALUES`).
 
 ## 3. Cross-module contracts
 
@@ -125,7 +126,7 @@ a `ci.yml` job row. Conformance for the transport is owned by ADR-0053.
 
 ## 10. Implementation tasks (in order)
 1. Skeleton: ADR-0100, this spec, manifest `.ts` and `.cjs`, `bun run scaffold`, index updates. **Done by this change.**
-2. Migrations and Drizzle schema for the owned tables, code-side enum mirrors, RLS and audit triggers.
+2. Migrations and Drizzle schema for the owned tables, code-side enum mirrors, RLS and audit triggers. **Plan, route and rate tables done (#721, migration 1260, live suite `test:m41:payer-plan:live`).**
 3. Payer plan, enrollment and authorization routes with live RLS suite.
 4. Claim assembly from M23 seams and validation rules (S17).
 5. Submission and acknowledgment workers through the transport (S15, S18); requires the Medicare submission-path decision.
@@ -138,10 +139,9 @@ a `ci.yml` job row. Conformance for the transport is owned by ADR-0053.
 See ADR-0100 D1-D10.
 
 ## 12. Open questions
-Mirrors ADR-0100: M40 impact, contract rates, which payers the chosen clearinghouse routes for hospice 837I, billing-expert
-confirmation of the claim shape and COB rules, and whether the screens extend the M23 work queue.
+Mirrors ADR-0100: which payers the chosen clearinghouse routes for hospice 837I (data in `commercial_payer_route`) and whether the screens extend the M23 work queue.
 
 ## 13. Proposed manifest entry
-`id: 41`, `name: "Billing — Commercial"`, `dependsOn: [1, 23, 40]`, `codePaths` the two app directories, and the 12 owned
+`id: 41`, `name: "Billing — Commercial"`, `dependsOn: [1, 23, 40]`, `codePaths` the two app directories, and the 14 owned
 tables in §2.2 (the three validation tables are listed individually). Applied to `architecture/module-manifest.ts` and the
 `.cjs` mirror with this change.
