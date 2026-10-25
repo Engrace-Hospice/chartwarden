@@ -244,12 +244,15 @@ export function buildDrizzleM25WriteService(
     id: string,
     to: DenialState,
     ifMatch: number,
-    extra: Record<string, unknown>,
+    extraOrFn:
+      | Record<string, unknown>
+      | ((cur: Awaited<ReturnType<typeof denialState>>) => Record<string, unknown>),
     emit?: (tx: M25Tx, cur: Awaited<ReturnType<typeof denialState>>) => Promise<void>,
   ): Promise<VersionedResult> {
     return withOrgContext(db, actor, async (tx) => {
       const cur = await denialState(tx, id);
       if (!canTransitionDenial(cur.state, to)) throw new InvalidTransitionError(cur.state, to);
+      const extra = typeof extraOrFn === "function" ? extraOrFn(cur) : extraOrFn;
       const updated = await tx
         .update(DC)
         .set({ state: to, version: cur.version + 1, ...extra })
@@ -260,6 +263,10 @@ export function buildDrizzleM25WriteService(
       return { id: updated[0].id, version: updated[0].version };
     });
   }
+
+  /** A denial resolved from the appeal track was won through the appeal; "no appeal" would misreport it. */
+  const closureOutcomeOf = (state: DenialState) =>
+    state === "appealed" ? ("resolved_via_appeal" as const) : ("resolved_no_appeal" as const);
 
   return {
     async replayAdvice(actor, adviceId) {
@@ -315,15 +322,17 @@ export function buildDrizzleM25WriteService(
     },
 
     async resolveDenial(actor, id, _input: ReasonInput, ifMatch) {
+      // A denial on the appeal track (`appealed`) that is resolved was won through the appeal; recording it as
+      // "no appeal" would misreport the outcome in the medical-review closure counts and the resolution letter.
       return transitionDenial(
         actor,
         id,
         "resolved",
         ifMatch,
-        {
+        (cur) => ({
           resolvedAt: sql`now()`,
-          closureOutcome: "resolved_no_appeal",
-        },
+          closureOutcome: closureOutcomeOf(cur.state),
+        }),
         async (tx, cur) => {
           // F-144 (#248) — `m25.denial_resolution_letter.render_requested` is catalogued
           // (events-by-m25.ts) with a real M22 template descriptor and REQUEST_SHAPES adapter, and
@@ -349,7 +358,7 @@ export function buildDrizzleM25WriteService(
                 patientId: claim?.patientId ?? null,
                 claimId: cur.claimId ?? null,
                 resolvedAt: new Date().toISOString(),
-                closureOutcome: "resolved_no_appeal",
+                closureOutcome: closureOutcomeOf(cur.state),
               },
             },
           });

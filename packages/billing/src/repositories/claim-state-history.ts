@@ -113,6 +113,16 @@ export class ClaimStateHistoryRepository {
     }));
   }
 
+  /** True when any transition of this claim was already caused by the given remittance advice. */
+  async hasAdvice(claimId: string, remittanceAdviceId: string): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: H.id })
+      .from(H)
+      .where(and(eq(H.claimId, claimId), eq(H.remittanceAdviceId, remittanceAdviceId)))
+      .limit(1);
+    return !!row;
+  }
+
   /** The most-recent transition for a claim (the timeline head / current-state derivation), or `null`. */
   async findLatestForClaim(claimId: string): Promise<ClaimStateHistoryRecord | null> {
     const [row] = await this.db

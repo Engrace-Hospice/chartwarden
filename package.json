@@ -508,6 +508,7 @@
     "test:m24:state-channel-health:live": "vitest run apps/backend/__tests__/m24-state-channel-health.live.test.ts",
     "test:m24:rb-day-sweep:live": "vitest run apps/backend/__tests__/gap-071-m24-rb-day-sweep.live.test.ts",
     "test:m25:835-ingestion:live": "vitest run apps/backend/__tests__/m25-835-ingestion.live.test.ts",
+    "test:m25:835-golden:live": "vitest run apps/backend/__tests__/m25-835-golden.live.test.ts",
     "test:m25:interim-payments-seam:live": "vitest run apps/backend/__tests__/m25-interim-payments-seam.live.test.ts",
     "test:m26:cost-report-cap-seam:live": "vitest run apps/backend/__tests__/m26-cost-report-cap-seam.live.test.ts",
     "test:m26:psr-import:live": "vitest run apps/backend/__tests__/m26-psr-import.live.test.ts",
