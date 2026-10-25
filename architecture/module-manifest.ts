@@ -924,6 +924,7 @@ export const MODULES: ModuleDef[] = [
     // precedent). The §4.4 seam/outbox consumers otherwise stay no-edge per ADR-0005.
     dependsOn: [1, 6, 8, 22, 38, 40],
     ownedTables: [
+      "billing_edi_profile",
       "claim",
       "claim_acknowledgment",
       "claim_line",

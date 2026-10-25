@@ -852,6 +852,7 @@ exports.MODULES = [
     ],
     dependsOn: [1, 6, 8, 22, 38, 40],
     ownedTables: [
+      "billing_edi_profile",
       "claim",
       "claim_acknowledgment",
       "claim_line",

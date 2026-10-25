@@ -70,8 +70,17 @@ export {
   buildDrizzleWageIndexService,
   buildDrizzlePlatformAdminService,
   buildDrizzleSequestrationPolicyService,
+  buildDrizzleEdiProfileService,
 } from "./routes/index";
 export { mountM23Routes } from "./routes/mount";
+export {
+  type Claim837iPartiesDeps,
+  type ProviderBillingFacts,
+  type SealedProviderFacts,
+  buildClaim837iPartiesPort,
+  buildClaim837iProviderReader,
+  buildDrizzleEdiProfileReader,
+} from "./services/claim-837i-parties";
 export {
   type PriorElectionClosure,
   type PriorLiveEndedStayPort,

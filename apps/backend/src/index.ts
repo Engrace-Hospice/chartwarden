@@ -1032,6 +1032,7 @@ import {
   buildDrizzleRateTableService,
   buildDrizzleRevalidationTargetResolver,
   buildDrizzleSequestrationPolicyService,
+  buildDrizzleEdiProfileService,
   buildDrizzleVisitChargeService,
   buildDrizzleWageIndexService,
   buildHetsEligibilityPort,
@@ -5946,6 +5947,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // F-212 — the tenant-entered sequestration policy (`/billing/sequestration-policies`); the SAME table the
             // assembly service's `referenceData.activeSequestrationPolicy` reads (M23-owned, over `dbHandle.db`).
             sequestrationService: buildDrizzleSequestrationPolicyService(dbHandle.db),
+            // Migration 1269 — the tenant-entered EDI profile (`/billing/edi-profiles`): the 837I submitter + receiver parties.
+            ediProfileService: buildDrizzleEdiProfileService(dbHandle.db),
             readService: buildDrizzleM23ReadService(dbHandle.db, {
               // How each claim's stay ended, from M6's live facts (org-explicit, batched): the claim list /
               // detail "needs attention" block — missing place of death / receiving care setting, and a Type

@@ -407,6 +407,8 @@ jobs:
           - { name: "M23 Ack cursor", scripts: "test:m23:ack-cursor:live" }
           # M23 durable clearinghouse attempt store: the package contract run against the real table as chartwarden_app, plus RLS isolation, the identity/final-row guard and no-delete.
           - { name: "M23 Clearinghouse attempts", scripts: "test:m23:clearinghouse-attempts:live" }
+          # M23 per-(provider entity, route) EDI profile (migration 1269): the compare-and-set upsert, FORCEd RLS as chartwarden_app, the CHECKs, no delete, the audit row.
+          - { name: "M23 EDI profile", scripts: "test:m23:edi-profile:live" }
           # M23 submit/retry workers and the 999/277CA crons over the bound clearinghouse transport (in-memory), real catalog-validating publisher, legacy portal forbidden (#707).
           - { name: "M23 Clearinghouse submit", scripts: "test:m23:clearinghouse-submit:live" }
           # M1 FoundationSiteReader.allLocationsOpenInOrg (M2 provisioning location check) + the lifecycle store org-name read, as chartwarden_app.

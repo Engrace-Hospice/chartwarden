@@ -21,6 +21,7 @@ export {
   buildDrizzleVisitChargeService,
   visitChargeVersionsForOrg,
 } from "./visit-charge-service";
+import type { EdiProfileRouteService } from "./edi-profile-service";
 import type { M23ReadRouteService } from "./read-service";
 import type { SequestrationPolicyRouteService } from "./sequestration-policy-service";
 import type { VisitChargeRouteService } from "./visit-charge-service";
@@ -104,6 +105,8 @@ export interface M23RouteServices {
   readonly platformAdminService?: PlatformAdminRouteService;
   /** F-212 — the tenant-entered sequestration-policy service (absent ⇒ the /billing/sequestration-policies routes are not mounted). */
   readonly sequestrationService?: SequestrationPolicyRouteService;
+  /** Migration 1269 — the tenant-entered EDI profile service (absent ⇒ /billing/edi-profiles is not mounted). */
+  readonly ediProfileService?: EdiProfileRouteService;
   /** The Medicare transfer notice (8xC / 8xD) service (absent ⇒ /billing/transfer-notices is not mounted). */
   readonly transferNoticeService?: TransferNoticeService;
   /** ADR-0052 — the DDE work-queue service (absent ⇒ /billing/dde-items is not mounted). */
@@ -132,3 +135,5 @@ export {
   type SequestrationPolicyRouteService,
   buildDrizzleSequestrationPolicyService,
 } from "./sequestration-policy-service";
+
+export { type EdiProfileRouteService, buildDrizzleEdiProfileService } from "./edi-profile-service";

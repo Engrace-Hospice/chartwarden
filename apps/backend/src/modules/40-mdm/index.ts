@@ -7,6 +7,7 @@
 // (T06), routes + permission keys + merge approval (T07), the NPPES nightly job (T08), and the
 // D7 overlay eraser (T10) build on this. The §5 screens DEFER — the M40 manifest has no frontend
 // codePath (the Wave-A deferral rule: a screen needs a manifest UI codePath to land).
+export { buildPayerNameByX12IdReader } from "./payer-name-reader";
 export {
   type MdmSeamDeps,
   registerMdmSeams,
