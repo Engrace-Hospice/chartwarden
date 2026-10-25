@@ -37,6 +37,8 @@ export function mayManageChannelMembers(
   patientLocationIds?: readonly string[],
 ): boolean {
   if (actor.kind === "system") return true;
+  // ADR-0099: a family conversation has no member rows; its readers are the care-team predicate and nothing else.
+  if (channel.kind === "family") return false;
   if (actor.roles.includes(ORG_ADMIN_ROLE)) return true;
   if (!actor.roles.includes(CLINICAL_LEAD_ROLE)) return false;
   if (!channel.subjectId) return false;

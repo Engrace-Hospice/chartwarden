@@ -228,6 +228,8 @@ import { registerAlarmIngestRoutes as _registerAlarmIngestRoutes } from "./route
 import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
 import { registerExportRoutes as _registerExportRoutes } from "./routes/export-routes";
 import { registerExternalShareRoutes as _registerExternalShareRoutes } from "./routes/external-share-routes";
+import { type FamilyBindingInput as _FamilyBindingInput, buildFamilyServices as _buildFamilyServices } from "./family/family-binding";
+import { registerFamilyRoutes as _registerFamilyRoutes } from "./routes/family-routes";
 import { registerGlobalSearchSettingsRoutes as _registerGlobalSearchSettingsRoutes } from "./routes/global-search-settings-routes";
 import type { HandoffRouteDeps as _HandoffRouteDeps } from "./routes/handoff-routes";
 import type { MedicationQuestionRouteDeps as _MedicationQuestionRouteDeps } from "./routes/medication-question-routes";
@@ -366,6 +368,12 @@ export function mountMessagingRoutes(
       /** D17: false => partner routes are not mounted and create / reissue answer PARTNER_ACCESS_UNAVAILABLE (503). Default true. */
       partnerAccessAvailable?: boolean | undefined;
     };
+    /**
+     * WP 6.7 (ADR-0099, PROPOSED): family / caregiver messaging without an app. `flags` is the M1 reader for `messaging.family_messaging` (absent or off =>
+     * creating an invitation and EVERY contact route are the uniform 404; list, revoke, close and block never depend on it). `accessAvailable` false (no
+     * valid TRUSTED_PROXY_CIDRS, or no code pepper) => the contact routes are not mounted and creating an invitation answers 503. Omitted => not mounted.
+     */
+    family?: Omit<_FamilyBindingInput, "outbox">;
     /** WP 6.9 (ADR-0098, PROPOSED): the death-event coordination board (flag `messaging.death_board` + service). Omitted => not mounted. */
     deathBoard?: _DeathBoardRouteDeps;
     /**
@@ -566,6 +574,12 @@ export function mountMessagingRoutes(
       service: externalShareService,
       partnerRoutes: opts.externalShare?.partnerAccessAvailable !== false,
     });
+  }
+  // WP 6.7 (ADR-0099, PROPOSED) - family / caregiver messaging without an app: a consented contact writes into a dedicated `family` conversation through a
+  // one-time link plus a spoken code. Creating an invitation and every contact route sit behind the tenant flag `messaging.family_messaging`.
+  if (opts.family) {
+    const family = _buildFamilyServices(db, { ...opts.family, outbox: opts.outbox });
+    _registerFamilyRoutes(app, { ...family, contactRoutes: opts.family.accessAvailable === true });
   }
   // WP 6.9 (ADR-0098, PROPOSED) - death-event coordination board; every route is the uniform 404 while the tenant flag is off.
   if (opts.deathBoard) _registerDeathBoardRoutes(app, opts.deathBoard);

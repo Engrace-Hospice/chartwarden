@@ -13,7 +13,7 @@ export const POLL_MAX_OPTION_LENGTH = 100;
  * Channel kinds whose subject is a patient or a patient's bereavement plan: no polls there. The web reads this list;
  * the backend derives the same set from CHANNEL_KIND_DESCRIPTORS and a backend test pins the two together.
  */
-export const POLL_BLOCKED_CHANNEL_KINDS = ["care_team", "bereavement"] as const;
+export const POLL_BLOCKED_CHANNEL_KINDS = ["care_team", "bereavement", "family"] as const;
 
 /** An option as a reader sees it. `voteCount` is exact; the voters are listed only by the poll detail read. */
 export interface PollOptionView {

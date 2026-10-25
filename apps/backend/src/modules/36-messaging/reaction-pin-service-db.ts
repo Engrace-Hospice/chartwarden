@@ -262,7 +262,7 @@ export function createDbReactionPinService(deps: ReactionPinDeps): MessageReacti
         );
         return {
           pins,
-          patientId: channel.kind === "care_team" ? channel.subjectId : null,
+          patientId: channel.kind === "care_team" || channel.kind === "family" ? channel.subjectId : null,
         };
       });
     },

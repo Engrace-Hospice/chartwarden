@@ -451,6 +451,22 @@ export const M36_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
+  // --- WP 6.7 (ADR-0099, PROPOSED): family / caregiver messaging. MANAGE invites, reissues, revokes, closes and blocks a family contact and sets the
+  //     agency numbers (a fresh step-up on create, revoke and block); RESPOND reads the Family lane and replies (the care-team predicate decides WHICH
+  //     patients). Migration 1234 grants them to the supervisor / social work / bereavement / compliance roles and the care-team disciplines
+  //     (PROVISIONAL, ADR-0099 D9). The tenant flag messaging.family_messaging is off by default. ---
+  "messaging.family.manage": {
+    resource: "message_family_contact",
+    action: "manage",
+    category: "compliance",
+    abac: "none",
+  },
+  "messaging.family.respond": {
+    resource: "message_family_contact",
+    action: "respond",
+    category: "compliance",
+    abac: "none",
+  },
   // --- WP 6.5 (ADR-0095, PROPOSED): ask for an AI summary or reply draft of a conversation the caller can read. Needs the tenant flag
   //     messaging.ai.enabled AND current membership of the channel (re-checked at call time); the model sees only a minimised, pseudonymised
   //     copy of what the caller can read. Migration 1220 grants it to administrator and org_admin only; the clinical lead names who else. ---

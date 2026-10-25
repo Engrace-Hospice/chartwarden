@@ -26,7 +26,8 @@ export type ChannelKind =
   | "on_call"
   | "dm"
   | "announcement"
-  | "bereavement";
+  | "bereavement"
+  | "family";
 
 /** Runtime list of every channel kind — the value-level mirror of {@link ChannelKind} for
  *  places that need the kinds at runtime (e.g. a `:kind` route-param union, M36-T07). */
@@ -38,6 +39,7 @@ export const CHANNEL_KINDS = [
   "dm",
   "announcement",
   "bereavement",
+  "family",
 ] as const satisfies readonly ChannelKind[];
 
 /** A channel's retention clock (§2.3, M36-F02 / ADR-0004). Only `announcement` is
@@ -139,6 +141,16 @@ export const CHANNEL_KIND_DESCRIPTORS: {
     membershipSource: "auto",
     lifecycleSource: "M16",
   },
+  // ADR-0099 (WP 6.7): one conversation per consented family contact. The membership is NOT a channel_member roster: visibility is the care-team
+  // predicate, and the contact is never a member (a bearer link principal reaches only its own thread through its own routes).
+  family: {
+    kind: "family",
+    subject: "patient_id",
+    subjectRequirement: "required",
+    retentionClass: "care_related",
+    membershipSource: "auto",
+    lifecycleSource: "M5",
+  },
 } as const;
 
 // ── Remaining §3.2 enum unions (type-level mirrors of packages/db/src/enums.ts) ──────────
@@ -150,7 +162,7 @@ export type ChannelMemberRole = "owner" | "member" | "read_only" | "portal_careg
 export type ChannelMemberSource = "auto" | "manual";
 
 /** A message authored by a user vs the system (§3.4). */
-export type MessageAuthorKind = "user" | "system";
+export type MessageAuthorKind = "user" | "system" | "family_contact";
 
 /** Body rendering hint (§3.4). */
 export type MessageBodyKind = "plain" | "markdown" | "system" | "rich";

@@ -143,7 +143,7 @@ export function holdPredicate(criteria: MessageHoldCriteria): SQL {
   const parts: SQL[] = [];
   if (nonEmpty(patientIds)) {
     parts.push(sql`(
-      (c.channel_kind = 'care_team' AND c.subject_id IN (${uuidList(patientIds)}))
+      (c.channel_kind IN ('care_team', 'family') AND c.subject_id IN (${uuidList(patientIds)}))
       OR c.channel_kind = 'bereavement'
       OR EXISTS (SELECT 1 FROM message_entity_reference r
                   WHERE r.organization_id = m.organization_id AND r.message_id = m.id

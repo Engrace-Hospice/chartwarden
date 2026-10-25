@@ -2,8 +2,8 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1822,
-    "coveredRoutes": 1822,
+    "routes": 1839,
+    "coveredRoutes": 1839,
     "directRoutesReferenced": 1689
   },
   "modules": [
@@ -539,7 +539,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 187,
+      "routes": 204,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
@@ -573,6 +573,7 @@
         "apps/backend/__tests__/m36-export.live.test.ts",
         "apps/backend/__tests__/m36-external-share-proxy.test.ts",
         "apps/backend/__tests__/m36-external-share.live.test.ts",
+        "apps/backend/__tests__/m36-family-messaging.live.test.ts",
         "apps/backend/__tests__/m36-global-search-query.test.ts",
         "apps/backend/__tests__/m36-global-search-settings.live.test.ts",
         "apps/backend/__tests__/m36-global-search.live.test.ts",

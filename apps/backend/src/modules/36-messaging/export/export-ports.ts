@@ -35,13 +35,13 @@ export type ExportPermissionCheck = (
  * The channel kinds a PATIENT scope exports. The store (request-time scope check) and the build store (channel lookup) both use this one list,
  * so a kind accepted at request is always built. The Part 2 channel gate uses EXPORT_PATIENT_SUBJECT_CHANNEL_KINDS (below), and every message is also gated by the patients it references.
  */
-export const EXPORT_PATIENT_SCOPE_CHANNEL_KINDS = ["care_team"] as const;
+export const EXPORT_PATIENT_SCOPE_CHANNEL_KINDS = ["care_team", "family"] as const;
 
 /**
  * The channel kinds whose `subject_id` IS a patient (the `channel_kind_subject_shape` check: care_team and bereavement). Other kinds carry a
  * location, a role or an on-call subject in that column, which is not a patient id and must never be handed to the privacy-flag reader.
  */
-export const EXPORT_PATIENT_SUBJECT_CHANNEL_KINDS = ["care_team", "bereavement"] as const;
+export const EXPORT_PATIENT_SUBJECT_CHANNEL_KINDS = ["care_team", "bereavement", "family"] as const;
 
 /** One patient's row from M5's `PatientPrivacyFlagReader.roomingFactsFor` (only what the Part 2 gate reads). */
 export interface PrivacyFlagFact {

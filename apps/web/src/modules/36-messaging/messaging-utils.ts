@@ -13,6 +13,7 @@ export function channelKindLabel(kind: ChannelSummary["kind"]): string {
     dm: "Direct message",
     announcement: "Announcement",
     bereavement: "Bereavement",
+    family: "Family",
   };
   return labels[kind];
 }

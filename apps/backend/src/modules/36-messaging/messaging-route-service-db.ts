@@ -193,6 +193,14 @@ export class VisibilitySeamUnavailableError extends Error {
   }
 }
 
+/**
+ * The kinds whose subject is a patient and whose visibility is therefore the CURRENT care-team roster plus the Part 2 gate (never a stale membership
+ * row). ADR-0099: a `family` conversation has no member rows at all; its visibility IS this predicate, nothing else.
+ */
+function isPatientSubjectKind(kind: ChannelKind): boolean {
+  return kind === "care_team" || kind === "family";
+}
+
 interface EffectiveChannelAccessCandidate {
   readonly kind: ChannelKind;
   readonly subjectId: string | null;
@@ -217,13 +225,13 @@ export async function effectivelyVisibleChannels<T extends EffectiveChannelAcces
   const careTeamPatientIds = [
     ...new Set(
       candidates.flatMap((candidate) =>
-        candidate.kind === "care_team" && candidate.subjectId ? [candidate.subjectId] : [],
+        isPatientSubjectKind(candidate.kind) && candidate.subjectId ? [candidate.subjectId] : [],
       ),
     ),
   ];
   const automaticPatientIds = new Set(
     candidates.flatMap((candidate) =>
-      candidate.kind === "care_team" && candidate.memberSource === "auto" && candidate.subjectId
+      isPatientSubjectKind(candidate.kind) && candidate.memberSource === "auto" && candidate.subjectId
         ? [candidate.subjectId]
         : [],
     ),
@@ -272,7 +280,7 @@ export async function effectivelyVisibleChannels<T extends EffectiveChannelAcces
   return candidates.filter((candidate) => {
     if (candidate.kind === "announcement") return true;
     if (!candidate.memberSource) return false;
-    if (candidate.kind !== "care_team") return true;
+    if (!isPatientSubjectKind(candidate.kind)) return true;
     if (!candidate.subjectId || !part2AllowedPatients.has(candidate.subjectId)) return false;
     if (candidate.memberSource !== "auto") return true;
     return currentCareTeamPatients.has(candidate.subjectId);
@@ -860,6 +868,14 @@ export function createDbMessagingRouteService(
           memberSource: null,
         };
       }
+      // ADR-0099: a family conversation has no member rows; the roster + Part 2 check in `effectivelyVisibleChannels` is the whole rule.
+      if (c[0].kind === "family") {
+        return {
+          kind: "family" as ChannelKind,
+          subjectId: c[0].subjectId,
+          memberSource: "auto" as ChannelMemberSource,
+        };
+      }
       const m = await tx
         .select({ source: CM.source })
         .from(CM)
@@ -907,6 +923,8 @@ export function createDbMessagingRouteService(
     rec: Pick<BreakGlassReadRecord, "kind" | "resourceId" | "itemCount">,
   ): Promise<void> {
     if (ctx.channelKind === "announcement") return; // org-wide readable; a grant is irrelevant
+    // ADR-0099: a family conversation has no member rows and no grants; the care-team predicate already admitted this reader at the route.
+    if (ctx.channelKind === "family") return;
     const { recorded, liveMember } = await recordBreakGlassRead(tx, {
       orgId: ctx.orgId,
       userId: ctx.userId,
@@ -1286,7 +1304,7 @@ export function createDbMessagingRouteService(
           kind: ch.kind as ChannelKind,
           title: ch.title,
           subjectId: ch.subjectId,
-          patientId: ch.kind === "care_team" ? ch.subjectId : null,
+          patientId: isPatientSubjectKind(ch.kind as ChannelKind) ? ch.subjectId : null,
           archivedAt: ch.isArchived ? (iso(ch.archivesAt) ?? iso(ch.updatedAt)) : null,
           unreadCount: Number(ur[0]?.count ?? 0),
           mentionCount: Number(mention[0]?.count ?? 0),
@@ -1380,7 +1398,7 @@ export function createDbMessagingRouteService(
         return {
           messages: page,
           nextCursor,
-          patientId: ch[0].kind === "care_team" ? ch[0].subjectId : null,
+          patientId: isPatientSubjectKind(ch[0].kind as ChannelKind) ? ch[0].subjectId : null,
         };
       });
     },
@@ -1449,7 +1467,7 @@ export function createDbMessagingRouteService(
           root: root!,
           replies,
           nextCursor: hasMore && last ? encodeCursor(last.createdAtMicros, last.id) : undefined,
-          patientId: ch[0].kind === "care_team" ? ch[0].subjectId : null,
+          patientId: isPatientSubjectKind(ch[0].kind as ChannelKind) ? ch[0].subjectId : null,
         };
       });
     },

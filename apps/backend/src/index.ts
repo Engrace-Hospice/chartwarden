@@ -242,6 +242,7 @@ import {
   createDbSessionStepUpWriter,
 } from "./modules/02-identity/step-up-adapters-db";
 import { partnerAccessAvailability } from "./modules/36-messaging/external-share/external-share-proxy";
+import { familyAccessAvailability } from "./modules/36-messaging/family/family-access-gate";
 
 /** The @chartwarden/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
@@ -5278,6 +5279,31 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               };
             })(),
             // ── end WP 6.6 external partner share mount
+            // ── WP 6.7 (ADR-0099, PROPOSED) family / caregiver messaging without an app. Flag `messaging.family_messaging` (absent = off) gates creating an
+            // invitation and every contact route; list / revoke / close / block never. Fails closed unless TRUSTED_PROXY_CIDRS validates (the ADR-0096 D17 rule,
+            // same function) AND MESSAGING_FAMILY_CODE_PEPPER is set. The send / redeem / verify / read budgets are per client address, before any database work.
+            family: (() => {
+              const store = rateLimitStore ?? createInMemoryRateLimitStore();
+              const budget = (keyPrefix: string, limit: number, windowMs: number) =>
+                createBudgetedRateLimiter(store, {
+                  limit,
+                  windowMs,
+                  keyPrefix,
+                  onStoreError: (err) => app.log.warn({ err }, "family messaging rate-limit store error"),
+                });
+              const access = familyAccessAvailability(process.env);
+              if (access.warning) app.log.warn(access.warning);
+              return {
+                flags: featureFlagReader,
+                accessAvailable: access.available,
+                ...(access.pepper ? { pepper: access.pepper } : {}),
+                redeemIpLimiter: budget("m36-family-redeem:ip", 20, 15 * 60 * 1000),
+                verifyIpLimiter: budget("m36-family-verify:ip", 30, 15 * 60 * 1000),
+                bearerIpLimiter: budget("m36-family-bearer:ip", 300, 60 * 1000),
+                readLimiter: budget("m36-family-read:contact", 60, 60 * 1000),
+              };
+            })(),
+            // ── end WP 6.7 family messaging mount
             // ── WP 6.10 (ADR-0102, PROPOSED) alarm ingest, WATCH ONLY. Flag `messaging.alarm_ingest` (absent = off) gates the inbound route and
             // create / rotate; list and disable never. Budgets: per client address before any database work (300/min), then per source after the
             // signature is proven (60/min). The inbound route is mounted only when the ADR-0096 D17 trusted-proxy gate passes (the boot warning for

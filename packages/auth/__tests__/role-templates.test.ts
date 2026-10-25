@@ -219,6 +219,18 @@ describe("WP 6.6 (ADR-0096) external share key: the compliance officer template 
   });
 });
 
+describe("WP 6.7 (ADR-0099) family messaging keys: the compliance officer template only", () => {
+  it("the compliance_officer template grants both and no other template does", () => {
+    const keys = ["messaging.family.manage", "messaging.family.respond"];
+    const grants = ROLE_TEMPLATES.find((t) => t.key === "compliance_officer")?.grants ?? [];
+    for (const key of keys) expect(grants).toContain(key);
+    for (const t of ROLE_TEMPLATES) {
+      if (t.key === "compliance_officer") continue;
+      for (const key of keys) expect(t.grants ?? [], t.key).not.toContain(key);
+    }
+  });
+});
+
 describe("WP 5.6 (ADR-0055 D9) redaction keys: the compliance officer only, never a full-catalog admin role", () => {
   const REDACT_KEYS = ["messaging.redact.request", "messaging.redact.approve"];
 

@@ -234,7 +234,7 @@ export function createDbMessageSearchService(deps: MessageSearchDeps): MessageSe
             : {}),
           scanned: found.scanned,
           scanCapped: found.more && found.matched.length < filters.limit,
-          patientId: channel.kind === "care_team" ? channel.subjectId : null,
+          patientId: channel.kind === "care_team" || channel.kind === "family" ? channel.subjectId : null,
         };
       }).catch((error: unknown) => {
         throw searchTimeoutToError(error);

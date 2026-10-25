@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 201,
+  "totalStaticWebScreens": 203,
   "e2eReachedCount": 20,
-  "axeReachedCount": 190,
+  "axeReachedCount": 191,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -501,6 +501,14 @@
       "axeReached": true
     },
     {
+      "id": "messaging.family-contact",
+      "module": "36-messaging",
+      "path": "/family/open",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
       "id": "identity.forgot-password",
       "module": "02-identity",
       "path": "/forgot",
@@ -785,6 +793,14 @@
       "module": "36-messaging",
       "path": "/messaging/export",
       "permission": "messaging.export.request",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.family",
+      "module": "36-messaging",
+      "path": "/messaging/family",
+      "permission": "messaging.family.respond",
       "e2eReached": false,
       "axeReached": true
     },
@@ -1479,6 +1495,14 @@
       "axeReached": false
     },
     {
+      "id": "messaging.family-contact",
+      "module": "36-messaging",
+      "path": "/family/open",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
       "id": "identity.forgot-password",
       "module": "02-identity",
       "path": "/forgot",
@@ -2089,6 +2113,14 @@
       "axeReached": true
     },
     {
+      "id": "messaging.family-contact",
+      "module": "36-messaging",
+      "path": "/family/open",
+      "permission": "(none)",
+      "e2eReached": false,
+      "axeReached": false
+    },
+    {
       "id": "identity.forgot-password",
       "module": "02-identity",
       "path": "/forgot",
@@ -2421,6 +2453,14 @@
       "module": "36-messaging",
       "path": "/messaging/export",
       "permission": "messaging.export.request",
+      "e2eReached": false,
+      "axeReached": true
+    },
+    {
+      "id": "messaging.family",
+      "module": "36-messaging",
+      "path": "/messaging/family",
+      "permission": "messaging.family.respond",
       "e2eReached": false,
       "axeReached": true
     },

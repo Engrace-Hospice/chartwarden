@@ -433,7 +433,7 @@ export function createGlobalSearchService(deps: GlobalSearchDeps): GlobalSearchS
       }
     }
     const patients = new Set(
-      rows.flatMap((row) => (row.kind === "care_team" && row.subjectId ? [row.subjectId] : [])),
+      rows.flatMap((row) => ((row.kind === "care_team" || row.kind === "family") && row.subjectId ? [row.subjectId] : [])),
     );
     for (const patientId of patients) {
       await auditPhiRead(tx, input.audit, {
