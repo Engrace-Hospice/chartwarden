@@ -18,7 +18,7 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { ackOutcomeTone, statusLabel } from "./billing-status";
 
-interface ClaimAcknowledgment {
+export interface ClaimAcknowledgment {
   acknowledgmentId: string;
   submissionId: string;
   kind: string;
@@ -52,7 +52,6 @@ export function AcknowledgmentsTimeline(): JSX.Element {
   const [rows, setRows] = useState<ClaimAcknowledgment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,77 +96,79 @@ export function AcknowledgmentsTimeline(): JSX.Element {
         />
       }
     >
-      {rows.length === 0 ? (
-        <EmptyState
-          title="No acknowledgments"
-          description="No 999 / 277CA / 835 acknowledgments have been received for this claim."
-        />
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.84rem" }}>
-          <thead>
-            <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
-              <th style={thStyle}>Type</th>
-              <th style={thStyle}>Outcome</th>
-              <th style={thStyle}>MAC</th>
-              <th style={thStyle}>Received</th>
-              <th style={thStyle}>Parsed</th>
-              <th style={thStyle}>Payload</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => {
-              const isOpen = expanded === r.acknowledgmentId;
-              return (
-                <Fragment key={r.acknowledgmentId}>
-                  <tr
-                    style={{ background: i % 2 === 1 ? "var(--color-surface-low)" : "transparent" }}
-                  >
-                    <td style={tdStyle}>{ackKindLabel(r.kind)}</td>
-                    <td style={tdStyle}>
-                      <StatusPill
-                        label={statusLabel(r.outcomeStatus)}
-                        tone={ackOutcomeTone(r.outcomeStatus)}
-                      />
-                    </td>
-                    <td style={{ ...tdStyle, fontFamily: "var(--font-mono)" }}>
-                      {r.macJurisdiction}
-                    </td>
-                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                      {r.ackReceivedAt}
-                    </td>
-                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>{r.parsedAt}</td>
-                    <td style={tdStyle}>
-                      <button
-                        type="button"
-                        aria-expanded={isOpen}
-                        aria-controls={`ack-payload-${r.acknowledgmentId}`}
-                        onClick={() => setExpanded(isOpen ? null : r.acknowledgmentId)}
-                        style={togglePayloadStyle}
-                      >
-                        {isOpen ? "Hide payload" : "View payload"}
-                      </button>
-                    </td>
-                  </tr>
-                  {isOpen ? (
-                    <tr
-                      style={{
-                        background: i % 2 === 1 ? "var(--color-surface-low)" : "transparent",
-                      }}
-                    >
-                      <td colSpan={6} style={{ padding: "0.25rem 0.75rem 0.75rem" }}>
-                        <pre id={`ack-payload-${r.acknowledgmentId}`} style={payloadStyle}>
-                          {JSON.stringify(r.parsedPayload, null, 2)}
-                        </pre>
-                      </td>
-                    </tr>
-                  ) : null}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+      <AcknowledgmentsTable rows={rows} />
     </DetailPageLayout>
+  );
+}
+
+/** The acknowledgments table (with the expandable payload viewer), shared with the claim page's history section. */
+export function AcknowledgmentsTable({ rows }: { rows: ClaimAcknowledgment[] }): JSX.Element {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  return rows.length === 0 ? (
+    <EmptyState
+      title="No acknowledgments"
+      description="No 999 / 277CA / 835 acknowledgments have been received for this claim."
+    />
+  ) : (
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.84rem" }}>
+      <thead>
+        <tr style={{ textAlign: "left", color: "var(--color-on-surface-variant)" }}>
+          <th style={thStyle}>Type</th>
+          <th style={thStyle}>Outcome</th>
+          <th style={thStyle}>MAC</th>
+          <th style={thStyle}>Received</th>
+          <th style={thStyle}>Parsed</th>
+          <th style={thStyle}>Payload</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, i) => {
+          const isOpen = expanded === r.acknowledgmentId;
+          return (
+            <Fragment key={r.acknowledgmentId}>
+              <tr style={{ background: i % 2 === 1 ? "var(--color-surface-low)" : "transparent" }}>
+                <td style={tdStyle}>{ackKindLabel(r.kind)}</td>
+                <td style={tdStyle}>
+                  <StatusPill
+                    label={statusLabel(r.outcomeStatus)}
+                    tone={ackOutcomeTone(r.outcomeStatus)}
+                  />
+                </td>
+                <td style={{ ...tdStyle, fontFamily: "var(--font-mono)" }}>{r.macJurisdiction}</td>
+                <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                  {r.ackReceivedAt}
+                </td>
+                <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>{r.parsedAt}</td>
+                <td style={tdStyle}>
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    aria-controls={`ack-payload-${r.acknowledgmentId}`}
+                    onClick={() => setExpanded(isOpen ? null : r.acknowledgmentId)}
+                    style={togglePayloadStyle}
+                  >
+                    {isOpen ? "Hide payload" : "View payload"}
+                  </button>
+                </td>
+              </tr>
+              {isOpen ? (
+                <tr
+                  style={{
+                    background: i % 2 === 1 ? "var(--color-surface-low)" : "transparent",
+                  }}
+                >
+                  <td colSpan={6} style={{ padding: "0.25rem 0.75rem 0.75rem" }}>
+                    <pre id={`ack-payload-${r.acknowledgmentId}`} style={payloadStyle}>
+                      {JSON.stringify(r.parsedPayload, null, 2)}
+                    </pre>
+                  </td>
+                </tr>
+              ) : null}
+            </Fragment>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
