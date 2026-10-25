@@ -516,9 +516,9 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
 
   it("a refusal that provably never reached FISS clears the marker and the item can be sent again", async () => {
     const { id } = await inProgress();
-    spy.onSubmit = () => Promise.resolve(degraded(DDE.UNAVAILABLE, "down"));
+    spy.onSubmit = () => Promise.resolve(degraded(DDE.INVALID_REQUEST, "malformed"));
     const res = await submitProvider(id, 2);
-    expect(res.statusCode).toBe(503);
+    expect(res.statusCode).toBe(422);
     const stored = await row(id);
     expect(stored).toMatchObject({
       state: "in_progress",
@@ -629,5 +629,81 @@ describe.skipIf(!DB_URL)("M23 DDE queue: send through the provider, LIVE Postgre
     ]);
     expect((await post(`/${id}/sync-provider`, asA())).statusCode).toBe(200);
     expect(spy.statusOperators).toEqual([MEMBERSHIP_A]);
+  });
+  it("UNAVAILABLE and IDEMPOTENCY_CONFLICT may follow a send, so they leave the item possibly sent", async () => {
+    for (const code of [DDE.UNAVAILABLE, DDE.IDEMPOTENCY_CONFLICT, "SOMETHING_NEW"]) {
+      const { id } = await inProgress();
+      spy.onSubmit = () => Promise.resolve(degraded(code, "x"));
+      const res = await submitProvider(id, 2);
+      expect(res.statusCode).toBe(409);
+      expect(res.json().error.code).toBe("DDE_IN_DOUBT");
+      expect((await row(id)).provider_in_doubt_at).not.toBeNull();
+    }
+  });
+
+  /** Hold the next vendor call open; resolves `started` when it is reached and `finish(result)` answers it. */
+  function holdNextSubmit() {
+    let finish: (r: "ok" | string) => void = () => undefined;
+    const answer = new Promise<"ok" | string>((r) => {
+      finish = r;
+    });
+    let reached: () => void = () => undefined;
+    const started = new Promise<void>((r) => {
+      reached = r;
+    });
+    spy.onSubmit = (ctx, op) => {
+      reached();
+      return answer.then((r) =>
+        r === "ok" ? spy.inner.submitOperation(ctx, op) : degraded<DdeReceipt>(r, "held"),
+      );
+    };
+    return { started, finish };
+  }
+
+  it("a refusal never clears a newer attempt's marker (second send marked in doubt between mark and clear)", async () => {
+    const { id } = await inProgress();
+    const held = holdNextSubmit();
+    const pending = submitProvider(id, 2);
+    await held.started;
+    // While send 1 is in flight: a person keys it by hand, it is returned, retried (attempt 2) ...
+    let v = (await row(id)).version as number;
+    expect((await post(`/${id}/record-submission`, asA(stepUp), { expectedVersion: v })).statusCode).toBe(200);
+    v = (await row(id)).version;
+    expect(
+      (await post(`/${id}/record-outcome`, asA(), { expectedVersion: v, outcome: "returned", rtpReasonCode: "T0001" })).statusCode,
+    ).toBe(200);
+    v = (await row(id)).version;
+    expect((await post(`/${id}/retry`, asA(), { expectedVersion: v })).statusCode).toBe(200);
+    // ... and a second send (attempt 2) has marked the item possibly sent.
+    await admin.query(
+      "UPDATE dde_work_item SET provider_in_doubt_at=now(), provider_operator_membership_id=$2 WHERE id=$1",
+      [id, MEMBERSHIP_A],
+    );
+    const marker = (await row(id)).provider_in_doubt_at;
+    held.finish(DDE.INVALID_REQUEST); // send 1's definitive refusal arrives late
+    expect((await pending).statusCode).toBe(422);
+    const after = await row(id);
+    expect(after.attempt_number).toBe(2);
+    expect(after.provider_in_doubt_at).toEqual(marker);
+    expect(await eventsOf(id, "provider_send_refused")).toHaveLength(0);
+  });
+
+  it("a manual submit that races a successful vendor call restores the marker: the vendor holds a live operation", async () => {
+    const { id } = await inProgress();
+    const held = holdNextSubmit();
+    const pending = submitProvider(id, 2);
+    await held.started;
+    const v = (await row(id)).version as number;
+    expect((await post(`/${id}/record-submission`, asA(stepUp), { expectedVersion: v })).statusCode).toBe(200);
+    expect((await row(id)).provider_in_doubt_at).toBeNull();
+    held.finish("ok");
+    const res = await pending;
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("DDE_IN_DOUBT");
+    const after = await row(id);
+    expect(after).toMatchObject({ state: "submitted", submission_mode: "manual" });
+    expect(after.provider_in_doubt_at).not.toBeNull();
+    const inDoubtEvents = await eventsOf(id, "provider_in_doubt");
+    expect(inDoubtEvents[0].detail.reason).toMatch(/^item_changed:dde-ref-/);
   });
 });

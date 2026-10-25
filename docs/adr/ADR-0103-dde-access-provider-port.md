@@ -102,8 +102,10 @@ the version and the state, refuses an item that is already possibly sent, and du
 `provider_operator_membership_id` (history event `provider_send_started`, version bump). (2) The vendor call runs with no
 connection held, bounded by `DDE_PROVIDER_CALL_TIMEOUT_MS` (30 s); an `AbortSignal` is passed as the optional `DdeContext.signal`
 (an adapter hands it to its HTTP client). (3) A second short transaction applies the outcome to the item as it is then, with a
-fresh version: a receipt becomes `submitted` and clears the marker; any degraded code other than `DDE_IN_DOUBT` says the
-operation was refused before send, so the marker is cleared (`provider_send_refused`). A timeout, a throwing adapter,
+fresh version: a receipt becomes `submitted` and clears the marker; only `DDE_NOT_WIRED`, `DDE_NOT_PROVISIONED`, `DDE_OPERATOR_NOT_ENROLLED` and `DDE_INVALID_REQUEST` prove the
+operation never left, so only they clear the marker (`provider_send_refused`), and only for the very send that set it (same
+state, attempt and marker timestamp). `DDE_UNAVAILABLE` (it may be a timeout after the request was written),
+`DDE_IDEMPOTENCY_CONFLICT` and unknown codes stay in doubt. A timeout, a throwing adapter,
 `DDE_IN_DOUBT`, an unusable receipt, or an item that moved while the vendor worked (for example a cancel) leaves the marker set
 and appends `provider_in_doubt`; the caller gets `409 DDE_IN_DOUBT`. The idempotency key (`dde:<item>:<attempt>`) and the
 optimistic version are unchanged; a double click loses the phase 1 version check (`412`) before any vendor call.
@@ -121,3 +123,11 @@ The audit trail still names the person who synced.
 **Still not built:** the batch ingest of the cursor-paged daily change report (`fetchOutcomes` needs a persisted cursor and a real
 adapter) and the MBI seam; and the port has no status lookup by idempotency key, so a possibly-sent operation can only be
 settled by a person checking DDE.
+
+Phase 3 is applied as the operator who started the send, without re-running the ownership rule: that person's DDE ID keyed the
+operation, so recording its outcome against the item is right even if the item was reassigned meanwhile. If a manual
+`record-submission` raced the vendor call and the call then succeeded, the marker is put back (history `provider_send_started`
+with `restored`, and the opaque provider reference in the `provider_in_doubt` detail) so the live vendor operation is never
+invisible. The marker events publish `m23.dde_item.state_changed` with `fromState = toState`; the catalog accepts them and
+consumers (none declared) must treat `event` as open. A thrown adapter error is reported only as "in doubt" (no logger is
+injected into the queue service); an adapter should log its own failures.

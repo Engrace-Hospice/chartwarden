@@ -59,6 +59,7 @@ import { applyDdeNoticeAcceptance } from "./dde-notice-acceptance";
 import {
   DDE_PROVIDER_CALL_TIMEOUT_MS,
   PROVIDER_REFERENCE_PATTERN,
+  REFUSED_BEFORE_SEND,
   ddeIdempotencyKey,
   ddeProviderAnswerRejected,
   ddeProviderRefusal,
@@ -826,15 +827,21 @@ export function buildDdeQueueService(
       }
       const result = bounded.value;
 
-      // Phase 3 (short transaction): apply the outcome against the item as it is NOW (fresh version).
+      // Phase 3 (short transaction): apply the outcome against the item as it is NOW (fresh version). Only the very
+      // send that set the marker may clear it: same state, same attempt, same marker timestamp.
+      const isThisSend = (cur: Item): boolean =>
+        cur.state === marked.state &&
+        cur.attemptNumber === marked.attemptNumber &&
+        cur.providerInDoubtAt?.getTime() === marked.providerInDoubtAt?.getTime();
       if (!result.ok) {
-        if (result.degraded.code === DDE.IN_DOUBT) {
-          return leaveInDoubt(actor, marked, DDE.IN_DOUBT, ddeProviderRefusal(DDE.IN_DOUBT));
+        // Only a code that PROVES the operation never left (allowlist) clears the marker. UNAVAILABLE may be a
+        // timeout after the request was written and IDEMPOTENCY_CONFLICT means a vendor operation exists: both stay in doubt.
+        if (!REFUSED_BEFORE_SEND.has(result.degraded.code)) {
+          return leaveInDoubt(actor, marked, result.degraded.code, ddeProviderRefusal(DDE.IN_DOUBT));
         }
-        // Any other degraded code says the operation was refused before send: clear the marker.
         await inOrg(actor, async (tx) => {
           const current = await loadItem(tx, actor, id);
-          if (!current.providerInDoubtAt) return;
+          if (!isThisSend(current)) return; // a newer attempt's marker (or a manual resolution) is not ours to touch
           await persist(
             tx,
             actor,
@@ -860,15 +867,9 @@ export function buildDdeQueueService(
       }
       const applied = await inOrg(actor, async (tx) => {
         const current = await loadItem(tx, actor, id);
-        // Someone moved the item while the vendor worked (e.g. a cancel): the operation exists at the vendor but
-        // cannot be attached to this attempt, so the marker stays and the item reads "possibly sent".
-        if (
-          current.state !== marked.state ||
-          current.attemptNumber !== marked.attemptNumber ||
-          !current.providerInDoubtAt
-        ) {
-          return null;
-        }
+        // Someone moved the item while the vendor worked (a cancel, a manual submit): the operation exists at the
+        // vendor but cannot be attached to this attempt, so the item must read "possibly sent".
+        if (!isThisSend(current)) return null;
         return applyEvent(
           tx,
           actor,
@@ -885,7 +886,29 @@ export function buildDdeQueueService(
         );
       });
       if (!applied) {
-        return leaveInDoubt(actor, marked, "item_changed", ddeProviderRefusal(DDE.IN_DOUBT));
+        // A manual record-submission that raced the vendor call cleared the marker: put it back (the vendor holds a
+        // live operation), unless a newer send already owns one. The reference goes in the history for reconciliation.
+        await inOrg(actor, async (tx) => {
+          const current = await loadItem(tx, actor, id);
+          if (current.providerInDoubtAt || current.attemptNumber !== marked.attemptNumber) return;
+          await persist(
+            tx,
+            actor,
+            current,
+            current.version,
+            "provider_send_started",
+            current.state,
+            current.attemptNumber,
+            { providerInDoubtAt: now(), providerOperatorMembershipId: actor.membershipId },
+            { restored: true, providerReference: reference },
+          );
+        });
+        return leaveInDoubt(
+          actor,
+          marked,
+          `item_changed:${reference}`,
+          ddeProviderRefusal(DDE.IN_DOUBT),
+        );
       }
       return viewOf(applied, toIsoDate(now()));
     },
@@ -960,7 +983,12 @@ export function buildDdeQueueService(
         if (current.providerReference !== reference) {
           throw new ConflictError("the item's provider operation changed while syncing");
         }
-        const detail = { submissionMode: "provider", providerReference: reference };
+        const detail = {
+          submissionMode: "provider",
+          providerReference: reference,
+          // Whose DDE ID the inquiry ran under (may differ from the actor who synced).
+          inquiryOperatorMembershipId: target.operatorMembershipId,
+        };
         if (plan.kind === "returned") {
           return applyEvent(
             tx,

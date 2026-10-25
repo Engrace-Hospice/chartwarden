@@ -25,6 +25,18 @@ export function ddeIdempotencyKey(itemId: string, attemptNumber: number): string
  */
 export const DDE_PROVIDER_CALL_TIMEOUT_MS = 30_000;
 
+/**
+ * The degraded codes that PROVE the operation never left for FISS (refused or unconfigured before send). Everything else
+ * (UNAVAILABLE may be a timeout after the request was written; IDEMPOTENCY_CONFLICT means a vendor operation exists;
+ * unknown codes) leaves the item "possibly sent".
+ */
+export const REFUSED_BEFORE_SEND: ReadonlySet<string> = new Set([
+  DDE.NOT_WIRED,
+  DDE.NOT_PROVISIONED,
+  DDE.OPERATOR_NOT_ENROLLED,
+  DDE.INVALID_REQUEST,
+]);
+
 export type BoundedCall<T> =
   | { readonly kind: "done"; readonly value: T }
   | { readonly kind: "timeout" }
