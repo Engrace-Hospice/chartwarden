@@ -14,6 +14,18 @@ import { and, eq } from "drizzle-orm";
 
 export type LifecycleStatus = "created" | "active" | "suspended" | "closed";
 
+/**
+ * The provider entity's billing address: the first element of `provider_entity.addresses`, in the shape the 837I
+ * billing-provider loop (2010AA) is built from. A stored entry missing any required field reads as no address.
+ */
+export interface ProviderBillingAddress {
+  readonly line1: string;
+  readonly line2: string | null;
+  readonly city: string;
+  readonly state: string;
+  readonly postalCode: string;
+}
+
 export interface ProviderEntityDetail {
   readonly id: string;
   readonly organizationId: string;
@@ -24,6 +36,7 @@ export interface ProviderEntityDetail {
   readonly npi: string;
   readonly fiscalYearEnd: string;
   readonly iqiesFacilityId: string | null;
+  readonly billingAddress: ProviderBillingAddress | null;
   readonly status: LifecycleStatus;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -50,14 +63,19 @@ type Writable<T> = { -readonly [K in keyof T]: T[K] };
 
 export type NewProviderEntity = Omit<
   ProviderEntityDetail,
-  "organizationId" | "status" | "createdAt" | "updatedAt"
+  "organizationId" | "status" | "createdAt" | "updatedAt" | "billingAddress"
 > & { readonly taxIdEncrypted: string };
 
 export type ProviderEntityPatch = Writable<
   Partial<
     Pick<
       ProviderEntityDetail,
-      "legalName" | "doingBusinessAs" | "fiscalIntermediary" | "iqiesFacilityId" | "status"
+      | "legalName"
+      | "doingBusinessAs"
+      | "fiscalIntermediary"
+      | "iqiesFacilityId"
+      | "status"
+      | "billingAddress"
     >
   >
 >;
@@ -96,6 +114,32 @@ const iso = (d: Date): string => d.toISOString();
 const PE = schema.providerEntities;
 const L = schema.locations;
 
+const text = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
+
+/** `addresses[0]` as a billing address, or null when it is absent or incomplete. */
+export function billingAddressOf(addresses: unknown): ProviderBillingAddress | null {
+  const first = Array.isArray(addresses) ? (addresses[0] as Record<string, unknown> | null) : null;
+  if (!first || !text(first.line1) || !text(first.city) || !text(first.state)) return null;
+  if (!text(first.postalCode)) return null;
+  return {
+    line1: first.line1,
+    line2: text(first.line2) ? first.line2 : null,
+    city: first.city,
+    state: first.state,
+    postalCode: first.postalCode,
+  };
+}
+
+/** The `addresses` array with its first element replaced (later entries are kept). */
+export function withBillingAddress(
+  addresses: unknown,
+  address: ProviderBillingAddress,
+): readonly unknown[] {
+  const rest = Array.isArray(addresses) ? addresses.slice(1) : [];
+  const { line2, ...required } = address;
+  return [{ ...required, ...(line2 === null ? {} : { line2 }) }, ...rest];
+}
+
 const toPe = (r: typeof PE.$inferSelect): ProviderEntityDetail => ({
   id: r.id,
   organizationId: r.organizationId,
@@ -106,6 +150,7 @@ const toPe = (r: typeof PE.$inferSelect): ProviderEntityDetail => ({
   npi: r.npi,
   fiscalYearEnd: r.fiscalYearEnd,
   iqiesFacilityId: r.iqiesFacilityId,
+  billingAddress: billingAddressOf(r.addresses),
   status: r.status as LifecycleStatus,
   createdAt: iso(r.createdAt),
   updatedAt: iso(r.updatedAt),
@@ -187,9 +232,21 @@ export function createDrizzleSiteAdminRepository(db: DbClient): SiteAdminReposit
     },
     async updateProviderEntity(organizationId, id, patch) {
       return scoped(organizationId, async (tx) => {
+        const { billingAddress, ...columns } = patch;
+        let addresses: { addresses: readonly unknown[] } | undefined;
+        if (billingAddress) {
+          const [current] = await tx
+            .select({ addresses: PE.addresses })
+            .from(PE)
+            .where(and(eq(PE.id, id), eq(PE.organizationId, organizationId)))
+            .for("update")
+            .limit(1);
+          if (!current) return null;
+          addresses = { addresses: withBillingAddress(current.addresses, billingAddress) };
+        }
         const [row] = await tx
           .update(PE)
-          .set({ ...patch, updatedAt: new Date() })
+          .set({ ...columns, ...addresses, updatedAt: new Date() })
           .where(and(eq(PE.id, id), eq(PE.organizationId, organizationId)))
           .returning();
         return row ? toPe(row) : null;
@@ -269,6 +326,7 @@ export function createInMemorySiteAdminRepository(
       const { taxIdEncrypted: _omitted, ...rest } = input;
       const pe: ProviderEntityDetail = {
         ...rest,
+        billingAddress: null,
         organizationId,
         status: "created",
         createdAt: now(),

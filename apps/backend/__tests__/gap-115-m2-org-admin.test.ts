@@ -57,6 +57,7 @@ const pe = (over: Partial<ProviderEntityDetail> & { id: string }): ProviderEntit
   npi: "1234567893",
   fiscalYearEnd: "1231",
   iqiesFacilityId: null,
+  billingAddress: null,
   status: "active",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -329,6 +330,54 @@ describe("provider entities", () => {
       });
       expect(res.statusCode).toBe(422);
     }
+    await app.close();
+  });
+
+  it("PATCH sets the billing address and reads it back; line2 is optional", async () => {
+    const { app } = makeServer();
+    const address = { line1: "1 Main St", city: "Portland", state: "OR", postalCode: "97201" };
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/provider-entities/pe_new",
+      headers: TENANT,
+      payload: { billingAddress: address },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().billingAddress).toEqual({ ...address, line2: null });
+    const read = await app.inject({
+      method: "GET",
+      url: "/api/v1/provider-entities/pe_new",
+      headers: TENANT,
+    });
+    expect(read.json().billingAddress).toMatchObject(address);
+    await app.close();
+  });
+
+  it.each([
+    ["a missing line1", { city: "Portland", state: "OR", postalCode: "97201" }],
+    ["a lowercase state", { line1: "1 Main", city: "Portland", state: "or", postalCode: "97201" }],
+    ["a bad postal code", { line1: "1 Main", city: "Portland", state: "OR", postalCode: "9720" }],
+    [
+      "a line1 over the X12 limit",
+      { line1: "x".repeat(56), city: "Portland", state: "OR", postalCode: "97201" },
+    ],
+    [
+      "a city over the X12 limit",
+      { line1: "1 Main", city: "c".repeat(31), state: "OR", postalCode: "97201" },
+    ],
+  ])("PATCH refuses a billing address with %s", async (_name, billingAddress) => {
+    const { app } = makeServer();
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/provider-entities/pe_new",
+      headers: TENANT,
+      payload: { billingAddress },
+    });
+
+    expect(res.statusCode).toBe(422);
     await app.close();
   });
 

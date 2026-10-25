@@ -254463,6 +254463,7 @@
                     "npi",
                     "fiscalYearEnd",
                     "iqiesFacilityId",
+                    "billingAddress",
                     "status",
                     "createdAt",
                     "updatedAt"
@@ -254511,6 +254512,47 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "billingAddress": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "line1",
+                            "line2",
+                            "city",
+                            "state",
+                            "postalCode"
+                          ],
+                          "properties": {
+                            "line1": {
+                              "type": "string"
+                            },
+                            "line2": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "city": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            },
+                            "postalCode": {
+                              "type": "string"
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -254648,6 +254690,7 @@
                     "npi",
                     "fiscalYearEnd",
                     "iqiesFacilityId",
+                    "billingAddress",
                     "status",
                     "createdAt",
                     "updatedAt"
@@ -254696,6 +254739,47 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "billingAddress": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "line1",
+                            "line2",
+                            "city",
+                            "state",
+                            "postalCode"
+                          ],
+                          "properties": {
+                            "line1": {
+                              "type": "string"
+                            },
+                            "line2": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "city": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            },
+                            "postalCode": {
+                              "type": "string"
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -254776,6 +254860,7 @@
                     "npi",
                     "fiscalYearEnd",
                     "iqiesFacilityId",
+                    "billingAddress",
                     "status",
                     "createdAt",
                     "updatedAt"
@@ -254824,6 +254909,47 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "billingAddress": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "line1",
+                            "line2",
+                            "city",
+                            "state",
+                            "postalCode"
+                          ],
+                          "properties": {
+                            "line1": {
+                              "type": "string"
+                            },
+                            "line2": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "city": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            },
+                            "postalCode": {
+                              "type": "string"
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -254893,6 +255019,40 @@
                   "iqiesFacilityId": {
                     "maxLength": 50,
                     "type": "string"
+                  },
+                  "billingAddress": {
+                    "description": "The billing address printed on the 837I billing-provider loop (2010AA). Replaces the first stored address.",
+                    "type": "object",
+                    "required": [
+                      "line1",
+                      "city",
+                      "state",
+                      "postalCode"
+                    ],
+                    "properties": {
+                      "line1": {
+                        "minLength": 1,
+                        "maxLength": 55,
+                        "type": "string"
+                      },
+                      "line2": {
+                        "maxLength": 55,
+                        "type": "string"
+                      },
+                      "city": {
+                        "minLength": 1,
+                        "maxLength": 30,
+                        "type": "string"
+                      },
+                      "state": {
+                        "pattern": "^[A-Z]{2}$",
+                        "type": "string"
+                      },
+                      "postalCode": {
+                        "pattern": "^\\d{5}(-\\d{4})?$",
+                        "type": "string"
+                      }
+                    }
                   },
                   "status": {
                     "anyOf": [

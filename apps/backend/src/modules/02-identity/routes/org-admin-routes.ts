@@ -7,7 +7,7 @@
 //   PATCH /api/v1/orgs/:id                 displayName (own org) · + legalName (platform operator)
 //   GET   /api/v1/provider-entities/:id    one provider entity of the caller's org (no tax id, ever)
 //   POST  /api/v1/provider-entities        create (CCN, NPI check digit, EIN enveloped by the cipher)
-//   PATCH /api/v1/provider-entities/:id    name / DBA / fiscal intermediary / iQIES id / lifecycle status
+//   PATCH /api/v1/provider-entities/:id    name / DBA / fiscal intermediary / iQIES id / billing address / lifecycle status
 //   GET   /api/v1/locations/:id            one service location
 //   POST  /api/v1/locations                create under one of the caller's provider entities
 //   PATCH /api/v1/locations/:id            address / contact / timezone / lifecycle status
@@ -83,6 +83,18 @@ export interface OrgAdminRouteDeps extends AdminRouteDeps {
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
 /** Fields of a provider entity that identify it to CMS — never editable through PATCH. */
+/** The billing address in the limits the 837I writer enforces (N3 55, N4 city 30), so a bad one is refused here. */
+function parseBillingAddress(raw: unknown): NonNullable<ProviderEntityPatch["billingAddress"]> {
+  const body = asBody(raw);
+  return {
+    line1: requiredString(body, "line1", 55),
+    line2: optionalString(body, "line2", 55) || null,
+    city: requiredString(body, "city", 30),
+    state: requireState(requiredString(body, "state", 2)),
+    postalCode: requirePostalCode(requiredString(body, "postalCode", 10)),
+  };
+}
+
 const IMMUTABLE_PE_FIELDS = ["ccn", "npi", "taxId", "fiscalYearEnd", "organizationId"] as const;
 
 const isPlatformOperator = (request: FastifyRequest): boolean =>
@@ -280,6 +292,8 @@ export function registerOrgAdminRoutes(app: FastifyInstance, deps: OrgAdminRoute
       const v = optionalString(body, f, f === "iqiesFacilityId" ? 50 : 200);
       if (v !== undefined) patch[f] = v === "" ? null : v;
     }
+    if (body.billingAddress !== undefined)
+      patch.billingAddress = parseBillingAddress(body.billingAddress);
     const status = optionalString(body, "status");
     if (status !== undefined) {
       if (!["created", "active", "suspended", "closed"].includes(status))

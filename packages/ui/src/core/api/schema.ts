@@ -91593,6 +91593,13 @@ export interface operations {
                         /** @description MMDD */
                         fiscalYearEnd: string;
                         iqiesFacilityId: string | null;
+                        billingAddress: {
+                            line1: string;
+                            line2: string | null;
+                            city: string;
+                            state: string;
+                            postalCode: string;
+                        } | null;
                         status: "created" | "active" | "suspended" | "closed";
                         /** Format: date-time */
                         createdAt: string;
@@ -91633,6 +91640,13 @@ export interface operations {
                         /** @description MMDD */
                         fiscalYearEnd: string;
                         iqiesFacilityId: string | null;
+                        billingAddress: {
+                            line1: string;
+                            line2: string | null;
+                            city: string;
+                            state: string;
+                            postalCode: string;
+                        } | null;
                         status: "created" | "active" | "suspended" | "closed";
                         /** Format: date-time */
                         createdAt: string;
@@ -91661,6 +91675,14 @@ export interface operations {
                     doingBusinessAs?: string;
                     fiscalIntermediary?: string;
                     iqiesFacilityId?: string;
+                    /** @description The billing address printed on the 837I billing-provider loop (2010AA). Replaces the first stored address. */
+                    billingAddress?: {
+                        line1: string;
+                        line2?: string;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                    };
                     status?: "created" | "active" | "suspended" | "closed";
                 };
             };
@@ -91683,6 +91705,13 @@ export interface operations {
                         /** @description MMDD */
                         fiscalYearEnd: string;
                         iqiesFacilityId: string | null;
+                        billingAddress: {
+                            line1: string;
+                            line2: string | null;
+                            city: string;
+                            state: string;
+                            postalCode: string;
+                        } | null;
                         status: "created" | "active" | "suspended" | "closed";
                         /** Format: date-time */
                         createdAt: string;

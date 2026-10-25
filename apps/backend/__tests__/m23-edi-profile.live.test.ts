@@ -16,10 +16,14 @@ import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildFoundationSiteReader } from "../src/bootstrap/foundation-site-reader";
+import { createDrizzleSiteAdminRepository } from "../src/bootstrap/site-admin-repository";
 import type { M23WriteActor } from "../src/modules/23-billing-medicare/routes/actor";
 import { buildDrizzleEdiProfileService } from "../src/modules/23-billing-medicare/routes/edi-profile-service";
 import type { UpsertEdiProfileBody } from "../src/modules/23-billing-medicare/routes/edi-profile-typebox";
-import { buildDrizzleEdiProfileReader } from "../src/modules/23-billing-medicare/services/claim-837i-parties";
+import {
+  billingAddressFrom,
+  buildDrizzleEdiProfileReader,
+} from "../src/modules/23-billing-medicare/services/claim-837i-parties";
 import { buildPayerNameByX12IdReader } from "../src/modules/40-mdm";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
@@ -246,6 +250,45 @@ describe.skipIf(!DB_URL)("M23 EDI profile — LIVE Postgres", () => {
     expect(await asApp(ORG_A, (tx) => payerName(tx, "MAC01"))).toBe("Test MAC");
     expect(await asApp(ORG_A, (tx) => payerName(tx, "MAC02"))).toBeNull();
     expect(await asApp(ORG_A, (tx) => payerName(tx, "NOPE"))).toBeNull();
+  });
+
+  it("the M2 billing address write lands in the shape the 837I parties adapter reads, keeping later addresses", async () => {
+    await admin.query(
+      `INSERT INTO provider_entity (id, organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end, addresses)
+       VALUES ($1,$2,'ABC123','Test Hospice LLC','1234567893','v2.1.n.t.c','1231', '[{"line1":"old","city":"Old","state":"WA","postalCode":"98001"},{"line1":"second","city":"S","state":"OR","postalCode":"97301"}]'::jsonb)`,
+      [PE_A, ORG_A],
+    );
+    const repo = createDrizzleSiteAdminRepository(handle.db);
+
+    const updated = await repo.updateProviderEntity(ORG_A, PE_A, {
+      billingAddress: {
+        line1: "1 Main St",
+        line2: null,
+        city: "Portland",
+        state: "OR",
+        postalCode: "97201",
+      },
+    });
+
+    const stored = (
+      await admin.query("SELECT addresses FROM provider_entity WHERE id = $1", [PE_A])
+    ).rows[0].addresses;
+    expect(updated?.billingAddress).toEqual({
+      line1: "1 Main St",
+      line2: null,
+      city: "Portland",
+      state: "OR",
+      postalCode: "97201",
+    });
+    expect(billingAddressFrom(stored)).toEqual({
+      line1: "1 Main St",
+      city: "Portland",
+      state: "OR",
+      postalCode: "97201",
+    });
+    expect(stored).toHaveLength(2);
+    expect(stored[1].line1).toBe("second");
+    expect(await repo.updateProviderEntity(ORG_B, PE_A, { legalName: "x" })).toBeNull();
   });
 
   it("records the write in the audit trail", async () => {
