@@ -230,6 +230,9 @@ export function MedicaidClaimEditor(): JSX.Element {
                 label={humanize(claim.state)}
                 tone={toneOf(CLAIM_STATE_TONE, claim.state)}
               />
+              <a href={`/admin/medicaid-billing-audit/${claim.id}`} style={linkStyle}>
+                Surveyor view
+              </a>
               <button
                 type="button"
                 disabled={!canSubmit}
