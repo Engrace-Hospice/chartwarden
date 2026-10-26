@@ -297,10 +297,10 @@ test.describe("Billing — Commercial enrollments (M41)", () => {
 
     await page.getByRole("button", { name: "Add enrollment" }).click();
     const drawer = page.getByRole("complementary", { name: "Add enrollment" });
-    await drawer.getByLabel("Payer").selectOption(PAYER);
+    await drawer.getByRole("combobox", { name: /^Payer/ }).selectOption(PAYER);
     await drawer.getByLabel("Clearinghouse key").fill("other");
     await drawer.getByLabel("Effective from").fill("2026-02-01");
-    await drawer.getByRole("button", { name: "Add enrollment" }).click();
+    await drawer.getByRole("button", { name: "Add enrollment", exact: true }).click();
 
     await expect(page.getByText("Enrollment added.")).toBeVisible();
     await expect(table.getByText("other")).toBeVisible();
@@ -382,7 +382,7 @@ test.describe("Billing — Commercial eligibility (M41)", () => {
     await expect(card.getByText("Fresh")).toBeVisible();
     await expect(card.getByText("Eligibility was verified recently.")).toBeVisible();
     const table = page.getByRole("table", { name: /Eligibility checks for/ });
-    await expect(table.getByText("2026-10-20")).toBeVisible();
+    await expect(table.getByText("2026-10-20").first()).toBeVisible();
 
     await page.getByLabel("Service date").fill("2026-10-25");
     await page.getByRole("button", { name: "Run eligibility check" }).click();
@@ -447,7 +447,11 @@ test.describe("Billing — Commercial claim assembly (M41)", () => {
     const patient = page.getByRole("combobox", { name: /Patient/ });
     await patient.click();
     await patient.fill("Whitfield");
-    await page.getByRole("option").first().click();
+    await page
+      .getByRole("listbox", { name: /Patient/ })
+      .getByRole("option")
+      .first()
+      .click();
     await page.getByLabel("Service from").fill("2026-03-01");
     await page.getByLabel("Service to").fill("2026-03-31");
 
