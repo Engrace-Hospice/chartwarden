@@ -53,6 +53,8 @@ export const commercialAckQuarantine = pgTable(
     // the validated event (codes and ids), kept only for `no_receipt` so the pull can replay it once the submission is settled
     event: jsonb("event"),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    // applied | abandoned_no_submission | abandoned_scope_mismatch | abandoned_vendor_mismatch | abandoned_aged | abandoned_invalid
+    resolution: text("resolution"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

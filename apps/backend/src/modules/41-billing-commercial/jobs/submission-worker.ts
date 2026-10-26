@@ -333,42 +333,50 @@ async function requeue(
   deps.log?.({ event: "submission.retry", code: safeCode(code), submissionId: sub.id });
 }
 
-/** Mark that the transport is about to be called (so an interruption from here on is known to be ambiguous). */
-async function markCallStarted(
-  deps: SubmissionWorkerDeps,
-  sub: SubmissionRow,
-  payloadHash: string,
-): Promise<void> {
-  await inOrg(deps, sub.organizationId, async (tx) => {
-    const S = schema.commercialSubmissions;
-    await tx
-      .update(S)
-      .set({ transportCallStartedAt: nowOf(deps), payloadHash })
-      .where(and(eq(S.id, sub.id), eq(S.status, "queued")));
-  });
-}
-
 /** SHA-256 of the exact 837I. One-way, and the file itself is never stored. */
 const hashOf = (x12: string): string => createHash("sha256").update(x12).digest("hex");
 
 /**
- * The hash of the FIRST 837I of this claim that reached the transport call (any submission of the claim, this one included), or null.
- * Every later attempt must render the same bytes: the transport holds one key per claim, and a different payload under it is an
- * idempotency conflict that no retry can clear.
+ * Freeze what is about to be sent AND mark that the transport is about to be called (so an interruption from here on is known to be
+ * ambiguous), in ONE transaction under the claim's row lock. The lock makes "read the claim's first hash, then write mine" atomic:
+ * two submissions of one claim can never both bind different hashes.
+ *
+ * The transport holds one key per claim, so every attempt must render the same bytes. The comparison is against the FIRST hash of a
+ * payload the transport MAY hold: a submission that ended `failed` without ever being ambiguous (a definite refusal, or attempts
+ * exhausted on a definite unavailable) never put its payload anywhere, so it binds nothing and the user can fix the data and resend.
+ * One that ended `in_doubt`, `sent`, is still queued, or was settled "not received" by a person (`failed` but ambiguous) still binds.
+ * A legacy row with no hash binds nothing (the comparison is skipped).
  */
-async function firstPayloadHash(
+async function bindPayloadAndMarkCallStarted(
   deps: SubmissionWorkerDeps,
   sub: SubmissionRow,
-): Promise<string | null> {
+  payloadHash: string,
+): Promise<"bound" | "changed"> {
   return inOrg(deps, sub.organizationId, async (tx) => {
     const S = schema.commercialSubmissions;
-    const [row] = await tx
+    await tx
+      .select({ id: schema.commercialClaims.id })
+      .from(schema.commercialClaims)
+      .where(eq(schema.commercialClaims.id, sub.claimId))
+      .for("update");
+    const [first] = await tx
       .select({ hash: S.payloadHash })
       .from(S)
-      .where(and(eq(S.claimId, sub.claimId), sql`${S.payloadHash} IS NOT NULL`))
+      .where(
+        and(
+          eq(S.claimId, sub.claimId),
+          sql`${S.payloadHash} IS NOT NULL`,
+          sql`NOT (${S.status} = 'failed' AND ${S.ambiguous} = false)`,
+        ),
+      )
       .orderBy(asc(S.requestedAt))
       .limit(1);
-    return row?.hash ?? null;
+    if (first?.hash != null && first.hash !== payloadHash) return "changed";
+    await tx
+      .update(S)
+      .set({ transportCallStartedAt: nowOf(deps), payloadHash })
+      .where(and(eq(S.id, sub.id), eq(S.status, "queued")));
+    return "bound";
   });
 }
 
@@ -435,11 +443,9 @@ async function sendOne(deps: SubmissionWorkerDeps, sub: SubmissionRow): Promise<
   // Freeze what was sent: the facts this 837I is built from (address, coverage, ...) may have changed since an earlier attempt. Then
   // the transport would answer an opaque idempotency conflict forever; say so in a stable code instead, before anything is sent.
   const payloadHash = hashOf(rendered.x12);
-  const earlier = await firstPayloadHash(deps, sub);
-  if (earlier !== null && earlier !== payloadHash) {
+  if ((await bindPayloadAndMarkCallStarted(deps, sub, payloadHash)) === "changed") {
     return endWithoutSend(deps, sub, FAILURE.PAYLOAD_CHANGED);
   }
-  await markCallStarted(deps, sub, payloadHash);
   let outcome: SendOutcome | { readonly kind: "accepted"; readonly receiptId: string };
   try {
     const result = await deps.binding.transport.submitClaim(context, {

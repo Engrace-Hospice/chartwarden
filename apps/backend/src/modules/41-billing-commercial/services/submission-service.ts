@@ -210,8 +210,8 @@ export const DRAIN_NOT_SCHEDULED_MESSAGE =
   "The background sender is not running right now, so nothing would be sent. Try again in a few minutes, or ask a platform administrator.";
 
 /** 503 while the drain is not scheduled: a queued submission would wait for a worker that is not ticking. */
-function assertDrainScheduled(readiness: DrainReadiness): void {
-  if (!readiness.drainScheduled()) {
+async function assertDrainScheduled(readiness: DrainReadiness): Promise<void> {
+  if (!(await readiness.drainScheduled())) {
     throw new ChartWardenError(
       COMMERCIAL_ERROR_CODES.drainNotScheduled,
       DRAIN_NOT_SCHEDULED_MESSAGE,
@@ -276,7 +276,7 @@ export function buildCommercialSubmissionService(
         const gate = await evaluateGateForClaim(tx, claim, binding.vendor, { now: now() });
         const reasons: SendGateReason[] = [...reasonsOf(gate)];
         // nothing would send a queued row while no drain is scheduled, so the view says so instead of offering the button
-        if (!readiness.drainScheduled()) {
+        if (!(await readiness.drainScheduled())) {
           reasons.push({
             code: COMMERCIAL_SEND_GATE_CODES.DRAIN_NOT_SCHEDULED,
             message: DRAIN_NOT_SCHEDULED_MESSAGE,
@@ -297,7 +297,7 @@ export function buildCommercialSubmissionService(
       if (actor.actorKind.startsWith("ai_")) {
         throw new ChartWardenError("AI_ACTOR_FORBIDDEN", "AI actors may not submit a claim", 403);
       }
-      assertDrainScheduled(readiness);
+      await assertDrainScheduled(readiness);
       return inOrg(actor, async (tx) => {
         const claim = await loadClaim(tx, actor, claimId, true);
         // A retried request with the same key is answered from the row it wrote, whatever the claim has become since.
@@ -387,7 +387,7 @@ export function buildCommercialSubmissionService(
         );
       }
       if (!actor.stepUpRecent) throw new StepUpRequiredError();
-      assertDrainScheduled(readiness);
+      await assertDrainScheduled(readiness);
       // `received` is an attestation: it must say what the person relied on (a closed set), and `not_received` must not carry one.
       if (outcome === "received" && evidence === undefined) {
         throw new ValidationError("evidence is required when the claim is confirmed received", [

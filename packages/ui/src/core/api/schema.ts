@@ -5527,7 +5527,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark a pre-authorization denied or voided; the next validation sees the change */
+        /** Mark a pre-authorization denied or voided; the next validation sees the change. 409 COMMERCIAL_SUBMISSION_IN_FLIGHT when ANY ready claim that depends on it has a submission queued, in doubt or sent and not settled: one claim in flight blocks the change for all of them (the whole change rolls back), so settle that submission first */
         post: operations["postApiV1BillingCommercialAuthorizationsByIdStatus"];
         delete?: never;
         options?: never;
@@ -5578,7 +5578,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Move a draft claim to ready after a fresh validation. 409 COMMERCIAL_CLAIM_BLOCKED (with the blocking rules and what to do) while a hard block fails or a soft block lacks an audited override */
+        /** Move a draft claim to ready after a fresh validation. 409 COMMERCIAL_CLAIM_BLOCKED (with the blocking rules and what to do) while a hard block fails or a soft block lacks an audited override; 409 COMMERCIAL_SUBMISSION_IN_FLIGHT while the claim has a live submission */
         post: operations["postApiV1BillingCommercialClaimsByIdReady"];
         delete?: never;
         options?: never;
@@ -5629,7 +5629,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Send a ready commercial claim through the platform clearinghouse (commercial_billing.submit + a FRESH step-up, as M23's filing actions; never an AI actor; Idempotency-Key required). The request only decides and records: 202 with a `queued` submission and an m41.claim.submit_requested event; the worker sends it, and the claim moves ready to submitted only when the transport has accepted the file. The same key replays the stored answer with 200 and `replayed: true`. The send gate refuses with 409 COMMERCIAL_SEND_REFUSED (503 when the transport is unbound, CH_NOT_WIRED), carrying every reason as a detail {code, message}; a refusal writes no submission and no event, so no job exists */
+        /** Send a ready commercial claim through the platform clearinghouse (commercial_billing.submit + a FRESH step-up, as M23's filing actions; never an AI actor; Idempotency-Key required). The request only decides and records: 202 with a `queued` submission and an m41.claim.submit_requested event; the worker sends it, and the claim moves ready to submitted only when the transport has accepted the file. The same key replays the stored answer with 200 and `replayed: true`. The send gate refuses with 409 COMMERCIAL_SEND_REFUSED (503 when the transport is unbound, CH_NOT_WIRED), carrying every reason as a detail {code, message}; a refusal writes no submission and no event, so no job exists. 503 COMMERCIAL_DRAIN_NOT_SCHEDULED while the background sender is not scheduled (checked against the shared queue store, so it holds in a split API and worker deployment) */
         post: operations["postApiV1BillingCommercialClaimsByIdSubmit"];
         delete?: never;
         options?: never;
@@ -5663,7 +5663,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Re-run the payer-specific rules (plan, payer state, route, contract rate, authorization, diagnosis, attending). A ready claim that now has a block drops back to draft */
+        /** Re-run the payer-specific rules (plan, payer state, route, contract rate, authorization, diagnosis, attending). A ready claim that now has a block drops back to draft. 409 COMMERCIAL_SUBMISSION_IN_FLIGHT while the claim has a submission queued, in doubt or sent and not settled */
         post: operations["postApiV1BillingCommercialClaimsByIdValidate"];
         delete?: never;
         options?: never;
@@ -5697,7 +5697,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Void a commercial claim (frees its service window for a corrected re-assembly) */
+        /** Void a commercial claim (frees its service window for a corrected re-assembly). 409 COMMERCIAL_SUBMISSION_IN_FLIGHT while the claim has a submission queued, in doubt or sent and not settled; settle it first (reconcile) */
         post: operations["postApiV1BillingCommercialClaimsByIdVoid"];
         delete?: never;
         options?: never;

@@ -1770,6 +1770,8 @@ import {
   createDrainReadiness,
   createDrizzleAckCursorStore as createDrizzleM41AckCursorStore,
   createEligibilityService,
+  createScheduleProbe,
+  createSharedDrainReadiness,
   mountM41Routes,
   registerM41AckWorker,
   registerM41SubmissionWorker,
@@ -4061,8 +4063,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
   const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
   const m41OutboxPublisher = bindCallerModule(txOutboxPublisher, "m41");
-  // Whether the M41 drain is scheduled (starts false: with no queue connection nothing would ever send a queued submission).
-  const m41DrainReadiness = createDrainReadiness();
+  // Whether the M41 drain is scheduled. In the split deployment the API process (PROCESS_ROLE=api) never registers the repeatable jobs
+  // (TASK-040A: an API replica must not re-register crons), so a per-process flag would stay false there and refuse every submit
+  // forever. Readiness therefore reflects SHARED state: this process' own registration (worker / all roles) OR both repeatable
+  // schedules present in the queue store (probed, cached ~20s). With no queue connection there is nothing to probe and the answer is
+  // false: nothing would ever send a queued submission (fail closed).
+  const m41LocalSchedule = createDrainReadiness();
+  const m41ScheduleProbe = queueConnection
+    ? createScheduleProbe({ connection: queueConnection })
+    : undefined;
+  const m41DrainReadiness = createSharedDrainReadiness({
+    local: m41LocalSchedule,
+    ...(m41ScheduleProbe ? { probe: m41ScheduleProbe } : {}),
+  });
   const m25OutboxPublisher = bindCallerModule(txOutboxPublisher, "m25");
   // #659 - the tenant's NPI an 835 payee must match (see M25IngestDrizzleDeps.payeeNpi); one lookup for both M25 ingest roots.
   const m25PayeeNpi = dbHandle
@@ -6075,6 +6088,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 m41DrainReadiness,
               ),
             });
+            if (m41ScheduleProbe) app.addHook("onClose", async () => m41ScheduleProbe.close());
           }
           // M25 (Remittance & Denials) — mount the §4.1 route plugins over the Drizzle READ + WRITE
           // services. Each mutation opens its own withOrgContext (RLS scopes every statement to app.org_id),
@@ -8814,11 +8828,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       },
       onScheduled: (queues) => {
         m41ScheduleQueues.push(...queues);
-        m41DrainReadiness.markScheduled();
+        m41LocalSchedule.markScheduled();
         app.log.info("M41 commercial submission drain and acknowledgment pull scheduled");
       },
       onFailure: (err, attempt, nextRetryMs) => {
-        m41DrainReadiness.markNotScheduled();
+        m41LocalSchedule.markNotScheduled();
         app.log.error(
           { err, attempt, nextRetryMs },
           "M41 drain schedule registration FAILED: submit and reconcile answer 503 until it succeeds",
