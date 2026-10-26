@@ -6081,6 +6081,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/edi-profiles/{providerEntityId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every route's EDI submitter/receiver profile for one ProviderEntity (migration 1268) */
+        get: operations["getApiV1BillingEdiprofilesByProviderEntityId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/edi-profiles/{providerEntityId}/{routeKey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Create (201) or update (200, If-Match) the EDI submitter/receiver profile for a ProviderEntity and route; step-up */
+        put: operations["putApiV1BillingEdiprofilesByProviderEntityIdByRouteKey"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/eligibility": {
         parameters: {
             query?: never;
@@ -46260,6 +46294,104 @@ export interface operations {
                         };
                         /** @description What the provider reported. received / not_found: nothing final yet, the item is unchanged. accepted / returned / rejected: applied to the item. */
                         providerState: "not_found" | "received" | "accepted" | "returned" | "rejected";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingEdiprofilesByProviderEntityId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerEntityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        profiles: {
+                            profileId: string;
+                            providerEntityId: string;
+                            routeKey: string;
+                            submitterName: string;
+                            submitterId: string;
+                            submitterContactName: string;
+                            submitterContactPhone: string;
+                            receiverName: string;
+                            receiverId: string;
+                            receiverApplicationCode: string;
+                            setByMembershipId: string;
+                            version: number;
+                            createdAt: string;
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    putApiV1BillingEdiprofilesByProviderEntityIdByRouteKey: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5). */
+                "If-Match": string;
+            };
+            path: {
+                providerEntityId: string;
+                routeKey: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    submitterName: string;
+                    submitterId: string;
+                    submitterContactName: string;
+                    submitterContactPhone: string;
+                    receiverName: string;
+                    receiverId: string;
+                    receiverApplicationCode: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        profileId: string;
+                        providerEntityId: string;
+                        routeKey: string;
+                        submitterName: string;
+                        submitterId: string;
+                        submitterContactName: string;
+                        submitterContactPhone: string;
+                        receiverName: string;
+                        receiverId: string;
+                        receiverApplicationCode: string;
+                        setByMembershipId: string;
+                        version: number;
+                        createdAt: string;
+                        updatedAt: string;
                     };
                 };
             };
@@ -91593,6 +91725,13 @@ export interface operations {
                         /** @description MMDD */
                         fiscalYearEnd: string;
                         iqiesFacilityId: string | null;
+                        billingAddress: {
+                            line1: string;
+                            line2: string | null;
+                            city: string;
+                            state: string;
+                            postalCode: string;
+                        } | null;
                         status: "created" | "active" | "suspended" | "closed";
                         /** Format: date-time */
                         createdAt: string;
@@ -91633,6 +91772,13 @@ export interface operations {
                         /** @description MMDD */
                         fiscalYearEnd: string;
                         iqiesFacilityId: string | null;
+                        billingAddress: {
+                            line1: string;
+                            line2: string | null;
+                            city: string;
+                            state: string;
+                            postalCode: string;
+                        } | null;
                         status: "created" | "active" | "suspended" | "closed";
                         /** Format: date-time */
                         createdAt: string;
@@ -91661,6 +91807,14 @@ export interface operations {
                     doingBusinessAs?: string;
                     fiscalIntermediary?: string;
                     iqiesFacilityId?: string;
+                    /** @description The billing address printed on the 837I billing-provider loop (2010AA). Replaces the first stored address. */
+                    billingAddress?: {
+                        line1: string;
+                        line2?: string;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                    };
                     status?: "created" | "active" | "suspended" | "closed";
                 };
             };
@@ -91683,6 +91837,13 @@ export interface operations {
                         /** @description MMDD */
                         fiscalYearEnd: string;
                         iqiesFacilityId: string | null;
+                        billingAddress: {
+                            line1: string;
+                            line2: string | null;
+                            city: string;
+                            state: string;
+                            postalCode: string;
+                        } | null;
                         status: "created" | "active" | "suspended" | "closed";
                         /** Format: date-time */
                         createdAt: string;

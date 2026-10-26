@@ -79153,6 +79153,330 @@
         }
       }
     },
+    "/api/v1/billing/edi-profiles/{providerEntityId}": {
+      "get": {
+        "operationId": "getApiV1BillingEdiprofilesByProviderEntityId",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Every route's EDI submitter/receiver profile for one ProviderEntity (migration 1268)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "profiles"
+                  ],
+                  "properties": {
+                    "profiles": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "profileId",
+                          "providerEntityId",
+                          "routeKey",
+                          "submitterName",
+                          "submitterId",
+                          "submitterContactName",
+                          "submitterContactPhone",
+                          "receiverName",
+                          "receiverId",
+                          "receiverApplicationCode",
+                          "setByMembershipId",
+                          "version",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "profileId": {
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "type": "string"
+                          },
+                          "routeKey": {
+                            "type": "string"
+                          },
+                          "submitterName": {
+                            "minLength": 1,
+                            "maxLength": 60,
+                            "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
+                            "type": "string"
+                          },
+                          "submitterId": {
+                            "minLength": 1,
+                            "maxLength": 15,
+                            "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
+                            "type": "string"
+                          },
+                          "submitterContactName": {
+                            "minLength": 1,
+                            "maxLength": 60,
+                            "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
+                            "type": "string"
+                          },
+                          "submitterContactPhone": {
+                            "pattern": "^[0-9]{10}$",
+                            "type": "string"
+                          },
+                          "receiverName": {
+                            "minLength": 1,
+                            "maxLength": 60,
+                            "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
+                            "type": "string"
+                          },
+                          "receiverId": {
+                            "minLength": 1,
+                            "maxLength": 15,
+                            "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
+                            "type": "string"
+                          },
+                          "receiverApplicationCode": {
+                            "pattern": "^[A-Za-z0-9]{2,15}$",
+                            "type": "string"
+                          },
+                          "setByMembershipId": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/edi-profiles/{providerEntityId}/{routeKey}": {
+      "put": {
+        "operationId": "putApiV1BillingEdiprofilesByProviderEntityIdByRouteKey",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Create (201) or update (200, If-Match) the EDI submitter/receiver profile for a ProviderEntity and route; step-up",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "routeKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The row version the caller last read. A stale value fails with 412 STALE_VERSION (§7.7/§2.5).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "profileId",
+                    "providerEntityId",
+                    "routeKey",
+                    "submitterName",
+                    "submitterId",
+                    "submitterContactName",
+                    "submitterContactPhone",
+                    "receiverName",
+                    "receiverId",
+                    "receiverApplicationCode",
+                    "setByMembershipId",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "profileId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "routeKey": {
+                      "type": "string"
+                    },
+                    "submitterName": {
+                      "minLength": 1,
+                      "maxLength": 60,
+                      "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
+                      "type": "string"
+                    },
+                    "submitterId": {
+                      "minLength": 1,
+                      "maxLength": 15,
+                      "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
+                      "type": "string"
+                    },
+                    "submitterContactName": {
+                      "minLength": 1,
+                      "maxLength": 60,
+                      "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
+                      "type": "string"
+                    },
+                    "submitterContactPhone": {
+                      "pattern": "^[0-9]{10}$",
+                      "type": "string"
+                    },
+                    "receiverName": {
+                      "minLength": 1,
+                      "maxLength": 60,
+                      "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
+                      "type": "string"
+                    },
+                    "receiverId": {
+                      "minLength": 1,
+                      "maxLength": 15,
+                      "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
+                      "type": "string"
+                    },
+                    "receiverApplicationCode": {
+                      "pattern": "^[A-Za-z0-9]{2,15}$",
+                      "type": "string"
+                    },
+                    "setByMembershipId": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "submitterName",
+                  "submitterId",
+                  "submitterContactName",
+                  "submitterContactPhone",
+                  "receiverName",
+                  "receiverId",
+                  "receiverApplicationCode"
+                ],
+                "properties": {
+                  "submitterName": {
+                    "minLength": 1,
+                    "maxLength": 60,
+                    "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
+                    "type": "string"
+                  },
+                  "submitterId": {
+                    "minLength": 1,
+                    "maxLength": 15,
+                    "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
+                    "type": "string"
+                  },
+                  "submitterContactName": {
+                    "minLength": 1,
+                    "maxLength": 60,
+                    "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
+                    "type": "string"
+                  },
+                  "submitterContactPhone": {
+                    "pattern": "^[0-9]{10}$",
+                    "type": "string"
+                  },
+                  "receiverName": {
+                    "minLength": 1,
+                    "maxLength": 60,
+                    "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
+                    "type": "string"
+                  },
+                  "receiverId": {
+                    "minLength": 1,
+                    "maxLength": 15,
+                    "pattern": "^(?=.*\\S)[\\x20-\\x29\\x2B-\\x39\\x3B-\\x5B\\x5D\\x5F-\\x7B\\x7D]+$",
+                    "type": "string"
+                  },
+                  "receiverApplicationCode": {
+                    "pattern": "^[A-Za-z0-9]{2,15}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/eligibility": {
       "get": {
         "operationId": "getApiV1BillingEligibility",
@@ -254463,6 +254787,7 @@
                     "npi",
                     "fiscalYearEnd",
                     "iqiesFacilityId",
+                    "billingAddress",
                     "status",
                     "createdAt",
                     "updatedAt"
@@ -254511,6 +254836,47 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "billingAddress": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "line1",
+                            "line2",
+                            "city",
+                            "state",
+                            "postalCode"
+                          ],
+                          "properties": {
+                            "line1": {
+                              "type": "string"
+                            },
+                            "line2": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "city": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            },
+                            "postalCode": {
+                              "type": "string"
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -254648,6 +255014,7 @@
                     "npi",
                     "fiscalYearEnd",
                     "iqiesFacilityId",
+                    "billingAddress",
                     "status",
                     "createdAt",
                     "updatedAt"
@@ -254696,6 +255063,47 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "billingAddress": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "line1",
+                            "line2",
+                            "city",
+                            "state",
+                            "postalCode"
+                          ],
+                          "properties": {
+                            "line1": {
+                              "type": "string"
+                            },
+                            "line2": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "city": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            },
+                            "postalCode": {
+                              "type": "string"
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -254776,6 +255184,7 @@
                     "npi",
                     "fiscalYearEnd",
                     "iqiesFacilityId",
+                    "billingAddress",
                     "status",
                     "createdAt",
                     "updatedAt"
@@ -254824,6 +255233,47 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "billingAddress": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "line1",
+                            "line2",
+                            "city",
+                            "state",
+                            "postalCode"
+                          ],
+                          "properties": {
+                            "line1": {
+                              "type": "string"
+                            },
+                            "line2": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "city": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            },
+                            "postalCode": {
+                              "type": "string"
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -254893,6 +255343,40 @@
                   "iqiesFacilityId": {
                     "maxLength": 50,
                     "type": "string"
+                  },
+                  "billingAddress": {
+                    "description": "The billing address printed on the 837I billing-provider loop (2010AA). Replaces the first stored address.",
+                    "type": "object",
+                    "required": [
+                      "line1",
+                      "city",
+                      "state",
+                      "postalCode"
+                    ],
+                    "properties": {
+                      "line1": {
+                        "minLength": 1,
+                        "maxLength": 55,
+                        "type": "string"
+                      },
+                      "line2": {
+                        "maxLength": 55,
+                        "type": "string"
+                      },
+                      "city": {
+                        "minLength": 1,
+                        "maxLength": 30,
+                        "type": "string"
+                      },
+                      "state": {
+                        "pattern": "^[A-Z]{2}$",
+                        "type": "string"
+                      },
+                      "postalCode": {
+                        "pattern": "^\\d{5}(-\\d{4})?$",
+                        "type": "string"
+                      }
+                    }
                   },
                   "status": {
                     "anyOf": [

@@ -19,6 +19,7 @@ import { registerClaimsRoutes } from "./claims.routes";
 import { registerClearinghouseAttemptRoutes } from "./clearinghouse-attempt.routes";
 import { registerDdeProviderStatusRoutes } from "./dde-provider-status.routes";
 import { registerDdeQueueRoutes } from "./dde-queue.routes";
+import { registerEdiProfileRoutes } from "./edi-profile.routes";
 import { registerEligibilityRoutes } from "./eligibility.routes";
 import type { M23RouteServices } from "./index";
 import { type M23InternalSeamProvider, registerInternalSeamRoutes } from "./internal.routes";
@@ -115,6 +116,10 @@ export function mountM23Routes(
     registerSequestrationPolicyRoutes(app, { sequestrationService: services.sequestrationService });
   }
   registerMacCredentialRoutes(app, { readService, writeService });
+  // Migration 1269 — the tenant-entered EDI profile (submitter + receiver parties of the 837I interchange).
+  if (services.ediProfileService) {
+    registerEdiProfileRoutes(app, { ediProfileService: services.ediProfileService });
+  }
   // F-210 — the tenant-entered hospice rate table (the per-diem input claim assembly prices from).
   if (services.rateTableService) {
     registerRateTableRoutes(app, { rateTableService: services.rateTableService });

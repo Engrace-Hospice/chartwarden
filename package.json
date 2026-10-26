@@ -146,6 +146,7 @@
     "test:m20:routes:live": "vitest run apps/backend/__tests__/m20-routes.live.test.ts",
     "test:m23:ack-cursor:live": "vitest run apps/backend/__tests__/m23-ack-cursor.live.test.ts",
     "test:m23:clearinghouse-attempts:live": "vitest run apps/backend/__tests__/m23-clearinghouse-attempts.live.test.ts",
+    "test:m23:edi-profile:live": "vitest run apps/backend/__tests__/m23-edi-profile.live.test.ts",
     "test:m23:clearinghouse-submit:live": "vitest run apps/backend/__tests__/m23-clearinghouse-submit.live.test.ts",
     "test:foundation-site-reader:live": "vitest run apps/backend/__tests__/foundation-site-reader.live.test.ts",
     "test:m40:psap-jurisdiction:live": "vitest run apps/backend/__tests__/m40-psap-jurisdiction.live.test.ts",

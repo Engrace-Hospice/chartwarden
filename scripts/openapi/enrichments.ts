@@ -464,6 +464,11 @@ import {
   SubmitDdeViaProviderBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/dde-queue-typebox";
 import {
+  EdiProfileListResponseSchema,
+  EdiProfileViewSchema,
+  UpsertEdiProfileBodySchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/edi-profile-typebox";
+import {
   LoadWageIndexesBodySchema,
   LoadWageIndexesResultSchema,
   RegisterPlatformRuleBodySchema,
@@ -3691,6 +3696,14 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary:
       "Upsert a MAC credential — clientSecret write-only/encrypted at the boundary; step-up (§4.1 #35)",
     body: UpsertMacCredentialBodySchema,
+  },
+  // ── EDI profile (edi-profile.routes.ts; migration 1268) ──
+  "PUT /api/v1/billing/edi-profiles/:providerEntityId/:routeKey": {
+    summary:
+      "Create (201) or update (200, If-Match) the EDI submitter/receiver profile for a ProviderEntity and route; step-up",
+    body: UpsertEdiProfileBodySchema,
+    response: EdiProfileViewSchema,
+    headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   // ── clearinghouse attempt resolution (clearinghouse-attempt.routes.ts; ADR-0053) ──
   "POST /api/v1/billing/clearinghouse-attempts/resolve": {
@@ -13041,6 +13054,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/billing/mac-credentials/:providerEntityId": {
     summary: "The MAC credential for one ProviderEntity, or null (§4.1)",
     response: M23MacCredentialByProviderResponse,
+  },
+  "GET /api/v1/billing/edi-profiles/:providerEntityId": {
+    summary: "Every route's EDI submitter/receiver profile for one ProviderEntity (migration 1268)",
+    response: EdiProfileListResponseSchema,
   },
   "GET /api/v1/billing/metrics": {
     summary:

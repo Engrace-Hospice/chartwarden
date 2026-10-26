@@ -59,6 +59,15 @@ export const ProviderEntityDetailSchema = Type.Object({
   npi: Type.String(),
   fiscalYearEnd: Type.String({ description: "MMDD" }),
   iqiesFacilityId: Nullable(Type.String()),
+  billingAddress: Nullable(
+    Type.Object({
+      line1: Type.String(),
+      line2: Nullable(Type.String()),
+      city: Type.String(),
+      state: Type.String(),
+      postalCode: Type.String(),
+    }),
+  ),
   status: Lifecycle,
   createdAt: Iso,
   updatedAt: Iso,
@@ -86,6 +95,21 @@ export const ProviderEntityPatchRequestSchema = Type.Object({
   doingBusinessAs: Type.Optional(Type.String({ maxLength: 200 })),
   fiscalIntermediary: Type.Optional(Type.String({ maxLength: 200 })),
   iqiesFacilityId: Type.Optional(Type.String({ maxLength: 50 })),
+  billingAddress: Type.Optional(
+    Type.Object(
+      {
+        line1: Type.String({ minLength: 1, maxLength: 55 }),
+        line2: Type.Optional(Type.String({ maxLength: 55 })),
+        city: Type.String({ minLength: 1, maxLength: 30 }),
+        state: Type.String({ pattern: "^[A-Z]{2}$" }),
+        postalCode: Type.String({ pattern: "^\\d{5}(-\\d{4})?$" }),
+      },
+      {
+        description:
+          "The billing address printed on the 837I billing-provider loop (2010AA). Replaces the first stored address.",
+      },
+    ),
+  ),
   status: Type.Optional(Lifecycle),
 });
 

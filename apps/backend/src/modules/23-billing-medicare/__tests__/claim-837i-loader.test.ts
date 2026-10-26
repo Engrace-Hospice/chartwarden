@@ -3,7 +3,11 @@
 // sandbox accepted on 2026-10-09 (packages/x12-837-client `stedi-claim.x12`), so a drift in the mapping shows here.
 import { inspect } from "node:util";
 import type { repositories } from "@chartwarden/billing";
-import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
+import {
+  type ClearinghouseContext,
+  InMemoryAttemptStore,
+  StediTransport,
+} from "@chartwarden/x12-837-client";
 import { describe, expect, it, vi } from "vitest";
 import {
   type Claim837iLoaderDeps,
@@ -252,6 +256,13 @@ describe("loadClaim837iInput golden claim", () => {
     const r = await loadAndRender837i(deps().value, args);
     if (!r.ok) throw new Error(`load failed: ${gapsOf(r).join(",")}`);
     expect(r.rendered.reveal().x12).toBe(GOLDEN_X12);
+  });
+
+  it("files under the attempt's control number (CLM01) when one is given, not the claim row's", async () => {
+    const r = await loadAndRender837i(deps().value, { ...args, claimControlNumber: "RETRY0002" });
+    if (!r.ok) throw new Error(`load failed: ${gapsOf(r).join(",")}`);
+    expect(r.rendered.reveal().x12).toContain("CLM*RETRY0002*1500.00");
+    expect(r.rendered.reveal().x12).not.toContain("WXHOSP0001");
   });
 
   it("produces the matching Stedi JSON, with charges summing to the lines", async () => {
@@ -570,5 +581,51 @@ describe("loadClaim837iInput gaps", () => {
       args,
     );
     expect(gapsOf(r)).toEqual(["totalChargeCents:inconsistent"]);
+  });
+});
+
+// Characterizes the Stedi transport's own rule (ADR-0053): the submission's control number must be the interchange's ISA13.
+// The submit workers pass the alphanumeric CLAIM control number, so a Stedi-bound deployment is refused until the
+// workers submit under a platform-allocated ISA13 and the ack side maps it back to the claim (not built: see the
+// note on `interchangeNumberFor`).
+describe("the rendered 837I against the Stedi transport", () => {
+  const submit = async (isa13: number, controlNumber: string) => {
+    const r = await loadAndRender837i(deps().value, { ...args, interchangeControlNumber: isa13 });
+    if (!r.ok) throw new Error(`load failed: ${gapsOf(r).join(",")}`);
+    const sent: string[] = [];
+    const transport = new StediTransport({
+      apiKey: "test-key",
+      attempts: new InMemoryAttemptStore(),
+      fetch: (async (_url: string, init: RequestInit) => {
+        sent.push(String(init.body));
+        return new Response(JSON.stringify({ claimReference: { correlationId: "ch-1" } }), {
+          status: 200,
+        });
+      }) as unknown as typeof fetch,
+    });
+    const result = await transport.submitClaim(CONTEXT, {
+      kind: "claim",
+      controlNumber,
+      idempotencyKey: "m23.claim.WXHOSP0001",
+      payload: { format: "x12", x12: r.rendered.reveal().x12 },
+    });
+    return { result, sent };
+  };
+
+  it("is filed when its ISA13 is the allocated control number (9 digits, zero padded)", async () => {
+    const { result, sent } = await submit(42, "000000042");
+
+    expect(result.ok).toBe(true);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("is refused before any call when the control number is the claim number, as the workers pass it", async () => {
+    const { result, sent } = await submit(42, "WXHOSP0001");
+
+    expect(result).toMatchObject({
+      ok: false,
+      degraded: { reason: "controlNumber does not match ISA13" },
+    });
+    expect(sent).toHaveLength(0);
   });
 });

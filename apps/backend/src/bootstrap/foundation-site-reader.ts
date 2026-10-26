@@ -88,6 +88,20 @@ export interface FoundationSiteReader {
     organizationId: string,
     providerEntityId: string,
   ): Promise<string | null>;
+  /**
+   * M23's 837I billing-provider loop (2010AA): legal name, NPI, the SEALED EIN (`tax_id_encrypted`; the caller opens it
+   * with M2's tax-id cipher) and the raw `addresses` jsonb. Null when the provider entity is not found in the org.
+   */
+  providerEntityBillingFacts(
+    tx: DbClient,
+    organizationId: string,
+    providerEntityId: string,
+  ): Promise<{
+    readonly legalName: string;
+    readonly npi: string;
+    readonly taxIdSealed: string;
+    readonly addresses: unknown;
+  } | null>;
 }
 
 /** The single candidate id, preferring `active` over `created`; null when there is no unambiguous one. */
@@ -198,6 +212,20 @@ export function buildFoundationSiteReader(): FoundationSiteReader {
         .where(and(eq(PROVIDER.id, providerEntityId), eq(PROVIDER.organizationId, organizationId)))
         .limit(1);
       return provider?.legalName ?? null;
+    },
+
+    async providerEntityBillingFacts(tx, organizationId, providerEntityId) {
+      const [provider] = await tx
+        .select({
+          legalName: PROVIDER.legalName,
+          npi: PROVIDER.npi,
+          taxIdSealed: PROVIDER.taxIdEncrypted,
+          addresses: PROVIDER.addresses,
+        })
+        .from(PROVIDER)
+        .where(and(eq(PROVIDER.id, providerEntityId), eq(PROVIDER.organizationId, organizationId)))
+        .limit(1);
+      return provider ?? null;
     },
   };
 }

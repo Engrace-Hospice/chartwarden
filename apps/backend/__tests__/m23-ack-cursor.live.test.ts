@@ -181,6 +181,8 @@ describe.skipIf(!DB_URL)("M23 ack cursor - LIVE Postgres", () => {
         pullPending277ca: legacy as never,
         probeHealth: async () => true,
       },
+      // The cursor cases exercise the ack pull, not the rendering.
+      renderClaim: async () => "ISA*00*...~",
       transport: {
         binding: { vendor: "in_memory", transport: spy as never },
         contexts: {
