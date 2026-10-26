@@ -27,7 +27,6 @@ import {
 } from "./dde-provider-model";
 import {
   CLOSE_REQUEUE_NOTE,
-  DEADLINE_LABEL,
   DEADLINE_TONE,
   type DdeItem,
   type DdeItemDetail,
@@ -38,6 +37,7 @@ import {
   STATE_TONE,
   type SubmissionDraft,
   TYPE_LABEL,
+  deadlineBadgeLabel,
   deadlineNote,
   errorCode,
   errorMessage,
@@ -312,10 +312,7 @@ export function ItemRail({
             <Row term="Deadline">
               <span className="wx-nums">{fmtDay(n.deadlineAt)}</span>
               {n.deadlineStatus !== "none" ? (
-                <StatusPill
-                  label={DEADLINE_LABEL[n.deadlineStatus]}
-                  tone={DEADLINE_TONE[n.deadlineStatus]}
-                />
+                <StatusPill label={deadlineBadgeLabel(n)} tone={DEADLINE_TONE[n.deadlineStatus]} />
               ) : null}
             </Row>
             {note ? (
