@@ -1,3 +1,5 @@
+import { HOPE_J2051_SYMPTOM_CODES, HOPE_RFA_KINDS } from "@chartwarden/types";
+import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/10-hope/routes/hope-typebox.ts — M10-T06 TypeBox route schemas (§4.1 / §4.3).
 // Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox
 // import for a Drizzle one. Validation runs through TypeBox `Value` → M1's VALIDATION_FAILED envelope.
@@ -10,8 +12,6 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { HOPE_J2051_SYMPTOM_CODES, HOPE_RFA_KINDS } from "@chartwarden/types";
-import { ValidationError } from "@chartwarden/types";
 import type {
   HopeAnswerPatchResult as ServiceAnswerPatchResult,
   HopeAssessmentView as ServiceAssessmentView,
@@ -249,23 +249,26 @@ export const MarkSubmissionUploadedSchema = Type.Object({
     Type.Union([Type.String({ maxLength: 200 }), Type.Null()]),
   ),
 });
+const CMS_TOKEN = { maxLength: 64 };
 export const ImportSubmissionResultSchema = Type.Object({
   reportReference: Type.Optional(Type.Union([Type.String({ maxLength: 500 }), Type.Null()])),
+  // Bounded: every row is stored (report, item result, finding), so an unbounded body is a write amplifier.
   results: Type.Array(
     Type.Object(
       {
         assessmentId: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
-        status: Type.Optional(Type.String()),
-        result: Type.Optional(Type.String()),
-        outcome: Type.Optional(Type.String()),
-        severity: Type.Optional(Type.String()),
-        code: Type.Optional(Type.String()),
-        itemCode: Type.Optional(Type.String()),
-        message: Type.Optional(Type.String()),
-        iqiesRecordId: Type.Optional(Type.String()),
+        status: Type.Optional(Type.String(CMS_TOKEN)),
+        result: Type.Optional(Type.String(CMS_TOKEN)),
+        outcome: Type.Optional(Type.String(CMS_TOKEN)),
+        severity: Type.Optional(Type.String(CMS_TOKEN)),
+        code: Type.Optional(Type.String(CMS_TOKEN)),
+        itemCode: Type.Optional(Type.String(CMS_TOKEN)),
+        message: Type.Optional(Type.String({ maxLength: 1000 })),
+        iqiesRecordId: Type.Optional(Type.String(CMS_TOKEN)),
       },
-      { additionalProperties: true },
+      { additionalProperties: false },
     ),
+    { maxItems: 2000 },
   ),
 });
 export const RegenerateSchedulesSchema = Type.Object({
@@ -609,6 +612,77 @@ export const HopeSubmissionResponseSchema = Type.Object({
   submittedAt: Type.Optional(NullableString()),
   acceptedAt: NullableString(),
   iqiesSubmissionReference: Type.Optional(NullableString()),
+  /** Rejected items still awaiting a correction assessment. */
+  needsCorrectionCount: Type.Integer(),
+  /** Rejected items whose correction exists but is not yet in a batch. */
+  correctionInProgressCount: Type.Integer(),
+  /** Rejected items whose correction is in a newer batch awaiting the CMS result. */
+  resubmittedCount: Type.Integer(),
+});
+const SUBMISSION_ITEM_STATUS = Type.Union([
+  Type.Literal("accepted"),
+  Type.Literal("accepted_with_warnings"),
+  Type.Literal("rejected"),
+  Type.Literal("pending"),
+  Type.Literal("blocked"),
+  Type.Literal("unmatched"),
+]);
+/** One assessment inside a batch with its CMS outcome (patient NAME is not resolved by M10). */
+export const HopeSubmissionItemResponseSchema = Type.Object({
+  id: Type.String(),
+  assessmentId: Type.String(),
+  patientId: NullableString(),
+  rfaKind: Type.Union([RFA_KIND, Type.Null()]),
+  assessmentStatus: Type.Union([
+    Type.Literal("draft"),
+    Type.Literal("signed"),
+    Type.Literal("superseded"),
+    Type.Null(),
+  ]),
+  status: SUBMISSION_ITEM_STATUS,
+  iqiesRecordId: NullableString(),
+  processedAt: NullableString(),
+  /** Rejected items only: where the correction stands (corrections supersede; originals untouched). */
+  resolution: Type.Union([
+    Type.Literal("needs_correction"),
+    Type.Literal("correction_in_progress"),
+    Type.Literal("resubmitted"),
+    Type.Literal("resolved"),
+    Type.Null(),
+  ]),
+  correctionAssessmentId: NullableString(),
+});
+/** One CMS finding recorded from the Final Validation Report. */
+export const HopeSubmissionFindingResponseSchema = Type.Object({
+  id: Type.String(),
+  assessmentId: NullableString(),
+  severity: Type.Union([Type.Literal("error"), Type.Literal("warning")]),
+  code: NullableString(),
+  itemCode: NullableString(),
+  message: NullableString(),
+});
+/** Submission detail: the batch plus its items and the recorded CMS findings. */
+export const HopeSubmissionDetailResponseSchema = Type.Composite([
+  HopeSubmissionResponseSchema,
+  Type.Object({
+    resultImportedAt: NullableString(),
+    resultReportReference: NullableString(),
+    items: Type.Array(HopeSubmissionItemResponseSchema),
+    findings: Type.Array(HopeSubmissionFindingResponseSchema),
+  }),
+]);
+/** Reverse lookup: the batches holding one assessment. */
+export const HopeAssessmentSubmissionsResponseSchema = Type.Object({
+  submissions: Type.Array(
+    Type.Object({
+      submissionId: Type.String(),
+      status: SUBMISSION_STATUS,
+      itemStatus: SUBMISSION_ITEM_STATUS,
+      packageFilename: NullableString(),
+      submittedAt: NullableString(),
+      resultImportedAt: NullableString(),
+    }),
+  ),
 });
 /**
  * F-058 (#150) — what one force-assemble pass did.

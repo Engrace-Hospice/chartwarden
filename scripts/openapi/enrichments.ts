@@ -2021,6 +2021,8 @@ import {
   HopeSfvListResponseSchema as M10HopeSfvListResponseSchema,
   HopeSfvResponseSchema as M10HopeSfvResponseSchema,
   HopeSignResponseSchema as M10HopeSignResponseSchema,
+  HopeAssessmentSubmissionsResponseSchema as M10HopeAssessmentSubmissionsResponseSchema,
+  HopeSubmissionDetailResponseSchema as M10HopeSubmissionDetailResponseSchema,
   HopeSubmissionListResponseSchema as M10HopeSubmissionListResponseSchema,
   HopeSubmissionResponseSchema as M10HopeSubmissionResponseSchema,
   HopeSummaryRequestedResponseSchema as M10HopeSummaryRequestedResponseSchema,
@@ -5402,11 +5404,17 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeSubmissionListResponseSchema,
   },
   "GET /api/v1/hope/submissions/:id": {
-    summary: "HOPE submission detail — per-item outcomes, rejection findings, retry control (§5.2)",
-    response: M10HopeSubmissionResponseSchema,
+    summary:
+      "HOPE submission detail — items, per-item CMS outcome, recorded findings, correction standing (§5.2)",
+    response: M10HopeSubmissionDetailResponseSchema,
+  },
+  "GET /api/v1/hope/assessments/:id/submissions": {
+    summary: "Submission batches holding one assessment, with batch and item status",
+    response: M10HopeAssessmentSubmissionsResponseSchema,
   },
   "POST /api/v1/hope/submissions/:id/retry": {
-    summary: "Requeue a rejected submission for the next transmit pass",
+    summary:
+      "Deprecated for the UI: requeue a rejected batch. iQIES has no retry; fix a rejected record with a correction assessment and re-package it in a new batch",
     body: M10RetrySubmissionSchema,
     response: M10HopeSubmissionResponseSchema,
   },
@@ -5419,9 +5427,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeSubmissionResponseSchema,
   },
   "POST /api/v1/hope/submissions/:id/results": {
-    summary: "Import structured iQIES Final Validation Report results",
+    summary:
+      "Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent)",
     body: M10ImportSubmissionResultSchema,
-    response: M10HopeSubmissionResponseSchema,
+    response: M10HopeSubmissionDetailResponseSchema,
   },
   "POST /api/v1/hope/submissions/assemble": {
     summary: "Force-assemble a submission outside the cron cadence",

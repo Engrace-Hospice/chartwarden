@@ -7,6 +7,7 @@
 // PPS / ESAS-r at sign (D8); when absent the snapshot is skipped and a warning is recorded (§7.13 / DR
 // Tier-2 — no external dependency blocks the write path). Every state transition records the §2.4 outbox
 // event the relay publishes (drainable for tests).
+import { createHash } from "node:crypto";
 import {
   type CaptureDecision,
   type HopeAttention,
@@ -30,6 +31,7 @@ import type {
   HopeScheduleGeneratedBy,
   HopeScheduleStatus,
   HopeSfvStatus,
+  HopeSubmissionItemStatus,
   HopeSubmissionStatus,
   J2051Severity,
   LatestAssessmentProvider,
@@ -43,6 +45,18 @@ import type {
   HopeAssessmentWorkspace,
 } from "../hope-answer-service";
 import type { HopeReviewReadModel } from "../hope-readiness-service";
+import {
+  type RejectedItemResolution,
+  classifyCmsResult,
+  deriveBatchOutcome,
+  findingSeverity,
+  isResultImportable,
+  manualUploadTransmittedPayload,
+  resolveRejectedItem,
+  settledBatchEvent,
+  terminalCorrection,
+  worstOutcome,
+} from "../hope-submission-result";
 import type { HopeValidationRunView } from "../hope-validation-service";
 import { submissionPeriodFor } from "../jobs/submission";
 
@@ -121,6 +135,55 @@ export interface HopeSubmissionView {
   readonly submittedAt?: string | null;
   readonly acceptedAt: string | null;
   readonly iqiesSubmissionReference?: string | null;
+  /** Rejected items still awaiting a correction assessment (corrections supersede; originals untouched). */
+  readonly needsCorrectionCount: number;
+  /** Rejected items whose correction exists but is not yet in a batch (draft/signed, unpackaged). */
+  readonly correctionInProgressCount: number;
+  /** Rejected items whose correction is in a newer batch awaiting the CMS result. */
+  readonly resubmittedCount: number;
+}
+
+/** One assessment inside a batch, with its CMS outcome. Patient NAME is not resolved here (M10 holds only
+ * the id); the web resolves it from the patient API. */
+export interface HopeSubmissionItemView {
+  readonly id: string;
+  readonly assessmentId: string;
+  readonly patientId: string | null;
+  readonly rfaKind: HopeRfaKind | null;
+  readonly assessmentStatus: "draft" | "signed" | "superseded" | null;
+  readonly status: HopeSubmissionItemStatus;
+  readonly iqiesRecordId: string | null;
+  readonly processedAt: string | null;
+  /** Only for a rejected item: where the correction stands. */
+  readonly resolution: RejectedItemResolution | null;
+  readonly correctionAssessmentId: string | null;
+}
+
+/** One CMS finding recorded from the Final Validation Report. */
+export interface HopeSubmissionFindingView {
+  readonly id: string;
+  readonly assessmentId: string | null;
+  readonly severity: "error" | "warning";
+  readonly code: string | null;
+  readonly itemCode: string | null;
+  readonly message: string | null;
+}
+
+export interface HopeSubmissionDetailView extends HopeSubmissionView {
+  readonly resultImportedAt: string | null;
+  readonly resultReportReference: string | null;
+  readonly items: readonly HopeSubmissionItemView[];
+  readonly findings: readonly HopeSubmissionFindingView[];
+}
+
+/** Reverse lookup: a batch holding one assessment. */
+export interface HopeAssessmentSubmissionView {
+  readonly submissionId: string;
+  readonly status: HopeSubmissionStatus;
+  readonly itemStatus: HopeSubmissionItemStatus;
+  readonly packageFilename: string | null;
+  readonly submittedAt: string | null;
+  readonly resultImportedAt: string | null;
 }
 
 /**
@@ -363,7 +426,16 @@ export interface HopeRouteService extends HopeAbacResolver {
     organizationId: string,
     providerEntityId?: string,
   ): Promise<{ submissions: HopeSubmissionView[] }>;
-  getSubmission(organizationId: string, id: string): Promise<HopeSubmissionView>;
+  getSubmission(organizationId: string, id: string): Promise<HopeSubmissionDetailView>;
+  listAssessmentSubmissions(
+    organizationId: string,
+    assessmentId: string,
+  ): Promise<{ submissions: HopeAssessmentSubmissionView[] }>;
+  /**
+   * @deprecated for the UI — iQIES has no retry. A rejected record is fixed with a correction assessment
+   * (`POST /assessments/:id/correct`) and re-packaged in a NEW batch (assemble picks the correction up).
+   * Kept only so the route contract is stable; nothing consumes the `queued` state it sets.
+   */
   retrySubmission(organizationId: string, id: string): Promise<HopeSubmissionView>;
   assembleSubmission(organizationId: string, providerEntityId: string): Promise<HopeSubmissionView>;
   downloadSubmissionPackage(
@@ -381,7 +453,7 @@ export interface HopeRouteService extends HopeAbacResolver {
     userId: string,
     id: string,
     args: { reportReference?: string | null; results: readonly Record<string, unknown>[] },
-  ): Promise<HopeSubmissionView>;
+  ): Promise<HopeSubmissionDetailView>;
   complianceDashboard(
     organizationId: string,
     providerEntityId?: string,
@@ -418,9 +490,27 @@ interface SfvRecord extends Mutable<HopeSfvView> {
   timeZone: string;
   triggeringSymptoms: ReadonlyArray<{ symptomCode: string; severity: string }>;
 }
-interface SubmissionRecord extends Mutable<HopeSubmissionView> {
+interface SubmissionItemRecord {
+  id: string;
+  assessmentId: string;
+  status: HopeSubmissionItemStatus;
+  iqiesRecordId: string | null;
+  processedAt: string | null;
+}
+interface SubmissionRecord
+  extends Mutable<
+    Omit<
+      HopeSubmissionView,
+      "needsCorrectionCount" | "correctionInProgressCount" | "resubmittedCount"
+    >
+  > {
   organizationId: string;
   packageContentBase64?: string;
+  items: SubmissionItemRecord[];
+  findings: HopeSubmissionFindingView[];
+  resultImportedAt: string | null;
+  resultReportReference: string | null;
+  resultReportHash: string | null;
 }
 
 export interface HopeRouteSeed {
@@ -796,6 +886,11 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       packageSha256: null,
       packageSizeBytes: null,
       iqiesSubmissionReference: null,
+      items: [],
+      findings: [],
+      resultImportedAt: null,
+      resultReportReference: null,
+      resultReportHash: null,
       ...s,
     } as SubmissionRecord);
 
@@ -818,10 +913,77 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     const { organizationId: _o, timeZone: _t, triggeringSymptoms: _s, ...v } = r;
     return v;
   };
-  const viewSub = (r: SubmissionRecord): HopeSubmissionView => {
-    const { organizationId: _o, ...v } = r;
-    return v;
+  /** Where a rejected assessment's correction stands (the correction is a NEW row; the original is never
+   * edited). The correction's latest batch item decides it. */
+  const correctionStanding = (assessmentId: string) => {
+    const childOf = new Map<string, string>();
+    for (const a of assessments.values())
+      if (a.correctsAssessmentId && !childOf.has(a.correctsAssessmentId))
+        childOf.set(a.correctsAssessmentId, a.id);
+    const correctionId = terminalCorrection(assessmentId, childOf);
+    if (!correctionId)
+      return { correctionAssessmentId: null, resolution: resolveRejectedItem(null) };
+    const placed = [...submissions.values()]
+      .flatMap((s) => s.items)
+      .filter((i) => i.assessmentId === correctionId)
+      .at(-1);
+    return {
+      correctionAssessmentId: correctionId,
+      resolution: resolveRejectedItem({ itemStatus: placed?.status ?? null }),
+    };
   };
+  const itemViews = (r: SubmissionRecord): HopeSubmissionItemView[] =>
+    r.items.map((i) => {
+      const a = assessments.get(i.assessmentId);
+      const standing =
+        i.status === "rejected"
+          ? correctionStanding(i.assessmentId)
+          : { correctionAssessmentId: null, resolution: null };
+      return {
+        id: i.id,
+        assessmentId: i.assessmentId,
+        patientId: a?.patientId ?? null,
+        rfaKind: a?.rfaKind ?? null,
+        assessmentStatus: a?.status ?? null,
+        status: i.status,
+        iqiesRecordId: i.iqiesRecordId,
+        processedAt: i.processedAt,
+        ...standing,
+      };
+    });
+  const viewSub = (r: SubmissionRecord): HopeSubmissionView => {
+    const resolutions = itemViews(r).map((i) => i.resolution);
+    const n = (x: RejectedItemResolution) => resolutions.filter((v) => v === x).length;
+    return {
+      id: r.id,
+      providerEntityId: r.providerEntityId,
+      submissionPeriod: r.submissionPeriod,
+      status: r.status,
+      transportMode: r.transportMode,
+      validationProfile: r.validationProfile,
+      packageFilename: r.packageFilename,
+      packageSha256: r.packageSha256,
+      packageSizeBytes: r.packageSizeBytes,
+      itemCount: r.itemCount,
+      acceptedCount: r.acceptedCount,
+      rejectedCount: r.rejectedCount,
+      transmittedAt: r.transmittedAt,
+      exportedAt: r.exportedAt,
+      submittedAt: r.submittedAt,
+      acceptedAt: r.acceptedAt,
+      iqiesSubmissionReference: r.iqiesSubmissionReference,
+      needsCorrectionCount: n("needs_correction"),
+      correctionInProgressCount: n("correction_in_progress"),
+      resubmittedCount: n("resubmitted"),
+    };
+  };
+  const viewSubDetail = (r: SubmissionRecord): HopeSubmissionDetailView => ({
+    ...viewSub(r),
+    resultImportedAt: r.resultImportedAt,
+    resultReportReference: r.resultReportReference,
+    items: itemViews(r),
+    findings: r.findings,
+  });
   const findA = (organizationId: string, id: string): AssessmentRecord => {
     const r = assessments.get(id);
     if (!r || r.organizationId !== organizationId)
@@ -1629,7 +1791,25 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       return { submissions: all.map(viewSub) };
     },
     async getSubmission(organizationId, id) {
-      return viewSub(findSub(organizationId, id));
+      return viewSubDetail(findSub(organizationId, id));
+    },
+    async listAssessmentSubmissions(organizationId, assessmentId) {
+      findA(organizationId, assessmentId);
+      const submissionsOut = [...submissions.values()]
+        .filter((s) => s.organizationId === organizationId)
+        .flatMap((s) =>
+          s.items
+            .filter((i) => i.assessmentId === assessmentId)
+            .map((i) => ({
+              submissionId: s.id,
+              status: s.status,
+              itemStatus: i.status,
+              packageFilename: s.packageFilename ?? null,
+              submittedAt: s.submittedAt ?? null,
+              resultImportedAt: s.resultImportedAt,
+            })),
+        );
+      return { submissions: submissionsOut };
     },
     async retrySubmission(organizationId, id) {
       const r = findSub(organizationId, id);
@@ -1656,12 +1836,26 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
      * route contract and the idempotency skip to be exercised without a database.
      */
     async assembleSubmission(organizationId, providerEntityId) {
+      // A correction of a rejected assessment is a new signed row and is picked up here; the rejected
+      // original is superseded when the correction signs, and never re-sent unchanged before that.
+      const batched = new Set(
+        [...submissions.values()].flatMap((sub) =>
+          sub.items.filter((i) => i.status !== "rejected").map((i) => i.assessmentId),
+        ),
+      );
+      const rejectedBefore = new Set(
+        [...submissions.values()].flatMap((sub) =>
+          sub.items.filter((i) => i.status === "rejected").map((i) => i.assessmentId),
+        ),
+      );
       const ready = [...assessments.values()].filter(
         (a) =>
           a.organizationId === organizationId &&
           a.status === "signed" &&
           a.regulatory.specVersionId &&
-          !a.supersededByAssessmentId,
+          !a.supersededByAssessmentId &&
+          !batched.has(a.id) &&
+          !rejectedBefore.has(a.id),
       );
       if (ready.length === 0) {
         throw new ConflictError(
@@ -1693,6 +1887,17 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         submittedAt: null,
         acceptedAt: null,
         iqiesSubmissionReference: null,
+        items: ready.map((a) => ({
+          id: nextId(),
+          assessmentId: a.id,
+          status: "pending" as const,
+          iqiesRecordId: null,
+          processedAt: null,
+        })),
+        findings: [],
+        resultImportedAt: null,
+        resultReportReference: null,
+        resultReportHash: null,
       };
       submissions.set(id, rec);
       emit(
@@ -1711,8 +1916,10 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       const r = findSub(organizationId, id);
       const bytes = Buffer.from(r.packageContentBase64 ?? "", "base64");
       if (bytes.length === 0) throw new ConflictError(`Submission ${id} has no package.`);
-      r.status = "exported";
-      r.exportedAt = now();
+      if (r.status === "packaged") {
+        r.status = "exported";
+        r.exportedAt = now();
+      }
       return {
         filename: r.packageFilename ?? `${id}.zip`,
         contentType: "application/zip",
@@ -1733,41 +1940,82 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       r.iqiesSubmissionReference = args.iqiesSubmissionReference ?? null;
       emit(
         "m10.hope.submission_transmitted",
-        { submissionId: id, submittedAt: at, submittedBy: userId },
+        {
+          ...manualUploadTransmittedPayload(id, r.packageSha256, new Date(at)),
+          submittedBy: userId,
+        },
         `${id}:manual-uploaded`,
       );
       return viewSub(r);
     },
     async importSubmissionResult(organizationId, userId, id, args) {
       const r = findSub(organizationId, id);
-      const rejected = args.results.filter(
-        (raw) =>
-          String(raw.status ?? raw.result ?? raw.outcome ?? raw.severity ?? "")
-            .toLowerCase()
-            .includes("reject") || String(raw.severity ?? "").toLowerCase() === "fatal",
-      ).length;
-      const warnings = args.results.filter((raw) =>
-        String(raw.status ?? raw.result ?? raw.outcome ?? raw.severity ?? "")
-          .toLowerCase()
-          .includes("warning"),
-      ).length;
-      r.rejectedCount = rejected;
-      r.acceptedCount = Math.max(0, r.itemCount - rejected);
-      r.status =
-        rejected > 0 && r.acceptedCount > 0
-          ? "partially_accepted"
-          : rejected > 0
-            ? "rejected"
-            : warnings > 0
-              ? "accepted_with_warnings"
-              : "accepted";
-      r.acceptedAt = rejected === 0 ? now() : null;
-      emit(
-        rejected > 0 ? "m10.hope.submission_rejected" : "m10.hope.submission_accepted",
-        { submissionId: id, importedBy: userId },
-        `${id}:result-imported`,
+      const reportHash = createHash("sha256").update(JSON.stringify(args.results)).digest("hex");
+      if (r.resultReportHash === reportHash) return viewSubDetail(r); // idempotent replay
+      require_(
+        isResultImportable(r.status),
+        r.status === "packaged" || r.status === "queued" || r.status === "ready"
+          ? "M10_SUBMISSION_RESULT_NOT_UPLOADED"
+          : "M10_SUBMISSION_RESULT_ALREADY_RECORDED",
+        `Submission ${id} is ${r.status}; a result can only be recorded for a batch that was downloaded/uploaded and is still awaiting its CMS result.`,
       );
-      return viewSub(r);
+      const matched = args.results.filter((raw) =>
+        r.items.some((i) => i.assessmentId === raw.assessmentId),
+      );
+      require_(
+        matched.length > 0,
+        "M10_SUBMISSION_RESULT_NO_MATCH",
+        `None of the ${args.results.length} report rows names an assessment in submission ${id}.`,
+      );
+      const at = now();
+      const findings: HopeSubmissionFindingView[] = [];
+      // One report row per finding: the worst outcome per assessment wins, independent of row order.
+      const worst = new Map<string, ReturnType<typeof classifyCmsResult>>();
+      for (const raw of args.results) {
+        const id_ = typeof raw.assessmentId === "string" ? raw.assessmentId : null;
+        const status = classifyCmsResult(raw);
+        if (id_ && status !== "pending")
+          worst.set(id_, worstOutcome(worst.get(id_) ?? status, status));
+      }
+      for (const raw of args.results) {
+        const item = r.items.find((i) => i.assessmentId === raw.assessmentId);
+        const resultStatus = classifyCmsResult(raw);
+        const merged = item ? worst.get(item.assessmentId) : undefined;
+        if (item && merged && merged !== "pending") {
+          item.status = merged;
+          item.processedAt = at;
+          if (typeof raw.iqiesRecordId === "string") item.iqiesRecordId = raw.iqiesRecordId;
+        }
+        const code = typeof raw.code === "string" ? raw.code : null;
+        const itemCode = typeof raw.itemCode === "string" ? raw.itemCode : null;
+        const message = typeof raw.message === "string" ? raw.message : null;
+        if (code || itemCode || message)
+          findings.push({
+            id: nextId(),
+            assessmentId: typeof raw.assessmentId === "string" ? raw.assessmentId : null,
+            severity: findingSeverity({
+              resultStatus,
+              cmsSeverity: typeof raw.severity === "string" ? raw.severity : null,
+            }),
+            code,
+            itemCode,
+            message,
+          });
+      }
+      const outcome = deriveBatchOutcome(r.items.map((i) => i.status));
+      r.findings = [...r.findings, ...findings];
+      r.status = outcome.status;
+      r.acceptedCount = outcome.acceptedCount;
+      r.rejectedCount = outcome.rejectedCount;
+      r.resultReportHash = reportHash;
+      r.resultReportReference = args.reportReference ?? null;
+      r.resultImportedAt = at;
+      if (outcome.pendingCount === 0) {
+        r.acceptedAt = outcome.rejectedCount === 0 ? at : null;
+        const event = settledBatchEvent(id, r.providerEntityId, outcome, args.results);
+        emit(event.eventName, event.payload, `${id}:result-imported`);
+      }
+      return viewSubDetail(r);
     },
     async complianceDashboard(organizationId, providerEntityId) {
       const scoped = [...schedules.values()].filter((s) => s.organizationId === organizationId);

@@ -278,3 +278,21 @@ export function authorDisciplinesForRoles(
   const held = new Set(roles.map((r) => r.toUpperCase()));
   return permitted.filter((d) => held.has(d));
 }
+
+// ── iQIES result recording (no iQIES API: the user pastes/keys the CMS Final Validation Report) ────────
+
+export type SubmissionResultBody = ReqBody<operations["postApiV1HopeSubmissionsByIdResults"]>;
+
+/** Record the CMS result for a downloaded/uploaded batch. 409/422 reasons come back verbatim in `message`. */
+export async function recordSubmissionResult(
+  client: ApiClient,
+  submissionId: string,
+  body: SubmissionResultBody,
+): Promise<WriteResult<unknown>> {
+  const { data, error, response } = await client.POST("/api/v1/hope/submissions/{id}/results", {
+    params: { path: { id: submissionId } },
+    body,
+  });
+  if (error || !data) return failure(response?.status, error);
+  return { ok: true, value: data };
+}

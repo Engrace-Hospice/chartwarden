@@ -141333,6 +141333,173 @@
         }
       }
     },
+    "/api/v1/hope/assessments/{id}/submissions": {
+      "get": {
+        "operationId": "getApiV1HopeAssessmentsByIdSubmissions",
+        "tags": [
+          "10-hope"
+        ],
+        "summary": "Submission batches holding one assessment, with batch and item status",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "submissions"
+                  ],
+                  "properties": {
+                    "submissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "submissionId",
+                          "status",
+                          "itemStatus",
+                          "packageFilename",
+                          "submittedAt",
+                          "resultImportedAt"
+                        ],
+                        "properties": {
+                          "submissionId": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "ready",
+                                "type": "string"
+                              },
+                              {
+                                "const": "queued",
+                                "type": "string"
+                              },
+                              {
+                                "const": "packaged",
+                                "type": "string"
+                              },
+                              {
+                                "const": "exported",
+                                "type": "string"
+                              },
+                              {
+                                "const": "in_flight",
+                                "type": "string"
+                              },
+                              {
+                                "const": "submitted_pending_result",
+                                "type": "string"
+                              },
+                              {
+                                "const": "accepted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rejected",
+                                "type": "string"
+                              },
+                              {
+                                "const": "partially_accepted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "accepted_with_warnings",
+                                "type": "string"
+                              },
+                              {
+                                "const": "file_error",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "itemStatus": {
+                            "anyOf": [
+                              {
+                                "const": "accepted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "accepted_with_warnings",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rejected",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "blocked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unmatched",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "packageFilename": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "submittedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "resultImportedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/hope/assessments/{id}/summary-pdf": {
       "post": {
         "operationId": "postApiV1HopeAssessmentsByIdSummarypdf",
@@ -142970,7 +143137,10 @@
                           "acceptedCount",
                           "rejectedCount",
                           "transmittedAt",
-                          "acceptedAt"
+                          "acceptedAt",
+                          "needsCorrectionCount",
+                          "correctionInProgressCount",
+                          "resubmittedCount"
                         ],
                         "properties": {
                           "id": {
@@ -143131,6 +143301,15 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "needsCorrectionCount": {
+                            "type": "integer"
+                          },
+                          "correctionInProgressCount": {
+                            "type": "integer"
+                          },
+                          "resubmittedCount": {
+                            "type": "integer"
                           }
                         }
                       }
@@ -143155,7 +143334,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "HOPE submission detail — per-item outcomes, rejection findings, retry control (§5.2)",
+        "summary": "HOPE submission detail — items, per-item CMS outcome, recorded findings, correction standing (§5.2)",
         "parameters": [
           {
             "name": "id",
@@ -143182,7 +143361,14 @@
                     "acceptedCount",
                     "rejectedCount",
                     "transmittedAt",
-                    "acceptedAt"
+                    "acceptedAt",
+                    "needsCorrectionCount",
+                    "correctionInProgressCount",
+                    "resubmittedCount",
+                    "resultImportedAt",
+                    "resultReportReference",
+                    "items",
+                    "findings"
                   ],
                   "properties": {
                     "id": {
@@ -143343,6 +143529,273 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "needsCorrectionCount": {
+                      "type": "integer"
+                    },
+                    "correctionInProgressCount": {
+                      "type": "integer"
+                    },
+                    "resubmittedCount": {
+                      "type": "integer"
+                    },
+                    "resultImportedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "resultReportReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "assessmentId",
+                          "patientId",
+                          "rfaKind",
+                          "assessmentStatus",
+                          "status",
+                          "iqiesRecordId",
+                          "processedAt",
+                          "resolution",
+                          "correctionAssessmentId"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "assessmentId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rfaKind": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "01_admission",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "02_huv1",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "03_huv2",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "04_sfv",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "05_discharge",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "assessmentStatus": {
+                            "anyOf": [
+                              {
+                                "const": "draft",
+                                "type": "string"
+                              },
+                              {
+                                "const": "signed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "superseded",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "accepted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "accepted_with_warnings",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rejected",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "blocked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unmatched",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "iqiesRecordId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "processedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "resolution": {
+                            "anyOf": [
+                              {
+                                "const": "needs_correction",
+                                "type": "string"
+                              },
+                              {
+                                "const": "correction_in_progress",
+                                "type": "string"
+                              },
+                              {
+                                "const": "resubmitted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "resolved",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "correctionAssessmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "findings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "assessmentId",
+                          "severity",
+                          "code",
+                          "itemCode",
+                          "message"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "assessmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "severity": {
+                            "anyOf": [
+                              {
+                                "const": "error",
+                                "type": "string"
+                              },
+                              {
+                                "const": "warning",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "code": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "itemCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "message": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -143391,7 +143844,10 @@
                     "acceptedCount",
                     "rejectedCount",
                     "transmittedAt",
-                    "acceptedAt"
+                    "acceptedAt",
+                    "needsCorrectionCount",
+                    "correctionInProgressCount",
+                    "resubmittedCount"
                   ],
                   "properties": {
                     "id": {
@@ -143552,6 +144008,15 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "needsCorrectionCount": {
+                      "type": "integer"
+                    },
+                    "correctionInProgressCount": {
+                      "type": "integer"
+                    },
+                    "resubmittedCount": {
+                      "type": "integer"
                     }
                   }
                 }
@@ -143630,7 +144095,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Import structured iQIES Final Validation Report results",
+        "summary": "Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent)",
         "parameters": [
           {
             "name": "id",
@@ -143657,7 +144122,14 @@
                     "acceptedCount",
                     "rejectedCount",
                     "transmittedAt",
-                    "acceptedAt"
+                    "acceptedAt",
+                    "needsCorrectionCount",
+                    "correctionInProgressCount",
+                    "resubmittedCount",
+                    "resultImportedAt",
+                    "resultReportReference",
+                    "items",
+                    "findings"
                   ],
                   "properties": {
                     "id": {
@@ -143818,6 +144290,273 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "needsCorrectionCount": {
+                      "type": "integer"
+                    },
+                    "correctionInProgressCount": {
+                      "type": "integer"
+                    },
+                    "resubmittedCount": {
+                      "type": "integer"
+                    },
+                    "resultImportedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "resultReportReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "assessmentId",
+                          "patientId",
+                          "rfaKind",
+                          "assessmentStatus",
+                          "status",
+                          "iqiesRecordId",
+                          "processedAt",
+                          "resolution",
+                          "correctionAssessmentId"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "assessmentId": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rfaKind": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "01_admission",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "02_huv1",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "03_huv2",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "04_sfv",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "05_discharge",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "assessmentStatus": {
+                            "anyOf": [
+                              {
+                                "const": "draft",
+                                "type": "string"
+                              },
+                              {
+                                "const": "signed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "superseded",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "accepted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "accepted_with_warnings",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rejected",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "blocked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unmatched",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "iqiesRecordId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "processedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "resolution": {
+                            "anyOf": [
+                              {
+                                "const": "needs_correction",
+                                "type": "string"
+                              },
+                              {
+                                "const": "correction_in_progress",
+                                "type": "string"
+                              },
+                              {
+                                "const": "resubmitted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "resolved",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "correctionAssessmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "findings": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "assessmentId",
+                          "severity",
+                          "code",
+                          "itemCode",
+                          "message"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "assessmentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "severity": {
+                            "anyOf": [
+                              {
+                                "const": "error",
+                                "type": "string"
+                              },
+                              {
+                                "const": "warning",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "code": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "itemCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "message": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -143853,9 +144592,10 @@
                     ]
                   },
                   "results": {
+                    "maxItems": 2000,
                     "type": "array",
                     "items": {
-                      "additionalProperties": true,
+                      "additionalProperties": false,
                       "type": "object",
                       "properties": {
                         "assessmentId": {
@@ -143864,27 +144604,35 @@
                           "type": "string"
                         },
                         "status": {
+                          "maxLength": 64,
                           "type": "string"
                         },
                         "result": {
+                          "maxLength": 64,
                           "type": "string"
                         },
                         "outcome": {
+                          "maxLength": 64,
                           "type": "string"
                         },
                         "severity": {
+                          "maxLength": 64,
                           "type": "string"
                         },
                         "code": {
+                          "maxLength": 64,
                           "type": "string"
                         },
                         "itemCode": {
+                          "maxLength": 64,
                           "type": "string"
                         },
                         "message": {
+                          "maxLength": 1000,
                           "type": "string"
                         },
                         "iqiesRecordId": {
+                          "maxLength": 64,
                           "type": "string"
                         }
                       }
@@ -143903,7 +144651,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Requeue a rejected submission for the next transmit pass",
+        "summary": "Deprecated for the UI: requeue a rejected batch. iQIES has no retry; fix a rejected record with a correction assessment and re-package it in a new batch",
         "parameters": [
           {
             "name": "id",
@@ -143930,7 +144678,10 @@
                     "acceptedCount",
                     "rejectedCount",
                     "transmittedAt",
-                    "acceptedAt"
+                    "acceptedAt",
+                    "needsCorrectionCount",
+                    "correctionInProgressCount",
+                    "resubmittedCount"
                   ],
                   "properties": {
                     "id": {
@@ -144091,6 +144842,15 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "needsCorrectionCount": {
+                      "type": "integer"
+                    },
+                    "correctionInProgressCount": {
+                      "type": "integer"
+                    },
+                    "resubmittedCount": {
+                      "type": "integer"
                     }
                   }
                 }
@@ -144141,7 +144901,10 @@
                     "acceptedCount",
                     "rejectedCount",
                     "transmittedAt",
-                    "acceptedAt"
+                    "acceptedAt",
+                    "needsCorrectionCount",
+                    "correctionInProgressCount",
+                    "resubmittedCount"
                   ],
                   "properties": {
                     "id": {
@@ -144302,6 +145065,15 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "needsCorrectionCount": {
+                      "type": "integer"
+                    },
+                    "correctionInProgressCount": {
+                      "type": "integer"
+                    },
+                    "resubmittedCount": {
+                      "type": "integer"
                     }
                   }
                 }

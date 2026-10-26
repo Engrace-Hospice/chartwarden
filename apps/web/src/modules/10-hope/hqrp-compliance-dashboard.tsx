@@ -17,6 +17,7 @@ import {
 // frontend authz). Reads GET /api/v1/hope/dashboard/compliance via the typed client. Leaves only (@chartwarden/ui).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
+import { Link } from "react-router-dom";
 import { HopeListReadState } from "./hope-read-state";
 
 interface RateCounts {
@@ -145,7 +146,7 @@ export function HqrpComplianceDashboard(): JSX.Element {
           <KpiCard
             label="Submission acceptance"
             value={loading || readStatus !== "ok" || !row ? "—" : pct(row.submissionAcceptanceRate)}
-            detail="Accepted batches"
+            detail={<Link to="/hope/submissions">View submissions</Link>}
             tone={toneForRate(row?.submissionAcceptanceRate)}
             accentColor={accentForRate(row?.submissionAcceptanceRate)}
           />
