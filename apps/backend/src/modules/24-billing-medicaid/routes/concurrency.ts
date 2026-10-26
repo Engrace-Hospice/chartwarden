@@ -60,6 +60,33 @@ export function decodeCursor(raw: string | undefined): Cursor | null {
   }
 }
 
+const KEYSET_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Postgres `timestamptz::text` (full microsecond precision), e.g. `2026-01-02 03:04:05.123456+00`.
+const KEYSET_TS = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{1,6})?(\+|-)\d{2}(:\d{2})?$/;
+
+/** Claim-list cursor: base64url of `[updated_at::text, id]`. Anything else (including the pre-fix `{ts,id}`
+ *  created_at cursor, whose anchor means something different) is a 422, never silently a first page. */
+export const encodeKeysetCursor = (ts: string, id: string): string =>
+  Buffer.from(JSON.stringify([ts, id]), "utf8").toString("base64url");
+
+export function decodeKeysetCursor(raw: string | undefined): Cursor | null {
+  if (!raw) return null;
+  try {
+    const [ts, id] = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as unknown[];
+    if (
+      typeof ts === "string" &&
+      typeof id === "string" &&
+      KEYSET_TS.test(ts) &&
+      KEYSET_UUID.test(id)
+    ) {
+      return { ts, id };
+    }
+  } catch {
+    // fall through to the refusal
+  }
+  throw new ChartWardenError("VALIDATION_FAILED", "cursor is not valid", 422);
+}
+
 /** Slice a `limit+1` row set into a page + the next cursor (anchor extracted by `anchorOf`). */
 export function toPage<R, T>(
   rows: R[],

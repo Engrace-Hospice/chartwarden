@@ -1,7 +1,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/24-billing-medicaid/routes/read-service-drizzle.ts — the Drizzle-backed M24 READ
 // service. Every method opens `withOrgContext(db, {organizationId, userId}, tx => …)` so Postgres RLS scopes
-// each statement to the acting org. Claim list paging is keyset over (created_at DESC, id DESC). The
+// each statement to the acting org. Claim list paging is keyset over (updated_at DESC, id DESC) — newest CHANGE first, as the Commercial list. The
 // rule-config read overlays the per-tenant config rows onto the §4.6 platform-default registry. Secrets and
 // the Recipient ID are NEVER returned (presence flags + masked last-4 only; D12 / §3.6).
 import {
@@ -11,7 +11,7 @@ import {
 import { withOrgContext } from "@chartwarden/tenancy";
 import { type SQL, and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { isUsableCipher } from "../credential-crypto";
-import { type CursorPage, decodeCursor, toPage } from "./concurrency";
+import { type CursorPage, decodeKeysetCursor, encodeKeysetCursor } from "./concurrency";
 import type {
   AcknowledgmentView,
   ArDashboardView,
@@ -79,7 +79,8 @@ export function buildDrizzleM24ReadService(
     version: r.version,
     validationRunIdLatest: r.validationRunIdLatest ?? null,
     eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
-    electronicSubmissionRefusal: electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState))?.message ?? null,
+    electronicSubmissionRefusal:
+      electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState))?.message ?? null,
     createdAt: iso(r.createdAt),
     updatedAt: iso(r.updatedAt),
   });
@@ -153,7 +154,7 @@ export function buildDrizzleM24ReadService(
 
   return {
     async listClaims(actor, filters, cursor, limit) {
-      const c = decodeCursor(cursor);
+      const c = decodeKeysetCursor(cursor);
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
           filters.state
@@ -164,20 +165,22 @@ export function buildDrizzleM24ReadService(
           filters.serviceState ? eq(C.serviceState, filters.serviceState) : undefined,
           filters.patientId ? eq(C.patientId, filters.patientId) : undefined,
           peScope(C.providerEntityId, actor, filters.providerEntityId),
-          c ? sql`(${C.createdAt}, ${C.id}) < (${new Date(c.ts)}, ${c.id})` : undefined,
+          // Full-precision text anchor: a JS Date truncates to ms and a keyset on it would skip or repeat rows.
+          c ? sql`(${C.updatedAt}, ${C.id}) < (${c.ts}::timestamptz, ${c.id}::uuid)` : undefined,
         ].filter(Boolean);
         const rows = await tx
-          .select()
+          .select({ claim: C, ts: sql<string>`${C.updatedAt}::text` })
           .from(C)
           .where(conds.length ? and(...(conds as [])) : undefined)
-          .orderBy(desc(C.createdAt), desc(C.id))
+          .orderBy(desc(C.updatedAt), desc(C.id))
           .limit(limit + 1);
-        return toPage<(typeof rows)[number], ClaimView>(
-          rows,
-          limit,
-          (r) => ({ ts: iso(r.createdAt), id: r.id }),
-          toClaim,
-        ) satisfies CursorPage<ClaimView>;
+        const hasMore = rows.length > limit;
+        const slice = hasMore ? rows.slice(0, limit) : rows;
+        const last = slice[slice.length - 1];
+        return {
+          items: slice.map((r) => toClaim(r.claim)),
+          nextCursor: hasMore && last ? encodeKeysetCursor(last.ts, last.claim.id) : null,
+        } satisfies CursorPage<ClaimView>;
       });
     },
 
