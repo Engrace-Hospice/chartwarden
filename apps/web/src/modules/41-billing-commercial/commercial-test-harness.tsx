@@ -154,3 +154,19 @@ export const planRow = (over: Record<string, unknown> = {}): Record<string, unkn
   routes: [],
   ...over,
 });
+
+export const ENROLLMENT_ID = "88888888-8888-4888-8888-888888888888";
+
+export const enrollmentRow = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+  id: ENROLLMENT_ID,
+  providerEntityId: ENTITY_ID,
+  payerId: PAYER_ID,
+  clearinghouseKey: "stedi",
+  status: "enrolled",
+  effectiveFrom: "2026-01-01",
+  effectiveTo: null,
+  evidenceRef: "DOC-123/a#1",
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+  ...over,
+});

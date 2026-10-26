@@ -239,3 +239,72 @@ test.describe("Billing — Commercial authorizations (M41)", () => {
     await expectNoAxeViolations(page);
   });
 });
+
+test.describe("Billing — Commercial enrollments (M41)", () => {
+  const PAYER = "55555555-5555-4555-8555-555555555555";
+  const plan = {
+    id: "44444444-4444-4444-8444-444444444444",
+    payerId: PAYER,
+    planName: "Synthetic PPO",
+    claimFilingIndicator: "CI",
+    authorizationRequirement: "required_at_admission",
+    authorizationLeadDays: 3,
+    eligibilityStalenessPolicy: "warn",
+    eligibilityMaxAgeDays: 30,
+    effectiveFrom: "2026-01-01",
+    effectiveTo: null,
+    payerStatus: "active",
+    routes: [],
+  };
+  const enrollment = {
+    id: "88888888-8888-4888-8888-888888888888",
+    providerEntityId: "22222222-2222-4222-8222-222222222222",
+    payerId: PAYER,
+    clearinghouseKey: "stedi",
+    status: "enrolled",
+    effectiveFrom: "2026-01-01",
+    effectiveTo: null,
+    evidenceRef: "DOC-E2E/1#a",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+
+  test("main path: lists enrollments, then adds one through the drawer", async ({ page }) => {
+    const rows = [enrollment];
+    const posted: unknown[] = [];
+    await page.route(PLANS, (route) => route.fulfill({ json: { items: [plan] } }));
+    await page.route(ENROLLMENTS, async (route) => {
+      if (route.request().method() === "POST") {
+        posted.push(route.request().postDataJSON());
+        const added = {
+          ...enrollment,
+          id: "99999999-9999-4999-8999-999999999999",
+          clearinghouseKey: "other",
+        };
+        rows.push(added);
+        await route.fulfill({ status: 201, json: added });
+        return;
+      }
+      await route.fulfill({ json: { items: rows } });
+    });
+    await signInAs(page, ADMIN_ACCOUNT());
+    await page.goto("/commercial/billing/enrollments");
+
+    await expect(page.getByRole("heading", { name: "Enrollments", level: 1 })).toBeVisible();
+    const table = page.getByRole("table", { name: "Payer enrollments" });
+    await expect(table.getByText("stedi")).toBeVisible();
+    await expect(table.getByText("DOC-E2E/1#a")).toBeVisible();
+
+    await page.getByRole("button", { name: "Add enrollment" }).click();
+    const drawer = page.getByRole("complementary", { name: "Add enrollment" });
+    await drawer.getByLabel("Payer").selectOption(PAYER);
+    await drawer.getByLabel("Clearinghouse key").fill("other");
+    await drawer.getByLabel("Effective from").fill("2026-02-01");
+    await drawer.getByRole("button", { name: "Add enrollment" }).click();
+
+    await expect(page.getByText("Enrollment added.")).toBeVisible();
+    await expect(table.getByText("other")).toBeVisible();
+    expect(posted).toHaveLength(1);
+    await expectNoAxeViolations(page);
+  });
+});

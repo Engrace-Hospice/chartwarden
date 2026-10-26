@@ -1,8 +1,12 @@
 import { readFileSync } from "node:fs";
+import { COMMERCIAL_ENROLLMENT_STATUS_VALUES } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   AUTHORIZATION_NUMBER_PATTERN,
   COMMERCIAL_PATHS,
+  ENROLLMENT_EVIDENCE_PATTERN,
+  ENROLLMENT_KEY_PATTERN,
+  ENROLLMENT_STATUS_VALUES,
   asClaimState,
   asPayerKind,
   authorizationPosture,
@@ -10,7 +14,9 @@ import {
   authorizationStatusTone,
   authorizationWindowNote,
   claimStateTone,
+  enrollmentPeriod,
   enrollmentStatusFor,
+  enrollmentTone,
   filingIndicatorLabel,
   localToday,
   payerKindLabel,
@@ -211,5 +217,34 @@ describe("authorization screen helpers", () => {
     expect(AUTHORIZATION_NUMBER_PATTERN.test("has space")).toBe(false);
     expect(AUTHORIZATION_NUMBER_PATTERN.test("x".repeat(51))).toBe(false);
     expect(AUTHORIZATION_NUMBER_PATTERN.test("")).toBe(false);
+  });
+
+  it("validates enrollment keys and evidence with exactly the server's patterns", () => {
+    const backend = readFileSync(
+      new URL(
+        "../../../../backend/src/modules/41-billing-commercial/routes/typebox.ts",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const server = (name: string): string | undefined =>
+      new RegExp(`const ${name} = "([^"]+)";`).exec(backend)?.[1];
+    expect(server("KEY_PATTERN")).toBe(ENROLLMENT_KEY_PATTERN.source);
+    expect(server("EVIDENCE_PATTERN")).toBe(ENROLLMENT_EVIDENCE_PATTERN.source);
+    expect(ENROLLMENT_KEY_PATTERN.test("stedi")).toBe(true);
+    expect(ENROLLMENT_KEY_PATTERN.test("Stedi")).toBe(false);
+    expect(ENROLLMENT_KEY_PATTERN.test("-a")).toBe(false);
+    expect(ENROLLMENT_KEY_PATTERN.test("a".repeat(41))).toBe(false);
+    expect(ENROLLMENT_EVIDENCE_PATTERN.test("DOC-1/a#2:x._")).toBe(true);
+    expect(ENROLLMENT_EVIDENCE_PATTERN.test("has space")).toBe(false);
+    expect(ENROLLMENT_EVIDENCE_PATTERN.test("x".repeat(201))).toBe(false);
+  });
+
+  it("offers exactly the statuses the shared types define, and describes periods", () => {
+    expect([...ENROLLMENT_STATUS_VALUES]).toEqual([...COMMERCIAL_ENROLLMENT_STATUS_VALUES]);
+    expect(enrollmentTone("enrolled")).toBe("success");
+    expect(enrollmentTone("nonsense")).toBe("neutral");
+    expect(enrollmentPeriod("2026-01-01", null)).toBe("2026-01-01 · Open-ended");
+    expect(enrollmentPeriod("2026-01-01", "2026-02-01")).toBe("2026-01-01 to 2026-02-01");
   });
 });

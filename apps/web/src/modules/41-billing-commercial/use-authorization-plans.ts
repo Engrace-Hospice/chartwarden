@@ -36,6 +36,8 @@ export function useAuthorizationPlans(providerEntityId: string): {
                 state: "ready",
                 plans: data.items.map((p) => ({
                   id: p.id,
+                  payerId: p.payerId,
+                  payerStatus: p.payerStatus,
                   planName: p.planName,
                   authorizationRequirement: p.authorizationRequirement,
                   authorizationLeadDays: p.authorizationLeadDays,

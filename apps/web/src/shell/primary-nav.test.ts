@@ -154,6 +154,7 @@ describe("buildPrimaryNav", () => {
       "/remittance/report",
       "/commercial/billing/claims",
       "/commercial/billing/authorizations",
+      "/commercial/billing/enrollments",
       "/admin/billing-audit",
     ];
     const billing = () =>
@@ -176,6 +177,7 @@ describe("buildPrimaryNav", () => {
       expect(subPaths("commercial")).toEqual([
         "/commercial/billing/claims",
         "/commercial/billing/authorizations",
+        "/commercial/billing/enrollments",
       ]);
     });
 

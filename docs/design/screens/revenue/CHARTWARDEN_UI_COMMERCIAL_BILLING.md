@@ -29,7 +29,7 @@ lane never shows their claims. It reads `GET /api/v1/billing/commercial/claims`,
 Use Work Queue.
 
 ```text
-Page Header · Billing tabs (Commercial) · view tabs (Claim queue · Supported payers · Authorizations)
+Page Header · Billing tabs (Commercial) · view tabs (Claim queue · Supported payers · Authorizations · Enrollments)
 KPI strip (in queue · draft · ready · expected payment)
 Filter panel (provider entity · payer kind · state)
   Table of claims                                  |  Right drawer: selected claim preview
@@ -84,6 +84,21 @@ and lead time, and states that the number is stored but never shown. A failed re
 "none". Holders of `commercial_billing.write` also get **Record authorization** (plan, optional level of care, number, obtained,
 effective from and to; the number is cleared after success) and, on an approved authorization only, **Deny** and **Void**, each behind
 a confirm that is final and warns that Ready claims relying on it may fall back to draft. Denied and voided are final.
+
+---
+
+## Enrollments
+
+Per provider entity, from `GET /api/v1/billing/commercial/enrollments?providerEntityId` (up to 200 rows, no paging, no patient data):
+payer name, clearinghouse key, status pill, effective from and to, and the evidence reference exactly as entered. Only an `enrolled`
+row, in effect that day, on the platform's clearinghouse lets a send through, and the page says so. A failed read, including a 404,
+is an error with a retry, never "no enrollments"; a reload keeps the rows on screen. Holders of `commercial_billing.manage_enrollment`
+also get **Add enrollment** (payer from the entity's plans, deduplicated; clearinghouse key; status; effective from and to; evidence
+reference) and a per-row **Edit** drawer that changes status, end date and evidence only (payer, clearinghouse and start are fixed;
+there is no delete). Both writes need a fresh step-up: on a stale session the typed draft (never a secret) is kept under the shared
+step-up draft key, the user goes to `/step-up`, and on return the form is restored for the user to submit again, never submitted
+automatically. A 409 is an overlapping period; a 422 is explained in fixed words, never with the server's text. The Supported payers
+drawer links a not-enrolled plan here. Outcomes are announced with a toast.
 
 ---
 

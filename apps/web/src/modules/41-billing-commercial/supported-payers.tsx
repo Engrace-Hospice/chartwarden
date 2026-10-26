@@ -17,12 +17,13 @@ import {
 //   GET /api/v1/billing/commercial/enrollments?providerEntityId     enrollment rows
 //   GET /api/v1/mdm/payer/{id}                                      the payer's display name
 // The plans and enrollments are required; a payer name that cannot be read falls back to a short id and never blanks the page.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
 import { CommercialTabs, EntityGate, EntityPicker } from "./commercial-chrome";
 import {
+  COMMERCIAL_PATHS,
   type EnrollmentFact,
   authorizationRequirementLabel,
   enrollmentStatusFor,
@@ -31,6 +32,7 @@ import {
   payerStatusTone,
   shortId,
 } from "./commercial-model";
+import { usePayerNames } from "./use-payer-names";
 import { useProviderEntity } from "./use-provider-entity";
 
 export interface PlanRow {
@@ -70,7 +72,6 @@ export function SupportedPayers(): JSX.Element {
   const [params, setParams] = useSearchParams();
   const { state: entities, entityId, setEntityId, retry: retryEntities } = useProviderEntity();
   const [load, setLoad] = useState<PayersLoad>({ status: "loading" });
-  const [names, setNames] = useState<Readonly<Record<string, string>>>({});
   const [reloadKey, setReloadKey] = useState(0);
   const selectedPlanId = params.get(PLAN_PARAM) ?? "";
 
@@ -100,25 +101,7 @@ export function SupportedPayers(): JSX.Element {
     };
   }, [client, entityId, reloadKey]);
 
-  const payerIds = useMemo(
-    () => (load.status === "ready" ? [...new Set(load.plans.map((p) => p.payerId))] : []),
-    [load],
-  );
-  useEffect(() => {
-    let active = true;
-    for (const id of payerIds) {
-      void client
-        .GET("/api/v1/mdm/{kind}/{id}", { params: { path: { kind: "payer", id } } })
-        .then(({ data }) => {
-          const name = data?.canonical?.displayName;
-          if (active && name) setNames((prev) => ({ ...prev, [id]: name }));
-        })
-        .catch(() => undefined); // a name that cannot be read falls back to the short id
-    }
-    return () => {
-      active = false;
-    };
-  }, [client, payerIds]);
+  const names = usePayerNames(load.status === "ready" ? load.plans.map((p) => p.payerId) : []);
 
   const nameOf = (payerId: string): string => names[payerId] ?? `Payer ${shortId(payerId)}`;
   const plans = load.status === "ready" ? load.plans : [];
@@ -263,6 +246,7 @@ export function SupportedPayers(): JSX.Element {
           plan={selected}
           payerName={nameOf(selected.payerId)}
           enrollment={enrollmentStatusFor(selected.payerId, enrollments, day)}
+          entityId={entityId}
           onClose={() => select("")}
         />
       ) : null}
@@ -274,11 +258,13 @@ function PlanDrawer({
   plan,
   payerName,
   enrollment,
+  entityId,
   onClose,
 }: {
   plan: PlanRow;
   payerName: string;
-  enrollment: { label: string; tone: Parameters<typeof StatusPill>[0]["tone"] };
+  enrollment: { status: string; label: string; tone: Parameters<typeof StatusPill>[0]["tone"] };
+  entityId: string;
   onClose: () => void;
 }): JSX.Element {
   const drawer = useDrawerA11y<HTMLElement>(onClose);
@@ -302,6 +288,14 @@ function PlanDrawer({
             <h3>Can we send?</h3>
             <StatusPill label={enrollment.label} tone={enrollment.tone} />
           </div>
+          {enrollment.status === "not_enrolled" ? (
+            <p className="wx-row-sub">
+              Nothing is sent to this payer until an enrollment is in effect.{" "}
+              <Link to={`${COMMERCIAL_PATHS.enrollments}?entity=${encodeURIComponent(entityId)}`}>
+                Manage enrollments
+              </Link>
+            </p>
+          ) : null}
           <dl className="wx-kv">
             <dt>Payer in master data</dt>
             <dd>
