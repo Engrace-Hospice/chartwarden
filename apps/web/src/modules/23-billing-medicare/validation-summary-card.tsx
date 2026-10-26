@@ -7,6 +7,11 @@ import type { ApiClient } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 
+type State =
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "ok"; summary: ValidationSummary };
+// Structurally identical to the endpoint's generated 200 body; assigning `r.data` below makes tsc check that.
 interface ValidationSummary {
   totalClaims: number;
   neverValidated: number;
@@ -18,13 +23,10 @@ interface ValidationSummary {
   };
   oldestLatestRunAt: string | null;
 }
-type State =
-  | { status: "loading" }
-  | { status: "error" }
-  | { status: "ok"; summary: ValidationSummary };
 
 const DAY_MS = 86_400_000;
-const LABEL = "Blocked by validation";
+// Counts every claim in scope by its newest run, including paid / denied / voided ones, so this is not a work count.
+const LABEL = "Latest validation failed or needs override";
 
 export function ageLabel(iso: string | null, now = Date.now()): string | null {
   if (!iso) return null;
@@ -44,10 +46,7 @@ export function useValidationSummary(client: ApiClient): { state: State; retry: 
     setState({ status: "loading" });
     const read = async (): Promise<State> => {
       try {
-        const r = (await client.GET("/api/v1/billing/claim-validation-summary" as never)) as {
-          data?: ValidationSummary;
-          error?: unknown;
-        };
+        const r = await client.GET("/api/v1/billing/claim-validation-summary");
         return r.error || !r.data?.byOutcome
           ? { status: "error" }
           : { status: "ok", summary: r.data };
@@ -69,19 +68,22 @@ export function ValidationSummaryCard(): JSX.Element {
   const client = useApiClient();
   const { state, retry } = useValidationSummary(client);
   if (state.status === "loading") {
-    return <KpiCard label={LABEL} value="—" detail="Loading…" />;
+    return <KpiCard label={LABEL} value="—" detail={<output aria-busy="true">Loading…</output>} />;
   }
   if (state.status === "error") {
     return (
-      <div style={{ display: "grid", gap: "0.5rem", alignContent: "start" }}>
-        <KpiCard label={LABEL} value="—" detail="Could not be loaded" />
-        <div role="alert" style={{ color: "var(--color-error)", fontSize: "0.85rem" }}>
-          Validation counts could not be loaded and are not shown.{" "}
-          <Button tone="secondary" size="sm" onClick={retry}>
-            Try again
-          </Button>
-        </div>
-      </div>
+      <KpiCard
+        label={LABEL}
+        value="—"
+        detail={
+          <div role="alert" style={{ color: "var(--color-error)" }}>
+            Could not be loaded; counts are not shown.{" "}
+            <Button tone="secondary" size="sm" onClick={retry}>
+              Try again
+            </Button>
+          </div>
+        }
+      />
     );
   }
   const { summary } = state;

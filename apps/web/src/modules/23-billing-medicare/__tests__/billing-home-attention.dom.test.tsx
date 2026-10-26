@@ -95,8 +95,8 @@ function setup(o: Setup = {}, ui = <BillingNeedsAttention />, at = "/billing") {
 
 const cardOf = (label: string) => screen.getByText(label).closest(".wx-kpi-card") as HTMLElement;
 
-describe("Blocked by validation card", () => {
-  const CARD = "Blocked by validation";
+describe("Latest validation card", () => {
+  const CARD = "Latest validation failed or needs override";
   it("sums failures and overrides, and states the scope, never-validated count and age", async () => {
     setup();
     await waitFor(() => expect(within(cardOf(CARD)).getByText("5")).toBeTruthy());
@@ -118,7 +118,7 @@ describe("Blocked by validation card", () => {
   it("shows an error with retry, never zeros, and leaves the other sources rendered", async () => {
     const get = setup({ noe: [noe()], validation: "error" });
     await screen.findByText("Okonkwo, Samuel");
-    await screen.findByText(/Validation counts could not be loaded/);
+    await screen.findByText(/Could not be loaded; counts are not shown/);
     expect(within(cardOf(CARD)).getByText("—")).toBeTruthy();
     expect(within(cardOf(CARD)).queryByText("0")).toBeNull();
     expect(within(cardOf("NOE")).getByText("1")).toBeTruthy();
