@@ -10,10 +10,18 @@
 // so a retried run never doubles. ENUM BOUNDARY: `trigger` / `outcome` are DB-native lowercase enums with
 // no domain-alphabet divergence, so rows pass through un-mapped (contrast `claim.state`). No PHI / MBI (D13).
 import * as schema from "@chartwarden/db/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { BillingDb } from "./db";
 
 const R = schema.validationRun;
+
+/** One group of {@link ValidationRunRepository.summarizeLatestByOutcome}; `outcome: null` = never validated. */
+export interface LatestOutcomeGroup {
+  readonly outcome: schema.ValidationRun["outcome"] | null;
+  readonly claims: number;
+  /** Oldest `completed_at` among the group's latest runs (`null` for the never-validated group). */
+  readonly oldestRunAt: Date | null;
+}
 
 /** Data port for `validation_run` (APPEND-ONLY: idempotent insert + read; NO update/delete surface). */
 export class ValidationRunRepository {
@@ -86,5 +94,66 @@ export class ValidationRunRepository {
       .orderBy(desc(R.startedAt))
       .limit(1);
     return row ?? null;
+  }
+
+  /**
+   * The most-recent run for each of `claimIds` in ONE query (`DISTINCT ON (claim_id)`, newest-started first,
+   * served by `validation_run_claim_recent_idx`) — the list-page batch twin of {@link findLatestForClaim}.
+   * Claims never validated are simply absent from the result.
+   */
+  async findLatestForClaims(claimIds: readonly string[]): Promise<readonly schema.ValidationRun[]> {
+    if (claimIds.length === 0) return [];
+    return this.db
+      .selectDistinctOn([R.claimId])
+      .from(R)
+      .where(inArray(R.claimId, [...claimIds]))
+      .orderBy(R.claimId, desc(R.startedAt));
+  }
+
+  /**
+   * Org-wide rollup: every claim visible to the caller grouped by the outcome of its NEWEST run (a LEFT JOIN
+   * LATERAL `ORDER BY started_at DESC LIMIT 1`, served by `validation_run_claim_recent_idx`; a claim with no
+   * run falls in the `outcome: null` group). ONE statement, no row-level data. `providerEntityScope` is the
+   * same server-derived authorization narrowing the claim list applies: `undefined` = unrestricted, an
+   * EMPTY array matches nothing (fail-closed). Errors propagate; this never substitutes zeros.
+   */
+  async summarizeLatestByOutcome(
+    organizationId: string,
+    providerEntityScope?: readonly string[],
+  ): Promise<readonly LatestOutcomeGroup[]> {
+    const C = schema.claim;
+    const scopeClause =
+      providerEntityScope === undefined
+        ? sql``
+        : providerEntityScope.length === 0
+          ? sql`AND false`
+          : sql`AND c.provider_entity_id IN (${sql.join(
+              providerEntityScope.map((id) => sql`${id}`),
+              sql`, `,
+            )})`;
+    const res = await this.db.execute(sql`
+      SELECT l.outcome AS outcome, count(*)::int AS claims, min(l.completed_at) AS oldest_run_at
+      FROM ${C} c
+      LEFT JOIN LATERAL (
+        SELECT r.outcome, r.completed_at
+        FROM ${R} r
+        WHERE r.claim_id = c.id
+        ORDER BY r.started_at DESC
+        LIMIT 1
+      ) l ON true
+      WHERE c.organization_id = ${organizationId} ${scopeClause}
+      GROUP BY l.outcome
+    `);
+    return (
+      res.rows as {
+        outcome: schema.ValidationRun["outcome"] | null;
+        claims: number;
+        oldest_run_at: Date | string | null;
+      }[]
+    ).map((row) => ({
+      outcome: row.outcome,
+      claims: Number(row.claims),
+      oldestRunAt: row.oldest_run_at === null ? null : new Date(row.oldest_run_at),
+    }));
   }
 }

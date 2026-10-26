@@ -24,6 +24,7 @@ import { BillingTabs } from "../../shell/billing-tabs";
 import { fmtDay } from "./dde-queue-model";
 import { patientLabel, usePatientNames } from "./use-patient-names";
 import { type WorkQueueSources, useWorkQueueSources } from "./use-work-queue-sources";
+import { ValidationSummaryCard } from "./validation-summary-card";
 import {
   type SourceState,
   type Urgency,
@@ -147,6 +148,7 @@ export function BillingWorkQueue(): JSX.Element {
               quietDetail="need action"
               onSelect={() => setType("claim")}
             />
+            <ValidationSummaryCard />
             <SourceCard
               label="NOE"
               source={sources.noe}

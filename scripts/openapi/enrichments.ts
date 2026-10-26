@@ -12555,6 +12555,12 @@ const M23ClaimSummaryView = Type.Object({
   totalExpectedPaymentCents: Type.Integer(),
   version: Type.Integer(),
   attention: Type.Optional(Type.Union([M23ClaimAttentionView, Type.Null()])),
+  latestValidationSummary: Type.Optional(
+    Type.Union([
+      Type.Object({ outcome: M23ValidationRunOutcome, runAt: Type.String() }),
+      Type.Null(),
+    ]),
+  ),
 });
 const M23ClaimListResponse = Type.Object({
   items: Type.Array(M23ClaimSummaryView),
@@ -12908,7 +12914,24 @@ const M23MetricsBucket = Type.Object({
 });
 const M23MetricsResponse = Type.Object({ buckets: Type.Array(M23MetricsBucket) });
 
+const M23ClaimValidationOverview = Type.Object({
+  totalClaims: Type.Integer(),
+  neverValidated: Type.Integer(),
+  byOutcome: Type.Object({
+    all_pass: Type.Integer(),
+    failures_present: Type.Integer(),
+    overrides_required: Type.Integer(),
+    ready_for_submission: Type.Integer(),
+  }),
+  oldestLatestRunAt: Type.Union([Type.String(), Type.Null()]),
+});
+
 Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/billing/claim-validation-summary": {
+    summary:
+      "Claims by newest validation outcome across the org (aggregate; narrowed to the caller's provider scope like the claim list)",
+    response: M23ClaimValidationOverview,
+  },
   "GET /api/v1/billing/ar-dashboard": {
     summary:
       "AR-aging dashboard - aging buckets + denial / NOE-NOTR window-breach rates (org-wide or per-PE, §4.1 #37)",
