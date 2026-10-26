@@ -2034,8 +2034,8 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         expect(await pull()).toBe(1 + swept);
       });
 
-      it("abandons a held event whose submission went through another clearinghouse (vendor_mismatch)", async () => {
-        const { c, sub } = await heldClaim();
+      it("never replays a held row under another clearinghouse's binding (cross-vendor and unbound), whichever way the binding changed", async () => {
+        const { c, sub } = await heldClaim(); // held from the stedi stream
         await service("stedi").reconcile(
           actor,
           c.claimId,
@@ -2043,10 +2043,17 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
           "received",
           "payer_portal",
         );
-        await replayHeldEvents(ackDeps("another_vendor"), scope());
-        expect(await heldOf(c)).toMatchObject({ resolution: "abandoned_vendor_mismatch" });
+        // the binding moved to another vendor: the stedi row is not its stream, so it is not looked at, let alone applied
+        // (the other vendor's OWN leftover rows from earlier tests may be handled; ours is not)
+        expect((await replayHeldEvents(ackDeps("another_vendor"), scope())).applied).toBe(0);
+        // unbound: nothing replays at all
+        expect(await replayHeldEvents(ackDeps(null), scope())).toEqual({ applied: 0, abandoned: 0 });
+        expect(await heldOf(c)).toMatchObject({ resolved_at: null });
         expect(await claimState(c.claimId)).toBe("submitted");
         expect(await ackRows(c.claimId)).toEqual([]);
+        // back on its own stream the row applies as usual
+        await replayHeldEvents(ackDeps("stedi"), scope());
+        expect(await heldOf(c)).toMatchObject({ resolution: "applied" });
       });
 
       it("abandons a held event that aged past the poll window", async () => {
@@ -2113,7 +2120,7 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         ]);
       });
 
-      it("keeps the event of a vendor_mismatch, leaves it held while the mismatch stands, and applies it once it no longer does", async () => {
+      it("keeps the event of a vendor_mismatch and never applies it under a different binding, even one that now matches the submission", async () => {
         const c = await sentClaim();
         const out = await applyAckEvent(ackDeps("another_vendor"), scope(), {
           eventId: "replay-vendor",
@@ -2127,17 +2134,26 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         expect((await rowOf(c.controlNumber, "vendor_mismatch")).event).toMatchObject({
           stage: "payer",
         });
+        // its own stream's binding: the mismatch stands, the row stays held
         await replayHeldEvents(ackDeps("another_vendor"), scope());
         expect((await rowOf(c.controlNumber, "vendor_mismatch")).resolved_at).toBeNull();
+        // the binding was switched to the vendor the claim went through: the other vendor's answer is NOT applied
+        await replayHeldEvents(ackDeps("stedi"), scope());
+        await replayHeldEvents(ackDeps(null), scope());
+        expect((await rowOf(c.controlNumber, "vendor_mismatch")).resolved_at).toBeNull();
         expect(await claimState(c.claimId)).toBe("submitted");
-        // the binding now matches the clearinghouse the claim went through: the held answer applies, once
-        await replayHeldEvents(ackDeps("stedi"), scope());
+        expect(await ackRows(c.claimId)).toEqual([]);
+        // it ages out audited, under the binding that owns it
+        await admin.query(
+          "UPDATE commercial_ack_quarantine SET created_at = now() - interval '60 days' WHERE control_number=$1 AND reason='vendor_mismatch'",
+          [c.controlNumber],
+        );
+        await replayHeldEvents(ackDeps("another_vendor"), scope());
         expect(await rowOf(c.controlNumber, "vendor_mismatch")).toMatchObject({
-          resolution: "applied",
+          resolution: "abandoned_aged",
         });
-        expect(await claimState(c.claimId)).toBe("accepted");
-        await replayHeldEvents(ackDeps("stedi"), scope());
-        expect(await eventCount(c.claimId, "m41.claim.accepted")).toBe(1);
+        expect(await abandonedEvents(c.controlNumber)).toHaveLength(1);
+        expect(await claimState(c.claimId)).toBe("submitted");
       });
 
       it("never re-routes a scope_mismatch to the other provider entity; it waits, then ages out audited", async () => {

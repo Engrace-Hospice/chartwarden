@@ -53,8 +53,10 @@ export function createScheduleProbe(options: {
   const make =
     options.makeQueue ??
     ((name: string, connection: ConnectionOptions): RepeatableLister => {
-      owned ??= new IORedis({ ...(connection as RedisOptions), maxRetriesPerRequest: null });
-      owned.on("error", () => undefined); // a down store is reported through the probe's rejection, not an unhandled 'error'
+      if (!owned) {
+        owned = new IORedis({ ...(connection as RedisOptions), maxRetriesPerRequest: null });
+        owned.on("error", () => undefined); // a down store is reported through the probe's rejection, not an unhandled 'error'
+      }
       const queue = new Queue(name, { connection: owned });
       queue.on("error", () => undefined);
       return queue;
