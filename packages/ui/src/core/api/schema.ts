@@ -15816,7 +15816,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Schedule a message for later (WP 2.6; Idempotency-Key required; 1 minute to 30 days ahead; announcement channel needs messaging.announce; 409 SCHEDULE_LIMIT_REACHED at 50). Re-checked at dispatch. */
+        /** Schedule a message for later (WP 2.6; Idempotency-Key required; 1 minute to 30 days ahead; announcement channel needs messaging.announce; 409 SCHEDULE_LIMIT_REACHED at 50; a repeated clientMessageId with the same content returns the original, with a different channel, text or time it is 409 CLIENT_MESSAGE_ID_CONFLICT). Re-checked at dispatch. */
         post: operations["postApiV1MessagingChannelsByIdScheduledmessages"];
         delete?: never;
         options?: never;

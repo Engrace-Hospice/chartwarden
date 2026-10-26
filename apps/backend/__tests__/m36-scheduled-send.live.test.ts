@@ -370,20 +370,44 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
       await expect(schedule(bob)).resolves.toBeDefined();
     });
 
-    it("a repeat with the same client message id returns the first row, not a second; another user's id is independent", async () => {
+    it("a repeat with the same client message id returns the first row; a different body, time or channel is 409; another user's id is independent", async () => {
       await wipe();
       const clientMessageId = "7c1d6b0e-3f0a-4c58-9d0e-2b6f4a1e8c33";
-      const first = await schedule(alice, { clientMessageId });
-      const again = await schedule(alice, { clientMessageId, body: "a different body" });
+      const scheduledFor = inFuture();
+      const first = await schedule(alice, { clientMessageId, scheduledFor });
+      const again = await schedule(alice, { clientMessageId, scheduledFor });
       expect(again.id).toBe(first.id);
       expect(again.body).toBe(SECRET);
       expect(await rows()).toHaveLength(1);
+      for (const over of [
+        { body: "a different body" },
+        { scheduledFor: inFuture(20 * MINUTE) },
+        { channelId: announcement },
+      ]) {
+        await expect(
+          schedule(alice, { clientMessageId, scheduledFor, ...over }),
+        ).rejects.toMatchObject({ code: "CLIENT_MESSAGE_ID_CONFLICT", statusCode: 409 });
+      }
       const bobs = await schedule(bob, { clientMessageId });
       expect(bobs.id).not.toBe(first.id);
-      // concurrent repeats collapse to one row too, and a replay at the cap is not refused
-      const raced = await Promise.all([1, 2, 3].map(() => schedule(alice, { clientMessageId })));
+      // concurrent identical repeats collapse to one row
+      const raced = await Promise.all(
+        [1, 2, 3].map(() => schedule(alice, { clientMessageId, scheduledFor })),
+      );
       expect(new Set(raced.map((r) => r.id))).toEqual(new Set([first.id]));
       expect(await rows()).toHaveLength(2);
+    });
+
+    it("a replay at the cap returns the original row instead of 409 SCHEDULE_LIMIT_REACHED", async () => {
+      await wipe();
+      const clientMessageId = "9a2e4c10-6b7d-4e21-8f33-5d1c0b7a9e44";
+      const scheduledFor = inFuture();
+      const first = await schedule(alice, { clientMessageId, scheduledFor });
+      await schedule(alice);
+      await schedule(alice);
+      await expect(schedule(alice)).rejects.toMatchObject({ code: "SCHEDULE_LIMIT_REACHED" });
+      const again = await schedule(alice, { clientMessageId, scheduledFor });
+      expect(again.id).toBe(first.id);
     });
 
     it("binds a scheduled reply to a live thread root in its own channel", async () => {
@@ -1196,43 +1220,46 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
   });
 
   // Bound is not computing: the SAME Worker the composition root registers must pick a job off a real queue and send.
-  describe.skipIf(!REDIS_IS_LOCAL)("on real BullMQ (CHARTWARDEN_TEST_REDIS_URL, local only)", () => {
-    const url = new URL(REDIS_URL ?? "redis://localhost:6379");
-    const connection = { host: url.hostname, port: Number(url.port || 6379) };
-    const wipeQueue = async () => {
-      const q = new Queue(MESSAGING_QUEUES.scheduledSend, { connection });
-      await q.obliterate({ force: true }).catch(() => undefined);
-      await q.close();
-    };
-    beforeAll(wipeQueue);
-    afterAll(wipeQueue);
+  describe.skipIf(!REDIS_IS_LOCAL)(
+    "on real BullMQ (CHARTWARDEN_TEST_REDIS_URL, local only)",
+    () => {
+      const url = new URL(REDIS_URL ?? "redis://localhost:6379");
+      const connection = { host: url.hostname, port: Number(url.port || 6379) };
+      const wipeQueue = async () => {
+        const q = new Queue(MESSAGING_QUEUES.scheduledSend, { connection });
+        await q.obliterate({ force: true }).catch(() => undefined);
+        await q.close();
+      };
+      beforeAll(wipeQueue);
+      afterAll(wipeQueue);
 
-    it("registers one per-minute repeatable and the worker sends a due message when a tick runs", async () => {
-      await wipe();
-      const created = await schedule(alice);
-      await makeDue(created.id);
-      const before = (await messagesIn(dm)).length;
-      const queues = await scheduleM36ScheduledSendJobs(connection);
-      const repeatables = await queues[0]!.getRepeatableJobs();
-      expect(repeatables).toHaveLength(1);
-      expect(repeatables[0]?.pattern).toBe(MESSAGING_JOB_SCHEDULES.scheduledSend);
-      const workers = registerM36ScheduledSendWorker({
-        connection,
-        dispatcher,
-        activeOrgs: { listActiveOrgs: async () => [{ organizationId: orgA }] },
-      });
-      try {
-        await queues[0]!.add("run-now", {});
-        const deadline = Date.now() + 15_000;
-        while ((await rows()).length > 0 && Date.now() < deadline) {
-          await new Promise((resolve) => setTimeout(resolve, 200));
+      it("registers one per-minute repeatable and the worker sends a due message when a tick runs", async () => {
+        await wipe();
+        const created = await schedule(alice);
+        await makeDue(created.id);
+        const before = (await messagesIn(dm)).length;
+        const queues = await scheduleM36ScheduledSendJobs(connection);
+        const repeatables = await queues[0]!.getRepeatableJobs();
+        expect(repeatables).toHaveLength(1);
+        expect(repeatables[0]?.pattern).toBe(MESSAGING_JOB_SCHEDULES.scheduledSend);
+        const workers = registerM36ScheduledSendWorker({
+          connection,
+          dispatcher,
+          activeOrgs: { listActiveOrgs: async () => [{ organizationId: orgA }] },
+        });
+        try {
+          await queues[0]!.add("run-now", {});
+          const deadline = Date.now() + 15_000;
+          while ((await rows()).length > 0 && Date.now() < deadline) {
+            await new Promise((resolve) => setTimeout(resolve, 200));
+          }
+          expect(await rows()).toHaveLength(0);
+          expect((await messagesIn(dm)).length).toBe(before + 1);
+        } finally {
+          await Promise.all(workers.map((w) => w.close()));
+          await Promise.all(queues.map((q) => q.close()));
         }
-        expect(await rows()).toHaveLength(0);
-        expect((await messagesIn(dm)).length).toBe(before + 1);
-      } finally {
-        await Promise.all(workers.map((w) => w.close()));
-        await Promise.all(queues.map((q) => q.close()));
-      }
-    });
-  });
+      });
+    },
+  );
 });

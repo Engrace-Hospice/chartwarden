@@ -128,7 +128,21 @@ export function createDbScheduledSendService(deps: ScheduledSendServiceDeps): Sc
             ),
           )
           .limit(1);
-        if (existing) return viewOf(cipher, orgId, existing);
+        if (existing) {
+          const same =
+            existing.channelId === input.channelId &&
+            (existing.parentMessageId ?? null) === (input.parentMessageId ?? null) &&
+            existing.scheduledFor.getTime() === when.getTime() &&
+            (await cipher.open(orgId, existing.bodyCipher)) === input.body;
+          if (!same) {
+            throw new ChartWardenError(
+              "CLIENT_MESSAGE_ID_CONFLICT",
+              "clientMessageId was already used for a different scheduled message",
+              409,
+            );
+          }
+          return viewOf(cipher, orgId, existing);
+        }
       }
       const [{ n }] = (await tx
         .select({ n: sql<number>`count(*)::int` })
