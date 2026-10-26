@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";
@@ -71,6 +71,18 @@ function makeApi(opts: { canAdd: boolean; addFails?: boolean; gate?: Promise<voi
   } as unknown as ApiClient & { GET: ReturnType<typeof vi.fn>; POST: ReturnType<typeof vi.fn> };
 }
 
+// Flake root cause: findByRole resolves as soon as the textarea is in the DOM, which can be BEFORE React flushes the
+// thread's mount effect (it resets the draft and mention state for the freshly mounted channel). Under CPU load the
+// test then typed "@Zed" first and that late reset wiped it, so the suggestion list never appeared (observed: draft
+// "" and no mention-candidates request). Flush pending effects before typing; no timeout change is needed.
+async function findComposer(): Promise<HTMLTextAreaElement> {
+  const composer = (await screen.findByRole("textbox", {
+    name: "Message",
+  })) as HTMLTextAreaElement;
+  await act(async () => {});
+  return composer;
+}
+
 async function typeMention(api: ApiClient) {
   render(
     <MemoryRouter>
@@ -81,7 +93,7 @@ async function typeMention(api: ApiClient) {
       </ApiClientProvider>
     </MemoryRouter>,
   );
-  const composer = (await screen.findByRole("textbox", { name: "Message" })) as HTMLTextAreaElement;
+  const composer = await findComposer();
   fireEvent.change(composer, { target: { value: "@Zed", selectionStart: 4 } });
   fireEvent.click(await screen.findByRole("option", { name: /Zed Newcomer/ }));
   return composer;
@@ -98,7 +110,7 @@ describe("WP 2.3 mention of a person outside the conversation", () => {
         </ApiClientProvider>
       </MemoryRouter>,
     );
-    const box = (await screen.findByRole("textbox", { name: "Message" })) as HTMLTextAreaElement;
+    const box = await findComposer();
     fireEvent.change(box, { target: { value: "@Zed", selectionStart: 4 } });
     const option = await screen.findByRole("option", { name: /Zed Newcomer/ });
     expect(option.id).not.toBe("");
@@ -115,7 +127,7 @@ describe("WP 2.3 mention of a person outside the conversation", () => {
         </ApiClientProvider>
       </MemoryRouter>,
     );
-    const box = (await screen.findByRole("textbox", { name: "Message" })) as HTMLTextAreaElement;
+    const box = await findComposer();
     fireEvent.change(box, { target: { value: "@Zed", selectionStart: 4 } });
     await screen.findByRole("option", { name: /Zed Newcomer/ });
     fireEvent.change(box, { target: { value: "@Zedd", selectionStart: 5 } });
@@ -276,9 +288,7 @@ describe("WP 2.3 mention of a person outside the conversation", () => {
         </ApiClientProvider>
       </MemoryRouter>,
     );
-    const composer = (await screen.findByRole("textbox", {
-      name: "Message",
-    })) as HTMLTextAreaElement;
+    const composer = await findComposer();
     const region = screen.getByRole("status", PROMPT);
     expect(region.textContent).toBe("");
     fireEvent.change(composer, { target: { value: "@Zed", selectionStart: 4 } });
