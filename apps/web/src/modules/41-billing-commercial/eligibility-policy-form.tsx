@@ -98,7 +98,7 @@ export function EligibilityPolicyForm({
   const [serverError, setServerError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
-  // One key per attempt: kept across a retry of the same body, dropped when a field changes, on success, on a 409 and on step-up.
+  // One key per attempt: kept across a retry of the same body, dropped when a field changes and on any HTTP response; kept only after a thrown/no-response failure.
   const attemptKey = useRef<string | null>(null);
 
   const edit =
@@ -152,7 +152,9 @@ export function EligibilityPolicyForm({
         navigate(stepUp);
         return;
       }
-      if (response.status === 409) attemptKey.current = null;
+      // The server caches EVERY answer (4xx/5xx too) under the key for 24h and replays it for the same body, so a key survives only
+      // when no HTTP response arrived (the catch below); any response, 503/500/403/404/422 included, retires it.
+      attemptKey.current = null;
       setServerError(describeFailure(response.status));
     } catch {
       setServerError(describeFailure(0));

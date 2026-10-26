@@ -19,7 +19,8 @@ import {
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 interface Fields {
-  planId: string;
+  /** null until the user picks a plan in this form; then the form follows the page's Plan select. */
+  planId: string | null;
   serviceDate: string;
 }
 type FieldErrors = Partial<Record<keyof Fields, string>>;
@@ -41,15 +42,17 @@ export function EligibilityCheckForm({
   const client = useApiClient();
   const navigate = useNavigate();
   const [fields, setFields] = useState<Fields>({
-    planId: defaultPlanId,
+    planId: null,
     serviceDate: localToday(),
   });
+  const planId = fields.planId ?? defaultPlanId;
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [failure, setFailure] = useState<CheckFailure | null>(null);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
-  // One key per attempt: kept across a retry of the same body, dropped when a field changes, on success and on a 409.
+  // One key per attempt: kept across a retry of the same body, dropped when a field changes and on any HTTP response; kept only after a thrown/no-response failure.
   const attemptKey = useRef<string | null>(null);
+  const keyedPlanId = useRef(planId);
 
   const edit =
     (name: keyof Fields) =>
@@ -61,13 +64,15 @@ export function EligibilityCheckForm({
   const submit = async (): Promise<void> => {
     if (inFlight.current) return;
     const errors: FieldErrors = {};
-    if (!fields.planId) errors.planId = "Choose a plan.";
+    if (!planId) errors.planId = "Choose a plan.";
     if (!DAY.test(fields.serviceDate)) errors.serviceDate = "Enter the service date.";
     setFieldErrors(errors);
     setFailure(null);
     if (Object.keys(errors).length > 0) return;
     inFlight.current = true;
     setBusy(true);
+    if (keyedPlanId.current !== planId) attemptKey.current = null; // the page's plan changed under us: a different body
+    keyedPlanId.current = planId;
     attemptKey.current ??= crypto.randomUUID();
     try {
       const { data, error, response } = await client.POST(
@@ -77,21 +82,23 @@ export function EligibilityCheckForm({
           body: {
             providerEntityId,
             patientId,
-            planId: fields.planId,
+            planId,
             serviceDate: fields.serviceDate,
           },
         },
       );
       if (!error && data) {
         attemptKey.current = null;
-        onChecked({ planId: fields.planId, replayed: data.replayed });
+        onChecked({ planId, replayed: data.replayed });
         return;
       }
       if (response.status === 401) {
         navigate("/login");
         return;
       }
-      if (response.status === 409) attemptKey.current = null;
+      // The server caches EVERY answer (4xx/5xx too) under the key for 24h and replays it for the same body, so a key survives only
+      // when no HTTP response arrived (the catch below); any response, 503/500/403/404/422 included, retires it.
+      attemptKey.current = null;
       const code = (error as { error?: { code?: string } } | undefined)?.error?.code;
       setFailure(describeCheckFailure(response.status, code));
     } catch {
@@ -115,7 +122,7 @@ export function EligibilityCheckForm({
       <SelectField
         label="Plan to check"
         required
-        value={fields.planId}
+        value={planId}
         error={fieldErrors.planId}
         onChange={(e) => edit("planId")(e.target.value)}
         options={[

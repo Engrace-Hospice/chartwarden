@@ -507,3 +507,6 @@ export function describeCheckFailure(status: number, code: string | undefined): 
   if (status === 409) return { text: "That check could not be run. Reload and try again." };
   return { text: "That did not go through. Check your connection and try again." };
 }
+
+/** The server returns at most this many eligibility checks per history read (service.ts DEFAULT_LIST_LIMIT); the client cannot ask for more. */
+export const ELIGIBILITY_HISTORY_LIMIT = 20;

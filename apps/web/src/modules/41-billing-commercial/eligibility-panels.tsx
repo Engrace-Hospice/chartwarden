@@ -4,6 +4,7 @@
 import { Button, EmptyState, InlineAlert, LoadingSpinner, StatusPill } from "@chartwarden/ui";
 import type { JSX } from "react";
 import {
+  ELIGIBILITY_HISTORY_LIMIT,
   type EligibilityCheckView,
   type EligibilityFreshnessView,
   checkedAtLabel,
@@ -176,6 +177,9 @@ export function CheckHistory({
   return (
     <>
       {alert}
+      {load.data.length >= ELIGIBILITY_HISTORY_LIMIT ? (
+        <p>{`Showing the ${ELIGIBILITY_HISTORY_LIMIT} most recent checks`}</p>
+      ) : null}
       <div className="wx-list-table-wrap">
         <table className="wx-list-table">
           <caption className="wx-sr-only">{`Eligibility checks for ${patientName}, ${scopeLabel}, newest first`}</caption>

@@ -6,7 +6,7 @@ import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { markStepUpReturn } from "../../shell/step-up-redirect";
-import { localToday } from "./commercial-model";
+import { ELIGIBILITY_HISTORY_LIMIT, localToday } from "./commercial-model";
 import {
   type Call,
   ENTITY_ID,
@@ -454,7 +454,7 @@ describe("CommercialEligibility run a check", () => {
     );
   });
 
-  it("keeps the Idempotency-Key on retry, drops it on a field change, a 409 and success", async () => {
+  it("keeps the Idempotency-Key only after a thrown fetch; any HTTP response (503, 409, success) retires it", async () => {
     const calls: Call[] = [];
     let n = 0;
     mount({
@@ -462,7 +462,8 @@ describe("CommercialEligibility run a check", () => {
       calls,
       check: () => {
         n += 1;
-        if (n <= 2)
+        if (n === 1) throw new TypeError("network down");
+        if (n === 2)
           return { status: 503, body: { error: { code: "COMMERCIAL_ELIGIBILITY_UNAVAILABLE" } } };
         if (n === 3) return { status: 409, body: { error: { code: "IDEMPOTENCY_CONFLICT" } } };
         return { body: { ...eligibilityRow(), replayed: false, freshness: freshnessBody() } };
@@ -472,21 +473,56 @@ describe("CommercialEligibility run a check", () => {
     const keys = (): (string | null)[] =>
       writes(calls).map((c) => c.headers.get("Idempotency-Key"));
     fireEvent.submit(checkForm());
-    await screen.findByText(/Nothing was recorded/);
+    await screen.findByText(/did not go through/);
     fireEvent.submit(checkForm());
     await waitFor(() => expect(writes(calls)).toHaveLength(2));
-    expect(keys()[1]).toBe(keys()[0]); // retry of the same body: same key
+    expect(keys()[1]).toBe(keys()[0]); // no response arrived: same key
     await screen.findByText(/Nothing was recorded/);
-    fireEvent.change(screen.getByLabelText(/Service date/), { target: { value: "2026-10-01" } });
     fireEvent.submit(checkForm());
     await screen.findByText(/clashed with an earlier one/);
-    expect(keys()[2]).not.toBe(keys()[1]); // a field changed: new key
+    expect(keys()[2]).not.toBe(keys()[1]); // after a 503 the server cached it: new key
+    fireEvent.change(screen.getByLabelText(/Service date/), { target: { value: "2026-10-01" } });
     fireEvent.submit(checkForm());
     await screen.findByText("Eligibility check recorded.");
-    expect(keys()[3]).not.toBe(keys()[2]); // after the 409: new key
+    expect(keys()[3]).not.toBe(keys()[2]); // a field changed: new key
     fireEvent.submit(checkForm());
     await waitFor(() => expect(writes(calls)).toHaveLength(5));
     expect(keys()[4]).not.toBe(keys()[3]); // after success: new key
+  });
+
+  it("follows the page Plan select until the user picks a plan in the form", async () => {
+    const calls: Call[] = [];
+    mount({ permissions: WRITE, calls, entry: WITH_PLAN });
+    await screen.findByRole("table");
+    const formPlan = (): string =>
+      (screen.getByLabelText(/Plan to check/) as HTMLSelectElement).value;
+    expect(formPlan()).toBe(PLAN_ID);
+    fireEvent.change(screen.getByLabelText("Plan", { selector: "select" }), {
+      target: { value: "p2" },
+    });
+    await waitFor(() => expect(formPlan()).toBe("p2"));
+    fireEvent.submit(checkForm());
+    await waitFor(() => expect(writes(calls)).toHaveLength(1));
+    expect((writes(calls)[0]?.body as { planId: string }).planId).toBe("p2");
+    fireEvent.change(screen.getByLabelText(/Plan to check/), { target: { value: PLAN_ID } });
+    fireEvent.change(screen.getByLabelText("Plan", { selector: "select" }), {
+      target: { value: "p2" },
+    });
+    await waitFor(() => expect(formPlan()).toBe(PLAN_ID)); // the user's own choice sticks
+  });
+
+  it("notes that history is capped at the 20 most recent checks", async () => {
+    const rows = Array.from({ length: ELIGIBILITY_HISTORY_LIMIT }, (_, i) =>
+      eligibilityRow({ id: `c-${i}` }),
+    );
+    mount({ history: historyOk(rows) });
+    await screen.findByText(`Showing the ${ELIGIBILITY_HISTORY_LIMIT} most recent checks`);
+  });
+
+  it("does not show the cap note below the limit", async () => {
+    mount();
+    await screen.findByRole("table");
+    expect(screen.queryByText(/most recent checks/)).toBeNull();
   });
 });
 
@@ -616,6 +652,21 @@ describe("CommercialEligibility policy drawer", () => {
     mount({ permissions: MANAGE, entry });
     const fresh = await policyDrawer();
     expect((within(fresh).getByLabelText(/Stale after/) as HTMLInputElement).value).toBe("30");
+    expect(draftKept()).toBe(false);
+  });
+
+  it("changing the page Plan select after a step-up return discards the stashed draft", async () => {
+    const entry = `${WITH_PLAN}&policy=edit`;
+    await stashedDraft(entry);
+    markStepUpReturn(entry);
+    mount({ permissions: MANAGE, entry });
+    const back = await policyDrawer();
+    expect((within(back).getByLabelText(/Stale after/) as HTMLInputElement).value).toBe("14");
+    expect(draftKept()).toBe(true);
+    fireEvent.change(screen.getByLabelText("Plan", { selector: "select" }), {
+      target: { value: "p2" },
+    });
+    await waitFor(() => expect(policyDrawerGone()).toBe(true));
     expect(draftKept()).toBe(false);
   });
 
