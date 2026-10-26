@@ -189852,6 +189852,10 @@
                   "timeZone": {
                     "maxLength": 64,
                     "type": "string"
+                  },
+                  "clientMessageId": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
                   }
                 }
               }

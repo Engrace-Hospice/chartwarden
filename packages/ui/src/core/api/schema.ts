@@ -75049,6 +75049,7 @@ export interface operations {
                     parentMessageId?: string;
                     scheduledFor: string;
                     timeZone?: string;
+                    clientMessageId?: string;
                 };
             };
         };

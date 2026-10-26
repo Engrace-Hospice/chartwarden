@@ -370,6 +370,22 @@ describe.skipIf(!DB_URL)("WP 2.6 - scheduled send - LIVE Postgres", () => {
       await expect(schedule(bob)).resolves.toBeDefined();
     });
 
+    it("a repeat with the same client message id returns the first row, not a second; another user's id is independent", async () => {
+      await wipe();
+      const clientMessageId = "7c1d6b0e-3f0a-4c58-9d0e-2b6f4a1e8c33";
+      const first = await schedule(alice, { clientMessageId });
+      const again = await schedule(alice, { clientMessageId, body: "a different body" });
+      expect(again.id).toBe(first.id);
+      expect(again.body).toBe(SECRET);
+      expect(await rows()).toHaveLength(1);
+      const bobs = await schedule(bob, { clientMessageId });
+      expect(bobs.id).not.toBe(first.id);
+      // concurrent repeats collapse to one row too, and a replay at the cap is not refused
+      const raced = await Promise.all([1, 2, 3].map(() => schedule(alice, { clientMessageId })));
+      expect(new Set(raced.map((r) => r.id))).toEqual(new Set([first.id]));
+      expect(await rows()).toHaveLength(2);
+    });
+
     it("binds a scheduled reply to a live thread root in its own channel", async () => {
       await wipe();
       const root = await router.sendMessage(orgA, {

@@ -246,6 +246,15 @@ describe("scheduled-send routes", () => {
     await app.close();
   });
 
+  it("passes a client message id through to the service and 422s a malformed one", async () => {
+    const { app, calls } = makeServer();
+    const clientMessageId = "0b1f5f4e-5a55-4d6a-8f55-1d3f0a9c7e11";
+    expect((await create(app, "rn_1", { ...ok, clientMessageId })).statusCode).toBe(201);
+    expect(calls[0]).toMatchObject({ op: "create", input: { clientMessageId } });
+    expect((await create(app, "rn_1", { ...ok, clientMessageId: "nope" })).statusCode).toBe(422);
+    await app.close();
+  });
+
   it("422s a malformed body, an unparseable time and a malformed parent id", async () => {
     const { app } = makeServer();
     expect((await create(app, "rn_1", { body: "x" })).statusCode).toBe(422);
