@@ -153,6 +153,7 @@ describe("buildPrimaryNav", () => {
       "/remittance/tpe",
       "/remittance/report",
       "/commercial/billing/claims",
+      "/commercial/billing/authorizations",
       "/admin/billing-audit",
     ];
     const billing = () =>
@@ -172,7 +173,10 @@ describe("buildPrimaryNav", () => {
         "All payers",
       ]);
       expect(subPaths("medicaid")).toEqual(["/medicaid/billing/claims"]);
-      expect(subPaths("commercial")).toEqual(["/commercial/billing/claims"]);
+      expect(subPaths("commercial")).toEqual([
+        "/commercial/billing/claims",
+        "/commercial/billing/authorizations",
+      ]);
     });
 
     it("puts the Medicare-only review chain, cap and cost reports in Medicare; shared M25 screens in All payers", () => {

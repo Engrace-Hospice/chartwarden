@@ -9,6 +9,11 @@ import type { ProviderEntityState } from "./use-provider-entity";
 const VIEWS = [
   { to: COMMERCIAL_PATHS.queue, label: "Claim queue", match: "/commercial/billing/claims" },
   { to: COMMERCIAL_PATHS.payers, label: "Supported payers", match: "/commercial/billing/payers" },
+  {
+    to: COMMERCIAL_PATHS.authorizations,
+    label: "Authorizations",
+    match: "/commercial/billing/authorizations",
+  },
 ] as const;
 
 export function CommercialTabs(): JSX.Element {

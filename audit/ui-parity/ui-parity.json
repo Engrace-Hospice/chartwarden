@@ -2605,6 +2605,14 @@
       "permission": "commercial_billing.read"
     },
     {
+      "app": "web",
+      "module": "41-billing-commercial",
+      "moduleId": 41,
+      "id": "commercial.authorizations",
+      "path": "/commercial/billing/authorizations",
+      "permission": "commercial_billing.read"
+    },
+    {
       "app": "admin",
       "module": "01-ops",
       "moduleId": 1,

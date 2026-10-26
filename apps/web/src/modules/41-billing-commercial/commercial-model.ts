@@ -12,6 +12,7 @@ export { dollars, statusLabel };
 export const COMMERCIAL_PATHS = {
   queue: "/commercial/billing/claims",
   payers: "/commercial/billing/payers",
+  authorizations: "/commercial/billing/authorizations",
   claim: (id: string): string => `/commercial/billing/claims/${id}`,
 } as const;
 
@@ -244,4 +245,83 @@ export function wholeDollars(cents: number): string {
     currency: "USD",
     maximumFractionDigits: 0,
   });
+}
+
+/** One pre-authorization as the list returns it. The number is never part of the view. */
+export interface AuthorizationView {
+  readonly id: string;
+  readonly patientId: string;
+  readonly planId: string;
+  readonly levelOfCare: string | null;
+  readonly status: string;
+  readonly obtainedOn: string;
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+}
+
+/** The plan facts the authorization screens need (from the supported-payers read). */
+export interface AuthorizationPlan {
+  readonly id: string;
+  readonly planName: string;
+  readonly authorizationRequirement: string;
+  readonly authorizationLeadDays?: number | null;
+}
+
+/** The authorization period as text: "from to to", or "from · Open-ended". */
+export function authorizationPeriod(from: string, to: string | null): string {
+  return to === null ? `${from} · Open-ended` : servicePeriod(from, to);
+}
+
+/** The server's authorization-number pattern (commercial-typebox.ts); a model test keeps the two equal. */
+export const AUTHORIZATION_NUMBER_PATTERN = /^[A-Za-z0-9._-]{1,50}$/;
+
+export const AUTHORIZATION_STATUS_OPTIONS = [
+  { value: "", label: "All statuses" },
+  { value: "approved", label: "Approved" },
+  { value: "denied", label: "Denied" },
+  { value: "voided", label: "Voided" },
+] as const;
+
+export const LEVEL_OF_CARE_OPTIONS = [
+  "routine_home_care",
+  "continuous_home_care",
+  "inpatient_respite",
+  "general_inpatient",
+] as const;
+
+const AUTHORIZATION_STATUS_TONE: Record<string, StatusTone> = {
+  approved: "success",
+  denied: "error",
+  voided: "neutral",
+};
+export function authorizationStatusTone(status: string): StatusTone {
+  return AUTHORIZATION_STATUS_TONE[status] ?? "neutral";
+}
+export function authorizationStatusLabel(status: string): string {
+  return statusLabel(status);
+}
+
+/** Today's date on the user's own calendar (a UTC date is a day off for part of every evening or morning). */
+export function localToday(now: Date = new Date()): string {
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${mm}-${dd}`;
+}
+
+/**
+ * A display-only hint about an authorization's period. It is never a status: the stored status stays authoritative, and the
+ * server's validation decides coverage. Only an approved authorization gets a note.
+ */
+export function authorizationWindowNote(
+  auth: {
+    readonly status: string;
+    readonly effectiveFrom: string;
+    readonly effectiveTo: string | null;
+  },
+  today: string,
+): string | null {
+  if (auth.status !== "approved") return null;
+  if (auth.effectiveTo !== null && auth.effectiveTo < today) return "Period ended";
+  if (auth.effectiveFrom > today) return `Starts ${auth.effectiveFrom}`;
+  return auth.effectiveTo === null ? "Open-ended" : null;
 }

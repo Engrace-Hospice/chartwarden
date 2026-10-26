@@ -3,7 +3,7 @@
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { render } from "@testing-library/react";
 import type { JSX } from "react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { SessionProvider } from "../../shell/session";
 
 export const ENTITY_ID = "22222222-2222-4222-8222-222222222222";
@@ -17,6 +17,7 @@ export interface Call {
   readonly path: string;
   readonly query: URLSearchParams;
   readonly body: unknown;
+  readonly headers: Headers;
 }
 export type Responder = (
   call: Call,
@@ -32,6 +33,7 @@ export function makeFetch(routes: Record<string, Responder>, calls: Call[]): typ
       path: url.pathname,
       query: url.searchParams,
       body: text ? JSON.parse(text) : undefined,
+      headers: request.headers,
     };
     calls.push(call);
     const responder = routes[`${call.method} ${call.path}`];
@@ -43,6 +45,13 @@ export function makeFetch(routes: Record<string, Responder>, calls: Call[]): typ
       headers: { "content-type": "application/json" },
     });
   };
+}
+
+/** Catch-all route: shows "elsewhere" and publishes where the app navigated to as body[data-where]. */
+function Elsewhere(): JSX.Element {
+  const { pathname, search } = useLocation();
+  document.body.dataset.where = pathname + search;
+  return <p>elsewhere</p>;
 }
 
 export function mountScreen(opts: {
@@ -73,7 +82,7 @@ export function mountScreen(opts: {
           <MemoryRouter initialEntries={[opts.entry]}>
             <Routes>
               <Route path={opts.routePath} element={opts.element} />
-              <Route path="*" element={<p>elsewhere</p>} />
+              <Route path="*" element={<Elsewhere />} />
             </Routes>
           </MemoryRouter>
         </ToastProvider>
@@ -113,5 +122,35 @@ export const claimRow = (over: Record<string, unknown> = {}): Record<string, unk
   totalChargeCents: 620_000,
   expectedPaymentCents: 620_000,
   updatedAt: "2026-10-25T10:00:00.000Z",
+  ...over,
+});
+
+export const AUTH_ID = "77777777-7777-4777-8777-777777777777";
+
+export const authorizationRow = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+  id: AUTH_ID,
+  patientId: PATIENT_ID,
+  planId: PLAN_ID,
+  levelOfCare: "routine_home_care",
+  status: "approved",
+  obtainedOn: "2026-02-20",
+  effectiveFrom: "2026-03-01",
+  effectiveTo: "2026-03-31",
+  ...over,
+});
+
+export const planRow = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+  id: PLAN_ID,
+  payerId: PAYER_ID,
+  planName: "Synthetic PPO",
+  claimFilingIndicator: "CI",
+  authorizationRequirement: "required_at_admission",
+  authorizationLeadDays: 3,
+  eligibilityStalenessPolicy: "warn",
+  eligibilityMaxAgeDays: 30,
+  effectiveFrom: "2026-01-01",
+  effectiveTo: null,
+  payerStatus: "active",
+  routes: [],
   ...over,
 });

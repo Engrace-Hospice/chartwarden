@@ -15,6 +15,10 @@ const SupportedPayers = lazy(() =>
   import("./supported-payers").then((m) => ({ default: m.SupportedPayers })),
 );
 
+const CommercialAuthorizations = lazy(() =>
+  import("./authorizations").then((m) => ({ default: m.CommercialAuthorizations })),
+);
+
 export const commercialBillingScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 41,
   slug: "41-billing-commercial",
@@ -42,6 +46,14 @@ export const commercialBillingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "commercial_billing.read",
       screen: SupportedPayers,
+    },
+    {
+      id: "commercial.authorizations",
+      path: "/commercial/billing/authorizations",
+      title: "Commercial Authorizations",
+      navGroup: "Billing",
+      requiredPermission: "commercial_billing.read",
+      screen: CommercialAuthorizations,
     },
   ],
 };

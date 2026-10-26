@@ -29,7 +29,7 @@ lane never shows their claims. It reads `GET /api/v1/billing/commercial/claims`,
 Use Work Queue.
 
 ```text
-Page Header · Billing tabs (Commercial) · view tabs (Claim queue · Supported payers)
+Page Header · Billing tabs (Commercial) · view tabs (Claim queue · Supported payers · Authorizations)
 KPI strip (in queue · draft · ready · expected payment)
 Filter panel (provider entity · payer kind · state)
   Table of claims                                  |  Right drawer: selected claim preview
@@ -72,6 +72,18 @@ payers view is the same list-plus-drawer frame with the plan drawer. All three u
 Per commercial plan: payer name, plan, filing indicator, authorization policy, clearinghouse route (key and payer id) and the provider
 entity's enrollment with the payer. "Not enrolled" is a first-class state. The drawer adds the payer's master-data state, the plan
 period, authorization lead time, the eligibility staleness policy, and every route with its dates. No patient data appears.
+
+---
+
+## Authorizations
+
+Per patient, because `GET /api/v1/billing/commercial/authorizations` needs both `providerEntityId` and `patientId` and does not page:
+the screen opens on a patient search (the choice lives in the URL). The table shows plan, level of care, period (with a display-only
+note such as "Period ended"), obtained date and status; a status filter narrows it. The drawer adds the payer's authorization policy
+and lead time, and states that the number is stored but never shown. A failed read, including a 404, is an error with a retry, never
+"none". Holders of `commercial_billing.write` also get **Record authorization** (plan, optional level of care, number, obtained,
+effective from and to; the number is cleared after success) and, on an approved authorization only, **Deny** and **Void**, each behind
+a confirm that is final and warns that Ready claims relying on it may fall back to draft. Denied and voided are final.
 
 ---
 
