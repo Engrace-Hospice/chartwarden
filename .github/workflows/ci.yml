@@ -437,7 +437,8 @@ jobs:
               scripts:
                 "test:m24:nf-facility-snapshot:live test:m24:claim-line-assembly:live
                 test:m24:revalidate-medicare-primary:live test:m24:remittance-feedback:live
-                test:m24:state-channel-health:live test:m24:rb-day-sweep:live",
+                test:m24:state-channel-health:live test:m24:rb-day-sweep:live
+                test:m24:override-integrity:live",
             }
           - { name: "M29 NPPES platform sync", scripts: "test:m29:nppes-sync:live" }
           - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }

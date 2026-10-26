@@ -114,7 +114,11 @@ for (const base of SCAN_DIRS) {
     // comment-stripped copy so a prose mention of "PARTITION BY" in a `--`/`/* */` comment (e.g. a
     // migration note that the partition conversion is DEFERRED to a later file) is not mistaken for
     // a real partition declaration.
-    const srcNoComments = src.replace(/--[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    // A TS schema file's `//` line comments are prose too (validation.ts mentions "PARTITION BY LIST(...)" for
+    // its partitioned tables above a NON-partitioned table's uniqueIndex) — strip them for .ts sources only.
+    const srcNoComments = (file.endsWith(".ts") ? src.replace(/(^|\s)\/\/[^\n]*/g, "$1") : src)
+      .replace(/--[^\n]*/g, "")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
     const ordinal = /(?:^|\/)migrations\/(\d+)_[^/]*\.sql$/.exec(file)?.[1];
     if (
       ordinal &&

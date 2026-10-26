@@ -512,6 +512,7 @@
     "test:m24:remittance-feedback:live": "vitest run apps/backend/__tests__/f172-m24-remittance-feedback.live.test.ts",
     "test:m24:state-channel-health:live": "vitest run apps/backend/__tests__/m24-state-channel-health.live.test.ts",
     "test:m24:rb-day-sweep:live": "vitest run apps/backend/__tests__/gap-071-m24-rb-day-sweep.live.test.ts",
+    "test:m24:override-integrity:live": "vitest run apps/backend/__tests__/m24-validation-override-integrity.live.test.ts",
     "test:m25:835-ingestion:live": "vitest run apps/backend/__tests__/m25-835-ingestion.live.test.ts",
     "test:m25:835-golden:live": "vitest run apps/backend/__tests__/m25-835-golden.live.test.ts",
     "test:m25:interim-payments-seam:live": "vitest run apps/backend/__tests__/m25-interim-payments-seam.live.test.ts",

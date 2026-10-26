@@ -64,6 +64,12 @@ class ConflictError extends ChartWardenError {
     this.name = "ConflictError";
   }
 }
+class UnprocessableError extends ChartWardenError {
+  constructor(code: string, message: string) {
+    super(code, message, 422);
+    this.name = "UnprocessableError";
+  }
+}
 class DegradedError extends ChartWardenError {
   constructor(code: string, message: string) {
     super(code, message, 503);
@@ -321,7 +327,9 @@ export function buildDrizzleM24WriteService(
       version: r.version,
       validationRunIdLatest: r.validationRunIdLatest ?? null,
       eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
-      electronicSubmissionRefusal: electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState))?.message ?? null,
+      electronicSubmissionRefusal:
+        electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState))?.message ??
+        null,
       createdAt: iso(r.createdAt),
       updatedAt: iso(r.updatedAt),
     };
@@ -1035,18 +1043,47 @@ export function buildDrizzleM24WriteService(
           .where(eq(VR.id, result.medicaidValidationRunId))
           .limit(1);
         const claimId = runRows[0]?.claimId ?? "";
+        if (result.outcome !== "fail") {
+          throw new UnprocessableError(
+            "OVERRIDE_RESULT_NOT_FAILED",
+            `only a failed validation result can be overridden (outcome is ${result.outcome})`,
+          );
+        }
+        const latestRun = await tx
+          .select({ id: VR.id })
+          .from(VR)
+          .where(eq(VR.medicaidClaimId, claimId))
+          .orderBy(desc(VR.at), desc(VR.id))
+          .limit(1);
+        if (latestRun[0]?.id !== result.medicaidValidationRunId) {
+          throw new ConflictError(
+            "OVERRIDE_RESULT_SUPERSEDED",
+            "the validation result is not in the claim's latest validation run",
+          );
+        }
         const overrideId = randomUUID();
-        await tx.insert(VOV).values({
-          id: overrideId,
-          organizationId: actor.organizationId,
-          medicaidValidationResultId: resultId,
-          medicaidClaimId: claimId,
-          ruleKey: result.ruleKey,
-          overrideRoleApplied: input.overrideRoleClaimed,
-          reason: input.reason,
-          stepUpAuthTokenAt: new Date(),
-          actorMembershipId: actor.userId,
-        });
+        // ON CONFLICT DO NOTHING (not catch-and-rethrow): a unique violation would abort the tx.
+        const inserted = await tx
+          .insert(VOV)
+          .values({
+            id: overrideId,
+            organizationId: actor.organizationId,
+            medicaidValidationResultId: resultId,
+            medicaidClaimId: claimId,
+            ruleKey: result.ruleKey,
+            overrideRoleApplied: input.overrideRoleClaimed,
+            reason: input.reason,
+            stepUpAuthTokenAt: new Date(),
+            actorMembershipId: actor.userId,
+          })
+          .onConflictDoNothing({ target: VOV.medicaidValidationResultId })
+          .returning({ id: VOV.id });
+        if (inserted.length === 0) {
+          throw new ConflictError(
+            "OVERRIDE_ALREADY_APPLIED",
+            "this validation result already has an override",
+          );
+        }
         await outbox.publish(tx, {
           eventName: "m24.medicaid_claim.override_applied",
           organizationId: actor.organizationId,
