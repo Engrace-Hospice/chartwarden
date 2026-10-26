@@ -16,6 +16,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
+import net from "node:net";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -1909,6 +1910,7 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
               fetches += 1;
               return transport.fetchAcknowledgments(...args);
             },
+            fetchClaimStatus: (...args) => transport.fetchClaimStatus(...args),
           },
         },
       });
@@ -1923,6 +1925,34 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
             [c.controlNumber],
           )
           .then((r) => r.rows[0]);
+      /** Deps whose transport cannot answer a claim-status inquiry (what the Stedi and direct-MAC transports do today). */
+      const noInquiry = (vendor: string): AckWorkerDeps => ({
+        ...ackDeps(vendor),
+        binding: {
+          vendor,
+          transport: {
+            fetchAcknowledgments: (ctx, cursor) => transport.fetchAcknowledgments(ctx, cursor),
+            fetchClaimStatus: async () => ({
+              ok: false,
+              degraded: { code: "CH_NOT_WIRED", reason: "claim status is not wired" },
+            }),
+          },
+        },
+      });
+      const rowOf = (controlNumber: string, reason: string) =>
+        admin
+          .query(
+            "SELECT id, resolved_at, resolution, event FROM commercial_ack_quarantine WHERE control_number=$1 AND reason=$2",
+            [controlNumber, reason],
+          )
+          .then((r) => r.rows[0]);
+      const abandonedEvents = (controlNumber: string) =>
+        admin
+          .query(
+            "SELECT payload FROM outbox_event WHERE event_type='m41.claim.ack_abandoned' AND payload->>'controlNumber'=$1",
+            [controlNumber],
+          )
+          .then((r) => r.rows.map((x) => x.payload as Record<string, unknown>));
       /** A claim in doubt with a payer-stage answer held for it. */
       async function heldClaim() {
         const c = await readyClaim();
@@ -1971,7 +2001,7 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
           "received",
           "payer_portal",
         );
-        await replayHeldEvents(ackDeps("stedi"), scope());
+        await replayHeldEvents(noInquiry("stedi"), scope());
         expect(await heldOf(c)).toMatchObject({ resolution: "abandoned_aged" });
         expect(await claimState(c.claimId)).toBe("submitted"); // stale: not applied
       });
@@ -1985,21 +2015,23 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
           return count(logs);
         };
         await pull(); // consume whatever earlier tests left in the stream
+        // held mismatch rows of OTHER provider entities (no live work) are swept once per pull: a constant the counts below include
+        const swept = await pull(); // no live work here, so this counts only the sweep
         // three payer-stage answers (two pages of two): nothing can unblock a held row, so the held events are looked at once
         const a = await sentClaim();
         const b = await sentClaim();
         const d = await sentClaim();
         for (const c of [a, b, d])
           await transport.control.payerAccepts(c.controlNumber, "ICN-F", scope());
-        expect(await pull()).toBe(1);
+        expect(await pull()).toBe(1 + swept);
         // clearinghouse-stage answers (a page that settles rows): once at the start, once after that page
         const e = await sentClaim();
         const f = await sentClaim();
         await transport.control.clearinghouseAccepts(e.controlNumber, scope());
         await transport.control.clearinghouseAccepts(f.controlNumber, scope());
-        expect(await pull()).toBe(2);
+        expect(await pull()).toBe(2 + swept);
         // an idle pull with nothing new still looks once
-        expect(await pull()).toBe(1);
+        expect(await pull()).toBe(1 + swept);
       });
 
       it("abandons a held event whose submission went through another clearinghouse (vendor_mismatch)", async () => {
@@ -2030,9 +2062,138 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
           "received",
           "payer_portal",
         );
-        await replayHeldEvents(ackDeps("stedi"), scope());
+        await replayHeldEvents(noInquiry("stedi"), scope());
         expect(await heldOf(c)).toMatchObject({ resolution: "abandoned_aged" });
         expect(await claimState(c.claimId)).toBe("submitted"); // aged out, NOT applied
+        // the abandonment is an EVENT, not only a log line: ids and codes, and what the status inquiry made of it
+        expect(await abandonedEvents(c.controlNumber)).toEqual([
+          {
+            eventId: expect.any(String),
+            controlNumber: c.controlNumber,
+            claimId: c.claimId,
+            reason: "no_receipt",
+            resolution: "abandoned_aged",
+            statusInquiry: "unavailable",
+          },
+        ]);
+        await replayHeldEvents(noInquiry("stedi"), scope()); // idempotent: a resolved row is not abandoned twice
+        expect(await abandonedEvents(c.controlNumber)).toHaveLength(1);
+      });
+
+      it("asks the clearinghouse for the claim status before giving up on an aged held answer, and applies what it reports", async () => {
+        const { c, sub } = await heldClaim();
+        await admin.query(
+          "UPDATE commercial_ack_quarantine SET created_at = now() - interval '60 days' WHERE control_number=$1",
+          [c.controlNumber],
+        );
+        await service("stedi").reconcile(
+          actor,
+          c.claimId,
+          sub.submissionId,
+          "received",
+          "payer_portal",
+        );
+        const replayed = await replayHeldEvents(ackDeps("stedi"), scope()); // the in-memory transport answers claim status
+        expect(replayed.applied).toBeGreaterThanOrEqual(1);
+        expect(await heldOf(c)).toMatchObject({ resolution: "applied_status_inquiry" });
+        expect(await claimState(c.claimId)).toBe("accepted");
+        expect(await abandonedEvents(c.controlNumber)).toEqual([]); // applied: nothing was abandoned
+      });
+
+      it("abandons a held answer whose submission is gone, with an m41.claim.ack_abandoned event", async () => {
+        const { c, sub } = await heldClaim();
+        await service("stedi").reconcile(actor, c.claimId, sub.submissionId, "not_received");
+        await replayHeldEvents(ackDeps("stedi"), scope());
+        expect(await abandonedEvents(c.controlNumber)).toEqual([
+          expect.objectContaining({
+            resolution: "abandoned_no_submission",
+            reason: "no_receipt",
+            statusInquiry: "not_attempted",
+          }),
+        ]);
+      });
+
+      it("keeps the event of a vendor_mismatch, leaves it held while the mismatch stands, and applies it once it no longer does", async () => {
+        const c = await sentClaim();
+        const out = await applyAckEvent(ackDeps("another_vendor"), scope(), {
+          eventId: "replay-vendor",
+          controlNumber: c.controlNumber,
+          stage: "payer",
+          disposition: "accepted",
+          reasonCodes: [],
+          occurredAt: new Date().toISOString(),
+        });
+        expect(out).toMatchObject({ result: "quarantined", reason: "vendor_mismatch" });
+        expect((await rowOf(c.controlNumber, "vendor_mismatch")).event).toMatchObject({
+          stage: "payer",
+        });
+        await replayHeldEvents(ackDeps("another_vendor"), scope());
+        expect((await rowOf(c.controlNumber, "vendor_mismatch")).resolved_at).toBeNull();
+        expect(await claimState(c.claimId)).toBe("submitted");
+        // the binding now matches the clearinghouse the claim went through: the held answer applies, once
+        await replayHeldEvents(ackDeps("stedi"), scope());
+        expect(await rowOf(c.controlNumber, "vendor_mismatch")).toMatchObject({
+          resolution: "applied",
+        });
+        expect(await claimState(c.claimId)).toBe("accepted");
+        await replayHeldEvents(ackDeps("stedi"), scope());
+        expect(await eventCount(c.claimId, "m41.claim.accepted")).toBe(1);
+      });
+
+      it("never re-routes a scope_mismatch to the other provider entity; it waits, then ages out audited", async () => {
+        const c = await sentClaim();
+        const otherPe = (
+          await admin.query(
+            `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+             VALUES ($1,'765432','Synthetic Hospice Three','1003000126','\\x00','12-31') RETURNING id`,
+            [ORG],
+          )
+        ).rows[0].id as string;
+        const otherScope = { organizationId: ORG, providerEntityId: otherPe };
+        await applyAckEvent(ackDeps("stedi"), otherScope, {
+          eventId: "replay-scope",
+          controlNumber: c.controlNumber,
+          stage: "payer",
+          disposition: "accepted",
+          reasonCodes: [],
+          occurredAt: new Date().toISOString(),
+        });
+        await replayHeldEvents(ackDeps("stedi"), otherScope);
+        expect((await rowOf(c.controlNumber, "scope_mismatch")).resolved_at).toBeNull();
+        expect(await claimState(c.claimId)).toBe("submitted");
+        expect(await ackRows(c.claimId)).toEqual([]);
+        await admin.query(
+          "UPDATE commercial_ack_quarantine SET created_at = now() - interval '60 days' WHERE control_number=$1 AND reason='scope_mismatch'",
+          [c.controlNumber],
+        );
+        await replayHeldEvents(ackDeps("stedi"), otherScope);
+        expect(await rowOf(c.controlNumber, "scope_mismatch")).toMatchObject({
+          resolution: "abandoned_aged",
+        });
+        expect(await abandonedEvents(c.controlNumber)).toEqual([
+          expect.objectContaining({
+            reason: "scope_mismatch",
+            resolution: "abandoned_aged",
+            statusInquiry: "not_attempted", // no inquiry on behalf of the wrong provider entity
+          }),
+        ]);
+        expect(await claimState(c.claimId)).toBe("submitted");
+      });
+
+      it("a malformed event keeps no body and is never replayed", async () => {
+        const c = await sentClaim();
+        await applyAckEvent(ackDeps("stedi"), scope(), {
+          eventId: "replay-malformed",
+          controlNumber: c.controlNumber,
+          stage: "vendor",
+          disposition: "accepted",
+          reasonCodes: [],
+        });
+        await replayHeldEvents(ackDeps("stedi"), scope());
+        expect(await rowOf(c.controlNumber, "malformed")).toMatchObject({
+          resolved_at: null,
+          event: null,
+        });
       });
 
       it("logs (ids only) and abandons a stored event that no longer validates, instead of skipping it silently every tick", async () => {
@@ -2198,6 +2359,130 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       expect(err?.statusCode).toBe(503);
       expect(err?.code).toBe("COMMERCIAL_DRAIN_NOT_SCHEDULED");
       expect(await submissionCount(c.claimId)).toBe(0);
+    });
+
+    // #818: the probe times out against a Valkey that is paused (sockets open, nothing answers) or gone (connection refused) and must
+    // TEAR DOWN what it opened. A TCP proxy in front of the real Valkey plays "paused" (swallows traffic) and "down" (stops listening),
+    // and counts the sockets the probe holds open, so a leak shows as a number that grows with the cycles.
+    describe("a long Valkey outage does not accumulate connections (#818)", () => {
+      type Mode = "forward" | "paused" | "down";
+      const CYCLES = 25;
+      const PROBE_TIMEOUT_MS = 150;
+
+      async function startProxy(targetPort: number) {
+        let mode: Mode = "forward";
+        let accepted = 0;
+        const live = new Set<net.Socket>();
+        const handler = (client: net.Socket) => {
+          accepted += 1;
+          live.add(client);
+          client.on("close", () => live.delete(client));
+          client.on("error", () => undefined);
+          if (mode === "paused") {
+            client.on("data", () => undefined); // swallow: the peer is alive and never answers
+            return;
+          }
+          const upstream = net.connect(targetPort, url.hostname);
+          upstream.on("error", () => client.destroy());
+          client.on("close", () => upstream.destroy());
+          client.pipe(upstream);
+          upstream.pipe(client);
+        };
+        let server = net.createServer(handler);
+        await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+        const port = (server.address() as net.AddressInfo).port;
+        const stopListening = () =>
+          new Promise<void>((r) => {
+            server.close(() => r());
+          });
+        return {
+          port,
+          open: () => live.size,
+          accepted: () => accepted,
+          /** Existing sockets stay open (a paused process keeps its TCP connections) but nothing is forwarded any more. */
+          pause: () => {
+            mode = "paused";
+            for (const s of live) {
+              s.unpipe();
+              s.resume(); // keep reading (and discarding), or the peer's close is never seen
+            }
+          },
+          /** The process is gone: connections drop and new ones are refused. */
+          down: async () => {
+            mode = "down";
+            for (const s of live) s.destroy();
+            await stopListening();
+          },
+          up: async () => {
+            if (mode === "down") {
+              server = net.createServer(handler);
+              await new Promise<void>((r) => server.listen(port, "127.0.0.1", r));
+            }
+            mode = "forward";
+          },
+          close: async () => {
+            for (const s of live) s.destroy();
+            if (mode !== "down") await stopListening();
+          },
+        };
+      }
+      const tcpSockets = () =>
+        process.getActiveResourcesInfo().filter((r) => r === "TCPSocketWrap").length;
+      const settle = () => new Promise((r) => setTimeout(r, 400));
+
+      it("a paused Valkey: every timed-out probe frees its sockets, and the probe works again once Valkey is back", async () => {
+        const targetPort = Number(url.port || 6379);
+        const drain = await scheduleM41Jobs(connection);
+        const ack = await scheduleM41AckJobs(connection);
+        open.push(...drain, ...ack);
+        const proxy = await startProxy(targetPort);
+        try {
+          const probe = createScheduleProbe({
+            connection: { host: "127.0.0.1", port: proxy.port },
+            timeoutMs: PROBE_TIMEOUT_MS,
+          });
+          await expect(probe()).resolves.toBe(true); // healthy through the proxy
+          proxy.pause();
+          let peak = 0;
+          for (let i = 0; i < CYCLES; i++) {
+            await expect(probe()).rejects.toThrow(/timed out/);
+            peak = Math.max(peak, proxy.open());
+          }
+          await settle();
+          // at most the queue being probed plus one still tearing down at any instant, and NONE left once the dust settles
+          expect(peak).toBeLessThanOrEqual(3);
+          expect(proxy.open()).toBe(0);
+          expect(proxy.accepted()).toBeLessThanOrEqual(CYCLES + 4); // one queue per cycle, not a reconnect storm
+          await proxy.up();
+          await expect(probe()).resolves.toBe(true);
+          await probe.close();
+          await settle();
+          expect(proxy.open()).toBe(0);
+        } finally {
+          await proxy.close();
+        }
+      });
+
+      it("a Valkey that is gone (connection refused): no sockets or handles pile up across cycles, and shutdown does not hang", async () => {
+        const targetPort = Number(url.port || 6379);
+        const proxy = await startProxy(targetPort);
+        try {
+          const probe = createScheduleProbe({
+            connection: { host: "127.0.0.1", port: proxy.port },
+            timeoutMs: PROBE_TIMEOUT_MS,
+          });
+          await expect(probe()).resolves.toBe(true);
+          await proxy.down();
+          await settle();
+          const before = tcpSockets();
+          for (let i = 0; i < CYCLES; i++) await expect(probe()).rejects.toThrow();
+          await settle();
+          expect(tcpSockets() - before).toBeLessThanOrEqual(2); // not one per cycle
+          await probe.close(); // must return against a dead store
+        } finally {
+          await proxy.close();
+        }
+      });
     });
   });
 

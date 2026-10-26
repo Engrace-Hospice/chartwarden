@@ -141,6 +141,37 @@ export const M41_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m41.claim.ack_abandoned",
+    moduleOwner: "m41",
+    description:
+      "A held acknowledgment left the quarantine WITHOUT being applied (its submission is gone or belongs elsewhere, it aged past the 45-day window, or it no longer validates). It may be the only proof a file arrived, so the abandonment is an event, not a log line. `statusInquiry` says what the claim-status inquiry made of an aged one. Ids and codes only.",
+    payloadSchema: Type.Object({
+      eventId: id,
+      controlNumber: Type.Union([Type.String({ maxLength: 128 }), Type.Null()]),
+      claimId: Type.Union([id, Type.Null()]),
+      reason: Type.Union([
+        Type.Literal("no_receipt"),
+        Type.Literal("scope_mismatch"),
+        Type.Literal("vendor_mismatch"),
+      ]),
+      resolution: Type.Union([
+        Type.Literal("abandoned_no_submission"),
+        Type.Literal("abandoned_scope_mismatch"),
+        Type.Literal("abandoned_vendor_mismatch"),
+        Type.Literal("abandoned_aged"),
+        Type.Literal("abandoned_invalid"),
+      ]),
+      statusInquiry: Type.Union([
+        Type.Literal("not_attempted"),
+        Type.Literal("unavailable"),
+        Type.Literal("no_answer"),
+        Type.Literal("applied"),
+      ]),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m41.claim.override_applied",
     moduleOwner: "m41",
     description:
