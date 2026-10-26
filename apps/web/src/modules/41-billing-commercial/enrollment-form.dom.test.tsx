@@ -162,12 +162,33 @@ describe("EnrollmentForm (add)", () => {
     expect(a?.headers.get("idempotency-key")).not.toBe(b?.headers.get("idempotency-key"));
   });
 
-  it("reuses the key when the same attempt is retried after a server failure", async () => {
+  it.each([500, 503])(
+    "uses a NEW key when retried after a %i (the server caches the error)",
+    async (status) => {
+      const calls: Call[] = [];
+      let n = 0;
+      mount(() => {
+        n += 1;
+        return n === 1 ? { status, body: { error: { code: "INTERNAL" } } } : created;
+      }, calls);
+      fill();
+      fireEvent.click(submitButton());
+      await screen.findByText(/did not go through/i);
+      fireEvent.click(submitButton());
+      await waitFor(() => expect(writes(calls)).toHaveLength(2));
+      const [a, b] = writes(calls);
+      expect(a?.headers.get("idempotency-key")).toBeTruthy();
+      expect(b?.headers.get("idempotency-key")).not.toBe(a?.headers.get("idempotency-key"));
+    },
+  );
+
+  it("KEEPS the key when the fetch threw (no response arrived)", async () => {
     const calls: Call[] = [];
     let n = 0;
     mount(() => {
       n += 1;
-      return n === 1 ? { status: 500, body: { error: { code: "INTERNAL" } } } : created;
+      if (n === 1) throw new TypeError("network down");
+      return created;
     }, calls);
     fill();
     fireEvent.click(submitButton());
@@ -175,7 +196,8 @@ describe("EnrollmentForm (add)", () => {
     fireEvent.click(submitButton());
     await waitFor(() => expect(writes(calls)).toHaveLength(2));
     const [a, b] = writes(calls);
-    expect(a?.headers.get("idempotency-key")).toBe(b?.headers.get("idempotency-key"));
+    expect(a?.headers.get("idempotency-key")).toBeTruthy();
+    expect(b?.headers.get("idempotency-key")).toBe(a?.headers.get("idempotency-key"));
   });
 
   it("drops the key when a field changes after a failure", async () => {

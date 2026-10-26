@@ -123,6 +123,35 @@ describe("AuthorizationDrawer", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Deny" }));
   });
 
+  it("uses a NEW key after a 503 and KEEPS it after a thrown fetch", async () => {
+    const calls: Call[] = [];
+    let n = 0;
+    mount(
+      {},
+      {
+        calls,
+        responder: () => {
+          n += 1;
+          if (n === 1) throw new TypeError("network down");
+          if (n === 2) return { status: 503, body: { error: { code: "UNAVAILABLE" } } };
+          return { body: authorizationRow({ status: "denied" }) };
+        },
+      },
+    );
+    const keys = (): (string | null)[] =>
+      calls.filter((c) => c.method === "POST").map((c) => c.headers.get("idempotency-key"));
+    fireEvent.click(screen.getByRole("button", { name: "Deny" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm deny" }));
+    await screen.findByText(/Check your connection/i);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm deny" }));
+    await waitFor(() => expect(keys()).toHaveLength(2));
+    expect(keys()[1]).toBe(keys()[0]); // thrown fetch: same key
+    await screen.findByText(/Try again\./);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm deny" }));
+    await waitFor(() => expect(keys()).toHaveLength(3));
+    expect(keys()[2]).not.toBe(keys()[1]); // after a 503: new key
+  });
+
   it("shows a 409 inline and reloads the list", async () => {
     const onReload = vi.fn();
     mount(

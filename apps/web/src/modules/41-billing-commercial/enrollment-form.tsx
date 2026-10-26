@@ -126,7 +126,7 @@ export function EnrollmentForm({
   const [serverError, setServerError] = useState<{ text: string; reload: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
-  // One key per submission attempt: kept across a retry of the same body, dropped when a field changes, on success and on a 409.
+  // One key per submission attempt: kept across a retry of the same body, dropped when a field changes and on any HTTP response; kept only after a thrown/no-response failure.
   const attemptKey = useRef<string | null>(null);
 
   const edit =
@@ -202,6 +202,9 @@ export function EnrollmentForm({
         onSaved();
         return;
       }
+      // The server caches EVERY answer (4xx/5xx too) under the key for 24h and replays it for the same body, so a key survives only
+      // when no HTTP response arrived (the catch below); any response, 503/500/403/404/422 included, retires it.
+      attemptKey.current = null;
       if (response.status === 401) {
         navigate("/login");
         return;
@@ -211,13 +214,10 @@ export function EnrollmentForm({
       if (!back.has("entity")) back.set("entity", providerEntityId);
       const stepUp = stepUpRedirectFor(error, `${location.pathname}?${back.toString()}`);
       if (stepUp) {
-        // The guard refused before doing anything: a fresh attempt after the ceremony needs a fresh key.
-        attemptKey.current = null;
         stashStepUpDraft(draftKey, fields);
         navigate(stepUp);
         return;
       }
-      if (response.status === 409) attemptKey.current = null;
       setServerError(describeFailure(response.status, editing));
     } catch {
       setServerError({
