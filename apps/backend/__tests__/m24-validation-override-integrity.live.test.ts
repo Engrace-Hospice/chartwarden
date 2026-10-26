@@ -11,8 +11,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import { DEFAULT_MEDICAID_RULES } from "@chartwarden/medicaid-adapters";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { runMedicaidRevalidate } from "../src/modules/24-billing-medicaid/jobs/revalidate-jobs";
 import { buildDrizzleM24WriteService } from "../src/modules/24-billing-medicaid/routes/write-service-drizzle";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
@@ -281,6 +283,57 @@ describe.skipIf(!DB_URL)("M24 validation override integrity - LIVE Postgres (#80
       await admin.query("ROLLBACK");
       throw e;
     }
+  });
+
+  /** Starts an override from INSIDE a revalidating tx (the claim lock is held and the new run is not yet visible):
+   *  it must block, then lose with a 409 once the revalidate commits. Deterministic, no timing luck. */
+  function overrideStartedMidRevalidate(resultId: string) {
+    const state: { override?: Promise<string | undefined>; blocked?: boolean } = {};
+    const outbox = {
+      async publish() {
+        if (state.override) return; // the first publish only
+        state.override = svc()
+          .applyOverride(ACTOR, resultId, INPUT)
+          .then(
+            () => "applied",
+            (e: { code?: string }) => e.code,
+          );
+        state.blocked = !(await settledWithin(state.override, 800));
+      },
+    };
+    return { state, outbox };
+  }
+
+  it("an override racing the real validateClaim blocks on its claim lock, then is rejected as superseded", async () => {
+    const f = await fixture();
+    const { state, outbox: raceOutbox } = overrideStartedMidRevalidate(f.latestFail);
+    await buildDrizzleM24WriteService(handle.db, raceOutbox).validateClaim(ACTOR, f.claimId);
+    expect(state.blocked).toBe(true);
+    expect(await state.override).toBe("OVERRIDE_RESULT_SUPERSEDED");
+    expect(await overrideCount(f.latestFail)).toBe(0);
+  });
+
+  it("an override racing the revalidate WORKER (runMedicaidRevalidate) blocks, then is rejected as superseded", async () => {
+    const f = await fixture();
+    const { rows } = await admin.query("SELECT patient_id FROM medicaid_claim WHERE id=$1", [
+      f.claimId,
+    ]);
+    const { state, outbox: raceOutbox } = overrideStartedMidRevalidate(f.latestFail);
+    await withOrgContext(handle.db, { organizationId: ORG_A, userId: USER }, (tx) =>
+      runMedicaidRevalidate(
+        tx as never,
+        { connection: {} as never, db: handle.db, outbox: raceOutbox as never },
+        {
+          organizationId: ORG_A,
+          eventId: randomUUID(),
+          eventName: "m5.patient.updated",
+          patientId: rows[0].patient_id,
+        },
+      ),
+    );
+    expect(state.blocked).toBe(true);
+    expect(await state.override).toBe("OVERRIDE_RESULT_SUPERSEDED");
+    expect(await overrideCount(f.latestFail)).toBe(0);
   });
 
   it("an override racing a revalidate that commits first is rejected as superseded", async () => {
