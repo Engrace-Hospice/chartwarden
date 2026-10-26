@@ -153,6 +153,7 @@ describe("buildPrimaryNav", () => {
       "/remittance/tpe",
       "/remittance/report",
       "/commercial/billing/claims",
+      "/commercial/billing/claims/new",
       "/commercial/billing/authorizations",
       "/commercial/billing/enrollments",
       "/commercial/billing/eligibility",
@@ -177,6 +178,7 @@ describe("buildPrimaryNav", () => {
       expect(subPaths("medicaid")).toEqual(["/medicaid/billing/claims"]);
       expect(subPaths("commercial")).toEqual([
         "/commercial/billing/claims",
+        "/commercial/billing/claims/new",
         "/commercial/billing/authorizations",
         "/commercial/billing/enrollments",
         "/commercial/billing/eligibility",

@@ -21,8 +21,10 @@ function mount(
   queue: Responder,
   calls: Call[],
   entry = "/commercial/billing/claims",
+  permissions?: string[],
 ): ReturnType<typeof mountScreen> {
   return mountScreen({
+    ...(permissions ? { permissions } : {}),
     routes: {
       "GET /api/v1/provider-entities": entitiesRoute,
       "GET /api/v1/billing/commercial/payer-plans": () => ({ body: { items: [] } }),
@@ -59,6 +61,22 @@ describe("CommercialClaimQueue", () => {
     const queueCall = calls.find((c) => c.path.endsWith("/commercial/claims"));
     expect(queueCall?.query.get("providerEntityId")).toBe(ENTITY_ID);
     expect(queueCall?.query.has("payerKind")).toBe(false);
+  });
+
+  it("links to claim assembly, keeping the entity, only with commercial_billing.write", async () => {
+    const empty = () => ({ body: { items: [], hasMore: false, nextCursor: null } });
+    mount(empty, [], "/commercial/billing/claims", [
+      "commercial_billing.read",
+      "commercial_billing.write",
+    ]);
+    const link = await screen.findByRole("link", { name: "Assemble claim" });
+    expect(link.getAttribute("href")).toBe(
+      `/commercial/billing/claims/new?entity=${encodeURIComponent(ENTITY_ID)}`,
+    );
+    cleanup();
+    mount(empty, []);
+    await screen.findByText("Commercial Claims");
+    expect(screen.queryByRole("link", { name: "Assemble claim" })).toBeNull();
   });
 
   it("sends the payer-kind and state filters to the API", async () => {

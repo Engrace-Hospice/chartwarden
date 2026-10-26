@@ -2592,6 +2592,14 @@
       "app": "web",
       "module": "41-billing-commercial",
       "moduleId": 41,
+      "id": "commercial.assemble-claim",
+      "path": "/commercial/billing/claims/new",
+      "permission": "commercial_billing.write"
+    },
+    {
+      "app": "web",
+      "module": "41-billing-commercial",
+      "moduleId": 41,
       "id": "commercial.claim",
       "path": "/commercial/billing/claims/:claimId",
       "permission": "commercial_billing.read"

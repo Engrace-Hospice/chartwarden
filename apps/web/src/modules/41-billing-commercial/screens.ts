@@ -8,6 +8,9 @@ import type { ComponentType } from "react";
 const CommercialClaimQueue = lazy(() =>
   import("./claim-queue").then((m) => ({ default: m.CommercialClaimQueue })),
 );
+const CommercialAssembleClaim = lazy(() =>
+  import("./assemble-claim").then((m) => ({ default: m.CommercialAssembleClaim })),
+);
 const CommercialClaimDetail = lazy(() =>
   import("./claim-detail").then((m) => ({ default: m.CommercialClaimDetail })),
 );
@@ -38,6 +41,14 @@ export const commercialBillingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "commercial_billing.read",
       screen: CommercialClaimQueue,
+    },
+    {
+      id: "commercial.assemble-claim",
+      path: "/commercial/billing/claims/new",
+      title: "Assemble Commercial Claim",
+      navGroup: "Billing",
+      requiredPermission: "commercial_billing.write",
+      screen: CommercialAssembleClaim,
     },
     {
       id: "commercial.claim",

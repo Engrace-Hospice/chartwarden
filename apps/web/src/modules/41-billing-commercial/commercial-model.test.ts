@@ -6,6 +6,7 @@ import {
   MAX_ELIGIBILITY_MAX_AGE_DAYS as SHARED_MAX_AGE_DAYS,
 } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
+import { ASSEMBLE_CLEARINGHOUSE_PATTERN } from "./assemble-claim-model";
 import {
   AUTHORIZATION_NUMBER_PATTERN,
   COMMERCIAL_PATHS,
@@ -252,6 +253,22 @@ describe("authorization screen helpers", () => {
     expect(ENROLLMENT_EVIDENCE_PATTERN.test("DOC-1/a#2:x._")).toBe(true);
     expect(ENROLLMENT_EVIDENCE_PATTERN.test("has space")).toBe(false);
     expect(ENROLLMENT_EVIDENCE_PATTERN.test("x".repeat(201))).toBe(false);
+  });
+
+  it("validates the assemble clearinghouse key with exactly the server's pattern", () => {
+    const backend = readFileSync(
+      new URL(
+        "../../../../backend/src/modules/41-billing-commercial/routes/commercial-typebox.ts",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const server =
+      /clearinghouseKey: Type\.Optional\(Type\.String\(\{ pattern: "([^"]+)" \}\)\)/.exec(backend);
+    expect(server?.[1]).toBe(ASSEMBLE_CLEARINGHOUSE_PATTERN.source);
+    expect(ASSEMBLE_CLEARINGHOUSE_PATTERN.test("stedi")).toBe(true);
+    expect(ASSEMBLE_CLEARINGHOUSE_PATTERN.test("Stedi")).toBe(false);
+    expect(ASSEMBLE_CLEARINGHOUSE_PATTERN.test("a".repeat(41))).toBe(false);
   });
 
   it("offers exactly the statuses the shared types define, and describes periods", () => {

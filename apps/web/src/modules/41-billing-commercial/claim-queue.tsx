@@ -20,6 +20,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
+import { useSession } from "../../shell/session";
 import { patientLabel, usePatientNames } from "../23-billing-medicare/use-patient-names";
 import { CommercialTabs, EntityGate, EntityPicker } from "./commercial-chrome";
 import {
@@ -67,6 +68,7 @@ const CLAIM_PARAM = "claim";
 export function CommercialClaimQueue(): JSX.Element {
   const client = useApiClient();
   const [params, setParams] = useSearchParams();
+  const canAssemble = (useSession()?.permissions ?? []).includes("commercial_billing.write");
   const { state: entities, entityId, setEntityId, retry: retryEntities } = useProviderEntity();
   const kind = params.get(KIND_PARAM) ?? "";
   const stateFilter = params.get(STATE_PARAM) ?? "";
@@ -179,6 +181,14 @@ export function CommercialClaimQueue(): JSX.Element {
               are in their own lanes.
             </p>
           </div>
+          {canAssemble ? (
+            <Link
+              to={`${COMMERCIAL_PATHS.assemble}${entityId ? `?entity=${encodeURIComponent(entityId)}` : ""}`}
+              className="wx-btn-primary"
+            >
+              Assemble claim
+            </Link>
+          ) : null}
         </header>
 
         <BillingTabs />
