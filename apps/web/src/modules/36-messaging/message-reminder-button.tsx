@@ -64,6 +64,8 @@ export function MessageReminderButton({
     const key = keys.current.get(presetId) ?? crypto.randomUUID();
     keys.current.set(presetId, key);
     const result = await actions.set(messageId, at, key);
+    // Every HTTP response is cached under its key (errors too): only a thrown fetch (status undefined) may retry with it.
+    if (result.ok || result.status !== undefined) keys.current.delete(presetId);
     inFlight.current = false;
     setBusy(false);
     if (result.ok) {

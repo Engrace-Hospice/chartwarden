@@ -56,7 +56,7 @@ export function MeetingPromotions({
   const statusRef = useRef<HTMLOutputElement>(null);
   const restoreFocusTo = useRef<string | null>(null);
   const latestRead = useRef(0);
-  // One Idempotency-Key per proposal until its attempt settles, so a retry after a dropped answer cannot add twice.
+  // One Idempotency-Key per proposal, kept only while no answer has arrived, so a retry after a dropped answer cannot add twice.
   const addKeys = useRef(new Map<string, string>());
 
   // The Decline button is unmounted while its form is open: focus it once the form has closed.
@@ -196,6 +196,8 @@ export function MeetingPromotions({
                             p.request_id,
                             key,
                           );
+                          // The server caches every answered response (errors too) under its key: only a thrown fetch retries with it.
+                          if (res.ok || res.status !== null) addKeys.current.delete(p.request_id);
                           if (res.ok) onAgendaChanged();
                           return res;
                         },

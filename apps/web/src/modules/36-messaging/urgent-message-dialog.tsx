@@ -171,7 +171,7 @@ export function UrgentMessageDialog({
       });
       if (data) return onSent({ created: data.created });
       const status = response?.status;
-      if (status === 409) draft.rotateKey();
+      if (status !== undefined) draft.rotateKey(); // any answered response is cached under its key
       setError(urgentErrorText(status, failure?.error.code));
       if (isIndeterminate(status)) onIndeterminate();
     } catch {

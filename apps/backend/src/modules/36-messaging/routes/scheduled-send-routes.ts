@@ -72,6 +72,7 @@ export function registerScheduledSendRoutes(
         body: body.body,
         scheduledFor: body.scheduledFor,
         timeZone: body.timeZone,
+        clientMessageId: body.clientMessageId,
       });
       return reply.code(201).header("Cache-Control", "no-store").send(created);
     },

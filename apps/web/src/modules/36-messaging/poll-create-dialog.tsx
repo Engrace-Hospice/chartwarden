@@ -70,7 +70,8 @@ export function PollCreateDialog({
         },
       });
       const status = response?.status;
-      if (status !== undefined && status >= 400 && status < 500 && status !== 408) {
+      // The server caches every answered response under its key, so only a thrown fetch may retry with it.
+      if (status !== undefined) {
         attemptRef.current = rotateIdempotencyKey(attempt);
       }
       if (failure || !data) {

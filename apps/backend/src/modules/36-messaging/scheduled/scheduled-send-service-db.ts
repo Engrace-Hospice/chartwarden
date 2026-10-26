@@ -17,7 +17,12 @@ import {
   normalizeScheduleTimeZone,
 } from "@chartwarden/messaging";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ConflictError, NotFoundError, ValidationError, ChartWardenError } from "@chartwarden/types";
+import {
+  ChartWardenError,
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from "@chartwarden/types";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import {
   type MessageBodyCipher,
@@ -110,6 +115,35 @@ export function createDbScheduledSendService(deps: ScheduledSendServiceDeps): Sc
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtextextended(${`scheduled:${orgId}:${input.userId}`}, 36))`,
       );
+      // A retry of a create that already committed (same org, user and client id) returns the original row.
+      if (input.clientMessageId) {
+        const [existing] = await tx
+          .select()
+          .from(SM)
+          .where(
+            and(
+              eq(SM.organizationId, orgId),
+              eq(SM.userId, input.userId),
+              eq(SM.clientMessageId, input.clientMessageId),
+            ),
+          )
+          .limit(1);
+        if (existing) {
+          const same =
+            existing.channelId === input.channelId &&
+            (existing.parentMessageId ?? null) === (input.parentMessageId ?? null) &&
+            existing.scheduledFor.getTime() === when.getTime() &&
+            (await cipher.open(orgId, existing.bodyCipher)) === input.body;
+          if (!same) {
+            throw new ChartWardenError(
+              "CLIENT_MESSAGE_ID_CONFLICT",
+              "clientMessageId was already used for a different scheduled message",
+              409,
+            );
+          }
+          return viewOf(cipher, orgId, existing);
+        }
+      }
       const [{ n }] = (await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(SM)
@@ -131,6 +165,7 @@ export function createDbScheduledSendService(deps: ScheduledSendServiceDeps): Sc
           bodyCipher: sealed,
           scheduledFor: when,
           timeZone,
+          clientMessageId: input.clientMessageId ?? null,
         })
         .returning();
       // Tranche C: the text left the composer for the schedule, so the sender's OWN draft for this slot goes in the

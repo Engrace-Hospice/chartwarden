@@ -1,8 +1,8 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M14 WP 3.7: the "Proposed from secure messages" section. Metadata only (no message text); Add to agenda and Decline;
 // hidden when off or empty; every owner-route refusal reads as one neutral line.
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MeetingPromotions } from "./meeting-promotions";
@@ -153,7 +153,7 @@ describe("MeetingPromotions", () => {
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 
-  it("retries an add with the same Idempotency-Key until it settles", async () => {
+  it("retries an add with a new Idempotency-Key after an HTTP 500", async () => {
     const post = vi
       .fn()
       .mockResolvedValueOnce({
@@ -161,6 +161,20 @@ describe("MeetingPromotions", () => {
         error: { error: { code: "INTERNAL" } },
         response: { status: 500 },
       })
+      .mockResolvedValue({ data: { id: "a1", kind: "other" }, response: { status: 201 } });
+    mount(list([PROPOSAL]), post);
+    await userEvent.click(await screen.findByRole("button", { name: "Add to agenda" }));
+    await screen.findByRole("alert");
+    await userEvent.click(screen.getByRole("button", { name: "Add to agenda" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    const key = (call: number) => post.mock.calls[call]?.[1].params.header["Idempotency-Key"];
+    expect(key(1)).not.toBe(key(0));
+  });
+
+  it("retries an add with the same Idempotency-Key after a thrown fetch", async () => {
+    const post = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError("network"))
       .mockResolvedValue({ data: { id: "a1", kind: "other" }, response: { status: 201 } });
     mount(list([PROPOSAL]), post);
     await userEvent.click(await screen.findByRole("button", { name: "Add to agenda" }));

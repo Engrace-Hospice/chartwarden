@@ -1,10 +1,10 @@
+import type { PollView } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 /**
  * WP 2.10 in the web client: the poll card (radio group, text results, live region, close, who voted, closed and
  * failure states) and the composer action (create dialog, patient-linked channels explain why it is unavailable).
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { PollView } from "@chartwarden/types";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationThread } from "./conversation-thread";
@@ -259,6 +259,41 @@ describe("WP 2.10 poll composer action", () => {
     expect(typeof init.params.header["Idempotency-Key"]).toBe("string");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(screen.getByText("Poll posted.")).toBeTruthy();
+  });
+
+  it("retrying the same poll sends a new Idempotency-Key after an HTTP 500, the same one after a thrown fetch", async () => {
+    const answers: unknown[] = [refused(500), "throw", refused(422)];
+    const api = mount({
+      messages: [],
+      post: (path) => {
+        if (path !== CREATE) return ok({});
+        const next = answers.shift();
+        if (next === "throw") throw new TypeError("network");
+        return next;
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Poll" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Question"), { target: { value: "Lunch?" } });
+    fireEvent.change(within(dialog).getByPlaceholderText("Option 1"), { target: { value: "A" } });
+    fireEvent.change(within(dialog).getByPlaceholderText("Option 2"), { target: { value: "B" } });
+    const keys = (): string[] =>
+      api.POST.mock.calls
+        .filter((c) => c[0] === CREATE)
+        .map((c) => c[1].params.header["Idempotency-Key"]);
+    for (let n = 1; n <= 3; n += 1) {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Create poll" }));
+      await waitFor(() => expect(keys()).toHaveLength(n));
+      await waitFor(() =>
+        expect(
+          (within(dialog).getByRole("button", { name: "Create poll" }) as HTMLButtonElement)
+            .disabled,
+        ).toBe(false),
+      );
+    }
+    const [k1, k2, k3] = keys();
+    expect(k2).not.toBe(k1); // after the 500
+    expect(k3).toBe(k2); // after the thrown fetch
   });
 
   it("caps options at ten and keeps at least two", async () => {

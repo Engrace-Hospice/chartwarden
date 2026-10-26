@@ -142,8 +142,9 @@ export function MedicationQuestionDialog({
       });
       if (data) return onSent({ routed: data.routed, created: data.created });
       const code = body?.error.code;
-      // A 409 means the server still holds the first key as unfinished: only a new key can succeed (same message id).
-      if (response?.status === 409)
+      // The server caches every answered response under its key (a 409 means an unfinished first attempt): only a new key can
+      // succeed. Only a thrown fetch (no response) retries with the same one; the message id stays, so a committed send dedupes.
+      if (response?.status !== undefined)
         attempt.current = { ...attempt.current, idempotencyKey: crypto.randomUUID() };
       if (code === "MEDICATION_QUESTION_NO_NURSE") setRefusedNoNurse(true);
       setError(medicationQuestionErrorText(response?.status, code));
