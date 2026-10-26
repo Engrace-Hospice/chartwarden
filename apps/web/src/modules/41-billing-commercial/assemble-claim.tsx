@@ -76,6 +76,8 @@ export function CommercialAssembleClaim(): JSX.Element {
   const pickEntity = (id: string): void => {
     attemptKey.current = null;
     setFields((prev) => ({ ...prev, planId: AUTO_PLAN })); // a plan belongs to one entity
+    setFieldErrors({});
+    setServerError(null);
     setEntityId(id);
   };
 
@@ -154,6 +156,12 @@ export function CommercialAssembleClaim(): JSX.Element {
               void submit();
             }}
           >
+            {/* Locked while a request is in flight: an edit then would retire the key before the answer is known. */}
+            <fieldset
+              disabled={busy}
+              className="wx-form-stack"
+              style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
+            >
             <div className="wx-filter-panel">
               <EntityPicker state={entities} value={entityId} onChange={pickEntity} />
             </div>
@@ -214,6 +222,7 @@ export function CommercialAssembleClaim(): JSX.Element {
                 {busy ? "Assembling…" : "Assemble claim"}
               </Button>
             </div>
+            </fieldset>
           </form>
         ) : (
           <InlineAlert tone="info">You are not allowed to assemble commercial claims.</InlineAlert>

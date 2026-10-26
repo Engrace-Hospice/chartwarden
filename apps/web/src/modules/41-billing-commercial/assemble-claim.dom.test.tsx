@@ -211,6 +211,8 @@ describe("CommercialAssembleClaim", () => {
     fireEvent.submit(form);
     fireEvent.submit(form);
     await waitFor(() => expect(posts(calls)).toHaveLength(1));
+    // Fields are locked while the request is out, so an edit cannot retire the key before the answer is known.
+    expect(screen.getByLabelText(/Service to/).matches(":disabled")).toBe(true);
     release?.();
   });
 
