@@ -252,6 +252,15 @@ export {
   bindClearinghouseTransport,
   parseClearinghouseVendor,
 } from "./clearinghouse/transport-registry";
+export {
+  ELIGIBILITY_VENDOR_ENV,
+  bindEligibilityTransport,
+  parseEligibilityVendor,
+} from "./clearinghouse/eligibility-vendor-registry";
+export type {
+  EligibilityBinding,
+  EligibilityTransportFactories,
+} from "./clearinghouse/eligibility-vendor-registry";
 export type {
   ClearinghouseBinding,
   ClearinghouseTransportFactories,

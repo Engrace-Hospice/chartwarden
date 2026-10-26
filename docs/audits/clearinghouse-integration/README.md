@@ -14,6 +14,7 @@ acks → 835 → posting → denials → NOTR).
 | [`EPISODE_ALERT_QUESTIONS_TO_SEND_20261025.md`](./EPISODE_ALERT_QUESTIONS_TO_SEND_20261025.md) | Paste-ready questions to Episode Alert and the MAC (DDE IDs, write endpoints, BAA), with what each blocks. Not sent (#762). |
 | [`EPISODE_ALERT_ONBOARDING_RUNBOOK_20261025.md`](./EPISODE_ALERT_ONBOARDING_RUNBOOK_20261025.md) | Human checklist: trial, BAA gate before PHI, owner roles, what to attach, how to record answers (#762). |
 | [`EPISODE_ALERT_SECRETS_RUNBOOK_20261025.md`](./EPISODE_ALERT_SECRETS_RUNBOOK_20261025.md) | Env names the Episode Alert adapter and `DDE_PROVIDER` read, where they live, rotation (#762). |
+| [`EPISODE_ALERT_TRIAL_CAPTURE_RUNBOOK_20261025.md`](./EPISODE_ALERT_TRIAL_CAPTURE_RUNBOOK_20261025.md) | What a trial account must show before claim status and remits can be implemented (#758). |
 | [`STEDI_SANDBOX_RUNBOOK_20261025.md`](./STEDI_SANDBOX_RUNBOOK_20261025.md) | How to run the gated sandbox contract test (synthetic data, test key, live sending off). |
 | [`STEDI_SANDBOX_RESULTS_TEMPLATE_20261025.md`](./STEDI_SANDBOX_RESULTS_TEMPLATE_20261025.md) | Results template to copy per run. |
 | [`STEDI_CALL_AGENDA_20261009.md`](./STEDI_CALL_AGENDA_20261009.md) | 30-minute technical-call agenda. |

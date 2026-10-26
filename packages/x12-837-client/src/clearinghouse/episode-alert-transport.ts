@@ -7,12 +7,14 @@
 //   - the request body and the `/eligibility` path below, and the auth header, are placeholders to confirm on a trial;
 //   - the response element names live in ./episode-alert-eligibility.
 // Only eligibility is implemented: the vendor lists daily claim status and remits retrieval, but nothing public shows
-// their shape, so those methods answer CH_NOT_WIRED until a trial account supplies it. Submission and acknowledgments
+// their shape (UNVERIFIED: the claim identifier the vendor keys status on, the status-code vocabulary, the 835 format,
+// pagination), so those methods answer CH_NOT_WIRED until a trial account supplies it; the capture list is
+// docs/audits/clearinghouse-integration/EPISODE_ALERT_TRIAL_CAPTURE_RUNBOOK_20261025.md. Submission and acknowledgments
 // are not offered through this adapter at all.
 //
 // NOT bindable as CLEARINGHOUSE_VENDOR (review of 0882c4eb8, H1): that setting is platform-wide and routes the M23
 // submit workers and acknowledgment crons through the one vendor, so binding an eligibility-only adapter there would
-// stop claim submission. It is registered in the vendor union only; #760 adds a separate eligibility-vendor setting.
+// stop claim submission. It is bound through the separate ELIGIBILITY_VENDOR setting (./eligibility-vendor-registry) instead.
 //
 // Safety: the MBI exists only inside the request body of one call and never appears in a result, reason or log; the
 // response body is never echoed. Episode Alert documents no test mode, so `usage: "test"` is refused unless the
