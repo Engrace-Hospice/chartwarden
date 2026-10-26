@@ -170,6 +170,21 @@ Non-partitioned; retention class `compliance`.
   (RTP status T from DDE itself, suspended S claims, adjustment / cancel / NOE-correction prompts), aging escalation.
   **Not built:** `adr_response` auto-queueing (the codebase has no additional-documentation-request signal; items of that
   type stay manual), attachments via M22, tenant separation of duties, and any correction of an accepted NOE.
+  **Amendment 2026-10 (#766: manual filing and the auto-queue decision).** (1) *One-click filing.* The claim editor
+  offers "Adjust claim" / "Cancel claim" (processed claims: accepted, partial, paid, denied) and "Correct returned
+  claim" (any filed claim); the NOE / NOTR detail offers "File NOE / NOTR in DDE" until the notice is accepted or
+  cancelled. Each is a single `POST /dde-items` (`source = manual`, Idempotency-Key); the server resolves the
+  provider entity, patient and deadline from the subject and answers 409 when an open item of that type exists.
+  Adjust / cancel / return-correction are claim-only server-side (a notice subject takes only its own `noe` / `notr`
+  item). (2) *Decision: 835 denials and 277CA STC categories do **not** auto-queue anything new.* Auto-queueing is
+  right only where the signal is unambiguous, specific to one DDE action, and idempotent per subject. The payer-stage
+  277CA rejection already meets that bar and already queues `rtp_correction` (A3 "returned as unprocessable" is a
+  category of exactly that rejection, so it is covered; 999 / clearinghouse rejections never reached the MAC and stay
+  out). An 835 denial (CARC / RARC) is not: a denial is a processed claim, not a returned one, and the right response
+  (appeal, adjustment, write-off, or nothing, e.g. a duplicate or a coordination denial) is a billing judgement, so
+  queuing DDE work would bury real work in noise and invite an `adjustment` the biller must then cancel. Denials stay
+  on the remittance / denial workflow (M25), where the biller can start "Adjust claim" by hand. Revisit when a DDE
+  provider verifies FISS status (ADR-0103 D7), which would give the RTP T / S signals directly.
 - The UI spec's NOE Submission Manager is updated when the screen is built (Phase 2).
 - Acceptance dates are operator-attested; the audit trail records who attested what and when.
 

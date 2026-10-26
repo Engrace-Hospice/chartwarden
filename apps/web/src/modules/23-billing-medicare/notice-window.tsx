@@ -42,6 +42,7 @@ import {
   windowTierLabel,
   windowTierTone,
 } from "./billing-status";
+import { DdeFileAction, noticeDdeOptions } from "./dde-file-action";
 import {
   type CorrectableNotice,
   NoticeCorrectionAction,
@@ -148,6 +149,10 @@ const TERMINAL_STATES = new Set([
   "ack_rejected",
   "rejected",
 ]);
+
+function ddeOptions(rec: NoticeRecord, config: NoticeWindowConfig) {
+  return noticeDdeOptions(config.acronym === "NOE" ? "noe" : "notr", rec.state);
+}
 
 function recordId(rec: NoticeRecord): string {
   return rec.id ?? rec.noeId ?? rec.notrId ?? rec.noeRecordId ?? rec.notrRecordId ?? "";
@@ -573,6 +578,7 @@ function NoticePreview({
       <NoticeAckOutcome record={record} config={config} />
       <NoticeCorrectionLinks notice={correctable(record)} config={config} />
       <NoticeCorrectionAction notice={correctable(record)} config={config} onFiled={onChanged} />
+      <DdeFileAction subjectId={id} options={ddeOptions(record, config)} />
       {record.windowTargetAt && isActive(record) ? (
         <Field
           label="Filing window"
@@ -704,6 +710,7 @@ export function NoticeWindowDetail({
           config={config}
           onFiled={() => void load()}
         />
+        <DdeFileAction subjectId={recordId(record)} options={ddeOptions(record, config)} />
         {record.patientId ? <Field label="Patient" value={record.patientId} mono /> : null}
         {record.providerEntityId ? (
           <Field label="Provider entity" value={record.providerEntityId} mono />
