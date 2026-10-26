@@ -329,7 +329,11 @@ export function ClaimEditor(): JSX.Element {
             onReplace={() => setCeremony("replace")}
             onRevalidated={() => void load()}
           />
-          <DdeFileAction subjectId={claim.claimId} options={claimDdeOptions(claim.state)} />
+          <DdeFileAction
+            key={claim.claimId}
+            subjectId={claim.claimId}
+            options={claimDdeOptions(claim.state)}
+          />
           <ReplacementChain claim={claim} />
           <ValidationSummary claimId={claim.claimId} run={v} />
           <SequestrationCard claim={claim} />

@@ -21,13 +21,10 @@ function renderAction(options: ReturnType<typeof claimDdeOptions>, post: ReturnT
 }
 
 describe("DDE options by subject state", () => {
-  it("offers adjust / cancel / return-correction on a processed claim, only the correction when rejected", () => {
-    expect(claimDdeOptions("paid").map((o) => o.itemType)).toEqual([
-      "adjustment",
-      "cancel",
-      "rtp_correction",
-    ]);
+  it("offers adjust / cancel on an adjudicated claim, the return correction on a rejected one", () => {
+    expect(claimDdeOptions("paid").map((o) => o.itemType)).toEqual(["adjustment", "cancel"]);
     expect(claimDdeOptions("ack_rejected").map((o) => o.itemType)).toEqual(["rtp_correction"]);
+    expect(claimDdeOptions("submitted")).toEqual([]);
     expect(claimDdeOptions("draft")).toEqual([]);
     expect(claimDdeOptions("voided")).toEqual([]);
   });
@@ -60,6 +57,46 @@ describe("DdeFileAction", () => {
     expect(init.params.header["Idempotency-Key"]).toBeTruthy();
     const link = await screen.findByRole("link", { name: "Open the DDE queue" });
     expect(link.getAttribute("href")).toBe("/billing/dde");
+  });
+
+  it("sends one request for a double click and posts a notice item type", async () => {
+    let release: (v: unknown) => void = () => {};
+    const POST = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderAction(noticeDdeOptions("noe", "ack_rejected"), POST);
+    const button = screen.getByRole("button", { name: "File NOE in DDE" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(POST).toHaveBeenCalledTimes(1);
+    const [, init] = POST.mock.calls[0] as unknown as [string, Record<string, any>];
+    expect(init.body).toEqual({ itemType: "noe", subjectId: SUBJECT });
+    release({ data: {}, error: undefined, response: new Response(null, { status: 201 }) });
+    await screen.findByRole("link", { name: "Open the DDE queue" });
+  });
+
+  it("starts clean for another subject when keyed by it", async () => {
+    const POST = vi.fn(async () => ({
+      data: {},
+      error: undefined,
+      response: new Response(null, { status: 201 }),
+    }));
+    const client = { POST } as unknown as ApiClient;
+    const view = (id: string) => (
+      <MemoryRouter>
+        <ApiClientProvider client={client}>
+          <DdeFileAction key={id} subjectId={id} options={claimDdeOptions("paid")} />
+        </ApiClientProvider>
+      </MemoryRouter>
+    );
+    const { rerender } = render(view("a"));
+    fireEvent.click(screen.getByRole("button", { name: "Adjust claim" }));
+    await screen.findByRole("link", { name: "Open the DDE queue" });
+    rerender(view("b"));
+    expect(screen.queryByRole("link", { name: "Open the DDE queue" })).toBeNull();
   });
 
   it("shows the server's refusal inline when an open item already exists", async () => {

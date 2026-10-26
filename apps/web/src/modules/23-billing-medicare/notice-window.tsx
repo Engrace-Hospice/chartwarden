@@ -578,7 +578,7 @@ function NoticePreview({
       <NoticeAckOutcome record={record} config={config} />
       <NoticeCorrectionLinks notice={correctable(record)} config={config} />
       <NoticeCorrectionAction notice={correctable(record)} config={config} onFiled={onChanged} />
-      <DdeFileAction subjectId={id} options={ddeOptions(record, config)} />
+      <DdeFileAction key={id} subjectId={id} options={ddeOptions(record, config)} />
       {record.windowTargetAt && isActive(record) ? (
         <Field
           label="Filing window"
@@ -710,7 +710,11 @@ export function NoticeWindowDetail({
           config={config}
           onFiled={() => void load()}
         />
-        <DdeFileAction subjectId={recordId(record)} options={ddeOptions(record, config)} />
+        <DdeFileAction
+          key={recordId(record)}
+          subjectId={recordId(record)}
+          options={ddeOptions(record, config)}
+        />
         {record.patientId ? <Field label="Patient" value={record.patientId} mono /> : null}
         {record.providerEntityId ? (
           <Field label="Provider entity" value={record.providerEntityId} mono />

@@ -19,7 +19,7 @@ export interface DdeFileOption {
 const RTP: DdeFileOption = {
   itemType: "rtp_correction",
   label: "Correct returned claim",
-  hint: "Medicare returned it to the provider (status T); fix and resubmit in DDE.",
+  hint: "Use when DDE shows the claim returned to provider (status T); fix and resubmit in DDE.",
 };
 const ADJUST: DdeFileOption = {
   itemType: "adjustment",
@@ -32,13 +32,19 @@ const CANCEL: DdeFileOption = {
   hint: "Cancel a claim Medicare already processed (TOB xx8).",
 };
 
-const PROCESSED = new Set(["ack_accepted", "ack_partial", "paid", "partial_paid", "denied"]);
-const FILED = new Set(["submitted", "ack_pending", "ack_rejected", ...PROCESSED]);
+const ADJUSTABLE = new Set(["paid", "partial_paid", "denied"]);
+const RETURNABLE = new Set(["ack_rejected", "ack_accepted", "ack_partial"]);
 
-/** Which DDE items make sense for a claim in this state (the server still re-validates). */
+/**
+ * Which DDE items make sense for a claim in this state. The UI mapping is the only state guard: the server checks
+ * that the claim exists in the org, not its state. Adjust / cancel need a claim Medicare has adjudicated; a return
+ * to provider can follow a payer rejection or a 277CA acceptance.
+ */
 export function claimDdeOptions(state: string): DdeFileOption[] {
-  if (!FILED.has(state)) return [];
-  return PROCESSED.has(state) ? [ADJUST, CANCEL, RTP] : [RTP];
+  return [
+    ...(ADJUSTABLE.has(state) ? [ADJUST, CANCEL] : []),
+    ...(RETURNABLE.has(state) ? [RTP] : []),
+  ];
 }
 
 /** A notice that is not yet accepted or cancelled can be keyed (or re-keyed) in DDE. */
@@ -61,7 +67,8 @@ const idempotencyKey = (): string =>
 
 function failureText(error: unknown, status: number | undefined): string {
   const message = (error as { error?: { message?: string } } | undefined)?.error?.message;
-  if (status === 401 || status === 403) return "You don't have permission to queue DDE work.";
+  if (status === 401) return "Your session has ended. Sign in again.";
+  if (status === 403) return "You don't have permission to queue DDE work.";
   if ((status === 409 || status === 422) && message) return message;
   if (status === 503) return "Billing is unavailable right now. Try again shortly.";
   return "The DDE item could not be queued.";

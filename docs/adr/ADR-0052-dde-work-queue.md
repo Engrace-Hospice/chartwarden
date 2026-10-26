@@ -171,10 +171,11 @@ Non-partitioned; retention class `compliance`.
   **Not built:** `adr_response` auto-queueing (the codebase has no additional-documentation-request signal; items of that
   type stay manual), attachments via M22, tenant separation of duties, and any correction of an accepted NOE.
   **Amendment 2026-10 (#766: manual filing and the auto-queue decision).** (1) *One-click filing.* The claim editor
-  offers "Adjust claim" / "Cancel claim" (processed claims: accepted, partial, paid, denied) and "Correct returned
-  claim" (any filed claim); the NOE / NOTR detail offers "File NOE / NOTR in DDE" until the notice is accepted or
-  cancelled. Each is a single `POST /dde-items` (`source = manual`, Idempotency-Key); the server resolves the
-  provider entity, patient and deadline from the subject and answers 409 when an open item of that type exists.
+  offers "Adjust claim" / "Cancel claim" (adjudicated claims: paid, partial paid, denied) and "Correct returned claim"
+  (payer-rejected or 277CA-accepted claims, for when DDE shows status T); the NOE / NOTR detail offers "File NOE / NOTR
+  in DDE" until the notice is accepted or cancelled. The UI state mapping is the only claim-state guard (the server
+  checks existence and org, not claim state). Each is a single `POST /dde-items` (`source = manual`, Idempotency-Key); the server resolves the
+  provider entity and patient (and a notice's window deadline) from the subject and answers 409 when an open item of that type exists.
   Adjust / cancel / return-correction are claim-only server-side (a notice subject takes only its own `noe` / `notr`
   item). (2) *Decision: 835 denials and 277CA STC categories do **not** auto-queue anything new.* Auto-queueing is
   right only where the signal is unambiguous, specific to one DDE action, and idempotent per subject. The payer-stage
