@@ -332,4 +332,43 @@ export const ATTEMPT_STORE_CONTRACT: readonly AttemptStoreContractCase[] = [
       assert((await store.find(ids.orgB, scope, "idem-1")) === null, "another tenant sees none");
     },
   },
+  {
+    id: "AS-13",
+    title:
+      "allocateInterchangeNumber remembers one 9-digit platform-unique number per (tenant, scope, key), so a redelivered job renders the same interchange",
+    async run(make, ids) {
+      const store = await make();
+      const scope = `scope-${ids.orgA}`;
+      const first = await store.allocateInterchangeNumber(ids.orgA, scope, "idem-1", "test");
+      assert(/^[0-9]{9}$/.test(first), "an interchange number is 9 digits");
+      assert(
+        (await store.allocateInterchangeNumber(ids.orgA, scope, "idem-1", "test")) === first,
+        "the same key gets the same number again",
+      );
+      const second = await store.allocateInterchangeNumber(ids.orgA, scope, "idem-2", "test");
+      assert(second !== first, "another key gets another number");
+      assert(
+        (await store.allocateInterchangeNumber(ids.orgB, scope, "idem-1", "test")) !== first,
+        "another tenant's identical key is a different submission and gets its own number",
+      );
+      const concurrent = await Promise.all(
+        Array.from({ length: 12 }, () =>
+          store.allocateInterchangeNumber(ids.orgA, scope, "idem-race", "test"),
+        ),
+      );
+      assert(new Set(concurrent).size === 1, "concurrent callers on one key agree on one number");
+      const control = await store.allocateControlNumber("test");
+      assert(
+        ![first, second, ...concurrent].includes(control),
+        "the control-number allocator never hands out an interchange number already in use",
+      );
+      let refused = false;
+      try {
+        await store.allocateInterchangeNumber(ids.orgA, scope, "idem-1", "production");
+      } catch {
+        refused = true;
+      }
+      assert(refused, "a key remembered under test is never answered with a number for production");
+    },
+  },
 ];

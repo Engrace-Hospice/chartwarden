@@ -54,6 +54,7 @@ import {
   type HospiceHistory,
   assertNoMbi,
   parseClearinghouseVendor,
+  scopeKey,
 } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { type Claim837iSubmitDeps, renderClaimForTransport } from "../services/claim-837i-submit";
@@ -65,6 +66,7 @@ import {
   activeTransport,
   priorClaimAttempt,
   pullTransportAcks,
+  submissionKeyFor,
   transportUpload,
 } from "./clearinghouse-submission";
 import { type AckPayerDates, applyNoticeAck, sanitizeAckReasonCodes } from "./notice-ack-jobs";
@@ -856,6 +858,7 @@ async function generateClaim837i(
       "bind the 837I loader ports (admission, MBI unlock, patients, addresses, parties) beside the clearinghouse transport",
     );
   }
+  const attempts = transport.attempts;
   const x12 = await (deps.renderClaim ?? renderClaimForTransport)({
     tx,
     deps: deps.claim837i as Claim837iSubmitDeps,
@@ -863,6 +866,22 @@ async function generateClaim837i(
     organizationId,
     claim,
     claimControlNumber,
+    // Remembered under the key the transport files this submission under, so a redelivery renders the same ISA13.
+    interchangeNumberFor: async (context) => {
+      if (!attempts) {
+        throw new Error(
+          "the clearinghouse attempt store is not bound, so an 837I interchange number cannot be allocated",
+        );
+      }
+      return Number(
+        await attempts.allocateInterchangeNumber(
+          organizationId,
+          scopeKey(context),
+          submissionKeyFor("claim", claimControlNumber),
+          context.usage,
+        ),
+      );
+    },
     now: (deps.now ?? (() => new Date()))(),
   });
   // A `submitted` attempt must carry a worker correlation id (the terminalize trigger); the sidecar used to mint it.

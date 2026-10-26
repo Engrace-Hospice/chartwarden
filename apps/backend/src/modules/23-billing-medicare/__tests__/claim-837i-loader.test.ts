@@ -586,8 +586,9 @@ describe("loadClaim837iInput gaps", () => {
 
 // Characterizes the Stedi transport's own rule (ADR-0053): the submission's control number must be the interchange's ISA13.
 // The submit workers pass the alphanumeric CLAIM control number, so a Stedi-bound deployment is refused until the
-// workers submit under a platform-allocated ISA13 and the ack side maps it back to the claim (not built: see the
-// note on `interchangeNumberFor`).
+// workers send the claim as Stedi JSON (Stedi then owns the ISA13) or submit under the allocated ISA13 and the ack
+// side maps it back to the claim. The ISA13 itself is allocated per submission by the attempt store
+// (`allocateInterchangeNumber`), so it is already unique and stable across a redelivery.
 describe("the rendered 837I against the Stedi transport", () => {
   const submit = async (isa13: number, controlNumber: string) => {
     const r = await loadAndRender837i(deps().value, { ...args, interchangeControlNumber: isa13 });

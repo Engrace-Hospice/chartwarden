@@ -7,7 +7,7 @@ vi.mock("../services/claim-837i-loader", () => ({
   buildClaim837iPersistencePort: () => ({ persistence: true }),
 }));
 
-import { interchangeNumberFor, renderClaimForTransport } from "../services/claim-837i-submit";
+import { renderClaimForTransport } from "../services/claim-837i-submit";
 
 const CONTEXT = {
   organizationId: "o",
@@ -21,28 +21,14 @@ const ARGS = {
   organizationId: "o",
   claim: { id: "claim-1", providerEntityId: "p" },
   claimControlNumber: "ABC123260101000a1b2c3",
+  interchangeNumberFor: async () => 4242,
   now: new Date("2026-01-02T00:00:00Z"),
 };
-
-describe("interchangeNumberFor", () => {
-  it("is deterministic and within ISA13's 1..999999999", () => {
-    const n = interchangeNumberFor("ABC123260101000a1b2c3");
-
-    expect(interchangeNumberFor("ABC123260101000a1b2c3")).toBe(n);
-    expect(Number.isInteger(n) && n >= 1 && n <= 999_999_999).toBe(true);
-  });
-
-  it("differs between attempts of one claim", () => {
-    expect(interchangeNumberFor("ABC123260101000a1b2c3")).not.toBe(
-      interchangeNumberFor("ABC123260101010a1b2c3"),
-    );
-  });
-});
 
 describe("renderClaimForTransport", () => {
   beforeEach(() => loadAndRender837i.mockReset());
 
-  it("returns the rendered X12, loading under the attempt's control number and a derived interchange number", async () => {
+  it("returns the rendered X12, loading under the attempt's control number and the interchange number the caller allocated", async () => {
     loadAndRender837i.mockResolvedValue({
       ok: true,
       rendered: { reveal: () => ({ x12: "ISA*00~" }) },
@@ -55,8 +41,21 @@ describe("renderClaimForTransport", () => {
       claimId: "claim-1",
       context: CONTEXT,
       claimControlNumber: "ABC123260101000a1b2c3",
-      interchangeControlNumber: interchangeNumberFor("ABC123260101000a1b2c3"),
+      interchangeControlNumber: 4242,
     });
+  });
+
+  it("asks the caller for the number with the context it resolved, and never derives one itself", async () => {
+    loadAndRender837i.mockResolvedValue({
+      ok: true,
+      rendered: { reveal: () => ({ x12: "ISA*00~" }) },
+    });
+    const interchangeNumberFor = vi.fn(async () => 7);
+
+    await renderClaimForTransport({ ...ARGS, interchangeNumberFor });
+
+    expect(interchangeNumberFor).toHaveBeenCalledExactlyOnceWith(CONTEXT);
+    expect(loadAndRender837i.mock.calls[0]?.[1]).toMatchObject({ interchangeControlNumber: 7 });
   });
 
   it("throws naming every gap (field and reason only)", async () => {
