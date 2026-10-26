@@ -3,7 +3,7 @@
 // Per-reason semantics (the row's validated event is kept for the three replayable reasons; see REPLAYABLE_REASONS):
 //   - no_receipt      : re-applied once its submission is settled (a clearinghouse-stage answer or a person's reconcile).
 //   - scope_mismatch  : re-checked as it stands, under the SAME stream scope AND the producing stream's vendor (only rows whose
-//   - vendor_mismatch   clearinghouse_key is the current binding are replayed; unbound replays nothing). It applies only if the
+//   - vendor_mismatch   clearinghouse_key is the current binding are replayed, an unbound binding replays nothing; a foreign or unbound row is only aged out). It applies only if the
 //                       situation changed and is never re-routed to the other provider entity or vendor; otherwise it stays held.
 //   - malformed       : nothing valid was kept, so there is nothing to replay; review only.
 // Replay is idempotent: an applied row collapses on the unique (organization, clearinghouse, event id) key and is stamped resolved.
@@ -14,7 +14,7 @@
 // event in the same transaction as the stamp (plus the row's own write audit and a warn-level log, ids only): it may be the only proof
 // a file arrived. Relay ticks are not requests: everything here takes an explicit organization and runs under `inOrg`.
 import { schema } from "@chartwarden/db";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { validateAckEvent } from "../domain/ack-event";
 import type { CommercialTx } from "../services/types";
 import {
@@ -51,6 +51,7 @@ interface HeldRow {
   readonly eventId: string;
   readonly controlNumber: string | null;
   readonly reason: string;
+  readonly clearinghouseKey: string;
   readonly event: unknown;
   readonly createdAt: Date;
 }
@@ -61,14 +62,19 @@ interface SubmissionRef {
 }
 
 /**
- * Rows a pass may replay: no_receipt always, the other replayable reasons only when their event was kept (older rows have none) AND
- * only the rows the CURRENT binding's own stream produced (`clearinghouse_key`). A row held from vendor X's stream is never replayed
- * under a binding for vendor Y: the vendor check compares the submission with the binding, so after a vendor switch it would otherwise
- * pass and record X's answer against Y's submission. Such an orphan ages out (abandoned, audited). An unbound binding replays nothing.
+ * Rows a pass looks at: no_receipt always, the other replayable reasons only when their event was kept (older rows have none), AND
+ * either produced by the CURRENT binding's own stream (`clearinghouse_key`) or aged past the window. A row held from vendor X's
+ * stream is never REPLAYED under a binding for vendor Y (the vendor check compares the submission with the binding, so after a
+ * vendor switch it would pass and record X's answer against Y's submission), but it must still LEAVE the queue: once aged, it is
+ * abandoned out loud whatever the binding (also unbound), with no status inquiry on a stream we no longer hold.
  */
-const replayable = (Q: typeof schema.commercialAckQuarantine, vendor: string) =>
+const replayable = (
+  Q: typeof schema.commercialAckQuarantine,
+  vendor: string | null,
+  cutoff: Date,
+) =>
   and(
-    eq(Q.clearinghouseKey, vendor),
+    or(vendor === null ? undefined : eq(Q.clearinghouseKey, vendor), lt(Q.createdAt, cutoff)),
     or(
       eq(Q.reason, "no_receipt"),
       and(inArray(Q.reason, ["scope_mismatch", "vendor_mismatch"]), isNotNull(Q.event)),
@@ -86,7 +92,11 @@ const submissionOf = (
     : inOrg(deps, scope.organizationId, async (tx) => {
         const S = schema.commercialSubmissions;
         const [s] = await tx
-          .select({ claimId: S.claimId, requestedAt: S.requestedAt, payerId: S.clearinghousePayerId })
+          .select({
+            claimId: S.claimId,
+            requestedAt: S.requestedAt,
+            payerId: S.clearinghousePayerId,
+          })
           .from(S)
           .where(
             and(
@@ -126,7 +136,10 @@ async function inquireStatus(
     const out = await applyAckEvent(deps, scope, latest);
     return out.result === "applied" ? "applied" : "no_answer";
   } catch (err) {
-    deps.log?.({ event: "ack.status_inquiry_failed", code: err instanceof Error ? err.name : "error" });
+    deps.log?.({
+      event: "ack.status_inquiry_failed",
+      code: err instanceof Error ? err.name : "error",
+    });
     return "unavailable";
   }
 }
@@ -191,17 +204,25 @@ async function replayRow(
   row: HeldRow,
   cutoff: number,
 ): Promise<"applied" | "abandoned" | "held" | "settled"> {
+  const own = row.clearinghouseKey === deps.binding.vendor;
   const submission = await submissionOf(deps, scope, row.controlNumber);
   const claimId = submission?.claimId ?? null;
+  // an answer held at time T can only belong to a submission requested before T: control numbers cycle, so a NEWER submission that
+  // happens to reuse the number must never inherit an old held answer (and must not be asked about either)
+  if (submission && submission.requestedAt.getTime() > row.createdAt.getTime()) {
+    await abandonOutright(deps, scope, row, "abandoned_no_submission", claimId, "not_attempted");
+    return "abandoned";
+  }
   // Age counts from the submission when there is one AND from the moment the event was held, whichever is older.
   const refTime = Math.min(
     row.createdAt.getTime(),
     submission?.requestedAt.getTime() ?? Number.POSITIVE_INFINITY,
   );
   if (refTime < cutoff) {
-    // a payer answer is asked about once before it is given up on (the other reasons are about the wrong scope or vendor: no inquiry)
+    // a payer answer is asked about once before it is given up on (the other reasons are about the wrong scope or vendor, and a
+    // foreign stream is not ours to ask about: no inquiry)
     const inquiry: InquiryOutcome =
-      row.reason === "no_receipt" && submission
+      own && row.reason === "no_receipt" && submission
         ? await inquireStatus(deps, scope, row, submission)
         : "not_attempted";
     if (inquiry === "applied") {
@@ -211,12 +232,7 @@ async function replayRow(
     await abandonOutright(deps, scope, row, "abandoned_aged", claimId, inquiry);
     return "abandoned";
   }
-  // an answer held at time T can only belong to a submission requested before T: control numbers cycle, so a NEWER submission that
-  // happens to reuse the number must never inherit an old held answer
-  if (submission && submission.requestedAt.getTime() > row.createdAt.getTime()) {
-    await abandonOutright(deps, scope, row, "abandoned_no_submission", claimId, "not_attempted");
-    return "abandoned";
-  }
+  if (!own) return "held"; // a foreign stream's row is only ever aged out, never applied
   const checked = validateAckEvent({
     ...(row.event as Record<string, unknown> | null),
     eventId: row.eventId,
@@ -228,6 +244,14 @@ async function replayRow(
     return "abandoned";
   }
   return inOrg(deps, scope.organizationId, async (tx) => {
+    // claim the row first: an overlapping tick that already resolved it (applied OR abandoned) must not be applied a second way
+    const Qr = schema.commercialAckQuarantine;
+    const [live] = await tx
+      .select({ id: Qr.id })
+      .from(Qr)
+      .where(and(eq(Qr.id, row.id), isNull(Qr.resolvedAt)))
+      .for("update");
+    if (!live) return "settled";
     const out = await applyValidEvent(deps, tx, scope, checked.event);
     if (out.result === "applied" || out.result === "duplicate") {
       await settle(deps, tx, scope, row, "applied", claimId, "not_attempted");
@@ -262,7 +286,7 @@ export async function replayHeldEvents(
 ): Promise<{ readonly applied: number; readonly abandoned: number }> {
   const Q = schema.commercialAckQuarantine;
   const vendor = deps.binding.vendor;
-  if (vendor === null) return { applied: 0, abandoned: 0 }; // unbound: no stream to replay against
+  const cutoff = nowOf(deps).getTime() - ACK_POLL_MAX_AGE_DAYS * DAY_MS;
   const heldRows: HeldRow[] = await inOrg(deps, scope.organizationId, (tx) =>
     tx
       .select({
@@ -270,6 +294,7 @@ export async function replayHeldEvents(
         eventId: Q.eventId,
         controlNumber: Q.controlNumber,
         reason: Q.reason,
+        clearinghouseKey: Q.clearinghouseKey,
         event: Q.event,
         createdAt: Q.createdAt,
       })
@@ -278,7 +303,7 @@ export async function replayHeldEvents(
         and(
           eq(Q.organizationId, scope.organizationId),
           eq(Q.providerEntityId, scope.providerEntityId),
-          replayable(Q, vendor),
+          replayable(Q, vendor, new Date(cutoff)),
           isNull(Q.resolvedAt),
         ),
       )
@@ -287,7 +312,6 @@ export async function replayHeldEvents(
       .limit(HELD_REPLAY_LIMIT),
   );
   deps.log?.({ event: "ack.replay", count: heldRows.length }); // a counting seam: how often the held events are looked at
-  const cutoff = nowOf(deps).getTime() - ACK_POLL_MAX_AGE_DAYS * DAY_MS;
   let applied = 0;
   let abandoned = 0;
   for (const row of heldRows) {
@@ -305,13 +329,17 @@ export async function entitiesWithHeldEvents(
 ): Promise<string[]> {
   const Q = schema.commercialAckQuarantine;
   const vendor = deps.binding.vendor;
-  if (vendor === null) return [];
+  const cutoff = new Date(nowOf(deps).getTime() - ACK_POLL_MAX_AGE_DAYS * DAY_MS);
   const rows = await inOrg(deps, organizationId, (tx) =>
     tx
       .selectDistinct({ providerEntityId: Q.providerEntityId })
       .from(Q)
       .where(
-        and(eq(Q.organizationId, organizationId), replayable(Q, vendor), isNull(Q.resolvedAt)),
+        and(
+          eq(Q.organizationId, organizationId),
+          replayable(Q, vendor, cutoff),
+          isNull(Q.resolvedAt),
+        ),
       )
       .orderBy(asc(Q.providerEntityId))
       .limit(HELD_ENTITY_LIMIT),

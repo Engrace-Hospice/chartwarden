@@ -2047,7 +2047,10 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         // (the other vendor's OWN leftover rows from earlier tests may be handled; ours is not)
         expect((await replayHeldEvents(ackDeps("another_vendor"), scope())).applied).toBe(0);
         // unbound: nothing replays at all
-        expect(await replayHeldEvents(ackDeps(null), scope())).toEqual({ applied: 0, abandoned: 0 });
+        expect(await replayHeldEvents(ackDeps(null), scope())).toEqual({
+          applied: 0,
+          abandoned: 0,
+        });
         expect(await heldOf(c)).toMatchObject({ resolved_at: null });
         expect(await claimState(c.claimId)).toBe("submitted");
         expect(await ackRows(c.claimId)).toEqual([]);
@@ -2056,10 +2059,162 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         expect(await heldOf(c)).toMatchObject({ resolution: "applied" });
       });
 
+      it("a row of a former vendor, or one held while unbound, still ages out audited, with no inquiry and nothing applied", async () => {
+        const a = await heldClaim(); // stedi stream
+        const b = await heldClaim();
+        for (const c of [a.c, b.c]) {
+          await service("stedi").reconcile(
+            actor,
+            c.claimId,
+            c === a.c ? a.sub.submissionId : b.sub.submissionId,
+            "received",
+            "payer_portal",
+          );
+          await admin.query(
+            "UPDATE commercial_ack_quarantine SET created_at = now() - interval '60 days' WHERE control_number=$1",
+            [c.controlNumber],
+          );
+          // the held answer is OLDER than any submission it could belong to, as in life: age the submission with it
+          await admin.query(
+            "UPDATE commercial_submission SET requested_at = now() - interval '61 days' WHERE control_number=$1",
+            [c.controlNumber],
+          );
+        }
+        await replayHeldEvents(ackDeps("another_vendor"), scope()); // permanent switch away from stedi
+        await replayHeldEvents(ackDeps(null), scope()); // and unbound
+        for (const c of [a.c, b.c]) {
+          expect(await heldOf(c)).toMatchObject({ resolution: "abandoned_aged" });
+          expect(await abandonedEvents(c.controlNumber)).toEqual([
+            expect.objectContaining({
+              resolution: "abandoned_aged",
+              statusInquiry: "not_attempted",
+            }),
+          ]);
+          expect(await claimState(c.claimId)).toBe("submitted"); // never applied
+        }
+      });
+
+      it("a submission that reuses the control number AFTER the answer was held never inherits it", async () => {
+        const { c, sub } = await heldClaim();
+        await service("stedi").reconcile(
+          actor,
+          c.claimId,
+          sub.submissionId,
+          "received",
+          "payer_portal",
+        );
+        await admin.query(
+          "UPDATE commercial_submission SET requested_at = now() + interval '1 hour' WHERE id=$1",
+          [sub.submissionId],
+        );
+        await replayHeldEvents(ackDeps("stedi"), scope());
+        expect(await heldOf(c)).toMatchObject({ resolution: "abandoned_no_submission" });
+        expect(await claimState(c.claimId)).toBe("submitted");
+        expect(await ackRows(c.claimId)).toEqual([]);
+      });
+
+      it("a claim-status answer about ANOTHER control number is never applied", async () => {
+        const { c, sub } = await heldClaim();
+        await admin.query(
+          "UPDATE commercial_ack_quarantine SET created_at = now() - interval '60 days' WHERE control_number=$1",
+          [c.controlNumber],
+        );
+        // the held answer is OLDER than any submission it could belong to, as in life: age the submission with it
+        await admin.query(
+          "UPDATE commercial_submission SET requested_at = now() - interval '61 days' WHERE control_number=$1",
+          [c.controlNumber],
+        );
+        await service("stedi").reconcile(
+          actor,
+          c.claimId,
+          sub.submissionId,
+          "received",
+          "payer_portal",
+        );
+        const wrongAnswer: AckWorkerDeps = {
+          ...ackDeps("stedi"),
+          binding: {
+            vendor: "stedi",
+            transport: {
+              fetchAcknowledgments: (ctx, cursor) => transport.fetchAcknowledgments(ctx, cursor),
+              fetchClaimStatus: async () =>
+                ({
+                  ok: true,
+                  data: {
+                    controlNumber: c.controlNumber,
+                    state: "payer_accepted",
+                    latest: {
+                      eventId: "status-other",
+                      controlNumber: "000000000",
+                      stage: "payer",
+                      disposition: "accepted",
+                      reasonCodes: [],
+                      occurredAt: new Date().toISOString(),
+                    },
+                  },
+                }) as never,
+            },
+          },
+        };
+        await replayHeldEvents(wrongAnswer, scope());
+        expect(await heldOf(c)).toMatchObject({ resolution: "abandoned_aged" });
+        expect(await abandonedEvents(c.controlNumber)).toEqual([
+          expect.objectContaining({ statusInquiry: "no_answer" }),
+        ]);
+        expect(await claimState(c.claimId)).toBe("submitted");
+      });
+
+      it("two overlapping replays resolve a row once: one stamp, one abandonment event, never applied AND abandoned", async () => {
+        const aged = await heldClaim();
+        await service("stedi").reconcile(
+          actor,
+          aged.c.claimId,
+          aged.sub.submissionId,
+          "received",
+          "payer_portal",
+        );
+        await admin.query(
+          "UPDATE commercial_ack_quarantine SET created_at = now() - interval '60 days' WHERE control_number=$1",
+          [aged.c.controlNumber],
+        );
+        // the held answer is OLDER than any submission it could belong to, as in life: age the submission with it
+        await admin.query(
+          "UPDATE commercial_submission SET requested_at = now() - interval '61 days' WHERE control_number=$1",
+          [aged.c.controlNumber],
+        );
+        await Promise.all([
+          replayHeldEvents(noInquiry("stedi"), scope()),
+          replayHeldEvents(noInquiry("stedi"), scope()),
+          replayHeldEvents(noInquiry("stedi"), scope()),
+        ]);
+        expect(await abandonedEvents(aged.c.controlNumber)).toHaveLength(1);
+
+        const live = await heldClaim();
+        await service("stedi").reconcile(
+          actor,
+          live.c.claimId,
+          live.sub.submissionId,
+          "received",
+          "payer_portal",
+        );
+        await Promise.all([
+          replayHeldEvents(ackDeps("stedi"), scope()),
+          replayHeldEvents(ackDeps("stedi"), scope()),
+        ]);
+        expect(await heldOf(live.c)).toMatchObject({ resolution: "applied" });
+        expect(await eventCount(live.c.claimId, "m41.claim.accepted")).toBe(1);
+        expect(await abandonedEvents(live.c.controlNumber)).toEqual([]);
+      });
+
       it("abandons a held event that aged past the poll window", async () => {
         const { c, sub } = await heldClaim();
         await admin.query(
           "UPDATE commercial_ack_quarantine SET created_at = now() - interval '60 days' WHERE control_number=$1",
+          [c.controlNumber],
+        );
+        // the held answer is OLDER than any submission it could belong to, as in life: age the submission with it
+        await admin.query(
+          "UPDATE commercial_submission SET requested_at = now() - interval '61 days' WHERE control_number=$1",
           [c.controlNumber],
         );
         await service("stedi").reconcile(
@@ -2091,6 +2246,11 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         const { c, sub } = await heldClaim();
         await admin.query(
           "UPDATE commercial_ack_quarantine SET created_at = now() - interval '60 days' WHERE control_number=$1",
+          [c.controlNumber],
+        );
+        // the held answer is OLDER than any submission it could belong to, as in life: age the submission with it
+        await admin.query(
+          "UPDATE commercial_submission SET requested_at = now() - interval '61 days' WHERE control_number=$1",
           [c.controlNumber],
         );
         await service("stedi").reconcile(
@@ -2143,12 +2303,17 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         expect((await rowOf(c.controlNumber, "vendor_mismatch")).resolved_at).toBeNull();
         expect(await claimState(c.claimId)).toBe("submitted");
         expect(await ackRows(c.claimId)).toEqual([]);
-        // it ages out audited, under the binding that owns it
+        // it ages out audited even under a binding that is not its own (a permanent vendor switch must not strand it)
         await admin.query(
           "UPDATE commercial_ack_quarantine SET created_at = now() - interval '60 days' WHERE control_number=$1 AND reason='vendor_mismatch'",
           [c.controlNumber],
         );
-        await replayHeldEvents(ackDeps("another_vendor"), scope());
+        // the held answer is OLDER than any submission it could belong to, as in life: age the submission with it
+        await admin.query(
+          "UPDATE commercial_submission SET requested_at = now() - interval '61 days' WHERE control_number=$1",
+          [c.controlNumber],
+        );
+        await replayHeldEvents(ackDeps("stedi"), scope());
         expect(await rowOf(c.controlNumber, "vendor_mismatch")).toMatchObject({
           resolution: "abandoned_aged",
         });
@@ -2180,6 +2345,11 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         expect(await ackRows(c.claimId)).toEqual([]);
         await admin.query(
           "UPDATE commercial_ack_quarantine SET created_at = now() - interval '60 days' WHERE control_number=$1 AND reason='scope_mismatch'",
+          [c.controlNumber],
+        );
+        // the held answer is OLDER than any submission it could belong to, as in life: age the submission with it
+        await admin.query(
+          "UPDATE commercial_submission SET requested_at = now() - interval '61 days' WHERE control_number=$1",
           [c.controlNumber],
         );
         await replayHeldEvents(ackDeps("stedi"), otherScope);

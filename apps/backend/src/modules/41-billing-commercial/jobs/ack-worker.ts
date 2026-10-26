@@ -340,4 +340,3 @@ export async function scheduleM41AckJobs(connection: ConnectionOptions): Promise
   );
   return [queue];
 }
-
