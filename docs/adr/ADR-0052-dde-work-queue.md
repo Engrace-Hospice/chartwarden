@@ -165,9 +165,29 @@ Non-partitioned; retention class `compliance`.
   sheet.* `GET /dde-items/:id` returns `keying`: a screen hint, the TOB (81A NOE / 81B NOTR / the claim's), statement or
   election dates, the filing deadline, ChartWarden and payer control numbers, patient status / admission codes, and the
   rejection codes with a plain meaning for the standard X12 277CA category codes (others say to look them up in DDE).
-  Still no MBI (D7: the UI points to the patient chart) and no automation. **Not built / tracked:** provider CCN / NPI on
-  the sheet (needs an M40 reader seam), triggers for FISS-side status that has no electronic signal in the codebase
-  (RTP status T from DDE itself, suspended S claims, adjustment / cancel / NOE-correction prompts), aging escalation.
+  Still no MBI (D7: the UI points to the patient chart) and no automation. **Not built / tracked:** triggers for FISS-side
+  status that has no electronic signal in the codebase (RTP status T from DDE itself, suspended S claims, adjustment /
+  cancel / NOE-correction prompts).
+  **Amendment 2026-10 (#765, provider identifiers).** The keying sheet carries `Provider CCN` and `Billing NPI`. They come
+  from a read-only provider-identifier port (`DdeQueueServicePorts.providerIdentity`) bound at the composition root over
+  `readProviderIdentityOnTx`: `provider_entity` is an M1 table M23 may not import (the same posture as the CCN and HETS
+  readers), so the "M40 seam" the follow-up imagined is this port, not a new registry seam. It selects only `ccn` and
+  `npi` on the caller's org-scoped transaction (RLS plus an explicit `organization_id` predicate), so another org's entity
+  resolves to nothing. Unbound or unresolved, the two fields are simply absent (never guessed). Still no MBI (D7).
+  **Amendment 2026-10 (#767, aging of no-deadline items).** `rtp_correction`, `adjustment` and `cancel` items have
+  `deadline_at = NULL`, so they never aged. They now get an age status in `ddeDeadlineStatus` (`openedOn` = item creation
+  date): `on_track`, `at_risk` after **5 business days**, `overdue` after **10 business days** open. Product gave no
+  thresholds; the defaults are named constants in `packages/billing/src/dde/aging.ts` (`DDE_AGING_*`), not per-org
+  configurable because the DDE queue has no per-org config mechanism. Rationale: FISS can hold a returned claim up to
+  36 months, but that is a ceiling on how long the MAC keeps it, not a target; every day an RTP or adjustment waits is
+  delayed cash, so one working week flags it and two weeks escalates it. Business days are Monday to Friday with no
+  holiday calendar (a holiday makes an item look one day older, which errs toward attention). Items that have a deadline
+  keep the deadline rule. The `overdue` / `atRisk` list filters include aged no-deadline items. **Alert:** a daily cron
+  (`m23.dde-aging-alert`, weekdays 13:00 UTC) raises one `m23.dde.queue_aging` warn alert per org (to billing managers,
+  via the M36 alert emitter, correlated per UTC day) when the org has open no-deadline items overdue by age or any open
+  item **unassigned for 2 or more business days** (`DDE_UNASSIGNED_ALERT_BUSINESS_DAYS`). The alert is the digest:
+  counts plus at most 20 item ids per category, no notes or names. An org past 5000 open items alerts on its oldest.
+  Not built: per-org thresholds, a holiday calendar, and per-item escalation to a second recipient.
   **Not built:** `adr_response` auto-queueing (the codebase has no additional-documentation-request signal; items of that
   type stay manual), attachments via M22, tenant separation of duties, and any correction of an accepted NOE.
 - The UI spec's NOE Submission Manager is updated when the screen is built (Phase 2).

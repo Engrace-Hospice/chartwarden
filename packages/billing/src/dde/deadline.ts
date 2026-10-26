@@ -6,6 +6,7 @@
 // deadline MISSED it. Our own submission time never counts.
 import { toEpochDay } from "../domain/dates";
 import type { DdeWorkItemState } from "../machines/dde-work-item";
+import { ddeAgingStatus } from "./aging";
 
 /** An open item this many days (or fewer) from its deadline is at risk even before it is submitted. */
 export const DDE_AT_RISK_DAYS = 2;
@@ -19,6 +20,11 @@ export interface DdeDeadlineFacts {
   readonly state: DdeWorkItemState;
   readonly deadlineAt: string | null;
   readonly macAcceptedOn: string | null;
+  /**
+   * The date the item was opened. When given, an item with NO deadline is judged by age in business days (#767,
+   * `aging.ts`); without it such an item stays `none`.
+   */
+  readonly openedOn?: string | null;
 }
 
 const OPEN: ReadonlySet<DdeWorkItemState> = new Set([
@@ -31,7 +37,9 @@ const OPEN: ReadonlySet<DdeWorkItemState> = new Set([
 
 /** Classify an item against its deadline as of `asOf` (`YYYY-MM-DD`). */
 export function ddeDeadlineStatus(item: DdeDeadlineFacts, asOf: string): DdeDeadlineStatus {
-  if (item.deadlineAt === null) return "none";
+  if (item.deadlineAt === null) {
+    return item.openedOn ? (ddeAgingStatus(item.state, item.openedOn, asOf) ?? "none") : "none";
+  }
   const deadline = toEpochDay(item.deadlineAt);
   if (item.macAcceptedOn !== null && (item.state === "accepted" || item.state === "closed")) {
     return toEpochDay(item.macAcceptedOn) <= deadline ? "met" : "missed";

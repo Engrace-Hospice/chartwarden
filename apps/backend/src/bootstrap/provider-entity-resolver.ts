@@ -243,3 +243,27 @@ export function buildProviderEligibilityIdentityReader(db: DbClient): {
     },
   };
 }
+
+/**
+ * The read-only provider-identifier seam the DDE keying sheet consumes (#765, ADR-0052): one provider entity's CCN and
+ * billing NPI, read on the CALLER's org-scoped transaction (so RLS applies under the real app role) with an explicit
+ * `organization_id` predicate on top. `null` when the entity is absent or another org's; the two cases are
+ * indistinguishable to the caller. Selects only `ccn` and `npi`: no tax id, no beneficiary identifier.
+ */
+export async function readProviderIdentityOnTx(
+  tx: DbClient,
+  organizationId: string,
+  providerEntityId: string,
+): Promise<{ readonly ccn: string; readonly npi: string } | null> {
+  const [row] = await tx
+    .select({ ccn: schema.providerEntities.ccn, npi: schema.providerEntities.npi })
+    .from(schema.providerEntities)
+    .where(
+      and(
+        eq(schema.providerEntities.id, providerEntityId),
+        eq(schema.providerEntities.organizationId, organizationId),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}

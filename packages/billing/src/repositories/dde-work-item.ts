@@ -54,7 +54,16 @@ export interface DdeWorkItemListFilter {
   /** `YYYY-MM-DD` the overdue / at-risk filters are judged against. */
   readonly asOf: string;
   readonly atRiskDays: number;
+  /**
+   * Age cutoffs for items with NO deadline (#767): created on/before `ageOverdueCutoff` is overdue; created after it
+   * and on/before `ageAtRiskCutoff` is at risk (see `ddeAgingCutoffDate`). Absent => no-deadline items never match.
+   */
+  readonly ageOverdueCutoff?: string;
+  readonly ageAtRiskCutoff?: string;
 }
+
+/** `created_at` as a UTC calendar date, the same day `viewOf` ages an item from. */
+const createdDateUtc = sql`((${I.createdAt} AT TIME ZONE 'UTC')::date)`;
 
 /** Columns a transition (or a same-state, version-checked edit) may set. */
 export type DdeWorkItemPatch = Partial<
@@ -204,16 +213,35 @@ export class DdeWorkItemRepository {
       filter.providerEntityId ? eq(I.providerEntityId, filter.providerEntityId) : undefined,
       filter.patientId ? eq(I.patientId, filter.patientId) : undefined,
       filter.overdue
-        ? and(inArray(I.state, OPEN_STATES), lt(I.deadlineAt, filter.asOf))
+        ? or(
+            and(inArray(I.state, OPEN_STATES), lt(I.deadlineAt, filter.asOf)),
+            filter.ageOverdueCutoff
+              ? and(
+                  inArray(I.state, OPEN_STATES),
+                  sql`${I.deadlineAt} IS NULL`,
+                  sql`${createdDateUtc} <= ${filter.ageOverdueCutoff}::date`,
+                )
+              : undefined,
+          )
         : undefined,
       filter.atRisk
-        ? and(
-            inArray(I.state, OPEN_STATES),
-            gte(I.deadlineAt, filter.asOf),
-            or(
-              eq(I.state, "submitted"),
-              lte(I.deadlineAt, dayPlus(filter.asOf, filter.atRiskDays)),
+        ? or(
+            and(
+              inArray(I.state, OPEN_STATES),
+              gte(I.deadlineAt, filter.asOf),
+              or(
+                eq(I.state, "submitted"),
+                lte(I.deadlineAt, dayPlus(filter.asOf, filter.atRiskDays)),
+              ),
             ),
+            filter.ageAtRiskCutoff && filter.ageOverdueCutoff
+              ? and(
+                  inArray(I.state, OPEN_STATES),
+                  sql`${I.deadlineAt} IS NULL`,
+                  sql`${createdDateUtc} <= ${filter.ageAtRiskCutoff}::date`,
+                  sql`${createdDateUtc} > ${filter.ageOverdueCutoff}::date`,
+                )
+              : undefined,
           )
         : undefined,
       keysetBefore(I.createdAt, I.id, cursor ? decodeCursor(cursor) : undefined),
@@ -225,6 +253,32 @@ export class DdeWorkItemRepository {
       .orderBy(desc(I.createdAt), desc(I.id))
       .limit(size + 1);
     return buildCursorPage(rows, size, (r) => ({ createdAt: r.createdAt.toISOString(), id: r.id }));
+  }
+
+  /**
+   * Open items (any type) for the daily aging digest, oldest first, at most `limit` (the digest reports counts of what
+   * it saw; an org past the bound is judged on its oldest items). Org-scoped by RLS.
+   */
+  async listOpenForAging(
+    limit: number,
+  ): Promise<
+    readonly Pick<
+      DdeWorkItemRecord,
+      "id" | "state" | "deadlineAt" | "createdAt" | "assigneeMembershipId"
+    >[]
+  > {
+    return this.db
+      .select({
+        id: I.id,
+        state: I.state,
+        deadlineAt: I.deadlineAt,
+        createdAt: I.createdAt,
+        assigneeMembershipId: I.assigneeMembershipId,
+      })
+      .from(I)
+      .where(inArray(I.state, OPEN_STATES))
+      .orderBy(asc(I.createdAt), asc(I.id))
+      .limit(limit);
   }
 
   /**

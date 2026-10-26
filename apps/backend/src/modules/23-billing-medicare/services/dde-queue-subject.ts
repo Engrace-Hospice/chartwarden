@@ -3,6 +3,7 @@
 // the subject. Ids, dates and codes only; never an MBI. Reads run on the caller's org-scoped transaction (RLS).
 import {
   type DdeItemType,
+  type DdeKeyingProvider,
   type DdeKeyingSheet,
   buildDdeKeyingSheet,
   repositories,
@@ -61,8 +62,37 @@ function codesOf(payload: unknown): string[] {
   return raw.filter((c): c is string => typeof c === "string" && /^[A-Za-z0-9:._-]{1,24}$/.test(c));
 }
 
-/** The DDE keying sheet for an item's subject (ids, dates and codes only; never an MBI). Org-scoped by RLS. */
-export async function loadKeyingSheet(tx: BillingTx, item: Item): Promise<DdeKeyingSheet> {
+/**
+ * Read-only provider-identifier seam (#765): the provider entity's CCN and billing NPI, resolved on the caller's
+ * org-scoped transaction. `provider_entity` is an M1 table M23 may not import, so the composition root binds this.
+ * Null when the entity is absent or belongs to another org. No beneficiary identifier ever passes through it.
+ */
+export type DdeProviderIdentityReader = (
+  tx: BillingTx,
+  organizationId: string,
+  providerEntityId: string,
+) => Promise<{ readonly ccn: string; readonly npi: string } | null>;
+
+/**
+ * The DDE keying sheet for an item's subject (ids, dates and codes only; never an MBI). Org-scoped by RLS.
+ * `readProvider` unbound (absent) or unresolved => the sheet simply has no Provider CCN / Billing NPI fields.
+ */
+export async function loadKeyingSheet(
+  tx: BillingTx,
+  item: Item,
+  readProvider?: DdeProviderIdentityReader,
+): Promise<DdeKeyingSheet> {
+  const provider = readProvider
+    ? await readProvider(tx, item.organizationId, item.providerEntityId)
+    : null;
+  return loadSubjectSheet(tx, item, provider);
+}
+
+async function loadSubjectSheet(
+  tx: BillingTx,
+  item: Item,
+  provider: DdeKeyingProvider | null,
+): Promise<DdeKeyingSheet> {
   if (item.subjectKind === "claim") {
     const claim = await new repositories.ClaimRepository(tx).findById(item.subjectId);
     if (!claim || claim.organizationId !== item.organizationId) {
@@ -84,6 +114,7 @@ export async function loadKeyingSheet(tx: BillingTx, item: Item): Promise<DdeKey
         admissionSourceCode: claim.admissionSourceCode,
         rejectionCodes: rejected ? codesOf(rejected.parsedPayload) : [],
       },
+      provider,
     });
   }
   const isNoe = item.subjectKind === "noe_record";
@@ -113,6 +144,7 @@ export async function loadKeyingSheet(tx: BillingTx, item: Item): Promise<DdeKey
             payerControlNumber: notice.payerNotrControlNumber,
             effectiveDate: notice.effectiveEndDate,
           },
+    provider,
   });
 }
 

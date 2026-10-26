@@ -77,6 +77,8 @@ export const BILLING_CAP_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   // pulls for that provider entity are held until it is fixed.
   rule("m23.clearinghouse.credential_rejected", "critical", BILLING_AND_COMPLIANCE),
   rule("m23.taxonomy.unmapped_taxonomy_alert", "warn", BILLING_MANAGERS),
+  // #767: the daily DDE queue aging digest (no-deadline items overdue by age, items unassigned too long).
+  rule("m23.dde.queue_aging", "warn", BILLING_MANAGERS),
   // ── M25 denial aging + appeal deadline crons ──────────────────────────────────────────────────
   rule("denial.aging_threshold_breached", "warn", BILLING_MANAGERS),
   rule("denial.high_value", "critical", BILLING_MANAGERS),

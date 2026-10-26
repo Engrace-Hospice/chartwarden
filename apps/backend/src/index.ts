@@ -215,6 +215,7 @@ import {
   buildPrimaryProviderEntityResolver,
   buildProviderEligibilityIdentityReader,
   buildProviderEntityCcnResolver,
+  readProviderIdentityOnTx,
   buildProviderEntityLocationLister,
   buildProviderEntityOrgCheck,
   buildRequiredProviderEntityCcnResolver,
@@ -1019,6 +1020,9 @@ import {
   buildDdeQueueService,
   buildDdeWatchdog,
   createDrizzleDdeChangeStore,
+  registerDdeAgingAlertWorker,
+  scheduleDdeAgingAlert,
+  createDrizzleDdeAgingStore,
   registerDdeDailyChangeWorker,
   scheduleDdeDailyChange,
   buildDrizzleM23ReadService,
@@ -6000,6 +6004,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               ddeUsage: process.env.NODE_ENV === "production" ? "production" : "test",
               // #793 - the MBI for a provider operation comes only from M5's audited unlock seam, per call.
               ddeBeneficiary: buildDdeBeneficiaryPort(() => getSeam("MbiUnlockReader")),
+              // #765 - the keying sheet's Provider CCN / Billing NPI (read-only; provider_entity is M1-owned).
+              providerIdentity: (tx, organizationId, providerEntityId) =>
+                readProviderIdentityOnTx(
+                  tx as unknown as DbClient,
+                  organizationId,
+                  providerEntityId,
+                ),
               // Assignable only to an active member whose role grants billing.dde.work (M3's holder reader).
               assigneeCanWork: buildDdeAssigneeEligibility(
                 dbHandle.db,
@@ -8377,6 +8388,26 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       } catch (err) {
         app.log.error(err, "M23 DDE daily change schedule registration failed");
       }
+    }
+    // #767 - the daily DDE queue aging alert (no-deadline items overdue by age, items left unassigned). Independent of
+    // any DDE provider: the queue is human work tracking, so the alert runs whenever M23's workers do.
+    const ddeAgingWorker = registerDdeAgingAlertWorker({
+      connection: queueConnection,
+      store: createDrizzleDdeAgingStore(dbHandle.db),
+      alerts: m23AlertPort,
+      activeOrgs: m23ActiveOrgs,
+    });
+    attachDlqAlertsToAll([ddeAgingWorker], "m23");
+    app.addHook("onClose", async () => {
+      await ddeAgingWorker.close();
+    });
+    try {
+      const ddeAgingSchedule = await scheduleDdeAgingAlert(queueConnection);
+      app.addHook("onClose", async () => {
+        await ddeAgingSchedule.close();
+      });
+    } catch (err) {
+      app.log.error(err, "M23 DDE aging alert schedule registration failed");
     }
     app.log.info(
       { queues: m23Workers.length },
