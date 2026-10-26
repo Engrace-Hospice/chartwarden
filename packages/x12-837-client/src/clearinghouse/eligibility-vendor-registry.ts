@@ -7,8 +7,9 @@
 //   - set, no adapter  -> throws at boot;
 //   - in_memory in production, or a submission vendor (stedi, direct_mac) -> refused.
 // Credentials stay in the environment and are read by the adapter's factory.
+import { type X12WorkerResult, degraded } from "../types";
 import { NOT_WIRED_TRANSPORT } from "./transport-registry";
-import type { ClearinghouseTransport, ClearinghouseVendor } from "./types";
+import { CH, type ClearinghouseTransport, type ClearinghouseVendor } from "./types";
 
 export const ELIGIBILITY_VENDOR_ENV = "ELIGIBILITY_VENDOR";
 
@@ -23,6 +24,15 @@ export interface EligibilityBinding {
   readonly vendor: ClearinghouseVendor | null;
   readonly transport: ClearinghouseTransport;
 }
+
+/** Unbound: names ELIGIBILITY_VENDOR (not CLEARINGHOUSE_VENDOR, which must never be set to an eligibility-only vendor). */
+const NOT_WIRED_ELIGIBILITY_TRANSPORT: ClearinghouseTransport = {
+  ...NOT_WIRED_TRANSPORT,
+  checkEligibility: <T>(): Promise<X12WorkerResult<T>> =>
+    Promise.resolve(
+      degraded<T>(CH.NOT_WIRED, `no eligibility vendor is bound (set ${ELIGIBILITY_VENDOR_ENV})`),
+    ),
+} as ClearinghouseTransport;
 
 export function parseEligibilityVendor(
   raw: string | undefined,
@@ -46,11 +56,8 @@ export function bindEligibilityTransport(
   env: EnvMap,
   factories: EligibilityTransportFactories,
 ): EligibilityBinding {
-  const vendor = parseEligibilityVendor(
-    env[ELIGIBILITY_VENDOR_ENV],
-    env.NODE_ENV === "production",
-  );
-  if (vendor === null) return { vendor: null, transport: NOT_WIRED_TRANSPORT };
+  const vendor = parseEligibilityVendor(env[ELIGIBILITY_VENDOR_ENV], env.NODE_ENV === "production");
+  if (vendor === null) return { vendor: null, transport: NOT_WIRED_ELIGIBILITY_TRANSPORT };
   const factory = factories[vendor];
   if (!factory) {
     throw new Error(
