@@ -86,6 +86,8 @@ export function AuthorizationDrawer({
   const planName = plan?.planName ?? `Plan ${shortId(authorization.planId)}`;
   const note = authorizationWindowNote(authorization, today);
   const leadDays = plan?.authorizationLeadDays ?? null;
+  // Held here, not in StatusActions: a 409 reload turns the row final and unmounts the actions, and the alert must outlive that.
+  const [error, setError] = useState<string | null>(null);
   return (
     <AuthorizationDrawerShell
       label={`Authorization for ${planName}`}
@@ -138,8 +140,10 @@ export function AuthorizationDrawer({
           authorizationId={authorization.id}
           onChanged={onChanged}
           onReload={onReload}
+          setError={setError}
         />
       ) : null}
+      {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
     </AuthorizationDrawerShell>
   );
 }
@@ -148,16 +152,17 @@ function StatusActions({
   authorizationId,
   onChanged,
   onReload,
+  setError,
 }: {
   authorizationId: string;
   onChanged: (status: NextStatus) => void;
   onReload: () => void;
+  setError: (message: string | null) => void;
 }): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
   const [confirming, setConfirming] = useState<NextStatus | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const controls = useRef<HTMLDivElement>(null);
   const lastOpened = useRef<NextStatus | null>(null);
   const attemptKey = useRef<string | null>(null);
@@ -272,7 +277,6 @@ function StatusActions({
           </Button>
         </>
       )}
-      {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import {
   StatusPill,
   interactiveRowProps,
   useApiClient,
+  useToast,
 } from "@chartwarden/ui";
 // apps/web/src/modules/41-billing-commercial — the AUTHORIZATIONS view (M41). Pre-authorizations recorded for ONE patient under one
 // provider entity: the list endpoint needs both ids and has no paging, so the screen starts at a patient search.
@@ -13,7 +14,7 @@ import {
 //   GET /api/v1/billing/commercial/payer-plans?providerEntityId                 plan names and policy
 // Write controls (record, deny, void) exist only for commercial_billing.write; the server stays the authority. A failed read is an
 // error with a retry, never "none". The authorization number is never shown.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
@@ -41,7 +42,11 @@ type AuthorizationsLoad =
   | { readonly status: "idle" }
   | { readonly status: "loading" }
   | { readonly status: "error" }
-  | { readonly status: "ready"; readonly items: readonly AuthorizationView[] };
+  | {
+      readonly status: "ready";
+      readonly key: string;
+      readonly items: readonly AuthorizationView[];
+    };
 
 const PATIENT_PARAM = "patient";
 const AUTH_PARAM = "auth";
@@ -59,8 +64,15 @@ export function CommercialAuthorizations(): JSX.Element {
   const patientId = params.get(PATIENT_PARAM) ?? "";
   const authParam = params.get(AUTH_PARAM) ?? "";
   const statusFilter = params.get(STATUS_PARAM) ?? "";
-  const [load, setLoad] = useState<AuthorizationsLoad>({ status: "idle" });
+  const [rawLoad, setLoad] = useState<AuthorizationsLoad>({ status: "idle" });
   const [reloadKey, setReloadKey] = useState(0);
+  const refocusPending = useRef(false);
+  const toast = useToast();
+  const heading = useRef<HTMLHeadingElement>(null);
+  // Rows belong to one patient under one entity: another scope's rows are never shown, even for the render before the effect runs.
+  const scopeKey = `${entityId}|${patientId}`;
+  const load: AuthorizationsLoad =
+    rawLoad.status === "ready" && rawLoad.key !== scopeKey ? { status: "loading" } : rawLoad;
   const names = usePatientNames(client, patientId ? [patientId] : []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is a retry trigger, not a value the effect reads.
@@ -70,14 +82,21 @@ export function CommercialAuthorizations(): JSX.Element {
       return;
     }
     let active = true;
-    setLoad({ status: "loading" });
+    // Stale-while-revalidate: a reload of the same scope keeps its rows (and the open drawer) mounted.
+    setLoad((prev) =>
+      prev.status === "ready" && prev.key === scopeKey ? prev : { status: "loading" },
+    );
     void client
       .GET("/api/v1/billing/commercial/authorizations", {
         params: { query: { providerEntityId: entityId, patientId } },
       })
       .then(({ data, error }) => {
         if (!active) return;
-        setLoad(error || !data ? { status: "error" } : { status: "ready", items: data.items });
+        setLoad(
+          error || !data
+            ? { status: "error" }
+            : { status: "ready", key: scopeKey, items: data.items },
+        );
       })
       .catch(() => {
         if (active) setLoad({ status: "error" });
@@ -85,9 +104,22 @@ export function CommercialAuthorizations(): JSX.Element {
     return () => {
       active = false;
     };
-  }, [client, entityId, patientId, reloadKey]);
+  }, [client, entityId, patientId, scopeKey, reloadKey]);
 
   const reload = (): void => setReloadKey((k) => k + 1);
+  // After the drawer closes, focus returns to the opener row via the drawer; if that row is gone, land on the page heading.
+  useEffect(() => {
+    if (!refocusPending.current || authParam) return;
+    refocusPending.current = false;
+    const active = document.activeElement;
+    if (!active || active === document.body) heading.current?.focus();
+  }, [authParam]);
+  const finish = (message: string): void => {
+    setParam(AUTH_PARAM, "");
+    toast.show(message, { tone: "success" });
+    reload();
+    refocusPending.current = true;
+  };
   const setParam = (key: string, value: string): void =>
     setParams(
       (prev) => {
@@ -130,7 +162,9 @@ export function CommercialAuthorizations(): JSX.Element {
       <div className="wx-list-drawer-main">
         <header className="wx-page-head">
           <div>
-            <h1>Authorizations</h1>
+            <h1 ref={heading} tabIndex={-1}>
+              Authorizations
+            </h1>
             <p>
               Pre-authorizations recorded for a patient under a provider entity. Search for a
               patient to see theirs.
@@ -289,7 +323,7 @@ export function CommercialAuthorizations(): JSX.Element {
           today={today}
           canWrite={canWrite}
           onClose={() => setParam(AUTH_PARAM, "")}
-          onChanged={reload}
+          onChanged={(status) => finish(`Authorization ${status}.`)}
           onReload={reload}
         />
       ) : null}
@@ -320,10 +354,7 @@ export function CommercialAuthorizations(): JSX.Element {
               providerEntityId={entityId}
               patientId={patientId}
               plans={planList}
-              onRecorded={() => {
-                setParam(AUTH_PARAM, "");
-                reload();
-              }}
+              onRecorded={() => finish("Authorization recorded.")}
               onClose={() => setParam(AUTH_PARAM, "")}
               onReload={reload}
             />

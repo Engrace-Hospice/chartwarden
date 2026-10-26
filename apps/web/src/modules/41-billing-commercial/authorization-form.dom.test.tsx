@@ -5,7 +5,6 @@ import { useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AuthorizationForm } from "./authorization-form";
 import {
-  AUTH_ID,
   type Call,
   ENTITY_ID,
   PATIENT_ID,
@@ -181,25 +180,48 @@ describe("AuthorizationForm", () => {
       calls,
     );
     fill();
-    const button = submit();
-    fireEvent.click(button);
-    fireEvent.click(button);
+    // Submit the form twice directly: the disabled button is not what stops the second one.
+    const form = submit().closest("form") as HTMLFormElement;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
     await waitFor(() => expect(posts(calls)).toHaveLength(1));
     release?.();
+  });
+
+  it("drops the Idempotency-Key when a field changes after a failure", async () => {
+    const calls: Call[] = [];
+    let n = 0;
+    mount(() => {
+      n += 1;
+      return n === 1
+        ? { status: 500, body: { error: { code: "INTERNAL" } } }
+        : { status: 201, body: authorizationRow() };
+    }, calls);
+    fill();
+    fireEvent.click(submit());
+    await screen.findByText(/did not go through/i);
+    fireEvent.change(screen.getByLabelText(/Authorization number/), {
+      target: { value: "AUTH-2" },
+    });
+    fireEvent.click(submit());
+    await waitFor(() => expect(posts(calls)).toHaveLength(2));
+    const [a, b] = posts(calls);
+    expect(a?.headers.get("idempotency-key")).toBeTruthy();
+    expect(b?.headers.get("idempotency-key")).not.toBe(a?.headers.get("idempotency-key"));
   });
 
   it("shows 409, 404 and 422 inline with the right words", async () => {
     const cases: [number, RegExp][] = [
       [409, /already be recorded.*reload the list/is],
       [404, /not in your scope.*no admission under this entity/is],
-      [422, /end date/i],
+      [422, /^The end date cannot be before the start date\.$/],
     ];
     for (const [status, text] of cases) {
       const calls: Call[] = [];
       mount(
         () => ({
           status,
-          body: { error: { code: "X", message: status === 422 ? "The end date is wrong." : "x" } },
+          body: { error: { code: "X", message: status === 422 ? "SERVER-ECHO" : "x" } },
         }),
         calls,
       );
@@ -207,6 +229,7 @@ describe("AuthorizationForm", () => {
       fireEvent.click(submit());
       const alert = await screen.findByRole("alert");
       expect(alert.textContent).toMatch(text);
+      expect(alert.textContent).not.toContain("SERVER-ECHO");
       cleanup();
     }
   });
@@ -232,7 +255,6 @@ describe("AuthorizationForm", () => {
     await waitFor(() => expect(onRecorded).toHaveBeenCalled());
     expect((screen.getByLabelText(/Authorization number/) as HTMLInputElement).value).toBe("");
     expect(document.body.textContent).not.toContain("SECRET-9");
-    expect(AUTH_ID).toBeTruthy();
   });
 
   it("keeps the number field out of autofill", () => {

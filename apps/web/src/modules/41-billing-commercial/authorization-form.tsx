@@ -107,7 +107,7 @@ export function AuthorizationForm({
         onRecorded();
         return;
       }
-      const env = (error as { error?: { code?: string; message?: string } }).error;
+      const env = (error as { error?: { code?: string } }).error;
       const redirect = authFailureRedirect(
         response.status,
         env?.code,
@@ -117,7 +117,7 @@ export function AuthorizationForm({
         navigate(redirect);
         return;
       }
-      setServerError(describeFailure(response.status, env?.message));
+      setServerError(describeFailure(response.status));
     } catch {
       setServerError({
         text: "That did not go through. Check your connection and try again.",
@@ -218,10 +218,7 @@ export function AuthorizationForm({
   );
 }
 
-function describeFailure(
-  status: number,
-  message: string | undefined,
-): { text: string; reload: boolean } {
+function describeFailure(status: number): { text: string; reload: boolean } {
   if (status === 409) {
     return {
       text: "An authorization with these details may already be recorded. If you are retrying after an error, reload the list to check before recording it again.",
@@ -235,7 +232,7 @@ function describeFailure(
     };
   }
   if (status === 422) {
-    return { text: message ?? "The end date cannot be before the start date.", reload: false };
+    return { text: "The end date cannot be before the start date.", reload: false };
   }
   if (status === 403) {
     return { text: "You are not allowed to record authorizations.", reload: false };
