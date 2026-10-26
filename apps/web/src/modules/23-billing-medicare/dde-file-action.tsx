@@ -118,11 +118,11 @@ export function DdeFileAction({
       {/* InlineAlert's error tone is itself role="alert". The success region is always mounted so a screen reader
           announces text inserted into it. */}
       {failure ? <InlineAlert>{failure}</InlineAlert> : null}
-      <output aria-live="polite">
+      <output aria-live="polite" style={{ display: "block" }}>
         {filed ? (
-          <InlineAlert tone="success">
+          <>
             Queued: {filed}. <Link to="/billing/dde">Open the DDE queue</Link>.
-          </InlineAlert>
+          </>
         ) : null}
       </output>
       <div className="wx-action-row">
