@@ -15,6 +15,7 @@
 // Every mutating route requires `Idempotency-Key`, rejects an AI actor, and carries the RBAC + ABAC pair; the override adds the
 // step-up. Org / membership / step-up are read from the server-assembled request context, never the body.
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import { COMMERCIAL_BILLING_PERMISSIONS } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { billingScopeReach } from "../../23-billing-medicare/abac-predicates";
 import {
@@ -29,6 +30,7 @@ import type { CommercialAuthorizationService } from "../services/authorization-s
 import type { CommercialClaimAssemblyService } from "../services/claim-assembly";
 import type { CommercialClaimLifecycleService } from "../services/claim-lifecycle";
 import { type CommercialClaimReadService, toRunApiView } from "../services/claim-read-service";
+import type { CommercialSubmissionService } from "../services/submission-service";
 import {
   AssembleCommercialClaimBodySchema,
   AuthorizationListQuerySchema,
@@ -37,15 +39,19 @@ import {
   OverrideBodySchema,
   OverrideParamsSchema,
   PlanListQuerySchema,
+  ReconcileBodySchema,
   RecordAuthorizationBodySchema,
   SetAuthorizationStatusBodySchema,
+  SubmissionParamsSchema,
 } from "./commercial-typebox";
+import { idempotencyKeyOf } from "./guards";
 
 export interface CommercialBillingRouteDeps {
   readonly assembly: CommercialClaimAssemblyService;
   readonly lifecycle: CommercialClaimLifecycleService;
   readonly authorizations: CommercialAuthorizationService;
   readonly reads: CommercialClaimReadService;
+  readonly submissions: CommercialSubmissionService;
 }
 
 type Target = Record<string, unknown>;
@@ -102,6 +108,8 @@ const OVERRIDE_ELIGIBLE = requireAbac(
   },
 ) as PreHandler;
 const STEP_UP = requireStepUp("commercial_billing.override_validation") as PreHandler;
+const SUBMIT = requirePermission(COMMERCIAL_BILLING_PERMISSIONS.SUBMIT) as PreHandler;
+const SUBMIT_STEP_UP = requireStepUp(COMMERCIAL_BILLING_PERMISSIONS.SUBMIT) as PreHandler;
 const NO_AI = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
 
@@ -110,7 +118,7 @@ export function registerCommercialBillingRoutes(
   app: FastifyInstance,
   deps: CommercialBillingRouteDeps,
 ): void {
-  const { assembly, lifecycle, authorizations, reads } = deps;
+  const { assembly, lifecycle, authorizations, reads, submissions } = deps;
 
   app.post(
     "/api/v1/billing/commercial/claims/assemble",
@@ -193,6 +201,91 @@ export function registerCommercialBillingRoutes(
       // A blocked claim is a 409 COMMERCIAL_CLAIM_BLOCKED carrying every blocking rule and an actionable message.
       const res = await lifecycle.assertReady(writeActor(request), id);
       return { claimId: res.claimId, state: res.state, validation: toRunApiView(res.validation) };
+    },
+  );
+
+  // The send gate, before the click: every reason a claim cannot be sent now, each with a stable code and a fixed message.
+  app.get(
+    "/api/v1/billing/commercial/claims/:id/send-gate",
+    {
+      preHandler: [READ, CASELOAD("commercial_billing.read")],
+      config: {
+        auditRead: {
+          resourceKind: "commercial_claim",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "patientId",
+        },
+      },
+    },
+    async (request) => {
+      const { id } = parse(IdParamsSchema, request.params);
+      return submissions.sendGate(readActor(request), id);
+    },
+  );
+
+  // The claim's history: state changes and submissions in order (ids, dates and codes only), bounded.
+  app.get(
+    "/api/v1/billing/commercial/claims/:id/timeline",
+    {
+      preHandler: [READ, CASELOAD("commercial_billing.read")],
+      config: {
+        auditRead: {
+          resourceKind: "commercial_claim",
+          resourceIdParam: "id",
+          patientIdPayloadPath: "patientId",
+        },
+      },
+    },
+    async (request) => {
+      const { id } = parse(IdParamsSchema, request.params);
+      return submissions.timeline(readActor(request), id);
+    },
+  );
+
+  // Sending a claim is consequential and irreversible once the payer has it, so it follows M23's filing actions: its own permission, the
+  // claim's provider/caseload scope, a FRESH step-up, no AI actor and an Idempotency-Key. The route only decides and records (202,
+  // `queued`); the worker sends, and the claim stays `ready` until the transport has accepted the file.
+  app.post(
+    "/api/v1/billing/commercial/claims/:id/submit",
+    {
+      preHandler: [
+        SUBMIT,
+        CASELOAD("commercial_billing.submit"),
+        SUBMIT_STEP_UP,
+        NO_AI,
+        IDEMPOTENT,
+      ],
+    },
+    async (request, reply) => {
+      const { id } = parse(IdParamsSchema, request.params);
+      const out = await submissions.submit(writeActor(request), id, idempotencyKeyOf(request));
+      return reply.code(out.replayed ? 200 : 202).send(out);
+    },
+  );
+
+  // The human exit from `in_doubt` (an ambiguous send is never resent automatically). Same gate as submit: its permission, the claim
+  // scope, a FRESH step-up, no AI actor, an Idempotency-Key. Takes an outcome only, never free text.
+  app.post(
+    "/api/v1/billing/commercial/claims/:id/submissions/:submissionId/reconcile",
+    {
+      preHandler: [
+        SUBMIT,
+        CASELOAD("commercial_billing.submit"),
+        SUBMIT_STEP_UP,
+        NO_AI,
+        IDEMPOTENT,
+      ],
+    },
+    async (request) => {
+      const { id, submissionId } = parse(SubmissionParamsSchema, request.params);
+      const body = parse(ReconcileBodySchema, request.body);
+      return submissions.reconcile(
+        writeActor(request),
+        id,
+        submissionId,
+        body.outcome,
+        body.evidence,
+      );
     },
   );
 

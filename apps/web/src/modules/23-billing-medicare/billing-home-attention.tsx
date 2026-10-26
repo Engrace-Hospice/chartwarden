@@ -10,6 +10,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { fmtDay } from "./dde-queue-model";
 import { patientLabel, usePatientNames } from "./use-patient-names";
 import { type WorkQueueSources, useWorkQueueSources } from "./use-work-queue-sources";
+import { ValidationSummaryCard } from "./validation-summary-card";
 import { SourceCard, SourceProblems, UrgencyPill, isUrgent } from "./work-queue";
 import { type SourceState, buildWorkItems, countLabel } from "./work-queue-model";
 
@@ -63,6 +64,7 @@ export function BillingNeedsAttention(): JSX.Element {
           quietDetail="need action"
           onSelect={() => go("claim")}
         />
+        <ValidationSummaryCard />
         <KpiCard
           label="Denied claims"
           value={countLabel(sources.claims, denied)}

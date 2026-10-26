@@ -1,9 +1,9 @@
+import { ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 4.1: the composer action is shown only when the options route allows it and the channel is a patient care-team
 // conversation; the dialog shows the emergency-procedure notice, requires a chosen recipient and the SBAR sections, and
 // sends exactly what the server needs (an SBAR document, one recipient, a client id); the outcome stays on screen.
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -234,8 +234,8 @@ describe("UrgentMessageDialog", () => {
     },
   );
 
-  it("rotates the ids when the text changes and reuses them when an identical payload is retried", async () => {
-    const post = vi.fn().mockResolvedValue(refusal(500, "X"));
+  it("rotates the ids when the text changes and reuses them when an identical payload is retried after a thrown fetch", async () => {
+    const post = vi.fn().mockRejectedValue(new Error("net"));
     mountWithClient(<UrgentMessageButton channelId="c1" kind="care_team" />, { post });
     await open();
     await userEvent.click(screen.getByRole("radio", { name: RN.display_name }));
@@ -406,11 +406,11 @@ describe("sending", () => {
   });
 
   it.each([
-    ["thrown", () => Promise.reject(new Error("net"))],
-    ["a 503", () => Promise.resolve(refusal(503, "X"))],
+    ["thrown", () => Promise.reject(new Error("net")), true],
+    ["a 503", () => Promise.resolve(refusal(503, "X")), false],
   ])(
-    "%s: says it may not have been sent, re-reads the thread, and a close/reopen retry reuses the same ids",
-    async (_n, fail) => {
+    "%s: says it may not have been sent, re-reads the thread, and a close/reopen retry keeps the message id (same Idempotency-Key only if no reply arrived)",
+    async (_n, fail, sameKey) => {
       const onSent = vi.fn();
       const post = vi.fn().mockImplementationOnce(fail).mockResolvedValue(sentAnswer());
       mountWithClient(
@@ -432,7 +432,9 @@ describe("sending", () => {
       await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
       const [a, b] = post.mock.calls as [Call, Call];
       expect(b[1].body.client_message_id).toBe(a[1].body.client_message_id);
-      expect(b[1].params.header["Idempotency-Key"]).toBe(a[1].params.header["Idempotency-Key"]);
+      expect(b[1].params.header["Idempotency-Key"] === a[1].params.header["Idempotency-Key"]).toBe(
+        sameKey,
+      );
     },
   );
 

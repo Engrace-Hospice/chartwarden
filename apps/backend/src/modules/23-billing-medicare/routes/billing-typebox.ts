@@ -58,6 +58,7 @@ const CLAIM_STATE = [
   "ack_rejected",
   "ack_partial",
   "paid",
+  "partial_paid",
   "denied",
   "replaced",
   "voided",

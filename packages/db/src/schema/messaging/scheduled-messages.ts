@@ -11,6 +11,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
@@ -41,6 +42,7 @@ export const scheduledMessages = pgTable(
     timeZone: text("time_zone").notNull().default("UTC"),
     status: text("status").notNull().default("pending"),
     blockedReason: text("blocked_reason"),
+    clientMessageId: uuid("client_message_id"),
     attempts: integer("attempts").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -55,6 +57,11 @@ export const scheduledMessages = pgTable(
       t.parentMessageId,
     ),
     byUser: index("scheduled_message_user_idx").on(t.userId),
+    clientMessageUnique: unique("scheduled_message_client_message_unique").on(
+      t.organizationId,
+      t.userId,
+      t.clientMessageId,
+    ),
     channelOrgFk: foreignKey({
       name: "scheduled_message_channel_org_fk",
       columns: [t.organizationId, t.channelId],

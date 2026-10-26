@@ -94,6 +94,18 @@ function setup(o: Setup = {}) {
     }
     if (path === "/api/v1/noe-records")
       return o.noe === "error" ? fail(500) : o.noe === "denied" ? fail(403) : page(o.noe ?? []);
+    if (path === "/api/v1/billing/claim-validation-summary")
+      return ok({
+        totalClaims: 0,
+        neverValidated: 0,
+        byOutcome: {
+          all_pass: 0,
+          failures_present: 0,
+          overrides_required: 0,
+          ready_for_submission: 0,
+        },
+        oldestLatestRunAt: null,
+      });
     if (path === "/api/v1/notr-records")
       return o.notr === "error" ? fail(500) : o.notr === "denied" ? fail(403) : page(o.notr ?? []);
     if (path === "/api/v1/billing/dde-items")

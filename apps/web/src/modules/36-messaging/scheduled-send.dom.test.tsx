@@ -1,8 +1,8 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 2.6 — the composer's Schedule control and the Scheduled list: date/time input with the time zone shown,
 // every required state (idle, submitting, error, success; loading, empty, error, blocked), cancel and reschedule.
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { ConversationInbox } from "./conversation-inbox";
 import { ScheduleSendButton } from "./schedule-send-button";
@@ -308,7 +308,7 @@ describe("fix round 1: schedule dialog", () => {
     expect(within(dialog).queryByText(/mentions won't notify/i)).toBeNull();
   });
 
-  it("M5: the idempotency key is reused after a 502 and rotated after a 422", async () => {
+  it("M5: the idempotency key is rotated after any HTTP answer (502 and 422), the client message id stays", async () => {
     const answers = [POST_REFUSED(502), POST_REFUSED(502), POST_REFUSED(422), POST_REFUSED(422)];
     const client = api({ POST: () => answers.shift() });
     const dialog = await openDialog(client);
@@ -318,13 +318,18 @@ describe("fix round 1: schedule dialog", () => {
     await screen.findByRole("alert");
     await submit();
     await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(2));
-    expect(keyOf(client, 1)).toBe(keyOf(client, 0));
+    expect(keyOf(client, 1)).not.toBe(keyOf(client, 0));
     await submit(); // third: 422
     await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(3));
-    expect(keyOf(client, 2)).toBe(keyOf(client, 0)); // the 502 did not rotate it
+    expect(keyOf(client, 2)).not.toBe(keyOf(client, 1));
     await submit(); // fourth, after the definite refusal
     await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(4));
     expect(keyOf(client, 3)).not.toBe(keyOf(client, 2));
+    const ids = [0, 1, 2, 3].map(
+      (n) => (client.POST.mock.calls[n] as [string, Json])[1].body.clientMessageId,
+    );
+    expect(ids[0]).toMatch(/\S+/);
+    expect(new Set(ids).size).toBe(1);
   });
 
   it("M6: a past time is refused with a message and nothing is sent", async () => {
@@ -529,9 +534,15 @@ describe("fix round 2: scheduled UI", () => {
     }
   });
 
-  it("R3: closing and reopening the dialog after an ambiguous 502 reuses the Idempotency-Key", async () => {
-    const answers = [POST_REFUSED(502), POST_REFUSED(502)];
-    const client = api({ POST: () => answers.shift() });
+  it("R3: closing and reopening the dialog after a thrown fetch reuses the Idempotency-Key", async () => {
+    const answers: unknown[] = [new Error("network"), POST_REFUSED(502)];
+    const client = api({
+      POST: () => {
+        const next = answers.shift();
+        if (next instanceof Error) throw next;
+        return next;
+      },
+    });
     const dialog = await openDialog(client);
     await userEvent.click(within(dialog).getByRole("button", { name: /^schedule$/i }));
     await screen.findByRole("alert");

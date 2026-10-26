@@ -63,6 +63,21 @@ export type NotrTriggerKind = "revocation" | "transfer_out" | "discharge";
 
 // ── claim view DTOs ───────────────────────────────────────────────────────────────────────────────────
 
+/** Org-wide count of claims by the outcome of their newest validation run (the claim-list scope rules apply). */
+export interface ClaimValidationOverviewView {
+  readonly totalClaims: number;
+  readonly neverValidated: number;
+  readonly byOutcome: Readonly<Record<ValidationRunOutcome, number>>;
+  /** Oldest `completedAt` among the claims' newest runs (the stalest validation), or `null` if none. */
+  readonly oldestLatestRunAt: string | null;
+}
+
+/** The newest validation run's outcome for a claim, as shown on the claim list (`runAt` = run completion). */
+export interface ClaimValidationSummaryView {
+  readonly outcome: ValidationRunOutcome;
+  readonly runAt: string;
+}
+
 export interface ClaimSummaryView {
   readonly claimId: string;
   readonly organizationId: string;
@@ -85,6 +100,11 @@ export interface ClaimSummaryView {
    * reads when the stay-end facts port is bound; absent/`null` otherwise.
    */
   readonly attention?: ClaimAttentionView | null;
+  /**
+   * The claim's newest validation run (outcome + when), or `null` if it was never validated. Populated on the
+   * LIST read only (absent on detail, which carries the full `latestValidation` run).
+   */
+  readonly latestValidationSummary?: ClaimValidationSummaryView | null;
 }
 
 export interface ClaimPricingView {
@@ -671,4 +691,9 @@ export interface M23ReadRouteService {
   // ── AR / metrics ──
   getClaimMetrics(actor: M23ReadActor, filter: MetricsFilter): Promise<readonly MetricsBucket[]>;
   getArAging(actor: M23ReadActor, filter: MetricsFilter): Promise<ArAgingDto>;
+  /** Claims by newest-validation outcome across the whole org, narrowed by `providerEntityScope`. */
+  getClaimValidationOverview(
+    actor: M23ReadActor,
+    scope: { readonly providerEntityScope?: readonly string[] },
+  ): Promise<ClaimValidationOverviewView>;
 }

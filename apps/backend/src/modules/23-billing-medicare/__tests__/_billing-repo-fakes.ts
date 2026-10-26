@@ -228,6 +228,12 @@ export function buildFakeRepositories(): {
       const rs = [...store.runs.values()].filter((r) => r.claimId === claimId);
       return rs.length > 0 ? rs[rs.length - 1] : null;
     }
+    async findLatestForClaims(claimIds: readonly string[]): Promise<any[]> {
+      return claimIds.flatMap((id) => {
+        const rs = [...store.runs.values()].filter((r) => r.claimId === id);
+        return rs.length > 0 ? [rs[rs.length - 1]] : [];
+      });
+    }
     async listForClaim(claimId: string): Promise<any[]> {
       return [...store.runs.values()].filter((r) => r.claimId === claimId);
     }

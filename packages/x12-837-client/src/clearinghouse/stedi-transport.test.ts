@@ -651,9 +651,27 @@ describe("StediTransport reservation, completion and races", () => {
       claim({ idempotencyKey: "k2", controlNumber: "CCN-2" }),
     );
     expect(code(lost)).toBe(CH.UNAVAILABLE);
+    // the file WAS taken: the caller is told the send is ambiguous even though the code is a retryable CH_UNAVAILABLE
+    expect(!lost.ok && lost.degraded.ambiguous).toBe(true);
     expect(anomalies).toEqual([
       { type: "sent_but_unrecorded", idempotencyKey: "k2", clearinghouseSubmissionId: "mine" },
     ]);
+  });
+
+  it("flags a 5xx as ambiguous but a refusal before the request left (the attempt could not be reserved) as clean", async () => {
+    const fiveHundred = await harness(
+      () => new Response("{}", { status: 503 }),
+    ).transport.submitClaim(CTX, claim());
+    expect(code(fiveHundred)).toBe(CH.UNAVAILABLE);
+    expect(!fiveHundred.ok && fiveHundred.degraded.ambiguous).toBe(true);
+
+    const dead: SubmissionAttemptStore = {
+      ...bind(new InMemoryAttemptStore()),
+      reserve: () => Promise.reject(new Error("db down")),
+    };
+    const clean = await withStore(dead).transport.submitClaim(CTX, claim());
+    expect(code(clean)).toBe(CH.UNAVAILABLE);
+    expect(!clean.ok && clean.degraded.ambiguous).toBeUndefined();
   });
 
   it("reports an unrecorded send when the reservation vanished before completion", async () => {

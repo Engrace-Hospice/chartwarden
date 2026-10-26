@@ -5294,6 +5294,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/claim-validation-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Claims by newest validation outcome across the org (aggregate; narrowed to the caller's provider scope like the claim list) */
+        get: operations["getApiV1BillingClaimvalidationsummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/claims": {
         parameters: {
             query?: never;
@@ -5527,7 +5544,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark a pre-authorization denied or voided; the next validation sees the change */
+        /** Mark a pre-authorization denied or voided; the next validation sees the change. 409 COMMERCIAL_SUBMISSION_IN_FLIGHT when ANY ready claim that depends on it has a submission queued, in doubt or sent and not settled: one claim in flight blocks the change for all of them (the whole change rolls back), so settle that submission first */
         post: operations["postApiV1BillingCommercialAuthorizationsByIdStatus"];
         delete?: never;
         options?: never;
@@ -5578,8 +5595,76 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Move a draft claim to ready after a fresh validation. 409 COMMERCIAL_CLAIM_BLOCKED (with the blocking rules and what to do) while a hard block fails or a soft block lacks an audited override */
+        /** Move a draft claim to ready after a fresh validation. 409 COMMERCIAL_CLAIM_BLOCKED (with the blocking rules and what to do) while a hard block fails or a soft block lacks an audited override; 409 COMMERCIAL_SUBMISSION_IN_FLIGHT while the claim has a live submission */
         post: operations["postApiV1BillingCommercialClaimsByIdReady"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/claims/{id}/send-gate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every reason a commercial claim cannot be sent right now, before the user clicks (commercial_billing.read; provider entity and caseload scope; read-audited). Fixed order: claim state, submission already in flight, validation, authorization, eligibility, transport bound (CH_NOT_WIRED), payer route, enrollment. Each reason has a stable code, a fixed message that says what to do next, and for rule-backed reasons the rule keys. Judged on the claim's current facts, not the stored validation run */
+        get: operations["getApiV1BillingCommercialClaimsByIdSendgate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/claims/{id}/submissions/{submissionId}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Settle a submission that is IN DOUBT (an ambiguous send is never resent automatically). Body `{outcome, evidence?}`: `received` (needs `evidence`: clearinghouse_portal, payer_portal or vendor_support, what you relied on; the submission becomes sent and the claim moves ready to submitted; 409 COMMERCIAL_CLAIM_NOT_READY if the claim is no longer ready) or `not_received` (no evidence; the submission fails with COMMERCIAL_RECONCILED_NOT_RECEIVED and the claim may be submitted again; the re-send replays an earlier receipt if the file had in fact arrived; 409 COMMERCIAL_RECONCILE_RECEIPT_ON_FILE when the clearinghouse already accepted the file, so only received is open). 503 COMMERCIAL_DRAIN_NOT_SCHEDULED while the background sender is not scheduled. commercial_billing.submit + a FRESH step-up, never an AI actor, Idempotency-Key required, no free text. 409 unless the submission is in doubt. Writes the row audit and an m41.claim.submit_reconciled event */
+        post: operations["postApiV1BillingCommercialClaimsByIdSubmissionsBySubmissionIdReconcile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/claims/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a ready commercial claim through the platform clearinghouse (commercial_billing.submit + a FRESH step-up, as M23's filing actions; never an AI actor; Idempotency-Key required). The request only decides and records: 202 with a `queued` submission and an m41.claim.submit_requested event; the worker sends it, and the claim moves ready to submitted only when the transport has accepted the file. The same key replays the stored answer with 200 and `replayed: true`. The send gate refuses with 409 COMMERCIAL_SEND_REFUSED (503 when the transport is unbound, CH_NOT_WIRED), carrying every reason as a detail {code, message}; a refusal writes no submission and no event, so no job exists. 503 COMMERCIAL_DRAIN_NOT_SCHEDULED while the background sender is not scheduled (checked against the shared queue store, so it holds in a split API and worker deployment) */
+        post: operations["postApiV1BillingCommercialClaimsByIdSubmit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/claims/{id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A commercial claim's history in order: state changes (from, to, actor kind), submissions (status, control number, attempts, failure code, sent time) and acknowledgments (stage clearinghouse or payer, disposition, reason codes, payer claim number). Ids, dates and codes only; bounded (200 state changes, 50 submissions and 100 acknowledgments, newest kept; `truncated` says when older rows were cut). Read-audited (commercial_billing.read; caseload scope) */
+        get: operations["getApiV1BillingCommercialClaimsByIdTimeline"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5595,7 +5680,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Re-run the payer-specific rules (plan, payer state, route, contract rate, authorization, diagnosis, attending). A ready claim that now has a block drops back to draft */
+        /** Re-run the payer-specific rules (plan, payer state, route, contract rate, authorization, diagnosis, attending). A ready claim that now has a block drops back to draft. 409 COMMERCIAL_SUBMISSION_IN_FLIGHT while the claim has a submission queued, in doubt or sent and not settled */
         post: operations["postApiV1BillingCommercialClaimsByIdValidate"];
         delete?: never;
         options?: never;
@@ -5629,7 +5714,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Void a commercial claim (frees its service window for a corrected re-assembly) */
+        /** Void a commercial claim (frees its service window for a corrected re-assembly). 409 COMMERCIAL_SUBMISSION_IN_FLIGHT while the claim has a submission queued, in doubt or sent and not settled; settle it first (reconcile) */
         post: operations["postApiV1BillingCommercialClaimsByIdVoid"];
         delete?: never;
         options?: never;
@@ -15816,7 +15901,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Schedule a message for later (WP 2.6; Idempotency-Key required; 1 minute to 30 days ahead; announcement channel needs messaging.announce; 409 SCHEDULE_LIMIT_REACHED at 50). Re-checked at dispatch. */
+        /** Schedule a message for later (WP 2.6; Idempotency-Key required; 1 minute to 30 days ahead; announcement channel needs messaging.announce; 409 SCHEDULE_LIMIT_REACHED at 50; a repeated clientMessageId with the same content returns the original, with a different channel, text or time it is 409 CLIENT_MESSAGE_ID_CONFLICT). Re-checked at dispatch. */
         post: operations["postApiV1MessagingChannelsByIdScheduledmessages"];
         delete?: never;
         options?: never;
@@ -43345,6 +43430,38 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingClaimvalidationsummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        totalClaims: number;
+                        neverValidated: number;
+                        byOutcome: {
+                            all_pass: number;
+                            failures_present: number;
+                            overrides_required: number;
+                            ready_for_submission: number;
+                        };
+                        oldestLatestRunAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingClaims: {
         parameters: {
             query?: {
@@ -43352,7 +43469,7 @@ export interface operations {
                 limit?: number;
                 providerEntityId?: string;
                 patientId?: string;
-                state?: "draft" | "validating" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "ack_partial" | "paid" | "denied" | "replaced" | "voided";
+                state?: "draft" | "validating" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "ack_partial" | "paid" | "partial_paid" | "denied" | "replaced" | "voided";
                 attention?: "missing_discharge_details" | "tob_changed";
             };
             header?: never;
@@ -43403,6 +43520,10 @@ export interface operations {
                                     fixPath: string;
                                 } | null;
                                 flags: ("missing_discharge_details" | "tob_changed")[];
+                            } | null;
+                            latestValidationSummary?: {
+                                outcome: "all_pass" | "failures_present" | "overrides_required" | "ready_for_submission";
+                                runAt: string;
                             } | null;
                         }[];
                         nextCursor: string | null;
@@ -43466,6 +43587,10 @@ export interface operations {
                                 fixPath: string;
                             } | null;
                             flags: ("missing_discharge_details" | "tob_changed")[];
+                        } | null;
+                        latestValidationSummary?: {
+                            outcome: "all_pass" | "failures_present" | "overrides_required" | "ready_for_submission";
+                            runAt: string;
                         } | null;
                         electionPeriodIdFrom: string;
                         electionPeriodIdTo: string;
@@ -44164,7 +44289,7 @@ export interface operations {
         parameters: {
             query: {
                 providerEntityId: string;
-                state?: "draft" | "ready" | "void";
+                state?: "draft" | "ready" | "submitted" | "ack_pending" | "accepted" | "rejected" | "void";
                 payerKind?: "commercial_only" | "medicare_secondary" | "medicaid_secondary";
                 patientId?: string;
                 limit?: number;
@@ -44324,6 +44449,180 @@ export interface operations {
                                 message: string;
                             }[];
                         };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingCommercialClaimsByIdSendgate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        claimId: string;
+                        state: string;
+                        patientId: string;
+                        canSubmit: boolean;
+                        clearinghouseKey: string | null;
+                        reasons: {
+                            code: string;
+                            message: string;
+                            ruleKeys?: string[];
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialClaimsByIdSubmissionsBySubmissionIdReconcile: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+                submissionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    outcome: "received" | "not_received";
+                    evidence?: "clearinghouse_portal" | "payer_portal" | "vendor_support";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        submissionId: string;
+                        claimId: string;
+                        status: "queued" | "sent" | "failed" | "in_doubt";
+                        controlNumber: string;
+                        clearinghouseKey: string;
+                        attemptCount: number;
+                        requestedAt: string;
+                        replayed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialClaimsByIdSubmit: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        submissionId: string;
+                        claimId: string;
+                        status: "queued" | "sent" | "failed" | "in_doubt";
+                        controlNumber: string;
+                        clearinghouseKey: string;
+                        attemptCount: number;
+                        requestedAt: string;
+                        replayed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingCommercialClaimsByIdTimeline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        claimId: string;
+                        patientId: string;
+                        state: string;
+                        items: ({
+                            /** @constant */
+                            kind: "acknowledgment";
+                            at: string;
+                            submissionId: string;
+                            stage: string;
+                            disposition: string;
+                            reasonCodes: string[];
+                            payerClaimNumber: string | null;
+                        } | {
+                            /** @constant */
+                            kind: "state_change";
+                            at: string;
+                            fromState: string | null;
+                            toState: string;
+                            actorKind: string;
+                        } | {
+                            /** @constant */
+                            kind: "submission";
+                            at: string;
+                            submissionId: string;
+                            status: "queued" | "sent" | "failed" | "in_doubt";
+                            controlNumber: string;
+                            clearinghouseKey: string;
+                            attemptCount: number;
+                            failureCode: string | null;
+                            failureMessage: string | null;
+                            resolution: string | null;
+                            sentAt: string | null;
+                        })[];
+                        truncated: boolean;
                     };
                 };
             };
@@ -75049,6 +75348,7 @@ export interface operations {
                     parentMessageId?: string;
                     scheduledFor: string;
                     timeZone?: string;
+                    clientMessageId?: string;
                 };
             };
         };

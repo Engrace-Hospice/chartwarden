@@ -16,7 +16,7 @@ import {
   type ScheduledSendService,
   createInMemoryMessagingService,
 } from "@chartwarden/messaging";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
@@ -65,6 +65,9 @@ function recordingService() {
     async create(_org, input) {
       calls.push({ op: "create", input: { ...input } });
       if (input.body === "full") throw new ChartWardenError("SCHEDULE_LIMIT_REACHED", "cap", 409);
+      if (input.body === "conflict") {
+        throw new ChartWardenError("CLIENT_MESSAGE_ID_CONFLICT", "reused", 409);
+      }
       const view: ScheduledMessageView = {
         id: SID,
         channelId: input.channelId,
@@ -243,6 +246,23 @@ describe("scheduled-send routes", () => {
     const anon = await app.inject({ method: "GET", url: "/api/v1/messaging/scheduled-messages" });
     expect(anon.statusCode).toBe(401);
     expect((await create(app, "rn_1", ok, "not-a-uuid")).statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("passes a client message id through to the service and 422s a malformed one", async () => {
+    const { app, calls } = makeServer();
+    const clientMessageId = "0b1f5f4e-5a55-4d6a-8f55-1d3f0a9c7e11";
+    expect((await create(app, "rn_1", { ...ok, clientMessageId })).statusCode).toBe(201);
+    expect(calls[0]).toMatchObject({ op: "create", input: { clientMessageId } });
+    expect((await create(app, "rn_1", { ...ok, clientMessageId: "nope" })).statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("surfaces the service's 409 CLIENT_MESSAGE_ID_CONFLICT unchanged", async () => {
+    const { app } = makeServer();
+    const res = await create(app, "rn_1", { ...ok, body: "conflict" });
+    expect(res.statusCode).toBe(409);
+    expect(JSON.stringify(res.json())).toContain("CLIENT_MESSAGE_ID_CONFLICT");
     await app.close();
   });
 

@@ -76,10 +76,10 @@ describe("MedicationQuestionDialog", () => {
     expect(POST).not.toHaveBeenCalled();
   });
 
-  it("reuses the same key pair on a retry within one open", async () => {
+  it("reuses the same key pair on a retry after a thrown fetch (no reply arrived)", async () => {
     const post = vi
       .fn()
-      .mockResolvedValueOnce(refusal(502, "BAD_GATEWAY"))
+      .mockRejectedValueOnce(new TypeError("network"))
       .mockResolvedValueOnce(sentAnswer());
     const { onSent } = open(OPTIONS, post);
     await type("Q");
@@ -92,10 +92,14 @@ describe("MedicationQuestionDialog", () => {
     expect(second.body.client_message_id).toBe(first.body.client_message_id);
   });
 
-  it("rotates only the header key after a 409", async () => {
+  it.each([
+    [409, "IDEMPOTENCY_CONFLICT"],
+    [502, "BAD_GATEWAY"],
+    [422, "VALIDATION"],
+  ])("rotates only the header key after an HTTP %s", async (status, code) => {
     const post = vi
       .fn()
-      .mockResolvedValueOnce(refusal(409, "IDEMPOTENCY_CONFLICT"))
+      .mockResolvedValueOnce(refusal(status, code))
       .mockResolvedValueOnce(sentAnswer());
     open(OPTIONS, post);
     await type("Q");

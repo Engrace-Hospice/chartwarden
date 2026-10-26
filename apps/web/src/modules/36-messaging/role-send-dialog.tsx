@@ -166,10 +166,9 @@ export function RoleSendDialog({
       if (data) return onSent({ created: data.created, role, name: chosen.name });
       const status = response?.status;
       const code = (failure as { error?: { code?: string } } | undefined)?.error?.code;
-      // The idempotency middleware caches EVERY response, refusals included: retrying a refused send under the same key would replay the
-      // refusal even after coverage changed. A clean refusal therefore gets a fresh key; only a failure that may have stored the message
-      // keeps its key (the retry must be the same request), except an untyped 409 (an unfinished attempt: only a new key can succeed).
-      if (!isIndeterminateSend(status, code) || (status === 409 && code === undefined)) {
+      // The idempotency middleware caches EVERY response (5xx included): retrying under the same key would replay it. Any answered
+      // response gets a fresh key (the client_message_id stays, so a committed send dedupes); only a thrown fetch keeps it.
+      if (status !== undefined) {
         draft.rotateKey();
       }
       setError(sendErrorText(status, code));

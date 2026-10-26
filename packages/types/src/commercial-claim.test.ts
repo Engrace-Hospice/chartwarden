@@ -6,6 +6,7 @@ import {
   COMMERCIAL_CLAIM_STATE_VALUES,
   COMMERCIAL_OVERRIDE_REASON_MIN_LENGTH,
   COMMERCIAL_SECONDARY_PAYER_KIND_VALUES,
+  COMMERCIAL_SUBMISSION_STATUS_VALUES,
   COMMERCIAL_VALIDATION_OUTCOME_VALUES,
   COMMERCIAL_VALIDATION_SEVERITY_VALUES,
   COMMERCIAL_VALIDATION_TRIGGER_VALUES,
@@ -16,10 +17,16 @@ const MIGRATION = readFileSync(
   "utf8",
 );
 
+/** 1274 widens the claim state sets to the submission lifecycle (the 1261 sets are the original draft / ready / void). */
+const SUBMISSION_MIGRATION = readFileSync(
+  join(__dirname, "../../db/migrations/1274_m41_commercial_submission.sql"),
+  "utf8",
+);
+
 /** The values of `"column" ... IN ('a','b',...)` for each occurrence of the column in the migration, as sorted unique lists. */
-function checkLists(column: string): string[][] {
+function checkLists(column: string, source: string = MIGRATION): string[][] {
   const out: string[][] = [];
-  for (const m of MIGRATION.matchAll(new RegExp(`"${column}"[^\\n]*? IN \\(([^)]*)\\)`, "g"))) {
+  for (const m of source.matchAll(new RegExp(`"${column}"[^\\n]*? IN \\(([^)]*)\\)`, "g"))) {
     out.push([...(m[1] as string).matchAll(/'([^']+)'/g)].map((x) => x[1] as string).sort());
   }
   return out;
@@ -28,8 +35,15 @@ function checkLists(column: string): string[][] {
 describe("M41 claim code-side mirrors", () => {
   it("mirror the migration CHECK lists exactly", () => {
     const sorted = (xs: readonly string[]) => [...xs].sort();
-    for (const list of checkLists("state"))
-      expect(list).toEqual(sorted(COMMERCIAL_CLAIM_STATE_VALUES));
+    for (const list of checkLists("state")) expect(list).toEqual(["draft", "ready", "void"]);
+    for (const column of ["state", "from_state", "to_state"]) {
+      const lists = checkLists(column, SUBMISSION_MIGRATION);
+      expect(lists.length).toBeGreaterThan(0);
+      for (const list of lists) expect(list).toEqual(sorted(COMMERCIAL_CLAIM_STATE_VALUES));
+    }
+    expect(checkLists("status", SUBMISSION_MIGRATION)).toContainEqual(
+      sorted(COMMERCIAL_SUBMISSION_STATUS_VALUES),
+    );
     expect(checkLists("status")).toContainEqual(sorted(COMMERCIAL_AUTHORIZATION_STATUS_VALUES));
     expect(checkLists("secondary_payer_kind")[0]).toEqual(
       sorted(COMMERCIAL_SECONDARY_PAYER_KIND_VALUES),

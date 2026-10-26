@@ -377,6 +377,8 @@ exports.MODULES = [
       "commercial_claim_state_history",
       "commercial_submission",
       "commercial_acknowledgment",
+      "commercial_ack_cursor", // the acknowledgment pull position (an opaque vendor token, no PHI)
+      "commercial_ack_quarantine", // acknowledgment events that were not applied (ids and a reason code, no PHI)
       "commercial_validation_run",
       "commercial_validation_result",
       "commercial_validation_override",

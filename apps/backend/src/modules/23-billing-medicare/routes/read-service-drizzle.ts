@@ -47,6 +47,7 @@ import type {
   ClaimStateHistoryView,
   ClaimSubmissionView,
   ClaimSummaryView,
+  ClaimValidationOverviewView,
   EligibilityCheckView,
   M23ReadRouteService,
   MacCredentialView,
@@ -61,6 +62,7 @@ import type {
   ValidationOverrideView,
   ValidationResultView,
   ValidationRunDetailView,
+  ValidationRunOutcome,
   ValidationRunView,
 } from "./read-service";
 import { claimDischargeCodesView, perDiemClassPricingView } from "./read-service";
@@ -356,6 +358,29 @@ export function buildDrizzleM23ReadService(
     }));
   };
 
+  /** Attach each claim's newest validation run (outcome + time) with ONE batched query for the page. */
+  const withValidation = async (
+    actor: M23ReadActor,
+    claims: readonly ClaimSummaryView[],
+  ): Promise<ClaimSummaryView[]> => {
+    if (claims.length === 0) return [];
+    const runs = await read(actor, (tx) =>
+      new repositories.ValidationRunRepository(tx).findLatestForClaims(
+        claims.map((c) => c.claimId),
+      ),
+    );
+    const byClaim = new Map(runs.map((r) => [r.claimId, r]));
+    return claims.map((c) => {
+      const run = byClaim.get(c.claimId);
+      return {
+        ...c,
+        latestValidationSummary: run
+          ? { outcome: run.outcome, runAt: isoReq(run.completedAt) }
+          : null,
+      };
+    });
+  };
+
   return {
     async listClaims(actor, filter: ClaimListFilter, cursor, limit) {
       const pageOf = (from: string | undefined) =>
@@ -375,7 +400,10 @@ export function buildDrizzleM23ReadService(
       if (filter.attention === undefined) {
         const page = await pageOf(cursor);
         return {
-          items: await withAttention(actor, page.items.map(mapClaimSummary)),
+          items: await withValidation(
+            actor,
+            await withAttention(actor, page.items.map(mapClaimSummary)),
+          ),
           nextCursor: page.nextCursor,
           hasMore: page.hasMore,
         } satisfies CursorPage<ClaimSummaryView>;
@@ -394,9 +422,11 @@ export function buildDrizzleM23ReadService(
         const decorated = await withAttention(actor, page.items.map(mapClaimSummary));
         items.push(...decorated.filter((c) => c.attention?.flags.includes(flag)));
         from = page.nextCursor ?? undefined;
-        if (!page.hasMore || !from) return { items, nextCursor: null, hasMore: false };
+        if (!page.hasMore || !from) {
+          return { items: await withValidation(actor, items), nextCursor: null, hasMore: false };
+        }
         if (items.length >= wanted || scanned >= ATTENTION_SCAN_MAX_CLAIMS) {
-          return { items, nextCursor: from, hasMore: true };
+          return { items: await withValidation(actor, items), nextCursor: from, hasMore: true };
         }
       }
     },
@@ -742,6 +772,34 @@ export function buildDrizzleM23ReadService(
 
     async getClaimMetrics(actor, filter: MetricsFilter): Promise<readonly MetricsBucket[]> {
       return read(actor, (tx) => aggregateByState(tx, actor.organizationId, filter));
+    },
+
+    async getClaimValidationOverview(actor, scope): Promise<ClaimValidationOverviewView> {
+      const groups = await read(actor, (tx) =>
+        new repositories.ValidationRunRepository(tx).summarizeLatestByOutcome(
+          actor.organizationId,
+          scope.providerEntityScope,
+        ),
+      );
+      const byOutcome: Record<ValidationRunOutcome, number> = {
+        all_pass: 0,
+        failures_present: 0,
+        overrides_required: 0,
+        ready_for_submission: 0,
+      };
+      let neverValidated = 0;
+      let oldest: Date | null = null;
+      for (const g of groups) {
+        if (g.outcome === null) neverValidated += g.claims;
+        else byOutcome[g.outcome] += g.claims;
+        if (g.oldestRunAt && (!oldest || g.oldestRunAt < oldest)) oldest = g.oldestRunAt;
+      }
+      return {
+        totalClaims: groups.reduce((n, g) => n + g.claims, 0),
+        neverValidated,
+        byOutcome,
+        oldestLatestRunAt: oldest ? oldest.toISOString() : null,
+      };
     },
 
     async getArAging(actor, filter: MetricsFilter): Promise<ArAgingDto> {

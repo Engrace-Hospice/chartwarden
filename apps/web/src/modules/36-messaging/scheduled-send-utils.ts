@@ -55,14 +55,6 @@ export function rescheduleSeedValue(scheduledFor: string, now: Date): string {
     : defaultScheduleValue(now);
 }
 
-/**
- * Whether a failed create/reschedule was a DEFINITE refusal (the server did not store it), so its idempotency key may
- * be rotated. A 5xx, 408 or a lost reply may have committed behind a gateway: the key is kept so a retry replays.
- */
-export function isDefiniteRefusal(status: number | undefined): boolean {
-  return status !== undefined && status >= 400 && status < 500 && status !== 408;
-}
-
 /** A readable time in the viewer's own zone, with the zone named. */
 export function formatScheduledTime(iso: string): string {
   const date = new Date(iso);

@@ -41,6 +41,7 @@ import {
   buildCommercialClaimAssemblyService,
   buildCommercialClaimLifecycleService,
   buildCommercialClaimReadService,
+  buildCommercialSubmissionService,
   registerCommercialBillingRoutes,
 } from "../src/modules/41-billing-commercial/index";
 import {
@@ -62,6 +63,7 @@ const BASE = "/api/v1/billing/commercial";
 const KEYS = [
   "commercial_billing.read",
   "commercial_billing.write",
+  "commercial_billing.submit",
   "commercial_billing.override_validation",
 ];
 
@@ -239,6 +241,7 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
       lifecycle: buildCommercialClaimLifecycleService(handle.db, seams),
       authorizations: buildCommercialAuthorizationService(handle.db, seams),
       reads: buildCommercialClaimReadService(handle.db, seams),
+      submissions: buildCommercialSubmissionService(handle.db, seams, { vendor: null }),
     });
     servers.push(app);
     return app;
@@ -751,6 +754,58 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
       (await call(app, "POST", url, { stepUp: true, payload: { reason: REASON } })).statusCode,
     ).toBe(409);
     expect((await call(app, "POST", `${BASE}/claims/${claimId}/ready`)).json().state).toBe("ready");
+  });
+
+  it("guards submit and reconcile over HTTP with the real RBAC: step-up, AI actor, role and Idempotency-Key; an unbound transport writes nothing", async () => {
+    const s = await seed("not_required");
+    const app = server(s.admissionId);
+    const claimId = (
+      await call(app, "POST", `${BASE}/claims/assemble`, { payload: assembleBody(s.patientId) })
+    ).json().claimId as string;
+    expect((await call(app, "POST", `${BASE}/claims/${claimId}/ready`)).json().state).toBe("ready");
+    const submit = `${BASE}/claims/${claimId}/submit`;
+    const reconcile = `${BASE}/claims/${claimId}/submissions/${randomUUID()}/reconcile`;
+    const rows = async () =>
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM commercial_submission WHERE claim_id=$1",
+          [claimId],
+        )
+      ).rows[0].n as number;
+
+    for (const url of [submit, reconcile]) {
+      const payload = url === submit ? undefined : { outcome: "not_received" };
+      const stale = await call(app, "POST", url, { payload });
+      expect(stale.statusCode).toBe(403);
+      expect(stale.json().error.code).toBe("STEP_UP_REQUIRED");
+      expect((await call(app, "POST", url, { user: "ai", stepUp: true, payload })).statusCode).toBe(
+        403,
+      );
+      expect(
+        (await call(app, "POST", url, { user: "ineligible", stepUp: true, payload })).statusCode,
+      ).toBeGreaterThanOrEqual(403);
+      const noKey = await call(app, "POST", url, { stepUp: true, payload, key: false });
+      expect(noKey.statusCode).toBe(400);
+      expect(noKey.json().error.code).toBe("IDEMPOTENCY_KEY_REQUIRED");
+    }
+    expect(await rows()).toBe(0);
+
+    // fresh step-up, a human with the key, but no clearinghouse is bound: refused with the stable code, nothing written
+    const refused = await call(app, "POST", submit, { stepUp: true });
+    expect(refused.statusCode).toBe(503);
+    expect(refused.json().error.code).toBe("COMMERCIAL_SEND_REFUSED");
+    expect(JSON.stringify(refused.json())).toContain("CH_NOT_WIRED");
+    expect(await rows()).toBe(0);
+    // a submission id that does not exist is a 404, not a state change
+    const missing = await call(app, "POST", reconcile, {
+      stepUp: true,
+      payload: { outcome: "not_received" },
+    });
+    expect(missing.statusCode).toBe(404);
+    // read-only gate view works for the same actor and shows the same reason
+    const gate = await call(app, "GET", `${submit.replace("/submit", "/send-gate")}`);
+    expect(gate.statusCode).toBe(200);
+    expect(gate.json()).toMatchObject({ canSubmit: false, clearinghouseKey: null });
   });
 
   async function scalarAudit(resultId: string): Promise<number> {
