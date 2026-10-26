@@ -5,7 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 import { createPasswordVerifier } from "../src/identity/password-verifier";
 
 function fakeAuth(accounts: Array<{ providerId: string; password?: string | null }>) {
-  const verify = vi.fn(async ({ hash, password }: { hash: string; password: string }) => hash === `h(${password})`);
+  const verify = vi.fn(
+    async ({ hash, password }: { hash: string; password: string }) => hash === `h(${password})`,
+  );
   const hash = vi.fn(async (password: string) => `h(${password})`);
   const findAccounts = vi.fn(async () => accounts);
   const auth = {
@@ -36,7 +38,9 @@ describe("createPasswordVerifier", () => {
   it("treats a credential account with an empty password the same way", async () => {
     const { auth, verify, hash } = fakeAuth([{ providerId: "credential", password: null }]);
 
-    expect(await createPasswordVerifier(auth).verify({ userId: "u1", password: "anything" })).toBe(false);
+    expect(await createPasswordVerifier(auth).verify({ userId: "u1", password: "anything" })).toBe(
+      false,
+    );
     expect(verify).not.toHaveBeenCalled();
     expect(hash).toHaveBeenCalledTimes(1);
   });

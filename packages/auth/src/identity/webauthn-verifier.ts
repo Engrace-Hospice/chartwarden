@@ -1,8 +1,3 @@
-import { verifyAuthenticationResponse } from "@simplewebauthn/server";
-import type {
-  AuthenticationResponseJSON,
-  AuthenticatorTransportFuture,
-} from "@simplewebauthn/server";
 // @chartwarden/auth · identity — WebAuthn step-up assertion verifier (M2 §4.4, D9).
 //
 // Step-up qualifies on WebAuthn or TOTP only (SMS never). This is the REAL WebAuthn half: it verifies a
@@ -18,6 +13,11 @@ import type {
 // the M1-owned `passkey` table is below.
 import { schema } from "@chartwarden/db";
 import type { DbClient } from "@chartwarden/db";
+import { verifyAuthenticationResponse } from "@simplewebauthn/server";
+import type {
+  AuthenticationResponseJSON,
+  AuthenticatorTransportFuture,
+} from "@simplewebauthn/server";
 import { and, eq } from "drizzle-orm";
 
 /** A stored passkey credential, as the verifier needs it (base64url public key + signature counter). */

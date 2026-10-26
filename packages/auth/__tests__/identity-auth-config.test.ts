@@ -128,7 +128,11 @@ describe("ADR-0049 D6 — tenant origins are matched by rule", () => {
     createIdentityAuth({} as never, {
       tenantOrigins: { isTrusted: async (origin) => origin === trusted },
     });
-  const trustedFor = (a: ReturnType<typeof createIdentityAuth>, origin: string | null, host?: string) => {
+  const trustedFor = (
+    a: ReturnType<typeof createIdentityAuth>,
+    origin: string | null,
+    host?: string,
+  ) => {
     const fn = a.options.trustedOrigins as (request?: Request) => Promise<string[]>;
     const request = origin
       ? new Request(`https://${host ?? new URL(origin).host}/x`, { headers: { origin } })
@@ -142,15 +146,17 @@ describe("ADR-0049 D6 — tenant origins are matched by rule", () => {
 
   it("adds the request origin only when the matcher trusts it", async () => {
     const tenant = trusting("https://sunrise.chartwarden.com");
-    expect(await trustedFor(tenant, "https://sunrise.chartwarden.com")).toContain("https://sunrise.chartwarden.com");
+    expect(await trustedFor(tenant, "https://sunrise.chartwarden.com")).toContain(
+      "https://sunrise.chartwarden.com",
+    );
     expect(await trustedFor(tenant, "https://evil.example")).not.toContain("https://evil.example");
     expect(await trustedFor(tenant, null)).toEqual(resolveTrustedOrigins());
   });
 
   it("does not trust a tenant origin on another tenant's host", async () => {
     const tenant = trusting("https://sunrise.chartwarden.com");
-    expect(await trustedFor(tenant, "https://sunrise.chartwarden.com", "eagle.chartwarden.com")).toEqual(
-      resolveTrustedOrigins(),
-    );
+    expect(
+      await trustedFor(tenant, "https://sunrise.chartwarden.com", "eagle.chartwarden.com"),
+    ).toEqual(resolveTrustedOrigins());
   });
 });

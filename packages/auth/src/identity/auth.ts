@@ -22,8 +22,6 @@ import { passkey } from "@better-auth/passkey";
 // session seams (M2-T07) land in their own tasks.
 import { type DbClient, schema } from "@chartwarden/db";
 import { betterAuth } from "better-auth";
-import { hostOnlyCookieOptions } from "./host-only-cookies";
-import { type TenantOriginMatcher, rewriteLinkToRequestOrigin } from "./tenant-origin";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { haveIBeenPwned, magicLink, twoFactor, username } from "better-auth/plugins";
@@ -31,9 +29,11 @@ import { eq, sql } from "drizzle-orm";
 import { type AuthAuditEvent, type AuthAuditSink, buildPasswordResetEvent } from "./auth-audit";
 import { credentialAdminPlugin, isAllowedUsername, normalizeUsername } from "./credential-admin";
 import { type EmailTransport, createNoopEmailTransport } from "./email-transport";
+import { hostOnlyCookieOptions } from "./host-only-cookies";
 import { linkSessionPlugin } from "./link-session";
 import { argon2idHash, argon2idVerify } from "./password-hash";
 import { SESSION_MAX_ABSOLUTE_SEC, isUserStatusBlocked } from "./session-timeout";
+import { type TenantOriginMatcher, rewriteLinkToRequestOrigin } from "./tenant-origin";
 import { type EncryptableAdapter, withTwoFactorEncryption } from "./two-factor-adapter";
 import { loadTwoFactorKey } from "./two-factor-crypto";
 
@@ -329,11 +329,14 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
           // A link opened from a mail client is a plain navigation with no Origin header; its own https host stands
           // in, so the tenant-host callbackURL the Phase 4 rewrite put in the link still validates.
           const requestHostHeader = request.headers.get("host")?.toLowerCase();
-          const origin = request.headers.get("origin") ?? (requestHostHeader ? `https://${requestHostHeader}` : null);
+          const origin =
+            request.headers.get("origin") ??
+            (requestHostHeader ? `https://${requestHostHeader}` : null);
           if (!origin) return fixed;
           // A tenant origin is only valid for its own host (tenant hosts are same-site, so a sibling tenant's page
           // must not pass); the lookup runs only once the host matches.
-          const requestHost = request.headers.get("host")?.toLowerCase() ?? new URL(request.url).host;
+          const requestHost =
+            request.headers.get("host")?.toLowerCase() ?? new URL(request.url).host;
           let originHost: string;
           try {
             originHost = new URL(origin).host;
@@ -392,7 +395,16 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
         request?: Request,
       ) => {
         // Phase 4: on a tenant host the link opens on that host (see rewriteLinkToRequestOrigin for the guards).
-        const data = { ...rawData, url: await rewriteLinkToRequestOrigin(rawData.url, request, options.tenantOrigins, rawData.user.email, options.userMayUseTenantHost) };
+        const data = {
+          ...rawData,
+          url: await rewriteLinkToRequestOrigin(
+            rawData.url,
+            request,
+            options.tenantOrigins,
+            rawData.user.email,
+            options.userMayUseTenantHost,
+          ),
+        };
         if (options.sendResetPassword) {
           await options.sendResetPassword(data);
           return;
@@ -470,7 +482,13 @@ export function createIdentityAuth(db: IdentityAuthDb, options: IdentityAuthOpti
           { email, url: rawUrl }: { email: string; url: string },
           ctx?: { request?: Request },
         ) => {
-          const url = await rewriteLinkToRequestOrigin(rawUrl, ctx?.request, options.tenantOrigins, email, options.userMayUseTenantHost);
+          const url = await rewriteLinkToRequestOrigin(
+            rawUrl,
+            ctx?.request,
+            options.tenantOrigins,
+            email,
+            options.userMayUseTenantHost,
+          );
           await emailTransport.send({
             to: email,
             subject: "Your ChartWarden sign-in link",

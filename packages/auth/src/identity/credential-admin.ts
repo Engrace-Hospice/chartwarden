@@ -24,7 +24,11 @@ export function normalizeUsername(value: string): string {
 
 export function isAllowedUsername(value: string): boolean {
   const normalized = normalizeUsername(value);
-  return USERNAME_PATTERN.test(normalized) && !normalized.includes("@") && !RESERVED_USERNAMES.has(normalized);
+  return (
+    USERNAME_PATTERN.test(normalized) &&
+    !normalized.includes("@") &&
+    !RESERVED_USERNAMES.has(normalized)
+  );
 }
 
 interface ProvisionBody {
@@ -43,7 +47,12 @@ function badInput(code: string): never {
   throw new APIError("BAD_REQUEST", { message: code, code });
 }
 
-function requirePassword(ctx: { context: { password: { config: { minPasswordLength: number; maxPasswordLength: number } } } }, value: unknown): string {
+function requirePassword(
+  ctx: {
+    context: { password: { config: { minPasswordLength: number; maxPasswordLength: number } } };
+  },
+  value: unknown,
+): string {
   if (typeof value !== "string") badInput("INVALID_PASSWORD");
   const { minPasswordLength, maxPasswordLength } = ctx.context.password.config;
   if (value.length < minPasswordLength) badInput("PASSWORD_TOO_SHORT");
@@ -61,7 +70,8 @@ export const credentialAdminPlugin = () =>
         { method: "POST", metadata: { SERVER_ONLY: true } },
         async (ctx) => {
           const body = (ctx.body ?? {}) as ProvisionBody;
-          if (typeof body.name !== "string" || body.name.trim().length === 0) badInput("INVALID_NAME");
+          if (typeof body.name !== "string" || body.name.trim().length === 0)
+            badInput("INVALID_NAME");
           if (typeof body.username !== "string" || !isAllowedUsername(body.username))
             badInput("INVALID_USERNAME");
           if (body.email !== null && body.email !== undefined && typeof body.email !== "string")
@@ -161,28 +171,31 @@ export interface CredentialAdminCapableAuth {
 }
 
 /** Creates the narrow service port consumed by M02; callers never receive the Better Auth instance. */
-export function createIdentityCredentialAdmin(auth: CredentialAdminCapableAuth): IdentityCredentialAdmin {
+export function createIdentityCredentialAdmin(
+  auth: CredentialAdminCapableAuth,
+): IdentityCredentialAdmin {
   return {
     async provision(input) {
-      const call = auth.api.provisionIdentityCredential as unknown as (
-        args: { body: Record<string, unknown> },
-      ) => Promise<unknown>;
+      const call = auth.api.provisionIdentityCredential as unknown as (args: {
+        body: Record<string, unknown>;
+      }) => Promise<unknown>;
       const result = (await call({ body: { ...input } })) as {
         userId?: unknown;
       };
-      if (typeof result.userId !== "string") throw new Error("credential provisioning returned no user id");
+      if (typeof result.userId !== "string")
+        throw new Error("credential provisioning returned no user id");
       return { userId: result.userId };
     },
     async replacePassword(userId, password) {
-      const call = auth.api.replaceIdentityPassword as unknown as (
-        args: { body: Record<string, unknown> },
-      ) => Promise<unknown>;
+      const call = auth.api.replaceIdentityPassword as unknown as (args: {
+        body: Record<string, unknown>;
+      }) => Promise<unknown>;
       await call({ body: { userId, password } });
     },
     async deleteProvisionedIdentity(userId) {
-      const call = auth.api.deleteProvisionedIdentity as unknown as (
-        args: { body: Record<string, unknown> },
-      ) => Promise<unknown>;
+      const call = auth.api.deleteProvisionedIdentity as unknown as (args: {
+        body: Record<string, unknown>;
+      }) => Promise<unknown>;
       await call({ body: { userId } });
     },
     async changeOwnPassword({ currentPassword, newPassword, requestHeaders }) {
