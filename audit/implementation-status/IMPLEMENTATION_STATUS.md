@@ -19,7 +19,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M07 Care Plan (IPOC) | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 25/25 ✅ | ✅ | ✅ | — | 9/9 ✅ |
 | M08 Encounters & Visit Notes | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 39/39 ✅ | ✅ | ✅ | — | 10/10 ✅ |
 | M09 Clinical Assessments Suite | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 20/20 ✅ | ✅ | ✅ | — | 6/6 ✅ |
-| M10 HOPE Engine | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 29/29 ✅ | ✅ | ✅ | ✅ | 13/13 ✅ |
+| M10 HOPE Engine | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 30/30 ✅ | ✅ | ✅ | ✅ | 13/13 ✅ |
 | M11 Orders | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 34/34 ✅ | ✅ | ✅ | — | 10/10 ✅ |
 | M12 DoseSpot Integration | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 34/34 ✅ | ✅ | ✅ | ✅ | 14/14 ✅ |
 | M13 eMAR & Med Administration | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 28/28 ✅ | ✅ | ✅ | — | 12/12 ✅ |

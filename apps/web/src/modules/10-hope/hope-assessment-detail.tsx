@@ -40,6 +40,7 @@ import {
   RequiredChip,
   SectionNavigator,
 } from "./hope-workspace-ui";
+import { IqiesSubmissionPanel } from "./iqies-submission-panel";
 
 type AnswerValue = string | number | boolean;
 type AnswerSource =
@@ -1452,6 +1453,7 @@ export function HopeAssessmentDetail(): JSX.Element {
           {completed ? (
             <CompletedSummary assessment={assessment} review={review} api={api} />
           ) : null}
+          {completed ? <IqiesSubmissionPanel assessmentId={assessment.id} /> : null}
           {workspace.huv ? <HuvTimingBanner workspace={workspace} review={review} /> : null}
           {saving === "conflict" ? <ConflictBanner onReload={() => void load()} /> : null}
 

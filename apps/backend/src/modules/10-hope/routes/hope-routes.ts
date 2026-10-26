@@ -20,7 +20,12 @@
 // predicates by name. `GET /hope/sfv` (pure org-wide worklist, no id/filter to scope by) and `POST
 // /hope/admin/regenerate-schedules` (§4.1 ABAC = `platform_admin`, a role check, not caseload/PE — out of
 // this GAP's scope) are deliberately left unwired, per the M6/M7/M8/M9 list-route precedent.
-import { type AbacTarget, hasOrgWideScope, requireAbac, requirePermission } from "@chartwarden/auth";
+import {
+  type AbacTarget,
+  hasOrgWideScope,
+  requireAbac,
+  requirePermission,
+} from "@chartwarden/auth";
 import { UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
@@ -410,6 +415,20 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     },
   );
 
+  // 9A — reverse lookup: which submission batch(es) hold this assessment, and their status.
+  app.get(
+    "/api/v1/hope/assessments/:id/submissions",
+    {
+      preHandler: [READ_TIMEPOINT, SCOPE("hope.timepoint.read")],
+      config: { auditRead: { resourceKind: "hope_assessment", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(AssessmentParamsSchema, request.params);
+      return service.listAssessmentSubmissions(organizationId, id);
+    },
+  );
+
   // 9B — canonical answer workspace: active assessment items + current item-level states.
   app.get(
     "/api/v1/hope/assessments/:id/workspace",
@@ -586,6 +605,10 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   );
 
   // 17 — requeue a rejected submission for the next transmit pass.
+  //
+  // DEPRECATED FOR THE UI: nothing consumes `queued`, and iQIES has no retry. A rejected record is fixed
+  // with a correction assessment (`POST /assessments/:id/correct`) and re-packaged in a NEW batch by
+  // assemble (a rejected original is never re-sent unchanged). Route kept for contract stability only.
   //
   // F-058 (#150) — this comment used to read "re-validates, re-assembles". It does neither: it flips
   // `status` from `rejected` to `queued` and re-emits `m10.hope.submission_queued`. Re-validation is

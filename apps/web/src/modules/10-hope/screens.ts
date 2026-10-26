@@ -17,7 +17,7 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 // (append-only, D7) and request-summary (Assessment Detail, each offered only in the status the server
 // accepts); schedule skip (Timepoint Dashboard); and the route-20 schedule recompute (Patient Timeline).
 //
-// WHAT IS DELIBERATELY NOT BUILT, AND WHY — both are absences of a PRODUCER, not of a caller:
+// WHAT IS DELIBERATELY NOT BUILT, AND WHY — one is an absence of a PRODUCER, the other a deliberate omission:
 //
 //   • The 13 HOPE sections with no item definitions. The CMS instrument has 17; four have item shapes
 //     anywhere in this codebase (I, J's J2030/J2050/J2051, N) because those are what the pre-submission
@@ -26,10 +26,10 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 //     captures the four that exist and offers nothing for the thirteen that do not; every recorded
 //     assessment now carries one blocking finding per undefined section, so the gap is measurable on
 //     the validation rail instead of being a sentence in a header.
-//   • The two submission writes (#150). `assemble` inserts a batch with `itemCount: 0` and no items,
-//     ignoring `planAssembleSubmissions`; `retry` flips a status nothing consumes. The pipeline behind
-//     them is unreachable end to end. A button there would report success for work the server does not
-//     do, so the Submission Worklist states the limitation on screen instead.
+//   • Submission retry. The manual iQIES flow is built end to end: Generate package (worklist), Download,
+//     Mark uploaded and Record CMS result (batch page). `retry` is intentionally not exposed: a rejected
+//     record is fixed by a correction assessment and then re-packaged in a NEW batch, never by requeueing
+//     the rejected one.
 //
 // F-074 (#91 AC5) — `e2e/specs/hope.spec.ts` drives the primary authored-then-signed path in a real
 // browser: record an unscheduled HUV1 from the patient timeline, open the draft, sign it, and assert the

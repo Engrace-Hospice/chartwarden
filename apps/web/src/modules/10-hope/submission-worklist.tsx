@@ -2,6 +2,8 @@ import {
   Button,
   EmptyState,
   Glyph,
+  KpiCard,
+  KpiStrip,
   LoadingSpinner,
   OffsetPagination,
   PageHeader,
@@ -31,6 +33,13 @@ import { useSession } from "../../shell/session";
 import { assembleSubmission } from "./hope-api";
 import { HopeListReadState } from "./hope-read-state";
 import { SUBMISSION_TONE, stateLabel } from "./hope-status";
+import {
+  AWAITING_STATUSES,
+  type LogRow,
+  downloadCsv,
+  submissionKpis,
+  submissionLogCsv,
+} from "./submission-log";
 
 const MANAGE_PERMISSION = "hope.submission.manage";
 const PROVIDER_ENTITY_PAGE_SIZE = 100;
@@ -50,7 +59,22 @@ interface SubmissionRow {
   acceptedCount: number;
   rejectedCount: number;
   transmittedAt: string | null;
+  exportedAt?: string | null;
+  submittedAt?: string | null;
+  iqiesSubmissionReference?: string | null;
+  needsCorrectionCount?: number;
+  correctionInProgressCount?: number;
+  resubmittedCount?: number;
 }
+
+/** KPI-card quick filters: each narrows the queue to the batches that card counts. */
+type Focus = "" | "awaiting" | "rejected" | "resubmitting";
+const FOCUS_MATCH: Record<Exclude<Focus, "">, (s: SubmissionRow) => boolean> = {
+  awaiting: (s) => (AWAITING_STATUSES as readonly string[]).includes(s.status),
+  rejected: (s) => (s.needsCorrectionCount ?? 0) > 0,
+  resubmitting: (s) => (s.correctionInProgressCount ?? 0) + (s.resubmittedCount ?? 0) > 0,
+};
+const EXPORTED_ACTION_HINT = "Upload in CMS portal, then record the result";
 
 export function SubmissionWorklist(): JSX.Element {
   const client = useApiClient();
@@ -59,6 +83,7 @@ export function SubmissionWorklist(): JSX.Element {
   const [searchQuery, setSearchQuery] = useState("");
   const [status, setStatus] = useState("");
   const [period, setPeriod] = useState("");
+  const [focus, setFocus] = useState<Focus>("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
@@ -141,6 +166,7 @@ export function SubmissionWorklist(): JSX.Element {
     const q = searchQuery.trim().toLowerCase();
     const visible = items.filter((s) => {
       const matchesStatus = !status || s.status === status;
+      const matchesFocus = !focus || FOCUS_MATCH[focus](s);
       const matchesPeriod = !period || s.submissionPeriod === period;
       const matchesSearch =
         !q ||
@@ -148,14 +174,25 @@ export function SubmissionWorklist(): JSX.Element {
         s.providerEntityId.toLowerCase().includes(q) ||
         s.submissionPeriod.toLowerCase().includes(q) ||
         s.status.toLowerCase().includes(q);
-      return matchesStatus && matchesPeriod && matchesSearch;
+      return matchesStatus && matchesFocus && matchesPeriod && matchesSearch;
     });
     return [...visible].sort((a, b) => submissionSortMs(b) - submissionSortMs(a));
-  }, [items, period, searchQuery, status]);
+  }, [focus, items, period, searchQuery, status]);
 
-  const activeFilters = [searchQuery.trim() !== "", status !== "", period !== ""].filter(
-    Boolean,
-  ).length;
+  const kpis = useMemo(() => submissionKpis(items), [items]);
+  const toggleFocus = (next: Exclude<Focus, "">): void => {
+    setFocus((current) => (current === next ? "" : next));
+    setPage(1);
+  };
+  const exportLog = (): void =>
+    downloadCsv("hope-submission-log.csv", submissionLogCsv(rows as LogRow[]));
+
+  const activeFilters = [
+    searchQuery.trim() !== "",
+    status !== "",
+    period !== "",
+    focus !== "",
+  ].filter(Boolean).length;
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
   const activePage = Math.min(page, pageCount);
   const pagedRows = rows.slice((activePage - 1) * pageSize, activePage * pageSize);
@@ -164,6 +201,7 @@ export function SubmissionWorklist(): JSX.Element {
     setSearchQuery("");
     setStatus("");
     setPeriod("");
+    setFocus("");
     setPage(1);
   };
 
@@ -175,6 +213,34 @@ export function SubmissionWorklist(): JSX.Element {
             Monitor CMS submission batches by period, provider entity, and outcome status.
           </div>
         </PageHeader>
+      }
+      kpis={
+        <KpiStrip>
+          <KpiCard
+            label="Awaiting confirmation"
+            value={readStatus === "ok" && !loading ? kpis.awaitingConfirmation : "—"}
+            detail="Batches to upload, then record the result"
+            tone="warning"
+            selected={focus === "awaiting"}
+            onSelect={() => toggleFocus("awaiting")}
+          />
+          <KpiCard
+            label="Rejected (action needed)"
+            value={readStatus === "ok" && !loading ? kpis.rejectedRecords : "—"}
+            detail={`Records to correct, in ${kpis.rejectedBatches} batches`}
+            tone="danger"
+            selected={focus === "rejected"}
+            onSelect={() => toggleFocus("rejected")}
+          />
+          <KpiCard
+            label="Resubmissions in progress"
+            value={readStatus === "ok" && !loading ? kpis.resubmissionsInProgress : "—"}
+            detail="Corrected or resubmitted records"
+            tone="info"
+            selected={focus === "resubmitting"}
+            onSelect={() => toggleFocus("resubmitting")}
+          />
+        </KpiStrip>
       }
       filters={
         <div style={filterShellStyle}>
@@ -256,8 +322,12 @@ export function SubmissionWorklist(): JSX.Element {
                 >
                   <option value="">All</option>
                   <option value="queued">Queued</option>
+                  <option value="packaged">Packaged</option>
+                  <option value="exported">Exported</option>
                   <option value="in_flight">In flight</option>
+                  <option value="submitted_pending_result">Awaiting result</option>
                   <option value="accepted">Accepted</option>
+                  <option value="accepted_with_warnings">Accepted with warnings</option>
                   <option value="partially_accepted">Partially accepted</option>
                   <option value="rejected">Rejected</option>
                 </select>
@@ -287,6 +357,9 @@ export function SubmissionWorklist(): JSX.Element {
                   Clear
                 </Button>
               ) : null}
+              <Button size="sm" tone="secondary" onClick={exportLog} disabled={rows.length === 0}>
+                Export submission log
+              </Button>
             </div>
           </div>
         </div>
@@ -377,11 +450,17 @@ export function SubmissionWorklist(): JSX.Element {
                         </code>
                       </td>
                       <td style={tdStyle}>{s.submissionPeriod}</td>
-                      <td style={tdStyle}>
+                      <td
+                        style={tdStyle}
+                        title={s.status === "exported" ? EXPORTED_ACTION_HINT : undefined}
+                      >
                         <StatusPill
                           label={stateLabel(s.status)}
                           tone={SUBMISSION_TONE[s.status] ?? "neutral"}
                         />
+                        {s.status === "exported" ? (
+                          <div style={actionHintStyle}>Action needed: {EXPORTED_ACTION_HINT}</div>
+                        ) : null}
                       </td>
                       <td
                         style={{
@@ -443,6 +522,12 @@ const pipelineNoticeStyle = {
   borderRadius: "0.375rem",
   padding: "0.5rem 0.625rem",
   marginBottom: "0.5rem",
+} as const;
+
+const actionHintStyle = {
+  marginTop: "0.25rem",
+  fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
 } as const;
 
 const HOPE_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;

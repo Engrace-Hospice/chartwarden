@@ -11664,6 +11664,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hope/assessments/{id}/submissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Submission batches holding one assessment, with batch and item status */
+        get: operations["getApiV1HopeAssessmentsByIdSubmissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/hope/assessments/{id}/summary-pdf": {
         parameters: {
             query?: never;
@@ -11841,7 +11858,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** HOPE submission detail — per-item outcomes, rejection findings, retry control (§5.2) */
+        /** HOPE submission detail — items, per-item CMS outcome, recorded findings, correction standing (§5.2) */
         get: operations["getApiV1HopeSubmissionsById"];
         put?: never;
         post?: never;
@@ -11894,7 +11911,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Import structured iQIES Final Validation Report results */
+        /** Record the CMS Final Validation Report for a downloaded/uploaded batch (per-item outcome, derived batch status, findings; idempotent) */
         post: operations["postApiV1HopeSubmissionsByIdResults"];
         delete?: never;
         options?: never;
@@ -11911,7 +11928,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Requeue a rejected submission for the next transmit pass */
+        /** Deprecated for the UI: requeue a rejected batch. iQIES has no retry; fix a rejected record with a correction assessment and re-package it in a new batch */
         post: operations["postApiV1HopeSubmissionsByIdRetry"];
         delete?: never;
         options?: never;
@@ -62273,6 +62290,39 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1HopeAssessmentsByIdSubmissions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        submissions: {
+                            submissionId: string;
+                            status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error";
+                            itemStatus: "accepted" | "accepted_with_warnings" | "rejected" | "pending" | "blocked" | "unmatched";
+                            packageFilename: string | null;
+                            submittedAt: string | null;
+                            resultImportedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1HopeAssessmentsByIdSummarypdf: {
         parameters: {
             query?: never;
@@ -62696,6 +62746,9 @@ export interface operations {
                             submittedAt?: string | null;
                             acceptedAt: string | null;
                             iqiesSubmissionReference?: string | null;
+                            needsCorrectionCount: number;
+                            correctionInProgressCount: number;
+                            resubmittedCount: number;
                         }[];
                     };
                 };
@@ -62739,6 +62792,31 @@ export interface operations {
                         submittedAt?: string | null;
                         acceptedAt: string | null;
                         iqiesSubmissionReference?: string | null;
+                        needsCorrectionCount: number;
+                        correctionInProgressCount: number;
+                        resubmittedCount: number;
+                        resultImportedAt: string | null;
+                        resultReportReference: string | null;
+                        items: {
+                            id: string;
+                            assessmentId: string;
+                            patientId: string | null;
+                            rfaKind: ("01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge") | null;
+                            assessmentStatus: "draft" | "signed" | "superseded" | null;
+                            status: "accepted" | "accepted_with_warnings" | "rejected" | "pending" | "blocked" | "unmatched";
+                            iqiesRecordId: string | null;
+                            processedAt: string | null;
+                            resolution: "needs_correction" | "correction_in_progress" | "resubmitted" | "resolved" | null;
+                            correctionAssessmentId: string | null;
+                        }[];
+                        findings: {
+                            id: string;
+                            assessmentId: string | null;
+                            severity: "error" | "warning";
+                            code: string | null;
+                            itemCode: string | null;
+                            message: string | null;
+                        }[];
                     };
                 };
             };
@@ -62789,6 +62867,9 @@ export interface operations {
                         submittedAt?: string | null;
                         acceptedAt: string | null;
                         iqiesSubmissionReference?: string | null;
+                        needsCorrectionCount: number;
+                        correctionInProgressCount: number;
+                        resubmittedCount: number;
                     };
                 };
             };
@@ -62831,7 +62912,7 @@ export interface operations {
             content: {
                 "application/json": {
                     reportReference?: string | null;
-                    results: ({
+                    results: {
                         assessmentId?: string;
                         status?: string;
                         result?: string;
@@ -62841,9 +62922,7 @@ export interface operations {
                         itemCode?: string;
                         message?: string;
                         iqiesRecordId?: string;
-                    } & {
-                        [key: string]: unknown;
-                    })[];
+                    }[];
                 };
             };
         };
@@ -62872,6 +62951,31 @@ export interface operations {
                         submittedAt?: string | null;
                         acceptedAt: string | null;
                         iqiesSubmissionReference?: string | null;
+                        needsCorrectionCount: number;
+                        correctionInProgressCount: number;
+                        resubmittedCount: number;
+                        resultImportedAt: string | null;
+                        resultReportReference: string | null;
+                        items: {
+                            id: string;
+                            assessmentId: string;
+                            patientId: string | null;
+                            rfaKind: ("01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge") | null;
+                            assessmentStatus: "draft" | "signed" | "superseded" | null;
+                            status: "accepted" | "accepted_with_warnings" | "rejected" | "pending" | "blocked" | "unmatched";
+                            iqiesRecordId: string | null;
+                            processedAt: string | null;
+                            resolution: "needs_correction" | "correction_in_progress" | "resubmitted" | "resolved" | null;
+                            correctionAssessmentId: string | null;
+                        }[];
+                        findings: {
+                            id: string;
+                            assessmentId: string | null;
+                            severity: "error" | "warning";
+                            code: string | null;
+                            itemCode: string | null;
+                            message: string | null;
+                        }[];
                     };
                 };
             };
@@ -62918,6 +63022,9 @@ export interface operations {
                         submittedAt?: string | null;
                         acceptedAt: string | null;
                         iqiesSubmissionReference?: string | null;
+                        needsCorrectionCount: number;
+                        correctionInProgressCount: number;
+                        resubmittedCount: number;
                     };
                 };
             };
@@ -62964,6 +63071,9 @@ export interface operations {
                         submittedAt?: string | null;
                         acceptedAt: string | null;
                         iqiesSubmissionReference?: string | null;
+                        needsCorrectionCount: number;
+                        correctionInProgressCount: number;
+                        resubmittedCount: number;
                     };
                 };
             };

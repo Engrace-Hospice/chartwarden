@@ -56,6 +56,19 @@ import {
 import { createHopeSpecRegistry } from "./hope-spec-registry";
 import { buildHopeSubmissionHeader, readHopeSoftwareVendor } from "./hope-submission-header";
 import {
+  loadSubmissionFindings,
+  loadSubmissionItems,
+  resolutionCountsByBatch,
+} from "./hope-submission-reads-db";
+import {
+  classifyCmsResult,
+  deriveBatchOutcome,
+  isResultImportable,
+  manualUploadTransmittedPayload,
+  settledBatchEvent,
+  worstOutcome,
+} from "./hope-submission-result";
+import {
   HopeValidationFindingSitingError,
   createHopeValidationService,
 } from "./hope-validation-service";
@@ -69,6 +82,7 @@ import type {
   HopeScheduleView,
   HopeSfvView,
   HopeSignResult,
+  HopeSubmissionDetailView,
   HopeSubmissionView,
   HopeWorkflowStateView,
   RecordSfvArgs,
@@ -241,7 +255,11 @@ const toSfvView = (r: SfvRow): HopeSfvView => ({
   completingAssessmentId: r.completingAssessmentId ?? null,
 });
 
-const toSubmissionView = (r: SubmissionRow): HopeSubmissionView => ({
+const NO_RESOLUTIONS = { needs: 0, inProgress: 0, resubmitted: 0 };
+const toSubmissionView = (
+  r: SubmissionRow,
+  resolutions: typeof NO_RESOLUTIONS = NO_RESOLUTIONS,
+): HopeSubmissionView => ({
   id: r.id,
   providerEntityId: r.providerEntityId,
   submissionPeriod: r.submissionPeriod,
@@ -260,7 +278,16 @@ const toSubmissionView = (r: SubmissionRow): HopeSubmissionView => ({
   acceptedAt: iso(r.acceptedAt),
   iqiesSubmissionReference:
     (r as { iqiesSubmissionReference?: string | null }).iqiesSubmissionReference ?? null,
+  needsCorrectionCount: resolutions.needs,
+  correctionInProgressCount: resolutions.inProgress,
+  resubmittedCount: resolutions.resubmitted,
 });
+
+const reportReferenceOf = (r: SubmissionRow): string | null => {
+  const report = (r as { acceptanceReport?: { reportReference?: unknown } | null })
+    .acceptanceReport;
+  return typeof report?.reportReference === "string" ? report.reportReference : null;
+};
 
 /**
  * The production, RLS-backed HopeRouteService + HopeAbacResolver (one object). Reads and writes are
@@ -840,16 +867,23 @@ export function createDbHopeBackend(
     return typeof encoded === "string" ? Buffer.from(encoded, "base64") : null;
   }
 
-  function cmsResultStatus(
-    raw: Record<string, unknown>,
-  ): "accepted" | "accepted_with_warnings" | "rejected" | "pending" {
-    const status = String(raw.status ?? raw.result ?? raw.outcome ?? "").toLowerCase();
-    const severity = String(raw.severity ?? raw.cmsSeverity ?? "").toLowerCase();
-    if (status.includes("reject") || severity === "fatal" || severity === "error")
-      return "rejected";
-    if (status.includes("warning") || severity === "warning") return "accepted_with_warnings";
-    if (status.includes("accept")) return "accepted";
-    return "pending";
+  async function loadSubmissionDetail(
+    t: DbClient,
+    r: SubmissionRow,
+  ): Promise<HopeSubmissionDetailView> {
+    const items = await loadSubmissionItems(t, r.id);
+    const count = (x: string) => items.filter((i) => i.resolution === x).length;
+    return {
+      ...toSubmissionView(r, {
+        needs: count("needs_correction"),
+        inProgress: count("correction_in_progress"),
+        resubmitted: count("resubmitted"),
+      }),
+      resultImportedAt: iso(r.resultImportedAt ?? null),
+      resultReportReference: reportReferenceOf(r),
+      items,
+      findings: await loadSubmissionFindings(t, r.id),
+    };
   }
 
   return {
@@ -935,17 +969,43 @@ export function createDbHopeBackend(
     async listSubmissions(organizationId, providerEntityId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const rows = (await tx.select().from(SUB)) as SubmissionRow[];
-        const submissions = rows
-          .filter((r) => !providerEntityId || r.providerEntityId === providerEntityId)
-          .map(toSubmissionView);
-        return { submissions };
+        const scoped = rows.filter(
+          (r) => !providerEntityId || r.providerEntityId === providerEntityId,
+        );
+        const resolutions = await resolutionCountsByBatch(
+          tx as unknown as DbClient,
+          scoped.filter((r) => r.rejectedCount > 0).map((r) => r.id),
+        );
+        return { submissions: scoped.map((r) => toSubmissionView(r, resolutions.get(r.id))) };
       });
     },
     async getSubmission(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = (await tx.select().from(SUB).where(eq(SUB.id, id)).limit(1)) as SubmissionRow[];
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
-        return toSubmissionView(r);
+        return loadSubmissionDetail(tx as unknown as DbClient, r);
+      });
+    },
+    async listAssessmentSubmissions(organizationId, assessmentId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        await loadA(t, assessmentId);
+        const rows = await t
+          .select({ item: SUBITEM, sub: SUB })
+          .from(SUBITEM)
+          .innerJoin(SUB, eq(SUB.id, SUBITEM.hopeSubmissionId))
+          .where(eq(SUBITEM.hopeAssessmentId, assessmentId))
+          .orderBy(desc(SUBITEM.createdAt));
+        return {
+          submissions: rows.map(({ item, sub }) => ({
+            submissionId: sub.id,
+            status: sub.status as HopeSubmissionView["status"],
+            itemStatus: item.itemStatus as HopeSubmissionDetailView["items"][number]["status"],
+            packageFilename: (sub as { packageFilename?: string | null }).packageFilename ?? null,
+            submittedAt: iso((sub as { submittedAt?: Date | null }).submittedAt ?? null),
+            resultImportedAt: iso(sub.resultImportedAt ?? null),
+          })),
+        };
       });
     },
 
@@ -1933,7 +1993,14 @@ export function createDbHopeBackend(
             .where(
               and(
                 eq(SUBITEM.hopeAssessmentId, candidate.id),
-                inArray(SUBITEM.itemStatus, ["pending", "accepted", "accepted_with_warnings"]),
+                // A rejected original is never re-sent unchanged: it is fixed by a correction (a new
+                // signed row, which carries no item yet and so is picked up here) in a NEW batch.
+                inArray(SUBITEM.itemStatus, [
+                  "pending",
+                  "accepted",
+                  "accepted_with_warnings",
+                  "rejected",
+                ]),
               ),
             )
             .limit(1);
@@ -2059,14 +2126,14 @@ export function createDbHopeBackend(
         const bytes = packageBytesFromReport(r.acceptanceReport);
         if (!bytes || !r.packageFilename)
           throw new ConflictError("HOPE submission package is not available");
-        await t
-          .update(SUB)
-          .set({
-            status: "exported",
-            exportedAt: new Date(),
-            updatedAt: new Date(),
-          })
-          .where(eq(SUB.id, id));
+        // Only a freshly packaged batch advances; re-downloading a settled/uploaded batch just streams the bytes
+        // (otherwise a recorded result could be re-opened for recording by a mere download).
+        if (r.status === "packaged") {
+          await t
+            .update(SUB)
+            .set({ status: "exported", exportedAt: new Date(), updatedAt: new Date() })
+            .where(eq(SUB.id, id));
+        }
         return {
           filename: r.packageFilename,
           contentType: "application/zip",
@@ -2077,7 +2144,12 @@ export function createDbHopeBackend(
     async markSubmissionUploaded(organizationId, userId, id, args) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const [r] = (await t.select().from(SUB).where(eq(SUB.id, id)).limit(1)) as SubmissionRow[];
+        const [r] = (await t
+          .select()
+          .from(SUB)
+          .where(eq(SUB.id, id))
+          .limit(1)
+          .for("update")) as SubmissionRow[]; // row lock: a double submit must not emit twice
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
         if (r.status !== "packaged" && r.status !== "exported") {
           throw new ConflictError(
@@ -2097,11 +2169,14 @@ export function createDbHopeBackend(
           })
           .where(eq(SUB.id, id))
           .returning()) as SubmissionRow[];
-        await emit(t, organizationId, "m10.hope.submission_transmitted", "hope_submission", id, {
-          submissionId: id,
-          transportMode: "manual_iqies_upload",
-          submittedAt: at.toISOString(),
-        });
+        await emit(
+          t,
+          organizationId,
+          "m10.hope.submission_transmitted",
+          "hope_submission",
+          id,
+          manualUploadTransmittedPayload(id, r.packageSha256, at),
+        );
         return toSubmissionView(
           firstOrThrow(updated ? [updated] : [], "markSubmissionUploaded matched no row"),
         );
@@ -2110,49 +2185,76 @@ export function createDbHopeBackend(
     async importSubmissionResult(organizationId, userId, id, args) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const [r] = (await t.select().from(SUB).where(eq(SUB.id, id)).limit(1)) as SubmissionRow[];
+        const [r] = (await t
+          .select()
+          .from(SUB)
+          .where(eq(SUB.id, id))
+          .limit(1)
+          .for("update")) as SubmissionRow[]; // row lock: serialises concurrent recordings of one batch
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
         const reportHash = createHash("sha256").update(JSON.stringify(args.results)).digest("hex");
+        if (r.resultReportHash === reportHash) return loadSubmissionDetail(t, r); // idempotent replay
+        require_(
+          isResultImportable(r.status),
+          ["packaged", "queued", "ready"].includes(r.status)
+            ? "M10_SUBMISSION_RESULT_NOT_UPLOADED"
+            : "M10_SUBMISSION_RESULT_ALREADY_RECORDED",
+          `Submission ${id} is ${r.status}; a result can only be recorded for a batch that was downloaded/uploaded and is still awaiting its CMS result.`,
+        );
         const items = await t.select().from(SUBITEM).where(eq(SUBITEM.hopeSubmissionId, id));
         const byAssessmentId = new Map(items.map((item) => [item.hopeAssessmentId, item]));
-        let accepted = 0;
-        let rejected = 0;
-        let warnings = 0;
+        require_(
+          args.results.some(
+            (raw) => typeof raw.assessmentId === "string" && byAssessmentId.has(raw.assessmentId),
+          ),
+          "M10_SUBMISSION_RESULT_NO_MATCH",
+          `None of the ${args.results.length} report rows names an assessment in submission ${id}.`,
+        );
+        const now = new Date();
+        const finalStatus = new Map<string, string>(items.map((i) => [i.id, i.itemStatus]));
+        // One report row per finding: merge per assessment, worst outcome wins, independent of row order.
+        const worst = new Map<
+          string,
+          { status: ReturnType<typeof classifyCmsResult>; raw: Record<string, unknown> }
+        >();
+        for (const raw of args.results) {
+          const item =
+            typeof raw.assessmentId === "string" ? byAssessmentId.get(raw.assessmentId) : null;
+          const status = classifyCmsResult(raw);
+          const prev = item ? worst.get(item.id) : undefined;
+          if (
+            item &&
+            status !== "pending" &&
+            (!prev || worstOutcome(prev.status, status) === status)
+          )
+            worst.set(item.id, { status, raw: prev?.status === status ? prev.raw : raw });
+        }
+        for (const item of items) {
+          const w = worst.get(item.id);
+          if (!w) continue;
+          finalStatus.set(item.id, w.status);
+          await t
+            .update(SUBITEM)
+            .set({
+              itemStatus: w.status,
+              iqiesRecordId:
+                typeof w.raw.iqiesRecordId === "string" ? w.raw.iqiesRecordId : item.iqiesRecordId,
+              iqiesValidationResult: w.raw,
+              processedAt: now,
+              updatedAt: now,
+            })
+            .where(eq(SUBITEM.id, item.id));
+          if (w.status !== "rejected" && typeof w.raw.iqiesRecordId === "string") {
+            await t
+              .update(ASSESS)
+              .set({ iqiesRecordId: w.raw.iqiesRecordId, updatedAt: now })
+              .where(eq(ASSESS.id, item.hopeAssessmentId));
+          }
+        }
         for (const raw of args.results) {
           const assessmentId = typeof raw.assessmentId === "string" ? raw.assessmentId : null;
           const item = assessmentId ? byAssessmentId.get(assessmentId) : null;
-          const resultStatus = cmsResultStatus(raw);
-          if (item) {
-            if (resultStatus === "accepted") accepted += 1;
-            if (resultStatus === "accepted_with_warnings") {
-              accepted += 1;
-              warnings += 1;
-            }
-            if (resultStatus === "rejected") rejected += 1;
-            await t
-              .update(SUBITEM)
-              .set({
-                itemStatus: resultStatus === "pending" ? "pending" : resultStatus,
-                iqiesRecordId:
-                  typeof raw.iqiesRecordId === "string" ? raw.iqiesRecordId : item.iqiesRecordId,
-                iqiesValidationResult: raw,
-                processedAt: new Date(),
-                updatedAt: new Date(),
-              })
-              .where(eq(SUBITEM.id, item.id));
-            if (
-              (resultStatus === "accepted" || resultStatus === "accepted_with_warnings") &&
-              typeof raw.iqiesRecordId === "string"
-            ) {
-              await t
-                .update(ASSESS)
-                .set({
-                  iqiesRecordId: raw.iqiesRecordId,
-                  updatedAt: new Date(),
-                })
-                .where(eq(ASSESS.id, item.hopeAssessmentId));
-            }
-          }
+          const resultStatus = classifyCmsResult(raw);
           await t
             .insert(RESULT)
             .values({
@@ -2168,54 +2270,44 @@ export function createDbHopeBackend(
               itemCode: typeof raw.itemCode === "string" ? raw.itemCode : null,
               message: typeof raw.message === "string" ? raw.message : null,
               rawResult: raw,
-              processedAt: new Date(),
+              processedAt: now,
             })
             .onConflictDoNothing();
         }
-        const status =
-          rejected > 0 && accepted > 0
-            ? "partially_accepted"
-            : rejected > 0
-              ? "rejected"
-              : warnings > 0
-                ? "accepted_with_warnings"
-                : "accepted";
+        // Counts and status are derived from ALL items, so a replayed or follow-up report is idempotent.
+        const outcome = deriveBatchOutcome([...finalStatus.values()] as Parameters<
+          typeof deriveBatchOutcome
+        >[0]);
+        const settled = outcome.pendingCount === 0;
         const [updated] = (await t
           .update(SUB)
           .set({
-            status,
-            acceptedCount: accepted,
-            rejectedCount: rejected,
-            acceptedAt: rejected === 0 ? new Date() : null,
-            resultImportedAt: new Date(),
+            status: outcome.status,
+            acceptedCount: outcome.acceptedCount,
+            rejectedCount: outcome.rejectedCount,
+            acceptedAt: settled && outcome.rejectedCount === 0 ? now : null,
+            resultImportedAt: now,
             resultImportedByMembershipId: userId,
             resultReportHash: reportHash,
             acceptanceReport: {
+              // keep the stored package (packageContentBase64): the ZIP must stay downloadable after a result.
+              ...(r.acceptanceReport && typeof r.acceptanceReport === "object"
+                ? r.acceptanceReport
+                : {}),
               reportReference: args.reportReference ?? null,
               reportHash,
               results: args.results,
             },
-            updatedAt: new Date(),
+            updatedAt: now,
           })
           .where(eq(SUB.id, id))
           .returning()) as SubmissionRow[];
-        await emit(
+        if (settled && updated) {
+          const event = settledBatchEvent(id, updated.providerEntityId, outcome, args.results);
+          await emit(t, organizationId, event.eventName, "hope_submission", id, event.payload);
+        }
+        return loadSubmissionDetail(
           t,
-          organizationId,
-          rejected > 0 ? "m10.hope.submission_rejected" : "m10.hope.submission_accepted",
-          "hope_submission",
-          id,
-          {
-            submissionId: id,
-            // F-150 (#248) — only `submission_accepted`'s catalog schema requires this; harmless extra
-            // field on the `submission_rejected` branch (its schema doesn't declare it).
-            providerEntityId: updated?.providerEntityId,
-            acceptedCount: accepted,
-            rejectedCount: rejected,
-            reportHash,
-          },
-        );
-        return toSubmissionView(
           firstOrThrow(updated ? [updated] : [], "importSubmissionResult matched no row"),
         );
       });
