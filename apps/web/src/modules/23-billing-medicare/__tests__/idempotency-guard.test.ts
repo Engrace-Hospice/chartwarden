@@ -19,7 +19,8 @@ describe("M23 Idempotency-Key discipline", () => {
 
   it.each(sources)("%s mints no per-call key", (file) => {
     const text = readFileSync(join(MODULE_DIR, file), "utf8");
-    expect(text).not.toMatch(/randomUUID\s*\(/);
-    expect(text).not.toMatch(/"Idempotency-Key"\s*:\s*(?:idem|idempotency|newKey)\w*\(\)/i);
+    expect(text).not.toMatch(/randomUUID/);
+    // Any file that sets the header must get its key from the hook.
+    if (text.includes("Idempotency-Key")) expect(text).toContain('from "./use-attempt-key"');
   });
 });

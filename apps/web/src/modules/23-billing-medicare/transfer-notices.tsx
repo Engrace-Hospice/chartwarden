@@ -493,7 +493,7 @@ function NoticeRail({
                     disabled={busy}
                     onClick={() =>
                       run(
-                        `submit|${""}`,
+                        "submit",
                         (key) =>
                           client.POST("/api/v1/billing/transfer-notices/{id}/submit", {
                             params: params(key),
@@ -526,7 +526,7 @@ function NoticeRail({
                     disabled={busy}
                     onClick={() =>
                       run(
-                        `void|${""}`,
+                        "void",
                         (key) =>
                           client.POST("/api/v1/billing/transfer-notices/{id}/void", {
                             params: params(key),
@@ -543,7 +543,7 @@ function NoticeRail({
                     disabled={busy}
                     onClick={() =>
                       run(
-                        `redraft|${""}`,
+                        "redraft",
                         (key) =>
                           client.POST("/api/v1/billing/transfer-notices/{id}/redraft", {
                             params: params(key),
