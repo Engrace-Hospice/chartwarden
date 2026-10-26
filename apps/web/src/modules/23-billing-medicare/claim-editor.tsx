@@ -39,6 +39,7 @@ import {
 } from "./billing-status";
 import { ClaimHistory } from "./claim-history";
 import { ClaimStayEndPanels } from "./claim-stay-end-panels";
+import { DdeFileAction, claimDdeOptions } from "./dde-file-action";
 import type { ClaimAttention } from "./discharge-attention";
 import { RhcDayCount } from "./rhc-day-count";
 import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
@@ -327,6 +328,11 @@ export function ClaimEditor(): JSX.Element {
             canReplace={canReplaceVoid}
             onReplace={() => setCeremony("replace")}
             onRevalidated={() => void load()}
+          />
+          <DdeFileAction
+            key={claim.claimId}
+            subjectId={claim.claimId}
+            options={claimDdeOptions(claim.state)}
           />
           <ReplacementChain claim={claim} />
           <ValidationSummary claimId={claim.claimId} run={v} />
