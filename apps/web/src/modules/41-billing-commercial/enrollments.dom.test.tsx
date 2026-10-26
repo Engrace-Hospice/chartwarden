@@ -32,12 +32,13 @@ function mount(
     calls?: Call[];
     write?: Responder;
     plans?: Responder;
+    entities?: Responder;
   } = {},
 ): ReturnType<typeof mountScreen> {
   const write = opts.write ?? (() => ({ status: 201, body: enrollmentRow() }));
   return mountScreen({
     routes: {
-      "GET /api/v1/provider-entities": entitiesRoute,
+      "GET /api/v1/provider-entities": opts.entities ?? entitiesRoute,
       "GET /api/v1/billing/commercial/payer-plans":
         opts.plans ?? (() => ({ body: { items: [planRow(), planRow({ id: "p2" })] } })),
       [`GET /api/v1/mdm/payer/${PAYER_ID}`]: payerNameRoute,
@@ -252,5 +253,131 @@ describe("CommercialEnrollments", () => {
     expect(Object.keys(window.sessionStorage).some((k) => k.startsWith("wx.step-up-draft:"))).toBe(
       false,
     );
+  });
+
+  // Fills the Add form, hits the step-up refusal (draft stashed), and comes back genuinely returned from /step-up.
+  async function backFromStepUp(
+    entry: string,
+    extra: { plans?: Responder; entities?: Responder } = {},
+  ): Promise<HTMLElement> {
+    const refuse: Responder = () => ({
+      status: 403,
+      body: { error: { code: "STEP_UP_REQUIRED" } },
+    });
+    mount(ok([]), { manage: true, entry, write: refuse });
+    const drawer = await screen.findByLabelText("Add enrollment", { selector: "aside" });
+    await within(drawer).findByRole("option", { name: "Synthetic Health Plan" });
+    fireEvent.change(within(drawer).getByLabelText(/Payer/), { target: { value: PAYER_ID } });
+    fireEvent.change(within(drawer).getByLabelText(/Clearinghouse key/), {
+      target: { value: "stedi" },
+    });
+    fireEvent.change(within(drawer).getByLabelText(/Effective from/), {
+      target: { value: "2026-01-01" },
+    });
+    fireEvent.submit(drawer.querySelector("form") as HTMLFormElement);
+    await screen.findByText("elsewhere");
+    const stashed = () =>
+      Object.keys(window.sessionStorage).some((k) => k.startsWith("wx.step-up-draft:"));
+    expect(stashed()).toBe(true); // the redirect itself keeps the draft
+    cleanup();
+    markStepUpReturn(entry);
+    mount(ok([]), { manage: true, entry, plans: extra.plans, entities: extra.entities });
+    const back = await screen.findByLabelText("Add enrollment", { selector: "aside" });
+    await waitFor(() =>
+      expect((within(back).getByLabelText(/Clearinghouse key/) as HTMLInputElement).value).toBe(
+        "stedi",
+      ),
+    );
+    return back;
+  }
+
+  it("closing the restored drawer with X abandons the draft: Add opens blank", async () => {
+    await backFromStepUp(`${BASE}&enrollment=new`);
+    fireEvent.click(screen.getByRole("button", { name: "Close add enrollment" }));
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Add enrollment", { selector: "aside" })).toBeNull(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Add enrollment" }));
+    const fresh = await screen.findByLabelText("Add enrollment", { selector: "aside" });
+    expect((within(fresh).getByLabelText(/Clearinghouse key/) as HTMLInputElement).value).toBe("");
+  });
+
+  it("switching entity away and back does not bring an abandoned draft back", async () => {
+    const OTHER = "99999999-9999-4999-8999-999999999999";
+    const two: Responder = () => ({
+      body: {
+        items: [
+          {
+            id: ENTITY_ID,
+            legalName: "Synthetic Hospice",
+            ccn: "123456",
+            npi: null,
+            status: "active",
+          },
+          { id: OTHER, legalName: "Other Hospice", ccn: "654321", npi: null, status: "active" },
+        ],
+        nextCursor: null,
+      },
+    });
+    const entry = `${BASE}&enrollment=new`;
+    await backFromStepUp(entry, { entities: two });
+    const picker = (await screen.findByLabelText("Provider entity")) as HTMLSelectElement;
+    fireEvent.change(picker, { target: { value: OTHER } });
+    fireEvent.change(picker, { target: { value: ENTITY_ID } });
+    fireEvent.click(await screen.findByRole("button", { name: "Add enrollment" }));
+    const fresh = await screen.findByLabelText("Add enrollment", { selector: "aside" });
+    expect((within(fresh).getByLabelText(/Clearinghouse key/) as HTMLInputElement).value).toBe("");
+  });
+
+  it("restores a draft whose payer is no longer offered as 'Choose a payer'", async () => {
+    const gone = () => ({
+      body: { items: [planRow({ payerId: "77777777-7777-4777-8777-777777777777" })] },
+    });
+    const back = await backFromStepUp(`${BASE}&enrollment=new`, { plans: gone });
+    expect((within(back).getByLabelText(/Payer/) as HTMLSelectElement).value).toBe("");
+    expect(within(back).getByRole("option", { name: "Choose a payer" })).toBeTruthy();
+    fireEvent.submit(back.querySelector("form") as HTMLFormElement); // the state is cleared, not just the display
+    await within(back).findByText("Choose a payer.");
+  });
+
+  it("offers only payers whose status is active", async () => {
+    const plans = () => ({
+      body: {
+        items: [
+          planRow(),
+          planRow({
+            id: "p2",
+            payerId: "77777777-7777-4777-8777-777777777777",
+            payerStatus: "merged",
+          }),
+        ],
+      },
+    });
+    mount(ok([]), { manage: true, entry: `${BASE}&enrollment=new`, plans });
+    const drawer = await screen.findByLabelText("Add enrollment", { selector: "aside" });
+    await within(drawer).findByRole("option", { name: "Synthetic Health Plan" });
+    expect(within(within(drawer).getByLabelText(/Payer/)).getAllByRole("option")).toHaveLength(2); // "Choose a payer" + the active payer
+  });
+
+  it("keeps the rows and the open editor when a reload of the same entity fails", async () => {
+    let n = 0;
+    mount(
+      () => {
+        n += 1;
+        if (n === 2) return { status: 500, body: {} };
+        return { body: { items: [enrollmentRow()] } };
+      },
+      { manage: true, write: () => ({ status: 409, body: { error: { code: "CONFLICT" } } }) },
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /^Edit enrollment for/ }));
+    const drawer = await screen.findByLabelText("Edit enrollment", { selector: "aside" });
+    fireEvent.submit(drawer.querySelector("form") as HTMLFormElement);
+    fireEvent.click(await screen.findByRole("button", { name: "Reload list" }));
+    await screen.findByText(/could not be reloaded/);
+    expect(within(screen.getByRole("table")).getByText("Synthetic Health Plan")).toBeTruthy();
+    expect(screen.getByLabelText("Edit enrollment", { selector: "aside" })).toBeTruthy();
+    expect(screen.queryByText("Enrollments unavailable")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(screen.queryByText(/could not be reloaded/)).toBeNull());
   });
 });

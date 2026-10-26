@@ -7,6 +7,7 @@
 import {
   Button,
   EmptyState,
+  InlineAlert,
   KpiCard,
   LoadingSpinner,
   StatusPill,
@@ -18,6 +19,7 @@ import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
 import { useSession } from "../../shell/session";
+import { clearStepUpDraft } from "../../shell/step-up-redirect";
 import { useStepUpOwner, useStepUpReturn } from "../../shell/use-step-up-return";
 import { AuthorizationDrawerShell } from "./authorization-drawer";
 import { CommercialTabs, EntityGate, EntityPicker } from "./commercial-chrome";
@@ -29,7 +31,7 @@ import {
   localToday,
   shortId,
 } from "./commercial-model";
-import { ENROLLMENT_DRAFT_ACTIONS, EnrollmentForm } from "./enrollment-form";
+import { ENROLLMENT_DRAFT_ACTIONS, EnrollmentForm, enrollmentDraftKey } from "./enrollment-form";
 import { useAuthorizationPlans } from "./use-authorization-plans";
 import { usePayerNames } from "./use-payer-names";
 import { useProviderEntity } from "./use-provider-entity";
@@ -41,7 +43,15 @@ type EnrollmentsLoad =
       readonly status: "ready";
       readonly key: string;
       readonly items: readonly EnrollmentView[];
+      /** A reload of this same entity failed: the rows stay, with an alert. */
+      readonly failed?: boolean;
     };
+
+// Rows already shown for this entity survive a failed reload (the open editor must not be lost); otherwise the error view.
+const failedLoad = (prev: EnrollmentsLoad, entityId: string): EnrollmentsLoad =>
+  prev.status === "ready" && prev.key === entityId
+    ? { ...prev, failed: true }
+    : { status: "error" };
 
 const ENROLLMENT_PARAM = "enrollment";
 const NEW_ENROLLMENT = "new";
@@ -73,7 +83,9 @@ export function CommercialEnrollments(): JSX.Element {
     let active = true;
     // Stale-while-revalidate: a reload of the same entity keeps its rows (and the open drawer) mounted.
     setLoad((prev) =>
-      prev.status === "ready" && prev.key === entityId ? prev : { status: "loading" },
+      prev.status === "ready" && prev.key === entityId
+        ? { ...prev, failed: false }
+        : { status: "loading" },
     );
     void client
       .GET("/api/v1/billing/commercial/enrollments", {
@@ -81,14 +93,14 @@ export function CommercialEnrollments(): JSX.Element {
       })
       .then(({ data, error }) => {
         if (!active) return;
-        setLoad(
+        setLoad((prev) =>
           error || !data
-            ? { status: "error" }
+            ? failedLoad(prev, entityId)
             : { status: "ready", key: entityId, items: data.items },
         );
       })
       .catch(() => {
-        if (active) setLoad({ status: "error" });
+        if (active) setLoad((prev) => failedLoad(prev, entityId));
       });
     return () => {
       active = false;
@@ -103,7 +115,13 @@ export function CommercialEnrollments(): JSX.Element {
   ]);
   const nameOf = (payerId: string): string => names[payerId] ?? `Payer ${shortId(payerId)}`;
   const payers = useMemo(
-    () => [...new Set(planList.flatMap((p) => (p.payerId ? [p.payerId] : [])))],
+    () => [
+      ...new Set(
+        planList.flatMap((p) =>
+          p.payerId && (p.payerStatus ?? "active") === "active" ? [p.payerId] : [],
+        ),
+      ),
+    ],
     [planList],
   );
 
@@ -131,8 +149,19 @@ export function CommercialEnrollments(): JSX.Element {
     reload();
     refocusPending.current = true;
   };
+  // Closing the drawer (X, Escape, Cancel) or switching entity abandons its draft; a step-up redirect leaves the page without either.
+  const abandonDraft = (): void => {
+    if (!drawerParam) return;
+    const id = drawerParam === NEW_ENROLLMENT ? null : drawerParam;
+    clearStepUpDraft(enrollmentDraftKey(owner, id, entityId));
+  };
+  const closeDrawer = (): void => {
+    abandonDraft();
+    setDrawer("");
+  };
   // An open drawer belongs to the old entity: one URL update drops it with the switch.
-  const changeEntity = (id: string): void =>
+  const changeEntity = (id: string): void => {
+    abandonDraft();
     setParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -142,6 +171,7 @@ export function CommercialEnrollments(): JSX.Element {
       },
       { replace: true },
     );
+  };
 
   const today = localToday();
   const selected = items.find((e) => e.id === drawerParam) ?? null;
@@ -193,6 +223,14 @@ export function CommercialEnrollments(): JSX.Element {
           </div>
 
           <div aria-live="polite">
+            {load.status === "ready" && load.failed ? (
+              <InlineAlert tone="error">
+                The enrollments could not be reloaded; what is shown may be out of date.{" "}
+                <Button tone="tertiary" size="sm" onClick={reload}>
+                  Try again
+                </Button>
+              </InlineAlert>
+            ) : null}
             {load.status === "loading" ? (
               <output className="wx-list-state">
                 <LoadingSpinner />
@@ -278,14 +316,14 @@ export function CommercialEnrollments(): JSX.Element {
           title="Edit enrollment"
           subtitle={`${nameOf(selected.payerId)} · ${selected.clearinghouseKey} · ${enrollmentPeriod(selected.effectiveFrom, selected.effectiveTo)}`}
           closeLabel="Close edit enrollment"
-          onClose={() => setDrawer("")}
+          onClose={closeDrawer}
         >
           <EnrollmentForm
             mode={{ kind: "edit", enrollment: selected }}
             providerEntityId={entityId}
             resume={returning}
             onSaved={() => finish("Enrollment updated.")}
-            onClose={() => setDrawer("")}
+            onClose={closeDrawer}
             onReload={reload}
           />
         </AuthorizationDrawerShell>
@@ -296,7 +334,7 @@ export function CommercialEnrollments(): JSX.Element {
           title="Add enrollment"
           subtitle="Record the agency's enrollment with a payer"
           closeLabel="Close add enrollment"
-          onClose={() => setDrawer("")}
+          onClose={closeDrawer}
         >
           {plans.state === "loading" ? (
             <output className="wx-list-state">
@@ -321,7 +359,7 @@ export function CommercialEnrollments(): JSX.Element {
               providerEntityId={entityId}
               resume={returning}
               onSaved={() => finish("Enrollment added.")}
-              onClose={() => setDrawer("")}
+              onClose={closeDrawer}
               onReload={reload}
             />
           )}

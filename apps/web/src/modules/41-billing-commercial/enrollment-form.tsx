@@ -10,6 +10,7 @@ import { useRef, useState } from "react";
 import type { JSX } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  type StepUpDraftOwner,
   clearStepUpDraft,
   peekStepUpDraft,
   stashStepUpDraft,
@@ -33,6 +34,18 @@ export const ENROLLMENT_DRAFT_ACTIONS: readonly string[] = [
   ENROLLMENT_CREATE_ACTION,
   ENROLLMENT_UPDATE_ACTION,
 ];
+
+/** The step-up draft key of the form for `enrollmentId` (an edit) or, when null, of the add form for `providerEntityId`. */
+export const enrollmentDraftKey = (
+  owner: StepUpDraftOwner,
+  enrollmentId: string | null,
+  providerEntityId: string,
+): string | null =>
+  stepUpDraftKey(
+    owner,
+    enrollmentId ? ENROLLMENT_UPDATE_ACTION : ENROLLMENT_CREATE_ACTION,
+    enrollmentId ?? providerEntityId,
+  );
 
 export type EnrollmentFormMode =
   | { readonly kind: "create"; readonly payers: readonly { id: string; name: string }[] }
@@ -99,19 +112,15 @@ export function EnrollmentForm({
   const location = useLocation();
   const owner = useStepUpOwner();
   const editing = mode.kind === "edit";
-  const draftKey = stepUpDraftKey(
-    owner,
-    editing ? ENROLLMENT_UPDATE_ACTION : ENROLLMENT_CREATE_ACTION,
-    editing ? mode.enrollment.id : providerEntityId,
-  );
+  const draftKey = enrollmentDraftKey(owner, editing ? mode.enrollment.id : null, providerEntityId);
   const [fields, setFields] = useState<Fields>(() => {
     const draft = resume ? peekStepUpDraft<unknown>(draftKey) : null;
     // Only the editable fields come back for an edit: payer, clearinghouse and start are the record's own.
     if (!isFields(draft)) return initialFields(mode);
     const base = initialFields(mode);
-    return editing
-      ? { ...base, status: draft.status, to: draft.to, evidence: draft.evidence }
-      : draft;
+    if (editing) return { ...base, status: draft.status, to: draft.to, evidence: draft.evidence };
+    // A restored payer that is no longer offered would render a blank select: back to "Choose a payer".
+    return mode.payers.some((p) => p.id === draft.payerId) ? draft : { ...draft, payerId: "" };
   });
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<{ text: string; reload: boolean } | null>(null);
@@ -197,7 +206,10 @@ export function EnrollmentForm({
         navigate("/login");
         return;
       }
-      const stepUp = stepUpRedirectFor(error, `${location.pathname}${location.search}`);
+      // The resolved entity goes into the return URL so the restored form's draft key matches.
+      const back = new URLSearchParams(location.search);
+      if (!back.has("entity")) back.set("entity", providerEntityId);
+      const stepUp = stepUpRedirectFor(error, `${location.pathname}?${back.toString()}`);
       if (stepUp) {
         // The guard refused before doing anything: a fresh attempt after the ceremony needs a fresh key.
         attemptKey.current = null;

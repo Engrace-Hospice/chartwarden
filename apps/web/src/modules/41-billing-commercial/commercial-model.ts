@@ -268,6 +268,8 @@ export interface AuthorizationPlan {
   readonly authorizationLeadDays?: number | null;
   /** Set by the plans hook; the enrollment form offers the distinct payers of these plans. */
   readonly payerId?: string;
+  /** The payer's state on the plans read; the enrollment form offers only active payers. */
+  readonly payerStatus?: string | null;
 }
 
 /** The authorization period as text: "from to to", or "from · Open-ended". */
