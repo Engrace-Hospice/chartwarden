@@ -28,7 +28,7 @@ import {
   voidTob,
 } from "@chartwarden/medicaid-adapters";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import type { CredentialCipherPort } from "../credential-crypto";
 import type { M24WriteActor } from "./actor";
@@ -62,6 +62,12 @@ class ConflictError extends ChartWardenError {
   constructor(code: string, message: string) {
     super(code, message, 409);
     this.name = "ConflictError";
+  }
+}
+class UnprocessableError extends ChartWardenError {
+  constructor(code: string, message: string) {
+    super(code, message, 422);
+    this.name = "UnprocessableError";
   }
 }
 class DegradedError extends ChartWardenError {
@@ -243,8 +249,9 @@ export function buildDrizzleM24WriteService(
   const LE = schema.medicaidClaimLineEncounter;
   const RULES_BY_KEY = new Map(DEFAULT_MEDICAID_RULES.map((r) => [r.key, r]));
 
-  async function loadClaim(tx: Tx, claimId: string) {
-    const rows = await tx.select().from(C).where(eq(C.id, claimId)).limit(1);
+  async function loadClaim(tx: Tx, claimId: string, lockForUpdate = false) {
+    const q = tx.select().from(C).where(eq(C.id, claimId)).limit(1);
+    const rows = await (lockForUpdate ? q.for("update") : q);
     if (!rows[0]) throw new NotFoundError("medicaid claim not found");
     return rows[0];
   }
@@ -321,7 +328,9 @@ export function buildDrizzleM24WriteService(
       version: r.version,
       validationRunIdLatest: r.validationRunIdLatest ?? null,
       eligibilityOutcomeSnapshot: r.eligibilityOutcomeSnapshot ?? null,
-      electronicSubmissionRefusal: electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState))?.message ?? null,
+      electronicSubmissionRefusal:
+        electronicSubmissionRefusal(r.serviceState, isGatewayBound(r.serviceState))?.message ??
+        null,
       createdAt: iso(r.createdAt),
       updatedAt: iso(r.updatedAt),
     };
@@ -719,7 +728,9 @@ export function buildDrizzleM24WriteService(
 
     async validateClaim(actor, claimId) {
       return withOrgContext(db, actor, async (tx) => {
-        const claim = await loadClaim(tx, claimId);
+        // Lock first so applyOverride (which locks the claim to check the latest run) serialises against this run.
+        // Lock order is claim -> run/result inserts here; applyOverride takes only the claim lock, so no cycle.
+        const claim = await loadClaim(tx, claimId, true);
         const lineRows = await tx
           .select()
           .from(schema.medicaidClaimLine)
@@ -1034,19 +1045,68 @@ export function buildDrizzleM24WriteService(
           .from(VR)
           .where(eq(VR.id, result.medicaidValidationRunId))
           .limit(1);
-        const claimId = runRows[0]?.claimId ?? "";
+        const claimId = runRows[0]?.claimId;
+        if (!claimId) throw new NotFoundError("validation run");
+        // The applied role is server-derived, never the client's claim: the actor must HOLD the claimed role and it
+        // must be the role the rule requires (a rule with no required role cannot be overridden).
+        const rule = RULES_BY_KEY.get(result.ruleKey);
+        if (!rule) {
+          throw new UnprocessableError(
+            "OVERRIDE_RULE_UNKNOWN",
+            `rule ${result.ruleKey} is not in the rules registry and cannot be overridden`,
+          );
+        }
+        const requiredRole = rule.overrideRoleRequired;
+        if (
+          !requiredRole ||
+          input.overrideRoleClaimed !== requiredRole ||
+          !actor.roles.includes(requiredRole)
+        ) {
+          throw new ForbiddenError("override role not held or not the role this rule requires");
+        }
+        if (result.outcome !== "fail") {
+          throw new UnprocessableError(
+            "OVERRIDE_RESULT_NOT_FAILED",
+            `only a failed validation result can be overridden (outcome is ${result.outcome})`,
+          );
+        }
+        // Lock the claim row: a concurrent revalidate updates it (validationRunIdLatest), so it cannot supersede the run
+        // between this check and the insert.
+        const claimRows = await tx
+          .select({ latestRunId: C.validationRunIdLatest })
+          .from(C)
+          .where(eq(C.id, claimId))
+          .limit(1)
+          .for("update");
+        if (claimRows[0]?.latestRunId !== result.medicaidValidationRunId) {
+          throw new ConflictError(
+            "OVERRIDE_RESULT_SUPERSEDED",
+            "the validation result is not in the claim's latest validation run",
+          );
+        }
         const overrideId = randomUUID();
-        await tx.insert(VOV).values({
-          id: overrideId,
-          organizationId: actor.organizationId,
-          medicaidValidationResultId: resultId,
-          medicaidClaimId: claimId,
-          ruleKey: result.ruleKey,
-          overrideRoleApplied: input.overrideRoleClaimed,
-          reason: input.reason,
-          stepUpAuthTokenAt: new Date(),
-          actorMembershipId: actor.userId,
-        });
+        // ON CONFLICT DO NOTHING (not catch-and-rethrow): a unique violation would abort the tx.
+        const inserted = await tx
+          .insert(VOV)
+          .values({
+            id: overrideId,
+            organizationId: actor.organizationId,
+            medicaidValidationResultId: resultId,
+            medicaidClaimId: claimId,
+            ruleKey: result.ruleKey,
+            overrideRoleApplied: requiredRole,
+            reason: input.reason,
+            stepUpAuthTokenAt: new Date(),
+            actorMembershipId: actor.userId,
+          })
+          .onConflictDoNothing({ target: VOV.medicaidValidationResultId })
+          .returning({ id: VOV.id });
+        if (inserted.length === 0) {
+          throw new ConflictError(
+            "OVERRIDE_ALREADY_APPLIED",
+            "this validation result already has an override",
+          );
+        }
         await outbox.publish(tx, {
           eventName: "m24.medicaid_claim.override_applied",
           organizationId: actor.organizationId,
@@ -1059,7 +1119,7 @@ export function buildDrizzleM24WriteService(
             resultId,
             overrideId,
             ruleKey: result.ruleKey,
-            overrideRoleApplied: input.overrideRoleClaimed,
+            overrideRoleApplied: requiredRole,
           },
         });
         return { overrideId };

@@ -123,7 +123,13 @@ export async function runMedicaidRevalidate(
         eq(C.patientId, job.patientId),
         inArray(C.state, REVALIDATE_SOURCE_STATES),
       ),
-    );
+    )
+    // Lock every claim up front, in id order: applyOverride / validateClaim lock one claim, so a consistent order
+    // here means no deadlock between two workers on the same patient. FOR UPDATE re-checks the state filter after
+    // a wait, so a claim a concurrent validate already advanced is skipped, and an override racing this run
+    // blocks until we commit and then sees the new validationRunIdLatest (409 superseded).
+    .orderBy(C.id)
+    .for("update");
 
   for (const claim of claims) {
     const lineRows = await tx

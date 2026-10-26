@@ -16,6 +16,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -105,7 +106,7 @@ export const medicaidValidationOverride = pgTable(
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    uniquePerResult: index("medicaid_validation_override_unique_per_result").on(
+    uniquePerResult: uniqueIndex("medicaid_validation_override_unique_per_result").on(
       t.medicaidValidationResultId,
     ),
     reasonLength: check("medicaid_validation_override_reason_length", sql`length(reason) >= 40`),
