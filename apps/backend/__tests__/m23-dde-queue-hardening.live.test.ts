@@ -329,6 +329,20 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
       expect(ok.json().assigneeMembershipId).toBe(MEMBERSHIP_B);
     });
 
+    it("refuses adjust / cancel / RTP for a claim in the wrong state (409 DDE_CLAIM_STATE_NOT_ELIGIBLE)", async () => {
+      const pending = (await seedClaimWithSubmission(admin)).claimId; // ACK_PENDING
+      for (const itemType of ["adjustment", "cancel", "rtp_correction"]) {
+        const res = await post("", asA(), { itemType, subjectId: pending });
+        expect(res.statusCode).toBe(409);
+        expect(res.json().error.code).toBe("DDE_CLAIM_STATE_NOT_ELIGIBLE");
+      }
+      const paid = (await seedClaimWithSubmission(admin, { state: "PAID" })).claimId;
+      const wrong = await post("", asA(), { itemType: "rtp_correction", subjectId: paid });
+      expect(wrong.statusCode).toBe(409);
+      const ok = await post("", asA(), { itemType: "cancel", subjectId: paid });
+      expect(ok.statusCode).toBe(201);
+    });
+
     it("fails closed (4xx, never 500) on a non-uuid subject or item id against the real resolver", async () => {
       for (const res of [
         await post("", asA(), { itemType: "noe", subjectId: "not-a-uuid" }),
@@ -753,7 +767,7 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
     });
 
     it("the detail route carries the claim keying sheet for an RTP correction", async () => {
-      const { claimId } = await seedClaimWithSubmission(admin);
+      const { claimId } = await seedClaimWithSubmission(admin, { state: "ACK_REJECTED" });
       const item = (
         await post("", asA(), { itemType: "rtp_correction", subjectId: claimId })
       ).json();
@@ -791,10 +805,11 @@ describe.skipIf(!DB_URL)("M23 DDE work queue hardening, LIVE Postgres (ADR-0052)
     });
 
     it("a claim acceptance closes the RTP item but leaves an open adjustment on the same claim", async () => {
-      const { claimId } = await seedClaimWithSubmission(admin);
+      const { claimId } = await seedClaimWithSubmission(admin, { state: "ACK_REJECTED" });
       const rtp = (
         await post("", asA(), { itemType: "rtp_correction", subjectId: claimId })
       ).json();
+      await admin.query("UPDATE claim SET state='PAID' WHERE id=$1", [claimId]);
       const adj = (await post("", asA(), { itemType: "adjustment", subjectId: claimId })).json();
       expect(await supersede(ORG_A, "claim", claimId)).toEqual({ closed: 1 });
       const states = await admin.query(

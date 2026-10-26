@@ -23,7 +23,6 @@ import { ItemRail } from "./dde-item-rail";
 import { providerBadge } from "./dde-provider-model";
 import { DdeProviderStatus } from "./dde-provider-status";
 import {
-  DEADLINE_LABEL,
   DEADLINE_TONE,
   type DdeItem,
   type DdeItemDetail,
@@ -33,6 +32,7 @@ import {
   STATE_LABEL,
   STATE_TONE,
   TYPE_LABEL,
+  deadlineBadgeLabel,
   fmtDay,
   plural,
 } from "./dde-queue-model";
@@ -342,7 +342,7 @@ export function DdeQueue(): JSX.Element {
                           <span className="wx-nums">{fmtDay(n.deadlineAt)}</span>
                           {n.deadlineStatus !== "none" ? (
                             <StatusPill
-                              label={DEADLINE_LABEL[n.deadlineStatus]}
+                              label={deadlineBadgeLabel(n)}
                               tone={DEADLINE_TONE[n.deadlineStatus]}
                             />
                           ) : null}

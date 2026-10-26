@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DdeQueue } from "../dde-queue";
 import {
   type DdeItem,
+  deadlineBadgeLabel,
   deadlineNote,
   isNoticeType,
   isRealDate,
@@ -441,6 +442,16 @@ describe("DdeQueue actions", () => {
 
 describe("dde-queue-model", () => {
   const base = item();
+  it("labels an age-classed item (no deadline date) as such, a dated one plainly", () => {
+    for (const s of ["on_track", "at_risk", "overdue"] as const) {
+      expect(deadlineBadgeLabel({ deadlineAt: null, deadlineStatus: s })).toMatch(/\(by age\)$/);
+      expect(deadlineBadgeLabel({ deadlineAt: "2026-10-08", deadlineStatus: s })).not.toMatch(
+        /by age/,
+      );
+    }
+    expect(deadlineBadgeLabel({ deadlineAt: null, deadlineStatus: "none" })).toBe("No deadline");
+  });
+
   it("flags a keyed notice with no acceptance date", () => {
     expect(deadlineNote({ ...base, state: "submitted" })).toMatch(
       /not met until the MAC acceptance date/,

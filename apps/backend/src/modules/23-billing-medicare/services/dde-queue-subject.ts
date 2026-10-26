@@ -8,7 +8,7 @@ import {
   buildDdeKeyingSheet,
   repositories,
 } from "@chartwarden/billing";
-import { ConflictError, NotFoundError } from "@chartwarden/types";
+import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
 import type { BillingTx } from "./claim-state-service";
 
 type Item = repositories.DdeWorkItemRecord;
@@ -19,6 +19,32 @@ export interface SubjectFacts {
   readonly providerEntityId: string;
   readonly patientId: string;
   readonly deadlineAt: string | null;
+}
+
+/** Claim states Medicare has adjudicated: only these can be adjusted or cancelled in DDE. */
+const ADJUDICATED_CLAIM_STATES: ReadonlySet<string> = new Set(["paid", "partial_paid", "denied"]);
+/** Claim states a return-to-provider can follow: a payer rejection or a 277CA acceptance. */
+const RETURNABLE_CLAIM_STATES: ReadonlySet<string> = new Set([
+  "ack_rejected",
+  "ack_accepted",
+  "ack_partial",
+]);
+
+/**
+ * Server-side claim-state guard (ADR-0052); mirrors `claimDdeOptions` in the web `dde-file-action.tsx`.
+ * adjust / cancel need an adjudicated claim; rtp_correction needs a payer-rejected or 277CA-accepted one.
+ */
+export function assertClaimStateAllowsDdeItem(itemType: DdeItemType, claimState: string): void {
+  const allowed =
+    itemType === "rtp_correction" ? RETURNABLE_CLAIM_STATES : ADJUDICATED_CLAIM_STATES;
+  if (itemType === "adjustment" || itemType === "cancel" || itemType === "rtp_correction") {
+    if (allowed.has(claimState)) return;
+    throw new ChartWardenError(
+      "DDE_CLAIM_STATE_NOT_ELIGIBLE",
+      `a '${itemType}' DDE item cannot be filed for a claim in state '${claimState}'`,
+      409,
+    );
+  }
 }
 
 export async function loadSubject(
@@ -47,6 +73,7 @@ export async function loadSubject(
   }
   const claim = await new repositories.ClaimRepository(tx).findById(subjectId);
   if (!claim || claim.organizationId !== organizationId) throw new NotFoundError("claim");
+  assertClaimStateAllowsDdeItem(itemType, claim.state);
   return {
     subjectKind: "claim",
     providerEntityId: claim.providerEntityId,

@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // @chartwarden/billing — Module 23's outbox-event catalog (spec §4.10). The full `m23.*` taxonomy keyed on
 // M23's own resources, under the `m23.` namespace (M01 D8 outbox_event_catalog / M03 D9 / M04 D9). The
 // backend `events-by-m23.ts` re-exports this; the composition root merges it into the platform event
@@ -10,7 +11,6 @@
 // billing facts only. The `m23.notr.*` family MIRRORS `m23.noe.*` (spec §4.10 lists NOE explicitly and
 // references NOTR as a mirror); this catalog EXPANDS both for typed-payload completeness.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

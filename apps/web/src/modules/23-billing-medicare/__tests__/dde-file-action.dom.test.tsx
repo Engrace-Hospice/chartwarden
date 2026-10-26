@@ -57,6 +57,9 @@ describe("DdeFileAction", () => {
     expect(init.params.header["Idempotency-Key"]).toBeTruthy();
     const link = await screen.findByRole("link", { name: "Open the DDE queue" });
     expect(link.getAttribute("href")).toBe("/billing/dde");
+    const region = screen.getByText(/Queued: Adjust claim/).closest("[aria-live]");
+    expect(region?.tagName).toBe("OUTPUT"); // implicit role=status
+    expect(region?.getAttribute("aria-live")).toBe("polite");
   });
 
   it("sends one request for a double click and posts a notice item type", async () => {
@@ -109,7 +112,8 @@ describe("DdeFileAction", () => {
     }));
     renderAction(claimDdeOptions("ack_rejected"), POST);
     fireEvent.click(screen.getByRole("button", { name: "Correct returned claim" }));
-    expect(await screen.findByText(/open DDE item of this type already exists/)).toBeTruthy();
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/open DDE item of this type already exists/);
     expect(screen.queryByRole("link", { name: "Open the DDE queue" })).toBeNull();
   });
 });
