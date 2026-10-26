@@ -102,6 +102,13 @@ export const M41_OUTBOX_EVENTS: ModuleEventContribution = [
       claimId: id,
       submissionId: id,
       outcome: Type.Union([Type.Literal("received"), Type.Literal("not_received")]),
+      // what the person relied on when confirming receipt (a closed set); null for not_received
+      evidence: Type.Union([
+        Type.Literal("clearinghouse_portal"),
+        Type.Literal("payer_portal"),
+        Type.Literal("vendor_support"),
+        Type.Null(),
+      ]),
     }),
     declaredConsumers: [],
     isOutboxOnly: true,

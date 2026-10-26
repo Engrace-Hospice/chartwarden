@@ -19,9 +19,10 @@ import {
   NotFoundError,
   StepUpRequiredError,
 } from "@chartwarden/types";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { assertRowReachable } from "./scope-guard";
+import { assertNoLiveSubmission } from "./submission-guards";
 import type { CommercialActor, CommercialClaimSeams, CommercialDb, CommercialTx } from "./types";
 import { type ValidationRunView, runAndPersistValidation } from "./validation-runner";
 
@@ -139,6 +140,7 @@ export function buildCommercialClaimLifecycleService(
       const claim = await loadClaim(tx, actor, claimId);
       if (claim.state === "void") throw new ConflictError("a void claim cannot be made ready");
       assertNotSent(claim, "made ready");
+      await assertNoLiveSubmission(tx, claim.id);
       const validation = await runAndPersistValidation(
         tx,
         claim,
@@ -175,6 +177,7 @@ export function buildCommercialClaimLifecycleService(
         const claim = await loadClaim(tx, actor, claimId);
         if (claim.state === "void") throw new ConflictError("a void claim cannot be validated");
         assertNotSent(claim, "validated");
+        await assertNoLiveSubmission(tx, claim.id);
         const run = await runAndPersistValidation(
           tx,
           claim,
@@ -329,21 +332,12 @@ export function buildCommercialClaimLifecycleService(
             "a claim that was sent to the clearinghouse cannot be voided here; its payer-side void is a separate step",
           );
         }
-        const [inFlight] = await tx
-          .select({ id: schema.commercialSubmissions.id })
-          .from(schema.commercialSubmissions)
-          .where(
-            and(
-              eq(schema.commercialSubmissions.claimId, claim.id),
-              inArray(schema.commercialSubmissions.status, ["queued", "in_doubt"]),
-            ),
-          )
-          .limit(1);
-        if (inFlight) {
-          throw new ConflictError(
-            "the claim has a submission in flight; wait for its outcome before voiding",
-          );
-        }
+        // a rejected claim keeps its (settled) sent submission; any other claim with a live submission is not ours to void
+        await assertNoLiveSubmission(
+          tx,
+          claim.id,
+          claim.state === "rejected" ? ["queued", "in_doubt"] : undefined,
+        );
         await tx
           .update(schema.commercialClaims)
           .set({ state: "void", readyAt: null, updatedAt: now() })

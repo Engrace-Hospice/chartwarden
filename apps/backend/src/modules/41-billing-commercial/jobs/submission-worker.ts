@@ -17,6 +17,7 @@
 // is never resent automatically and has a human exit (`reconcile`) or is resolved by a later acknowledgment. Only a definite
 // refusal BEFORE any send, or a definite CH_UNAVAILABLE, may fail or requeue a submission that was never ambiguous.
 // The 837I (it carries the member id) exists only in a local variable between render and send: never stored, never logged.
+import { createHash } from "node:crypto";
 import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
@@ -45,6 +46,8 @@ export const FAILURE = {
   EXHAUSTED: "COMMERCIAL_SUBMISSION_EXHAUSTED",
   TRANSPORT_FAULT: "COMMERCIAL_TRANSPORT_FAULT",
   RECORD_FAULT: "COMMERCIAL_RECORD_FAULT",
+  /** The facts the 837I is built from changed since the first attempt: void the claim and assemble it again. */
+  PAYLOAD_CHANGED: "COMMERCIAL_PAYLOAD_CHANGED",
   INTERRUPTED: "COMMERCIAL_SEND_INTERRUPTED",
 } as const;
 
@@ -57,6 +60,9 @@ export type SendOutcome =
 export function classifyTransportRefusal(code: string): SendOutcome {
   if (code === CH.UNAVAILABLE) return { kind: "retry", code };
   if (code === CH.IN_DOUBT) return { kind: "in_doubt", code };
+  // The transport already holds this claim's key with a DIFFERENT payload (or the control number under another key): an earlier
+  // attempt DID reach it, so this is not a clean refusal. A person decides (reconcile); the worker never marks it failed.
+  if (code === CH.IDEMPOTENCY_CONFLICT) return { kind: "in_doubt", code };
   return { kind: "failed", code };
 }
 
@@ -265,7 +271,16 @@ async function recordAccepted(
       })
       .where(and(eq(S.id, sub.id), eq(S.status, "queued")))
       .returning({ id: S.id });
-    if (!sent) return; // settled by another tick (its own transaction wrote the claim move)
+    if (!sent) {
+      // An acknowledgment (or a person) settled the row first and its provenance stands, but the receipt id is still ours to keep.
+      await tx
+        .update(S)
+        .set({ clearinghouseSubmissionId: receiptId.slice(0, 256), updatedAt: at })
+        .where(
+          and(eq(S.id, sub.id), eq(S.status, "sent"), sql`${S.clearinghouseSubmissionId} IS NULL`),
+        );
+      return;
+    }
     if (claim?.state === "ready") {
       await tx.update(C).set({ state: "submitted", updatedAt: at }).where(eq(C.id, claim.id));
       await tx.insert(schema.commercialClaimStateHistory).values({
@@ -319,13 +334,41 @@ async function requeue(
 }
 
 /** Mark that the transport is about to be called (so an interruption from here on is known to be ambiguous). */
-async function markCallStarted(deps: SubmissionWorkerDeps, sub: SubmissionRow): Promise<void> {
+async function markCallStarted(
+  deps: SubmissionWorkerDeps,
+  sub: SubmissionRow,
+  payloadHash: string,
+): Promise<void> {
   await inOrg(deps, sub.organizationId, async (tx) => {
     const S = schema.commercialSubmissions;
     await tx
       .update(S)
-      .set({ transportCallStartedAt: nowOf(deps) })
+      .set({ transportCallStartedAt: nowOf(deps), payloadHash })
       .where(and(eq(S.id, sub.id), eq(S.status, "queued")));
+  });
+}
+
+/** SHA-256 of the exact 837I. One-way, and the file itself is never stored. */
+const hashOf = (x12: string): string => createHash("sha256").update(x12).digest("hex");
+
+/**
+ * The hash of the FIRST 837I of this claim that reached the transport call (any submission of the claim, this one included), or null.
+ * Every later attempt must render the same bytes: the transport holds one key per claim, and a different payload under it is an
+ * idempotency conflict that no retry can clear.
+ */
+async function firstPayloadHash(
+  deps: SubmissionWorkerDeps,
+  sub: SubmissionRow,
+): Promise<string | null> {
+  return inOrg(deps, sub.organizationId, async (tx) => {
+    const S = schema.commercialSubmissions;
+    const [row] = await tx
+      .select({ hash: S.payloadHash })
+      .from(S)
+      .where(and(eq(S.claimId, sub.claimId), sql`${S.payloadHash} IS NOT NULL`))
+      .orderBy(asc(S.requestedAt))
+      .limit(1);
+    return row?.hash ?? null;
   });
 }
 
@@ -389,7 +432,14 @@ async function sendOne(deps: SubmissionWorkerDeps, sub: SubmissionRow): Promise<
   }
   if (!rendered.ok) return endWithoutSend(deps, sub, FAILURE.RENDER_INCOMPLETE);
 
-  await markCallStarted(deps, sub);
+  // Freeze what was sent: the facts this 837I is built from (address, coverage, ...) may have changed since an earlier attempt. Then
+  // the transport would answer an opaque idempotency conflict forever; say so in a stable code instead, before anything is sent.
+  const payloadHash = hashOf(rendered.x12);
+  const earlier = await firstPayloadHash(deps, sub);
+  if (earlier !== null && earlier !== payloadHash) {
+    return endWithoutSend(deps, sub, FAILURE.PAYLOAD_CHANGED);
+  }
+  await markCallStarted(deps, sub, payloadHash);
   let outcome: SendOutcome | { readonly kind: "accepted"; readonly receiptId: string };
   try {
     const result = await deps.binding.transport.submitClaim(context, {

@@ -49,6 +49,14 @@ export const COMMERCIAL_ERROR_CODES = {
   claimBlocked: "COMMERCIAL_CLAIM_BLOCKED",
   /** The send gate refused; the body carries every reason (code + fixed message). */
   sendRefused: "COMMERCIAL_SEND_REFUSED",
+  /** The claim has a submission queued, in doubt or sent: it cannot be re-validated, re-readied, demoted or voided until that settles. */
+  submissionInFlight: "COMMERCIAL_SUBMISSION_IN_FLIGHT",
+  /** The facts the 837I is built from changed since the first attempt: this claim must be voided and assembled again. */
+  payloadChanged: "COMMERCIAL_PAYLOAD_CHANGED",
+  /** `not_received` was chosen but a receipt is on file for the submission (the transport accepted it): only `received` is open. */
+  reconcileReceiptOnFile: "COMMERCIAL_RECONCILE_RECEIPT_ON_FILE",
+  /** No drain is scheduled (the background schedule failed or Valkey is absent): a submission would be queued and never sent. */
+  drainNotScheduled: "COMMERCIAL_DRAIN_NOT_SCHEDULED",
 } as const;
 
 /** Where a submission stands. `queued` has reached no transport; `sent` means the transport accepted it. */

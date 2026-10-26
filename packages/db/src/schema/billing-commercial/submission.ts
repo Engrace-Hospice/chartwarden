@@ -50,6 +50,10 @@ export const commercialSubmissions = pgTable(
     transportCallStartedAt: timestamp("transport_call_started_at", { withTimezone: true }),
     ambiguous: boolean("ambiguous").notNull().default(false),
     resolution: text("resolution"), // receipt | acknowledgment | operator_confirmed | operator_not_received
+    // SHA-256 of the exact 837I handed to the transport (the file itself is never stored); a later submission must render the same hash.
+    payloadHash: text("payload_hash"),
+    // what a person relied on when they settled it as received: clearinghouse_portal | payer_portal | vendor_support
+    reconcileEvidence: text("reconcile_evidence"),
     // migration 1275: the first clearinghouse-stage acceptance. Never advances the claim to `accepted` (ADR-0053 D2).
     clearinghouseAcceptedAt: timestamp("clearinghouse_accepted_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -7,6 +7,7 @@ import {
   COMMERCIAL_CLAIM_STATE_VALUES,
   COMMERCIAL_HOSPICE_LEVEL_OF_CARE_VALUES,
   COMMERCIAL_OVERRIDE_REASON_MIN_LENGTH,
+  COMMERCIAL_RECONCILE_EVIDENCE_VALUES,
   COMMERCIAL_RECONCILE_OUTCOME_VALUES,
   COMMERCIAL_SUBMISSION_STATUS_VALUES,
 } from "@chartwarden/types";
@@ -280,9 +281,15 @@ export const SubmissionParamsSchema = Type.Object(
   { additionalProperties: false },
 );
 
-/** `received`: the claim IS filed. `not_received`: it is not, so the claim may be sent again. No free text is accepted. */
+/**
+ * `received`: the claim IS filed, and `evidence` (required) says what you relied on. `not_received`: it is not, so the claim may be
+ * sent again (no evidence). No free text is accepted.
+ */
 export const ReconcileBodySchema = Type.Object(
-  { outcome: lit(COMMERCIAL_RECONCILE_OUTCOME_VALUES) },
+  {
+    outcome: lit(COMMERCIAL_RECONCILE_OUTCOME_VALUES),
+    evidence: Type.Optional(lit(COMMERCIAL_RECONCILE_EVIDENCE_VALUES)),
+  },
   { additionalProperties: false },
 );
 
@@ -313,6 +320,8 @@ const TimelineItemSchema = Type.Union([
     clearinghouseKey: Type.String(),
     attemptCount: Type.Integer(),
     failureCode: nullableString(),
+    /** Fixed text for the code, when there is one. */
+    failureMessage: nullableString(),
     /** How an in-doubt or queued submission was settled: receipt, acknowledgment, operator_confirmed, operator_not_received. */
     resolution: nullableString(),
     sentAt: nullableString(),

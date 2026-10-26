@@ -41,10 +41,13 @@ CREATE INDEX IF NOT EXISTS "commercial_acknowledgment_org_ix" ON "commercial_ack
 CREATE INDEX IF NOT EXISTS "commercial_acknowledgment_pe_ix" ON "commercial_acknowledgment" ("provider_entity_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_acknowledgment_location_ix" ON "commercial_acknowledgment" ("location_id") WHERE "location_id" IS NOT NULL;--> statement-breakpoint
 
--- An acknowledgment event that was NOT applied, kept so it is reviewable and replayable instead of lost to a log line: it did not
--- validate, is no commercial submission of this provider entity (the stream is shared with Medicare), belongs to another provider
--- entity, came through another clearinghouse than the submission, or answered a submission that has no receipt yet. Ids and a
--- reason code only: never the event body. The pull cursor moves only after the event is stored here.
+-- An acknowledgment event that was NOT applied and needs a person's attention, kept (instead of lost to a log line) so it is
+-- reviewable: it did not validate (`malformed`), belongs to another provider entity (`scope_mismatch`), came through another
+-- clearinghouse than the submission (`vendor_mismatch`), or is a payer-stage answer for a submission whose receipt is not yet recorded
+-- (`no_receipt`). Only `no_receipt` is HELD for replay: its validated fields (codes and ids, no PHI) are kept in `event`, and the pull
+-- re-applies it once the submission is settled, then stamps `resolved_at`. The others are for review only; there is no replay for them.
+-- Events that are simply not commercial submissions (the stream is shared with Medicare) are NOT stored: they are counted and skipped.
+-- Never the raw body. The pull cursor moves only after the event is stored here.
 CREATE TABLE IF NOT EXISTS "commercial_ack_quarantine" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "organization_id" uuid NOT NULL REFERENCES "organization"("id") ON DELETE RESTRICT,
@@ -53,9 +56,13 @@ CREATE TABLE IF NOT EXISTS "commercial_ack_quarantine" (
   "clearinghouse_key" text NOT NULL CHECK ("clearinghouse_key" ~ '^[a-z0-9][a-z0-9_-]{0,39}$'),
   "event_id" text NOT NULL CHECK (char_length("event_id") BETWEEN 1 AND 256),
   "control_number" text CHECK ("control_number" IS NULL OR char_length("control_number") BETWEEN 1 AND 128),
-  "reason" text NOT NULL CHECK ("reason" IN ('malformed','unmatched','scope_mismatch','vendor_mismatch','no_receipt')),
+  "reason" text NOT NULL CHECK ("reason" IN ('malformed','scope_mismatch','vendor_mismatch','no_receipt')),
+  -- the validated event (stage, disposition, reason codes, payer claim number, time), kept only for `no_receipt` so it can be replayed
+  "event" jsonb CHECK ("event" IS NULL OR ("reason" = 'no_receipt' AND jsonb_typeof("event") = 'object')),
+  "resolved_at" timestamptz,
   "created_at" timestamptz NOT NULL DEFAULT now()
 );--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "commercial_ack_quarantine_held_ix" ON "commercial_ack_quarantine" ("organization_id", "provider_entity_id") WHERE "reason" = 'no_receipt' AND "resolved_at" IS NULL;--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "commercial_ack_quarantine_event_uq" ON "commercial_ack_quarantine" ("organization_id", "clearinghouse_key", "event_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_ack_quarantine_org_ix" ON "commercial_ack_quarantine" ("organization_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_ack_quarantine_pe_ix" ON "commercial_ack_quarantine" ("provider_entity_id");--> statement-breakpoint
@@ -68,6 +75,7 @@ CREATE POLICY "commercial_ack_quarantine_org" ON "commercial_ack_quarantine" FOR
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);--> statement-breakpoint
 GRANT SELECT, INSERT ON "commercial_ack_quarantine" TO chartwarden_app;--> statement-breakpoint
+GRANT UPDATE ("resolved_at") ON "commercial_ack_quarantine" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "commercial_ack_quarantine" TO chartwarden_admin;--> statement-breakpoint
 CREATE OR REPLACE FUNCTION audit_phi_write_commercial_ack_quarantine() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$

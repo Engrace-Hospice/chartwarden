@@ -279,7 +279,13 @@ export function registerCommercialBillingRoutes(
     async (request) => {
       const { id, submissionId } = parse(SubmissionParamsSchema, request.params);
       const body = parse(ReconcileBodySchema, request.body);
-      return submissions.reconcile(writeActor(request), id, submissionId, body.outcome);
+      return submissions.reconcile(
+        writeActor(request),
+        id,
+        submissionId,
+        body.outcome,
+        body.evidence,
+      );
     },
   );
 

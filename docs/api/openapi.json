@@ -69792,7 +69792,7 @@
         "tags": [
           "41-billing-commercial"
         ],
-        "summary": "Settle a submission that is IN DOUBT (an ambiguous send is never resent automatically). Body `{outcome}`: `received` (the claim is filed; the submission becomes sent and the claim moves ready to submitted) or `not_received` (the submission fails with COMMERCIAL_RECONCILED_NOT_RECEIVED and the claim may be submitted again; the re-send replays an earlier receipt if the file had in fact arrived). commercial_billing.submit + a FRESH step-up, never an AI actor, Idempotency-Key required, no free text. 409 unless the submission is in doubt. Writes the row audit and an m41.claim.submit_reconciled event",
+        "summary": "Settle a submission that is IN DOUBT (an ambiguous send is never resent automatically). Body `{outcome, evidence?}`: `received` (needs `evidence`: clearinghouse_portal, payer_portal or vendor_support, what you relied on; the submission becomes sent and the claim moves ready to submitted; 409 COMMERCIAL_CLAIM_NOT_READY if the claim is no longer ready) or `not_received` (no evidence; the submission fails with COMMERCIAL_RECONCILED_NOT_RECEIVED and the claim may be submitted again; the re-send replays an earlier receipt if the file had in fact arrived; 409 COMMERCIAL_RECONCILE_RECEIPT_ON_FILE when the clearinghouse already accepted the file, so only received is open). 503 COMMERCIAL_DRAIN_NOT_SCHEDULED while the background sender is not scheduled. commercial_billing.submit + a FRESH step-up, never an AI actor, Idempotency-Key required, no free text. 409 unless the submission is in doubt. Writes the row audit and an m41.claim.submit_reconciled event",
         "parameters": [
           {
             "name": "id",
@@ -69910,6 +69910,22 @@
                       },
                       {
                         "const": "not_received",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "evidence": {
+                    "anyOf": [
+                      {
+                        "const": "clearinghouse_portal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "payer_portal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "vendor_support",
                         "type": "string"
                       }
                     ]
@@ -70157,6 +70173,7 @@
                               "clearinghouseKey",
                               "attemptCount",
                               "failureCode",
+                              "failureMessage",
                               "resolution",
                               "sentAt"
                             ],
@@ -70201,6 +70218,16 @@
                                 "type": "integer"
                               },
                               "failureCode": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "failureMessage": {
                                 "anyOf": [
                                   {
                                     "type": "string"

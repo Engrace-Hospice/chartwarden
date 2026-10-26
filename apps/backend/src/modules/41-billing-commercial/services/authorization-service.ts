@@ -22,6 +22,7 @@ import {
   assertProviderInScope,
   assertRowReachable,
 } from "./scope-guard";
+import { assertNoLiveSubmission } from "./submission-guards";
 import type { CommercialActor, CommercialClaimSeams, CommercialDb, CommercialTx } from "./types";
 import { evaluateClaim } from "./validation-runner";
 
@@ -210,6 +211,9 @@ export function buildCommercialAuthorizationService(
         // its lock until it commits, so this waits for it and then sees (and demotes) the claim it just made ready.
         for (const claim of dependents.filter((c) => c.state === "ready")) {
           if (!(await evaluateClaim(tx, claim)).some((r) => r.blocking)) continue;
+          // A claim with a live submission is never demoted behind the transport's back (it would orphan a filed claim as a
+          // draft): refuse the status change, which rolls back, until the submission is settled.
+          await assertNoLiveSubmission(tx, claim.id);
           await tx
             .update(schema.commercialClaims)
             .set({ state: "draft", readyAt: null, updatedAt: now() })

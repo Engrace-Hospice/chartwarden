@@ -29,7 +29,13 @@ const KEYS: Record<string, string[]> = {
 };
 
 let submitCalls: { claimId: string; key: string; kind: string }[] = [];
-let reconcileCalls: { claimId: string; submissionId: string; outcome: string; kind: string }[] = [];
+let reconcileCalls: {
+  claimId: string;
+  submissionId: string;
+  outcome: string;
+  kind: string;
+  evidence?: string;
+}[] = [];
 let refuse = false;
 let replay = false;
 
@@ -65,8 +71,8 @@ const submissions: CommercialSubmissionService = {
       reasons: [{ code: "CH_NOT_WIRED", message: "No clearinghouse is connected." }],
     };
   },
-  async reconcile(actor, claimId, submissionId, outcome) {
-    reconcileCalls.push({ claimId, submissionId, outcome, kind: actor.actorKind });
+  async reconcile(actor, claimId, submissionId, outcome, evidence) {
+    reconcileCalls.push({ claimId, submissionId, outcome, kind: actor.actorKind, evidence });
     return {
       submissionId,
       claimId,
@@ -265,8 +271,34 @@ describe("POST .../submissions/:submissionId/reconcile (the exit from in_doubt)"
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ status: "failed", submissionId: SUB });
     expect(reconcileCalls).toEqual([
-      { claimId: CLAIM, submissionId: SUB, outcome: "not_received", kind: "user" },
+      {
+        claimId: CLAIM,
+        submissionId: SUB,
+        outcome: "not_received",
+        kind: "user",
+        evidence: undefined,
+      },
     ]);
+  });
+
+  it("passes the closed-set evidence of a received attestation through, and refuses any other value", async () => {
+    const app = makeServer();
+    const ok = await app.inject({
+      method: "POST",
+      url: url(),
+      headers: as("sender", { "x-fresh": "1" }),
+      payload: { outcome: "received", evidence: "payer_portal" },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(reconcileCalls[0]).toMatchObject({ outcome: "received", evidence: "payer_portal" });
+    const bad = await app.inject({
+      method: "POST",
+      url: url(),
+      headers: as("sender", { "x-fresh": "1" }),
+      payload: { outcome: "received", evidence: "i just know" },
+    });
+    expect(bad.statusCode).toBe(422);
+    expect(reconcileCalls).toHaveLength(1);
   });
 
   it("needs commercial_billing.submit, a FRESH step-up, an Idempotency-Key and a human", async () => {

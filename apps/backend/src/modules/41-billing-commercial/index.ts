@@ -44,7 +44,17 @@ export {
   scheduleM41AckJobs,
 } from "./jobs/ack-worker";
 export { transitionForAck } from "./domain/ack-transition";
-export { applyAckEvent } from "./jobs/ack-worker";
+export {
+  applyAckEvent,
+  outstanding as outstandingAckWork,
+  replayHeldEvents,
+} from "./jobs/ack-worker";
+export {
+  ALWAYS_READY,
+  type DrainReadiness,
+  createDrainReadiness,
+  scheduleWithRetry,
+} from "./jobs/readiness";
 export { M41_CRON_QUEUES, M41_PLATFORM_JOB_ID, wireM41Tenancy } from "./jobs/queues";
 export { buildCommercialRenderPorts } from "./services/render-ports";
 export { buildCommercial837iRenderer } from "./services/render-837i";

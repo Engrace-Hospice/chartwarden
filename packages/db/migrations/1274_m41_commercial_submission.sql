@@ -84,6 +84,12 @@ CREATE TABLE IF NOT EXISTS "commercial_submission" (
   "ambiguous" boolean NOT NULL DEFAULT false,
   -- how an in-doubt or queued submission was settled: the transport's receipt, a later acknowledgment, or a person's decision.
   "resolution" text CHECK ("resolution" IS NULL OR "resolution" IN ('receipt','acknowledgment','operator_confirmed','operator_not_received')),
+  -- SHA-256 of the exact 837I handed to the transport (set just before the call; the file itself is never stored). A later
+  -- submission of the same claim must render the SAME hash; if the facts changed it is refused with COMMERCIAL_PAYLOAD_CHANGED
+  -- before anything is sent, because the transport's single key per claim would answer an opaque idempotency conflict.
+  "payload_hash" text CHECK ("payload_hash" IS NULL OR "payload_hash" ~ '^[0-9a-f]{64}$'),
+  -- what a person relied on when they settled an in-doubt submission as received (a closed set; no free text)
+  "reconcile_evidence" text CHECK ("reconcile_evidence" IS NULL OR "reconcile_evidence" IN ('clearinghouse_portal','payer_portal','vendor_support')),
   "updated_at" timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT "commercial_submission_claim_fk" FOREIGN KEY ("claim_id", "organization_id") REFERENCES "commercial_claim"("id", "organization_id") ON DELETE RESTRICT,
   CONSTRAINT "commercial_submission_sent_stamp" CHECK (("status" = 'sent') = ("sent_at" IS NOT NULL)),
@@ -112,7 +118,7 @@ CREATE POLICY "commercial_submission_org" ON "commercial_submission" FOR ALL TO 
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);--> statement-breakpoint
 GRANT SELECT, INSERT ON "commercial_submission" TO chartwarden_app;--> statement-breakpoint
-GRANT UPDATE ("status", "attempt_count", "next_attempt_at", "last_failure_code", "clearinghouse_submission_id", "sent_at", "transport_call_started_at", "ambiguous", "resolution", "updated_at") ON "commercial_submission" TO chartwarden_app;--> statement-breakpoint
+GRANT UPDATE ("status", "attempt_count", "next_attempt_at", "last_failure_code", "clearinghouse_submission_id", "sent_at", "transport_call_started_at", "ambiguous", "resolution", "payload_hash", "reconcile_evidence", "updated_at") ON "commercial_submission" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "commercial_submission" TO chartwarden_admin;--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION audit_phi_write_commercial_submission() RETURNS trigger

@@ -32,11 +32,13 @@ import {
   M41_OUTBOX_EVENTS,
   applyAckEvent,
   buildCommercial837iRenderer,
+  buildCommercialAuthorizationService,
   buildCommercialClaimAssemblyService,
   buildCommercialClaimLifecycleService,
   buildCommercialContextPort,
   buildCommercialSubmissionService,
   createDrizzleAckCursorStore,
+  outstandingAckWork,
   runAckPull,
   runSubmissionDrain,
 } from "../src/modules/41-billing-commercial/index";
@@ -69,6 +71,8 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
   let transport: InMemoryClearinghouse;
   let coverageReader: ReturnType<typeof buildPatientCoverageReader>;
   let partiesAvailable = true;
+  /** The subscriber's last name the fake identity port answers; a test changes it to simulate a demographics edit. */
+  let subscriberLastName = "Doe";
 
   const scalar = async <T>(query: string, params: unknown[] = []): Promise<T> =>
     (await admin.query(query, params)).rows[0]?.n as T;
@@ -155,8 +159,15 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
 
   /** A ready claim for a fresh patient, plan, route and (optionally) an enrollment. */
   async function readyClaim(
-    opts: { enrolled?: boolean; routed?: boolean } = {},
-  ): Promise<{ claimId: string; controlNumber: string; planId: string; payerId: string }> {
+    opts: { enrolled?: boolean; routed?: boolean; authorization?: boolean } = {},
+  ): Promise<{
+    claimId: string;
+    controlNumber: string;
+    planId: string;
+    payerId: string;
+    patientId: string;
+    authorizationId: string | null;
+  }> {
     const payerId = (
       await admin.query(
         "INSERT INTO payer (kind, name) VALUES ('commercial'::payer_kind, $1) RETURNING id",
@@ -166,8 +177,8 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
     const planId = (
       await admin.query(
         `INSERT INTO commercial_payer_plan (organization_id, payer_id, plan_name, claim_filing_indicator, authorization_requirement, effective_from)
-         VALUES ($1,$2,'Synthetic PPO','CI','not_required','2026-01-01') RETURNING id`,
-        [ORG, payerId],
+         VALUES ($1,$2,'Synthetic PPO','CI',$3,'2026-01-01') RETURNING id`,
+        [ORG, payerId, opts.authorization ? "required_at_admission" : "not_required"],
       )
     ).rows[0].id as string;
     if (opts.routed !== false) {
@@ -201,6 +212,16 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
        VALUES ($1,$2,$3,1,'commercial'::patient_payer_coverage_kind,'MEM-0001234','GRP100','2026-01-01')`,
       [patientId, ORG, payerId],
     );
+    let authorizationId: string | null = null;
+    if (opts.authorization) {
+      authorizationId = (
+        await admin.query(
+          `INSERT INTO commercial_authorization (organization_id, provider_entity_id, patient_id, plan_id, authorization_number, status, obtained_on, effective_from, created_by_membership_id)
+           VALUES ($1,$2,$3,$4,'AUTH-1','approved','2026-02-01','2026-02-01',$5) RETURNING id`,
+          [ORG, providerEntityId, patientId, planId, membershipId],
+        )
+      ).rows[0].id as string;
+    }
     const s = seams(randomUUID());
     const out = await buildCommercialClaimAssemblyService(handle.db, s).assemble(actor, {
       providerEntityId,
@@ -213,7 +234,7 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       "SELECT claim_control_number AS n FROM commercial_claim WHERE id=$1",
       [out.claimId],
     );
-    return { claimId: out.claimId, controlNumber, planId, payerId };
+    return { claimId: out.claimId, controlNumber, planId, payerId, patientId, authorizationId };
   }
 
   const service = (vendor: string | null) =>
@@ -225,7 +246,7 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       caseload: { isInCaseload: async () => true },
       identity: {
         identityFor: async () => ({
-          lastName: "Doe",
+          lastName: subscriberLastName,
           firstName: "Jane",
           dateOfBirth: "1950-01-01",
           sex: "F",
@@ -285,6 +306,24 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
             callerModule: "m41",
           });
         },
+      },
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG }] },
+    };
+  };
+
+  const ackDepsFor = (vendor: string | null): AckWorkerDeps => {
+    const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M41_OUTBOX_EVENTS]));
+    return {
+      db: handle.db,
+      binding: { vendor, transport },
+      contexts: buildCommercialContextPort({ env: {}, providerNpi: async () => NPI }),
+      cursors: createDrizzleAckCursorStore(handle.db),
+      outbox: {
+        publish: (tx, e) =>
+          publisher.publish(tx as Parameters<typeof publisher.publish>[0], {
+            ...e,
+            callerModule: "m41",
+          }),
       },
       activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG }] },
     };
@@ -852,11 +891,20 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
     it("reconcile received settles it as sent and moves the claim ready -> submitted", async () => {
       const { c, sub } = await queued();
       await stageInDoubt(c, sub.submissionId);
-      const done = await service("stedi").reconcile(actor, c.claimId, sub.submissionId, "received");
+      const done = await service("stedi").reconcile(
+        actor,
+        c.claimId,
+        sub.submissionId,
+        "received",
+        "clearinghouse_portal",
+      );
       expect(done.status).toBe("sent");
       expect(await submissionRow(sub.submissionId)).toMatchObject({
         status: "sent",
         resolution: "operator_confirmed",
+        reconcile_evidence: "clearinghouse_portal",
+        last_failure_code: null, // the fault that put it in doubt is cleared once a person settled it
+        transport_call_started_at: null,
       });
       expect(await claimState(c.claimId)).toBe("submitted");
       const hist = await admin.query(
@@ -864,25 +912,48 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         [c.claimId],
       );
       expect(hist.rows).toEqual([{ actor_kind: "user" }]);
+      // what the person relied on is in the audit trail (the event), as a code
+      const ev = await admin.query(
+        "SELECT payload FROM outbox_event WHERE event_type='m41.claim.submit_reconciled' AND payload->>'claimId'=$1",
+        [c.claimId],
+      );
+      expect(ev.rows[0].payload).toMatchObject({
+        outcome: "received",
+        evidence: "clearinghouse_portal",
+      });
     });
 
     it("reconcile needs a fresh step-up and a human, and only settles a submission that is in doubt", async () => {
       const { c, sub } = await queued();
       const svc = service("stedi");
       const stale = await failure(
-        svc.reconcile({ ...actor, stepUpRecent: false }, c.claimId, sub.submissionId, "received"),
+        svc.reconcile(
+          { ...actor, stepUpRecent: false },
+          c.claimId,
+          sub.submissionId,
+          "received",
+          "payer_portal",
+        ),
       );
       expect(stale?.code).toBe("STEP_UP_REQUIRED");
       const ai = await failure(
-        svc.reconcile({ ...actor, actorKind: "ai_agent" }, c.claimId, sub.submissionId, "received"),
+        svc.reconcile(
+          { ...actor, actorKind: "ai_agent" },
+          c.claimId,
+          sub.submissionId,
+          "received",
+          "payer_portal",
+        ),
       );
       expect(ai?.statusCode).toBe(403);
       // a queued submission is not in doubt
       const wrongState = await failure(
-        svc.reconcile(actor, c.claimId, sub.submissionId, "received"),
+        svc.reconcile(actor, c.claimId, sub.submissionId, "received", "payer_portal"),
       );
       expect(wrongState?.statusCode).toBe(409);
-      const unknown = await failure(svc.reconcile(actor, c.claimId, randomUUID(), "received"));
+      const unknown = await failure(
+        svc.reconcile(actor, c.claimId, randomUUID(), "received", "vendor_support"),
+      );
       expect(unknown?.statusCode).toBe(404);
       expect(await submissionStatus(sub.submissionId)).toBe("queued");
       expect(await eventCount(c.claimId, "m41.claim.submit_reconciled")).toBe(0);
@@ -890,6 +961,272 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         "UPDATE commercial_submission SET status='failed', last_failure_code='TEST' WHERE id=$1",
         [sub.submissionId],
       );
+    });
+
+    it("H1: facts that changed after the first attempt give a DISTINCT code, never an opaque conflict, and the claim can be voided", async () => {
+      const { c, sub } = await queued();
+      await stageInDoubt(c, sub.submissionId); // the file reached the clearinghouse and the answer was lost
+      const svc = service("stedi");
+      await svc.reconcile(actor, c.claimId, sub.submissionId, "not_received"); // the person believes it did not arrive
+      subscriberLastName = "Smith-Doe"; // ... and the patient's name was edited meanwhile
+      try {
+        const again = await svc.submit(actor, c.claimId, `key-${randomUUID()}`);
+        const recorder = recordingTransport();
+        await runSubmissionDrain(workerDeps("stedi", { transport: recorder }));
+        expect(recorder.results).toEqual([]); // refused BEFORE the transport: nothing was sent
+        expect(await submissionRow(again.submissionId)).toMatchObject({
+          status: "failed",
+          last_failure_code: "COMMERCIAL_PAYLOAD_CHANGED",
+        });
+        // the timeline says what to do in fixed words
+        const tl = await svc.timeline(actor, c.claimId);
+        const failed = tl.items.find(
+          (i) => i.kind === "submission" && i.submissionId === again.submissionId,
+        );
+        expect(failed).toMatchObject({
+          failureCode: "COMMERCIAL_PAYLOAD_CHANGED",
+          failureMessage: expect.stringMatching(/Void the claim and assemble it again/),
+        });
+        // failed releases the slot, so the claim can be voided and assembled again
+        const lifecycle = buildCommercialClaimLifecycleService(handle.db, seams(randomUUID()));
+        await expect(lifecycle.voidClaim(actor, c.claimId)).resolves.toMatchObject({
+          state: "void",
+        });
+      } finally {
+        subscriberLastName = "Doe";
+      }
+    });
+
+    it("H1: an idempotency conflict from the transport after an earlier attempt is in_doubt, never failed", async () => {
+      const { c, sub } = await queued();
+      await dueNow(sub.submissionId);
+      await runSubmissionDrain(
+        workerDeps("stedi", {
+          transport: {
+            submitClaim: async () => ({
+              ok: false as const,
+              degraded: { code: "CH_IDEMPOTENCY_CONFLICT", reason: "key reused" },
+            }),
+          },
+        }),
+      );
+      expect(await submissionRow(sub.submissionId)).toMatchObject({
+        status: "in_doubt",
+        last_failure_code: "CH_IDEMPOTENCY_CONFLICT",
+      });
+      expect(await claimState(c.claimId)).toBe("ready");
+    });
+
+    it("M1: not_received on a row that holds a receipt is a typed 409, and received settles it", async () => {
+      const { c, sub } = await queued();
+      await runSubmissionDrain(
+        workerDeps("stedi", { failPublish: (name) => name === "m41.claim.submitted" }),
+      );
+      const row = await submissionRow(sub.submissionId);
+      expect(row).toMatchObject({
+        status: "in_doubt",
+        last_failure_code: "COMMERCIAL_RECORD_FAULT",
+      });
+      expect(row.clearinghouse_submission_id).toBeTruthy();
+      const svc = service("stedi");
+      const refused = await failure(
+        svc.reconcile(actor, c.claimId, sub.submissionId, "not_received"),
+      );
+      expect(refused?.statusCode).toBe(409);
+      expect(refused?.code).toBe("COMMERCIAL_RECONCILE_RECEIPT_ON_FILE");
+      expect(await submissionStatus(sub.submissionId)).toBe("in_doubt"); // untouched: no 500, no half write
+      const done = await svc.reconcile(
+        actor,
+        c.claimId,
+        sub.submissionId,
+        "received",
+        "vendor_support",
+      );
+      expect(done.status).toBe("sent");
+      expect(await submissionRow(sub.submissionId)).toMatchObject({
+        reconcile_evidence: "vendor_support",
+      });
+    });
+
+    it("M6: received needs a closed-set evidence, not_received takes none", async () => {
+      const { c, sub } = await queued();
+      await stageInDoubt(c, sub.submissionId);
+      const svc = service("stedi");
+      const missing = await failure(svc.reconcile(actor, c.claimId, sub.submissionId, "received"));
+      expect(missing?.statusCode).toBe(422);
+      const extra = await failure(
+        svc.reconcile(actor, c.claimId, sub.submissionId, "not_received", "payer_portal"),
+      );
+      expect(extra?.statusCode).toBe(422);
+      expect(await submissionStatus(sub.submissionId)).toBe("in_doubt");
+      expect(await eventCount(c.claimId, "m41.claim.submit_reconciled")).toBe(0);
+    });
+
+    it("reconcile with ANOTHER claim's submission id is a 404 and touches nothing (no IDOR)", async () => {
+      const a = await queued();
+      const b = await queued();
+      await stageInDoubt(a.c, a.sub.submissionId);
+      await stageInDoubt(b.c, b.sub.submissionId);
+      const svc = service("stedi");
+      const crossed = await failure(
+        svc.reconcile(actor, a.c.claimId, b.sub.submissionId, "received", "payer_portal"),
+      );
+      expect(crossed?.statusCode).toBe(404);
+      expect(await submissionStatus(b.sub.submissionId)).toBe("in_doubt");
+      expect(await submissionStatus(a.sub.submissionId)).toBe("in_doubt");
+      expect(await claimState(b.c.claimId)).toBe("ready");
+    });
+
+    it("M5: received is refused unless the claim is still ready", async () => {
+      const { c, sub } = await queued();
+      await stageInDoubt(c, sub.submissionId);
+      // a claim can only leave ready by an operator tool or a defect; force it to prove the guard
+      await admin.query("UPDATE commercial_claim SET state='draft', ready_at=NULL WHERE id=$1", [
+        c.claimId,
+      ]);
+      const refused = await failure(
+        service("stedi").reconcile(actor, c.claimId, sub.submissionId, "received", "payer_portal"),
+      );
+      expect(refused?.statusCode).toBe(409);
+      expect(refused?.code).toBe("COMMERCIAL_CLAIM_NOT_READY");
+      expect(await submissionStatus(sub.submissionId)).toBe("in_doubt");
+      expect(await claimState(c.claimId)).toBe("draft");
+      await admin.query("UPDATE commercial_claim SET state='ready', ready_at=now() WHERE id=$1", [
+        c.claimId,
+      ]);
+    });
+
+    it("M5: a claim with a live submission is never demoted, re-validated, re-readied or voided (typed 409)", async () => {
+      const { c } = await queued();
+      const lifecycle = buildCommercialClaimLifecycleService(handle.db, seams(randomUUID()));
+      for (const attempt of [
+        () => lifecycle.validate(actor, c.claimId),
+        () => lifecycle.markReady(actor, c.claimId),
+        () => lifecycle.voidClaim(actor, c.claimId),
+      ]) {
+        const err = await failure(attempt());
+        expect(err?.statusCode).toBe(409);
+        expect(err?.code).toBe("COMMERCIAL_SUBMISSION_IN_FLIGHT");
+      }
+      expect(await claimState(c.claimId)).toBe("ready");
+      await admin.query(
+        "UPDATE commercial_submission SET status='failed', last_failure_code='TEST' WHERE claim_id=$1",
+        [c.claimId],
+      );
+    });
+
+    it("M5: voiding an authorization that a claim in flight depends on is refused instead of orphaning the filed claim as a draft", async () => {
+      const c = await readyClaim({ authorization: true });
+      expect(c.authorizationId).not.toBeNull();
+      await service("stedi").submit(actor, c.claimId, `key-${randomUUID()}`);
+      const authorizations = buildCommercialAuthorizationService(handle.db, seams(randomUUID()));
+      const err = await failure(
+        authorizations.setStatus(actor, c.authorizationId as string, "voided"),
+      );
+      expect(err?.statusCode).toBe(409);
+      expect(err?.code).toBe("COMMERCIAL_SUBMISSION_IN_FLIGHT");
+      // rolled back whole: the authorization is still approved and the claim still ready
+      expect(
+        await scalar<string>("SELECT status AS n FROM commercial_authorization WHERE id=$1", [
+          c.authorizationId,
+        ]),
+      ).toBe("approved");
+      expect(await claimState(c.claimId)).toBe("ready");
+      // without a live submission the same change still demotes, as before
+      await admin.query(
+        "UPDATE commercial_submission SET status='failed', last_failure_code='TEST' WHERE claim_id=$1",
+        [c.claimId],
+      );
+      await authorizations.setStatus(actor, c.authorizationId as string, "voided");
+      expect(await claimState(c.claimId)).toBe("draft");
+    });
+
+    it("M4: while the drain is not scheduled, submit and reconcile answer a typed 503 and queue nothing", async () => {
+      const c = await readyClaim();
+      const down = { drainScheduled: () => false };
+      const svc = buildCommercialSubmissionService(
+        handle.db,
+        seams(randomUUID()),
+        { vendor: "stedi" },
+        down,
+      );
+      const submit = await failure(svc.submit(actor, c.claimId, "key-down"));
+      expect(submit?.statusCode).toBe(503);
+      expect(submit?.code).toBe("COMMERCIAL_DRAIN_NOT_SCHEDULED");
+      const reconcile = await failure(
+        svc.reconcile(actor, c.claimId, randomUUID(), "received", "payer_portal"),
+      );
+      expect(reconcile?.code).toBe("COMMERCIAL_DRAIN_NOT_SCHEDULED");
+      expect(await submissionCount(c.claimId)).toBe(0);
+      // the read view says why instead of offering the button
+      const view = await svc.sendGate(actor, c.claimId);
+      expect(view.canSubmit).toBe(false);
+      expect(view.reasons.map((r) => r.code)).toContain("COMMERCIAL_DRAIN_NOT_SCHEDULED");
+      // and it works as soon as the schedule is back
+      const up = buildCommercialSubmissionService(handle.db, seams(randomUUID()), {
+        vendor: "stedi",
+      });
+      expect((await up.submit(actor, c.claimId, "key-up")).status).toBe("queued");
+      await admin.query(
+        "UPDATE commercial_submission SET status='failed', last_failure_code='TEST' WHERE claim_id=$1",
+        [c.claimId],
+      );
+    });
+
+    it("L4: the receipt id is kept even when an acknowledgment settled the row while the transport call was still open", async () => {
+      const { c, sub } = await queued();
+      const ackedDuringSend = {
+        submitClaim: async (...args: Parameters<InMemoryClearinghouse["submitClaim"]>) => {
+          const receipt = await transport.submitClaim(...args);
+          if (args[1].controlNumber !== c.controlNumber) return receipt; // another test's leftover row
+          // the acknowledgment worker sees the in-flight (queued) row and settles it before the worker records the receipt
+          const out = await applyAckEvent(
+            ackDepsFor("stedi"),
+            { organizationId: ORG, providerEntityId },
+            {
+              eventId: "during-send",
+              controlNumber: c.controlNumber,
+              stage: "clearinghouse",
+              disposition: "accepted",
+              reasonCodes: [],
+              occurredAt: new Date().toISOString(),
+            },
+          );
+          expect(out.result).toBe("applied");
+          return receipt;
+        },
+      };
+      await runSubmissionDrain(workerDeps("stedi", { transport: ackedDuringSend }));
+      const row = await submissionRow(sub.submissionId);
+      expect(row.status).toBe("sent");
+      expect(row.resolution).toBe("acknowledgment"); // the first settler's provenance stands
+      expect(row.clearinghouse_submission_id).toBeTruthy(); // ... and the receipt was still recorded
+      expect(await eventCount(c.claimId, "m41.claim.submitted")).toBe(1);
+      expect(await claimState(c.claimId)).toBe("ack_pending");
+    });
+
+    it("a reconcile racing the acknowledgment worker settles the row exactly once with one submitted event", async () => {
+      const { c, sub } = await queued();
+      await stageInDoubt(c, sub.submissionId);
+      await transport.control.clearinghouseAccepts(c.controlNumber, {
+        organizationId: ORG,
+        providerEntityId,
+        usage: "test",
+      });
+      const [rec, ack] = await Promise.allSettled([
+        service("stedi").reconcile(actor, c.claimId, sub.submissionId, "received", "payer_portal"),
+        runAckPull(ackDepsFor("stedi")),
+      ]);
+      expect(ack.status).toBe("fulfilled");
+      // whichever won, the other saw a settled row: reconcile either settled it or was told it is no longer in doubt
+      if (rec.status === "rejected") {
+        expect((rec.reason as { statusCode?: number }).statusCode).toBe(409);
+      }
+      const row = await submissionRow(sub.submissionId);
+      expect(row.status).toBe("sent");
+      expect(["acknowledgment", "operator_confirmed"]).toContain(row.resolution);
+      expect(await eventCount(c.claimId, "m41.claim.submitted")).toBe(1);
+      expect(["submitted", "ack_pending"]).toContain(await claimState(c.claimId));
     });
 
     it("direct_mac (a Medicare contractor's portal) can never carry a commercial claim", async () => {
@@ -1119,16 +1456,15 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         { organizationId: ORG_B, providerEntityId },
         event,
       );
-      expect(otherTenant).toMatchObject({ result: "unmatched", reason: "unmatched" });
+      expect(otherTenant).toEqual({ result: "unmatched", eventId: "foreign-1" });
       expect(await claimState(c.claimId)).toBe("submitted");
       expect(await ackRows(c.claimId)).toEqual([]);
-      // both are STORED (ids and a reason), each under its own tenant, not lost to a log line
+      // the other provider entity's control number is STORED (ids and a reason, not lost to a log line); another tenant's event is
+      // simply not ours (counted, never stored)
       expect(await quarantined("foreign-1", ORG)).toEqual([
         { control_number: c.controlNumber, reason: "scope_mismatch" },
       ]);
-      expect(await quarantined("foreign-1", ORG_B)).toEqual([
-        { control_number: c.controlNumber, reason: "unmatched" },
-      ]);
+      expect(await quarantined("foreign-1", ORG_B)).toEqual([]);
     });
 
     it("a malformed event is stored and skipped, never thrown, and the events behind it still apply", async () => {
@@ -1253,6 +1589,131 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       });
       expect(out).toMatchObject({ result: "quarantined", reason: "vendor_mismatch" });
       expect(await claimState(c.claimId)).toBe("submitted");
+    });
+
+    it("M2: a 277CA that arrives BEFORE the 999 on an in_doubt row is held, then applied once the 999 settles the row", async () => {
+      const c = await readyClaim();
+      const sub = await service("stedi").submit(actor, c.claimId, `key-${randomUUID()}`);
+      await stageInDoubt(c, sub.submissionId);
+      await transport.control.payerAccepts(c.controlNumber, "ICN-HELD", scope()); // the payer answer comes first
+      await transport.control.clearinghouseAccepts(c.controlNumber, scope());
+      await runAckPull(ackDeps("stedi"));
+      expect(await claimState(c.claimId)).toBe("accepted"); // not stuck in ack_pending, not lost
+      expect((await ackRows(c.claimId)).map((r) => r.stage).sort()).toEqual([
+        "clearinghouse",
+        "payer",
+      ]);
+      expect(await eventCount(c.claimId, "m41.claim.submitted")).toBe(1);
+      expect(await eventCount(c.claimId, "m41.claim.accepted")).toBe(1);
+      const held = await admin.query(
+        "SELECT resolved_at FROM commercial_ack_quarantine WHERE control_number=$1 AND reason='no_receipt'",
+        [c.controlNumber],
+      );
+      expect(held.rows).toHaveLength(1);
+      expect(held.rows[0].resolved_at).not.toBeNull();
+    });
+
+    it("M2: a held 277CA is applied by the next pull after a person reconciles the row as received", async () => {
+      const c = await readyClaim();
+      const sub = await service("stedi").submit(actor, c.claimId, `key-${randomUUID()}`);
+      await stageInDoubt(c, sub.submissionId);
+      await transport.control.payerRejects(c.controlNumber, ["A7:158"], scope());
+      await runAckPull(ackDeps("stedi")); // quarantined no_receipt; the cursor moves on
+      expect(await claimState(c.claimId)).toBe("ready");
+      const held = () =>
+        admin
+          .query(
+            "SELECT resolved_at, event FROM commercial_ack_quarantine WHERE control_number=$1 AND reason='no_receipt'",
+            [c.controlNumber],
+          )
+          .then((r) => r.rows);
+      expect((await held())[0].resolved_at).toBeNull();
+      expect((await held())[0].event).toMatchObject({ stage: "payer", disposition: "rejected" });
+      await service("stedi").reconcile(
+        actor,
+        c.claimId,
+        sub.submissionId,
+        "received",
+        "payer_portal",
+      );
+      await runAckPull(ackDeps("stedi")); // the stream has nothing new; the held event is replayed
+      expect(await claimState(c.claimId)).toBe("rejected");
+      expect((await held())[0].resolved_at).not.toBeNull();
+      expect((await ackRows(c.claimId))[0]).toMatchObject({
+        stage: "payer",
+        disposition: "rejected",
+        reason_codes: ["A7:158"],
+      });
+    });
+
+    it("M3: events that are not commercial submissions are counted and skipped, never stored (no growth)", async () => {
+      await sentClaim();
+      const before = await scalar<number>(
+        "SELECT count(*)::int AS n FROM commercial_ack_quarantine WHERE organization_id=$1",
+        [ORG],
+      );
+      const auditBefore = await scalar<number>(
+        "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind='commercial_ack_quarantine'",
+      );
+      const ctx = {
+        organizationId: ORG,
+        providerEntityId,
+        payerId: "MEDICARE",
+        correlationId: randomUUID(),
+        usage: "test" as const,
+        billingNpi: NPI,
+      };
+      for (let i = 0; i < 5; i += 1) {
+        await transport.submitClaim(ctx, {
+          kind: "claim",
+          controlNumber: `MEDICARE-N${i}`,
+          idempotencyKey: `m23.claim.MEDICARE-N${i}`,
+          payload: { format: "x12", x12: "ISA*stub~" },
+        });
+        await transport.control.payerAccepts(`MEDICARE-N${i}`, `M-ICN-${i}`, scope());
+      }
+      const res = await runAckPull(ackDeps("stedi"));
+      expect(res.unmatched).toBeGreaterThanOrEqual(5);
+      expect(
+        await scalar<number>(
+          "SELECT count(*)::int AS n FROM commercial_ack_quarantine WHERE organization_id=$1",
+          [ORG],
+        ),
+      ).toBe(before);
+      expect(
+        await scalar<number>(
+          "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind='commercial_ack_quarantine'",
+        ),
+      ).toBe(auditBefore);
+    });
+
+    it("M3: a claim that reached a terminal state, or is older than the poll window, stops being polled", async () => {
+      await admin.query(
+        "UPDATE commercial_submission SET requested_at = now() - interval '60 days'",
+      );
+      expect(await outstandingAckWork(ackDeps("stedi"), ORG)).toEqual([]); // aged out: needs a status inquiry, not a poll
+      const c = await sentClaim();
+      expect(await outstandingAckWork(ackDeps("stedi"), ORG)).toHaveLength(1);
+      await transport.control.payerAccepts(c.controlNumber, "ICN-TERMINAL", scope());
+      await runAckPull(ackDeps("stedi"));
+      expect(await claimState(c.claimId)).toBe("accepted");
+      expect(await outstandingAckWork(ackDeps("stedi"), ORG)).toEqual([]);
+      // and a tick with nothing outstanding never calls the transport
+      let fetches = 0;
+      const deps = ackDeps("stedi");
+      await runAckPull({
+        ...deps,
+        binding: {
+          vendor: "stedi",
+          transport: {
+            fetchAcknowledgments: async (...args) => {
+              fetches += 1;
+              return transport.fetchAcknowledgments(...args);
+            },
+          },
+        },
+      });
+      expect(fetches).toBe(0);
     });
 
     it("the database refuses every illegal claim state jump, and allows only the legal paths", async () => {

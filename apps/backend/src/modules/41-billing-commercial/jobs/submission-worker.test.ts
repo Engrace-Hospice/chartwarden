@@ -38,11 +38,17 @@ describe("classifyTransportRefusal", () => {
     expect(classifyTransportRefusal(CH.IN_DOUBT)).toEqual({ kind: "in_doubt", code: CH.IN_DOUBT });
   });
 
+  it("an idempotency conflict means the transport already holds an earlier attempt: in_doubt, never failed", () => {
+    expect(classifyTransportRefusal(CH.IDEMPOTENCY_CONFLICT)).toEqual({
+      kind: "in_doubt",
+      code: CH.IDEMPOTENCY_CONFLICT,
+    });
+  });
+
   it.each([
     CH.NOT_WIRED,
     CH.NOT_PROVISIONED,
     CH.NOT_ENROLLED,
-    CH.IDEMPOTENCY_CONFLICT,
     CH.INVALID_REQUEST,
     CH.UNKNOWN_ORIGINAL,
     "SOMETHING_NEW",

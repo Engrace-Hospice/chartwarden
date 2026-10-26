@@ -1,7 +1,7 @@
 // @chartwarden/db — M41 Billing - Commercial: acknowledgment ingestion (migration 1275). A clearinghouse event about a submission
 // (codes and ids only) and the pull position. Three-column rule on the PHI-adjacent acknowledgment, canonical app.org_id RLS
 // (FORCEd) and write-audit triggers in the migration. Duplicates collapse on the unique (organization, clearinghouse, event id) key.
-import { bigint, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
@@ -49,7 +49,10 @@ export const commercialAckQuarantine = pgTable(
     clearinghouseKey: text("clearinghouse_key").notNull(),
     eventId: text("event_id").notNull(),
     controlNumber: text("control_number"),
-    reason: text("reason").notNull(), // malformed | unmatched | scope_mismatch | vendor_mismatch | no_receipt
+    reason: text("reason").notNull(), // malformed | scope_mismatch | vendor_mismatch | no_receipt
+    // the validated event (codes and ids), kept only for `no_receipt` so the pull can replay it once the submission is settled
+    event: jsonb("event"),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

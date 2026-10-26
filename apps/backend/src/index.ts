@@ -1767,6 +1767,7 @@ import {
   buildCommercialSubmissionService,
   buildDrizzleEligibilityStore,
   createCommercialAdminService,
+  createDrainReadiness,
   createDrizzleAckCursorStore as createDrizzleM41AckCursorStore,
   createEligibilityService,
   mountM41Routes,
@@ -1774,6 +1775,7 @@ import {
   registerM41SubmissionWorker,
   scheduleM41AckJobs,
   scheduleM41Jobs,
+  scheduleWithRetry,
   wireM41Tenancy,
 } from "./modules/41-billing-commercial/index";
 
@@ -4059,6 +4061,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
   const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
   const m41OutboxPublisher = bindCallerModule(txOutboxPublisher, "m41");
+  // Whether the M41 drain is scheduled (starts false: with no queue connection nothing would ever send a queued submission).
+  const m41DrainReadiness = createDrainReadiness();
   const m25OutboxPublisher = bindCallerModule(txOutboxPublisher, "m25");
   // #659 - the tenant's NPI an 835 payee must match (see M25IngestDrizzleDeps.payeeNpi); one lookup for both M25 ingest roots.
   const m25PayeeNpi = dbHandle
@@ -6068,6 +6072,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 dbHandle.db,
                 m41Seams,
                 clearinghouseBinding,
+                m41DrainReadiness,
               ),
             });
           }
@@ -8792,12 +8797,34 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     app.addHook("onClose", async () => {
       await Promise.all([m41SubmissionWorker.close(), m41AckWorker.close()]);
     });
-    // Unlike M23's schedule registration (logged and swallowed), a failure here FAILS BOOT: with no repeatable job the drain never ticks,
-    // and POST /submit would keep queueing rows nothing sends ("bound is not computing"). A deployment that cannot schedule must not start.
-    const m41ScheduleQueues = [
-      ...(await scheduleM41Jobs(queueConnection)),
-      ...(await scheduleM41AckJobs(queueConnection)),
-    ];
+    // A schedule failure (a Valkey blip at boot) must not take the whole API down, so it is not fatal (the peers log and swallow). But
+    // "bound is not computing": without the repeatable job POST /submit would keep queueing rows nothing sends. So the failure is logged
+    // loudly, the M41 readiness flag stays false (submit and reconcile answer a typed 503 and the send-gate view says why), and the
+    // registration is retried in the background with a bounded backoff until it succeeds.
+    const m41ScheduleQueues: { close(): Promise<void> }[] = [];
+    await scheduleWithRetry({
+      schedule: async () => {
+        const drain = await scheduleM41Jobs(queueConnection);
+        try {
+          return [...drain, ...(await scheduleM41AckJobs(queueConnection))];
+        } catch (err) {
+          await Promise.all(drain.map((q) => q.close()));
+          throw err;
+        }
+      },
+      onScheduled: (queues) => {
+        m41ScheduleQueues.push(...queues);
+        m41DrainReadiness.markScheduled();
+        app.log.info("M41 commercial submission drain and acknowledgment pull scheduled");
+      },
+      onFailure: (err, attempt, nextRetryMs) => {
+        m41DrainReadiness.markNotScheduled();
+        app.log.error(
+          { err, attempt, nextRetryMs },
+          "M41 drain schedule registration FAILED: submit and reconcile answer 503 until it succeeds",
+        );
+      },
+    });
     app.addHook("onClose", async () => {
       await Promise.all(m41ScheduleQueues.map((q) => q.close()));
     });

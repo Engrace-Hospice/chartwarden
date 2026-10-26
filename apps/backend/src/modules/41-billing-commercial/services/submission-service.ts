@@ -10,14 +10,19 @@ import { schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   COMMERCIAL_ERROR_CODES,
+  COMMERCIAL_SEND_GATE_CODES,
+  COMMERCIAL_SUBMISSION_FAILURE_MESSAGES,
   ChartWardenError,
   type CommercialEnrollmentStatus,
+  type CommercialReconcileEvidence,
   type CommercialReconcileOutcome,
   ConflictError,
   NotFoundError,
   StepUpRequiredError,
+  ValidationError,
 } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { ALWAYS_READY, type DrainReadiness } from "../jobs/readiness";
 import {
   type ClaimSendGateResult,
   evaluateClaimSendGate,
@@ -90,6 +95,8 @@ export type TimelineItem =
       readonly clearinghouseKey: string;
       readonly attemptCount: number;
       readonly failureCode: string | null;
+      /** Fixed text for the code, when there is one. */
+      readonly failureMessage: string | null;
       readonly resolution: string | null;
       readonly sentAt: string | null;
     };
@@ -111,6 +118,7 @@ export interface CommercialSubmissionService {
     claimId: string,
     submissionId: string,
     outcome: CommercialReconcileOutcome,
+    evidence?: CommercialReconcileEvidence,
   ): Promise<SubmissionView>;
   timeline(actor: ReadActor, claimId: string): Promise<TimelineView>;
 }
@@ -198,6 +206,20 @@ export async function evaluateGateForClaim(
   });
 }
 
+export const DRAIN_NOT_SCHEDULED_MESSAGE =
+  "The background sender is not running right now, so nothing would be sent. Try again in a few minutes, or ask a platform administrator.";
+
+/** 503 while the drain is not scheduled: a queued submission would wait for a worker that is not ticking. */
+function assertDrainScheduled(readiness: DrainReadiness): void {
+  if (!readiness.drainScheduled()) {
+    throw new ChartWardenError(
+      COMMERCIAL_ERROR_CODES.drainNotScheduled,
+      DRAIN_NOT_SCHEDULED_MESSAGE,
+      503,
+    );
+  }
+}
+
 const reasonsOf = (gate: ClaimSendGateResult): readonly SendGateReason[] =>
   gate.ok ? [] : gate.reasons;
 
@@ -205,6 +227,8 @@ export function buildCommercialSubmissionService(
   db: CommercialDb,
   seams: CommercialClaimSeams,
   binding: CommercialClearinghouseBinding,
+  /** Whether the drain is scheduled; absent = always (tests and callers that do not run workers). */
+  readiness: DrainReadiness = ALWAYS_READY,
 ): CommercialSubmissionService {
   const now = seams.now ?? (() => new Date());
   const inOrg = <T>(actor: ReadActor, fn: (tx: CommercialTx) => Promise<T>): Promise<T> =>
@@ -250,13 +274,21 @@ export function buildCommercialSubmissionService(
       return inOrg(actor, async (tx) => {
         const claim = await loadClaim(tx, actor, claimId, false);
         const gate = await evaluateGateForClaim(tx, claim, binding.vendor, { now: now() });
+        const reasons: SendGateReason[] = [...reasonsOf(gate)];
+        // nothing would send a queued row while no drain is scheduled, so the view says so instead of offering the button
+        if (!readiness.drainScheduled()) {
+          reasons.push({
+            code: COMMERCIAL_SEND_GATE_CODES.DRAIN_NOT_SCHEDULED,
+            message: DRAIN_NOT_SCHEDULED_MESSAGE,
+          });
+        }
         return {
           claimId: claim.id,
           state: claim.state,
           patientId: claim.patientId,
-          canSubmit: gate.ok,
+          canSubmit: gate.ok && reasons.length === 0,
           clearinghouseKey: binding.vendor,
-          reasons: reasonsOf(gate),
+          reasons,
         };
       });
     },
@@ -265,6 +297,7 @@ export function buildCommercialSubmissionService(
       if (actor.actorKind.startsWith("ai_")) {
         throw new ChartWardenError("AI_ACTOR_FORBIDDEN", "AI actors may not submit a claim", 403);
       }
+      assertDrainScheduled(readiness);
       return inOrg(actor, async (tx) => {
         const claim = await loadClaim(tx, actor, claimId, true);
         // A retried request with the same key is answered from the row it wrote, whatever the claim has become since.
@@ -345,7 +378,7 @@ export function buildCommercialSubmissionService(
      * `received`: the claim is confirmed filed, so the submission is `sent` and the claim moves `ready -> submitted`. Audited by the
      * row-level write audit and an `m41.claim.submit_reconciled` event (no free text is taken or stored).
      */
-    async reconcile(actor, claimId, submissionId, outcome) {
+    async reconcile(actor, claimId, submissionId, outcome, evidence) {
       if (actor.actorKind.startsWith("ai_")) {
         throw new ChartWardenError(
           "AI_ACTOR_FORBIDDEN",
@@ -354,7 +387,21 @@ export function buildCommercialSubmissionService(
         );
       }
       if (!actor.stepUpRecent) throw new StepUpRequiredError();
+      assertDrainScheduled(readiness);
+      // `received` is an attestation: it must say what the person relied on (a closed set), and `not_received` must not carry one.
+      if (outcome === "received" && evidence === undefined) {
+        throw new ValidationError("evidence is required when the claim is confirmed received", [
+          { field: "evidence", code: "REQUIRED", message: "name what you relied on" },
+        ]);
+      }
+      if (outcome === "not_received" && evidence !== undefined) {
+        throw new ValidationError("evidence applies only when the claim is confirmed received", [
+          { field: "evidence", code: "NOT_ALLOWED", message: "remove evidence" },
+        ]);
+      }
       return inOrg(actor, async (tx) => {
+        // the claim is locked first (the same order as the ack path and the worker), then the submission THAT BELONGS TO IT: a
+        // submission id of another claim is simply not found
         const claim = await loadClaim(tx, actor, claimId, true);
         const S = schema.commercialSubmissions;
         const [sub] = await tx
@@ -365,6 +412,22 @@ export function buildCommercialSubmissionService(
         if (!sub) throw new NotFoundError("submission");
         if (sub.status !== "in_doubt") {
           throw new ConflictError("only a submission in doubt can be reconciled");
+        }
+        // A receipt is on file (the transport accepted the file and only our record failed): it cannot be "not received".
+        if (outcome === "not_received" && sub.clearinghouseSubmissionId !== null) {
+          throw new ChartWardenError(
+            COMMERCIAL_ERROR_CODES.reconcileReceiptOnFile,
+            "The clearinghouse accepted this file; only the record failed. Confirm it as received.",
+            409,
+          );
+        }
+        // Confirming it received moves the claim to submitted, which is only legal from ready.
+        if (outcome === "received" && claim.state !== "ready") {
+          throw new ChartWardenError(
+            COMMERCIAL_SEND_GATE_CODES.CLAIM_NOT_READY,
+            "The claim is no longer ready, so it cannot be confirmed as sent. Ask a platform administrator.",
+            409,
+          );
         }
         const at = now();
         if (outcome === "not_received") {
@@ -380,7 +443,15 @@ export function buildCommercialSubmissionService(
         } else {
           await tx
             .update(S)
-            .set({ status: "sent", resolution: "operator_confirmed", sentAt: at, updatedAt: at })
+            .set({
+              status: "sent",
+              resolution: "operator_confirmed",
+              reconcileEvidence: evidence ?? null,
+              sentAt: at,
+              lastFailureCode: null,
+              transportCallStartedAt: null,
+              updatedAt: at,
+            })
             .where(eq(S.id, sub.id));
           if (claim.state === "ready") {
             await tx
@@ -398,6 +469,19 @@ export function buildCommercialSubmissionService(
               actorMembershipId: actor.membershipId,
               validationRunId: null,
             });
+            // the claim moved to submitted: the same event the worker and the acknowledgment path publish for that move
+            await seams.outbox.publish(tx, {
+              eventName: "m41.claim.submitted",
+              organizationId: claim.organizationId,
+              aggregateKind: "commercial_submission",
+              aggregateId: sub.id,
+              payload: {
+                claimId: claim.id,
+                submissionId: sub.id,
+                controlNumber: sub.controlNumber,
+                clearinghouseKey: sub.clearinghouseKey,
+              },
+            });
           }
         }
         await seams.outbox.publish(tx, {
@@ -405,7 +489,7 @@ export function buildCommercialSubmissionService(
           organizationId: actor.organizationId,
           aggregateKind: "commercial_submission",
           aggregateId: sub.id,
-          payload: { claimId: claim.id, submissionId: sub.id, outcome },
+          payload: { claimId: claim.id, submissionId: sub.id, outcome, evidence: evidence ?? null },
         });
         const [settled] = await tx.select().from(S).where(eq(S.id, sub.id));
         return viewOf(settled ?? sub, false);
@@ -458,6 +542,9 @@ export function buildCommercialSubmissionService(
               clearinghouseKey: s.clearinghouseKey,
               attemptCount: s.attemptCount,
               failureCode: s.lastFailureCode,
+              failureMessage: s.lastFailureCode
+                ? (COMMERCIAL_SUBMISSION_FAILURE_MESSAGES[s.lastFailureCode] ?? null)
+                : null,
               resolution: s.resolution,
               sentAt: s.sentAt ? s.sentAt.toISOString() : null,
             }),
