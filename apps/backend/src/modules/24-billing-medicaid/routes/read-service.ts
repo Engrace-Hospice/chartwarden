@@ -151,6 +151,8 @@ export interface RuleConfigView {
   isCustom: boolean;
   customSeverity: string | null;
   customOverrideRole: string | null;
+  /** The role the server requires to override this rule (registry value; null = not overridable). */
+  overrideRoleRequired: string | null;
   regulatoryRequired: boolean;
   parametersOverlay: unknown;
   version: number | null;

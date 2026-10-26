@@ -174143,6 +174143,7 @@
                       "isCustom",
                       "customSeverity",
                       "customOverrideRole",
+                      "overrideRoleRequired",
                       "regulatoryRequired",
                       "parametersOverlay",
                       "version"
@@ -174168,6 +174169,16 @@
                         ]
                       },
                       "customOverrideRole": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "overrideRoleRequired": {
                         "anyOf": [
                           {
                             "type": "string"

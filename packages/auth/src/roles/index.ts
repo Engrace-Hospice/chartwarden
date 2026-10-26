@@ -24,7 +24,11 @@ export {
   rolesForPermission,
   platformOpsRolePermissionSeedRows,
 } from "./templates";
-export { BUSINESS_ADMIN_SCOPE_ROLES, ORG_WIDE_SCOPE_ROLES, hasOrgWideScope } from "./org-wide-scope";
+export {
+  BUSINESS_ADMIN_SCOPE_ROLES,
+  ORG_WIDE_SCOPE_ROLES,
+  hasOrgWideScope,
+} from "./org-wide-scope";
 export {
   SYSTEM_ROLE_DISPLAY_NAMES,
   type SystemRoleDisplayNameKey,

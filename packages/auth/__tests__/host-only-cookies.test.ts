@@ -4,8 +4,10 @@ import { getCookies } from "better-auth/cookies";
 import { describe, expect, it } from "vitest";
 import { hostOnlyCookieOptions } from "../src/identity/host-only-cookies";
 
-const cookiesFor = (env: Record<string, string | undefined>, baseURL = "https://sunrise.chartwarden.com") =>
-  getCookies({ baseURL, advanced: hostOnlyCookieOptions(env) } as never);
+const cookiesFor = (
+  env: Record<string, string | undefined>,
+  baseURL = "https://sunrise.chartwarden.com",
+) => getCookies({ baseURL, advanced: hostOnlyCookieOptions(env) } as never);
 
 describe("hostOnlyCookieOptions", () => {
   it("adds nothing in single-host mode (unset or blank), so demo/dev/test cookies are unchanged", () => {
@@ -16,7 +18,12 @@ describe("hostOnlyCookieOptions", () => {
   it("names the session cookie __Host-better-auth.session_token with Secure, Path=/ and no Domain", () => {
     const { sessionToken } = cookiesFor({ TENANT_BASE_DOMAIN: "chartwarden.com" });
     expect(sessionToken.name).toBe("__Host-better-auth.session_token");
-    expect(sessionToken.attributes).toMatchObject({ secure: true, path: "/", httpOnly: true, sameSite: "lax" });
+    expect(sessionToken.attributes).toMatchObject({
+      secure: true,
+      path: "/",
+      httpOnly: true,
+      sameSite: "lax",
+    });
     expect(sessionToken.attributes).not.toHaveProperty("domain");
   });
 
@@ -35,6 +42,8 @@ describe("hostOnlyCookieOptions", () => {
   });
 
   it("leaves Better Auth's single-host naming alone when unset", () => {
-    expect(cookiesFor({}, "http://localhost:3000").sessionToken.name).toBe("better-auth.session_token");
+    expect(cookiesFor({}, "http://localhost:3000").sessionToken.name).toBe(
+      "better-auth.session_token",
+    );
   });
 });

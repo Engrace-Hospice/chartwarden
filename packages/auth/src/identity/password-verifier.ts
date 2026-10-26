@@ -9,9 +9,14 @@ import { createHash } from "node:crypto";
 /** The structural slice of a Better Auth instance the verifier needs. */
 export interface PasswordVerifierCapableAuth {
   $context: Promise<{
-    password: { verify(input: { hash: string; password: string }): Promise<boolean>; hash(password: string): Promise<string> };
+    password: {
+      verify(input: { hash: string; password: string }): Promise<boolean>;
+      hash(password: string): Promise<string>;
+    };
     internalAdapter: {
-      findAccounts(userId: string): Promise<Array<{ providerId: string; password?: string | null }>>;
+      findAccounts(
+        userId: string,
+      ): Promise<Array<{ providerId: string; password?: string | null }>>;
     };
   }>;
 }

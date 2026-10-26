@@ -1,11 +1,11 @@
-import { boolean, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createAuthEndpoint } from "better-auth/api";
 import { username } from "better-auth/plugins";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { boolean, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { Pool } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as z from "zod";
 import { argon2idHash, argon2idVerify } from "../src/identity/password-hash";
 
@@ -207,7 +207,9 @@ describe.skipIf(!DATABASE_URL)("PR0 username-only Better Auth feasibility", () =
 
   afterAll(async () => {
     if (!pool) return;
-    await pool.query("DROP TABLE IF EXISTS spike_session, spike_account, spike_verification, spike_user CASCADE");
+    await pool.query(
+      "DROP TABLE IF EXISTS spike_session, spike_account, spike_verification, spike_user CASCADE",
+    );
     await pool.end();
   });
 
@@ -229,10 +231,9 @@ describe.skipIf(!DATABASE_URL)("PR0 username-only Better Auth feasibility", () =
     const provisioned = await auth.api.provisionUsernameOnly({
       body: { name: "Jane Smith", username: "JSmith", password: temporaryPassword },
     });
-    const storedUser = await pool.query(
-      "SELECT email, username FROM spike_user WHERE id = $1",
-      [provisioned.userId],
-    );
+    const storedUser = await pool.query("SELECT email, username FROM spike_user WHERE id = $1", [
+      provisioned.userId,
+    ]);
     expect(storedUser.rows[0]).toEqual({ email: null, username: "jsmith" });
     const storedAccount = await pool.query(
       "SELECT password FROM spike_account WHERE user_id = $1 AND provider_id = 'credential'",
@@ -245,13 +246,15 @@ describe.skipIf(!DATABASE_URL)("PR0 username-only Better Auth feasibility", () =
       asResponse: true,
     })) as Response;
     expect(signIn.status).toBe(200);
-    const payload = (await signIn.json()) as { token: string; user: { id: string; email?: string | null } };
+    const payload = (await signIn.json()) as {
+      token: string;
+      user: { id: string; email?: string | null };
+    };
     expect(payload.user.id).toBe(provisioned.userId);
     expect(payload.user.email ?? null).toBeNull();
-    const session = await pool.query(
-      "SELECT user_id FROM spike_session WHERE token = $1",
-      [payload.token],
-    );
+    const session = await pool.query("SELECT user_id FROM spike_session WHERE token = $1", [
+      payload.token,
+    ]);
     expect(session.rows[0].user_id).toBe(provisioned.userId);
   });
 
