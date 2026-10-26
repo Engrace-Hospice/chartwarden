@@ -120,11 +120,23 @@ export const COMMERCIAL_SEND_GATE_CODES = {
   PAYER_NOT_ROUTED: COMMERCIAL_SEND_REFUSAL.PAYER_NOT_ROUTED,
   ROUTE_CHANGED: "COMMERCIAL_ROUTE_CHANGED",
   PROVIDER_NOT_ENROLLED: COMMERCIAL_SEND_REFUSAL.PROVIDER_NOT_ENROLLED,
+  /** The bound clearinghouse cannot carry a commercial claim (`direct_mac` drops files at a Medicare contractor's portal). */
+  TRANSPORT_UNSUPPORTED: "COMMERCIAL_TRANSPORT_UNSUPPORTED",
   /** A submission of this claim is already queued, sent or in doubt (one live submission per claim). */
   SUBMISSION_IN_FLIGHT: "COMMERCIAL_SUBMISSION_IN_FLIGHT",
 } as const;
 export type CommercialSendGateCode =
   (typeof COMMERCIAL_SEND_GATE_CODES)[keyof typeof COMMERCIAL_SEND_GATE_CODES];
+
+/**
+ * Clearinghouse vendors that must never carry a commercial claim. `direct_mac` is the legacy MAC-portal drop (Medicare only, ADR-0053
+ * D1): a commercial file there would reach the wrong payer, and ADR-0100 D4 allows no direct-to-payer channel.
+ */
+export const COMMERCIAL_UNSUPPORTED_CLEARINGHOUSES: readonly string[] = ["direct_mac"];
+
+/** How a person settles an in-doubt submission (`POST .../reconcile`). */
+export const COMMERCIAL_RECONCILE_OUTCOME_VALUES = ["received", "not_received"] as const;
+export type CommercialReconcileOutcome = (typeof COMMERCIAL_RECONCILE_OUTCOME_VALUES)[number];
 
 /** Other stable codes the eligibility check answers. */
 export const COMMERCIAL_ELIGIBILITY_ERROR = {

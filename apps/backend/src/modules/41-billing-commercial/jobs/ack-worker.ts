@@ -1,25 +1,32 @@
 // apps/backend/src/modules/41-billing-commercial/jobs/ack-worker.ts - pull acknowledgments for sent commercial claims through the
 // platform ClearinghouseTransport (ADR-0053 D2, D7, D10; the M23 #749 cursor pattern).
 //
-//   - one stream per (org, provider entity, usage) is SHARED with Medicare: an event whose control number is no commercial submission of
-//     this provider entity is not ours and is skipped (counted, never stored). An event whose control number IS a commercial submission
-//     of ANOTHER provider entity of the tenant is QUARANTINED: reported, never applied.
+//   - every event is VALIDATED field by field at the boundary (`domain/ack-event.ts`); one that fails is quarantined and skipped, never
+//     thrown, so a poison event cannot stall a provider entity's stream.
+//   - one stream per (org, provider entity, usage) is SHARED with Medicare. An event that is not applied is STORED in
+//     `commercial_ack_quarantine` (event id, control number, a reason code; no body) BEFORE the cursor can move past it: malformed,
+//     unmatched (no commercial submission of this provider entity), scope_mismatch (another provider entity's control number),
+//     vendor_mismatch (the submission went through another clearinghouse) or no_receipt (a payer-stage answer for a submission whose
+//     receipt we never recorded: only a clearinghouse-stage answer can settle that).
+//   - an acknowledgment for an `in_doubt` (or in-flight `queued`) submission proves the file arrived: it settles the submission as
+//     `sent` (resolution `acknowledgment`), moves the claim ready -> submitted, and then applies the acknowledgment as usual.
 //   - events are applied durably, one transaction each, and only then is the persisted cursor advanced (a crash replays at most the page
 //     in flight; replays collapse on the unique (organization, clearinghouse, event id) key).
 //   - two stages, never conflated: a clearinghouse acceptance moves submitted -> ack_pending, only a payer acceptance reaches accepted.
-//   - fail closed: the transport is only called when bound; a degraded answer fails that provider entity (cursor unmoved) and the tick.
-//   - a pull only runs for provider entities that have a sent claim still waiting for its answer.
+//   - fail closed: the transport is only called when bound and capable of commercial; a degraded answer fails that provider entity
+//     (cursor unmoved) and the tick.
+//   - AckEvent carries no payer id and no receipt id today (eventId, controlNumber, stage, disposition, reasonCodes, occurredAt and an
+//     optional payerClaimNumber), so the trust binding is: the provider-entity scope of the stream, the control number, the
+//     clearinghouse the submission was sent through, and the receipt rule above.
+import { createHash } from "node:crypto";
 import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
-import {
-  type AckEvent,
-  CH,
-  type ClearinghouseTransport,
-  routeAckEvent,
-} from "@chartwarden/x12-837-client";
+import { COMMERCIAL_UNSUPPORTED_CLEARINGHOUSES } from "@chartwarden/types";
+import { CH, type ClearinghouseTransport } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { validateAckEvent } from "../domain/ack-event";
 import { transitionForAck } from "../domain/ack-transition";
 import type { CommercialContextPort } from "../eligibility/service";
 import type { CommercialOutboxPort, CommercialTx } from "../services/types";
@@ -28,8 +35,6 @@ import { M41_CRON_QUEUES, M41_JOB_SCHEDULES } from "./queues";
 /** Most pages one provider entity's stream may read per tick; the cursor is persisted per page, so the rest waits for the next tick. */
 export const MAX_ACK_PAGES_PER_TICK = 50;
 const MAX_CURSOR_LENGTH = 512;
-const MAX_REASON_CODE_LENGTH = 64;
-const MAX_REASON_CODES = 50;
 
 export interface AckCursorKey {
   readonly organizationId: string;
@@ -116,8 +121,19 @@ export function createDrizzleAckCursorStore(db: DbClient): AckCursorStore {
   };
 }
 
-export type { AckEvent };
+export type QuarantineReason =
+  | "malformed"
+  | "unmatched"
+  | "scope_mismatch"
+  | "vendor_mismatch"
+  | "no_receipt";
 export type ApplyResult = "applied" | "duplicate" | "unmatched" | "quarantined";
+export interface ApplyOutcome {
+  readonly result: ApplyResult;
+  readonly eventId: string;
+  /** Present when the event was stored in quarantine. */
+  readonly reason?: QuarantineReason;
+}
 
 const inOrg = <T>(
   deps: AckWorkerDeps,
@@ -125,30 +141,72 @@ const inOrg = <T>(
   fn: (tx: CommercialTx) => Promise<T>,
 ): Promise<T> => withOrgContext(deps.db, systemOrgContext(organizationId), fn);
 
-/** Reason codes as stored: bounded and clipped. They are vendor CODES; nothing else about the event is kept. */
-const cleanCodes = (codes: readonly string[]): string[] =>
-  codes
-    .filter((c): c is string => typeof c === "string" && c.length > 0)
-    .slice(0, MAX_REASON_CODES)
-    .map((c) => c.slice(0, MAX_REASON_CODE_LENGTH));
+/** A stable id for an event whose own id is unusable: a digest of what the vendor sent (never stored itself). */
+function derivedEventId(raw: unknown): string {
+  let text: string;
+  try {
+    text = JSON.stringify(raw) ?? "undefined";
+  } catch {
+    text = "unserializable";
+  }
+  return `invalid:${createHash("sha256").update(text).digest("hex").slice(0, 32)}`;
+}
 
-const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T/;
+/** Store an event that was not applied. Idempotent on (organization, clearinghouse, event id). */
+async function quarantine(
+  deps: AckWorkerDeps,
+  tx: CommercialTx,
+  scope: { readonly organizationId: string; readonly providerEntityId: string },
+  event: { readonly eventId: string; readonly controlNumber: string | null },
+  reason: QuarantineReason,
+): Promise<void> {
+  await tx
+    .insert(schema.commercialAckQuarantine)
+    .values({
+      organizationId: scope.organizationId,
+      providerEntityId: scope.providerEntityId,
+      clearinghouseKey: deps.binding.vendor ?? "unbound",
+      eventId: event.eventId,
+      controlNumber: event.controlNumber,
+      reason,
+    })
+    .onConflictDoNothing();
+  deps.log?.({ event: "ack.quarantined", eventId: event.eventId, code: reason });
+}
+
+/** Statuses an acknowledgment may match, best first: a recorded receipt, a submission in doubt, one whose receipt may be in flight. */
+const MATCHABLE = ["sent", "in_doubt", "queued"] as const;
 
 /**
- * Apply ONE acknowledgment event for the provider entity whose stream it came from. Matches on the control number among THIS provider
- * entity's `sent` submissions; records the acknowledgment, and in the same transaction moves the claim (when the transition is legal)
- * and writes the event. A repeated event id changes nothing.
+ * Apply ONE acknowledgment event for the provider entity whose stream it came from. The event is validated first; anything that
+ * cannot be applied is stored in quarantine in the same transaction, so it is never lost to a log line. A repeated event id changes
+ * nothing.
  */
 export async function applyAckEvent(
   deps: AckWorkerDeps,
   scope: { readonly organizationId: string; readonly providerEntityId: string },
-  event: AckEvent,
-): Promise<ApplyResult> {
-  const routed = routeAckEvent(event);
-  return inOrg(deps, scope.organizationId, async (tx) => {
+  raw: unknown,
+): Promise<ApplyOutcome> {
+  const checked = validateAckEvent(raw);
+  if (!checked.ok) {
+    const eventId = checked.eventId ?? derivedEventId(raw);
+    await inOrg(deps, scope.organizationId, (tx) =>
+      quarantine(deps, tx, scope, { eventId, controlNumber: checked.controlNumber }, "malformed"),
+    );
+    return { result: "quarantined", eventId, reason: "malformed" };
+  }
+  const event = checked.event;
+  return inOrg(deps, scope.organizationId, async (tx): Promise<ApplyOutcome> => {
     const S = schema.commercialSubmissions;
     const C = schema.commercialClaims;
-    const [sub] = await tx
+    const held = (result: ApplyResult, reason: QuarantineReason): Promise<ApplyOutcome> =>
+      quarantine(deps, tx, scope, event, reason).then(() => ({
+        result,
+        eventId: event.eventId,
+        reason,
+      }));
+
+    const candidates = await tx
       .select()
       .from(S)
       .where(
@@ -156,10 +214,12 @@ export async function applyAckEvent(
           eq(S.organizationId, scope.organizationId),
           eq(S.providerEntityId, scope.providerEntityId),
           eq(S.controlNumber, event.controlNumber),
-          eq(S.status, "sent"),
+          inArray(S.status, [...MATCHABLE]),
         ),
-      )
-      .limit(1);
+      );
+    const sub = MATCHABLE.map((status) => candidates.find((c) => c.status === status)).find(
+      (c) => c !== undefined,
+    );
     if (!sub) {
       const [elsewhere] = await tx
         .select({ id: S.id })
@@ -172,11 +232,20 @@ export async function applyAckEvent(
           ),
         )
         .limit(1);
-      return elsewhere ? "quarantined" : "unmatched";
+      return elsewhere ? held("quarantined", "scope_mismatch") : held("unmatched", "unmatched");
     }
+    // Sent through another clearinghouse than the one this stream came from: not this submission's answer.
+    if (deps.binding.vendor !== null && sub.clearinghouseKey !== deps.binding.vendor) {
+      return held("quarantined", "vendor_mismatch");
+    }
+    // No recorded receipt: only a clearinghouse-stage answer may settle the submission. A payer-stage answer cannot, because nothing
+    // proves the file ever reached the clearinghouse.
+    if (sub.status !== "sent" && event.stage !== "clearinghouse") {
+      return held("quarantined", "no_receipt");
+    }
+
     const [claim] = await tx.select().from(C).where(eq(C.id, sub.claimId)).for("update");
-    if (!claim) return "unmatched";
-    const reasonCodes = cleanCodes(event.reasonCodes);
+    if (!claim) return held("unmatched", "unmatched");
     const [recorded] = await tx
       .insert(schema.commercialAcknowledgments)
       .values({
@@ -186,35 +255,75 @@ export async function applyAckEvent(
         claimId: sub.claimId,
         submissionId: sub.id,
         clearinghouseKey: sub.clearinghouseKey,
-        eventId: event.eventId.slice(0, 256),
-        stage: routed.stage,
-        disposition: routed.outcome,
-        reasonCodes,
-        payerClaimNumber: event.payerClaimNumber ? event.payerClaimNumber.slice(0, 128) : null,
-        occurredAt: ISO_INSTANT.test(event.occurredAt) ? new Date(event.occurredAt) : null,
+        eventId: event.eventId,
+        stage: event.stage,
+        disposition: event.disposition,
+        reasonCodes: [...event.reasonCodes],
+        payerClaimNumber: event.payerClaimNumber,
+        occurredAt: event.occurredAt,
       })
       .onConflictDoNothing()
       .returning({ id: schema.commercialAcknowledgments.id });
-    if (!recorded) return "duplicate";
+    if (!recorded) return { result: "duplicate", eventId: event.eventId };
 
-    if (routed.stage === "clearinghouse" && routed.outcome === "accepted") {
+    const at = new Date();
+    let claimState = claim.state;
+    if (sub.status !== "sent") {
+      // The acknowledgment proves the file arrived: settle the submission and file the claim as submitted first.
+      await tx
+        .update(S)
+        .set({
+          status: "sent",
+          resolution: "acknowledgment",
+          sentAt: at,
+          transportCallStartedAt: null,
+          updatedAt: at,
+        })
+        .where(eq(S.id, sub.id));
+      if (claimState === "ready") {
+        await tx.update(C).set({ state: "submitted", updatedAt: at }).where(eq(C.id, claim.id));
+        await tx.insert(schema.commercialClaimStateHistory).values({
+          organizationId: claim.organizationId,
+          providerEntityId: claim.providerEntityId,
+          locationId: claim.locationId,
+          claimId: claim.id,
+          fromState: "ready",
+          toState: "submitted",
+          actorKind: "system",
+          actorMembershipId: null,
+          validationRunId: null,
+        });
+        claimState = "submitted";
+        await deps.outbox.publish(tx, {
+          eventName: "m41.claim.submitted",
+          organizationId: claim.organizationId,
+          aggregateKind: "commercial_submission",
+          aggregateId: sub.id,
+          payload: {
+            claimId: claim.id,
+            submissionId: sub.id,
+            controlNumber: sub.controlNumber,
+            clearinghouseKey: sub.clearinghouseKey,
+          },
+        });
+      }
+    }
+
+    if (event.stage === "clearinghouse" && event.disposition === "accepted") {
       await tx
         .update(S)
         .set({ clearinghouseAcceptedAt: sql`coalesce(${S.clearinghouseAcceptedAt}, now())` })
         .where(eq(S.id, sub.id));
     }
-    const transition = transitionForAck(claim.state, routed.stage, routed.outcome);
+    const transition = transitionForAck(claimState, event.stage, event.disposition);
     if (transition) {
-      await tx
-        .update(C)
-        .set({ state: transition.to, updatedAt: new Date() })
-        .where(eq(C.id, claim.id));
+      await tx.update(C).set({ state: transition.to, updatedAt: at }).where(eq(C.id, claim.id));
       await tx.insert(schema.commercialClaimStateHistory).values({
         organizationId: claim.organizationId,
         providerEntityId: claim.providerEntityId,
         locationId: claim.locationId,
         claimId: claim.id,
-        fromState: claim.state,
+        fromState: claimState,
         toState: transition.to,
         actorKind: "system",
         actorMembershipId: null,
@@ -228,12 +337,12 @@ export async function applyAckEvent(
         payload: {
           claimId: claim.id,
           submissionId: sub.id,
-          stage: routed.stage,
-          reasonCodes,
+          stage: event.stage,
+          reasonCodes: [...event.reasonCodes],
         },
       });
     }
-    return "applied";
+    return { result: "applied", eventId: event.eventId };
   });
 }
 
@@ -245,22 +354,25 @@ export interface AckPullResult {
   readonly failures: readonly string[];
   /** Provider entities that stopped at the page cap with more to read. */
   readonly backlog: readonly string[];
-  /** Events that were not applied because they cannot be trusted (unroutable, or another provider entity's). Ids only. */
+  /** Events stored in quarantine because they cannot be trusted (not merely unmatched). Ids and a reason only. */
   readonly quarantined: readonly { readonly eventId: string; readonly reason: string }[];
 }
 
-const clip = (v: unknown): string => (typeof v === "string" ? v.slice(0, 128) : "");
+type Tally = { applied: number; duplicates: number; unmatched: number };
 
 async function pullEntity(
   deps: AckWorkerDeps,
   organizationId: string,
   providerEntityId: string,
   payerId: string,
-  tally: { applied: number; duplicates: number; unmatched: number },
+  tally: Tally,
   quarantined: { eventId: string; reason: string }[],
 ): Promise<"done" | "backlog"> {
   const vendor = deps.binding.vendor;
   if (vendor === null) throw new Error("CH_NOT_WIRED: no clearinghouse is bound");
+  if (COMMERCIAL_UNSUPPORTED_CLEARINGHOUSES.includes(vendor)) {
+    throw new Error("the bound clearinghouse cannot carry commercial claims");
+  }
   const ctx = await deps.contexts.contextFor(organizationId, providerEntityId, payerId);
   if (ctx === null) throw new Error("the provider entity has no billing NPI on file");
   const key: AckCursorKey = { organizationId, providerEntityId, usage: ctx.usage, vendor };
@@ -284,32 +396,24 @@ async function pullEntity(
     }
     pages += 1;
     const { items, nextCursor, hasMore } = result.data;
-    if (nextCursor.length < 1 || nextCursor.length > MAX_CURSOR_LENGTH) {
+    if (!Array.isArray(items)) throw new Error("acknowledgment pull failed (items is not a list)");
+    if (
+      typeof nextCursor !== "string" ||
+      nextCursor.length < 1 ||
+      nextCursor.length > MAX_CURSOR_LENGTH
+    ) {
       throw new Error("acknowledgment pull failed (the vendor cursor has an unusable length)");
     }
     if (hasMore && seen.has(nextCursor)) {
       throw new Error("acknowledgment pull failed (the vendor cursor did not advance)");
     }
     for (const event of items) {
-      let outcome: ApplyResult;
-      try {
-        outcome = await applyAckEvent(deps, { organizationId, providerEntityId }, event);
-      } catch (err) {
-        if (err instanceof Error && err.message.startsWith("ack event:")) {
-          // Unroutable (unknown stage or disposition): skipped so it cannot stall the stream behind it, and reported.
-          quarantined.push({ eventId: clip(event?.eventId), reason: err.message });
-          continue;
-        }
-        throw err; // a database or mapping fault fails the entity; the cursor does not move
-      }
-      if (outcome === "quarantined") {
-        quarantined.push({
-          eventId: clip(event.eventId),
-          reason: "control number belongs to another provider entity",
-        });
-      } else if (outcome === "applied") tally.applied += 1;
-      else if (outcome === "duplicate") tally.duplicates += 1;
-      else tally.unmatched += 1;
+      // A database fault throws and fails the entity (the cursor does not move); a bad EVENT never throws, it is stored.
+      const out = await applyAckEvent(deps, { organizationId, providerEntityId }, event);
+      if (out.result === "applied") tally.applied += 1;
+      else if (out.result === "duplicate") tally.duplicates += 1;
+      else if (out.result === "unmatched") tally.unmatched += 1;
+      else quarantined.push({ eventId: out.eventId, reason: out.reason ?? "quarantined" });
     }
     if (nextCursor !== state.cursor) {
       if (!(await deps.cursors.advance(key, state.version, nextCursor))) return "done"; // another tick owns the stream now
@@ -321,7 +425,13 @@ async function pullEntity(
   return "backlog";
 }
 
-/** Provider entities of the org with a sent claim still waiting for an answer, each with a payer id for the call context. */
+/**
+ * Provider entities of the org with a live submission still waiting for an answer: a sent claim not yet accepted or rejected, or a
+ * submission in doubt (an acknowledgment is how it gets resolved). Each comes with a payer id for the call context.
+ *
+ * The payer id is only context: every transport (in-memory, direct-MAC, Stedi) scopes the acknowledgment stream by
+ * (organization, provider entity, usage) and none filters it by `ctx.payerId`, so one pull per provider entity sees every payer.
+ */
 async function outstanding(
   deps: AckWorkerDeps,
   organizationId: string,
@@ -330,13 +440,23 @@ async function outstanding(
     const S = schema.commercialSubmissions;
     const C = schema.commercialClaims;
     const rows = await tx
-      .select({ providerEntityId: S.providerEntityId, payerId: S.clearinghousePayerId })
+      .select({
+        providerEntityId: S.providerEntityId,
+        payerId: S.clearinghousePayerId,
+        status: S.status,
+        claimState: C.state,
+      })
       .from(S)
       .innerJoin(C, and(eq(C.id, S.claimId), eq(C.organizationId, S.organizationId)))
-      .where(and(eq(S.status, "sent"), inArray(C.state, ["submitted", "ack_pending"])));
+      .where(inArray(S.status, ["sent", "in_doubt"]));
+    const waiting = rows.filter(
+      (r) =>
+        r.status === "in_doubt" || r.claimState === "submitted" || r.claimState === "ack_pending",
+    );
     const byEntity = new Map<string, string>();
-    for (const r of rows)
+    for (const r of waiting) {
       if (!byEntity.has(r.providerEntityId)) byEntity.set(r.providerEntityId, r.payerId);
+    }
     return [...byEntity].map(([providerEntityId, payerId]) => ({ providerEntityId, payerId }));
   });
 }
@@ -345,7 +465,7 @@ export async function pullOrgAcks(
   deps: AckWorkerDeps,
   organizationId: string,
 ): Promise<AckPullResult> {
-  const tally = { applied: 0, duplicates: 0, unmatched: 0 };
+  const tally: Tally = { applied: 0, duplicates: 0, unmatched: 0 };
   const failures: string[] = [];
   const backlog: string[] = [];
   const quarantined: { eventId: string; reason: string }[] = [];
@@ -371,17 +491,21 @@ export async function pullOrgAcks(
 
 /** The cron body. Throws after every org ran when anything failed (BullMQ retries; the DLQ alert fires). Unbound with work waiting fails. */
 export async function runAckPull(deps: AckWorkerDeps): Promise<AckPullResult> {
-  const total = { applied: 0, duplicates: 0, unmatched: 0 };
+  const total: Tally = { applied: 0, duplicates: 0, unmatched: 0 };
   const failures: string[] = [];
   const backlog: string[] = [];
   const quarantined: { eventId: string; reason: string }[] = [];
   for (const { organizationId } of await deps.activeOrgs.listActiveOrgs()) {
     if (deps.binding.vendor === null) {
-      const waiting = await outstanding(deps, organizationId);
-      if (waiting.length > 0) {
-        failures.push(
-          `org ${organizationId}: CH_NOT_WIRED (${waiting.length} provider entity(ies) waiting for acknowledgments)`,
-        );
+      try {
+        const waiting = await outstanding(deps, organizationId);
+        if (waiting.length > 0) {
+          failures.push(
+            `org ${organizationId}: CH_NOT_WIRED (${waiting.length} provider entity(ies) waiting for acknowledgments)`,
+          );
+        }
+      } catch (err) {
+        failures.push(`org ${organizationId}: ${err instanceof Error ? err.name : "failed"}`);
       }
       continue;
     }
@@ -397,10 +521,9 @@ export async function runAckPull(deps: AckWorkerDeps): Promise<AckPullResult> {
       failures.push(`org ${organizationId}: ${err instanceof Error ? err.name : "failed"}`);
     }
   }
-  for (const q of quarantined)
-    deps.log?.({ event: "ack.quarantined", eventId: q.eventId, code: q.reason });
-  if (failures.length > 0)
+  if (failures.length > 0) {
     throw new Error(`commercial acknowledgment pull failed: ${failures.join("; ")}`);
+  }
   return { ...total, failures, backlog, quarantined };
 }
 

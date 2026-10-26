@@ -910,6 +910,7 @@ import {
   PayerPlanListResponseSchema as M41PayerPlanListResponseSchema,
   PlanListQuerySchema as M41PlanListQuerySchema,
   ReadyResponseSchema as M41ReadyResponseSchema,
+  ReconcileBodySchema as M41ReconcileBodySchema,
   RecordAuthorizationBodySchema as M41RecordAuthorizationBodySchema,
   SendGateViewSchema as M41SendGateViewSchema,
   SetAuthorizationStatusBodySchema as M41SetAuthorizationStatusBodySchema,
@@ -14770,6 +14771,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "A commercial claim's history in order: state changes (from, to, actor kind), submissions (status, control number, attempts, failure code, sent time) and acknowledgments (stage clearinghouse or payer, disposition, reason codes, payer claim number). Ids, dates and codes only; bounded (200 state changes, 50 submissions and 100 acknowledgments, newest kept; `truncated` says when older rows were cut). Read-audited (commercial_billing.read; caseload scope)",
     response: M41TimelineViewSchema,
+  },
+  "POST /api/v1/billing/commercial/claims/:id/submissions/:submissionId/reconcile": {
+    summary:
+      "Settle a submission that is IN DOUBT (an ambiguous send is never resent automatically). Body `{outcome}`: `received` (the claim is filed; the submission becomes sent and the claim moves ready to submitted) or `not_received` (the submission fails with COMMERCIAL_RECONCILED_NOT_RECEIVED and the claim may be submitted again; the re-send replays an earlier receipt if the file had in fact arrived). commercial_billing.submit + a FRESH step-up, never an AI actor, Idempotency-Key required, no free text. 409 unless the submission is in doubt. Writes the row audit and an m41.claim.submit_reconciled event",
+    body: M41ReconcileBodySchema,
+    response: M41SubmissionViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
   },
   "POST /api/v1/billing/commercial/claims/:id/submit": {
     summary:

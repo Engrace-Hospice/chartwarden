@@ -261,26 +261,73 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       },
     });
 
-  const workerDeps = (vendor: string | null): SubmissionWorkerDeps => {
+  const workerDeps = (
+    vendor: string | null,
+    over: {
+      transport?: SubmissionWorkerDeps["binding"]["transport"];
+      failPublish?: (eventName: string) => boolean;
+    } = {},
+  ): SubmissionWorkerDeps => {
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M41_OUTBOX_EVENTS]));
     return {
       db: handle.db,
-      binding: { vendor, transport },
+      binding: { vendor, transport: over.transport ?? transport },
       contexts: buildCommercialContextPort({
         env: {},
         providerNpi: async () => NPI,
       }),
       renderer: renderer(),
       outbox: {
-        publish: (tx, e) =>
-          publisher.publish(tx as Parameters<typeof publisher.publish>[0], {
+        publish: (tx, e) => {
+          if (over.failPublish?.(e.eventName)) throw new Error(`injected fault on ${e.eventName}`);
+          return publisher.publish(tx as Parameters<typeof publisher.publish>[0], {
             ...e,
             callerModule: "m41",
-          }),
+          });
+        },
       },
       activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG }] },
     };
   };
+
+  /** A transport that FILES the claim at the in-memory clearinghouse and then loses the connection: the send is ambiguous. */
+  const crashAfterAccept = (calls: { n: number } = { n: 0 }) => ({
+    calls,
+    submitClaim: async (...args: Parameters<InMemoryClearinghouse["submitClaim"]>) => {
+      calls.n += 1;
+      await transport.submitClaim(...args);
+      throw new Error("connection reset after the file was accepted");
+    },
+  });
+  /** A transport that records every call and the receipt flags it got back from the real in-memory clearinghouse. */
+  const recordingTransport = () => {
+    const results: { replayed: boolean | null; ok: boolean }[] = [];
+    return {
+      results,
+      submitClaim: async (...args: Parameters<InMemoryClearinghouse["submitClaim"]>) => {
+        const r = await transport.submitClaim(...args);
+        results.push({ ok: r.ok, replayed: r.ok ? r.data.replayed : null });
+        return r;
+      },
+    };
+  };
+  const submissionStatus = (id: string) =>
+    scalar<string>("SELECT status AS n FROM commercial_submission WHERE id=$1", [id]);
+  const submissionRow = async (id: string) =>
+    (await admin.query("SELECT * FROM commercial_submission WHERE id=$1", [id])).rows[0];
+  const quarantined = async (eventId: string, org: string) =>
+    (
+      await admin.query(
+        "SELECT control_number, reason FROM commercial_ack_quarantine WHERE event_id=$1 AND organization_id=$2",
+        [eventId, org],
+      )
+    ).rows;
+  /** Submit, then let the send end ambiguous (the file reached the clearinghouse, the answer was lost). */
+  async function stageInDoubt(c: { claimId: string }, submissionId: string): Promise<void> {
+    await runSubmissionDrain(workerDeps("stedi", { transport: crashAfterAccept() }));
+    expect(await submissionStatus(submissionId)).toBe("in_doubt");
+    expect(await claimState(c.claimId)).toBe("ready");
+  }
 
   const eventCount = (claimId: string, name: string) =>
     scalar<number>(
@@ -471,7 +518,7 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       // the database backstop refuses a sent claim going back to ready
       await expect(
         admin.query("UPDATE commercial_claim SET state='ready' WHERE id=$1", [c.claimId]),
-      ).rejects.toThrow(/M41_CLAIM_ALREADY_SENT/);
+      ).rejects.toThrow(/M41_CLAIM_ILLEGAL_TRANSITION/);
 
       // timeline: ordered, ids/dates/codes only
       const tl = await svc.timeline(actor, c.claimId);
@@ -588,6 +635,271 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
     });
   });
 
+  describe("ambiguous sends, in_doubt and the way out", () => {
+    const queued = async () => {
+      const c = await readyClaim();
+      const sub = await service("stedi").submit(actor, c.claimId, `key-${randomUUID()}`);
+      return { c, sub };
+    };
+    const dueNow = (id: string, set = "") =>
+      admin.query(
+        `UPDATE commercial_submission SET next_attempt_at = now() - interval '1 second'${set} WHERE id=$1`,
+        [id],
+      );
+
+    it("a transport that throws after the file left ends in_doubt, is never resent automatically, and holds the slot", async () => {
+      const { c, sub } = await queued();
+      const calls = { n: 0 };
+      await runSubmissionDrain(workerDeps("stedi", { transport: crashAfterAccept(calls) }));
+      expect(calls.n).toBe(1);
+      const row = await submissionRow(sub.submissionId);
+      expect(row).toMatchObject({
+        status: "in_doubt",
+        ambiguous: true,
+        last_failure_code: "COMMERCIAL_TRANSPORT_FAULT",
+        transport_call_started_at: null,
+      });
+      expect(await claimState(c.claimId)).toBe("ready"); // never submitted on a guess
+      expect(await eventCount(c.claimId, "m41.claim.submit_failed")).toBe(1);
+
+      // ticks later: not one more transport call, nothing changes
+      const later = recordingTransport();
+      await dueNow(sub.submissionId);
+      await runSubmissionDrain(workerDeps("stedi", { transport: later }));
+      await runSubmissionDrain(workerDeps("stedi", { transport: later }));
+      expect(later.results).toEqual([]);
+      expect(await submissionStatus(sub.submissionId)).toBe("in_doubt");
+
+      // the live slot is held: a second submit is refused, and the claim cannot be voided from under it
+      const again = await failure(service("stedi").submit(actor, c.claimId, `key-${randomUUID()}`));
+      expect(again?.details?.map((d) => d.code)).toContain("COMMERCIAL_SUBMISSION_IN_FLIGHT");
+      const lifecycle = buildCommercialClaimLifecycleService(handle.db, seams(randomUUID()));
+      expect((await failure(lifecycle.voidClaim(actor, c.claimId)))?.statusCode).toBe(409);
+    });
+
+    it("a fault while recording what the transport ACCEPTED ends in_doubt with the receipt, never failed", async () => {
+      const { c, sub } = await queued();
+      await runSubmissionDrain(
+        workerDeps("stedi", { failPublish: (name) => name === "m41.claim.submitted" }),
+      );
+      const row = await submissionRow(sub.submissionId);
+      expect(row.status).toBe("in_doubt");
+      expect(row.last_failure_code).toBe("COMMERCIAL_RECORD_FAULT");
+      expect(row.clearinghouse_submission_id).toBeTruthy(); // the receipt is kept for the person who reconciles
+      expect(row.sent_at).toBeNull();
+      expect(await claimState(c.claimId)).toBe("ready");
+    });
+
+    it("a crash after the transport accepted: the next lease replays the receipt and the claim is filed once", async () => {
+      const { c, sub } = await queued();
+      // the file is accepted, then neither the result nor the in-doubt record can be written (the process 'dies')
+      await expect(
+        runSubmissionDrain(
+          workerDeps("stedi", {
+            failPublish: (name) =>
+              name === "m41.claim.submitted" || name === "m41.claim.submit_failed",
+          }),
+        ),
+      ).rejects.toThrow(/drain failed/);
+      let row = await submissionRow(sub.submissionId);
+      expect(row.status).toBe("queued");
+      expect(row.transport_call_started_at).not.toBeNull(); // the interrupted attempt is on record
+      expect(await claimState(c.claimId)).toBe("ready");
+
+      await dueNow(sub.submissionId); // the lease expires
+      const recorder = recordingTransport();
+      await runSubmissionDrain(workerDeps("stedi", { transport: recorder }));
+      // the transport was asked once more under the SAME key and payload: it replayed the original receipt, it did not file again
+      expect(recorder.results).toEqual([{ ok: true, replayed: true }]);
+      row = await submissionRow(sub.submissionId);
+      expect(row).toMatchObject({
+        status: "sent",
+        attempt_count: 2,
+        ambiguous: true,
+        resolution: "receipt",
+      });
+      expect(await claimState(c.claimId)).toBe("submitted");
+      expect(await eventCount(c.claimId, "m41.claim.submitted")).toBe(1);
+    });
+
+    it("exhausted attempts end failed only when no attempt was ambiguous, otherwise in_doubt", async () => {
+      const clean = await queued();
+      await dueNow(clean.sub.submissionId, ", attempt_count = 5");
+      const calls = recordingTransport();
+      await runSubmissionDrain(workerDeps("stedi", { transport: calls }));
+      expect(await submissionRow(clean.sub.submissionId)).toMatchObject({
+        status: "failed",
+        last_failure_code: "COMMERCIAL_SUBMISSION_EXHAUSTED",
+      });
+
+      const flagged = await queued();
+      await dueNow(flagged.sub.submissionId, ", attempt_count = 5, ambiguous = true");
+      const interrupted = await queued();
+      await dueNow(
+        interrupted.sub.submissionId,
+        ", attempt_count = 5, transport_call_started_at = now()",
+      );
+      await runSubmissionDrain(workerDeps("stedi", { transport: calls }));
+      for (const s of [flagged.sub, interrupted.sub]) {
+        expect(await submissionRow(s.submissionId)).toMatchObject({
+          status: "in_doubt",
+          ambiguous: true,
+          last_failure_code: "COMMERCIAL_SEND_INTERRUPTED",
+        });
+      }
+      expect(calls.results).toEqual([]); // exhaustion never calls the transport
+    });
+
+    it("a definite refusal after an ambiguous attempt still ends in_doubt, and a gate refusal at send time too", async () => {
+      const a = await queued();
+      await dueNow(a.sub.submissionId, ", ambiguous = true");
+      await runSubmissionDrain(
+        workerDeps("stedi", {
+          transport: {
+            submitClaim: async () => ({
+              ok: false as const,
+              degraded: { code: "CH_INVALID_REQUEST", reason: "refused" },
+            }),
+          },
+        }),
+      );
+      expect(await submissionStatus(a.sub.submissionId)).toBe("in_doubt");
+
+      const b = await queued();
+      await dueNow(b.sub.submissionId, ", ambiguous = true");
+      await admin.query(
+        "UPDATE commercial_payer_enrollment SET status='suspended' WHERE payer_id=$1",
+        [b.c.payerId],
+      );
+      await runSubmissionDrain(workerDeps("stedi"));
+      expect(await submissionRow(b.sub.submissionId)).toMatchObject({
+        status: "in_doubt",
+        last_failure_code: "COMMERCIAL_PROVIDER_NOT_ENROLLED",
+      });
+    });
+
+    it("leases one row at a time and skips a row another worker holds: two concurrent ticks send once", async () => {
+      const { c, sub } = await queued();
+      let calls = 0;
+      const slow = {
+        submitClaim: async (...args: Parameters<InMemoryClearinghouse["submitClaim"]>) => {
+          calls += 1;
+          await new Promise((r) => setTimeout(r, 400));
+          return transport.submitClaim(...args);
+        },
+      };
+      await Promise.all([
+        runSubmissionDrain(workerDeps("stedi", { transport: slow })),
+        runSubmissionDrain(workerDeps("stedi", { transport: slow })),
+      ]);
+      expect(calls).toBe(1);
+      expect(await submissionRow(sub.submissionId)).toMatchObject({
+        status: "sent",
+        attempt_count: 1,
+      });
+      expect(await eventCount(c.claimId, "m41.claim.submitted")).toBe(1);
+    });
+
+    it("a row that is still leased is not taken again; once the lease expires an interrupted attempt is picked up as ambiguous", async () => {
+      const { c, sub } = await queued();
+      // another worker holds it: leased for five minutes, mid-send
+      await admin.query(
+        "UPDATE commercial_submission SET attempt_count = 1, next_attempt_at = now() + interval '5 minutes', transport_call_started_at = now() WHERE id=$1",
+        [sub.submissionId],
+      );
+      const idle = recordingTransport();
+      await runSubmissionDrain(workerDeps("stedi", { transport: idle }));
+      expect(idle.results).toEqual([]);
+      expect(await submissionStatus(sub.submissionId)).toBe("queued");
+
+      await dueNow(sub.submissionId); // the lease expired; that attempt never finished
+      const taker = recordingTransport();
+      await runSubmissionDrain(workerDeps("stedi", { transport: taker }));
+      expect(taker.results).toHaveLength(1);
+      expect(await submissionRow(sub.submissionId)).toMatchObject({
+        status: "sent",
+        attempt_count: 2,
+        ambiguous: true,
+      });
+      expect(await claimState(c.claimId)).toBe("submitted");
+    });
+
+    it("reconcile not_received frees the slot; the re-send replays the earlier receipt (one filing) with the same interchange number", async () => {
+      const { c, sub } = await queued();
+      await stageInDoubt(c, sub.submissionId);
+      const first = await submissionRow(sub.submissionId);
+      const svc = service("stedi");
+      const done = await svc.reconcile(actor, c.claimId, sub.submissionId, "not_received");
+      expect(done.status).toBe("failed");
+      expect(await submissionRow(sub.submissionId)).toMatchObject({
+        status: "failed",
+        resolution: "operator_not_received",
+        last_failure_code: "COMMERCIAL_RECONCILED_NOT_RECEIVED",
+      });
+      expect(await eventCount(c.claimId, "m41.claim.submit_reconciled")).toBe(1);
+      expect(await claimState(c.claimId)).toBe("ready");
+
+      const second = await svc.submit(actor, c.claimId, `key-${randomUUID()}`);
+      const next = await submissionRow(second.submissionId);
+      expect(next.interchange_control_number).toBe(first.interchange_control_number);
+      expect(next.payload_stamp.getTime()).toBe(first.payload_stamp.getTime());
+      const recorder = recordingTransport();
+      await runSubmissionDrain(workerDeps("stedi", { transport: recorder }));
+      expect(recorder.results).toEqual([{ ok: true, replayed: true }]); // it HAD arrived: replayed, not filed twice
+      expect(await claimState(c.claimId)).toBe("submitted");
+    });
+
+    it("reconcile received settles it as sent and moves the claim ready -> submitted", async () => {
+      const { c, sub } = await queued();
+      await stageInDoubt(c, sub.submissionId);
+      const done = await service("stedi").reconcile(actor, c.claimId, sub.submissionId, "received");
+      expect(done.status).toBe("sent");
+      expect(await submissionRow(sub.submissionId)).toMatchObject({
+        status: "sent",
+        resolution: "operator_confirmed",
+      });
+      expect(await claimState(c.claimId)).toBe("submitted");
+      const hist = await admin.query(
+        "SELECT actor_kind FROM commercial_claim_state_history WHERE claim_id=$1 AND to_state='submitted'",
+        [c.claimId],
+      );
+      expect(hist.rows).toEqual([{ actor_kind: "user" }]);
+    });
+
+    it("reconcile needs a fresh step-up and a human, and only settles a submission that is in doubt", async () => {
+      const { c, sub } = await queued();
+      const svc = service("stedi");
+      const stale = await failure(
+        svc.reconcile({ ...actor, stepUpRecent: false }, c.claimId, sub.submissionId, "received"),
+      );
+      expect(stale?.code).toBe("STEP_UP_REQUIRED");
+      const ai = await failure(
+        svc.reconcile({ ...actor, actorKind: "ai_agent" }, c.claimId, sub.submissionId, "received"),
+      );
+      expect(ai?.statusCode).toBe(403);
+      // a queued submission is not in doubt
+      const wrongState = await failure(
+        svc.reconcile(actor, c.claimId, sub.submissionId, "received"),
+      );
+      expect(wrongState?.statusCode).toBe(409);
+      const unknown = await failure(svc.reconcile(actor, c.claimId, randomUUID(), "received"));
+      expect(unknown?.statusCode).toBe(404);
+      expect(await submissionStatus(sub.submissionId)).toBe("queued");
+      expect(await eventCount(c.claimId, "m41.claim.submit_reconciled")).toBe(0);
+      await admin.query(
+        "UPDATE commercial_submission SET status='failed', last_failure_code='TEST' WHERE id=$1",
+        [sub.submissionId],
+      );
+    });
+
+    it("direct_mac (a Medicare contractor's portal) can never carry a commercial claim", async () => {
+      const c = await readyClaim();
+      const err = await failure(service("direct_mac").submit(actor, c.claimId, "key-direct-mac"));
+      expect(err?.details?.map((d) => d.code)).toEqual(["COMMERCIAL_TRANSPORT_UNSUPPORTED"]);
+      expect(await submissionCount(c.claimId)).toBe(0);
+    });
+  });
+
   describe("acknowledgments (999 clearinghouse stage, 277CA payer stage)", () => {
     const scope = () => ({ organizationId: ORG, providerEntityId, usage: "test" as const });
 
@@ -701,8 +1013,8 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         reasonCodes: [],
         occurredAt: new Date().toISOString(),
       };
-      expect(await applyAckEvent(ackDeps("stedi"), scope(), event)).toBe("applied");
-      expect(await applyAckEvent(ackDeps("stedi"), scope(), event)).toBe("duplicate");
+      expect((await applyAckEvent(ackDeps("stedi"), scope(), event)).result).toBe("applied");
+      expect((await applyAckEvent(ackDeps("stedi"), scope(), event)).result).toBe("duplicate");
       expect(await eventCount(c.claimId, "m41.claim.accepted")).toBe(1);
       expect(await claimState(c.claimId)).toBe("accepted");
     });
@@ -750,7 +1062,7 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         reasonCodes: [],
         occurredAt: new Date().toISOString(),
       });
-      expect(late).toBe("applied");
+      expect(late.result).toBe("applied");
       expect(await claimState(c.claimId)).toBe("accepted");
       expect(await eventCount(c.claimId, "m41.claim.clearinghouse_accepted")).toBe(0);
     });
@@ -796,33 +1108,188 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         reasonCodes: [],
         occurredAt: new Date().toISOString(),
       };
-      expect(
-        await applyAckEvent(
-          ackDeps("stedi"),
-          { organizationId: ORG, providerEntityId: otherPe },
-          event,
-        ),
-      ).toBe("quarantined");
-      expect(
-        await applyAckEvent(ackDeps("stedi"), { organizationId: ORG_B, providerEntityId }, event),
-      ).toBe("unmatched");
+      const foreign = await applyAckEvent(
+        ackDeps("stedi"),
+        { organizationId: ORG, providerEntityId: otherPe },
+        event,
+      );
+      expect(foreign).toMatchObject({ result: "quarantined", reason: "scope_mismatch" });
+      const otherTenant = await applyAckEvent(
+        ackDeps("stedi"),
+        { organizationId: ORG_B, providerEntityId },
+        event,
+      );
+      expect(otherTenant).toMatchObject({ result: "unmatched", reason: "unmatched" });
       expect(await claimState(c.claimId)).toBe("submitted");
       expect(await ackRows(c.claimId)).toEqual([]);
+      // both are STORED (ids and a reason), each under its own tenant, not lost to a log line
+      expect(await quarantined("foreign-1", ORG)).toEqual([
+        { control_number: c.controlNumber, reason: "scope_mismatch" },
+      ]);
+      expect(await quarantined("foreign-1", ORG_B)).toEqual([
+        { control_number: c.controlNumber, reason: "unmatched" },
+      ]);
     });
 
-    it("an unroutable event is rejected before it touches anything", async () => {
+    it("a malformed event is stored and skipped, never thrown, and the events behind it still apply", async () => {
       const c = await sentClaim();
-      await expect(
-        applyAckEvent(ackDeps("stedi"), scope(), {
-          eventId: "bad-1",
+      // every malformed shape of the contract: stored once each, none applied, none thrown
+      const bads: unknown[] = [
+        null,
+        "text",
+        { eventId: "bad-no-control", stage: "payer", disposition: "accepted", reasonCodes: [] },
+        {
+          eventId: "bad-stage",
+          controlNumber: c.controlNumber,
+          stage: "vendor",
+          disposition: "accepted",
+          reasonCodes: [],
+        },
+        {
+          eventId: "bad-partial",
           controlNumber: c.controlNumber,
           stage: "clearinghouse",
           disposition: "partial",
           reasonCodes: [],
-          occurredAt: new Date().toISOString(),
-        } as never),
-      ).rejects.toThrow(/ack event/);
+        },
+        {
+          eventId: "bad-codes",
+          controlNumber: c.controlNumber,
+          stage: "payer",
+          disposition: "rejected",
+          reasonCodes: ["free text here"],
+        },
+        {
+          eventId: "bad-time",
+          controlNumber: c.controlNumber,
+          stage: "payer",
+          disposition: "accepted",
+          reasonCodes: [],
+          occurredAt: "soon",
+        },
+        {
+          eventId: "bad\u0000nul",
+          controlNumber: c.controlNumber,
+          stage: "payer",
+          disposition: "accepted",
+          reasonCodes: [],
+        },
+      ];
+      for (const bad of bads) {
+        const out = await applyAckEvent(ackDeps("stedi"), scope(), bad);
+        expect(out).toMatchObject({ result: "quarantined", reason: "malformed" });
+      }
       expect(await ackRows(c.claimId)).toEqual([]);
+      expect(await claimState(c.claimId)).toBe("submitted");
+      const stored = await admin.query(
+        "SELECT count(*)::int AS n FROM commercial_ack_quarantine WHERE reason='malformed' AND organization_id=$1",
+        [ORG],
+      );
+      expect(stored.rows[0].n).toBeGreaterThanOrEqual(bads.length);
+
+      // and through the stream: a poison event in the middle of a page does not stall it
+      await transport.control.payerRejects(c.controlNumber, ["bad code with spaces"], scope());
+      await transport.control.payerAccepts(c.controlNumber, "ICN-AFTER-POISON", scope());
+      const res = await runAckPull(ackDeps("stedi"));
+      expect(res.quarantined.some((q) => q.reason === "malformed")).toBe(true);
+      expect(await claimState(c.claimId)).toBe("accepted");
+    });
+
+    it("a payer-stage answer for a submission with no recorded receipt is quarantined (no_receipt); a clearinghouse answer settles it", async () => {
+      const c = await readyClaim();
+      const sub = await service("stedi").submit(actor, c.claimId, `key-${randomUUID()}`);
+      // the receipt was never recorded: the submission is in doubt (the transport DID get the file)
+      await stageInDoubt(c, sub.submissionId);
+      const payer = await applyAckEvent(ackDeps("stedi"), scope(), {
+        eventId: "payer-before-receipt",
+        controlNumber: c.controlNumber,
+        stage: "payer",
+        disposition: "accepted",
+        reasonCodes: [],
+        occurredAt: new Date().toISOString(),
+      });
+      expect(payer).toMatchObject({ result: "quarantined", reason: "no_receipt" });
+      expect(await claimState(c.claimId)).toBe("ready");
+      expect(await ackRows(c.claimId)).toEqual([]);
+      expect(await submissionStatus(sub.submissionId)).toBe("in_doubt");
+    });
+
+    it("an acknowledgment resolves an in_doubt submission: sent by acknowledgment, claim ready -> submitted -> ack_pending", async () => {
+      const c = await readyClaim();
+      const sub = await service("stedi").submit(actor, c.claimId, `key-${randomUUID()}`);
+      await stageInDoubt(c, sub.submissionId);
+      await transport.control.clearinghouseAccepts(c.controlNumber, scope());
+      const res = await runAckPull(ackDeps("stedi"));
+      expect(res.applied).toBeGreaterThanOrEqual(1);
+      expect(await submissionStatus(sub.submissionId)).toBe("sent");
+      const row = (
+        await admin.query("SELECT resolution, sent_at FROM commercial_submission WHERE id=$1", [
+          sub.submissionId,
+        ])
+      ).rows[0];
+      expect(row.resolution).toBe("acknowledgment");
+      expect(row.sent_at).not.toBeNull();
+      expect(await claimState(c.claimId)).toBe("ack_pending");
+      expect(await eventCount(c.claimId, "m41.claim.submitted")).toBe(1);
+      expect(await eventCount(c.claimId, "m41.claim.clearinghouse_accepted")).toBe(1);
+      const hist = await admin.query(
+        "SELECT from_state, to_state FROM commercial_claim_state_history WHERE claim_id=$1 AND from_state IS NOT NULL ORDER BY created_at, to_state",
+        [c.claimId],
+      );
+      expect(hist.rows.map((r) => `${r.from_state}>${r.to_state}`)).toEqual(
+        expect.arrayContaining(["ready>submitted", "submitted>ack_pending"]),
+      );
+    });
+
+    it("a clearinghouse event from a different vendor than the submission's is quarantined (vendor_mismatch)", async () => {
+      const c = await sentClaim();
+      const out = await applyAckEvent(ackDeps("another_vendor"), scope(), {
+        eventId: "wrong-vendor",
+        controlNumber: c.controlNumber,
+        stage: "payer",
+        disposition: "accepted",
+        reasonCodes: [],
+        occurredAt: new Date().toISOString(),
+      });
+      expect(out).toMatchObject({ result: "quarantined", reason: "vendor_mismatch" });
+      expect(await claimState(c.claimId)).toBe("submitted");
+    });
+
+    it("the database refuses every illegal claim state jump, and allows only the legal paths", async () => {
+      const move = (id: string, to: string) =>
+        admin.query(
+          `UPDATE commercial_claim SET state='${to}', ready_at = CASE WHEN '${to}' IN ('draft','void') THEN NULL ELSE coalesce(ready_at, now()) END WHERE id=$1`,
+          [id],
+        );
+      // ready -> accepted, ready -> ack_pending, ready -> rejected skip the send
+      const r = await readyClaim();
+      for (const to of ["accepted", "ack_pending", "rejected"]) {
+        await expect(move(r.claimId, to)).rejects.toThrow(/M41_CLAIM_ILLEGAL_TRANSITION/);
+      }
+      // draft -> submitted
+      await move(r.claimId, "draft");
+      await expect(move(r.claimId, "submitted")).rejects.toThrow(/M41_CLAIM_ILLEGAL_TRANSITION/);
+      await expect(move(r.claimId, "accepted")).rejects.toThrow(/M41_CLAIM_ILLEGAL_TRANSITION/);
+      await move(r.claimId, "ready"); // draft <-> ready stays legal
+
+      // accepted is final for the state machine: never back to submitted, ack_pending or rejected
+      const a = await sentClaim();
+      await move(a.claimId, "ack_pending");
+      await move(a.claimId, "accepted");
+      for (const to of ["submitted", "ack_pending", "rejected", "ready", "draft", "void"]) {
+        await expect(move(a.claimId, to)).rejects.toThrow(/M41_CLAIM_ILLEGAL_TRANSITION/);
+      }
+      // rejected -> accepted is refused; rejected -> void (so a corrected claim can be assembled) is the only way on
+      const j = await sentClaim();
+      await move(j.claimId, "rejected");
+      for (const to of ["accepted", "ack_pending", "submitted", "ready", "draft"]) {
+        await expect(move(j.claimId, to)).rejects.toThrow(/M41_CLAIM_ILLEGAL_TRANSITION/);
+      }
+      await move(j.claimId, "void");
+      // a sent claim cannot be voided or sent back, only rejected-then-void
+      const s = await sentClaim();
+      await expect(move(s.claimId, "void")).rejects.toThrow(/M41_CLAIM_ILLEGAL_TRANSITION/);
+      await expect(move(s.claimId, "ready")).rejects.toThrow(/M41_CLAIM_ILLEGAL_TRANSITION/);
     });
 
     it("an unbound tick fails while a sent claim waits for its answer and calls no transport", async () => {

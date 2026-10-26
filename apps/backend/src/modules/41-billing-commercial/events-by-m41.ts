@@ -94,6 +94,19 @@ export const M41_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m41.claim.submit_reconciled",
+    moduleOwner: "m41",
+    description:
+      "A person settled a submission that was in doubt: `received` (the claim is filed; it moved ready to submitted) or `not_received` (the submission failed and the claim may be sent again). No free text is taken.",
+    payloadSchema: Type.Object({
+      claimId: id,
+      submissionId: id,
+      outcome: Type.Union([Type.Literal("received"), Type.Literal("not_received")]),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m41.claim.clearinghouse_accepted",
     moduleOwner: "m41",
     description:

@@ -34,6 +34,29 @@ export const commercialAcknowledgments = pgTable(
   }),
 );
 
+// An acknowledgment event that was NOT applied (ids and a reason code only; migration 1275). Unique per vendor event id.
+export const commercialAckQuarantine = pgTable(
+  "commercial_ack_quarantine",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "restrict" }),
+    providerEntityId: uuid("provider_entity_id")
+      .notNull()
+      .references(() => providerEntities.id, { onDelete: "restrict" }),
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }),
+    clearinghouseKey: text("clearinghouse_key").notNull(),
+    eventId: text("event_id").notNull(),
+    controlNumber: text("control_number"),
+    reason: text("reason").notNull(), // malformed | unmatched | scope_mismatch | vendor_mismatch | no_receipt
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byOrg: index("commercial_ack_quarantine_org_ix").on(t.organizationId),
+  }),
+);
+
 export const commercialAckCursors = pgTable(
   "commercial_ack_cursor",
   {

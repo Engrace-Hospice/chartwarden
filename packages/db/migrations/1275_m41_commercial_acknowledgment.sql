@@ -41,6 +41,48 @@ CREATE INDEX IF NOT EXISTS "commercial_acknowledgment_org_ix" ON "commercial_ack
 CREATE INDEX IF NOT EXISTS "commercial_acknowledgment_pe_ix" ON "commercial_acknowledgment" ("provider_entity_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_acknowledgment_location_ix" ON "commercial_acknowledgment" ("location_id") WHERE "location_id" IS NOT NULL;--> statement-breakpoint
 
+-- An acknowledgment event that was NOT applied, kept so it is reviewable and replayable instead of lost to a log line: it did not
+-- validate, is no commercial submission of this provider entity (the stream is shared with Medicare), belongs to another provider
+-- entity, came through another clearinghouse than the submission, or answered a submission that has no receipt yet. Ids and a
+-- reason code only: never the event body. The pull cursor moves only after the event is stored here.
+CREATE TABLE IF NOT EXISTS "commercial_ack_quarantine" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "organization_id" uuid NOT NULL REFERENCES "organization"("id") ON DELETE RESTRICT,
+  "provider_entity_id" uuid NOT NULL REFERENCES "provider_entity"("id") ON DELETE RESTRICT,
+  "location_id" uuid REFERENCES "location"("id") ON DELETE RESTRICT,
+  "clearinghouse_key" text NOT NULL CHECK ("clearinghouse_key" ~ '^[a-z0-9][a-z0-9_-]{0,39}$'),
+  "event_id" text NOT NULL CHECK (char_length("event_id") BETWEEN 1 AND 256),
+  "control_number" text CHECK ("control_number" IS NULL OR char_length("control_number") BETWEEN 1 AND 128),
+  "reason" text NOT NULL CHECK ("reason" IN ('malformed','unmatched','scope_mismatch','vendor_mismatch','no_receipt')),
+  "created_at" timestamptz NOT NULL DEFAULT now()
+);--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "commercial_ack_quarantine_event_uq" ON "commercial_ack_quarantine" ("organization_id", "clearinghouse_key", "event_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "commercial_ack_quarantine_org_ix" ON "commercial_ack_quarantine" ("organization_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "commercial_ack_quarantine_pe_ix" ON "commercial_ack_quarantine" ("provider_entity_id");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "commercial_ack_quarantine_location_ix" ON "commercial_ack_quarantine" ("location_id") WHERE "location_id" IS NOT NULL;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "commercial_ack_quarantine_control_ix" ON "commercial_ack_quarantine" ("organization_id", "control_number");--> statement-breakpoint
+ALTER TABLE "commercial_ack_quarantine" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "commercial_ack_quarantine" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
+DROP POLICY IF EXISTS "commercial_ack_quarantine_org" ON "commercial_ack_quarantine";--> statement-breakpoint
+CREATE POLICY "commercial_ack_quarantine_org" ON "commercial_ack_quarantine" FOR ALL TO chartwarden_app
+  USING (organization_id = current_setting('app.org_id', true)::uuid)
+  WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);--> statement-breakpoint
+GRANT SELECT, INSERT ON "commercial_ack_quarantine" TO chartwarden_app;--> statement-breakpoint
+GRANT ALL ON "commercial_ack_quarantine" TO chartwarden_admin;--> statement-breakpoint
+CREATE OR REPLACE FUNCTION audit_phi_write_commercial_ack_quarantine() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY[]::text[];
+BEGIN
+  v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), v_cols) ELSE NULL END;
+  v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), v_cols) ELSE NULL END;
+  INSERT INTO audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id, correlation_id, outcome, severity, before, after, context, retention_class)
+  VALUES (COALESCE(NEW.organization_id, OLD.organization_id), NULLIF(current_setting('app.user_id', true), '')::uuid, 'system', 'commercial_ack_quarantine.' || lower(TG_OP), 'commercial_ack_quarantine', COALESCE(NEW.id, OLD.id), COALESCE(NULLIF(current_setting('app.correlation_id', true), ''), 'system'), 'success', 'info', v_before, v_after, jsonb_build_object('provider_entity_id', NULLIF(current_setting('app.provider_entity_id', true), '')), 'operational');
+  RETURN COALESCE(NEW, OLD);
+END $$;--> statement-breakpoint
+ALTER FUNCTION audit_phi_write_commercial_ack_quarantine() OWNER TO chartwarden_audit_writer;--> statement-breakpoint
+DROP TRIGGER IF EXISTS "trg_audit_commercial_ack_quarantine" ON commercial_ack_quarantine;--> statement-breakpoint
+CREATE TRIGGER "trg_audit_commercial_ack_quarantine" AFTER INSERT OR UPDATE OR DELETE ON commercial_ack_quarantine FOR EACH ROW EXECUTE FUNCTION audit_phi_write_commercial_ack_quarantine();--> statement-breakpoint
+
 CREATE TABLE IF NOT EXISTS "commercial_ack_cursor" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "organization_id" uuid NOT NULL REFERENCES "organization"("id") ON DELETE RESTRICT,

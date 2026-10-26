@@ -12,7 +12,10 @@ import {
   COMMERCIAL_ERROR_CODES,
   ChartWardenError,
   type CommercialEnrollmentStatus,
+  type CommercialReconcileOutcome,
+  ConflictError,
   NotFoundError,
+  StepUpRequiredError,
 } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
@@ -87,6 +90,7 @@ export type TimelineItem =
       readonly clearinghouseKey: string;
       readonly attemptCount: number;
       readonly failureCode: string | null;
+      readonly resolution: string | null;
       readonly sentAt: string | null;
     };
 
@@ -102,6 +106,12 @@ export interface TimelineView {
 export interface CommercialSubmissionService {
   sendGate(actor: ReadActor, claimId: string): Promise<SendGateView>;
   submit(actor: CommercialActor, claimId: string, idempotencyKey: string): Promise<SubmissionView>;
+  reconcile(
+    actor: CommercialActor,
+    claimId: string,
+    submissionId: string,
+    outcome: CommercialReconcileOutcome,
+  ): Promise<SubmissionView>;
   timeline(actor: ReadActor, claimId: string): Promise<TimelineView>;
 }
 
@@ -282,9 +292,22 @@ export function buildCommercialSubmissionService(
             })),
           );
         }
+        // Every submission of one claim renders the SAME 837I (interchange number and stamp are copied from the first), and the
+        // worker sends them all under ONE transport key, so a second row after a definite failure, or after an operator settled an
+        // in-doubt one as "not received", replays an earlier receipt instead of filing the claim twice.
+        const [first] = await tx
+          .select({
+            icn: schema.commercialSubmissions.interchangeControlNumber,
+            stamp: schema.commercialSubmissions.payloadStamp,
+          })
+          .from(schema.commercialSubmissions)
+          .where(eq(schema.commercialSubmissions.claimId, claim.id))
+          .orderBy(sql`${schema.commercialSubmissions.requestedAt} ASC`)
+          .limit(1);
         const [row] = await tx
           .insert(schema.commercialSubmissions)
           .values({
+            ...(first ? { interchangeControlNumber: first.icn, payloadStamp: first.stamp } : {}),
             organizationId: actor.organizationId,
             providerEntityId: claim.providerEntityId,
             locationId: claim.locationId,
@@ -312,6 +335,80 @@ export function buildCommercialSubmissionService(
           },
         });
         return viewOf(row, false);
+      });
+    },
+
+    /**
+     * The way out of `in_doubt` for a person (ADR-0053 D5: an ambiguous send is reconciled before any resend). `not_received`:
+     * the payer/clearinghouse has no such claim, so the submission ends `failed` and the claim (still `ready`) may be submitted
+     * again; the re-send uses the same transport key and payload, so if the file HAD arrived the transport replays its receipt.
+     * `received`: the claim is confirmed filed, so the submission is `sent` and the claim moves `ready -> submitted`. Audited by the
+     * row-level write audit and an `m41.claim.submit_reconciled` event (no free text is taken or stored).
+     */
+    async reconcile(actor, claimId, submissionId, outcome) {
+      if (actor.actorKind.startsWith("ai_")) {
+        throw new ChartWardenError(
+          "AI_ACTOR_FORBIDDEN",
+          "AI actors may not reconcile a submission",
+          403,
+        );
+      }
+      if (!actor.stepUpRecent) throw new StepUpRequiredError();
+      return inOrg(actor, async (tx) => {
+        const claim = await loadClaim(tx, actor, claimId, true);
+        const S = schema.commercialSubmissions;
+        const [sub] = await tx
+          .select()
+          .from(S)
+          .where(and(eq(S.id, submissionId), eq(S.claimId, claim.id)))
+          .for("update");
+        if (!sub) throw new NotFoundError("submission");
+        if (sub.status !== "in_doubt") {
+          throw new ConflictError("only a submission in doubt can be reconciled");
+        }
+        const at = now();
+        if (outcome === "not_received") {
+          await tx
+            .update(S)
+            .set({
+              status: "failed",
+              resolution: "operator_not_received",
+              lastFailureCode: "COMMERCIAL_RECONCILED_NOT_RECEIVED",
+              updatedAt: at,
+            })
+            .where(eq(S.id, sub.id));
+        } else {
+          await tx
+            .update(S)
+            .set({ status: "sent", resolution: "operator_confirmed", sentAt: at, updatedAt: at })
+            .where(eq(S.id, sub.id));
+          if (claim.state === "ready") {
+            await tx
+              .update(schema.commercialClaims)
+              .set({ state: "submitted", updatedAt: at })
+              .where(eq(schema.commercialClaims.id, claim.id));
+            await tx.insert(schema.commercialClaimStateHistory).values({
+              organizationId: claim.organizationId,
+              providerEntityId: claim.providerEntityId,
+              locationId: claim.locationId,
+              claimId: claim.id,
+              fromState: "ready",
+              toState: "submitted",
+              actorKind: actor.actorKind,
+              actorMembershipId: actor.membershipId,
+              validationRunId: null,
+            });
+          }
+        }
+        await seams.outbox.publish(tx, {
+          eventName: "m41.claim.submit_reconciled",
+          organizationId: actor.organizationId,
+          aggregateKind: "commercial_submission",
+          aggregateId: sub.id,
+          payload: { claimId: claim.id, submissionId: sub.id, outcome },
+        });
+        const [settled] = await tx.select().from(S).where(eq(S.id, sub.id));
+        return viewOf(settled ?? sub, false);
       });
     },
 
@@ -361,6 +458,7 @@ export function buildCommercialSubmissionService(
               clearinghouseKey: s.clearinghouseKey,
               attemptCount: s.attemptCount,
               failureCode: s.lastFailureCode,
+              resolution: s.resolution,
               sentAt: s.sentAt ? s.sentAt.toISOString() : null,
             }),
           ),

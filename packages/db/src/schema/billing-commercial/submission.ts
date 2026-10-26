@@ -2,7 +2,16 @@
 // ClearinghouseTransport. Carries ids, codes and times only (the rendered 837I is never stored). Three-column rule, canonical
 // app.org_id RLS (FORCEd) and a write-audit trigger in the migration; a claim has at most one live submission (partial unique index).
 import { sql } from "drizzle-orm";
-import { bigint, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
@@ -35,6 +44,12 @@ export const commercialSubmissions = pgTable(
     requestedByMembershipId: uuid("requested_by_membership_id").notNull(),
     requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
     sentAt: timestamp("sent_at", { withTimezone: true }),
+    // The stamp the 837I carries; a re-submission copies it (and the interchange number) from the claim's first submission.
+    payloadStamp: timestamp("payload_stamp", { withTimezone: true }).notNull().defaultNow(),
+    // Set just before the transport call; cleared on a DEFINITE answer. Still set at the next lease = an interrupted, ambiguous attempt.
+    transportCallStartedAt: timestamp("transport_call_started_at", { withTimezone: true }),
+    ambiguous: boolean("ambiguous").notNull().default(false),
+    resolution: text("resolution"), // receipt | acknowledgment | operator_confirmed | operator_not_received
     // migration 1275: the first clearinghouse-stage acceptance. Never advances the claim to `accepted` (ADR-0053 D2).
     clearinghouseAcceptedAt: timestamp("clearinghouse_accepted_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

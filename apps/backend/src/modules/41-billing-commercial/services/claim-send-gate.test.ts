@@ -87,6 +87,14 @@ describe("evaluateClaimSendGate", () => {
     expect(statusForReasons(r.reasons)).toBe(503);
   });
 
+  it("refuses a commercial claim on direct_mac (a Medicare contractor's portal) whatever the routes and enrollment say", () => {
+    const r = evaluateClaimSendGate({ ...PASSING, clearinghouseKey: "direct_mac" });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.reasons.map((x) => x.code)).toEqual([C.TRANSPORT_UNSUPPORTED]);
+    expect(statusForReasons(r.reasons)).toBe(409);
+  });
+
   it("refuses when the plan has no route in effect for the clearinghouse", () => {
     expect(codes({ ...PASSING, routes: [] })).toEqual([C.PAYER_NOT_ROUTED]);
     expect(

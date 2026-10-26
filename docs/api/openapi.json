@@ -69786,6 +69786,141 @@
         }
       }
     },
+    "/api/v1/billing/commercial/claims/{id}/submissions/{submissionId}/reconcile": {
+      "post": {
+        "operationId": "postApiV1BillingCommercialClaimsByIdSubmissionsBySubmissionIdReconcile",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Settle a submission that is IN DOUBT (an ambiguous send is never resent automatically). Body `{outcome}`: `received` (the claim is filed; the submission becomes sent and the claim moves ready to submitted) or `not_received` (the submission fails with COMMERCIAL_RECONCILED_NOT_RECEIVED and the claim may be submitted again; the re-send replays an earlier receipt if the file had in fact arrived). commercial_billing.submit + a FRESH step-up, never an AI actor, Idempotency-Key required, no free text. 409 unless the submission is in doubt. Writes the row audit and an m41.claim.submit_reconciled event",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "submissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "submissionId",
+                    "claimId",
+                    "status",
+                    "controlNumber",
+                    "clearinghouseKey",
+                    "attemptCount",
+                    "requestedAt",
+                    "replayed"
+                  ],
+                  "properties": {
+                    "submissionId": {
+                      "type": "string"
+                    },
+                    "claimId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "queued",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "failed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_doubt",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "controlNumber": {
+                      "type": "string"
+                    },
+                    "clearinghouseKey": {
+                      "type": "string"
+                    },
+                    "attemptCount": {
+                      "type": "integer"
+                    },
+                    "requestedAt": {
+                      "type": "string"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "outcome"
+                ],
+                "properties": {
+                  "outcome": {
+                    "anyOf": [
+                      {
+                        "const": "received",
+                        "type": "string"
+                      },
+                      {
+                        "const": "not_received",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/commercial/claims/{id}/submit": {
       "post": {
         "operationId": "postApiV1BillingCommercialClaimsByIdSubmit",
@@ -70022,6 +70157,7 @@
                               "clearinghouseKey",
                               "attemptCount",
                               "failureCode",
+                              "resolution",
                               "sentAt"
                             ],
                             "properties": {
@@ -70065,6 +70201,16 @@
                                 "type": "integer"
                               },
                               "failureCode": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "resolution": {
                                 "anyOf": [
                                   {
                                     "type": "string"

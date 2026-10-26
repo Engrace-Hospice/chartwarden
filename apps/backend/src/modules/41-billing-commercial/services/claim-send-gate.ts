@@ -15,6 +15,7 @@
 import {
   COMMERCIAL_SEND_GATE_CODES,
   COMMERCIAL_SEND_REFUSAL,
+  COMMERCIAL_UNSUPPORTED_CLEARINGHOUSES,
   type CommercialSendGateCode,
 } from "@chartwarden/types";
 import { type GateEnrollment, type GateRoute, evaluateSendGate } from "../eligibility/send-gate";
@@ -66,6 +67,8 @@ const MESSAGES = {
     "The payer's pre-authorization requirement is not satisfied for every billed day. Record an approved authorization that covers the stay, or confirm the requirement with the payer.",
   [COMMERCIAL_SEND_GATE_CODES.ELIGIBILITY_NOT_CURRENT]:
     "Eligibility is missing, stale or reports the coverage as not active. Run a new eligibility check before sending.",
+  [COMMERCIAL_SEND_GATE_CODES.TRANSPORT_UNSUPPORTED]:
+    "The connected clearinghouse sends to a Medicare contractor's portal and cannot carry a commercial claim, so nothing was sent. Ask a platform administrator to bind a clearinghouse that supports commercial payers.",
   [COMMERCIAL_SEND_GATE_CODES.ROUTE_CHANGED]:
     "The payer id this claim was built with is not the one the connected clearinghouse routes this plan on. Void and assemble the claim again.",
 } as const;
@@ -132,6 +135,21 @@ export function evaluateClaimSendGate(input: ClaimSendGateInput): ClaimSendGateR
     );
   }
   reasons.push(...validationReasons(input.validation));
+
+  if (
+    input.clearinghouseKey !== null &&
+    COMMERCIAL_UNSUPPORTED_CLEARINGHOUSES.includes(input.clearinghouseKey)
+  ) {
+    // ADR-0053 D10 / ADR-0100 D4: a commercial claim goes through the bound transport, and `direct_mac` only drops files at a Medicare
+    // contractor. Routes and enrollment are moot there.
+    reasons.push(
+      reason(
+        COMMERCIAL_SEND_GATE_CODES.TRANSPORT_UNSUPPORTED,
+        MESSAGES[COMMERCIAL_SEND_GATE_CODES.TRANSPORT_UNSUPPORTED],
+      ),
+    );
+    return { ok: false, reasons };
+  }
 
   const transport = evaluateSendGate({
     clearinghouseKey: input.clearinghouseKey,

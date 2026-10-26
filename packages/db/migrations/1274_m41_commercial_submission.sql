@@ -34,9 +34,18 @@ BEGIN
   IF NEW.state <> OLD.state AND OLD.state = 'void' THEN
     RAISE EXCEPTION 'M41_CLAIM_VOID_IS_FINAL: claim % is void and cannot change state', OLD.id;
   END IF;
-  IF NEW.state <> OLD.state AND OLD.state IN ('submitted','ack_pending','accepted','rejected')
-     AND (NEW.state IN ('draft','ready') OR (NEW.state = 'void' AND OLD.state <> 'rejected')) THEN
-    RAISE EXCEPTION 'M41_CLAIM_ALREADY_SENT: claim % is % and cannot go back to %', OLD.id, OLD.state, NEW.state;
+  IF NEW.state = OLD.state THEN
+    RETURN NEW;
+  END IF;
+  -- the ONLY legal moves; everything else (draft -> submitted, ready -> accepted, accepted -> submitted, rejected -> accepted ...) is refused
+  IF NOT (
+       (OLD.state = 'draft' AND NEW.state IN ('ready', 'void'))
+    OR (OLD.state = 'ready' AND NEW.state IN ('draft', 'submitted', 'void'))
+    OR (OLD.state = 'submitted' AND NEW.state IN ('ack_pending', 'accepted', 'rejected'))
+    OR (OLD.state = 'ack_pending' AND NEW.state IN ('accepted', 'rejected'))
+    OR (OLD.state = 'rejected' AND NEW.state = 'void')
+  ) THEN
+    RAISE EXCEPTION 'M41_CLAIM_ILLEGAL_TRANSITION: claim % cannot move from % to %', OLD.id, OLD.state, NEW.state;
   END IF;
   RETURN NEW;
 END $fn$;--> statement-breakpoint
@@ -64,10 +73,22 @@ CREATE TABLE IF NOT EXISTS "commercial_submission" (
   "requested_by_membership_id" uuid NOT NULL,
   "requested_at" timestamptz NOT NULL DEFAULT now(),
   "sent_at" timestamptz,
+  -- the stamp the 837I carries (ISA09/ISA10 date and time). A re-submission of the same claim copies it, and the interchange number,
+  -- from the claim's FIRST submission, so every attempt in the lineage renders the SAME payload and the transport's idempotency
+  -- key (one per claim) replays instead of double-sending.
+  "payload_stamp" timestamptz NOT NULL DEFAULT now(),
+  -- set just before the transport call, cleared when the transport gave a DEFINITE answer. Still set when a lease expires = that
+  -- attempt was interrupted after it may have reached the transport (the send is ambiguous).
+  "transport_call_started_at" timestamptz,
+  -- sticky: some attempt of this submission may have reached the transport without a definite answer. Exhaustion then ends in_doubt.
+  "ambiguous" boolean NOT NULL DEFAULT false,
+  -- how an in-doubt or queued submission was settled: the transport's receipt, a later acknowledgment, or a person's decision.
+  "resolution" text CHECK ("resolution" IS NULL OR "resolution" IN ('receipt','acknowledgment','operator_confirmed','operator_not_received')),
   "updated_at" timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT "commercial_submission_claim_fk" FOREIGN KEY ("claim_id", "organization_id") REFERENCES "commercial_claim"("id", "organization_id") ON DELETE RESTRICT,
   CONSTRAINT "commercial_submission_sent_stamp" CHECK (("status" = 'sent') = ("sent_at" IS NOT NULL)),
-  CONSTRAINT "commercial_submission_receipt" CHECK (("status" = 'sent') = ("clearinghouse_submission_id" IS NOT NULL) OR "status" = 'in_doubt')
+  -- a receipt id exists only on sent or in-doubt rows (an acknowledgment or a person may settle a row that has none)
+  CONSTRAINT "commercial_submission_receipt" CHECK ("clearinghouse_submission_id" IS NULL OR "status" IN ('sent','in_doubt'))
 );--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "commercial_submission_id_org_uq" ON "commercial_submission" ("id", "organization_id");--> statement-breakpoint
 -- the route's Idempotency-Key: one submission per (claim, key), so a retried POST finds the row it wrote
@@ -91,7 +112,7 @@ CREATE POLICY "commercial_submission_org" ON "commercial_submission" FOR ALL TO 
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);--> statement-breakpoint
 GRANT SELECT, INSERT ON "commercial_submission" TO chartwarden_app;--> statement-breakpoint
-GRANT UPDATE ("status", "attempt_count", "next_attempt_at", "last_failure_code", "clearinghouse_submission_id", "sent_at", "updated_at") ON "commercial_submission" TO chartwarden_app;--> statement-breakpoint
+GRANT UPDATE ("status", "attempt_count", "next_attempt_at", "last_failure_code", "clearinghouse_submission_id", "sent_at", "transport_call_started_at", "ambiguous", "resolution", "updated_at") ON "commercial_submission" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "commercial_submission" TO chartwarden_admin;--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION audit_phi_write_commercial_submission() RETURNS trigger

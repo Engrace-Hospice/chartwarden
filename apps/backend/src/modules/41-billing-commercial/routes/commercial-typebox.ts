@@ -7,6 +7,7 @@ import {
   COMMERCIAL_CLAIM_STATE_VALUES,
   COMMERCIAL_HOSPICE_LEVEL_OF_CARE_VALUES,
   COMMERCIAL_OVERRIDE_REASON_MIN_LENGTH,
+  COMMERCIAL_RECONCILE_OUTCOME_VALUES,
   COMMERCIAL_SUBMISSION_STATUS_VALUES,
 } from "@chartwarden/types";
 import { type Static, Type } from "@sinclair/typebox";
@@ -274,6 +275,17 @@ export const SubmissionViewSchema = Type.Object({
   replayed: Type.Boolean(),
 });
 
+export const SubmissionParamsSchema = Type.Object(
+  { id: uuid(), submissionId: uuid() },
+  { additionalProperties: false },
+);
+
+/** `received`: the claim IS filed. `not_received`: it is not, so the claim may be sent again. No free text is accepted. */
+export const ReconcileBodySchema = Type.Object(
+  { outcome: lit(COMMERCIAL_RECONCILE_OUTCOME_VALUES) },
+  { additionalProperties: false },
+);
+
 const TimelineItemSchema = Type.Union([
   Type.Object({
     kind: Type.Literal("acknowledgment"),
@@ -301,6 +313,8 @@ const TimelineItemSchema = Type.Union([
     clearinghouseKey: Type.String(),
     attemptCount: Type.Integer(),
     failureCode: nullableString(),
+    /** How an in-doubt or queued submission was settled: receipt, acknowledgment, operator_confirmed, operator_not_received. */
+    resolution: nullableString(),
     sentAt: nullableString(),
   }),
 ]);

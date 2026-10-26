@@ -29,6 +29,7 @@ const KEYS: Record<string, string[]> = {
 };
 
 let submitCalls: { claimId: string; key: string; kind: string }[] = [];
+let reconcileCalls: { claimId: string; submissionId: string; outcome: string; kind: string }[] = [];
 let refuse = false;
 let replay = false;
 
@@ -62,6 +63,19 @@ const submissions: CommercialSubmissionService = {
       canSubmit: false,
       clearinghouseKey: null,
       reasons: [{ code: "CH_NOT_WIRED", message: "No clearinghouse is connected." }],
+    };
+  },
+  async reconcile(actor, claimId, submissionId, outcome) {
+    reconcileCalls.push({ claimId, submissionId, outcome, kind: actor.actorKind });
+    return {
+      submissionId,
+      claimId,
+      status: outcome === "received" ? "sent" : "failed",
+      controlNumber: "260401-abc",
+      clearinghouseKey: "stedi",
+      attemptCount: 1,
+      requestedAt: "2026-10-25T00:00:00.000Z",
+      replayed: false,
     };
   },
   async timeline(_actor, claimId) {
@@ -117,6 +131,7 @@ function makeServer() {
 
 beforeEach(() => {
   submitCalls = [];
+  reconcileCalls = [];
   refuse = false;
   replay = false;
   resetAuthorizationContract();
@@ -231,6 +246,67 @@ describe("POST /billing/commercial/claims/:id/submit", () => {
     expect(res.statusCode).toBe(503);
     expect(code(res)).toBe("COMMERCIAL_SEND_REFUSED");
     expect(JSON.stringify(res.json())).toContain("CH_NOT_WIRED");
+  });
+});
+
+describe("POST .../submissions/:submissionId/reconcile (the exit from in_doubt)", () => {
+  const SUB = "44444444-4444-4444-8444-444444444444";
+  const url = (claim = CLAIM) =>
+    `/api/v1/billing/commercial/claims/${claim}/submissions/${SUB}/reconcile`;
+  const body = { outcome: "not_received" };
+
+  it("settles the submission and passes the outcome through", async () => {
+    const res = await makeServer().inject({
+      method: "POST",
+      url: url(),
+      headers: as("sender", { "x-fresh": "1" }),
+      payload: body,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ status: "failed", submissionId: SUB });
+    expect(reconcileCalls).toEqual([
+      { claimId: CLAIM, submissionId: SUB, outcome: "not_received", kind: "user" },
+    ]);
+  });
+
+  it("needs commercial_billing.submit, a FRESH step-up, an Idempotency-Key and a human", async () => {
+    const app = makeServer();
+    const post = (headers: Record<string, string>) =>
+      app.inject({ method: "POST", url: url(), headers, payload: body });
+    expect((await app.inject({ method: "POST", url: url(), payload: body })).statusCode).toBe(401);
+    expect((await post(as("reader", { "x-fresh": "1" }))).statusCode).toBe(403);
+    const stale = await post(as("sender"));
+    expect(stale.statusCode).toBe(403);
+    expect(code(stale)).toBe("STEP_UP_REQUIRED");
+    expect(code(await post({ "x-test-user": "sender", "x-fresh": "1" }))).toBe(
+      "IDEMPOTENCY_KEY_REQUIRED",
+    );
+    expect((await post(as("sender", { "x-fresh": "1", "x-ai": "1" }))).statusCode).toBe(403);
+    expect(reconcileCalls).toEqual([]);
+  });
+
+  it("refuses free text and unknown outcomes", async () => {
+    const app = makeServer();
+    for (const payload of [{ outcome: "maybe" }, { outcome: "received", note: "free text" }, {}]) {
+      const res = await app.inject({
+        method: "POST",
+        url: url(),
+        headers: as("sender", { "x-fresh": "1" }),
+        payload,
+      });
+      expect(res.statusCode).toBe(422);
+    }
+    expect(reconcileCalls).toEqual([]);
+  });
+
+  it("is 404 for a claim outside the caseload scope", async () => {
+    const res = await makeServer().inject({
+      method: "POST",
+      url: url(OTHER_CLAIM),
+      headers: as("sender", { "x-fresh": "1" }),
+      payload: body,
+    });
+    expect(res.statusCode).toBe(404);
   });
 });
 

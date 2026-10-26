@@ -8792,17 +8792,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     app.addHook("onClose", async () => {
       await Promise.all([m41SubmissionWorker.close(), m41AckWorker.close()]);
     });
-    try {
-      const m41ScheduleQueues = [
-        ...(await scheduleM41Jobs(queueConnection)),
-        ...(await scheduleM41AckJobs(queueConnection)),
-      ];
-      app.addHook("onClose", async () => {
-        await Promise.all(m41ScheduleQueues.map((q) => q.close()));
-      });
-    } catch (err) {
-      app.log.error(err, "M41 submission drain schedule registration failed");
-    }
+    // Unlike M23's schedule registration (logged and swallowed), a failure here FAILS BOOT: with no repeatable job the drain never ticks,
+    // and POST /submit would keep queueing rows nothing sends ("bound is not computing"). A deployment that cannot schedule must not start.
+    const m41ScheduleQueues = [
+      ...(await scheduleM41Jobs(queueConnection)),
+      ...(await scheduleM41AckJobs(queueConnection)),
+    ];
+    app.addHook("onClose", async () => {
+      await Promise.all(m41ScheduleQueues.map((q) => q.close()));
+    });
     app.log.info("M41 commercial submission drain constructed");
 
     // ── M26 §4.8 Cap-Management crons (nightly projection recompute · cap-year auto-close · stale-PS&R

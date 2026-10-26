@@ -5603,6 +5603,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/commercial/claims/{id}/submissions/{submissionId}/reconcile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Settle a submission that is IN DOUBT (an ambiguous send is never resent automatically). Body `{outcome}`: `received` (the claim is filed; the submission becomes sent and the claim moves ready to submitted) or `not_received` (the submission fails with COMMERCIAL_RECONCILED_NOT_RECEIVED and the claim may be submitted again; the re-send replays an earlier receipt if the file had in fact arrived). commercial_billing.submit + a FRESH step-up, never an AI actor, Idempotency-Key required, no free text. 409 unless the submission is in doubt. Writes the row audit and an m41.claim.submit_reconciled event */
+        post: operations["postApiV1BillingCommercialClaimsByIdSubmissionsBySubmissionIdReconcile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/commercial/claims/{id}/submit": {
         parameters: {
             query?: never;
@@ -44417,6 +44434,49 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1BillingCommercialClaimsByIdSubmissionsBySubmissionIdReconcile: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+                submissionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    outcome: "received" | "not_received";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        submissionId: string;
+                        claimId: string;
+                        status: "queued" | "sent" | "failed" | "in_doubt";
+                        controlNumber: string;
+                        clearinghouseKey: string;
+                        attemptCount: number;
+                        requestedAt: string;
+                        replayed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1BillingCommercialClaimsByIdSubmit: {
         parameters: {
             query?: never;
@@ -44500,6 +44560,7 @@ export interface operations {
                             clearinghouseKey: string;
                             attemptCount: number;
                             failureCode: string | null;
+                            resolution: string | null;
                             sentAt: string | null;
                         })[];
                         truncated: boolean;

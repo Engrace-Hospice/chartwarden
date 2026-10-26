@@ -39,8 +39,10 @@ import {
   OverrideBodySchema,
   OverrideParamsSchema,
   PlanListQuerySchema,
+  ReconcileBodySchema,
   RecordAuthorizationBodySchema,
   SetAuthorizationStatusBodySchema,
+  SubmissionParamsSchema,
 } from "./commercial-typebox";
 import { idempotencyKeyOf } from "./guards";
 
@@ -258,6 +260,26 @@ export function registerCommercialBillingRoutes(
       const { id } = parse(IdParamsSchema, request.params);
       const out = await submissions.submit(writeActor(request), id, idempotencyKeyOf(request));
       return reply.code(out.replayed ? 200 : 202).send(out);
+    },
+  );
+
+  // The human exit from `in_doubt` (an ambiguous send is never resent automatically). Same gate as submit: its permission, the claim
+  // scope, a FRESH step-up, no AI actor, an Idempotency-Key. Takes an outcome only, never free text.
+  app.post(
+    "/api/v1/billing/commercial/claims/:id/submissions/:submissionId/reconcile",
+    {
+      preHandler: [
+        SUBMIT,
+        CASELOAD("commercial_billing.submit"),
+        SUBMIT_STEP_UP,
+        NO_AI,
+        IDEMPOTENT,
+      ],
+    },
+    async (request) => {
+      const { id, submissionId } = parse(SubmissionParamsSchema, request.params);
+      const body = parse(ReconcileBodySchema, request.body);
+      return submissions.reconcile(writeActor(request), id, submissionId, body.outcome);
     },
   );
 
