@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 116 documented screen specs · 45 module screen-sets registered · 375 screens wired across web/portal/admin.
+**Coverage:** 116 documented screen specs · 45 module screen-sets registered · 376 screens wired across web/portal/admin.
 - **admin**: 39 screen(s)
 - **portal**: 18 screen(s)
-- **web**: 318 screen(s)
+- **web**: 319 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -347,6 +347,7 @@
 | web | 41-billing-commercial | `commercial.claims` | `/commercial/billing/claims` | `commercial_billing.read` | ✅ |
 | web | 41-billing-commercial | `commercial.claim` | `/commercial/billing/claims/:claimId` | `commercial_billing.read` | ✅ |
 | web | 41-billing-commercial | `commercial.payers` | `/commercial/billing/payers` | `commercial_billing.read` | ✅ |
+| web | 41-billing-commercial | `commercial.authorizations` | `/commercial/billing/authorizations` | `commercial_billing.read` | ✅ |
 | admin | 01-ops | `admin.ops.outbox` | `/admin/ops/outbox` | `member.manage` | ✅ |
 | admin | 01-ops | `admin.ops.outbox-detail` | `/admin/ops/outbox/:id` | `member.manage` | ✅ |
 | admin | 23-billing-medicare | `admin.billing.wage-index-load` | `/admin/billing/wage-indexes/load` | `billing.rule_config.platform_admin` | ✅ |

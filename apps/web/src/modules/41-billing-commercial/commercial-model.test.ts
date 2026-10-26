@@ -1,11 +1,18 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  AUTHORIZATION_NUMBER_PATTERN,
+  COMMERCIAL_PATHS,
   asClaimState,
   asPayerKind,
   authorizationPosture,
+  authorizationStatusLabel,
+  authorizationStatusTone,
+  authorizationWindowNote,
   claimStateTone,
   enrollmentStatusFor,
   filingIndicatorLabel,
+  localToday,
   payerKindLabel,
   payerStatusLabel,
   payerStatusTone,
@@ -148,5 +155,61 @@ describe("validation result presentation", () => {
     expect(resultLabel({ ...base, outcome: "pass", blocking: false })).toBe("Pass");
     expect(resultTone(base)).toBe("error");
     expect(resultTone({ ...base, outcome: "pass", blocking: false })).toBe("success");
+  });
+});
+
+describe("authorization screen helpers", () => {
+  const auth = (over: Record<string, string | null> = {}) => ({
+    status: "approved",
+    effectiveFrom: "2026-03-01",
+    effectiveTo: "2026-03-31" as string | null,
+    ...over,
+  });
+
+  it("has a route path", () => {
+    expect(COMMERCIAL_PATHS.authorizations).toBe("/commercial/billing/authorizations");
+  });
+
+  it("notes an ended period on an approved authorization without changing its status", () => {
+    expect(authorizationWindowNote(auth(), "2026-04-01")).toBe("Period ended");
+    expect(authorizationWindowNote(auth(), "2026-03-31")).toBeNull();
+    expect(authorizationWindowNote(auth({ status: "denied" }), "2026-04-01")).toBeNull();
+  });
+
+  it("notes a future start and an open end", () => {
+    expect(authorizationWindowNote(auth(), "2026-02-01")).toBe("Starts 2026-03-01");
+    expect(authorizationWindowNote(auth({ effectiveTo: null }), "2026-05-01")).toBe("Open-ended");
+    expect(authorizationWindowNote(auth({ effectiveTo: null }), "2026-02-01")).toBe(
+      "Starts 2026-03-01",
+    );
+  });
+
+  it("reads today from the local calendar, not UTC", () => {
+    // 23:30 on 24 Oct local time is already 25 Oct in UTC for a zone behind UTC; the local date must win.
+    expect(localToday(new Date(2026, 9, 24, 23, 30))).toBe("2026-10-24");
+    expect(localToday(new Date(2026, 0, 5, 0, 5))).toBe("2026-01-05");
+  });
+
+  it("maps the stored status to a label and tone", () => {
+    expect(authorizationStatusLabel("approved")).toBe("Approved");
+    expect(authorizationStatusTone("approved")).toBe("success");
+    expect(authorizationStatusTone("denied")).toBe("error");
+    expect(authorizationStatusTone("voided")).toBe("neutral");
+  });
+
+  it("validates the number with exactly the server's pattern", () => {
+    const backend = readFileSync(
+      new URL(
+        "../../../../backend/src/modules/41-billing-commercial/routes/commercial-typebox.ts",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    const server = /authorizationNumber: Type\.String\(\{ pattern: "([^"]+)" \}\)/.exec(backend);
+    expect(server?.[1]).toBe(AUTHORIZATION_NUMBER_PATTERN.source);
+    expect(AUTHORIZATION_NUMBER_PATTERN.test("AB-12.3_x")).toBe(true);
+    expect(AUTHORIZATION_NUMBER_PATTERN.test("has space")).toBe(false);
+    expect(AUTHORIZATION_NUMBER_PATTERN.test("x".repeat(51))).toBe(false);
+    expect(AUTHORIZATION_NUMBER_PATTERN.test("")).toBe(false);
   });
 });

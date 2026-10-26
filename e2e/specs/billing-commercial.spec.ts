@@ -192,3 +192,50 @@ test.describe("Billing — Commercial supported payers (M41)", () => {
     await expectNoAxeViolations(page);
   });
 });
+
+test.describe("Billing — Commercial authorizations (M41)", () => {
+  const PATIENT = "33333333-3333-4333-8333-333333333333";
+  const plan = {
+    id: "44444444-4444-4444-8444-444444444444",
+    payerId: "55555555-5555-4555-8555-555555555555",
+    planName: "Synthetic PPO",
+    claimFilingIndicator: "CI",
+    authorizationRequirement: "required_at_admission",
+    authorizationLeadDays: 3,
+    eligibilityStalenessPolicy: "warn",
+    eligibilityMaxAgeDays: 30,
+    effectiveFrom: "2026-01-01",
+    effectiveTo: null,
+    payerStatus: "active",
+    routes: [],
+  };
+  const authorization = {
+    id: "77777777-7777-4777-8777-777777777777",
+    patientId: PATIENT,
+    planId: plan.id,
+    levelOfCare: "routine_home_care",
+    status: "approved",
+    obtainedOn: "2026-02-20",
+    effectiveFrom: "2026-03-01",
+    effectiveTo: "2026-03-31",
+  };
+
+  test("main path: lists a patient's authorization and opens its drawer without ever showing a number", async ({
+    page,
+  }) => {
+    await page.route(PLANS, (route) => route.fulfill({ json: { items: [plan] } }));
+    await page.route("**/api/v1/billing/commercial/authorizations*", (route) =>
+      route.fulfill({ json: { items: [authorization] } }),
+    );
+    await signInAs(page, ADMIN_ACCOUNT());
+    await page.goto(`/commercial/billing/authorizations?patient=${PATIENT}`);
+
+    await expect(page.getByRole("heading", { name: "Authorizations", level: 1 })).toBeVisible();
+    const table = page.getByRole("table");
+    await expect(table.getByText("Synthetic PPO")).toBeVisible();
+    await table.getByText("Synthetic PPO").click();
+    await expect(page.getByLabel("Authorization for Synthetic PPO")).toBeVisible();
+    await expect(page.getByText("never shown")).toBeVisible();
+    await expectNoAxeViolations(page);
+  });
+});
