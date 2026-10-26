@@ -8,11 +8,15 @@
 import type { Queue } from "bullmq";
 
 export interface DrainReadiness {
-  /** True once both the submission drain and the acknowledgment pull have their repeatable schedule registered. */
-  drainScheduled(): boolean;
+  /**
+   * True once both the submission drain and the acknowledgment pull have their repeatable schedule registered. May answer
+   * asynchronously: in a split deployment the API process asks the shared queue store (see {@link createSharedDrainReadiness}).
+   */
+  drainScheduled(): boolean | Promise<boolean>;
 }
 
 export interface MutableDrainReadiness extends DrainReadiness {
+  drainScheduled(): boolean;
   markScheduled(): void;
   markNotScheduled(): void;
 }
@@ -27,6 +31,55 @@ export function createDrainReadiness(): MutableDrainReadiness {
     },
     markNotScheduled: () => {
       scheduled = false;
+    },
+  };
+}
+
+/** How long a positive / negative shared-state answer is reused. A negative one is short so a freshly registered schedule is seen quickly. */
+export const SHARED_READINESS_TTL_MS = 20_000;
+export const SHARED_READINESS_NEGATIVE_TTL_MS = 5_000;
+
+export interface SharedReadinessOptions {
+  /** This process' own registration flag (set by the worker / all roles when they register the schedule). */
+  readonly local: DrainReadiness;
+  /**
+   * Looks at the SHARED queue store (Valkey) for both schedules. Present whenever a queue connection exists. Absent = nothing to ask,
+   * and with the local flag false the answer is false (fail closed): no queue connection means nothing would ever send.
+   */
+  readonly probe?: () => Promise<boolean>;
+  readonly now?: () => number;
+  readonly ttlMs?: number;
+  readonly negativeTtlMs?: number;
+}
+
+/**
+ * Readiness that reflects SHARED state, not a per-process flag. In the split deployment (PROCESS_ROLE=api serving requests, a separate
+ * worker process registering the repeatable jobs) the API process never registers anything itself, so its own flag stays false; it
+ * asks the queue store whether both repeatable schedules exist instead. A fault in the probe is "not scheduled" (fail closed). The
+ * answer is cached briefly so a request does not cost a round trip to Valkey.
+ */
+export function createSharedDrainReadiness(options: SharedReadinessOptions): DrainReadiness {
+  const now = options.now ?? Date.now;
+  const ttl = options.ttlMs ?? SHARED_READINESS_TTL_MS;
+  const negativeTtl = options.negativeTtlMs ?? SHARED_READINESS_NEGATIVE_TTL_MS;
+  let cached: { readonly at: number; readonly value: boolean } | null = null;
+  let inFlight: Promise<boolean> | null = null;
+  return {
+    async drainScheduled(): Promise<boolean> {
+      if (await options.local.drainScheduled()) return true;
+      const probe = options.probe;
+      if (!probe) return false;
+      if (cached && now() - cached.at < (cached.value ? ttl : negativeTtl)) return cached.value;
+      inFlight ??= probe()
+        .catch(() => false)
+        .then((value) => {
+          cached = { at: now(), value };
+          return value;
+        })
+        .finally(() => {
+          inFlight = null;
+        });
+      return inFlight;
     },
   };
 }

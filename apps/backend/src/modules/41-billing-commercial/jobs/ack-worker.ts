@@ -46,6 +46,8 @@ export const ACK_POLL_MAX_AGE_DAYS = 45;
 export const OUTSTANDING_ROW_LIMIT = 500;
 /** Held `no_receipt` events re-applied per provider entity per pass. */
 const HELD_REPLAY_LIMIT = 100;
+/** Provider entities swept for dead held events per org per tick. */
+const HELD_ENTITY_LIMIT = 200;
 const DAY_MS = 86_400_000;
 
 export interface AckCursorKey {
@@ -143,6 +145,8 @@ export interface ApplyOutcome {
   readonly eventId: string;
   /** Present when the event was stored in quarantine. */
   readonly reason?: QuarantineReason;
+  /** The stage of an applied event: only a clearinghouse-stage one can unblock a held payer-stage event. */
+  readonly stage?: "clearinghouse" | "payer";
 }
 
 const inOrg = <T>(
@@ -363,7 +367,7 @@ async function applyValidEvent(
       },
     });
   }
-  return { result: "applied", eventId: event.eventId };
+  return { result: "applied", eventId: event.eventId, stage: event.stage };
 }
 
 /**
@@ -394,7 +398,7 @@ export async function applyAckEvent(
 export async function replayHeldEvents(
   deps: AckWorkerDeps,
   scope: Scope,
-): Promise<{ readonly applied: number }> {
+): Promise<{ readonly applied: number; readonly abandoned: number }> {
   const Q = schema.commercialAckQuarantine;
   const heldRows = await inOrg(deps, scope.organizationId, (tx) =>
     tx
@@ -403,6 +407,7 @@ export async function replayHeldEvents(
         eventId: Q.eventId,
         controlNumber: Q.controlNumber,
         event: Q.event,
+        createdAt: Q.createdAt,
       })
       .from(Q)
       .where(
@@ -416,27 +421,76 @@ export async function replayHeldEvents(
       .orderBy(asc(Q.createdAt))
       .limit(HELD_REPLAY_LIMIT),
   );
+  const cutoff = nowOf(deps).getTime() - ACK_POLL_MAX_AGE_DAYS * DAY_MS;
   let applied = 0;
+  let abandoned = 0;
+  // A held row leaves the queue one way or another, so dead rows never starve the live ones behind them: applied, or abandoned with a
+  // reason (aged out, no longer valid, or its submission can never take it).
+  const settle = (tx: CommercialTx, id: string, resolution: HeldResolution) =>
+    tx
+      .update(Q)
+      .set({ resolvedAt: nowOf(deps), resolution })
+      .where(eq(Q.id, id));
   for (const row of heldRows) {
+    if (row.createdAt.getTime() < cutoff) {
+      await inOrg(deps, scope.organizationId, (tx) => settle(tx, row.id, "abandoned_aged"));
+      abandoned += 1;
+      continue;
+    }
     const checked = validateAckEvent({
       ...(row.event as Record<string, unknown> | null),
       eventId: row.eventId,
       controlNumber: row.controlNumber,
     });
-    if (!checked.ok) continue;
+    if (!checked.ok) {
+      deps.log?.({ event: "ack.held_invalid", eventId: row.eventId, code: checked.reason });
+      await inOrg(deps, scope.organizationId, (tx) => settle(tx, row.id, "abandoned_invalid"));
+      abandoned += 1;
+      continue;
+    }
     const outcome = await inOrg(deps, scope.organizationId, async (tx) => {
       const out = await applyValidEvent(deps, tx, scope, checked.event);
       if (out.result === "applied" || out.result === "duplicate") {
-        await tx
-          .update(Q)
-          .set({ resolvedAt: nowOf(deps) })
-          .where(eq(Q.id, row.id));
+        await settle(tx, row.id, "applied");
+      } else if (out.result === "unmatched") {
+        await settle(tx, row.id, "abandoned_no_submission");
+      } else if (out.reason === "vendor_mismatch") {
+        await settle(tx, row.id, "abandoned_vendor_mismatch");
+      } else if (out.reason === "scope_mismatch") {
+        await settle(tx, row.id, "abandoned_scope_mismatch");
       }
       return out;
     });
     if (outcome.result === "applied") applied += 1;
+    else if (outcome.result === "unmatched" || outcome.reason !== "no_receipt") abandoned += 1;
   }
-  return { applied };
+  return { applied, abandoned };
+}
+
+type HeldResolution =
+  | "applied"
+  | "abandoned_no_submission"
+  | "abandoned_scope_mismatch"
+  | "abandoned_vendor_mismatch"
+  | "abandoned_aged"
+  | "abandoned_invalid";
+
+/** Provider entities of the org that still hold unresolved `no_receipt` events (so dead ones get swept even with no live work). */
+async function entitiesWithHeldEvents(
+  deps: AckWorkerDeps,
+  organizationId: string,
+): Promise<string[]> {
+  const Q = schema.commercialAckQuarantine;
+  const rows = await inOrg(deps, organizationId, (tx) =>
+    tx
+      .selectDistinct({ providerEntityId: Q.providerEntityId })
+      .from(Q)
+      .where(
+        and(eq(Q.organizationId, organizationId), eq(Q.reason, "no_receipt"), isNull(Q.resolvedAt)),
+      )
+      .limit(HELD_ENTITY_LIMIT),
+  );
+  return rows.map((r) => r.providerEntityId);
 }
 
 export interface AckPullResult {
@@ -503,16 +557,20 @@ async function pullEntity(
     if (hasMore && seen.has(nextCursor)) {
       throw new Error("acknowledgment pull failed (the vendor cursor did not advance)");
     }
+    let unblocked = false;
     for (const event of items) {
       // A database fault throws and fails the entity (the cursor does not move); a bad EVENT never throws, it is stored.
       const out = await applyAckEvent(deps, scope, event);
-      if (out.result === "applied") tally.applied += 1;
-      else if (out.result === "duplicate") tally.duplicates += 1;
+      if (out.result === "applied") {
+        tally.applied += 1;
+        if (out.stage === "clearinghouse") unblocked = true;
+      } else if (out.result === "duplicate") tally.duplicates += 1;
       else if (out.result === "unmatched") tally.unmatched += 1;
       else quarantined.push({ eventId: out.eventId, reason: out.reason ?? "quarantined" });
     }
-    // a 999 in this page may have settled a submission whose 277CA came earlier in the stream
-    tally.applied += (await replayHeldEvents(deps, scope)).applied;
+    // Held payer-stage events are re-applied once at the start of the pull, and again only when this page applied a clearinghouse-stage
+    // event (the only thing that can settle a row with no receipt): not after every page.
+    if (unblocked) tally.applied += (await replayHeldEvents(deps, scope)).applied;
     if (nextCursor !== state.cursor) {
       if (!(await deps.cursors.advance(key, state.version, nextCursor))) return "done"; // another tick owns the stream now
       state = { cursor: nextCursor, version: state.version + 1 };
@@ -571,7 +629,22 @@ export async function pullOrgAcks(
   const failures: string[] = [];
   const backlog: string[] = [];
   const quarantined: { eventId: string; reason: string }[] = [];
-  for (const { providerEntityId, payerId } of await outstanding(deps, organizationId)) {
+  const work = await outstanding(deps, organizationId);
+  // Provider entities that hold events but have no live work left (their submission failed, the claim was voided) are still swept,
+  // with no transport call, so a dead held event is abandoned instead of waiting forever.
+  try {
+    const live = new Set(work.map((w) => w.providerEntityId));
+    for (const providerEntityId of await entitiesWithHeldEvents(deps, organizationId)) {
+      if (!live.has(providerEntityId)) {
+        await replayHeldEvents(deps, { organizationId, providerEntityId });
+      }
+    }
+  } catch (err) {
+    failures.push(
+      `org ${organizationId} held-event sweep: ${err instanceof Error ? err.message : "failed"}`,
+    );
+  }
+  for (const { providerEntityId, payerId } of work) {
     try {
       const out = await pullEntity(
         deps,

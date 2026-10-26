@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
+import { M41_CRON_QUEUES, M41_JOB_SCHEDULES } from "./queues";
 import {
   ALWAYS_READY,
   SCHEDULE_RETRY_DELAYS_MS,
   createDrainReadiness,
+  createSharedDrainReadiness,
   scheduleWithRetry,
 } from "./readiness";
+import { createScheduleProbe } from "./schedule-probe";
 
 describe("createDrainReadiness", () => {
   it("starts NOT scheduled (with no queue connection nothing would ever send) and follows the marks", () => {
@@ -86,5 +89,113 @@ describe("scheduleWithRetry", () => {
     await scheduleWithRetry({ schedule: async () => [], ...h.options });
     expect(h.readiness.drainScheduled()).toBe(true);
     expect(h.timers).toHaveLength(0);
+  });
+});
+
+describe("createSharedDrainReadiness (the API process of a split deployment)", () => {
+  const harness = (probeAnswers: (boolean | Error)[]) => {
+    let clock = 0;
+    const probe = vi.fn(async () => {
+      const a = probeAnswers.shift();
+      if (a instanceof Error) throw a;
+      return a ?? false;
+    });
+    const local = createDrainReadiness();
+    const readiness = createSharedDrainReadiness({
+      local,
+      probe,
+      now: () => clock,
+      ttlMs: 20_000,
+      negativeTtlMs: 5_000,
+    });
+    return {
+      probe,
+      local,
+      readiness,
+      advance: (ms: number) => {
+        clock += ms;
+      },
+    };
+  };
+
+  it("is ready from shared state alone: the API never registers anything, yet serves once the schedules exist", async () => {
+    const h = harness([true]);
+    expect(h.local.drainScheduled()).toBe(false); // this process never marks itself
+    await expect(h.readiness.drainScheduled()).resolves.toBe(true);
+  });
+
+  it("is not ready while the schedules are absent, and notices them within the short negative window", async () => {
+    const h = harness([false, true]);
+    await expect(h.readiness.drainScheduled()).resolves.toBe(false);
+    h.advance(1_000);
+    await expect(h.readiness.drainScheduled()).resolves.toBe(false); // cached, no second probe
+    expect(h.probe).toHaveBeenCalledTimes(1);
+    h.advance(5_000);
+    await expect(h.readiness.drainScheduled()).resolves.toBe(true);
+    expect(h.probe).toHaveBeenCalledTimes(2);
+  });
+
+  it("caches a positive answer for the long window, then asks again", async () => {
+    const h = harness([true, false]);
+    await h.readiness.drainScheduled();
+    h.advance(19_000);
+    await expect(h.readiness.drainScheduled()).resolves.toBe(true);
+    expect(h.probe).toHaveBeenCalledTimes(1);
+    h.advance(2_000);
+    await expect(h.readiness.drainScheduled()).resolves.toBe(false);
+    expect(h.probe).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails closed when the probe faults", async () => {
+    const h = harness([new Error("valkey down")]);
+    await expect(h.readiness.drainScheduled()).resolves.toBe(false);
+  });
+
+  it("with no probe (no queue connection at all) only this process' own registration can make it ready", async () => {
+    const local = createDrainReadiness();
+    const readiness = createSharedDrainReadiness({ local });
+    await expect(readiness.drainScheduled()).resolves.toBe(false);
+    local.markScheduled();
+    await expect(readiness.drainScheduled()).resolves.toBe(true);
+  });
+
+  it("this process' own registration short-circuits the probe", async () => {
+    const h = harness([false]);
+    h.local.markScheduled();
+    await expect(h.readiness.drainScheduled()).resolves.toBe(true);
+    expect(h.probe).not.toHaveBeenCalled();
+  });
+});
+
+describe("createScheduleProbe", () => {
+  const both = {
+    [M41_CRON_QUEUES.submissionDrain]: [M41_JOB_SCHEDULES.submissionDrain],
+    [M41_CRON_QUEUES.ackPull]: [M41_JOB_SCHEDULES.ackPull],
+  };
+  const probeOf = (present: Record<string, string[]>, fail = false) =>
+    createScheduleProbe({
+      connection: {},
+      makeQueue: (name) => ({
+        getRepeatableJobs: async () => {
+          if (fail) throw new Error("valkey down");
+          return (present[name] ?? []).map((pattern) => ({ pattern }));
+        },
+        close: async () => undefined,
+      }),
+    });
+
+  it("is true only when BOTH repeatable schedules exist with the expected patterns", async () => {
+    await expect(probeOf(both)()).resolves.toBe(true);
+    await expect(
+      probeOf({ [M41_CRON_QUEUES.submissionDrain]: [M41_JOB_SCHEDULES.submissionDrain] })(),
+    ).resolves.toBe(false);
+    await expect(probeOf({ ...both, [M41_CRON_QUEUES.ackPull]: ["0 0 * * *"] })()).resolves.toBe(
+      false,
+    );
+    await expect(probeOf({})()).resolves.toBe(false);
+  });
+
+  it("rejects when the store faults (the readiness treats that as not scheduled)", async () => {
+    await expect(probeOf({}, true)()).rejects.toThrow(/valkey down/);
   });
 });

@@ -20,6 +20,7 @@ import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { InMemoryClearinghouse } from "@chartwarden/x12-837-client/testing";
+import { type ConnectionOptions, Queue } from "bullmq";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -29,6 +30,7 @@ import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-r
 import {
   type CommercialActor,
   type CommercialClaimSeams,
+  M41_CRON_QUEUES,
   M41_OUTBOX_EVENTS,
   applyAckEvent,
   buildCommercial837iRenderer,
@@ -37,10 +39,16 @@ import {
   buildCommercialClaimLifecycleService,
   buildCommercialContextPort,
   buildCommercialSubmissionService,
+  createDrainReadiness,
   createDrizzleAckCursorStore,
+  createScheduleProbe,
+  createSharedDrainReadiness,
   outstandingAckWork,
+  replayHeldEvents,
   runAckPull,
   runSubmissionDrain,
+  scheduleM41AckJobs,
+  scheduleM41Jobs,
 } from "../src/modules/41-billing-commercial/index";
 import type {
   AckWorkerDeps,
@@ -54,6 +62,7 @@ import {
 } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
+const REDIS_URL = process.env.CHARTWARDEN_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ORG = "00000000-0000-4000-8000-0000000043a1";
 const ORG_B = "00000000-0000-4000-8000-0000000043b1";
@@ -997,6 +1006,85 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       }
     });
 
+    it("M1: after a DEFINITE refusal (nothing accepted) the user fixes the data and resubmits: it is sent, not frozen out", async () => {
+      const { c, sub } = await queued();
+      await runSubmissionDrain(
+        workerDeps("stedi", {
+          transport: {
+            submitClaim: async () => ({
+              ok: false as const,
+              degraded: { code: "CH_INVALID_REQUEST", reason: "payload refused" },
+            }),
+          },
+        }),
+      );
+      const refused = await submissionRow(sub.submissionId);
+      expect(refused).toMatchObject({ status: "failed", ambiguous: false });
+      expect(refused.payload_hash).toBeTruthy(); // the hash was written before the call ...
+      subscriberLastName = "Corrected";
+      try {
+        const again = await service("stedi").submit(actor, c.claimId, `key-${randomUUID()}`);
+        const recorder = recordingTransport();
+        await runSubmissionDrain(workerDeps("stedi", { transport: recorder }));
+        // ... but it binds nothing: the transport never held that payload, so the corrected one goes out
+        expect(recorder.results).toEqual([{ ok: true, replayed: false }]);
+        expect(await submissionRow(again.submissionId)).toMatchObject({ status: "sent" });
+        expect(await claimState(c.claimId)).toBe("submitted");
+      } finally {
+        subscriberLastName = "Doe";
+      }
+    });
+
+    it("M3: a legacy row with no hash binds nothing (the comparison is skipped), and the transport's own conflict is in_doubt", async () => {
+      const { c, sub } = await queued();
+      await stageInDoubt(c, sub.submissionId);
+      const svc = service("stedi");
+      await svc.reconcile(actor, c.claimId, sub.submissionId, "not_received");
+      await admin.query("UPDATE commercial_submission SET payload_hash = NULL WHERE claim_id=$1", [
+        c.claimId,
+      ]);
+      subscriberLastName = "Legacy-Changed";
+      try {
+        const again = await svc.submit(actor, c.claimId, `key-${randomUUID()}`);
+        const recorder = recordingTransport();
+        await runSubmissionDrain(workerDeps("stedi", { transport: recorder }));
+        expect(recorder.results).toHaveLength(1); // not frozen out by us: it reached the transport ...
+        expect(recorder.results[0]).toMatchObject({ ok: false }); // ... which holds the earlier payload under the key
+        expect(await submissionRow(again.submissionId)).toMatchObject({
+          status: "in_doubt",
+          last_failure_code: "CH_IDEMPOTENCY_CONFLICT",
+        });
+      } finally {
+        subscriberLastName = "Doe";
+      }
+    });
+
+    it("M3: the first-hash read and the hash write share the claim lock: two rows of one claim cannot bind different hashes", async () => {
+      const { c, sub } = await queued();
+      await stageInDoubt(c, sub.submissionId);
+      const first = (await submissionRow(sub.submissionId)).payload_hash as string;
+      await service("stedi").reconcile(actor, c.claimId, sub.submissionId, "not_received");
+      subscriberLastName = "Raced";
+      try {
+        const again = await service("stedi").submit(actor, c.claimId, `key-${randomUUID()}`);
+        await Promise.all([
+          runSubmissionDrain(workerDeps("stedi")),
+          runSubmissionDrain(workerDeps("stedi")),
+        ]);
+        expect(await submissionRow(again.submissionId)).toMatchObject({
+          status: "failed",
+          last_failure_code: "COMMERCIAL_PAYLOAD_CHANGED",
+        });
+        const hashes = await admin.query(
+          "SELECT DISTINCT payload_hash FROM commercial_submission WHERE claim_id=$1 AND payload_hash IS NOT NULL",
+          [c.claimId],
+        );
+        expect(hashes.rows).toEqual([{ payload_hash: first }]); // only the first payload is ever bound
+      } finally {
+        subscriberLastName = "Doe";
+      }
+    });
+
     it("H1: an idempotency conflict from the transport after an earlier attempt is in_doubt, never failed", async () => {
       const { c, sub } = await queued();
       await dueNow(sub.submissionId);
@@ -1716,6 +1804,100 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       expect(fetches).toBe(0);
     });
 
+    describe("held payer-stage events leave the queue (no starvation, no dead rows)", () => {
+      const heldOf = (c: { controlNumber: string }) =>
+        admin
+          .query(
+            "SELECT id, resolved_at, resolution FROM commercial_ack_quarantine WHERE control_number=$1 AND reason='no_receipt'",
+            [c.controlNumber],
+          )
+          .then((r) => r.rows[0]);
+      /** A claim in doubt with a payer-stage answer held for it. */
+      async function heldClaim() {
+        const c = await readyClaim();
+        const sub = await service("stedi").submit(actor, c.claimId, `key-${randomUUID()}`);
+        await stageInDoubt(c, sub.submissionId);
+        await transport.control.payerAccepts(c.controlNumber, "ICN-DEAD", scope());
+        await runAckPull(ackDeps("stedi"));
+        expect((await heldOf(c)).resolved_at).toBeNull();
+        return { c, sub };
+      }
+
+      it("abandons a held event whose submission later failed (swept even with no live work), instead of holding it forever", async () => {
+        const { c, sub } = await heldClaim();
+        await service("stedi").reconcile(actor, c.claimId, sub.submissionId, "not_received");
+        await runAckPull(ackDeps("stedi"));
+        expect(await heldOf(c)).toMatchObject({ resolution: "abandoned_no_submission" });
+        expect((await heldOf(c)).resolved_at).not.toBeNull();
+        expect(await claimState(c.claimId)).toBe("ready");
+        expect(await ackRows(c.claimId)).toEqual([]);
+      });
+
+      it("abandons a held event whose submission went through another clearinghouse (vendor_mismatch)", async () => {
+        const { c, sub } = await heldClaim();
+        await service("stedi").reconcile(
+          actor,
+          c.claimId,
+          sub.submissionId,
+          "received",
+          "payer_portal",
+        );
+        await replayHeldEvents(ackDeps("another_vendor"), scope());
+        expect(await heldOf(c)).toMatchObject({ resolution: "abandoned_vendor_mismatch" });
+        expect(await claimState(c.claimId)).toBe("submitted");
+        expect(await ackRows(c.claimId)).toEqual([]);
+      });
+
+      it("abandons a held event that aged past the poll window", async () => {
+        const { c, sub } = await heldClaim();
+        await admin.query(
+          "UPDATE commercial_ack_quarantine SET created_at = now() - interval '60 days' WHERE control_number=$1",
+          [c.controlNumber],
+        );
+        await service("stedi").reconcile(
+          actor,
+          c.claimId,
+          sub.submissionId,
+          "received",
+          "payer_portal",
+        );
+        await replayHeldEvents(ackDeps("stedi"), scope());
+        expect(await heldOf(c)).toMatchObject({ resolution: "abandoned_aged" });
+        expect(await claimState(c.claimId)).toBe("submitted"); // aged out, NOT applied
+      });
+
+      it("logs (ids only) and abandons a stored event that no longer validates, instead of skipping it silently every tick", async () => {
+        const { c } = await heldClaim();
+        await admin.query(
+          `UPDATE commercial_ack_quarantine SET event = '{"stage":"vendor"}'::jsonb WHERE control_number=$1`,
+          [c.controlNumber],
+        );
+        const logs: { event: string; eventId?: string }[] = [];
+        await replayHeldEvents({ ...ackDeps("stedi"), log: (e) => logs.push(e) }, scope());
+        expect(await heldOf(c)).toMatchObject({ resolution: "abandoned_invalid" });
+        expect(logs.filter((l) => l.event === "ack.held_invalid")).toHaveLength(1);
+        expect(JSON.stringify(logs)).not.toContain("vendor"); // the reason names a field, never the value
+      });
+
+      it("resolves as applied once the submission is settled, and a resolved row is not replayed again", async () => {
+        const { c, sub } = await heldClaim();
+        await service("stedi").reconcile(
+          actor,
+          c.claimId,
+          sub.submissionId,
+          "received",
+          "payer_portal",
+        );
+        const first = await replayHeldEvents(ackDeps("stedi"), scope());
+        expect(first.applied).toBeGreaterThanOrEqual(1);
+        expect(await heldOf(c)).toMatchObject({ resolution: "applied" });
+        expect(await claimState(c.claimId)).toBe("accepted");
+        const second = await replayHeldEvents(ackDeps("stedi"), scope());
+        expect(second.applied).toBe(0);
+        expect(await eventCount(c.claimId, "m41.claim.accepted")).toBe(1);
+      });
+    });
+
     it("the database refuses every illegal claim state jump, and allows only the legal paths", async () => {
       const move = (id: string, to: string) =>
         admin.query(
@@ -1757,6 +1939,96 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       const c = await sentClaim();
       await expect(runAckPull(ackDeps(null))).rejects.toThrow(/CH_NOT_WIRED/);
       expect(await claimState(c.claimId)).toBe("submitted");
+    });
+  });
+
+  // The split deployment: PROCESS_ROLE=api serves requests and never registers the repeatable jobs; a separate worker process does.
+  // The API's readiness must therefore come from the SHARED queue store, not from a flag in its own process. Real Valkey, real BullMQ,
+  // nothing injected: the "api" side builds its readiness exactly as index.ts does (a local flag that is never set, plus the probe).
+  describe.skipIf(!REDIS_URL)("api role readiness against a real Valkey (split deployment)", () => {
+    const url = new URL(REDIS_URL ?? "redis://localhost:6379");
+    const connection: ConnectionOptions = { host: url.hostname, port: Number(url.port || 6379) };
+    const open: { close(): Promise<void> }[] = [];
+
+    const clearSchedules = async () => {
+      for (const name of Object.values(M41_CRON_QUEUES)) {
+        const q = new Queue(name, { connection });
+        await q.obliterate({ force: true });
+        await q.close();
+      }
+    };
+    const apiReadiness = () => {
+      const probe = createScheduleProbe({ connection });
+      open.push(probe);
+      return createSharedDrainReadiness({
+        local: createDrainReadiness(), // the API process never marks itself scheduled
+        probe,
+        ttlMs: 0,
+        negativeTtlMs: 0,
+      });
+    };
+    const apiService = (readiness: ReturnType<typeof apiReadiness>) =>
+      buildCommercialSubmissionService(
+        handle.db,
+        seams(randomUUID()),
+        { vendor: "stedi" },
+        readiness,
+      );
+
+    afterAll(async () => {
+      await Promise.all(open.map((o) => o.close()));
+      await clearSchedules();
+    });
+
+    it("refuses with 503 until the worker process has registered BOTH schedules, then serves; losing one refuses again", async () => {
+      await clearSchedules();
+      const readiness = apiReadiness();
+      const api = apiService(readiness);
+      const c1 = await readyClaim();
+
+      // nothing in Valkey: the API fails closed
+      const before = await failure(api.submit(actor, c1.claimId, `key-${randomUUID()}`));
+      expect(before?.statusCode).toBe(503);
+      expect(before?.code).toBe("COMMERCIAL_DRAIN_NOT_SCHEDULED");
+      expect(await submissionCount(c1.claimId)).toBe(0);
+      expect((await api.sendGate(actor, c1.claimId)).reasons.map((r) => r.code)).toContain(
+        "COMMERCIAL_DRAIN_NOT_SCHEDULED",
+      );
+
+      // the worker process registers the repeatable jobs (a different process in production)
+      const drainQueues = await scheduleM41Jobs(connection);
+      const ackQueues = await scheduleM41AckJobs(connection);
+      open.push(...drainQueues, ...ackQueues);
+      const served = await api.submit(actor, c1.claimId, `key-${randomUUID()}`);
+      expect(served.status).toBe("queued");
+      expect((await api.sendGate(actor, c1.claimId)).reasons.map((r) => r.code)).not.toContain(
+        "COMMERCIAL_DRAIN_NOT_SCHEDULED",
+      );
+
+      // one of the two schedules disappears: not ready again
+      const c2 = await readyClaim();
+      const ackQueue = ackQueues[0];
+      if (!ackQueue) throw new Error("no ack queue");
+      for (const job of await ackQueue.getRepeatableJobs())
+        await ackQueue.removeRepeatableByKey(job.key);
+      const after = await failure(api.submit(actor, c2.claimId, `key-${randomUUID()}`));
+      expect(after?.code).toBe("COMMERCIAL_DRAIN_NOT_SCHEDULED");
+      expect(await submissionCount(c2.claimId)).toBe(0);
+      await admin.query(
+        "UPDATE commercial_submission SET status='failed', last_failure_code='TEST' WHERE claim_id=$1",
+        [c1.claimId],
+      );
+    });
+
+    it("with no queue connection at all the API stays refused (fail closed)", async () => {
+      const readiness = createSharedDrainReadiness({ local: createDrainReadiness() }); // REDIS_URL unset: no probe
+      const c = await readyClaim();
+      const err = await failure(
+        apiService(readiness).submit(actor, c.claimId, `key-${randomUUID()}`),
+      );
+      expect(err?.statusCode).toBe(503);
+      expect(err?.code).toBe("COMMERCIAL_DRAIN_NOT_SCHEDULED");
+      expect(await submissionCount(c.claimId)).toBe(0);
     });
   });
 

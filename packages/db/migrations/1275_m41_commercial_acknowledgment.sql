@@ -60,7 +60,11 @@ CREATE TABLE IF NOT EXISTS "commercial_ack_quarantine" (
   -- the validated event (stage, disposition, reason codes, payer claim number, time), kept only for `no_receipt` so it can be replayed
   "event" jsonb CHECK ("event" IS NULL OR ("reason" = 'no_receipt' AND jsonb_typeof("event") = 'object')),
   "resolved_at" timestamptz,
-  "created_at" timestamptz NOT NULL DEFAULT now()
+  -- how a held event left the queue: applied (or already recorded), or abandoned because it can never apply (its submission is gone,
+  -- belongs elsewhere or went through another clearinghouse, it aged past the poll window, or it no longer validates)
+  "resolution" text CHECK ("resolution" IS NULL OR "resolution" IN ('applied','abandoned_no_submission','abandoned_scope_mismatch','abandoned_vendor_mismatch','abandoned_aged','abandoned_invalid')),
+  "created_at" timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT "commercial_ack_quarantine_resolved_pair" CHECK (("resolved_at" IS NULL) = ("resolution" IS NULL))
 );--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_ack_quarantine_held_ix" ON "commercial_ack_quarantine" ("organization_id", "provider_entity_id") WHERE "reason" = 'no_receipt' AND "resolved_at" IS NULL;--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "commercial_ack_quarantine_event_uq" ON "commercial_ack_quarantine" ("organization_id", "clearinghouse_key", "event_id");--> statement-breakpoint
@@ -75,7 +79,7 @@ CREATE POLICY "commercial_ack_quarantine_org" ON "commercial_ack_quarantine" FOR
   USING (organization_id = current_setting('app.org_id', true)::uuid)
   WITH CHECK (organization_id = current_setting('app.org_id', true)::uuid);--> statement-breakpoint
 GRANT SELECT, INSERT ON "commercial_ack_quarantine" TO chartwarden_app;--> statement-breakpoint
-GRANT UPDATE ("resolved_at") ON "commercial_ack_quarantine" TO chartwarden_app;--> statement-breakpoint
+GRANT UPDATE ("resolved_at", "resolution") ON "commercial_ack_quarantine" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "commercial_ack_quarantine" TO chartwarden_admin;--> statement-breakpoint
 CREATE OR REPLACE FUNCTION audit_phi_write_commercial_ack_quarantine() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$

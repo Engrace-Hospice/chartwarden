@@ -53,8 +53,10 @@ export {
   ALWAYS_READY,
   type DrainReadiness,
   createDrainReadiness,
+  createSharedDrainReadiness,
   scheduleWithRetry,
 } from "./jobs/readiness";
+export { type ScheduleProbe, createScheduleProbe } from "./jobs/schedule-probe";
 export { M41_CRON_QUEUES, M41_PLATFORM_JOB_ID, wireM41Tenancy } from "./jobs/queues";
 export { buildCommercialRenderPorts } from "./services/render-ports";
 export { buildCommercial837iRenderer } from "./services/render-837i";
