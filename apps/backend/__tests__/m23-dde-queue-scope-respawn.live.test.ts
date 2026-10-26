@@ -558,12 +558,13 @@ describe.skipIf(!DB_URL)(
       });
 
       it("an item already open for the claim (e.g. keyed by hand) is not duplicated by a rejection", async () => {
-        const claim = await seedClaimWithSubmission(admin);
+        const claim = await seedClaimWithSubmission(admin, { state: "ACK_REJECTED" });
         const manual = await post("", hdr(), {
           itemType: "rtp_correction",
           subjectId: claim.claimId,
         });
         expect(manual.statusCode).toBe(201);
+        await admin.query("UPDATE claim SET state='ACK_PENDING' WHERE id=$1", [claim.claimId]);
 
         await runAckPull277ca(rtpDeps([reject(claim)]));
 

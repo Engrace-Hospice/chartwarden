@@ -36,8 +36,8 @@ const ADJUSTABLE = new Set(["paid", "partial_paid", "denied"]);
 const RETURNABLE = new Set(["ack_rejected", "ack_accepted", "ack_partial"]);
 
 /**
- * Which DDE items make sense for a claim in this state. The UI mapping is the only state guard: the server checks
- * that the claim exists in the org, not its state. Adjust / cancel need a claim Medicare has adjudicated; a return
+ * Which DDE items make sense for a claim in this state. The server enforces the same mapping
+ * (`assertClaimStateAllowsDdeItem`, 409 DDE_CLAIM_STATE_NOT_ELIGIBLE); keep the two in step. Adjust / cancel need a claim Medicare has adjudicated; a return
  * to provider can follow a payer rejection or a 277CA acceptance.
  */
 export function claimDdeOptions(state: string): DdeFileOption[] {
@@ -115,12 +115,16 @@ export function DdeFileAction({
       <p className="wx-row-sub">
         Queues the work for a biller to key in Medicare DDE. Nothing is sent from here.
       </p>
+      {/* InlineAlert's error tone is itself role="alert". The success region is always mounted so a screen reader
+          announces text inserted into it. */}
       {failure ? <InlineAlert>{failure}</InlineAlert> : null}
-      {filed ? (
-        <InlineAlert tone="success">
-          Queued: {filed}. <Link to="/billing/dde">Open the DDE queue</Link>.
-        </InlineAlert>
-      ) : null}
+      <output aria-live="polite">
+        {filed ? (
+          <InlineAlert tone="success">
+            Queued: {filed}. <Link to="/billing/dde">Open the DDE queue</Link>.
+          </InlineAlert>
+        ) : null}
+      </output>
       <div className="wx-action-row">
         {options.map((o) => (
           <Button

@@ -62,8 +62,8 @@ import type { DdeBeneficiaryPort } from "./dde-beneficiary";
 import { applyDdeNoticeAcceptance } from "./dde-notice-acceptance";
 import {
   DDE_PROVIDER_CALL_TIMEOUT_MS,
-  type PlannedOutcome,
   PROVIDER_REFERENCE_PATTERN,
+  type PlannedOutcome,
   REFUSED_BEFORE_SEND,
   ddeIdempotencyKey,
   ddeProviderAnswerRejected,

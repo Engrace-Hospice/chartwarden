@@ -103,7 +103,7 @@ describe.skipIf(!DB_URL)("M23 DDE provider identity and aging, LIVE Postgres (#7
   describe("provider identifiers on the keying sheet (#765)", () => {
     it("adds Provider CCN and Billing NPI to the NOE and claim sheets, and no MBI", async () => {
       const noeItem = await create(USER_A, { itemType: "noe", subjectId: await seedNoe(admin) });
-      const { claimId } = await seedClaimWithSubmission(admin);
+      const { claimId } = await seedClaimWithSubmission(admin, { state: "ACK_REJECTED" });
       const claimItem = await create(USER_A, { itemType: "rtp_correction", subjectId: claimId });
       for (const id of [noeItem, claimItem]) {
         const d = await detail(id);
@@ -149,11 +149,11 @@ describe.skipIf(!DB_URL)("M23 DDE provider identity and aging, LIVE Postgres (#7
     it("ages an open RTP item to overdue and finds it with overdue=true; a fresh one is on track", async () => {
       const old = await create(USER_A, {
         itemType: "rtp_correction",
-        subjectId: (await seedClaimWithSubmission(admin)).claimId,
+        subjectId: (await seedClaimWithSubmission(admin, { state: "ACK_REJECTED" })).claimId,
       });
       const fresh = await create(USER_A, {
         itemType: "rtp_correction",
-        subjectId: (await seedClaimWithSubmission(admin)).claimId,
+        subjectId: (await seedClaimWithSubmission(admin, { state: "ACK_REJECTED" })).claimId,
       });
       await backdate(old, 21); // 21 calendar days is at least 10 business days
       expect((await detail(old)).deadlineStatus).toBe("overdue");
@@ -172,7 +172,7 @@ describe.skipIf(!DB_URL)("M23 DDE provider identity and aging, LIVE Postgres (#7
     it("lists a 7-8 day old item under atRisk, not overdue", async () => {
       const mid = await create(USER_A, {
         itemType: "adjustment",
-        subjectId: (await seedClaimWithSubmission(admin)).claimId,
+        subjectId: (await seedClaimWithSubmission(admin, { state: "PAID" })).claimId,
       });
       await backdate(mid, 8); // 8 calendar days is 5 or 6 business days
       expect((await detail(mid)).deadlineStatus).toBe("at_risk");
@@ -189,11 +189,12 @@ describe.skipIf(!DB_URL)("M23 DDE provider identity and aging, LIVE Postgres (#7
     it("the daily alert reads each org's own queue and carries ids and counts only", async () => {
       const aItem = await create(USER_A, {
         itemType: "cancel",
-        subjectId: (await seedClaimWithSubmission(admin)).claimId,
+        subjectId: (await seedClaimWithSubmission(admin, { state: "PAID" })).claimId,
       });
       const bClaim = await seedClaimWithSubmission(admin, {
         orgId: ORG_B,
         providerEntityId: PE_B,
+        state: "ACK_REJECTED",
       });
       const bItem = await create(USER_B, { itemType: "rtp_correction", subjectId: bClaim.claimId });
       await backdate(aItem, 21);

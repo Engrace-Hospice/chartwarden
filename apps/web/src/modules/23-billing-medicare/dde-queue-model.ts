@@ -161,6 +161,20 @@ export const DEADLINE_TONE: Record<DdeDeadlineStatus, StatusTone> = {
   missed: "error",
 };
 
+/**
+ * The deadline badge text. An item with no deadline date (RTP correction, adjustment, cancel) is classed by how long
+ * it has sat open, so its badge says "(by age)" rather than implying a filing deadline that does not exist.
+ */
+export function deadlineBadgeLabel(item: Pick<DdeItem, "deadlineAt" | "deadlineStatus">): string {
+  const label = DEADLINE_LABEL[item.deadlineStatus];
+  const aged =
+    item.deadlineAt === null &&
+    (item.deadlineStatus === "on_track" ||
+      item.deadlineStatus === "at_risk" ||
+      item.deadlineStatus === "overdue");
+  return aged ? `${label} (by age)` : label;
+}
+
 /** True for the notice types whose deadline is met only by the MAC's recorded acceptance date. */
 export function isNoticeType(t: DdeItemType): boolean {
   return t === "noe" || t === "notr";
