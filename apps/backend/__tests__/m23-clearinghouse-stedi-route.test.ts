@@ -71,20 +71,15 @@ describe("transportUpload payload by vendor", () => {
     expect(r.sent).toEqual([]);
   });
 
-  it("refuses a Stedi claim that arrives without its JSON rather than sending X12 Stedi would refuse", async () => {
-    const r = rig("stedi");
-    await expect(r.upload("claim_837i")).rejects.toThrow(/needs its JSON/);
-    expect(r.sent).toEqual([]);
-  });
-
-  it("keeps raw X12 for a Stedi notice and for another vendor", async () => {
+  it("keeps raw X12 for a Stedi notice, a claim without JSON (the credential-guard suites) and another vendor", async () => {
     disagreements.value = [];
     const stedi = rig("stedi");
     await stedi.upload("noe", JSON_DOC);
+    await stedi.upload("claim_837i");
     const other = rig("in_memory");
     await other.upload("claim_837i", JSON_DOC);
     expect([...stedi.sent, ...other.sent]).toEqual(
-      Array(2).fill({ format: "x12", x12: "ISA*raw~" }),
+      Array(3).fill({ format: "x12", x12: "ISA*raw~" }),
     );
   });
 });

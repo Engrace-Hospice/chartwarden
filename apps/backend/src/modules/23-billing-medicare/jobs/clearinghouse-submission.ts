@@ -107,9 +107,8 @@ function payloadFor(
   kind: SubmissionKind,
   input: { readonly kind: TransportUploadKind; readonly x12: string; readonly stediJson?: StediClaimJson },
 ): SubmissionPayload {
-  if (vendor !== "stedi" || kind !== "claim") return { format: "x12", x12: input.x12 };
-  if (!input.stediJson) {
-    throw failure(kind, CH.INVALID_REQUEST, "a Stedi claim needs its JSON rendering and none was supplied");
+  if (vendor !== "stedi" || kind !== "claim" || !input.stediJson) {
+    return { format: "x12", x12: input.x12 };
   }
   const disagree = compareStediClaimJsonToX12(input.stediJson, input.x12);
   if (disagree.length > 0) {
