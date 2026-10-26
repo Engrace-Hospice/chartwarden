@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1878,
-    "enriched": 1878,
+    "routes": 1879,
+    "enriched": 1879,
     "deficit": 0,
     "mutating": 1071,
     "mutatingNoBody": 1,
-    "gets": 754,
+    "gets": 755,
     "getsNoResponse": 9
   },
   "modules": [
@@ -91,12 +91,12 @@
     },
     {
       "module": "10-hope",
-      "routes": 29,
-      "enriched": 29,
+      "routes": 30,
+      "enriched": 30,
       "deficit": 0,
       "mutating": 15,
       "mutatingNoBody": 0,
-      "gets": 14,
+      "gets": 15,
       "getsNoResponse": 1
     },
     {
