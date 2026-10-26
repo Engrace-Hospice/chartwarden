@@ -14,6 +14,7 @@ export const COMMERCIAL_PATHS = {
   payers: "/commercial/billing/payers",
   authorizations: "/commercial/billing/authorizations",
   enrollments: "/commercial/billing/enrollments",
+  eligibility: "/commercial/billing/eligibility",
   claim: (id: string): string => `/commercial/billing/claims/${id}`,
 } as const;
 
@@ -270,6 +271,9 @@ export interface AuthorizationPlan {
   readonly payerId?: string;
   /** The payer's state on the plans read; the enrollment form offers only active payers. */
   readonly payerStatus?: string | null;
+  /** The plan's eligibility policy (warn or block) and the age in days after which a check is stale. */
+  readonly eligibilityStalenessPolicy?: string;
+  readonly eligibilityMaxAgeDays?: number;
 }
 
 /** The authorization period as text: "from to to", or "from · Open-ended". */
@@ -370,3 +374,139 @@ export function enrollmentTone(status: string): StatusTone {
 export function enrollmentPeriod(from: string, to: string | null): string {
   return to === null ? `${from} · Open-ended` : `${from} to ${to}`;
 }
+
+// ─── Eligibility ─────────────────────────────────────────────────────────────────────────────────────────
+
+/** Mirrors of packages/types (commercial-billing.ts); a model test greps that file so the lists cannot drift. */
+export const ELIGIBILITY_OUTCOME_VALUES = ["active", "inactive", "unknown"] as const;
+export const ELIGIBILITY_POLICY_VALUES = ["warn", "block"] as const;
+export type EligibilityPolicyValue = (typeof ELIGIBILITY_POLICY_VALUES)[number];
+export const MAX_ELIGIBILITY_MAX_AGE_DAYS = 365;
+export const isEligibilityPolicy = (value: string): value is EligibilityPolicyValue =>
+  (ELIGIBILITY_POLICY_VALUES as readonly string[]).includes(value);
+
+/** One stored eligibility check as the list returns it: an outcome and an as-of date, never a member id. */
+export interface EligibilityCheckView {
+  readonly id: string;
+  readonly planId: string;
+  readonly clearinghouseKey: string;
+  readonly serviceDate: string;
+  readonly outcome: string;
+  readonly asOfDate: string;
+  readonly checkedAt: string;
+}
+
+/** The server's freshness verdict for a plan's latest check. The browser displays it and never recomputes it. */
+export interface EligibilityFreshnessView {
+  readonly status: string;
+  readonly severity: string;
+  readonly message: string;
+  readonly evidence: {
+    readonly ageDays: number | null;
+    readonly maxAgeDays: number;
+    readonly policy: string;
+    readonly outcome: string | null;
+    readonly checkedAt: string | null;
+  };
+}
+
+const OUTCOME_TONE: Record<string, StatusTone> = {
+  active: "success",
+  inactive: "error",
+  unknown: "warning",
+};
+export const eligibilityOutcomeLabel = (outcome: string): string => statusLabel(outcome);
+export const eligibilityOutcomeTone = (outcome: string): StatusTone =>
+  OUTCOME_TONE[outcome] ?? "neutral";
+
+const FRESHNESS_LABEL: Record<string, string> = {
+  fresh: "Fresh",
+  stale: "Stale",
+  missing: "No check on record",
+  inactive: "Coverage inactive",
+  unverified: "Unverified",
+};
+export const freshnessLabel = (status: string): string =>
+  FRESHNESS_LABEL[status] ?? statusLabel(status);
+const SEVERITY_TONE: Record<string, StatusTone> = {
+  pass: "success",
+  warning: "warning",
+  block: "error",
+};
+/** Unknown severities read as a warning, never as a pass. */
+export const freshnessTone = (severity: string): StatusTone => SEVERITY_TONE[severity] ?? "warning";
+export const eligibilityPolicyLabel = (policy: string): string =>
+  policy === "block" ? "Blocks the claim" : "Warns only";
+
+/** A timestamp as "2026-10-25 10:00 UTC": fixed, so it does not move with the reader's zone. */
+export function checkedAtLabel(iso: string): string {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(iso)
+    ? `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`
+    : iso;
+}
+
+/** Whole days 1..365 as typed; null when it is not one. */
+export function parseMaxAgeDays(value: string): number | null {
+  if (!/^\d{1,3}$/.test(value.trim())) return null;
+  const n = Number(value.trim());
+  return n >= 1 && n <= MAX_ELIGIBILITY_MAX_AGE_DAYS ? n : null;
+}
+
+export interface CheckFailure {
+  readonly text: string;
+  /** Offer a link to the enrollments screen (the refusal is about enrollment). */
+  readonly enrollmentsLink?: true;
+}
+
+/**
+ * Our own words for a refused eligibility check, chosen by status and the stable code. The server's message text is never shown.
+ * "Nothing was recorded" is said only for the clearinghouse-unavailable refusal, where the server says so; the other refusals
+ * happen before anything is sent, so they say "Nothing was sent."
+ */
+const CHECK_FAILURES: Record<string, CheckFailure> = {
+  CH_NOT_WIRED: {
+    text: "The connected clearinghouse cannot run commercial eligibility checks yet. Nothing was sent. Ask a platform administrator.",
+  },
+  COMMERCIAL_ELIGIBILITY_UNAVAILABLE: {
+    text: "The clearinghouse could not answer the eligibility check. Nothing was recorded. Try again shortly.",
+  },
+  COMMERCIAL_PROVIDER_NOT_ENROLLED: {
+    text: "This provider entity is not enrolled with the payer on the clearinghouse. Nothing was sent. Complete the enrollment, then run the check again.",
+    enrollmentsLink: true,
+  },
+  COMMERCIAL_PAYER_NOT_ROUTED: {
+    text: "This plan has no clearinghouse route in effect on that date. Nothing was sent. Check the plan's routes under Supported payers.",
+  },
+  COMMERCIAL_PROVIDER_NPI_MISSING: {
+    text: "This provider entity has no NPI on file. Nothing was sent. Add the NPI, then run the check again.",
+  },
+  COMMERCIAL_COVERAGE_NOT_FOUND: {
+    text: "The patient has no coverage with this plan's payer on that service date. Nothing was sent. Add or correct the coverage, then run the check again.",
+  },
+  COMMERCIAL_ELIGIBILITY_REJECTED: {
+    text: "The clearinghouse refused the request. Check the plan and the patient's coverage, then run the check again.",
+  },
+  IDEMPOTENCY_CONFLICT: { text: "This request clashed with an earlier one. Run the check again." },
+};
+
+export function describeCheckFailure(status: number, code: string | undefined): CheckFailure {
+  const byCode = code ? CHECK_FAILURES[code] : undefined;
+  if (byCode) return byCode;
+  if (status === 503) {
+    return {
+      text: "The clearinghouse is not available right now. Try again shortly.",
+    };
+  }
+  if (status === 404) {
+    return { text: "The provider entity, patient or plan is not in your scope." };
+  }
+  if (status === 403) return { text: "You are not allowed to run eligibility checks." };
+  if (status === 422) {
+    return { text: "These details were not accepted. Check the plan and the service date." };
+  }
+  if (status === 409) return { text: "That check could not be run. Reload and try again." };
+  return { text: "That did not go through. Check your connection and try again." };
+}
+
+/** The server returns at most this many eligibility checks per history read (service.ts DEFAULT_LIST_LIMIT); the client cannot ask for more. */
+export const ELIGIBILITY_HISTORY_LIMIT = 20;

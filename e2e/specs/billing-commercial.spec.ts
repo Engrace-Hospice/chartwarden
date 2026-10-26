@@ -308,3 +308,88 @@ test.describe("Billing — Commercial enrollments (M41)", () => {
     await expectNoAxeViolations(page);
   });
 });
+
+test.describe("Billing — Commercial eligibility (M41)", () => {
+  const PATIENT = "33333333-3333-4333-8333-333333333333";
+  const PLAN = "44444444-4444-4444-8444-444444444444";
+  const plan = {
+    id: PLAN,
+    payerId: "55555555-5555-4555-8555-555555555555",
+    planName: "Synthetic PPO",
+    claimFilingIndicator: "CI",
+    authorizationRequirement: "required_at_admission",
+    authorizationLeadDays: 3,
+    eligibilityStalenessPolicy: "warn",
+    eligibilityMaxAgeDays: 30,
+    effectiveFrom: "2026-01-01",
+    effectiveTo: null,
+    payerStatus: "active",
+    routes: [],
+  };
+  const check = {
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    providerEntityId: "22222222-2222-4222-8222-222222222222",
+    patientId: PATIENT,
+    planId: PLAN,
+    clearinghouseKey: "stedi",
+    serviceDate: "2026-10-20",
+    outcome: "active",
+    asOfDate: "2026-10-20",
+    requestId: "req-1",
+    checkedAt: "2026-10-24T10:00:00.000Z",
+  };
+  const freshness = {
+    ruleId: "M41.ELIGIBILITY.FRESHNESS",
+    status: "fresh",
+    severity: "pass",
+    message: "Eligibility was verified recently.",
+    evidence: {
+      ageDays: 1,
+      maxAgeDays: 30,
+      policy: "warn",
+      outcome: "active",
+      checkedAt: check.checkedAt,
+    },
+  };
+
+  test("main path: shows the latest check and history for a patient, then runs a check", async ({
+    page,
+  }) => {
+    const rows = [check];
+    const posted: unknown[] = [];
+    await page.route(PLANS, (route) => route.fulfill({ json: { items: [plan] } }));
+    await page.route("**/api/v1/billing/commercial/eligibility/latest*", (route) =>
+      route.fulfill({ json: { latest: { ...rows[0], replayed: false }, freshness } }),
+    );
+    await page.route("**/api/v1/billing/commercial/eligibility/check", async (route) => {
+      posted.push(route.request().postDataJSON());
+      const added = {
+        ...check,
+        id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        serviceDate: "2026-10-25",
+      };
+      rows.unshift(added);
+      await route.fulfill({ json: { ...added, replayed: false, freshness } });
+    });
+    await page.route("**/api/v1/billing/commercial/eligibility?*", (route) =>
+      route.fulfill({ json: { items: rows } }),
+    );
+    await signInAs(page, ADMIN_ACCOUNT());
+    await page.goto(`/commercial/billing/eligibility?patient=${PATIENT}&plan=${PLAN}`);
+
+    await expect(page.getByRole("heading", { name: "Eligibility", level: 1 })).toBeVisible();
+    const card = page.getByLabel("Latest eligibility check for Synthetic PPO");
+    await expect(card.getByText("Fresh")).toBeVisible();
+    await expect(card.getByText("Eligibility was verified recently.")).toBeVisible();
+    const table = page.getByRole("table", { name: /Eligibility checks for/ });
+    await expect(table.getByText("2026-10-20")).toBeVisible();
+
+    await page.getByLabel("Service date").fill("2026-10-25");
+    await page.getByRole("button", { name: "Run eligibility check" }).click();
+    await expect(page.getByText("Eligibility check recorded.")).toBeVisible();
+    await expect(table.getByText("2026-10-25")).toBeVisible();
+    expect(posted).toHaveLength(1);
+    expect(JSON.stringify(posted)).not.toMatch(/member/i);
+    await expectNoAxeViolations(page);
+  });
+});

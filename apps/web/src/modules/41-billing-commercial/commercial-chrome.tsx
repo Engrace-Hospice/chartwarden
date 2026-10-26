@@ -19,6 +19,11 @@ const VIEWS = [
     label: "Enrollments",
     match: "/commercial/billing/enrollments",
   },
+  {
+    to: COMMERCIAL_PATHS.eligibility,
+    label: "Eligibility",
+    match: "/commercial/billing/eligibility",
+  },
 ] as const;
 
 export function CommercialTabs(): JSX.Element {

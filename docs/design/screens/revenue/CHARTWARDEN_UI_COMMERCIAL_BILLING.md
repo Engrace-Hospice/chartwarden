@@ -11,8 +11,8 @@ Module: Billing — Commercial (M41)
 The commercial lane of the billing area: the work queue of hospice claims whose primary payer is a commercial plan, the detail of one
 such claim (payer, plan, authorization, coordination of benefits, validation), and the supported-payers view that says which
 commercial payers the agency can bill and whether it can send to each. Medicare (M23) and Medicaid (M24) keep their own queues; this
-lane never shows their claims. It reads `GET /api/v1/billing/commercial/claims`, `.../claims/:id`, `.../payer-plans` and
-`.../enrollments` (spec M41 section 4.1).
+lane never shows their claims. It reads `GET /api/v1/billing/commercial/claims`, `.../claims/:id`, `.../payer-plans`,
+`.../enrollments` and `.../eligibility` (spec M41 section 4.1).
 
 ---
 
@@ -29,7 +29,7 @@ lane never shows their claims. It reads `GET /api/v1/billing/commercial/claims`,
 Use Work Queue.
 
 ```text
-Page Header · Billing tabs (Commercial) · view tabs (Claim queue · Supported payers · Authorizations · Enrollments)
+Page Header · Billing tabs (Commercial) · view tabs (Claim queue · Supported payers · Authorizations · Enrollments · Eligibility)
 KPI strip (in queue · draft · ready · expected payment)
 Filter panel (provider entity · payer kind · state)
   Table of claims                                  |  Right drawer: selected claim preview
@@ -99,6 +99,40 @@ there is no delete). Both writes need a fresh step-up: on a stale session the ty
 step-up draft key, the user goes to `/step-up`, and on return the form is restored for the user to submit again, never submitted
 automatically. A 409 is an overlapping period; a 422 is explained in fixed words, never with the server's text. The Supported payers
 drawer links a not-enrolled plan here. Outcomes are announced with a toast.
+
+---
+
+## Eligibility
+
+Route `/commercial/billing/eligibility` (`commercial.eligibility`, `commercial_billing.read`). Per provider entity and patient, so the
+screen starts at a patient search and reads nothing until a provider entity and a patient are chosen (the latest check also needs a
+plan). Three parts:
+
+- **Latest check** (`GET .../eligibility/latest?providerEntityId&patientId&planId`): the coverage answer (Active, Inactive or Unknown),
+  service date, when it was checked, and the server's freshness verdict: a status label (Fresh, Stale, No check on record, Coverage
+  inactive, Unverified), a tone from the severity (pass, warning, block), the server's message, the check's age against the plan's
+  limit, and the plan's policy. The browser displays the verdict and never computes freshness; a missing, stale or unverified verdict is
+  a real state, never blank and never a pass.
+- **Check history** (`GET .../eligibility?providerEntityId&patientId[&planId]`): a table (caption, column headers with `scope`), newest
+  first, for the chosen plan or all plans. A failed read, including a 404, is an error with a retry, never "no checks recorded".
+  Rows stay on screen while a reload runs; a failed reload of the same scope keeps them with a non-destructive alert; no other
+  scope's rows are ever shown.
+- **Run eligibility check** (`POST .../eligibility/check`, only with `commercial_billing.write`): plan and service date (today by
+  default, editable). One Idempotency-Key per attempt, kept on a retry of the same body and dropped when a field changes, on success and
+  on a 409; a double submit sends once. The server resolves the member id from the patient's coverage; it is never a field, never sent
+  and never shown. A refusal (clearinghouse unavailable or not wired, provider not enrolled with a link to Enrollments, plan not routed,
+  no NPI on file, no coverage on that date, request refused, idempotency clash) is explained in our own fixed words chosen by status and
+  code, never with the server's text, and leaves the previous result on screen. "Nothing was recorded" is said only for the
+  clearinghouse-unavailable refusal; the others say "Nothing was sent." A replayed answer is announced as the earlier result, not a
+  new check.
+
+**Edit eligibility policy** (`PATCH .../payer-plans/:id/eligibility-policy`, only with `commercial_billing.manage_enrollment`, for the
+chosen plan): a drawer with warn or block and a stale-after age in whole days, 1 to 365 (checked in the browser and by the server). The
+write needs a fresh step-up: on a stale session the typed draft is kept under the shared step-up draft key and, on return from
+`/step-up` (the return URL carries the resolved entity), restored for the user to submit again, never submitted automatically. The draft
+is discarded on an ordinary visit, Cancel, closing the drawer, switching entity or plan, and success. The Supported payers plan drawer
+links its eligibility policy to this screen. Outcomes are announced with a toast. No member id and no raw clearinghouse text appear
+anywhere on the screen.
 
 ---
 

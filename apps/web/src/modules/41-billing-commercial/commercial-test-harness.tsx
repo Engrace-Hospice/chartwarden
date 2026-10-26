@@ -170,3 +170,41 @@ export const enrollmentRow = (over: Record<string, unknown> = {}): Record<string
   updatedAt: "2026-01-01T00:00:00.000Z",
   ...over,
 });
+
+export const CHECK_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+/** One stored eligibility check as the list returns it (outcome and as-of date only; there is no member id field). */
+export const eligibilityRow = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+  id: CHECK_ID,
+  providerEntityId: ENTITY_ID,
+  patientId: PATIENT_ID,
+  planId: PLAN_ID,
+  clearinghouseKey: "stedi",
+  serviceDate: "2026-10-20",
+  outcome: "active",
+  asOfDate: "2026-10-20",
+  requestId: "req-1",
+  checkedAt: "2026-10-24T10:00:00.000Z",
+  ...over,
+});
+
+/** The server's freshness verdict. */
+export const freshnessBody = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+  ruleId: "M41.ELIGIBILITY.FRESHNESS",
+  status: "fresh",
+  severity: "pass",
+  message: "Eligibility was verified recently.",
+  evidence: {
+    ageDays: 1,
+    maxAgeDays: 30,
+    policy: "warn",
+    outcome: "active",
+    checkedAt: "2026-10-24T10:00:00.000Z",
+  },
+  ...over,
+});
+
+export const latestBody = (
+  latest: Record<string, unknown> | null = { ...eligibilityRow(), replayed: false },
+  freshness: Record<string, unknown> = freshnessBody(),
+): Record<string, unknown> => ({ latest, freshness });
