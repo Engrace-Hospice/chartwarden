@@ -30,7 +30,7 @@ import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { COMMERCIAL_UNSUPPORTED_CLEARINGHOUSES } from "@chartwarden/types";
 import { CH, type ClearinghouseTransport } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { and, asc, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { type ValidAckEvent, validateAckEvent } from "../domain/ack-event";
 import { transitionForAck } from "../domain/ack-transition";
 import type { CommercialContextPort } from "../eligibility/service";
@@ -86,6 +86,8 @@ export interface AckWorkerDeps {
     readonly eventId?: string;
     readonly code?: string;
     readonly count?: number;
+    readonly controlNumber?: string;
+    readonly claimId?: string;
   }) => void;
 }
 
@@ -421,6 +423,7 @@ export async function replayHeldEvents(
       .orderBy(asc(Q.createdAt))
       .limit(HELD_REPLAY_LIMIT),
   );
+  deps.log?.({ event: "ack.replay", count: heldRows.length }); // a counting seam: how often the held events are looked at
   const cutoff = nowOf(deps).getTime() - ACK_POLL_MAX_AGE_DAYS * DAY_MS;
   let applied = 0;
   let abandoned = 0;
@@ -431,9 +434,54 @@ export async function replayHeldEvents(
       .update(Q)
       .set({ resolvedAt: nowOf(deps), resolution })
       .where(eq(Q.id, id));
+  /** The newest submission of this provider entity with that control number, if any: its claim and when it was requested. */
+  const submissionOf = (controlNumber: string | null) =>
+    controlNumber === null
+      ? Promise.resolve(null)
+      : inOrg(deps, scope.organizationId, async (tx) => {
+          const S = schema.commercialSubmissions;
+          const [s] = await tx
+            .select({ claimId: S.claimId, requestedAt: S.requestedAt })
+            .from(S)
+            .where(
+              and(
+                eq(S.organizationId, scope.organizationId),
+                eq(S.providerEntityId, scope.providerEntityId),
+                eq(S.controlNumber, controlNumber),
+              ),
+            )
+            .orderBy(desc(S.requestedAt))
+            .limit(1);
+          return s ?? null;
+        });
+  /**
+   * A payer-stage answer that is dropped is never dropped silently: it may be the only proof that a file arrived (an operator said
+   * "not received" and the claim was sent again under a new control number). It is logged at warn level with ids only (event id,
+   * control number, claim id when one can be found) so it is reviewable. The row keeps its `resolution`.
+   */
+  const logAbandoned = (
+    resolution: HeldResolution,
+    row: { eventId: string; controlNumber: string | null },
+    claimId: string | null,
+  ) =>
+    deps.log?.({
+      event: "ack.held_abandoned",
+      eventId: row.eventId,
+      code: resolution,
+      ...(row.controlNumber ? { controlNumber: row.controlNumber } : {}),
+      ...(claimId ? { claimId } : {}),
+    });
   for (const row of heldRows) {
-    if (row.createdAt.getTime() < cutoff) {
+    const submission = await submissionOf(row.controlNumber);
+    // Age counts from the submission when there is one (a held answer is stale once its submission is past the poll window) AND from
+    // the moment the event was held, whichever is older, so neither a long-held row nor an old submission lingers.
+    const refTime = Math.min(
+      row.createdAt.getTime(),
+      submission?.requestedAt.getTime() ?? Number.POSITIVE_INFINITY,
+    );
+    if (refTime < cutoff) {
       await inOrg(deps, scope.organizationId, (tx) => settle(tx, row.id, "abandoned_aged"));
+      logAbandoned("abandoned_aged", row, submission?.claimId ?? null);
       abandoned += 1;
       continue;
     }
@@ -461,6 +509,13 @@ export async function replayHeldEvents(
       }
       return out;
     });
+    if (outcome.result === "unmatched") {
+      logAbandoned("abandoned_no_submission", row, submission?.claimId ?? null);
+    } else if (outcome.reason === "vendor_mismatch") {
+      logAbandoned("abandoned_vendor_mismatch", row, submission?.claimId ?? null);
+    } else if (outcome.reason === "scope_mismatch") {
+      logAbandoned("abandoned_scope_mismatch", row, submission?.claimId ?? null);
+    }
     if (outcome.result === "applied") applied += 1;
     else if (outcome.result === "unmatched" || outcome.reason !== "no_receipt") abandoned += 1;
   }

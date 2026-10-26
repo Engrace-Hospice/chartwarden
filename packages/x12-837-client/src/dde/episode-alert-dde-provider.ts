@@ -1,3 +1,4 @@
+import type { Page } from "../clearinghouse/types";
 // @chartwarden/x12-837-client — the Episode Alert DdeAccessProvider SKELETON (#759, ADR-0103). Built to the port; every
 // vendor-specific fact lives in ./episode-alert-dde-wire and is UNVERIFIED, so this adapter cannot be bound yet:
 // `createEpisodeAlertDdeProviderFromEnv` throws while the wire is unverified, which keeps `DDE_PROVIDER=episode_alert`
@@ -22,7 +23,6 @@ import {
   type DdeOutcome,
   type DdeReceipt,
 } from "./types";
-import type { Page } from "../clearinghouse/types";
 
 export const EPISODE_ALERT_DDE_API_KEY_ENV = "EPISODE_ALERT_DDE_API_KEY";
 export const EPISODE_ALERT_DDE_BASE_URL_ENV = "EPISODE_ALERT_DDE_BASE_URL";

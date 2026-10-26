@@ -198,4 +198,70 @@ describe("createScheduleProbe", () => {
   it("rejects when the store faults (the readiness treats that as not scheduled)", async () => {
     await expect(probeOf({}, true)()).rejects.toThrow(/valkey down/);
   });
+
+  describe("during a Valkey outage (the client retries forever and never answers)", () => {
+    const hanging = () => {
+      const made: { closed: boolean }[] = [];
+      const probe = createScheduleProbe({
+        connection: {},
+        timeoutMs: 2_000,
+        makeQueue: () => {
+          const q = { closed: false };
+          made.push(q);
+          return {
+            getRepeatableJobs: () => new Promise<never>(() => undefined), // never settles
+            close: async () => {
+              q.closed = true;
+            },
+          };
+        },
+      });
+      return { probe, made };
+    };
+
+    it("times out instead of hanging, drops the failed queue and builds a new one on the next probe", async () => {
+      vi.useFakeTimers();
+      try {
+        const { probe, made } = hanging();
+        const first = expect(probe()).rejects.toThrow(/timed out/);
+        await vi.advanceTimersByTimeAsync(2_000);
+        await first;
+        expect(made).toHaveLength(1);
+        expect(made[0]?.closed).toBe(true); // the failed one is discarded, never cached forever
+        const second = expect(probe()).rejects.toThrow(/timed out/);
+        await vi.advanceTimersByTimeAsync(2_000);
+        await second;
+        expect(made).toHaveLength(2); // a fresh queue for the retry
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("the shared readiness answers false after the timeout and caches that, so requests do not pile up on a dead store", async () => {
+      vi.useFakeTimers();
+      try {
+        const { probe } = hanging();
+        const calls = vi.fn(probe);
+        const readiness = createSharedDrainReadiness({
+          local: createDrainReadiness(),
+          probe: calls,
+          negativeTtlMs: 5_000,
+        });
+        // three concurrent requests share ONE in-flight probe
+        const answers = Promise.all([
+          readiness.drainScheduled(),
+          readiness.drainScheduled(),
+          readiness.drainScheduled(),
+        ]);
+        await vi.advanceTimersByTimeAsync(2_000);
+        await expect(answers).resolves.toEqual([false, false, false]);
+        expect(calls).toHaveBeenCalledTimes(1);
+        // inside the negative window the next request is answered from the cache, with no new probe
+        await expect(readiness.drainScheduled()).resolves.toBe(false);
+        expect(calls).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
 });

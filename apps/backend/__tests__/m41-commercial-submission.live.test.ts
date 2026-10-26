@@ -54,6 +54,7 @@ import type {
   AckWorkerDeps,
   SubmissionWorkerDeps,
 } from "../src/modules/41-billing-commercial/index";
+import { bindPayloadAndMarkCallStarted } from "../src/modules/41-billing-commercial/jobs/submission-worker";
 import {
   LIVE_APP_ROLE_PASSWORD,
   appRoleUrl,
@@ -1059,7 +1060,117 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       }
     });
 
-    it("M3: the first-hash read and the hash write share the claim lock: two rows of one claim cannot bind different hashes", async () => {
+    it("M3: the payload bind waits for the claim's row lock, because the first hash is read and the new one written under it", async () => {
+      const { c, sub } = await queued();
+      const holder = new Client({ connectionString: DB_URL });
+      await holder.connect();
+      try {
+        await holder.query("BEGIN");
+        await holder.query("SELECT id FROM commercial_claim WHERE id=$1 FOR UPDATE", [c.claimId]);
+        const row = await submissionRow(sub.submissionId);
+        const hash = "a".repeat(64);
+        let finished = false;
+        const bound = bindPayloadAndMarkCallStarted(
+          workerDeps("stedi"),
+          { id: row.id, claimId: row.claim_id, organizationId: row.organization_id } as never,
+          hash,
+        ).then((r) => {
+          finished = true;
+          return r;
+        });
+        await new Promise((r) => setTimeout(r, 400));
+        expect(finished).toBe(false); // blocked on the lock the other connection holds
+        expect((await submissionRow(sub.submissionId)).payload_hash).toBeNull();
+        await holder.query("COMMIT");
+        expect(await bound).toBe("bound");
+        expect((await submissionRow(sub.submissionId)).payload_hash).toBe(hash);
+      } finally {
+        await holder.query("ROLLBACK").catch(() => undefined);
+        await holder.end();
+        await admin.query(
+          "UPDATE commercial_submission SET status='failed', last_failure_code='TEST' WHERE id=$1",
+          [sub.submissionId],
+        );
+      }
+    });
+
+    it("an ambiguous CH_UNAVAILABLE (timeout, 5xx, sent-but-unrecorded) makes the row ambiguous: exhaustion ends in_doubt, the hash still binds, and changed data gives PAYLOAD_CHANGED", async () => {
+      const { c, sub } = await queued();
+      const timeoutLike = {
+        submitClaim: async () => ({
+          ok: false as const,
+          degraded: {
+            code: "CH_UNAVAILABLE",
+            reason: "Stedi could not be reached",
+            ambiguous: true as const,
+          },
+        }),
+      };
+      for (let i = 0; i < 5; i += 1) {
+        await dueNow(sub.submissionId);
+        await runSubmissionDrain(workerDeps("stedi", { transport: timeoutLike }));
+      }
+      let row = await submissionRow(sub.submissionId);
+      expect(row).toMatchObject({ status: "queued", attempt_count: 5, ambiguous: true });
+      expect(row.payload_hash).toBeTruthy();
+      await dueNow(sub.submissionId);
+      await runSubmissionDrain(workerDeps("stedi", { transport: timeoutLike }));
+      row = await submissionRow(sub.submissionId);
+      expect(row).toMatchObject({
+        status: "in_doubt", // NOT failed: the payload may be at the vendor
+        last_failure_code: "COMMERCIAL_SEND_INTERRUPTED",
+      });
+      // a person says it was not received, the data is corrected, and it is sent again: the first payload still binds
+      const svc = service("stedi");
+      await svc.reconcile(actor, c.claimId, sub.submissionId, "not_received");
+      subscriberLastName = "Corrected-After-Timeout";
+      try {
+        const again = await svc.submit(actor, c.claimId, `key-${randomUUID()}`);
+        const recorder = recordingTransport();
+        await runSubmissionDrain(workerDeps("stedi", { transport: recorder }));
+        expect(recorder.results).toEqual([]); // refused before the transport: it might hold payload X
+        expect(await submissionRow(again.submissionId)).toMatchObject({
+          status: "failed",
+          last_failure_code: "COMMERCIAL_PAYLOAD_CHANGED",
+        });
+      } finally {
+        subscriberLastName = "Doe";
+      }
+    });
+
+    it("a CLEAN CH_UNAVAILABLE (refused before the request left) until exhaustion ends failed and binds nothing", async () => {
+      const { c, sub } = await queued();
+      const refusedBeforeSend = {
+        submitClaim: async () => ({
+          ok: false as const,
+          degraded: {
+            code: "CH_UNAVAILABLE",
+            reason: "the submission record could not be reserved",
+          },
+        }),
+      };
+      for (let i = 0; i < 6; i += 1) {
+        await dueNow(sub.submissionId);
+        await runSubmissionDrain(workerDeps("stedi", { transport: refusedBeforeSend }));
+      }
+      expect(await submissionRow(sub.submissionId)).toMatchObject({
+        status: "failed",
+        ambiguous: false,
+        last_failure_code: "COMMERCIAL_SUBMISSION_EXHAUSTED",
+      });
+      subscriberLastName = "Fixed-Before-Resend";
+      try {
+        const again = await service("stedi").submit(actor, c.claimId, `key-${randomUUID()}`);
+        const recorder = recordingTransport();
+        await runSubmissionDrain(workerDeps("stedi", { transport: recorder }));
+        expect(recorder.results).toEqual([{ ok: true, replayed: false }]);
+        expect(await submissionStatus(again.submissionId)).toBe("sent");
+      } finally {
+        subscriberLastName = "Doe";
+      }
+    });
+
+    it("M3: a changed payload on a resubmission ends COMMERCIAL_PAYLOAD_CHANGED even with two drains running, and only the first hash is ever bound", async () => {
       const { c, sub } = await queued();
       await stageInDoubt(c, sub.submissionId);
       const first = (await submissionRow(sub.submissionId)).payload_hash as string;
@@ -1826,11 +1937,69 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       it("abandons a held event whose submission later failed (swept even with no live work), instead of holding it forever", async () => {
         const { c, sub } = await heldClaim();
         await service("stedi").reconcile(actor, c.claimId, sub.submissionId, "not_received");
-        await runAckPull(ackDeps("stedi"));
+        const logs: Record<string, unknown>[] = [];
+        await runAckPull({ ...ackDeps("stedi"), log: (e) => logs.push(e) });
         expect(await heldOf(c)).toMatchObject({ resolution: "abandoned_no_submission" });
         expect((await heldOf(c)).resolved_at).not.toBeNull();
         expect(await claimState(c.claimId)).toBe("ready");
         expect(await ackRows(c.claimId)).toEqual([]);
+        // a dropped payer answer may be the only proof the file arrived, so it is never silent: a warn-level log with ids only
+        const dropped = logs.filter(
+          (l) => l.event === "ack.held_abandoned" && l.controlNumber === c.controlNumber,
+        );
+        expect(dropped).toEqual([
+          {
+            event: "ack.held_abandoned",
+            eventId: expect.any(String),
+            code: "abandoned_no_submission",
+            controlNumber: c.controlNumber,
+            claimId: c.claimId,
+          },
+        ]);
+      });
+
+      it("ages a held event from its SUBMISSION when that is older than the row", async () => {
+        const { c, sub } = await heldClaim();
+        await admin.query(
+          "UPDATE commercial_submission SET requested_at = now() - interval '60 days' WHERE id=$1",
+          [sub.submissionId],
+        );
+        await service("stedi").reconcile(
+          actor,
+          c.claimId,
+          sub.submissionId,
+          "received",
+          "payer_portal",
+        );
+        await replayHeldEvents(ackDeps("stedi"), scope());
+        expect(await heldOf(c)).toMatchObject({ resolution: "abandoned_aged" });
+        expect(await claimState(c.claimId)).toBe("submitted"); // stale: not applied
+      });
+
+      it("replays the held events once per pull, and again only after a page that applied a clearinghouse-stage event", async () => {
+        const count = (logs: { event: string }[]) =>
+          logs.filter((l) => l.event === "ack.replay").length;
+        const pull = async () => {
+          const logs: { event: string }[] = [];
+          await runAckPull({ ...ackDeps("stedi"), log: (e) => logs.push(e) });
+          return count(logs);
+        };
+        await pull(); // consume whatever earlier tests left in the stream
+        // three payer-stage answers (two pages of two): nothing can unblock a held row, so the held events are looked at once
+        const a = await sentClaim();
+        const b = await sentClaim();
+        const d = await sentClaim();
+        for (const c of [a, b, d])
+          await transport.control.payerAccepts(c.controlNumber, "ICN-F", scope());
+        expect(await pull()).toBe(1);
+        // clearinghouse-stage answers (a page that settles rows): once at the start, once after that page
+        const e = await sentClaim();
+        const f = await sentClaim();
+        await transport.control.clearinghouseAccepts(e.controlNumber, scope());
+        await transport.control.clearinghouseAccepts(f.controlNumber, scope());
+        expect(await pull()).toBe(2);
+        // an idle pull with nothing new still looks once
+        expect(await pull()).toBe(1);
       });
 
       it("abandons a held event whose submission went through another clearinghouse (vendor_mismatch)", async () => {

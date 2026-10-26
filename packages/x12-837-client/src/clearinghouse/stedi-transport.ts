@@ -375,7 +375,11 @@ export class StediTransport implements ClearinghouseTransport {
       } else {
         await this.releaseQuietly(ctx.organizationId, scope, submission);
       }
-      return sent.result;
+      // The request left (a timeout, a network error, a 5xx): tell the caller the file MAY have been filed even though the code is a
+      // retryable CH_UNAVAILABLE, so it never treats a later failure of the same payload as clean.
+      return sent.ambiguous && !sent.result.ok
+        ? degraded(sent.result.degraded.code, sent.result.degraded.reason, true)
+        : sent.result;
     }
     return this.complete(ctx, scope, submission, sent.id);
   }
@@ -519,6 +523,7 @@ export class StediTransport implements ClearinghouseTransport {
     return degraded(
       CH.UNAVAILABLE,
       "submitted to Stedi but the attempt could not be recorded; retry with the same key and reconcile",
+      true,
     );
   }
 

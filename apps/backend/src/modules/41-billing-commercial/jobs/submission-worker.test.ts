@@ -31,11 +31,35 @@ describe("classifyTransportRefusal", () => {
     expect(classifyTransportRefusal(CH.UNAVAILABLE)).toEqual({
       kind: "retry",
       code: CH.UNAVAILABLE,
+      ambiguous: false,
     });
   });
 
   it("never retries an ambiguous send", () => {
     expect(classifyTransportRefusal(CH.IN_DOUBT)).toEqual({ kind: "in_doubt", code: CH.IN_DOUBT });
+  });
+
+  it("a CH_UNAVAILABLE the transport flags ambiguous (timeout, 5xx, sent-but-unrecorded) retries but marks the row ambiguous", () => {
+    expect(classifyTransportRefusal(CH.UNAVAILABLE, true)).toEqual({
+      kind: "retry",
+      code: CH.UNAVAILABLE,
+      ambiguous: true,
+    });
+  });
+
+  it("a clean CH_UNAVAILABLE (refused before the request left) stays definite", () => {
+    expect(classifyTransportRefusal(CH.UNAVAILABLE)).toEqual({
+      kind: "retry",
+      code: CH.UNAVAILABLE,
+      ambiguous: false,
+    });
+  });
+
+  it("any OTHER code flagged ambiguous is in_doubt, never failed", () => {
+    expect(classifyTransportRefusal(CH.INVALID_REQUEST, true)).toEqual({
+      kind: "in_doubt",
+      code: CH.INVALID_REQUEST,
+    });
   });
 
   it("an idempotency conflict means the transport already holds an earlier attempt: in_doubt, never failed", () => {
