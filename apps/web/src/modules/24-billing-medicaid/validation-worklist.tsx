@@ -672,7 +672,7 @@ function overrideErrorMessage(
       return "Re-authentication (step-up) is required before applying an override.";
     default:
       if (status === 403 && requiredRole)
-        return `This rule can only be overridden by a ${roleLabel(requiredRole)}, and your account does not hold that role.`;
+        return `This rule can only be overridden by a ${roleLabel(requiredRole)}, and your account may not hold that role.`;
       if (status === 401 || status === 403)
         return "Re-authentication (step-up) or a higher role is required to override this rule.";
       if (status === 422) return "The rationale did not meet the minimum length — add more detail.";

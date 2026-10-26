@@ -106,8 +106,30 @@ describe("M24 override modal acting role", () => {
   });
 
   it("says the rule cannot be overridden when it has no required role", async () => {
-    await openModal(makeApi({ ruleConfig: rules(null) }));
+    const api = makeApi({ ruleConfig: rules(null) });
+    await openModal(api);
+    fireEvent.change(screen.getByLabelText("Override rationale"), { target: { value: RATIONALE } });
     expect(screen.getByText(/cannot be overridden/i)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Apply override" })).toHaveProperty("disabled", true);
+    const apply = screen.getByRole("button", { name: "Apply override" });
+    expect(apply).toHaveProperty("disabled", true);
+    fireEvent.click(apply);
+    expect(api.POST).not.toHaveBeenCalled();
+  });
+
+  it("falls back to a role pick (default billing_manager) when the rule config is unreadable", async () => {
+    const api = makeApi({
+      ruleConfig: { data: undefined, error: {}, response: new Response(null, { status: 403 }) },
+    });
+    await openModal(api);
+    expect(screen.getByRole("combobox", { name: "Override role" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Override rationale"), { target: { value: RATIONALE } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply override" }));
+    await waitFor(() => expect(api.POST).toHaveBeenCalled());
+    expect(api.POST).toHaveBeenCalledWith(
+      "/api/v1/medicaid-validation-results/{id}/override",
+      expect.objectContaining({
+        body: expect.objectContaining({ overrideRoleClaimed: "billing_manager" }),
+      }),
+    );
   });
 });
