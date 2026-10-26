@@ -165,6 +165,7 @@ function StatusActions({
   const [busy, setBusy] = useState(false);
   const controls = useRef<HTMLDivElement>(null);
   const lastOpened = useRef<NextStatus | null>(null);
+  // One key per confirm attempt: dropped when the confirm opens/closes and on any HTTP response; kept only after a thrown/no-response failure.
   const attemptKey = useRef<string | null>(null);
   const inFlight = useRef(false);
 
@@ -207,6 +208,9 @@ function StatusActions({
         onChanged(status);
         return;
       }
+      // The server caches EVERY answer (4xx/5xx too) under the key for 24h and replays it for the same body, so a key survives only
+      // when no HTTP response arrived (the catch below); any response, 503/500/403/404/422 included, retires it.
+      attemptKey.current = null;
       const code = (err as { error?: { code?: string } }).error?.code;
       const redirect = authFailureRedirect(
         response.status,
@@ -218,7 +222,6 @@ function StatusActions({
         return;
       }
       if (response.status === 409) {
-        attemptKey.current = null;
         setConfirming(null);
         setError(
           "This authorization is no longer approved, so its status cannot change. The list has been reloaded.",

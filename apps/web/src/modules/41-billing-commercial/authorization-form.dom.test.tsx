@@ -147,15 +147,40 @@ describe("AuthorizationForm", () => {
     expect(keys[0]).not.toBe(keys[1]);
   });
 
-  it("reuses the key when the same attempt is retried after a server failure", async () => {
+  it.each([500, 503])(
+    "uses a NEW key when retried after a %i (the server caches the error)",
+    async (status) => {
+      const calls: Call[] = [];
+      let n = 0;
+      mount(
+        () => {
+          n += 1;
+          return n === 1
+            ? { status, body: { error: { code: "INTERNAL" } } }
+            : { status: 201, body: authorizationRow() };
+        },
+        calls,
+        { onRecorded: () => undefined },
+      );
+      fill();
+      fireEvent.click(submit());
+      await screen.findByText(/did not go through/i);
+      fireEvent.click(submit());
+      await waitFor(() => expect(posts(calls)).toHaveLength(2));
+      const [a, b] = posts(calls);
+      expect(a?.headers.get("idempotency-key")).toBeTruthy();
+      expect(b?.headers.get("idempotency-key")).not.toBe(a?.headers.get("idempotency-key"));
+    },
+  );
+
+  it("KEEPS the key when the fetch threw (no response arrived)", async () => {
     const calls: Call[] = [];
     let n = 0;
     mount(
       () => {
         n += 1;
-        return n === 1
-          ? { status: 500, body: { error: { code: "INTERNAL" } } }
-          : { status: 201, body: authorizationRow() };
+        if (n === 1) throw new TypeError("network down");
+        return { status: 201, body: authorizationRow() };
       },
       calls,
       { onRecorded: () => undefined },
@@ -166,7 +191,8 @@ describe("AuthorizationForm", () => {
     fireEvent.click(submit());
     await waitFor(() => expect(posts(calls)).toHaveLength(2));
     const [a, b] = posts(calls);
-    expect(a?.headers.get("idempotency-key")).toBe(b?.headers.get("idempotency-key"));
+    expect(a?.headers.get("idempotency-key")).toBeTruthy();
+    expect(b?.headers.get("idempotency-key")).toBe(a?.headers.get("idempotency-key"));
   });
 
   it("blocks a double submit while one is in flight", async () => {
