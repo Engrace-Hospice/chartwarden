@@ -28,7 +28,7 @@ import {
   voidTob,
 } from "@chartwarden/medicaid-adapters";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import type { CredentialCipherPort } from "../credential-crypto";
 import type { M24WriteActor } from "./actor";
@@ -1042,20 +1042,33 @@ export function buildDrizzleM24WriteService(
           .from(VR)
           .where(eq(VR.id, result.medicaidValidationRunId))
           .limit(1);
-        const claimId = runRows[0]?.claimId ?? "";
+        const claimId = runRows[0]?.claimId;
+        if (!claimId) throw new NotFoundError("validation run");
+        // The applied role is server-derived, never the client's claim: the actor must HOLD the claimed role and it
+        // must be the role the rule requires (a rule with no required role cannot be overridden).
+        const requiredRole = RULES_BY_KEY.get(result.ruleKey)?.overrideRoleRequired;
+        if (
+          !requiredRole ||
+          input.overrideRoleClaimed !== requiredRole ||
+          !actor.roles.includes(requiredRole)
+        ) {
+          throw new ForbiddenError("override role not held or not the role this rule requires");
+        }
         if (result.outcome !== "fail") {
           throw new UnprocessableError(
             "OVERRIDE_RESULT_NOT_FAILED",
             `only a failed validation result can be overridden (outcome is ${result.outcome})`,
           );
         }
-        const latestRun = await tx
-          .select({ id: VR.id })
-          .from(VR)
-          .where(eq(VR.medicaidClaimId, claimId))
-          .orderBy(desc(VR.at), desc(VR.id))
-          .limit(1);
-        if (latestRun[0]?.id !== result.medicaidValidationRunId) {
+        // Lock the claim row: a concurrent revalidate updates it (validationRunIdLatest), so it cannot supersede the run
+        // between this check and the insert.
+        const claimRows = await tx
+          .select({ latestRunId: C.validationRunIdLatest })
+          .from(C)
+          .where(eq(C.id, claimId))
+          .limit(1)
+          .for("update");
+        if (claimRows[0]?.latestRunId !== result.medicaidValidationRunId) {
           throw new ConflictError(
             "OVERRIDE_RESULT_SUPERSEDED",
             "the validation result is not in the claim's latest validation run",
@@ -1071,7 +1084,7 @@ export function buildDrizzleM24WriteService(
             medicaidValidationResultId: resultId,
             medicaidClaimId: claimId,
             ruleKey: result.ruleKey,
-            overrideRoleApplied: input.overrideRoleClaimed,
+            overrideRoleApplied: requiredRole,
             reason: input.reason,
             stepUpAuthTokenAt: new Date(),
             actorMembershipId: actor.userId,
@@ -1096,7 +1109,7 @@ export function buildDrizzleM24WriteService(
             resultId,
             overrideId,
             ruleKey: result.ruleKey,
-            overrideRoleApplied: input.overrideRoleClaimed,
+            overrideRoleApplied: requiredRole,
           },
         });
         return { overrideId };

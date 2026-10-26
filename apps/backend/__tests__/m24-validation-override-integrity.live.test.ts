@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
+import { DEFAULT_MEDICAID_RULES } from "@chartwarden/medicaid-adapters";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildDrizzleM24WriteService } from "../src/modules/24-billing-medicaid/routes/write-service-drizzle";
@@ -92,6 +93,10 @@ describe.skipIf(!DB_URL)("M24 validation override integrity - LIVE Postgres (#80
     reason: "Payer confirmed the diagnosis code is acceptable for this admission by phone.",
     overrideRoleClaimed: "billing_manager" as const,
   };
+  // Real default rules whose override role is billing_manager (the applied role is derived from the rule).
+  const RULE_KEYS = DEFAULT_MEDICAID_RULES.filter(
+    (r) => r.overrideRoleRequired === "billing_manager",
+  ).map((r) => r.key);
   const published: string[] = [];
   const outbox = {
     async publish(_tx: unknown, e: { eventName: string }) {
@@ -108,11 +113,11 @@ describe.skipIf(!DB_URL)("M24 validation override integrity - LIVE Postgres (#80
     );
     return rows[0].id;
   }
-  async function seedResult(runId: string, outcome: string): Promise<string> {
+  async function seedResult(runId: string, outcome: string, ruleKey: string): Promise<string> {
     const { rows } = await admin.query(
       `INSERT INTO medicaid_validation_result (organization_id, medicaid_validation_run_id, rule_key, rule_version, outcome)
-       VALUES ($1,$2,'rule.' || $4::text,1,$3) RETURNING id`,
-      [ORG_A, runId, outcome, randomUUID()],
+       VALUES ($1,$2,$4,1,$3) RETURNING id`,
+      [ORG_A, runId, outcome, ruleKey],
     );
     return rows[0].id;
   }
@@ -127,11 +132,15 @@ describe.skipIf(!DB_URL)("M24 validation override integrity - LIVE Postgres (#80
     const claimId = await seedClaim();
     const oldRun = await seedRun(claimId, "2026-02-01T00:00:00Z");
     const latestRun = await seedRun(claimId, "2026-02-02T00:00:00Z");
+    await admin.query("UPDATE medicaid_claim SET validation_run_id_latest=$2 WHERE id=$1", [
+      claimId,
+      latestRun,
+    ]);
     return {
       claimId,
-      oldFail: await seedResult(oldRun, "fail"),
-      latestFail: await seedResult(latestRun, "fail"),
-      latestPass: await seedResult(latestRun, "pass"),
+      oldFail: await seedResult(oldRun, "fail", RULE_KEYS[0] as string),
+      latestFail: await seedResult(latestRun, "fail", RULE_KEYS[0] as string),
+      latestPass: await seedResult(latestRun, "pass", RULE_KEYS[1] as string),
     };
   }
   const svc = () => buildDrizzleM24WriteService(handle.db, outbox);
@@ -159,6 +168,32 @@ describe.skipIf(!DB_URL)("M24 validation override integrity - LIVE Postgres (#80
     expect(overrideId).toBeTruthy();
     expect(await overrideCount(f.latestFail)).toBe(1);
     expect(published).toEqual(["m24.medicaid_claim.override_applied"]);
+  });
+
+  it("rejects a spoofed role (claimed but not held, or not the rule's required role) with 403 and writes nothing", async () => {
+    const f = await fixture();
+    const notHeld = { ...ACTOR, roles: ["compliance_officer"] };
+    await expect(svc().applyOverride(notHeld, f.latestFail, INPUT)).rejects.toMatchObject({
+      statusCode: 403,
+    });
+    const wrongRole = { ...ACTOR, roles: ["billing_manager", "org_admin"] };
+    await expect(
+      svc().applyOverride(wrongRole, f.latestFail, {
+        ...INPUT,
+        overrideRoleClaimed: "org_admin",
+      }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(await overrideCount(f.latestFail)).toBe(0);
+  });
+
+  it("stores the server-derived role on the override row", async () => {
+    const f = await fixture();
+    await svc().applyOverride(ACTOR, f.latestFail, INPUT);
+    const { rows } = await admin.query(
+      "SELECT override_role_applied FROM medicaid_validation_override WHERE medicaid_validation_result_id=$1",
+      [f.latestFail],
+    );
+    expect(rows[0].override_role_applied).toBe("billing_manager");
   });
 
   it("rejects a pass result with 422 and writes nothing", async () => {
