@@ -36,6 +36,15 @@ export {
   runSubmissionDrain,
   scheduleM41Jobs,
 } from "./jobs/submission-worker";
+export {
+  type AckWorkerDeps,
+  createDrizzleAckCursorStore,
+  registerM41AckWorker,
+  runAckPull,
+  scheduleM41AckJobs,
+} from "./jobs/ack-worker";
+export { transitionForAck } from "./domain/ack-transition";
+export { applyAckEvent } from "./jobs/ack-worker";
 export { M41_CRON_QUEUES, M41_PLATFORM_JOB_ID, wireM41Tenancy } from "./jobs/queues";
 export { buildCommercialRenderPorts } from "./services/render-ports";
 export { buildCommercial837iRenderer } from "./services/render-837i";

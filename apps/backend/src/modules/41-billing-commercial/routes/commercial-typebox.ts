@@ -276,6 +276,16 @@ export const SubmissionViewSchema = Type.Object({
 
 const TimelineItemSchema = Type.Union([
   Type.Object({
+    kind: Type.Literal("acknowledgment"),
+    at: Type.String(),
+    submissionId: Type.String(),
+    /** `clearinghouse` (the 999 level) or `payer` (the 277CA level). */
+    stage: Type.String(),
+    disposition: Type.String(),
+    reasonCodes: Type.Array(Type.String()),
+    payerClaimNumber: nullableString(),
+  }),
+  Type.Object({
     kind: Type.Literal("state_change"),
     at: Type.String(),
     fromState: nullableString(),

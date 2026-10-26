@@ -69891,7 +69891,7 @@
         "tags": [
           "41-billing-commercial"
         ],
-        "summary": "A commercial claim's history in order: state changes (from, to, actor kind) and submissions (status, control number, attempts, failure code, sent time). Ids, dates and codes only; bounded (200 state changes and 50 submissions, newest kept; `truncated` says when older rows were cut). Read-audited (commercial_billing.read; caseload scope)",
+        "summary": "A commercial claim's history in order: state changes (from, to, actor kind), submissions (status, control number, attempts, failure code, sent time) and acknowledgments (stage clearinghouse or payer, disposition, reason codes, payer claim number). Ids, dates and codes only; bounded (200 state changes, 50 submissions and 100 acknowledgments, newest kept; `truncated` says when older rows were cut). Read-audited (commercial_billing.read; caseload scope)",
         "parameters": [
           {
             "name": "id",
@@ -69930,6 +69930,52 @@
                       "type": "array",
                       "items": {
                         "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "at",
+                              "submissionId",
+                              "stage",
+                              "disposition",
+                              "reasonCodes",
+                              "payerClaimNumber"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "acknowledgment",
+                                "type": "string"
+                              },
+                              "at": {
+                                "type": "string"
+                              },
+                              "submissionId": {
+                                "type": "string"
+                              },
+                              "stage": {
+                                "type": "string"
+                              },
+                              "disposition": {
+                                "type": "string"
+                              },
+                              "reasonCodes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "payerClaimNumber": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
                           {
                             "type": "object",
                             "required": [

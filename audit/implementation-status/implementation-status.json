@@ -808,7 +808,7 @@
       "status": "Implemented",
       "spec": true,
       "schema": true,
-      "migration": false,
+      "migration": true,
       "routes": true,
       "enriched": {
         "routes": 21,
@@ -818,8 +818,8 @@
       "tests": false,
       "adapter": null,
       "liveInfra": {
-        "tables": 14,
-        "covered": 13
+        "tables": 15,
+        "covered": 15
       }
     }
   ],

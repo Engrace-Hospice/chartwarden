@@ -30,6 +30,7 @@ type ClaimRow = typeof schema.commercialClaims.$inferSelect;
 /** Rows the timeline returns at most (state history and submissions each); the response says when it cut. */
 export const TIMELINE_HISTORY_LIMIT = 200;
 export const TIMELINE_SUBMISSION_LIMIT = 50;
+export const TIMELINE_ACK_LIMIT = 100;
 
 /** The bound clearinghouse as the commercial lane needs it. `vendor` null means unbound: nothing can be sent. */
 export interface CommercialClearinghouseBinding {
@@ -65,6 +66,17 @@ export type TimelineItem =
       readonly fromState: string | null;
       readonly toState: string;
       readonly actorKind: string;
+    }
+  | {
+      readonly kind: "acknowledgment";
+      readonly at: string;
+      readonly submissionId: string;
+      /** `clearinghouse` (the 999 level) or `payer` (the 277CA level): never conflated. */
+      readonly stage: string;
+      readonly disposition: string;
+      /** Vendor reason CODES only. */
+      readonly reasonCodes: readonly string[];
+      readonly payerClaimNumber: string | null;
     }
   | {
       readonly kind: "submission";
@@ -319,8 +331,16 @@ export function buildCommercialSubmissionService(
           .where(eq(schema.commercialSubmissions.claimId, claim.id))
           .orderBy(sql`${schema.commercialSubmissions.requestedAt} DESC`)
           .limit(TIMELINE_SUBMISSION_LIMIT + 1);
+        const acks = await tx
+          .select()
+          .from(schema.commercialAcknowledgments)
+          .where(eq(schema.commercialAcknowledgments.claimId, claim.id))
+          .orderBy(sql`${schema.commercialAcknowledgments.createdAt} DESC`)
+          .limit(TIMELINE_ACK_LIMIT + 1);
         const truncated =
-          history.length > TIMELINE_HISTORY_LIMIT || submissions.length > TIMELINE_SUBMISSION_LIMIT;
+          history.length > TIMELINE_HISTORY_LIMIT ||
+          submissions.length > TIMELINE_SUBMISSION_LIMIT ||
+          acks.length > TIMELINE_ACK_LIMIT;
         const items: TimelineItem[] = [
           ...history.slice(0, TIMELINE_HISTORY_LIMIT).map(
             (h): TimelineItem => ({
@@ -342,6 +362,18 @@ export function buildCommercialSubmissionService(
               attemptCount: s.attemptCount,
               failureCode: s.lastFailureCode,
               sentAt: s.sentAt ? s.sentAt.toISOString() : null,
+            }),
+          ),
+          ...acks.slice(0, TIMELINE_ACK_LIMIT).map(
+            (a): TimelineItem => ({
+              kind: "acknowledgment",
+              // the authority's own time when it gave one, else when we recorded it
+              at: (a.occurredAt ?? a.createdAt).toISOString(),
+              submissionId: a.submissionId,
+              stage: a.stage,
+              disposition: a.disposition,
+              reasonCodes: a.reasonCodes,
+              payerClaimNumber: a.payerClaimNumber,
             }),
           ),
         ].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.kind.localeCompare(b.kind)));

@@ -429,6 +429,7 @@ export const MODULES: ModuleDef[] = [
       "commercial_claim_state_history",
       "commercial_submission",
       "commercial_acknowledgment",
+      "commercial_ack_cursor", // the acknowledgment pull position (an opaque vendor token, no PHI)
       "commercial_validation_run",
       "commercial_validation_result",
       "commercial_validation_override",

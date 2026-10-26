@@ -1767,9 +1767,12 @@ import {
   buildCommercialSubmissionService,
   buildDrizzleEligibilityStore,
   createCommercialAdminService,
+  createDrizzleAckCursorStore as createDrizzleM41AckCursorStore,
   createEligibilityService,
   mountM41Routes,
+  registerM41AckWorker,
   registerM41SubmissionWorker,
+  scheduleM41AckJobs,
   scheduleM41Jobs,
   wireM41Tenancy,
 } from "./modules/41-billing-commercial/index";
@@ -8775,12 +8778,25 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       activeOrgs: m41ActiveOrgs,
       log: (event) => app.log.info({ commercialSubmission: event }, "M41 submission"),
     });
-    attachDlqAlertsToAll([m41SubmissionWorker], "m41");
+    // Acknowledgments (999 clearinghouse stage, 277CA payer stage) come back through the same transport with a persisted cursor.
+    const m41AckWorker = registerM41AckWorker(queueConnection, {
+      db: dbHandle.db,
+      binding: clearinghouseBinding,
+      contexts: buildCommercialContextPort({ env: process.env, providerNpi: m25PayeeNpi }),
+      cursors: createDrizzleM41AckCursorStore(dbHandle.db),
+      outbox: m41OutboxPublisher as unknown as CommercialOutboxPort,
+      activeOrgs: m41ActiveOrgs,
+      log: (event) => app.log.warn({ commercialAck: event }, "M41 acknowledgment"),
+    });
+    attachDlqAlertsToAll([m41SubmissionWorker, m41AckWorker], "m41");
     app.addHook("onClose", async () => {
-      await m41SubmissionWorker.close();
+      await Promise.all([m41SubmissionWorker.close(), m41AckWorker.close()]);
     });
     try {
-      const m41ScheduleQueues = await scheduleM41Jobs(queueConnection);
+      const m41ScheduleQueues = [
+        ...(await scheduleM41Jobs(queueConnection)),
+        ...(await scheduleM41AckJobs(queueConnection)),
+      ];
       app.addHook("onClose", async () => {
         await Promise.all(m41ScheduleQueues.map((q) => q.close()));
       });

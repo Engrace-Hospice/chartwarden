@@ -335,7 +335,7 @@ export function buildCommercialClaimLifecycleService(
           .where(
             and(
               eq(schema.commercialSubmissions.claimId, claim.id),
-              inArray(schema.commercialSubmissions.status, ["queued", "sent", "in_doubt"]),
+              inArray(schema.commercialSubmissions.status, ["queued", "in_doubt"]),
             ),
           )
           .limit(1);

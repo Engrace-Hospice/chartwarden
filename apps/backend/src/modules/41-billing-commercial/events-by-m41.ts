@@ -11,6 +11,14 @@ import { Type } from "@sinclair/typebox";
 
 const id = Type.String({ minLength: 1 });
 
+/** The acknowledgment events: ids, the stage and the vendor's reason CODES (never text). */
+const ackPayload = Type.Object({
+  claimId: id,
+  submissionId: id,
+  stage: Type.Union([Type.Literal("clearinghouse"), Type.Literal("payer")]),
+  reasonCodes: Type.Array(Type.String({ maxLength: 64 }), { maxItems: 50 }),
+});
+
 export const M41_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m41.claim.draft_created",
@@ -82,6 +90,33 @@ export const M41_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.Union([Type.Literal("failed"), Type.Literal("in_doubt")]),
       code: id,
     }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m41.claim.clearinghouse_accepted",
+    moduleOwner: "m41",
+    description:
+      "The clearinghouse (999 stage) accepted the file; the claim moved submitted to ack_pending. This is NOT payer acceptance.",
+    payloadSchema: ackPayload,
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m41.claim.accepted",
+    moduleOwner: "m41",
+    description:
+      "The PAYER (277CA stage) accepted the claim; the claim moved to accepted. Adjudication and payment are separate, later states.",
+    payloadSchema: ackPayload,
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m41.claim.rejected",
+    moduleOwner: "m41",
+    description:
+      "The clearinghouse or the payer rejected the claim (or the payer accepted only part of it); the claim moved to rejected. Reason codes only.",
+    payloadSchema: ackPayload,
     declaredConsumers: [],
     isOutboxOnly: true,
   },

@@ -78,6 +78,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS "commercial_submission_live_uq" ON "commercial
 CREATE INDEX IF NOT EXISTS "commercial_submission_control_ix" ON "commercial_submission" ("organization_id", "control_number");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_submission_due_ix" ON "commercial_submission" ("next_attempt_at") WHERE "status" = 'queued';--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_submission_claim_ix" ON "commercial_submission" ("claim_id", "requested_at");--> statement-breakpoint
+-- the composite foreign key (claim_id, organization_id) needs an index that LEADS with exactly those columns (the fk-index-coverage suite)
+CREATE INDEX IF NOT EXISTS "commercial_submission_claim_fk_ix" ON "commercial_submission" ("claim_id", "organization_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_submission_org_ix" ON "commercial_submission" ("organization_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_submission_pe_ix" ON "commercial_submission" ("provider_entity_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "commercial_submission_location_ix" ON "commercial_submission" ("location_id") WHERE "location_id" IS NOT NULL;--> statement-breakpoint

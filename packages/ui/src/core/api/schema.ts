@@ -5627,7 +5627,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** A commercial claim's history in order: state changes (from, to, actor kind) and submissions (status, control number, attempts, failure code, sent time). Ids, dates and codes only; bounded (200 state changes and 50 submissions, newest kept; `truncated` says when older rows were cut). Read-audited (commercial_billing.read; caseload scope) */
+        /** A commercial claim's history in order: state changes (from, to, actor kind), submissions (status, control number, attempts, failure code, sent time) and acknowledgments (stage clearinghouse or payer, disposition, reason codes, payer claim number). Ids, dates and codes only; bounded (200 state changes, 50 submissions and 100 acknowledgments, newest kept; `truncated` says when older rows were cut). Read-audited (commercial_billing.read; caseload scope) */
         get: operations["getApiV1BillingCommercialClaimsByIdTimeline"];
         put?: never;
         post?: never;
@@ -44475,6 +44475,15 @@ export interface operations {
                         patientId: string;
                         state: string;
                         items: ({
+                            /** @constant */
+                            kind: "acknowledgment";
+                            at: string;
+                            submissionId: string;
+                            stage: string;
+                            disposition: string;
+                            reasonCodes: string[];
+                            payerClaimNumber: string | null;
+                        } | {
                             /** @constant */
                             kind: "state_change";
                             at: string;

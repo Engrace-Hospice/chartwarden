@@ -14768,7 +14768,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/billing/commercial/claims/:id/timeline": {
     summary:
-      "A commercial claim's history in order: state changes (from, to, actor kind) and submissions (status, control number, attempts, failure code, sent time). Ids, dates and codes only; bounded (200 state changes and 50 submissions, newest kept; `truncated` says when older rows were cut). Read-audited (commercial_billing.read; caseload scope)",
+      "A commercial claim's history in order: state changes (from, to, actor kind), submissions (status, control number, attempts, failure code, sent time) and acknowledgments (stage clearinghouse or payer, disposition, reason codes, payer claim number). Ids, dates and codes only; bounded (200 state changes, 50 submissions and 100 acknowledgments, newest kept; `truncated` says when older rows were cut). Read-audited (commercial_billing.read; caseload scope)",
     response: M41TimelineViewSchema,
   },
   "POST /api/v1/billing/commercial/claims/:id/submit": {

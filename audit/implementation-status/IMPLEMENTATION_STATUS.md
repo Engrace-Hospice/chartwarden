@@ -50,7 +50,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M38 Clinical Terminology Service | 🟢 Implemented | ✅ | ✅ | ❌ | ✅ | 19/19 ✅ | ✅ | ✅ | — | 22/22 ✅ |
 | M39 Consent & Authorization Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 11/11 ✅ |
 | M40 Master Data Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 25/25 ✅ | ✅ | ✅ | — | 14/14 ✅ |
-| M41 Billing — Commercial | 🟢 Implemented | ✅ | ✅ | ❌ | ✅ | 21/21 ✅ | ✅ | ❌ | — | 13/14 ⚠️ |
+| M41 Billing — Commercial | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 21/21 ✅ | ✅ | ❌ | — | 15/15 ✅ |
 
 ## Hard-fail consistency checks
 

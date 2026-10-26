@@ -35,6 +35,8 @@ export const commercialSubmissions = pgTable(
     requestedByMembershipId: uuid("requested_by_membership_id").notNull(),
     requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
     sentAt: timestamp("sent_at", { withTimezone: true }),
+    // migration 1275: the first clearinghouse-stage acceptance. Never advances the claim to `accepted` (ADR-0053 D2).
+    clearinghouseAcceptedAt: timestamp("clearinghouse_accepted_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

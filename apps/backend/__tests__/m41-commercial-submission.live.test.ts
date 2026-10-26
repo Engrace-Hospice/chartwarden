@@ -30,14 +30,20 @@ import {
   type CommercialActor,
   type CommercialClaimSeams,
   M41_OUTBOX_EVENTS,
+  applyAckEvent,
   buildCommercial837iRenderer,
   buildCommercialClaimAssemblyService,
   buildCommercialClaimLifecycleService,
   buildCommercialContextPort,
   buildCommercialSubmissionService,
+  createDrizzleAckCursorStore,
+  runAckPull,
   runSubmissionDrain,
 } from "../src/modules/41-billing-commercial/index";
-import type { SubmissionWorkerDeps } from "../src/modules/41-billing-commercial/index";
+import type {
+  AckWorkerDeps,
+  SubmissionWorkerDeps,
+} from "../src/modules/41-billing-commercial/index";
 import {
   LIVE_APP_ROLE_PASSWORD,
   appRoleUrl,
@@ -472,7 +478,11 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       expect(tl.state).toBe("submitted");
       expect(tl.truncated).toBe(false);
       const kinds = tl.items.map((i) =>
-        i.kind === "state_change" ? `${i.fromState}>${i.toState}` : `submission:${i.status}`,
+        i.kind === "state_change"
+          ? `${i.fromState}>${i.toState}`
+          : i.kind === "submission"
+            ? `submission:${i.status}`
+            : `ack:${i.stage}`,
       );
       expect(kinds).toContain("ready>submitted");
       expect(kinds).toContain("submission:sent");
@@ -575,6 +585,250 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         "UPDATE commercial_submission SET status='failed', last_failure_code='TEST' WHERE id=$1",
         [sub.submissionId],
       );
+    });
+  });
+
+  describe("acknowledgments (999 clearinghouse stage, 277CA payer stage)", () => {
+    const scope = () => ({ organizationId: ORG, providerEntityId, usage: "test" as const });
+
+    const ackDeps = (vendor: string | null): AckWorkerDeps => {
+      const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M41_OUTBOX_EVENTS]));
+      return {
+        db: handle.db,
+        binding: { vendor, transport },
+        contexts: buildCommercialContextPort({ env: {}, providerNpi: async () => NPI }),
+        cursors: createDrizzleAckCursorStore(handle.db),
+        outbox: {
+          publish: (tx, e) =>
+            publisher.publish(tx as Parameters<typeof publisher.publish>[0], {
+              ...e,
+              callerModule: "m41",
+            }),
+        },
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG }] },
+      };
+    };
+
+    /** A claim the transport has accepted (state `submitted`). */
+    async function sentClaim() {
+      const c = await readyClaim();
+      await service("stedi").submit(actor, c.claimId, `key-${randomUUID()}`);
+      await runSubmissionDrain(workerDeps("stedi"));
+      expect(await claimState(c.claimId)).toBe("submitted");
+      return c;
+    }
+    const ackRows = (claimId: string) =>
+      admin
+        .query(
+          "SELECT stage, disposition, reason_codes, payer_claim_number FROM commercial_acknowledgment WHERE claim_id=$1 ORDER BY created_at, stage",
+          [claimId],
+        )
+        .then((r) => r.rows);
+
+    it("a clearinghouse acceptance moves submitted to ack_pending and stamps the submission; only the payer stage accepts", async () => {
+      const c = await sentClaim();
+      await transport.control.clearinghouseAccepts(c.controlNumber, scope());
+      const first = await runAckPull(ackDeps("stedi"));
+      expect(first.applied).toBeGreaterThanOrEqual(1); // earlier tests left acks in the same stream
+      expect(await claimState(c.claimId)).toBe("ack_pending"); // never accepted by the clearinghouse stage
+      const stamped = await scalar<boolean>(
+        "SELECT clearinghouse_accepted_at IS NOT NULL AS n FROM commercial_submission WHERE claim_id=$1 AND status='sent'",
+        [c.claimId],
+      );
+      expect(stamped).toBe(true);
+      expect(await eventCount(c.claimId, "m41.claim.clearinghouse_accepted")).toBe(1);
+      expect(await eventCount(c.claimId, "m41.claim.accepted")).toBe(0);
+
+      await transport.control.payerAccepts(c.controlNumber, "PAYER-ICN-1", scope());
+      await runAckPull(ackDeps("stedi"));
+      expect(await claimState(c.claimId)).toBe("accepted");
+      expect(await eventCount(c.claimId, "m41.claim.accepted")).toBe(1);
+      expect(await ackRows(c.claimId)).toEqual([
+        {
+          stage: "clearinghouse",
+          disposition: "accepted",
+          reason_codes: [],
+          payer_claim_number: null,
+        },
+        {
+          stage: "payer",
+          disposition: "accepted",
+          reason_codes: [],
+          payer_claim_number: "PAYER-ICN-1",
+        },
+      ]);
+
+      // an accepted claim is final for acknowledgments, and cannot be voided locally
+      expect(
+        (
+          await failure(
+            buildCommercialClaimLifecycleService(handle.db, seams(randomUUID())).voidClaim(
+              actor,
+              c.claimId,
+            ),
+          )
+        )?.statusCode,
+      ).toBe(409);
+
+      // timeline now carries both stages, distinct, in order
+      const tl = await service("stedi").timeline(actor, c.claimId);
+      const acks = tl.items.filter((i) => i.kind === "acknowledgment");
+      expect(acks.map((a) => (a.kind === "acknowledgment" ? a.stage : ""))).toEqual([
+        "clearinghouse",
+        "payer",
+      ]);
+    });
+
+    it("duplicates collapse on the event id: replaying the whole stream changes nothing", async () => {
+      const c = await sentClaim();
+      await transport.control.clearinghouseAccepts(c.controlNumber, scope());
+      const first = await runAckPull(ackDeps("stedi"));
+      expect(first.applied).toBeGreaterThanOrEqual(1);
+      expect(await claimState(c.claimId)).toBe("ack_pending");
+      // lose the persisted cursor (admin only): the next pull re-reads every event from the start of the stream
+      await admin.query("DELETE FROM commercial_ack_cursor");
+      const replay = await runAckPull(ackDeps("stedi"));
+      expect(replay.duplicates).toBeGreaterThanOrEqual(1);
+      expect(replay.applied).toBe(0);
+      expect(await ackRows(c.claimId)).toHaveLength(1);
+      expect(await eventCount(c.claimId, "m41.claim.clearinghouse_accepted")).toBe(1);
+      // the same event id applied directly collapses too
+      const event = {
+        eventId: "replayed-event",
+        controlNumber: c.controlNumber,
+        stage: "payer" as const,
+        disposition: "accepted" as const,
+        reasonCodes: [],
+        occurredAt: new Date().toISOString(),
+      };
+      expect(await applyAckEvent(ackDeps("stedi"), scope(), event)).toBe("applied");
+      expect(await applyAckEvent(ackDeps("stedi"), scope(), event)).toBe("duplicate");
+      expect(await eventCount(c.claimId, "m41.claim.accepted")).toBe(1);
+      expect(await claimState(c.claimId)).toBe("accepted");
+    });
+
+    it("a payer rejection rejects the claim with its reason codes; a rejected claim may be voided", async () => {
+      const c = await sentClaim();
+      await transport.control.payerRejects(c.controlNumber, ["A7:158", "A8:562"], scope());
+      await runAckPull(ackDeps("stedi"));
+      expect(await claimState(c.claimId)).toBe("rejected");
+      expect(await eventCount(c.claimId, "m41.claim.rejected")).toBe(1);
+      expect((await ackRows(c.claimId))[0]).toMatchObject({
+        stage: "payer",
+        disposition: "rejected",
+        reason_codes: ["A7:158", "A8:562"],
+      });
+      await buildCommercialClaimLifecycleService(handle.db, seams(randomUUID())).voidClaim(
+        actor,
+        c.claimId,
+      );
+      expect(await claimState(c.claimId)).toBe("void");
+    });
+
+    it("a clearinghouse rejection rejects the claim; a partial payer answer rejects it too", async () => {
+      const a = await sentClaim();
+      const b = await sentClaim();
+      await transport.control.clearinghouseRejects(a.controlNumber, ["AK5:R"], scope());
+      await transport.control.payerPartiallyAccepts(b.controlNumber, ["STC:A3"], scope());
+      await runAckPull(ackDeps("stedi"));
+      expect(await claimState(a.claimId)).toBe("rejected");
+      expect(await claimState(b.claimId)).toBe("rejected");
+    });
+
+    it("a payer answer that arrives before the clearinghouse answer still accepts, and the late 999 does not regress it", async () => {
+      const c = await sentClaim();
+      await transport.control.payerAccepts(c.controlNumber, "ICN-3", scope());
+      await runAckPull(ackDeps("stedi"));
+      expect(await claimState(c.claimId)).toBe("accepted");
+      await transport.control.clearinghouseAccepts(c.controlNumber, scope());
+      // nothing is outstanding for this provider entity now, so drive the late event directly
+      const late = await applyAckEvent(ackDeps("stedi"), scope(), {
+        eventId: "late-999",
+        controlNumber: c.controlNumber,
+        stage: "clearinghouse",
+        disposition: "accepted",
+        reasonCodes: [],
+        occurredAt: new Date().toISOString(),
+      });
+      expect(late).toBe("applied");
+      expect(await claimState(c.claimId)).toBe("accepted");
+      expect(await eventCount(c.claimId, "m41.claim.clearinghouse_accepted")).toBe(0);
+    });
+
+    it("an event for a control number that is no commercial submission is skipped and changes nothing", async () => {
+      const c = await sentClaim();
+      // a Medicare-style submission sharing the provider entity's stream
+      const ctx = {
+        organizationId: ORG,
+        providerEntityId,
+        payerId: "MEDICARE",
+        correlationId: randomUUID(),
+        usage: "test" as const,
+        billingNpi: NPI,
+      };
+      await transport.submitClaim(ctx, {
+        kind: "claim",
+        controlNumber: "MEDICARE-1",
+        idempotencyKey: "m23.claim.MEDICARE-1",
+        payload: { format: "x12", x12: "ISA*stub~" },
+      });
+      await transport.control.payerAccepts("MEDICARE-1", "M-ICN", scope());
+      const res = await runAckPull(ackDeps("stedi"));
+      expect(res.unmatched).toBeGreaterThanOrEqual(1);
+      expect(await claimState(c.claimId)).toBe("submitted");
+      expect(await ackRows(c.claimId)).toEqual([]);
+    });
+
+    it("quarantines an event whose control number belongs to another provider entity, and ignores another tenant's", async () => {
+      const c = await sentClaim();
+      const otherPe = (
+        await admin.query(
+          `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+           VALUES ($1,'654321','Synthetic Hospice Two','1245319599','\\x00','12-31') RETURNING id`,
+          [ORG],
+        )
+      ).rows[0].id as string;
+      const event = {
+        eventId: "foreign-1",
+        controlNumber: c.controlNumber,
+        stage: "payer" as const,
+        disposition: "accepted" as const,
+        reasonCodes: [],
+        occurredAt: new Date().toISOString(),
+      };
+      expect(
+        await applyAckEvent(
+          ackDeps("stedi"),
+          { organizationId: ORG, providerEntityId: otherPe },
+          event,
+        ),
+      ).toBe("quarantined");
+      expect(
+        await applyAckEvent(ackDeps("stedi"), { organizationId: ORG_B, providerEntityId }, event),
+      ).toBe("unmatched");
+      expect(await claimState(c.claimId)).toBe("submitted");
+      expect(await ackRows(c.claimId)).toEqual([]);
+    });
+
+    it("an unroutable event is rejected before it touches anything", async () => {
+      const c = await sentClaim();
+      await expect(
+        applyAckEvent(ackDeps("stedi"), scope(), {
+          eventId: "bad-1",
+          controlNumber: c.controlNumber,
+          stage: "clearinghouse",
+          disposition: "partial",
+          reasonCodes: [],
+          occurredAt: new Date().toISOString(),
+        } as never),
+      ).rejects.toThrow(/ack event/);
+      expect(await ackRows(c.claimId)).toEqual([]);
+    });
+
+    it("an unbound tick fails while a sent claim waits for its answer and calls no transport", async () => {
+      const c = await sentClaim();
+      await expect(runAckPull(ackDeps(null))).rejects.toThrow(/CH_NOT_WIRED/);
+      expect(await claimState(c.claimId)).toBe("submitted");
     });
   });
 

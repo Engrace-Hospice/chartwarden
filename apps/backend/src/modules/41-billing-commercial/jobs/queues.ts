@@ -9,10 +9,13 @@ import { registerPlatformJob } from "@chartwarden/tenancy";
 export const M41_CRON_QUEUES = {
   /** Send every due queued commercial submission through the bound ClearinghouseTransport. */
   submissionDrain: "m41.submission-drain",
+  /** Pull 999-stage and 277CA-stage acknowledgments for sent commercial claims through the transport (persisted cursor). */
+  ackPull: "m41.ack-pull",
 } as const;
 
 export const M41_JOB_SCHEDULES = {
   submissionDrain: "* * * * *",
+  ackPull: "*/5 * * * *",
 } as const;
 
 /** The platform job id the drain enters `withPlatformContext` under to enumerate active orgs (must be allowlisted at boot). */
