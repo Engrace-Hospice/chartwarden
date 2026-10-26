@@ -7,6 +7,7 @@ import {
   COMMERCIAL_CLAIM_STATE_VALUES,
   COMMERCIAL_HOSPICE_LEVEL_OF_CARE_VALUES,
   COMMERCIAL_OVERRIDE_REASON_MIN_LENGTH,
+  COMMERCIAL_SUBMISSION_STATUS_VALUES,
 } from "@chartwarden/types";
 import { type Static, Type } from "@sinclair/typebox";
 
@@ -239,6 +240,68 @@ export const AuthorizationViewSchema = Type.Object({
 
 export const AuthorizationListResponseSchema = Type.Object({
   items: Type.Array(AuthorizationViewSchema),
+});
+
+// ─── Submission (ADR-0053 D10): send gate, submit, timeline ─────────────────────────────────────────────────────────
+const SendGateReasonSchema = Type.Object({
+  /** A stable `COMMERCIAL_SEND_GATE_CODES` value the UI branches on. */
+  code: Type.String(),
+  /** Fixed text that says what to do next; never a rule, vendor or patient value. */
+  message: Type.String(),
+  /** Rule keys behind a validation, authorization or eligibility reason. */
+  ruleKeys: Type.Optional(Type.Array(Type.String())),
+});
+
+export const SendGateViewSchema = Type.Object({
+  claimId: Type.String(),
+  state: Type.String(),
+  patientId: Type.String(),
+  canSubmit: Type.Boolean(),
+  /** The platform clearinghouse's key; null when none is bound. */
+  clearinghouseKey: nullableString(),
+  reasons: Type.Array(SendGateReasonSchema),
+});
+
+export const SubmissionViewSchema = Type.Object({
+  submissionId: Type.String(),
+  claimId: Type.String(),
+  /** `queued` until the clearinghouse transport accepts it. */
+  status: lit(COMMERCIAL_SUBMISSION_STATUS_VALUES),
+  controlNumber: Type.String(),
+  clearinghouseKey: Type.String(),
+  attemptCount: Type.Integer(),
+  requestedAt: Type.String(),
+  replayed: Type.Boolean(),
+});
+
+const TimelineItemSchema = Type.Union([
+  Type.Object({
+    kind: Type.Literal("state_change"),
+    at: Type.String(),
+    fromState: nullableString(),
+    toState: Type.String(),
+    actorKind: Type.String(),
+  }),
+  Type.Object({
+    kind: Type.Literal("submission"),
+    at: Type.String(),
+    submissionId: Type.String(),
+    status: lit(COMMERCIAL_SUBMISSION_STATUS_VALUES),
+    controlNumber: Type.String(),
+    clearinghouseKey: Type.String(),
+    attemptCount: Type.Integer(),
+    failureCode: nullableString(),
+    sentAt: nullableString(),
+  }),
+]);
+
+export const TimelineViewSchema = Type.Object({
+  claimId: Type.String(),
+  patientId: Type.String(),
+  state: Type.String(),
+  items: Type.Array(TimelineItemSchema),
+  /** True when the oldest rows were cut by the bound. */
+  truncated: Type.Boolean(),
 });
 
 export type AssembleCommercialClaimBody = Static<typeof AssembleCommercialClaimBodySchema>;

@@ -41,6 +41,7 @@ import {
   buildCommercialClaimAssemblyService,
   buildCommercialClaimLifecycleService,
   buildCommercialClaimReadService,
+  buildCommercialSubmissionService,
   registerCommercialBillingRoutes,
 } from "../src/modules/41-billing-commercial/index";
 import {
@@ -239,6 +240,7 @@ describe.skipIf(!DB_URL)("M41 commercial billing routes - LIVE Postgres", () => 
       lifecycle: buildCommercialClaimLifecycleService(handle.db, seams),
       authorizations: buildCommercialAuthorizationService(handle.db, seams),
       reads: buildCommercialClaimReadService(handle.db, seams),
+      submissions: buildCommercialSubmissionService(handle.db, seams, { vendor: null }),
     });
     servers.push(app);
     return app;

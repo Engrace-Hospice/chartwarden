@@ -107,6 +107,25 @@ export const COMMERCIAL_SEND_REFUSAL = {
 export type CommercialSendRefusalCode =
   (typeof COMMERCIAL_SEND_REFUSAL)[keyof typeof COMMERCIAL_SEND_REFUSAL];
 
+/**
+ * Every reason `POST .../submit` can refuse for (ADR-0100 D4/D5, ADR-0053 D10). The claim-level reasons join the transport-level
+ * ones in {@link COMMERCIAL_SEND_REFUSAL}. Stable: the UI branches on them.
+ */
+export const COMMERCIAL_SEND_GATE_CODES = {
+  CLAIM_NOT_READY: "COMMERCIAL_CLAIM_NOT_READY",
+  VALIDATION_BLOCKED: "COMMERCIAL_VALIDATION_BLOCKED",
+  AUTHORIZATION_NOT_SATISFIED: "COMMERCIAL_AUTHORIZATION_NOT_SATISFIED",
+  ELIGIBILITY_NOT_CURRENT: "COMMERCIAL_ELIGIBILITY_NOT_CURRENT",
+  NOT_WIRED: COMMERCIAL_SEND_REFUSAL.NOT_WIRED,
+  PAYER_NOT_ROUTED: COMMERCIAL_SEND_REFUSAL.PAYER_NOT_ROUTED,
+  ROUTE_CHANGED: "COMMERCIAL_ROUTE_CHANGED",
+  PROVIDER_NOT_ENROLLED: COMMERCIAL_SEND_REFUSAL.PROVIDER_NOT_ENROLLED,
+  /** A submission of this claim is already queued, sent or in doubt (one live submission per claim). */
+  SUBMISSION_IN_FLIGHT: "COMMERCIAL_SUBMISSION_IN_FLIGHT",
+} as const;
+export type CommercialSendGateCode =
+  (typeof COMMERCIAL_SEND_GATE_CODES)[keyof typeof COMMERCIAL_SEND_GATE_CODES];
+
 /** Other stable codes the eligibility check answers. */
 export const COMMERCIAL_ELIGIBILITY_ERROR = {
   /** The patient has no coverage naming this plan's payer on the service date, so there is no member id to ask about. */

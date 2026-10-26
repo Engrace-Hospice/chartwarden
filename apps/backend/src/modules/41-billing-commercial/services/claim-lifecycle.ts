@@ -19,7 +19,7 @@ import {
   NotFoundError,
   StepUpRequiredError,
 } from "@chartwarden/types";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { assertRowReachable } from "./scope-guard";
 import type { CommercialActor, CommercialClaimSeams, CommercialDb, CommercialTx } from "./types";
@@ -43,6 +43,20 @@ export interface CommercialClaimLifecycleService {
     args: { readonly validationResultId: string; readonly reason: string },
   ): Promise<{ overrideId: string; auditEventId: string; ruleKey: string }>;
   voidClaim(actor: CommercialActor, claimId: string): Promise<{ claimId: string; state: "void" }>;
+}
+
+/** States after the claim left `ready` for the clearinghouse: the claim is no longer ours to re-validate or re-ready. */
+const SENT_STATES: ReadonlySet<string> = new Set([
+  "submitted",
+  "ack_pending",
+  "accepted",
+  "rejected",
+]);
+
+function assertNotSent(claim: { readonly state: string }, what: string): void {
+  if (SENT_STATES.has(claim.state)) {
+    throw new ConflictError(`a claim that was already sent cannot be ${what}`);
+  }
 }
 
 function assertHuman(actor: CommercialActor): void {
@@ -124,6 +138,7 @@ export function buildCommercialClaimLifecycleService(
     return inOrg(actor, async (tx) => {
       const claim = await loadClaim(tx, actor, claimId);
       if (claim.state === "void") throw new ConflictError("a void claim cannot be made ready");
+      assertNotSent(claim, "made ready");
       const validation = await runAndPersistValidation(
         tx,
         claim,
@@ -159,6 +174,7 @@ export function buildCommercialClaimLifecycleService(
       return inOrg(actor, async (tx) => {
         const claim = await loadClaim(tx, actor, claimId);
         if (claim.state === "void") throw new ConflictError("a void claim cannot be validated");
+        assertNotSent(claim, "validated");
         const run = await runAndPersistValidation(
           tx,
           claim,
@@ -308,6 +324,26 @@ export function buildCommercialClaimLifecycleService(
       return inOrg(actor, async (tx) => {
         const claim = await loadClaim(tx, actor, claimId);
         if (claim.state === "void") throw new ConflictError("the claim is already void");
+        if (SENT_STATES.has(claim.state) && claim.state !== "rejected") {
+          throw new ConflictError(
+            "a claim that was sent to the clearinghouse cannot be voided here; its payer-side void is a separate step",
+          );
+        }
+        const [inFlight] = await tx
+          .select({ id: schema.commercialSubmissions.id })
+          .from(schema.commercialSubmissions)
+          .where(
+            and(
+              eq(schema.commercialSubmissions.claimId, claim.id),
+              inArray(schema.commercialSubmissions.status, ["queued", "sent", "in_doubt"]),
+            ),
+          )
+          .limit(1);
+        if (inFlight) {
+          throw new ConflictError(
+            "the claim has a submission in flight; wait for its outcome before voiding",
+          );
+        }
         await tx
           .update(schema.commercialClaims)
           .set({ state: "void", readyAt: null, updatedAt: now() })

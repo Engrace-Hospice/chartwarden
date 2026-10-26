@@ -2,8 +2,20 @@
 // The database holds these as text + CHECK (the M25 precedent, no pgEnum); this file is the code-side mirror and
 // `commercial-claim.test.ts` fails if the two drift.
 
-/** Commercial claim lifecycle owned by this slice. `submitted` and later states arrive with the submission slice. */
-export const COMMERCIAL_CLAIM_STATE_VALUES = ["draft", "ready", "void"] as const;
+/**
+ * Commercial claim lifecycle (spec section 2.1). `submitted` means the clearinghouse transport ACCEPTED the file (never "queued");
+ * `accepted` is the PAYER stage only (ADR-0053 D2, ADR-0100 D9). `adjudicated`, `paid`, `denied` and `replaced` arrive with the
+ * remittance slice (M25).
+ */
+export const COMMERCIAL_CLAIM_STATE_VALUES = [
+  "draft",
+  "ready",
+  "submitted",
+  "ack_pending",
+  "accepted",
+  "rejected",
+  "void",
+] as const;
 export type CommercialClaimState = (typeof COMMERCIAL_CLAIM_STATE_VALUES)[number];
 
 export const COMMERCIAL_AUTHORIZATION_STATUS_VALUES = ["approved", "denied", "voided"] as const;
@@ -35,4 +47,18 @@ export const COMMERCIAL_ERROR_CODES = {
   nonCommercialPrimary: "NON_COMMERCIAL_PRIMARY_PAYER",
   planNotFound: "COMMERCIAL_PLAN_NOT_FOUND",
   claimBlocked: "COMMERCIAL_CLAIM_BLOCKED",
+  /** The send gate refused; the body carries every reason (code + fixed message). */
+  sendRefused: "COMMERCIAL_SEND_REFUSED",
 } as const;
+
+/** Where a submission stands. `queued` has reached no transport; `sent` means the transport accepted it. */
+export const COMMERCIAL_SUBMISSION_STATUS_VALUES = [
+  "queued",
+  "sent",
+  "failed",
+  "in_doubt",
+] as const;
+export type CommercialSubmissionStatus = (typeof COMMERCIAL_SUBMISSION_STATUS_VALUES)[number];
+
+/** A queued submission is given up on (`failed`) after this many transport attempts. */
+export const COMMERCIAL_SUBMISSION_MAX_ATTEMPTS = 5;

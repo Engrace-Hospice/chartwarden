@@ -16,6 +16,28 @@ export type {
 } from "./services/claim-assembly";
 export { buildCommercialClaimLifecycleService } from "./services/claim-lifecycle";
 export type { CommercialClaimLifecycleService, ReadyResult } from "./services/claim-lifecycle";
+export {
+  type ClaimSendGateInput,
+  type ClaimSendGateResult,
+  type SendGateReason,
+  evaluateClaimSendGate,
+} from "./services/claim-send-gate";
+export {
+  type CommercialClearinghouseBinding,
+  type CommercialSubmissionService,
+  type SendGateView,
+  type SubmissionView,
+  type TimelineView,
+  buildCommercialSubmissionService,
+} from "./services/submission-service";
+export {
+  type SubmissionWorkerDeps,
+  registerM41SubmissionWorker,
+  runSubmissionDrain,
+  scheduleM41Jobs,
+} from "./jobs/submission-worker";
+export { M41_CRON_QUEUES, M41_PLATFORM_JOB_ID, wireM41Tenancy } from "./jobs/queues";
+export { buildCommercialRenderPorts } from "./services/render-ports";
 export { buildCommercial837iRenderer } from "./services/render-837i";
 export type {
   CommercialRenderParties,
