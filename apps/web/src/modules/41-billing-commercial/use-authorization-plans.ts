@@ -41,6 +41,8 @@ export function useAuthorizationPlans(providerEntityId: string): {
                   planName: p.planName,
                   authorizationRequirement: p.authorizationRequirement,
                   authorizationLeadDays: p.authorizationLeadDays,
+                  eligibilityStalenessPolicy: p.eligibilityStalenessPolicy,
+                  eligibilityMaxAgeDays: p.eligibilityMaxAgeDays,
                 })),
               },
         );

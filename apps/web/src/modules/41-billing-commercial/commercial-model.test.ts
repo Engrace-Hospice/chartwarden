@@ -1,24 +1,38 @@
 import { readFileSync } from "node:fs";
-import { COMMERCIAL_ENROLLMENT_STATUS_VALUES } from "@chartwarden/types";
+import {
+  COMMERCIAL_ELIGIBILITY_OUTCOME_VALUES,
+  COMMERCIAL_ELIGIBILITY_STALENESS_POLICY_VALUES,
+  COMMERCIAL_ENROLLMENT_STATUS_VALUES,
+  MAX_ELIGIBILITY_MAX_AGE_DAYS as SHARED_MAX_AGE_DAYS,
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   AUTHORIZATION_NUMBER_PATTERN,
   COMMERCIAL_PATHS,
+  ELIGIBILITY_OUTCOME_VALUES,
+  ELIGIBILITY_POLICY_VALUES,
   ENROLLMENT_EVIDENCE_PATTERN,
   ENROLLMENT_KEY_PATTERN,
   ENROLLMENT_STATUS_VALUES,
+  MAX_ELIGIBILITY_MAX_AGE_DAYS,
   asClaimState,
   asPayerKind,
   authorizationPosture,
   authorizationStatusLabel,
   authorizationStatusTone,
   authorizationWindowNote,
+  checkedAtLabel,
   claimStateTone,
+  describeCheckFailure,
+  eligibilityOutcomeTone,
   enrollmentPeriod,
   enrollmentStatusFor,
   enrollmentTone,
   filingIndicatorLabel,
+  freshnessLabel,
+  freshnessTone,
   localToday,
+  parseMaxAgeDays,
   payerKindLabel,
   payerStatusLabel,
   payerStatusTone,
@@ -246,5 +260,73 @@ describe("authorization screen helpers", () => {
     expect(enrollmentTone("nonsense")).toBe("neutral");
     expect(enrollmentPeriod("2026-01-01", null)).toBe("2026-01-01 · Open-ended");
     expect(enrollmentPeriod("2026-01-01", "2026-02-01")).toBe("2026-01-01 to 2026-02-01");
+  });
+});
+
+describe("eligibility", () => {
+  const source = readFileSync(
+    new URL("../../../../../packages/types/src/commercial-billing.ts", import.meta.url),
+    "utf8",
+  );
+  const listIn = (name: string): string[] => {
+    const body = new RegExp(`${name} = \\[([^\\]]+)\\] as const`).exec(source)?.[1] ?? "";
+    return [...body.matchAll(/"([^"]+)"/g)].map((m) => m[1] as string);
+  };
+
+  it("mirrors the shared types: the 365-day ceiling, the outcome list and the policy list", () => {
+    const ceiling = /export const MAX_ELIGIBILITY_MAX_AGE_DAYS = (\d+);/.exec(source)?.[1];
+    expect(Number(ceiling)).toBe(MAX_ELIGIBILITY_MAX_AGE_DAYS);
+    expect(SHARED_MAX_AGE_DAYS).toBe(MAX_ELIGIBILITY_MAX_AGE_DAYS);
+    expect(listIn("COMMERCIAL_ELIGIBILITY_OUTCOME_VALUES")).toEqual([
+      ...ELIGIBILITY_OUTCOME_VALUES,
+    ]);
+    expect(listIn("COMMERCIAL_ELIGIBILITY_STALENESS_POLICY_VALUES")).toEqual([
+      ...ELIGIBILITY_POLICY_VALUES,
+    ]);
+    expect([...ELIGIBILITY_OUTCOME_VALUES]).toEqual([...COMMERCIAL_ELIGIBILITY_OUTCOME_VALUES]);
+    expect([...ELIGIBILITY_POLICY_VALUES]).toEqual([
+      ...COMMERCIAL_ELIGIBILITY_STALENESS_POLICY_VALUES,
+    ]);
+  });
+
+  it("parses whole days from 1 to 365 only", () => {
+    expect(parseMaxAgeDays("1")).toBe(1);
+    expect(parseMaxAgeDays(" 365 ")).toBe(365);
+    for (const bad of ["0", "366", "1.5", "-3", "abc", "", "1e2"]) {
+      expect(parseMaxAgeDays(bad)).toBeNull();
+    }
+  });
+
+  it("labels every freshness status and never reads an unknown severity as a pass", () => {
+    expect(freshnessLabel("missing")).toBe("No check on record");
+    expect(freshnessLabel("stale")).toBe("Stale");
+    expect(freshnessTone("pass")).toBe("success");
+    expect(freshnessTone("block")).toBe("error");
+    expect(freshnessTone("something_new")).toBe("warning");
+    expect(eligibilityOutcomeTone("inactive")).toBe("error");
+    expect(eligibilityOutcomeTone("unknown")).toBe("warning");
+  });
+
+  it("formats a check time in UTC and leaves an unreadable one as given", () => {
+    expect(checkedAtLabel("2026-10-24T10:00:00.000Z")).toBe("2026-10-24 10:00 UTC");
+    expect(checkedAtLabel("garbage")).toBe("garbage");
+  });
+
+  it("says 'Nothing was recorded' only for the unavailable refusal", () => {
+    const said = (status: number, code?: string): boolean =>
+      describeCheckFailure(status, code).text.includes("Nothing was recorded");
+    expect(said(503, "COMMERCIAL_ELIGIBILITY_UNAVAILABLE")).toBe(true);
+    for (const [status, code] of [
+      [503, "CH_NOT_WIRED"],
+      [409, "COMMERCIAL_PROVIDER_NOT_ENROLLED"],
+      [409, "COMMERCIAL_PAYER_NOT_ROUTED"],
+      [409, "COMMERCIAL_PROVIDER_NPI_MISSING"],
+      [422, "COMMERCIAL_COVERAGE_NOT_FOUND"],
+    ] as const) {
+      expect(said(status, code)).toBe(false);
+    }
+    expect(describeCheckFailure(409, "COMMERCIAL_PROVIDER_NOT_ENROLLED").enrollmentsLink).toBe(
+      true,
+    );
   });
 });

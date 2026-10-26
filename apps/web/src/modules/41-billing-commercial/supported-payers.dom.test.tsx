@@ -118,6 +118,18 @@ describe("SupportedPayers", () => {
     expect(screen.queryByRole("link", { name: "Manage enrollments" })).toBeNull();
   });
 
+  it("links a plan's eligibility policy to the eligibility screen for that entity and plan", async () => {
+    mount(
+      () => ({ body: { items: [plan()] } }),
+      () => ({ body: { items: [] } }),
+    );
+    fireEvent.click((await screen.findByText("Synthetic PPO")).closest("tr") as HTMLElement);
+    const link = await screen.findByRole("link", { name: "View eligibility checks" });
+    expect(link.getAttribute("href")).toBe(
+      `/commercial/billing/eligibility?entity=${encodeURIComponent(ENTITY_ID)}&plan=${encodeURIComponent(PLAN_ID)}`,
+    );
+  });
+
   it("flags a plan with no clearinghouse route", async () => {
     mount(
       () => ({ body: { items: [plan({ routes: [] })] } }),

@@ -2621,6 +2621,14 @@
       "permission": "commercial_billing.read"
     },
     {
+      "app": "web",
+      "module": "41-billing-commercial",
+      "moduleId": 41,
+      "id": "commercial.eligibility",
+      "path": "/commercial/billing/eligibility",
+      "permission": "commercial_billing.read"
+    },
+    {
       "app": "admin",
       "module": "01-ops",
       "moduleId": 1,

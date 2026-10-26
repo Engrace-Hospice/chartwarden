@@ -324,7 +324,12 @@ function PlanDrawer({
             <dt>Eligibility check</dt>
             <dd>
               {plan.eligibilityStalenessPolicy === "block" ? "Blocks" : "Warns"} when older than{" "}
-              {plan.eligibilityMaxAgeDays} days
+              {plan.eligibilityMaxAgeDays} days.{" "}
+              <Link
+                to={`${COMMERCIAL_PATHS.eligibility}?entity=${encodeURIComponent(entityId)}&plan=${encodeURIComponent(plan.id)}`}
+              >
+                View eligibility checks
+              </Link>
             </dd>
           </dl>
         </section>

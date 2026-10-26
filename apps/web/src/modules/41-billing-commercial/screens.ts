@@ -23,6 +23,10 @@ const CommercialEnrollments = lazy(() =>
   import("./enrollments").then((m) => ({ default: m.CommercialEnrollments })),
 );
 
+const CommercialEligibility = lazy(() =>
+  import("./eligibility").then((m) => ({ default: m.CommercialEligibility })),
+);
+
 export const commercialBillingScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 41,
   slug: "41-billing-commercial",
@@ -66,6 +70,14 @@ export const commercialBillingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "commercial_billing.read",
       screen: CommercialEnrollments,
+    },
+    {
+      id: "commercial.eligibility",
+      path: "/commercial/billing/eligibility",
+      title: "Commercial Eligibility",
+      navGroup: "Billing",
+      requiredPermission: "commercial_billing.read",
+      screen: CommercialEligibility,
     },
   ],
 };

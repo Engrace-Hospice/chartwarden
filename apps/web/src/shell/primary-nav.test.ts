@@ -155,6 +155,7 @@ describe("buildPrimaryNav", () => {
       "/commercial/billing/claims",
       "/commercial/billing/authorizations",
       "/commercial/billing/enrollments",
+      "/commercial/billing/eligibility",
       "/admin/billing-audit",
     ];
     const billing = () =>
@@ -178,6 +179,7 @@ describe("buildPrimaryNav", () => {
         "/commercial/billing/claims",
         "/commercial/billing/authorizations",
         "/commercial/billing/enrollments",
+        "/commercial/billing/eligibility",
       ]);
     });
 
