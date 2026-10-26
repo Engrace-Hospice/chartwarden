@@ -1,7 +1,7 @@
 // M36 WP 2.6 — "Send later" dialog: a native date/time input (min 2 minutes ahead, max 30 days), the viewer's time zone
 // stated plainly, and the submit. The idempotency pair follows the same rule as a live send (one key per composed
-// request, reused when no reply arrived, rotated after any answered failure), so a lost reply followed by a retry is
-// a replay, never two scheduled copies.
+// request, reused only when no reply arrived, rotated after any HTTP answer), and the body carries a stable client
+// message id so the server replays a create that committed behind a 5xx instead of scheduling a second copy.
 import { Button, Modal, useApiClient } from "@chartwarden/ui";
 import { type MutableRefObject, useRef, useState } from "react";
 import type { JSX } from "react";
@@ -13,7 +13,6 @@ import {
   defaultScheduleValue,
   formatScheduledTime,
   fromLocalInputValue,
-  isDefiniteRefusal,
   scheduleBounds,
   scheduleErrorText,
   toLocalInputValue,
@@ -91,12 +90,16 @@ export function ScheduleSendDialog({
         response,
       } = await client.POST("/api/v1/messaging/channels/{id}/scheduled-messages", {
         params: { path: { id: channelId }, header: { "Idempotency-Key": attempt.idempotencyKey } },
-        body: { body: text, scheduledFor, timeZone: zone },
+        body: {
+          body: text,
+          scheduledFor,
+          timeZone: zone,
+          clientMessageId: attempt.clientMessageId,
+        },
       });
-      // Deliberate exception to "drop the key on any HTTP response": this body has no client message id, so a 5xx/408 that committed
-      // behind the gateway would become a duplicate scheduled message under a fresh key. Rotate only after a definite 4xx refusal;
-      // a 5xx/408 or a thrown fetch keeps the key so the retry replays (the server may replay the cached 5xx until the 24h key expires).
-      if (isDefiniteRefusal(response?.status)) {
+      // The server caches every answered response under its key, so only a thrown fetch may retry with it; the stable
+      // client message id makes a retry under a fresh key a replay of a create that committed.
+      if (response?.status !== undefined) {
         remembered.current = { attempt: rotateIdempotencyKey(attempt), value };
       }
       if (failure || !data) {
