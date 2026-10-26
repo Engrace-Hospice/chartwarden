@@ -233,7 +233,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         probeHealth: async () => true,
       },
       // These cases exercise the transport, not the rendering (the loader has its own suites and the gap cases below).
-      renderClaim: async () => x12Text ?? "ISA*00*...~",
+      renderClaim: async () => ({ x12: x12Text ?? "ISA*00*...~" }),
       transport: {
         binding: { vendor, transport: clearinghouse },
         contexts: { contextFor: async () => CTX, providerEntitiesFor: async () => [PE] },
@@ -1084,7 +1084,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
           ...r.deps(),
           renderClaim: async (args) => {
             numbers.push(await args.interchangeNumberFor(CTX));
-            return X12_CLAIM;
+            return { x12: X12_CLAIM };
           },
         };
         return { numbers, deps };
@@ -1129,7 +1129,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
           },
           renderClaim: async (args) => {
             await args.interchangeNumberFor(CTX);
-            return X12_CLAIM;
+            return { x12: X12_CLAIM };
           },
         };
         await runInOrg((tx) => runClaimSubmit(tx, deps, c.job));

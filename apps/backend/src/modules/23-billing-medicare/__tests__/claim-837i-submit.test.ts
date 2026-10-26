@@ -28,15 +28,15 @@ const ARGS = {
 describe("renderClaimForTransport", () => {
   beforeEach(() => loadAndRender837i.mockReset());
 
-  it("returns the rendered X12, loading under the attempt's control number and the interchange number the caller allocated", async () => {
+  it("returns both renderings, loading under the attempt's control number and the interchange number the caller allocated", async () => {
     loadAndRender837i.mockResolvedValue({
       ok: true,
-      rendered: { reveal: () => ({ x12: "ISA*00~" }) },
+      rendered: { reveal: () => ({ x12: "ISA*00~", stediJson: { j: 1 } }) },
     });
 
-    const x12 = await renderClaimForTransport(ARGS);
+    const rendered = await renderClaimForTransport(ARGS);
 
-    expect(x12).toBe("ISA*00~");
+    expect(rendered).toEqual({ x12: "ISA*00~", stediJson: { j: 1 } });
     expect(loadAndRender837i.mock.calls[0]?.[1]).toMatchObject({
       claimId: "claim-1",
       context: CONTEXT,

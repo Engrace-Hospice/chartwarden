@@ -4,7 +4,7 @@
 // (field and reason only, never a value), which the caller's catch records as a `failed_worker` attempt.
 import type { repositories } from "@chartwarden/billing";
 import type { DbClient } from "@chartwarden/db";
-import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
+import type { ClearinghouseContext, StediClaimJson } from "@chartwarden/x12-837-client";
 import {
   type Claim837iLoaderDeps,
   buildClaim837iPersistencePort,
@@ -16,6 +16,13 @@ export type Claim837iSubmitDeps = Omit<Claim837iLoaderDeps, "persistence" | "par
   /** The parties port for one worker tx (its reads share that tx, not the pool). */
   readonly parties: (tx: DbClient) => Claim837iLoaderDeps["parties"];
 };
+
+/** Both renderings of one claim; each carries the MBI, so transmit them and never store or log them. */
+export interface RenderedClaim {
+  readonly x12: string;
+  /** Absent only from a test stub; the loader always builds it. */
+  readonly stediJson?: StediClaimJson;
+}
 
 export async function renderClaimForTransport(args: {
   readonly tx: repositories.BillingDb;
@@ -33,7 +40,7 @@ export async function renderClaimForTransport(args: {
    */
   readonly interchangeNumberFor: (context: ClearinghouseContext) => Promise<number>;
   readonly now: Date;
-}): Promise<string> {
+}): Promise<RenderedClaim> {
   const context = await args.contextFor(args.organizationId, args.claim.providerEntityId);
   const loaded = await loadAndRender837i(
     {
@@ -49,7 +56,7 @@ export async function renderClaimForTransport(args: {
       claimControlNumber: args.claimControlNumber,
     },
   );
-  if (loaded.ok) return loaded.rendered.reveal().x12;
+  if (loaded.ok) return loaded.rendered.reveal();
   const why =
     loaded.kind === "claim_not_found"
       ? "claim not found for this organization and provider entity"

@@ -194,6 +194,27 @@ marker). `direct_mac`'s gateway maps a 277CA partial to the new disposition and 
 the `claim_acknowledgment` row was written), so no data migration or compatibility shim exists. Stedi has no ack
 receive-side yet, so there is no Stedi mapping to change.
 
+## Amendment (2026-10-26) — the ISA13 is a stored value; Stedi claims go as JSON
+
+**The interchange number is remembered, not derived.** The 837I ISA13 used to be a hash of the claim control number.
+`SubmissionAttemptStore.allocateInterchangeNumber(org, scope, key, usage)` now returns a 9-digit number drawn from the
+same platform-wide per-usage sequences as `allocateControlNumber` and memoizes it per (tenant, scope, idempotency key)
+in `clearinghouse_interchange_number` (migration 1280). The memo commits on the store's own org-scoped connection, so a
+job that dies after the vendor took the file and is redelivered renders the identical ISA13; a new attempt (new control
+number, new key) gets a new one. A key remembered under one usage refuses the other. With no attempt store bound, the
+claim attempt fails as `failed_worker`; there is no derived fallback. A number drawn for an attempt that then fails on
+loader gaps is spent (harmless in a 10^9 space).
+
+**Stedi claims travel as JSON.** The Stedi transport requires ISA13 to equal the submission control number on its
+raw-X12 route, which an alphanumeric claim control number never satisfies. A Stedi claim is therefore sent on the JSON
+route (`format: "json"`, `buildStediClaimJson`), which carries no ISA13, after `compareStediClaimJsonToX12` proves it
+agrees with the X12 rendered from the same input (a disagreement fails the attempt, naming the fields only). Every other
+vendor, and every notice, stays raw X12.
+
+**Limitation.** NOE, NOTR and transfer notices still go to Stedi as raw X12 and so still hit the ISA13 == control-number
+check; they stay unverified (Q14, Q30) until a Stedi account is provisioned. M41's submission worker keeps its own
+`interchange_control_number` sequence and probably has the same mismatch; confirm before enabling Stedi for it.
+
 ## Open questions
 
 1. Whether Original Medicare accepts frequency 7/8 replacements through Stedi (docs say no; their edit says yes) — Q17.

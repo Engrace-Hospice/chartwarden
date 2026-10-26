@@ -52,6 +52,7 @@ import {
   CH,
   CLEARINGHOUSE_VENDOR_ENV,
   type HospiceHistory,
+  type StediClaimJson,
   assertNoMbi,
   parseClearinghouseVendor,
   scopeKey,
@@ -276,6 +277,8 @@ export interface MacPortalPort {
     readonly providerEntityId: string;
     readonly kind: "claim_837i" | "noe" | "notr" | "transfer_notice";
     readonly x12: string;
+    /** The same claim as Stedi's JSON; a Stedi-bound transport sends this instead of the raw X12. */
+    readonly stediJson?: StediClaimJson;
     readonly controlNumber: string;
   }): Promise<{
     readonly accepted: boolean;
@@ -842,7 +845,11 @@ async function generateClaim837i(
   organizationId: string,
   claim: Parameters<typeof claimDocumentFor>[0] & { readonly providerEntityId: string },
   claimControlNumber: string,
-): Promise<{ readonly x12: string; readonly correlationId: string }> {
+): Promise<{
+  readonly x12: string;
+  readonly stediJson?: StediClaimJson;
+  readonly correlationId: string;
+}> {
   const transport = activeTransport(deps);
   if (!transport) {
     return x12Of(deps).generate837i({
@@ -859,7 +866,7 @@ async function generateClaim837i(
     );
   }
   const attempts = transport.attempts;
-  const x12 = await (deps.renderClaim ?? renderClaimForTransport)({
+  const rendered = await (deps.renderClaim ?? renderClaimForTransport)({
     tx,
     deps: deps.claim837i as Claim837iSubmitDeps,
     contextFor: transport.contexts.contextFor,
@@ -885,7 +892,7 @@ async function generateClaim837i(
     now: (deps.now ?? (() => new Date()))(),
   });
   // A `submitted` attempt must carry a worker correlation id (the terminalize trigger); the sidecar used to mint it.
-  return { x12, correlationId: randomUUID() };
+  return { ...rendered, correlationId: randomUUID() };
 }
 
 // ── the §4.8 WORK processors (each runs INSIDE the worker's per-job withOrgContext tx) ──────────────────────
@@ -938,6 +945,7 @@ export async function runClaimSubmit(
 
   let generated: {
     readonly x12: string;
+    readonly stediJson?: StediClaimJson;
     readonly correlationId: string | null;
   } | null = null;
   let uploaded: {
@@ -957,6 +965,7 @@ export async function runClaimSubmit(
       providerEntityId: claim.providerEntityId,
       kind: "claim_837i",
       x12: generated.x12,
+      stediJson: generated.stediJson,
       controlNumber: job.claimControlNumber,
     });
   } catch (err) {
@@ -1171,6 +1180,7 @@ export async function runClaimSubmitRetry(
 
   let generated: {
     readonly x12: string;
+    readonly stediJson?: StediClaimJson;
     readonly correlationId: string | null;
   } | null = null;
   let uploaded: {
@@ -1188,6 +1198,7 @@ export async function runClaimSubmitRetry(
         providerEntityId: claim.providerEntityId,
         kind: "claim_837i",
         x12: generated.x12,
+        stediJson: generated.stediJson,
         controlNumber: claimControlNumber,
       });
       if (!uploaded.accepted) failureReason = "MAC portal rejected the retry upload";
