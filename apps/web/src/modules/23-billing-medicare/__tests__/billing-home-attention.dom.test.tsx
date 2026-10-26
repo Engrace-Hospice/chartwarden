@@ -48,7 +48,14 @@ interface Setup {
   claims?: unknown[];
   noe?: unknown[] | "error";
   claimsHasMore?: boolean;
+  validation?: unknown | "error" | "pending";
 }
+const SUMMARY = {
+  totalClaims: 10,
+  neverValidated: 3,
+  byOutcome: { all_pass: 2, failures_present: 4, overrides_required: 1, ready_for_submission: 0 },
+  oldestLatestRunAt: new Date(Date.now() - 3 * DAY).toISOString(),
+};
 
 function Where(): null {
   const l = useLocation();
@@ -65,6 +72,11 @@ function setup(o: Setup = {}, ui = <BillingNeedsAttention />, at = "/billing") {
         o.claimsHasMore,
       );
     }
+    if (path === "/api/v1/billing/claim-validation-summary") {
+      if (o.validation === "error") return fail(500);
+      if (o.validation === "pending") return new Promise<never>(() => {});
+      return ok(o.validation ?? SUMMARY);
+    }
     if (path === "/api/v1/noe-records") return o.noe === "error" ? fail(500) : page(o.noe ?? []);
     if (path === "/api/v1/notr-records" || path === "/api/v1/billing/dde-items") return page([]);
     if (path === "/api/v1/patients/{id}") return ok({ firstName: "Samuel", lastName: "Okonkwo" });
@@ -78,9 +90,58 @@ function setup(o: Setup = {}, ui = <BillingNeedsAttention />, at = "/billing") {
       </MemoryRouter>
     </ApiClientProvider>,
   );
+  return get;
 }
 
 const cardOf = (label: string) => screen.getByText(label).closest(".wx-kpi-card") as HTMLElement;
+
+describe("Blocked by validation card", () => {
+  const CARD = "Blocked by validation";
+  it("sums failures and overrides, and states the scope, never-validated count and age", async () => {
+    setup();
+    await waitFor(() => expect(within(cardOf(CARD)).getByText("5")).toBeTruthy());
+    const text = cardOf(CARD).textContent ?? "";
+    expect(text).toContain("3 never validated");
+    expect(text).toContain("0 ready for submission");
+    expect(text).toContain("2 all pass");
+    expect(text).toContain("of 10 claims, all states in your scope");
+    expect(text).toContain("oldest latest check 3d ago");
+    expect(cardOf(CARD).closest("button")).toBeNull();
+  });
+
+  it("shows no number while loading", () => {
+    setup({ validation: "pending" });
+    expect(within(cardOf(CARD)).getByText("Loading…")).toBeTruthy();
+    expect(within(cardOf(CARD)).getByText("—")).toBeTruthy();
+  });
+
+  it("shows an error with retry, never zeros, and leaves the other sources rendered", async () => {
+    const get = setup({ noe: [noe()], validation: "error" });
+    await screen.findByText("Okonkwo, Samuel");
+    await screen.findByText(/Validation counts could not be loaded/);
+    expect(within(cardOf(CARD)).getByText("—")).toBeTruthy();
+    expect(within(cardOf(CARD)).queryByText("0")).toBeNull();
+    expect(within(cardOf("NOE")).getByText("1")).toBeTruthy();
+    const calls = () =>
+      get.mock.calls.filter((c) => c[0] === "/api/v1/billing/claim-validation-summary").length;
+    expect(calls()).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(calls()).toBe(2));
+  });
+
+  it("shows an empty state when the scope has no claims", async () => {
+    setup({
+      validation: { ...SUMMARY, totalClaims: 0, neverValidated: 0, oldestLatestRunAt: null },
+    });
+    await screen.findByText("No claims in your scope yet");
+    expect(within(cardOf(CARD)).queryByText("0")).toBeNull();
+  });
+
+  it("appears on the Work Queue too", async () => {
+    setup({}, <BillingWorkQueue />, "/billing/queue");
+    await waitFor(() => expect(within(cardOf(CARD)).getByText("5")).toBeTruthy());
+  });
+});
 
 describe("BillingNeedsAttention", () => {
   it("counts each source on its own card and lists the most urgent item with its next step", async () => {
