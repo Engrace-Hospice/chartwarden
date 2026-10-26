@@ -1,6 +1,6 @@
 // M36 ADR-0078 (G-6, G-2) - the state behind the two reassign dialogs. Opening reads the eligible colleagues and nothing else. One
-// Idempotency-Key is minted per dialog open and sent on the POST; it is replaced after a definite refusal (a changed choice is a new
-// attempt) and kept after an indeterminate one (the same attempt may have been saved, so its replay must be recognised). A refusal never says why a person is ineligible. The caller's `run` owns the busy
+// Idempotency-Key is minted per attempt and sent on the POST; it is dropped after ANY HTTP response (the server caches errors under the
+// key) and when a choice changes, and kept only after a thrown fetch (the same attempt may have been saved, so its replay must be recognised). A refusal never says why a person is ineligible. The caller's `run` owns the busy
 // state, the live announcement and the list refresh; this hook only builds the call and maps the answer to words.
 import type { AckReassignCandidate, AckSupervisorReasonCode } from "@chartwarden/types";
 import { useApiClient } from "@chartwarden/ui";
@@ -112,19 +112,21 @@ export function useAckReassign(mode: ReassignMode, requestId: string, run: Reass
   const [reason, setReasonRaw] = useState<AckSupervisorReasonCode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // The key of the attempt in flight or awaiting a retry; null = the next submit mints one.
   const key = useRef<string | null>(null);
-  if (key.current === null) key.current = newKey();
   const inFlight = useRef(false);
   const token = useRef(0);
   // A changed choice clears the last refusal; a choice made while a call is in flight is ignored (the call keeps the one it was sent with).
   const setUserId = useCallback((value: string | null): void => {
     if (inFlight.current) return;
     setError(null);
+    key.current = null;
     setUserIdRaw(value);
   }, []);
   const setReason = useCallback((value: AckSupervisorReasonCode | null): void => {
     if (inFlight.current) return;
     setError(null);
+    key.current = null;
     setReasonRaw(value);
   }, []);
 
@@ -169,18 +171,20 @@ export function useAckReassign(mode: ReassignMode, requestId: string, run: Reass
         : { assigned_user_id: userId };
     const perform = async (): Promise<ReassignResult> => {
       try {
+        key.current ??= newKey();
+        const idempotencyKey = key.current;
         const result = await client.POST(PATHS[mode].post, {
           params: {
             path: { id: requestId },
-            header: { "Idempotency-Key": key.current ?? newKey() },
+            header: { "Idempotency-Key": idempotencyKey },
           },
           body,
         });
         const status = result?.response?.status;
+        // Any HTTP response is cached server-side under its key (errors included): never retry on it.
+        if (status !== undefined) key.current = null;
         if (result?.error || status === undefined || status >= 400) {
           const failure = reassignFailure(status);
-          const unknown = status === undefined || status === 408 || status >= 500;
-          if (!unknown) key.current = newKey();
           return failure;
         }
         return {
