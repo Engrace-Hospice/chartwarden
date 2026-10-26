@@ -65802,6 +65802,10 @@
                   "type": "string"
                 },
                 {
+                  "const": "partial_paid",
+                  "type": "string"
+                },
+                {
                   "const": "denied",
                   "type": "string"
                 },
