@@ -2613,6 +2613,14 @@
       "permission": "commercial_billing.read"
     },
     {
+      "app": "web",
+      "module": "41-billing-commercial",
+      "moduleId": 41,
+      "id": "commercial.enrollments",
+      "path": "/commercial/billing/enrollments",
+      "permission": "commercial_billing.read"
+    },
+    {
       "app": "admin",
       "module": "01-ops",
       "moduleId": 1,

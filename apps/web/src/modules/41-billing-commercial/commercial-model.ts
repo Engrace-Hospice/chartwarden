@@ -13,6 +13,7 @@ export const COMMERCIAL_PATHS = {
   queue: "/commercial/billing/claims",
   payers: "/commercial/billing/payers",
   authorizations: "/commercial/billing/authorizations",
+  enrollments: "/commercial/billing/enrollments",
   claim: (id: string): string => `/commercial/billing/claims/${id}`,
 } as const;
 
@@ -265,6 +266,8 @@ export interface AuthorizationPlan {
   readonly planName: string;
   readonly authorizationRequirement: string;
   readonly authorizationLeadDays?: number | null;
+  /** Set by the plans hook; the enrollment form offers the distinct payers of these plans. */
+  readonly payerId?: string;
 }
 
 /** The authorization period as text: "from to to", or "from · Open-ended". */
@@ -324,4 +327,44 @@ export function authorizationWindowNote(
   if (auth.effectiveTo !== null && auth.effectiveTo < today) return "Period ended";
   if (auth.effectiveFrom > today) return `Starts ${auth.effectiveFrom}`;
   return auth.effectiveTo === null ? "Open-ended" : null;
+}
+
+// ─── Enrollments ─────────────────────────────────────────────────────────────────────────────────────────
+
+/** One enrollment row as the list returns it (no patient data). */
+export interface EnrollmentView {
+  readonly id: string;
+  readonly providerEntityId: string;
+  readonly payerId: string;
+  readonly clearinghouseKey: string;
+  readonly status: string;
+  readonly effectiveFrom: string;
+  readonly effectiveTo: string | null;
+  readonly evidenceRef: string | null;
+}
+
+/** The server's clearinghouse-key and evidence-reference patterns (routes/typebox.ts); a model test keeps them equal. */
+export const ENROLLMENT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,39}$/;
+export const ENROLLMENT_EVIDENCE_PATTERN = /^[A-Za-z0-9._:/#-]{1,200}$/;
+
+export const ENROLLMENT_STATUS_VALUES = [
+  "not_enrolled",
+  "pending",
+  "enrolled",
+  "suspended",
+] as const;
+export type EnrollmentStatusValue = (typeof ENROLLMENT_STATUS_VALUES)[number];
+export const isEnrollmentStatus = (value: string): value is EnrollmentStatusValue =>
+  (ENROLLMENT_STATUS_VALUES as readonly string[]).includes(value);
+
+export function enrollmentLabel(status: string): string {
+  return statusLabel(status);
+}
+export function enrollmentTone(status: string): StatusTone {
+  return ENROLLMENT_TONE[status] ?? "neutral";
+}
+
+/** The enrollment period as text: "from to to", or "from · Open-ended". */
+export function enrollmentPeriod(from: string, to: string | null): string {
+  return to === null ? `${from} · Open-ended` : `${from} to ${to}`;
 }

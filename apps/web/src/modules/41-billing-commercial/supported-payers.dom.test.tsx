@@ -98,6 +98,26 @@ describe("SupportedPayers", () => {
     expect(within(row).getByText("Not Enrolled")).toBeTruthy();
   });
 
+  it("links a not-enrolled plan's drawer to the enrollments screen, and not an enrolled one's", async () => {
+    mount(
+      () => ({ body: { items: [plan()] } }),
+      () => ({ body: { items: [] } }),
+    );
+    fireEvent.click((await screen.findByText("Synthetic PPO")).closest("tr") as HTMLElement);
+    const link = await screen.findByRole("link", { name: "Manage enrollments" });
+    expect(link.getAttribute("href")).toBe(
+      `/commercial/billing/enrollments?entity=${encodeURIComponent(ENTITY_ID)}`,
+    );
+    cleanup();
+    mount(
+      () => ({ body: { items: [plan()] } }),
+      () => ({ body: { items: [enrollment("enrolled")] } }),
+    );
+    fireEvent.click((await screen.findByText("Synthetic PPO")).closest("tr") as HTMLElement);
+    await screen.findByText("Can we send?");
+    expect(screen.queryByRole("link", { name: "Manage enrollments" })).toBeNull();
+  });
+
   it("flags a plan with no clearinghouse route", async () => {
     mount(
       () => ({ body: { items: [plan({ routes: [] })] } }),
