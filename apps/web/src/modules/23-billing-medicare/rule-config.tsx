@@ -13,6 +13,9 @@ import {
   t,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useEffect, useState } from "react";
+import type { JSX } from "react";
+import { statusLabel, validationSeverityTone } from "./billing-status";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the RULE-CONFIG OVERLAY editor (R2,
 // §5.1 admin / §4.1 #18-21). The tenant validation-rule overlay library: the platform §11.A registry
 // snapshot + the tenant overlays, presented as a selectable rule list (left rail) over a per-rule editor
@@ -25,9 +28,7 @@ import {
 // notice — never a toast. Lantern: AdminSplitLayout, No-Line rail, §6.6 StatusPills via billing-status.ts,
 // CSS-var tokens only. openapi emits no schemas for billing, so reads are cast and the mutation paths are
 // driven through `as never` inits (the server stays the authoritative parser).
-import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
-import { statusLabel, validationSeverityTone } from "./billing-status";
+import { useAttemptKey } from "./use-attempt-key";
 
 type Severity = "error" | "warn" | "info";
 const SEVERITIES: Severity[] = ["error", "warn", "info"];
@@ -53,11 +54,6 @@ interface RuleConfigPage {
   items: RuleConfigView[];
   nextCursor: string | null;
   hasMore: boolean;
-}
-
-// A fresh idempotency key per mutation (§4.1.1 presence guard; the M1 middleware does the 24h replay cache).
-function idemKey(): string {
-  return crypto.randomUUID();
 }
 
 function mutationError(status: number | undefined): string {
@@ -323,6 +319,7 @@ function RuleDetail({
   const [actionError, setActionError] = useState<string | null>(null);
 
   const locked = rule.regulatoryRequiredSnapshot;
+  const attempt = useAttemptKey();
 
   const save = useCallback(async () => {
     setBusy(true);
@@ -340,7 +337,7 @@ function RuleDetail({
     const init = {
       params: {
         path: { id: rule.ruleConfigId },
-        header: { "If-Match": String(rule.version), "Idempotency-Key": idemKey() },
+        header: { "If-Match": String(rule.version) },
       },
       body: {
         enabled,
@@ -349,10 +346,22 @@ function RuleDetail({
         ...(setReason.trim().length >= 20 ? { setReason: setReason.trim() } : {}),
       },
     };
-    const { error: err, response } = (await client.PATCH(
-      "/api/v1/billing/rule-configs/{id}",
-      init as never,
-    )) as { error?: unknown; response?: Response };
+    let result: { error?: unknown; response?: Response };
+    try {
+      result = await attempt.run(
+        JSON.stringify(init),
+        async (key) =>
+          (await client.PATCH("/api/v1/billing/rule-configs/{id}", {
+            ...init,
+            params: { ...init.params, header: { ...init.params.header, "Idempotency-Key": key } },
+          } as never)) as { error?: unknown; response?: Response },
+      );
+    } catch {
+      setActionError("That did not go through. Check your connection and try again.");
+      setBusy(false);
+      return;
+    }
+    const { error: err, response } = result;
     if (err) {
       setActionError(mutationError(response?.status));
       setBusy(false);
@@ -360,7 +369,17 @@ function RuleDetail({
     }
     setBusy(false);
     onChanged();
-  }, [client, rule.ruleConfigId, rule.version, enabled, severity, params, setReason, onChanged]);
+  }, [
+    client,
+    attempt.run,
+    rule.ruleConfigId,
+    rule.version,
+    enabled,
+    severity,
+    params,
+    setReason,
+    onChanged,
+  ]);
 
   const revert = useCallback(async () => {
     setBusy(true);
@@ -368,13 +387,25 @@ function RuleDetail({
     const init = {
       params: {
         path: { id: rule.ruleConfigId },
-        header: { "If-Match": String(rule.version), "Idempotency-Key": idemKey() },
+        header: { "If-Match": String(rule.version) },
       },
     };
-    const { error: err, response } = (await client.DELETE(
-      "/api/v1/billing/rule-configs/{id}",
-      init as never,
-    )) as { error?: unknown; response?: Response };
+    let result: { error?: unknown; response?: Response };
+    try {
+      result = await attempt.run(
+        JSON.stringify(init),
+        async (key) =>
+          (await client.DELETE("/api/v1/billing/rule-configs/{id}", {
+            ...init,
+            params: { ...init.params, header: { ...init.params.header, "Idempotency-Key": key } },
+          } as never)) as { error?: unknown; response?: Response },
+      );
+    } catch {
+      setActionError("That did not go through. Check your connection and try again.");
+      setBusy(false);
+      return;
+    }
+    const { error: err, response } = result;
     if (err) {
       setActionError(mutationError(response?.status));
       setBusy(false);
@@ -382,7 +413,7 @@ function RuleDetail({
     }
     setBusy(false);
     onChanged();
-  }, [client, rule.ruleConfigId, rule.version, onChanged]);
+  }, [client, attempt.run, rule.ruleConfigId, rule.version, onChanged]);
 
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: "40rem" }}>
@@ -503,6 +534,7 @@ function AddCustomRule({
   const [params, setParams] = useState("{}");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const attempt = useAttemptKey();
 
   const create = useCallback(async () => {
     setBusy(true);
@@ -523,13 +555,24 @@ function AddCustomRule({
       }
     }
     const init = {
-      params: { header: { "Idempotency-Key": idemKey() } },
       body: { ruleKey: ruleKey.trim(), severity, parameters: parsedParams },
     };
-    const { error: err, response } = (await client.POST(
-      "/api/v1/billing/rule-configs/custom",
-      init as never,
-    )) as { error?: unknown; response?: Response };
+    let result: { error?: unknown; response?: Response };
+    try {
+      result = await attempt.run(
+        JSON.stringify(init),
+        async (key) =>
+          (await client.POST("/api/v1/billing/rule-configs/custom", {
+            ...init,
+            params: { header: { "Idempotency-Key": key } },
+          } as never)) as { error?: unknown; response?: Response },
+      );
+    } catch {
+      setActionError("That did not go through. Check your connection and try again.");
+      setBusy(false);
+      return;
+    }
+    const { error: err, response } = result;
     if (err) {
       setActionError(
         response?.status === 422
@@ -543,7 +586,7 @@ function AddCustomRule({
     }
     setBusy(false);
     onCreated();
-  }, [client, ruleKey, severity, params, onCreated]);
+  }, [client, attempt.run, ruleKey, severity, params, onCreated]);
 
   return (
     <section style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: "40rem" }}>

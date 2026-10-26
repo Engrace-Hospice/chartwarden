@@ -30,6 +30,7 @@ import {
   eligibilityStalenessTone,
   statusLabel,
 } from "./billing-status";
+import { useAttemptKey } from "./use-attempt-key";
 
 interface EligibilityCheckView {
   checkId: string;
@@ -40,10 +41,6 @@ interface EligibilityCheckView {
   parsedPayload: Record<string, unknown>;
   checkedAt: string;
   staleAt: string;
-}
-
-function idemKey(): string {
-  return crypto.randomUUID();
 }
 
 function todayIso(): string {
@@ -280,6 +277,7 @@ function RefreshPanel({
 }: { patientId: string | null; onChecked: () => void }): JSX.Element {
   const client = useApiClient();
   const [providerEntityId, setProviderEntityId] = useState("");
+  const attempt = useAttemptKey();
   const [asOf, setAsOf] = useState(todayIso());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
@@ -294,13 +292,27 @@ function RefreshPanel({
       return;
     }
     const init = {
-      params: { header: { "Idempotency-Key": idemKey() } },
       body: { patientId, providerEntityId: providerEntityId.trim(), asOfServiceDate: asOf },
     };
-    const { error: err, response } = (await client.POST(
-      "/api/v1/billing/eligibility/check",
-      init as never,
-    )) as { error?: unknown; response?: Response };
+    let result: { error?: unknown; response?: Response };
+    try {
+      result = await attempt.run(
+        JSON.stringify(init.body),
+        async (key) =>
+          (await client.POST("/api/v1/billing/eligibility/check", {
+            ...init,
+            params: { header: { "Idempotency-Key": key } },
+          } as never)) as { error?: unknown; response?: Response },
+      );
+    } catch {
+      setMsg({
+        tone: "err",
+        text: "The eligibility check could not be run. Check your connection and try again.",
+      });
+      setBusy(false);
+      return;
+    }
+    const { error: err, response } = result;
     if (err) {
       setMsg({
         tone: "err",
@@ -317,7 +329,7 @@ function RefreshPanel({
     setMsg({ tone: "ok", text: "Check enqueued — refresh shortly to see the result." });
     setBusy(false);
     onChecked();
-  }, [client, patientId, providerEntityId, asOf, onChecked]);
+  }, [client, attempt.run, patientId, providerEntityId, asOf, onChecked]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>

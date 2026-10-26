@@ -11,6 +11,9 @@ import {
   t,
   useApiClient,
 } from "@chartwarden/ui";
+import { useCallback, useMemo, useState } from "react";
+import type { JSX } from "react";
+import { ProviderEntityLookupField } from "../../shell/entity-lookups";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the SEQUESTRATION POLICY timeline (R2,
 // §5.1 admin / §4.1 #32-33, D11). The per-ProviderEntity sequestration-percentage timeline: enter a
 // provider entity, read the effective-dated policy rows (GET /billing/sequestration-policies?providerEntityId=)
@@ -20,9 +23,7 @@ import {
 // the anchor read degrades the surface; a 422 / 503 on a forward-date surfaces inline, never a toast. Lantern:
 // DetailPageLayout (timeline | forward-date aside), No-Line table (§6.7), §6.6 StatusPills via
 // billing-status.ts, CSS-var tokens only. openapi emits no billing schemas → reads cast, inits `as never`.
-import { useCallback, useMemo, useState } from "react";
-import type { JSX } from "react";
-import { ProviderEntityLookupField } from "../../shell/entity-lookups";
+import { useAttemptKey } from "./use-attempt-key";
 
 interface SequestrationPolicyView {
   policyId: string;
@@ -32,10 +33,6 @@ interface SequestrationPolicyView {
   effectiveTo: string | null;
   setReason: string | null;
   createdAt: string;
-}
-
-function idemKey(): string {
-  return crypto.randomUUID();
 }
 
 function tomorrowIso(): string {
@@ -318,6 +315,7 @@ function ForwardDatePanel({
 }: { providerEntityId: string | null; onForwardDated: () => void }): JSX.Element {
   const client = useApiClient();
   const [percentage, setPercentage] = useState("2");
+  const attempt = useAttemptKey();
   const [effectiveFrom, setEffectiveFrom] = useState(tomorrowIso());
   const [setReason, setSetReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -333,7 +331,6 @@ function ForwardDatePanel({
       return;
     }
     const init = {
-      params: { header: { "Idempotency-Key": idemKey() } },
       body: {
         providerEntityId,
         percentage: percentage.trim(),
@@ -341,10 +338,25 @@ function ForwardDatePanel({
         ...(setReason.trim().length > 0 ? { setReason: setReason.trim() } : {}),
       },
     };
-    const { error: err, response } = (await client.POST(
-      "/api/v1/billing/sequestration-policies",
-      init as never,
-    )) as { error?: unknown; response?: Response };
+    let result: { error?: unknown; response?: Response };
+    try {
+      result = await attempt.run(
+        JSON.stringify(init.body),
+        async (key) =>
+          (await client.POST("/api/v1/billing/sequestration-policies", {
+            ...init,
+            params: { header: { "Idempotency-Key": key } },
+          } as never)) as { error?: unknown; response?: Response },
+      );
+    } catch {
+      setMsg({
+        tone: "err",
+        text: "The policy row could not be created. Check your connection and try again.",
+      });
+      setBusy(false);
+      return;
+    }
+    const { error: err, response } = result;
     if (err) {
       setMsg({
         tone: "err",
@@ -361,7 +373,7 @@ function ForwardDatePanel({
     setMsg({ tone: "ok", text: "Policy row forward-dated." });
     setBusy(false);
     onForwardDated();
-  }, [client, providerEntityId, percentage, effectiveFrom, setReason, onForwardDated]);
+  }, [client, attempt.run, providerEntityId, percentage, effectiveFrom, setReason, onForwardDated]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>

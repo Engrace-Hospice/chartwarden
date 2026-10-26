@@ -24,6 +24,7 @@ import {
   correctionAvailability,
   validateCorrectionDraft,
 } from "./notice-correction-model";
+import { useAttemptKey } from "./use-attempt-key";
 
 /** What the correction surface needs from the NOE / NOTR config. */
 export interface NoticeCorrectionConfig {
@@ -49,11 +50,6 @@ const STAGE: Record<"999" | "277ca" | "clearinghouse", string> = {
 };
 
 const today = (): string => new Date().toISOString().slice(0, 10);
-
-const idempotencyKey = (): string =>
-  typeof globalThis.crypto?.randomUUID === "function"
-    ? globalThis.crypto.randomUUID()
-    : `${Date.now()}-${Math.random()}`;
 
 function errorText(error: unknown, status: number | undefined, acronym: string): string {
   const message = (error as { error?: { message?: string } } | undefined)?.error?.message;
@@ -118,6 +114,7 @@ export function NoticeCorrectionAction({
   onFiled: () => void;
 }): JSX.Element | null {
   const client = useApiClient();
+  const attempt = useAttemptKey();
   const availability = correctionAvailability(notice);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -156,16 +153,21 @@ export function NoticeCorrectionAction({
     setBusy(true);
     setFailure(null);
     try {
-      const { data, error, response } = (await client.POST(
-        config.correctPath as never,
-        {
-          params: { path: { id: notice.id }, header: { "Idempotency-Key": idempotencyKey() } },
-          body: {
-            reason: draft.reason.trim(),
-            ...(draft.date !== notice.correctableDate ? { correctedDate: draft.date } : {}),
-          },
-        } as never,
-      )) as { data?: unknown; error?: unknown; response?: Response };
+      const body = {
+        reason: draft.reason.trim(),
+        ...(draft.date !== notice.correctableDate ? { correctedDate: draft.date } : {}),
+      };
+      const { data, error, response } = await attempt.run(
+        `${config.correctPath}|${notice.id}|${JSON.stringify(body)}`,
+        async (key) =>
+          (await client.POST(
+            config.correctPath as never,
+            {
+              params: { path: { id: notice.id }, header: { "Idempotency-Key": key } },
+              body,
+            } as never,
+          )) as { data?: unknown; error?: unknown; response?: Response },
+      );
       if (error) {
         setFailure(errorText(error, response?.status, config.acronym));
         return;

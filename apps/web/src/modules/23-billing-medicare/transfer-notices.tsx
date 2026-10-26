@@ -37,6 +37,7 @@ import {
   validateConfirm,
   validateCorrection,
 } from "./transfer-notice-model";
+import { useAttemptKey } from "./use-attempt-key";
 import { authFailureRedirect } from "./write-workflow";
 
 interface PatientName {
@@ -279,26 +280,26 @@ function NoticeRail({
   const [actionError, setActionError] = useState<string | null>(null);
   const status = statusOf(n);
   const can = (a: TransferNotice["allowedActions"][number]) => n.allowedActions.includes(a);
-  // Each click is one request; a fresh key per click, so a retried network call is deduplicated server-side.
-  const params = () => ({
+  // A retry of the same request after a lost response reuses its key; any HTTP answer or changed input mints a new one.
+  const attempt = useAttemptKey();
+  const params = (key: string) => ({
     path: { id: n.transferNoticeId },
-    header: {
-      "Idempotency-Key":
-        typeof globalThis.crypto?.randomUUID === "function"
-          ? globalThis.crypto.randomUUID()
-          : `${Date.now()}-${Math.random()}`,
-    },
+    header: { "Idempotency-Key": key },
   });
 
   /** Run one POST; route auth failures, surface the server's refusal inline, refresh on success. */
   const run = async (
-    call: () => Promise<{ data?: unknown; error?: unknown; response?: Response }>,
+    fingerprint: string,
+    call: (key: string) => Promise<{ data?: unknown; error?: unknown; response?: Response }>,
     fallback: string,
   ): Promise<void> => {
     setBusy(true);
     setActionError(null);
     try {
-      const { data, error, response } = await call();
+      const { data, error, response } = await attempt.run(
+        `${n.transferNoticeId}|${n.version}|${fingerprint}`,
+        call,
+      );
       if (error) {
         const code = errorCode(error);
         const redirect = authFailureRedirect(
@@ -436,9 +437,10 @@ function NoticeRail({
                 onCancel={() => setPanel("none")}
                 onSubmit={(d) =>
                   run(
-                    () =>
+                    `confirm-prior-billing|${JSON.stringify(d)}`,
+                    (key) =>
                       client.POST("/api/v1/billing/transfer-notices/{id}/confirm-prior-billing", {
-                        params: params(),
+                        params: params(key),
                         body: {
                           expectedVersion: n.version,
                           priorHospiceThroughDate: d.throughDate,
@@ -458,9 +460,10 @@ function NoticeRail({
                 onCancel={() => setPanel("none")}
                 onSubmit={(date) =>
                   run(
-                    () =>
+                    `correct-date|${date}`,
+                    (key) =>
                       client.POST("/api/v1/billing/transfer-notices/{id}/correct-date", {
-                        params: params(),
+                        params: params(key),
                         body: { correctedTransferDate: date },
                       }),
                     "The correction could not be drafted.",
@@ -473,9 +476,10 @@ function NoticeRail({
                 onCancel={() => setPanel("none")}
                 onSubmit={(reason) =>
                   run(
-                    () =>
+                    `cancel|${reason}`,
+                    (key) =>
                       client.POST("/api/v1/billing/transfer-notices/{id}/cancel", {
-                        params: params(),
+                        params: params(key),
                         body: { expectedVersion: n.version, reason },
                       }),
                     "The notice could not be cancelled.",
@@ -489,9 +493,10 @@ function NoticeRail({
                     disabled={busy}
                     onClick={() =>
                       run(
-                        () =>
+                        `submit|${""}`,
+                        (key) =>
                           client.POST("/api/v1/billing/transfer-notices/{id}/submit", {
-                            params: params(),
+                            params: params(key),
                             body: { expectedVersion: n.version },
                           }),
                         "The notice could not be submitted.",
@@ -521,9 +526,10 @@ function NoticeRail({
                     disabled={busy}
                     onClick={() =>
                       run(
-                        () =>
+                        `void|${""}`,
+                        (key) =>
                           client.POST("/api/v1/billing/transfer-notices/{id}/void", {
-                            params: params(),
+                            params: params(key),
                           }),
                         "The void could not be drafted.",
                       )
@@ -537,9 +543,10 @@ function NoticeRail({
                     disabled={busy}
                     onClick={() =>
                       run(
-                        () =>
+                        `redraft|${""}`,
+                        (key) =>
                           client.POST("/api/v1/billing/transfer-notices/{id}/redraft", {
-                            params: params(),
+                            params: params(key),
                           }),
                         "The notice could not be redrafted.",
                       )

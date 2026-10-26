@@ -32,6 +32,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { statusLabel } from "./billing-status";
+import { useAttemptKey } from "./use-attempt-key";
 
 type MacJurisdiction =
   | "ngs_j6"
@@ -84,10 +85,6 @@ interface UpsertDraft {
   credentialExpiresAt: string;
   /** Present only when editing an existing credential (drives the If-Match version on PUT-like upsert). */
   version: number | null;
-}
-
-function idemKey(): string {
-  return crypto.randomUUID();
 }
 
 function emptyDraft(): UpsertDraft {
@@ -538,6 +535,7 @@ function UpsertCeremony({
   onSaved: () => void;
 }): JSX.Element {
   const client = useApiClient();
+  const attempt = useAttemptKey();
   const [ceremonyOpen, setCeremonyOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const isEdit = draft.version !== null;
@@ -551,7 +549,7 @@ function UpsertCeremony({
 
   const commit = useCallback(async () => {
     setActionError(null);
-    const header: Record<string, string> = { "Idempotency-Key": idemKey() };
+    const header: Record<string, string> = {};
     if (draft.version !== null) header["If-Match"] = String(draft.version);
     const init = {
       params: { header },
@@ -570,10 +568,22 @@ function UpsertCeremony({
           : {}),
       },
     };
-    const { error: err, response } = (await client.POST(
-      "/api/v1/billing/mac-credentials",
-      init as never,
-    )) as { error?: unknown; response?: Response };
+    let result: { error?: unknown; response?: Response };
+    try {
+      result = await attempt.run(
+        JSON.stringify(init),
+        async (key) =>
+          (await client.POST("/api/v1/billing/mac-credentials", {
+            ...init,
+            params: { header: { ...header, "Idempotency-Key": key } },
+          } as never)) as { error?: unknown; response?: Response },
+      );
+    } catch {
+      setActionError("That did not go through. Check your connection and try again.");
+      setCeremonyOpen(false);
+      return;
+    }
+    const { error: err, response } = result;
     if (err) {
       const s = response?.status;
       setActionError(
@@ -592,7 +602,7 @@ function UpsertCeremony({
     }
     setCeremonyOpen(false);
     onSaved();
-  }, [client, draft, onSaved]);
+  }, [client, attempt.run, draft, onSaved]);
 
   return (
     // WX-PR-022 (UI-002): was a bespoke `role="dialog"` div with no focus trap/Escape/restore —

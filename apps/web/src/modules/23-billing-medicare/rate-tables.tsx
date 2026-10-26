@@ -44,6 +44,7 @@ import {
   nonCompliantUpdatePct,
   referenceColumn,
 } from "./rate-reference";
+import { useAttemptKey } from "./use-attempt-key";
 
 /** GET /billing/rate-tables → `rateTables[]`. */
 interface RateTableVersion {
@@ -605,6 +606,7 @@ function RateEntryDrawer({
   );
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const attempt = useAttemptKey();
   const [result, setResult] = useState<
     { tone: "error"; text: string } | { tone: "saved"; warnings: string[] } | null
   >(null);
@@ -647,19 +649,38 @@ function RateEntryDrawer({
       hqrpCompliant,
       ...(reason.trim() ? { entryReason: reason.trim() } : {}),
     };
-    const init = { params: { header: { "Idempotency-Key": crypto.randomUUID() } }, body };
-    const res = (
-      supersedes
-        ? await client.POST("/api/v1/billing/rate-tables/{id}/supersede", {
-            ...init,
-            params: { ...init.params, path: { id: supersedes.rateTableId } },
-          } as never)
-        : await client.POST("/api/v1/billing/rate-tables", init as never)
-    ) as {
+    type Saved = {
       data?: { nationalReferenceWarnings?: string[] };
       error?: { message?: string };
       response?: Response;
     };
+    let res: Saved;
+    try {
+      res = await attempt.run(
+        JSON.stringify([supersedes?.rateTableId ?? null, body]),
+        async (key) => {
+          const header = { "Idempotency-Key": key };
+          return (
+            supersedes
+              ? await client.POST("/api/v1/billing/rate-tables/{id}/supersede", {
+                  body,
+                  params: { header, path: { id: supersedes.rateTableId } },
+                } as never)
+              : await client.POST("/api/v1/billing/rate-tables", {
+                  body,
+                  params: { header },
+                } as never)
+          ) as Saved;
+        },
+      );
+    } catch {
+      setBusy(false);
+      setResult({
+        tone: "error",
+        text: "The rates could not be saved. Check your connection and try again.",
+      });
+      return;
+    }
     setBusy(false);
     if (res.error) {
       const status = res.response?.status;
