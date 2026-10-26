@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { bindDdeProvider } from "@chartwarden/x12-837-client";
 import {
   AUDIT_HASH_CHAIN_FLAG,
   auditPlatformEvent,
@@ -91,6 +90,7 @@ import type {
   ScaleType,
 } from "@chartwarden/types";
 import { createX12835Client } from "@chartwarden/x12-835-client";
+import { bindDdeProvider } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
@@ -229,8 +229,6 @@ import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store
 import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenant-kek";
 import { buildM23OverrideAuditPort } from "./m23-override-audit";
 import { buildM25RawAdviceStore } from "./m25-raw-advice-store";
-import { buildSeamMedicarePayerPort } from "./modules/25-remittance/ingest/medicare-payer-port";
-import { buildDrizzleRemittanceCursorStore } from "./modules/25-remittance/ingest/pull-cursor-store";
 import { buildM36AttachmentBinding, buildM36AttachmentStorage } from "./m36-attachment-storage";
 import {
   type AuthAuditDb,
@@ -245,6 +243,8 @@ import {
   createDbSessionProofReader,
   createDbSessionStepUpWriter,
 } from "./modules/02-identity/step-up-adapters-db";
+import { buildSeamMedicarePayerPort } from "./modules/25-remittance/ingest/medicare-payer-port";
+import { buildDrizzleRemittanceCursorStore } from "./modules/25-remittance/ingest/pull-cursor-store";
 import { partnerAccessAvailability } from "./modules/36-messaging/external-share/external-share-proxy";
 import { familyAccessAvailability } from "./modules/36-messaging/family/family-access-gate";
 
@@ -313,10 +313,10 @@ import {
   ACK_BROADCAST_ROUTE_RATE_LIMIT,
   AFTERHOURS_TRIAGE_LINES_ROUTE_RATE_LIMIT,
   AI_ROUTE_RATE_LIMIT,
-  DEATH_BOARD_ROUTE_RATE_LIMIT,
   ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
-  MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
+  DEATH_BOARD_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
+  MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
   createRouteRateLimit,
 } from "./bootstrap/plugins/route-rate-limit";
 import { buildUrgentRateLimit } from "./bootstrap/plugins/urgent-rate-limit";
@@ -329,6 +329,7 @@ import {
   startRealtimeServer,
 } from "./bootstrap/realtime";
 import { buildM36ExportBinding } from "./m36-export-binding";
+import { buildM41OverrideAuditPort } from "./m41-override-audit";
 import { revokeAuditorMagicLinksForEngagement } from "./modules/02-identity/auditor-magic-link-store";
 import {
   M2_OUTBOX_EVENTS,
@@ -1016,6 +1017,7 @@ import {
   buildClaimValidationContextPort,
   buildClaimValidationRunner,
   buildClaimValidationService,
+  buildClearinghouseContextPort,
   buildDdeBeneficiaryPort,
   buildDdeQueueService,
   buildDdeWatchdog,
@@ -1025,6 +1027,7 @@ import {
   createDrizzleDdeAgingStore,
   registerDdeDailyChangeWorker,
   scheduleDdeDailyChange,
+  buildDirectMacGateway,
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
   buildDrizzleOrgMacJurisdictionReader,
@@ -1052,14 +1055,13 @@ import {
   buildM23WorkQueueEnqueuePort,
   buildM23WorkRequestConsumer,
   buildM23WorkerDeps,
-  buildClearinghouseContextPort,
-  buildDirectMacGateway,
-  buildSubmissionControlNumberReader,
   buildMacJurisdictionLister,
   buildMacSecretCipherFromEnv,
   buildNoticeWindowPort,
+  buildSubmissionControlNumberReader,
   buildTransferNoticeService,
   createDrizzleBillingEraseStore,
+  createDrizzleDdeChangeStore,
   createM23HetsTransport,
   createM23LaunchGateway,
   m23HetsConfigFromEnv,
@@ -1067,12 +1069,14 @@ import {
   mountM23Routes,
   priorElectionClosureForOrg,
   registerBillingErasers,
+  registerDdeDailyChangeWorker,
   registerM23AbacPredicates,
   registerM23DomainWorkers,
   registerM23LaunchWorkers,
   registerM23PortalHealthWorker,
   registerM23PublishedSeams,
   registerM23WatchCronWorkers,
+  scheduleDdeDailyChange,
   scheduleM23Jobs,
   scheduleM23WatchJobs,
   sweepLegacyValidationRunQueue,
@@ -1085,19 +1089,6 @@ import {
 } from "./modules/23-billing-medicare/services/claim-cbsa";
 import { buildClearinghouseAttemptResolutionService } from "./modules/23-billing-medicare/services/clearinghouse-attempt-resolution-service";
 import { resolveInpatientCapDifferential } from "./modules/23-billing-medicare/services/inpatient-cap-differential";
-// M41 (Billing — Commercial) boot surface (#722): the m41.* outbox catalog, the three ABAC predicates, and the claim /
-// authorization routes over the SAME clinical reader seams M23 binds (ADR-0100 D2).
-import {
-  type CommercialOutboxPort,
-  M41_OUTBOX_EVENTS,
-  buildCommercialAuthorizationService,
-  buildCommercialClaimAssemblyService,
-  buildCommercialClaimLifecycleService,
-  buildCommercialClaimReadService,
-  registerCommercialBillingRoutes,
-  registerM41AbacPredicates,
-} from "./modules/41-billing-commercial/index";
-import { buildM41OverrideAuditPort } from "./m41-override-audit";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
 // (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
 // medicaid_override_role_eligible / regulatory_required_rule_protected_medicaid / rb_arrangement_visible_in_scope
@@ -1154,20 +1145,20 @@ import {
   buildDrizzleAdrReadinessService,
   buildDrizzleAdrService,
   buildDrizzleAuditRequestService,
+  buildDrizzleBeneficiaryAppealService,
   buildDrizzleCaseViewService,
   buildDrizzleDenialRouteService,
   buildDrizzleDenialSeedStore,
   buildDrizzleLaterTierService,
-  buildDrizzlePayerAppealPathService,
-  buildDrizzlePayerAppealService,
-  buildDrizzleRepresentativeService,
-  buildDrizzleBeneficiaryAppealService,
   buildDrizzleM25IngestService,
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
+  buildDrizzlePayerAppealPathService,
+  buildDrizzlePayerAppealService,
   buildDrizzlePlaybookService,
   buildDrizzleQicService,
   buildDrizzleReopeningService,
+  buildDrizzleRepresentativeService,
   buildDrizzleSubmissionService,
   buildDrizzleTpeService,
   buildM18EvvAggregatorRejectedConsumer,
@@ -1555,8 +1546,10 @@ import {
   M36_DELIVERY_PLATFORM_JOB_ID,
   M36_INTEGRITY_PLATFORM_JOB_ID,
   M36_OUTBOX_EVENTS,
+  UNAVAILABLE_AI_PORT,
   bindOutOfBandTransports,
   buildAckDeps,
+  buildAiDeps,
   buildClinicalLinkDeps,
   buildDeathBoardDeps,
   buildEscalationBinding,
@@ -1571,8 +1564,6 @@ import {
   buildPresenceDeps,
   buildPromotionDeps,
   buildReviewDeps,
-  UNAVAILABLE_AI_PORT,
-  buildAiDeps,
   buildSbarDeps,
   buildSnoozeReminderBinding,
   buildTaskDeps,
@@ -1763,12 +1754,36 @@ import {
   scheduleM40Jobs,
   wireM40Tenancy,
 } from "./modules/40-mdm/index";
+// M41 (Billing — Commercial) boot surface (#722): the m41.* outbox catalog, the three ABAC predicates, and the claim /
+// authorization routes over the SAME clinical reader seams M23 binds (ADR-0100 D2).
 import {
+  type CommercialOutboxPort,
+  M41_OUTBOX_EVENTS,
+  buildCommercialAuthorizationService,
+  buildCommercialClaimAssemblyService,
+  buildCommercialClaimLifecycleService,
+  buildCommercialClaimReadService,
+  registerCommercialBillingRoutes,
+  registerM41AbacPredicates,
+} from "./modules/41-billing-commercial/index";
+import {
+  M41_PLATFORM_JOB_ID,
+  buildCommercial837iRenderer,
   buildCommercialContextPort,
+  buildCommercialRenderPorts,
+  buildCommercialSubmissionService,
   buildDrizzleEligibilityStore,
   createCommercialAdminService,
+  createDrainReadiness,
+  createDrizzleAckCursorStore as createDrizzleM41AckCursorStore,
   createEligibilityService,
   mountM41Routes,
+  registerM41AckWorker,
+  registerM41SubmissionWorker,
+  scheduleM41AckJobs,
+  scheduleM41Jobs,
+  scheduleWithRetry,
+  wireM41Tenancy,
 } from "./modules/41-billing-commercial/index";
 
 export { buildServer };
@@ -2496,6 +2511,7 @@ export function wireModuleSeams(
   wireM26Tenancy(); // GAP-076 — allowlist the cron job id so the cap crons may enter withPlatformContext
   wireM23Tenancy(); // M23 — allowlist the cron job id so the NOE/NOTR window-watch + eligibility stale-watch fan-outs may enter withPlatformContext
   wireM25Tenancy(); // M25 — allowlist the cron job id so the denial-aging/appeal-deadline fan-outs may enter withPlatformContext
+  wireM41Tenancy(); // M41 — allowlist the cron job id so the commercial submission drain may enter withPlatformContext
   wireM24Tenancy(); // F-172 (#248, m1 group) — allowlist the cron job id so state-channel-health may enter withPlatformContext
   wireM27Tenancy(); // M27 (WX-PR-013) — allowlist the cron job id so filing-deadline-scan may enter withPlatformContext
   wireM29Tenancy(); // F-175 (#248) — allowlist the cron job id so the outbound-dispatch retry sweep may enter withPlatformContext
@@ -4052,6 +4068,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
   const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
   const m41OutboxPublisher = bindCallerModule(txOutboxPublisher, "m41");
+  // Whether the M41 drain is scheduled (starts false: with no queue connection nothing would ever send a queued submission).
+  const m41DrainReadiness = createDrainReadiness();
   const m25OutboxPublisher = bindCallerModule(txOutboxPublisher, "m25");
   // #659 - the tenant's NPI an 835 payee must match (see M25IngestDrizzleDeps.payeeNpi); one lookup for both M25 ingest roots.
   const m25PayeeNpi = dbHandle
@@ -6063,6 +6081,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               lifecycle: buildCommercialClaimLifecycleService(dbHandle.db, m41Seams),
               authorizations: buildCommercialAuthorizationService(dbHandle.db, m41Seams),
               reads: buildCommercialClaimReadService(dbHandle.db, m41Seams),
+              // ADR-0053 D10: the one submission path is the platform ClearinghouseTransport binding (unbound: CH_NOT_WIRED, nothing queued).
+              submissions: buildCommercialSubmissionService(
+                dbHandle.db,
+                m41Seams,
+                clearinghouseBinding,
+                m41DrainReadiness,
+              ),
             });
           }
           // M25 (Remittance & Denials) — mount the §4.1 route plugins over the Drizzle READ + WRITE
@@ -8759,6 +8784,85 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       app.log.error(err, "M25 cron-schedule registration failed");
     }
     app.log.info({ queues: m25Workers.length }, "M25 §4.8 BullMQ remittance crons constructed");
+
+    // ── M41 commercial submission drain (ADR-0053 D10). ALWAYS constructed (a vendor-less deployment must not look wired): with
+    // CLEARINGHOUSE_VENDOR unset a tick that finds a queued submission FAILS (CH_NOT_WIRED) and sends nothing; there is no direct-to-payer
+    // channel and no fallback. The route refuses to queue while unbound, so a waiting row only means the vendor was removed afterwards.
+    // The 837I renderer's identity port is bound over M5's seams; the PARTIES port has no production source yet (the renderer reports the
+    // typed gap `parties`, the submission ends `failed`, the claim stays `ready`).
+    const m41ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle?.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M41_PLATFORM_JOB_ID,
+      reason: "M41 commercial submission drain (active-org enumeration)",
+    });
+    const m41SubmissionWorker = registerM41SubmissionWorker(queueConnection, {
+      db: dbHandle.db,
+      binding: clearinghouseBinding,
+      contexts: buildCommercialContextPort({ env: process.env, providerNpi: m25PayeeNpi }),
+      renderer: buildCommercial837iRenderer(
+        dbHandle.db,
+        buildCommercialRenderPorts({
+          coverage: {
+            coveragesForPatient: (q) => getPatientCoverageReader().coveragesForPatient(q),
+          },
+          caseload: {
+            isInCaseload: (q) => getSeam("CaseloadProvider").isInCaseload(q),
+          },
+          patients: () => getSeam("PatientReader"),
+          addresses: () => getSeam("PatientAddressReader") as PatientAddressReader,
+        }),
+      ),
+      outbox: m41OutboxPublisher as unknown as CommercialOutboxPort,
+      activeOrgs: m41ActiveOrgs,
+      log: (event) => app.log.info({ commercialSubmission: event }, "M41 submission"),
+    });
+    // Acknowledgments (999 clearinghouse stage, 277CA payer stage) come back through the same transport with a persisted cursor.
+    const m41AckWorker = registerM41AckWorker(queueConnection, {
+      db: dbHandle.db,
+      binding: clearinghouseBinding,
+      contexts: buildCommercialContextPort({ env: process.env, providerNpi: m25PayeeNpi }),
+      cursors: createDrizzleM41AckCursorStore(dbHandle.db),
+      outbox: m41OutboxPublisher as unknown as CommercialOutboxPort,
+      activeOrgs: m41ActiveOrgs,
+      log: (event) => app.log.warn({ commercialAck: event }, "M41 acknowledgment"),
+    });
+    attachDlqAlertsToAll([m41SubmissionWorker, m41AckWorker], "m41");
+    app.addHook("onClose", async () => {
+      await Promise.all([m41SubmissionWorker.close(), m41AckWorker.close()]);
+    });
+    // A schedule failure (a Valkey blip at boot) must not take the whole API down, so it is not fatal (the peers log and swallow). But
+    // "bound is not computing": without the repeatable job POST /submit would keep queueing rows nothing sends. So the failure is logged
+    // loudly, the M41 readiness flag stays false (submit and reconcile answer a typed 503 and the send-gate view says why), and the
+    // registration is retried in the background with a bounded backoff until it succeeds.
+    const m41ScheduleQueues: { close(): Promise<void> }[] = [];
+    await scheduleWithRetry({
+      schedule: async () => {
+        const drain = await scheduleM41Jobs(queueConnection);
+        try {
+          return [...drain, ...(await scheduleM41AckJobs(queueConnection))];
+        } catch (err) {
+          await Promise.all(drain.map((q) => q.close()));
+          throw err;
+        }
+      },
+      onScheduled: (queues) => {
+        m41ScheduleQueues.push(...queues);
+        m41DrainReadiness.markScheduled();
+        app.log.info("M41 commercial submission drain and acknowledgment pull scheduled");
+      },
+      onFailure: (err, attempt, nextRetryMs) => {
+        m41DrainReadiness.markNotScheduled();
+        app.log.error(
+          { err, attempt, nextRetryMs },
+          "M41 drain schedule registration FAILED: submit and reconcile answer 503 until it succeeds",
+        );
+      },
+    });
+    app.addHook("onClose", async () => {
+      await Promise.all(m41ScheduleQueues.map((q) => q.close()));
+    });
+    app.log.info("M41 commercial submission drain constructed");
 
     // ── M26 §4.8 Cap-Management crons (nightly projection recompute · cap-year auto-close · stale-PS&R
     // watchdog). GAP-076: the M2 active-org enumerator and the M36 AlertEmitter-backed alert router are

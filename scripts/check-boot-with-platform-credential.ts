@@ -40,6 +40,7 @@ const CLEARINGHOUSE_LOG = "Clearinghouse binding:";
 const WATCHER_REQUESTED = process.env.M29_LISTENER_WATCH_ENABLED === "true";
 // #717 - a bound vendor with a queue connection must have constructed the M25 835 pull worker (bound is not computing).
 const PULL_LOG = "M25 remittance pull worker constructed";
+const M41_DRAIN_LOG = "M41 commercial submission drain constructed";
 const PULL_REQUESTED = Boolean(process.env.CLEARINGHOUSE_VENDOR) && Boolean(process.env.REDIS_URL);
 
 for (const key of ["DATABASE_URL", "DATABASE_PLATFORM_URL"]) {
@@ -128,6 +129,13 @@ if (!output.includes(CLEARINGHOUSE_LOG)) {
 if (PULL_REQUESTED && !output.includes(PULL_LOG)) {
   fail(
     `CLEARINGHOUSE_VENDOR is set but the backend never constructed the M25 remittance pull worker (no "${PULL_LOG}" line) - the 835 feed is bound but not computing`,
+  );
+}
+// ADR-0053 D10 - the M41 commercial submission drain is constructed whenever a queue connection exists, bound or not (an unbound tick
+// fails loudly; it must never be absent).
+if (Boolean(process.env.REDIS_URL) && !output.includes(M41_DRAIN_LOG)) {
+  fail(
+    `REDIS_URL is set but the backend never constructed the M41 commercial submission drain (no "${M41_DRAIN_LOG}" line) - queued commercial submissions would never be sent`,
   );
 }
 if (WATCHER_REQUESTED && !output.includes(WATCHER_LOG)) {

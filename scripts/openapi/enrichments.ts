@@ -910,8 +910,12 @@ import {
   PayerPlanListResponseSchema as M41PayerPlanListResponseSchema,
   PlanListQuerySchema as M41PlanListQuerySchema,
   ReadyResponseSchema as M41ReadyResponseSchema,
+  ReconcileBodySchema as M41ReconcileBodySchema,
   RecordAuthorizationBodySchema as M41RecordAuthorizationBodySchema,
+  SendGateViewSchema as M41SendGateViewSchema,
   SetAuthorizationStatusBodySchema as M41SetAuthorizationStatusBodySchema,
+  SubmissionViewSchema as M41SubmissionViewSchema,
+  TimelineViewSchema as M41TimelineViewSchema,
   ValidationRunViewSchema as M41ValidationRunViewSchema,
   VoidResponseSchema as M41VoidResponseSchema,
 } from "../../apps/backend/src/modules/41-billing-commercial/routes/commercial-typebox";
@@ -14780,6 +14784,30 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "A patient's pre-authorizations, newest first. Read-audited (list)",
     query: M41AuthorizationListQuerySchema,
     response: M41AuthorizationListResponseSchema,
+  },
+  "GET /api/v1/billing/commercial/claims/:id/send-gate": {
+    summary:
+      "Every reason a commercial claim cannot be sent right now, before the user clicks (commercial_billing.read; provider entity and caseload scope; read-audited). Fixed order: claim state, submission already in flight, validation, authorization, eligibility, transport bound (CH_NOT_WIRED), payer route, enrollment. Each reason has a stable code, a fixed message that says what to do next, and for rule-backed reasons the rule keys. Judged on the claim's current facts, not the stored validation run",
+    response: M41SendGateViewSchema,
+  },
+  "GET /api/v1/billing/commercial/claims/:id/timeline": {
+    summary:
+      "A commercial claim's history in order: state changes (from, to, actor kind), submissions (status, control number, attempts, failure code, sent time) and acknowledgments (stage clearinghouse or payer, disposition, reason codes, payer claim number). Ids, dates and codes only; bounded (200 state changes, 50 submissions and 100 acknowledgments, newest kept; `truncated` says when older rows were cut). Read-audited (commercial_billing.read; caseload scope)",
+    response: M41TimelineViewSchema,
+  },
+  "POST /api/v1/billing/commercial/claims/:id/submissions/:submissionId/reconcile": {
+    summary:
+      "Settle a submission that is IN DOUBT (an ambiguous send is never resent automatically). Body `{outcome, evidence?}`: `received` (needs `evidence`: clearinghouse_portal, payer_portal or vendor_support, what you relied on; the submission becomes sent and the claim moves ready to submitted; 409 COMMERCIAL_CLAIM_NOT_READY if the claim is no longer ready) or `not_received` (no evidence; the submission fails with COMMERCIAL_RECONCILED_NOT_RECEIVED and the claim may be submitted again; the re-send replays an earlier receipt if the file had in fact arrived; 409 COMMERCIAL_RECONCILE_RECEIPT_ON_FILE when the clearinghouse already accepted the file, so only received is open). 503 COMMERCIAL_DRAIN_NOT_SCHEDULED while the background sender is not scheduled. commercial_billing.submit + a FRESH step-up, never an AI actor, Idempotency-Key required, no free text. 409 unless the submission is in doubt. Writes the row audit and an m41.claim.submit_reconciled event",
+    body: M41ReconcileBodySchema,
+    response: M41SubmissionViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "POST /api/v1/billing/commercial/claims/:id/submit": {
+    summary:
+      "Send a ready commercial claim through the platform clearinghouse (commercial_billing.submit + a FRESH step-up, as M23's filing actions; never an AI actor; Idempotency-Key required). The request only decides and records: 202 with a `queued` submission and an m41.claim.submit_requested event; the worker sends it, and the claim moves ready to submitted only when the transport has accepted the file. The same key replays the stored answer with 200 and `replayed: true`. The send gate refuses with 409 COMMERCIAL_SEND_REFUSED (503 when the transport is unbound, CH_NOT_WIRED), carrying every reason as a detail {code, message}; a refusal writes no submission and no event, so no job exists",
+    response: M41SubmissionViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 202,
   },
 });
 

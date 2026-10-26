@@ -107,6 +107,77 @@ export const COMMERCIAL_SEND_REFUSAL = {
 export type CommercialSendRefusalCode =
   (typeof COMMERCIAL_SEND_REFUSAL)[keyof typeof COMMERCIAL_SEND_REFUSAL];
 
+/**
+ * Every reason `POST .../submit` can refuse for (ADR-0100 D4/D5, ADR-0053 D10). The claim-level reasons join the transport-level
+ * ones in {@link COMMERCIAL_SEND_REFUSAL}. Stable: the UI branches on them.
+ */
+export const COMMERCIAL_SEND_GATE_CODES = {
+  CLAIM_NOT_READY: "COMMERCIAL_CLAIM_NOT_READY",
+  VALIDATION_BLOCKED: "COMMERCIAL_VALIDATION_BLOCKED",
+  AUTHORIZATION_NOT_SATISFIED: "COMMERCIAL_AUTHORIZATION_NOT_SATISFIED",
+  ELIGIBILITY_NOT_CURRENT: "COMMERCIAL_ELIGIBILITY_NOT_CURRENT",
+  NOT_WIRED: COMMERCIAL_SEND_REFUSAL.NOT_WIRED,
+  PAYER_NOT_ROUTED: COMMERCIAL_SEND_REFUSAL.PAYER_NOT_ROUTED,
+  ROUTE_CHANGED: "COMMERCIAL_ROUTE_CHANGED",
+  PROVIDER_NOT_ENROLLED: COMMERCIAL_SEND_REFUSAL.PROVIDER_NOT_ENROLLED,
+  /** No drain is scheduled, so a submission would be queued and never sent. */
+  DRAIN_NOT_SCHEDULED: "COMMERCIAL_DRAIN_NOT_SCHEDULED",
+  /** The bound clearinghouse cannot carry a commercial claim (`direct_mac` drops files at a Medicare contractor's portal). */
+  TRANSPORT_UNSUPPORTED: "COMMERCIAL_TRANSPORT_UNSUPPORTED",
+  /** A submission of this claim is already queued, sent or in doubt (one live submission per claim). */
+  SUBMISSION_IN_FLIGHT: "COMMERCIAL_SUBMISSION_IN_FLIGHT",
+} as const;
+export type CommercialSendGateCode =
+  (typeof COMMERCIAL_SEND_GATE_CODES)[keyof typeof COMMERCIAL_SEND_GATE_CODES];
+
+/**
+ * Clearinghouse vendors that must never carry a commercial claim. `direct_mac` is the legacy MAC-portal drop (Medicare only, ADR-0053
+ * D1): a commercial file there would reach the wrong payer, and ADR-0100 D4 allows no direct-to-payer channel.
+ */
+export const COMMERCIAL_UNSUPPORTED_CLEARINGHOUSES: readonly string[] = ["direct_mac"];
+
+/** How a person settles an in-doubt submission (`POST .../reconcile`). */
+export const COMMERCIAL_RECONCILE_OUTCOME_VALUES = ["received", "not_received"] as const;
+export type CommercialReconcileOutcome = (typeof COMMERCIAL_RECONCILE_OUTCOME_VALUES)[number];
+
+/**
+ * What a person relied on when they settle an in-doubt submission as `received`. A closed set, never free text, kept on the
+ * submission and in `m41.claim.submit_reconciled` so the audit trail says what the claim was confirmed against.
+ */
+export const COMMERCIAL_RECONCILE_EVIDENCE_VALUES = [
+  "clearinghouse_portal",
+  "payer_portal",
+  "vendor_support",
+] as const;
+export type CommercialReconcileEvidence = (typeof COMMERCIAL_RECONCILE_EVIDENCE_VALUES)[number];
+
+/**
+ * Fixed, user-facing text for the codes a submission can end with (`commercial_submission.last_failure_code`). Never a vendor's
+ * words and never a value; the timeline shows it next to the code so nobody meets an opaque failure.
+ */
+export const COMMERCIAL_SUBMISSION_FAILURE_MESSAGES: Readonly<Record<string, string>> = {
+  COMMERCIAL_PAYLOAD_CHANGED:
+    "The information this claim is built from changed after it was first sent to the clearinghouse, so it can no longer be sent as it is. Void the claim and assemble it again.",
+  COMMERCIAL_837I_INCOMPLETE:
+    "The claim file could not be built: a required party or identity is missing. Ask a platform administrator, then send again.",
+  COMMERCIAL_BILLING_NPI_MISSING:
+    "The provider entity has no billing NPI on file, so nothing was sent. Add it, then send again.",
+  COMMERCIAL_SUBMISSION_EXHAUSTED:
+    "The clearinghouse could not be reached after several tries. Nothing was filed. Send the claim again later.",
+  COMMERCIAL_SEND_INTERRUPTED:
+    "A send was interrupted and it is not known whether the clearinghouse received the claim. Check the clearinghouse and settle it as received or not received.",
+  COMMERCIAL_TRANSPORT_FAULT:
+    "The connection was lost during the send and it is not known whether the clearinghouse received the claim. Check the clearinghouse and settle it as received or not received.",
+  COMMERCIAL_RECORD_FAULT:
+    "The clearinghouse accepted the claim but our record of it failed. Settle it as received.",
+  COMMERCIAL_RECONCILED_NOT_RECEIVED:
+    "A person confirmed the clearinghouse did not receive this submission. The claim can be sent again.",
+  CH_IDEMPOTENCY_CONFLICT:
+    "The clearinghouse already holds this claim under a different content. Check the clearinghouse and settle it as received or not received.",
+  CH_IN_DOUBT:
+    "It is not known whether the clearinghouse received the claim. Check the clearinghouse and settle it as received or not received.",
+};
+
 /** Other stable codes the eligibility check answers. */
 export const COMMERCIAL_ELIGIBILITY_ERROR = {
   /** The patient has no coverage naming this plan's payer on the service date, so there is no member id to ask about. */

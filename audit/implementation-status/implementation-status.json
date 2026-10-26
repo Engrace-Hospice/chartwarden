@@ -808,18 +808,18 @@
       "status": "Implemented",
       "spec": true,
       "schema": true,
-      "migration": false,
+      "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 18,
-        "enriched": 18
+        "routes": 22,
+        "enriched": 22
       },
       "screens": true,
       "tests": false,
       "adapter": null,
       "liveInfra": {
-        "tables": 14,
-        "covered": 12
+        "tables": 16,
+        "covered": 16
       }
     }
   ],

@@ -69211,6 +69211,22 @@
                   "type": "string"
                 },
                 {
+                  "const": "submitted",
+                  "type": "string"
+                },
+                {
+                  "const": "ack_pending",
+                  "type": "string"
+                },
+                {
+                  "const": "accepted",
+                  "type": "string"
+                },
+                {
+                  "const": "rejected",
+                  "type": "string"
+                },
+                {
                   "const": "void",
                   "type": "string"
                 }
@@ -69819,6 +69835,592 @@
                           }
                         }
                       }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/claims/{id}/send-gate": {
+      "get": {
+        "operationId": "getApiV1BillingCommercialClaimsByIdSendgate",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Every reason a commercial claim cannot be sent right now, before the user clicks (commercial_billing.read; provider entity and caseload scope; read-audited). Fixed order: claim state, submission already in flight, validation, authorization, eligibility, transport bound (CH_NOT_WIRED), payer route, enrollment. Each reason has a stable code, a fixed message that says what to do next, and for rule-backed reasons the rule keys. Judged on the claim's current facts, not the stored validation run",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "claimId",
+                    "state",
+                    "patientId",
+                    "canSubmit",
+                    "clearinghouseKey",
+                    "reasons"
+                  ],
+                  "properties": {
+                    "claimId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "canSubmit": {
+                      "type": "boolean"
+                    },
+                    "clearinghouseKey": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "code",
+                          "message"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          },
+                          "ruleKeys": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/claims/{id}/submissions/{submissionId}/reconcile": {
+      "post": {
+        "operationId": "postApiV1BillingCommercialClaimsByIdSubmissionsBySubmissionIdReconcile",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Settle a submission that is IN DOUBT (an ambiguous send is never resent automatically). Body `{outcome, evidence?}`: `received` (needs `evidence`: clearinghouse_portal, payer_portal or vendor_support, what you relied on; the submission becomes sent and the claim moves ready to submitted; 409 COMMERCIAL_CLAIM_NOT_READY if the claim is no longer ready) or `not_received` (no evidence; the submission fails with COMMERCIAL_RECONCILED_NOT_RECEIVED and the claim may be submitted again; the re-send replays an earlier receipt if the file had in fact arrived; 409 COMMERCIAL_RECONCILE_RECEIPT_ON_FILE when the clearinghouse already accepted the file, so only received is open). 503 COMMERCIAL_DRAIN_NOT_SCHEDULED while the background sender is not scheduled. commercial_billing.submit + a FRESH step-up, never an AI actor, Idempotency-Key required, no free text. 409 unless the submission is in doubt. Writes the row audit and an m41.claim.submit_reconciled event",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "submissionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "submissionId",
+                    "claimId",
+                    "status",
+                    "controlNumber",
+                    "clearinghouseKey",
+                    "attemptCount",
+                    "requestedAt",
+                    "replayed"
+                  ],
+                  "properties": {
+                    "submissionId": {
+                      "type": "string"
+                    },
+                    "claimId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "queued",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "failed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_doubt",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "controlNumber": {
+                      "type": "string"
+                    },
+                    "clearinghouseKey": {
+                      "type": "string"
+                    },
+                    "attemptCount": {
+                      "type": "integer"
+                    },
+                    "requestedAt": {
+                      "type": "string"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "outcome"
+                ],
+                "properties": {
+                  "outcome": {
+                    "anyOf": [
+                      {
+                        "const": "received",
+                        "type": "string"
+                      },
+                      {
+                        "const": "not_received",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "evidence": {
+                    "anyOf": [
+                      {
+                        "const": "clearinghouse_portal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "payer_portal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "vendor_support",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/claims/{id}/submit": {
+      "post": {
+        "operationId": "postApiV1BillingCommercialClaimsByIdSubmit",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Send a ready commercial claim through the platform clearinghouse (commercial_billing.submit + a FRESH step-up, as M23's filing actions; never an AI actor; Idempotency-Key required). The request only decides and records: 202 with a `queued` submission and an m41.claim.submit_requested event; the worker sends it, and the claim moves ready to submitted only when the transport has accepted the file. The same key replays the stored answer with 200 and `replayed: true`. The send gate refuses with 409 COMMERCIAL_SEND_REFUSED (503 when the transport is unbound, CH_NOT_WIRED), carrying every reason as a detail {code, message}; a refusal writes no submission and no event, so no job exists",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "submissionId",
+                    "claimId",
+                    "status",
+                    "controlNumber",
+                    "clearinghouseKey",
+                    "attemptCount",
+                    "requestedAt",
+                    "replayed"
+                  ],
+                  "properties": {
+                    "submissionId": {
+                      "type": "string"
+                    },
+                    "claimId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "queued",
+                          "type": "string"
+                        },
+                        {
+                          "const": "sent",
+                          "type": "string"
+                        },
+                        {
+                          "const": "failed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_doubt",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "controlNumber": {
+                      "type": "string"
+                    },
+                    "clearinghouseKey": {
+                      "type": "string"
+                    },
+                    "attemptCount": {
+                      "type": "integer"
+                    },
+                    "requestedAt": {
+                      "type": "string"
+                    },
+                    "replayed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/claims/{id}/timeline": {
+      "get": {
+        "operationId": "getApiV1BillingCommercialClaimsByIdTimeline",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "A commercial claim's history in order: state changes (from, to, actor kind), submissions (status, control number, attempts, failure code, sent time) and acknowledgments (stage clearinghouse or payer, disposition, reason codes, payer claim number). Ids, dates and codes only; bounded (200 state changes, 50 submissions and 100 acknowledgments, newest kept; `truncated` says when older rows were cut). Read-audited (commercial_billing.read; caseload scope)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "claimId",
+                    "patientId",
+                    "state",
+                    "items",
+                    "truncated"
+                  ],
+                  "properties": {
+                    "claimId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "at",
+                              "submissionId",
+                              "stage",
+                              "disposition",
+                              "reasonCodes",
+                              "payerClaimNumber"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "acknowledgment",
+                                "type": "string"
+                              },
+                              "at": {
+                                "type": "string"
+                              },
+                              "submissionId": {
+                                "type": "string"
+                              },
+                              "stage": {
+                                "type": "string"
+                              },
+                              "disposition": {
+                                "type": "string"
+                              },
+                              "reasonCodes": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "payerClaimNumber": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "at",
+                              "fromState",
+                              "toState",
+                              "actorKind"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "state_change",
+                                "type": "string"
+                              },
+                              "at": {
+                                "type": "string"
+                              },
+                              "fromState": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "toState": {
+                                "type": "string"
+                              },
+                              "actorKind": {
+                                "type": "string"
+                              }
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "required": [
+                              "kind",
+                              "at",
+                              "submissionId",
+                              "status",
+                              "controlNumber",
+                              "clearinghouseKey",
+                              "attemptCount",
+                              "failureCode",
+                              "failureMessage",
+                              "resolution",
+                              "sentAt"
+                            ],
+                            "properties": {
+                              "kind": {
+                                "const": "submission",
+                                "type": "string"
+                              },
+                              "at": {
+                                "type": "string"
+                              },
+                              "submissionId": {
+                                "type": "string"
+                              },
+                              "status": {
+                                "anyOf": [
+                                  {
+                                    "const": "queued",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "sent",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "failed",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "in_doubt",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "controlNumber": {
+                                "type": "string"
+                              },
+                              "clearinghouseKey": {
+                                "type": "string"
+                              },
+                              "attemptCount": {
+                                "type": "integer"
+                              },
+                              "failureCode": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "failureMessage": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "resolution": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "sentAt": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "truncated": {
+                      "type": "boolean"
                     }
                   }
                 }

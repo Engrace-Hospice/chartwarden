@@ -66,6 +66,7 @@ function makeServer() {
     assembly: {} as never,
     lifecycle: {} as never,
     authorizations: {} as never,
+    submissions: {} as never,
   });
   return app;
 }
