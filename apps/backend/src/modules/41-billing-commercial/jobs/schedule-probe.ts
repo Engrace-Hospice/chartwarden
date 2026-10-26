@@ -27,11 +27,19 @@ export interface ScheduleProbe {
   close(): Promise<void>;
 }
 
+/**
+ * A probe that has not answered in this long counts as "not scheduled". The Valkey client retries without limit, so during an outage a
+ * call would otherwise never return and every request waiting on the probe would hang with it.
+ */
+export const SCHEDULE_PROBE_TIMEOUT_MS = 2_000;
+
 export function createScheduleProbe(options: {
   readonly connection: ConnectionOptions;
   readonly expected?: readonly ExpectedSchedule[];
   readonly makeQueue?: (name: string, connection: ConnectionOptions) => RepeatableLister;
+  readonly timeoutMs?: number;
 }): ScheduleProbe {
+  const timeoutMs = options.timeoutMs ?? SCHEDULE_PROBE_TIMEOUT_MS;
   const expected = options.expected ?? M41_EXPECTED_SCHEDULES;
   const make =
     options.makeQueue ??
@@ -46,12 +54,31 @@ export function createScheduleProbe(options: {
     }
     return q;
   };
-  const probe = async (): Promise<boolean> => {
+  /** Drop every cached queue so the next probe builds a fresh one (a queue whose connection failed is never reused). Never waits. */
+  const reset = (): void => {
+    for (const q of queues.values()) void q.close().catch(() => undefined);
+    queues.clear();
+  };
+  const look = async (): Promise<boolean> => {
     for (const { queue, pattern } of expected) {
       const jobs = await queueFor(queue).getRepeatableJobs();
       if (!jobs.some((j) => j.pattern === pattern)) return false;
     }
     return true;
+  };
+  const probe = async (): Promise<boolean> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error("schedule probe timed out")), timeoutMs);
+    });
+    try {
+      return await Promise.race([look(), deadline]);
+    } catch (err) {
+      reset();
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
   };
   return Object.assign(probe, {
     close: async (): Promise<void> => {

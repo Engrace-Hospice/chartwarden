@@ -50,6 +50,12 @@ export const MAC_PORTAL_NOT_WIRED = "MAC_PORTAL_NOT_WIRED";
 export interface DegradedError {
   readonly code: string;
   readonly reason: string;
+  /**
+   * Set (true) by a transport when the payload MAY have reached the destination although the answer is degraded (a timeout or network
+   * error after the request was sent, a 5xx, "submitted but the attempt could not be recorded"). A caller must then treat the send as
+   * ambiguous even when the code is `CH_UNAVAILABLE`. Absent = a clean, pre-send refusal.
+   */
+  readonly ambiguous?: true;
 }
 
 /**
@@ -61,8 +67,8 @@ export type X12WorkerResult<T> =
   | { readonly ok: false; readonly degraded: DegradedError };
 
 /** Build a degraded result. PHI-free by construction — pass only codes/reasons, never claim/patient data. */
-export function degraded<T>(code: string, reason: string): X12WorkerResult<T> {
-  return { ok: false, degraded: { code, reason } };
+export function degraded<T>(code: string, reason: string, ambiguous?: true): X12WorkerResult<T> {
+  return { ok: false, degraded: ambiguous ? { code, reason, ambiguous } : { code, reason } };
 }
 
 // ─── Submitter context (per ProviderEntity / CCN) ───────────────────────────────────────────────

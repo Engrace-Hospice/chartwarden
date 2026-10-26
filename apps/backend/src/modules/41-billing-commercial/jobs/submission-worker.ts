@@ -52,13 +52,18 @@ export const FAILURE = {
 } as const;
 
 export type SendOutcome =
-  | { readonly kind: "retry"; readonly code: string }
+  | { readonly kind: "retry"; readonly code: string; readonly ambiguous: boolean }
   | { readonly kind: "failed"; readonly code: string }
   | { readonly kind: "in_doubt"; readonly code: string };
 
 /** What a degraded transport answer means for the submission. Pure. */
-export function classifyTransportRefusal(code: string): SendOutcome {
-  if (code === CH.UNAVAILABLE) return { kind: "retry", code };
+export function classifyTransportRefusal(code: string, ambiguous = false): SendOutcome {
+  // The transport flags a degraded answer `ambiguous` when the payload MAY have reached the destination although the code is retryable
+  // (a timeout or network error after the request left, a 5xx, "submitted but the attempt could not be recorded"). Such an attempt is
+  // never clean: the row becomes ambiguous (it binds its payload hash and ends in_doubt on exhaustion). Only a clean, unflagged
+  // pre-send refusal stays definite.
+  if (ambiguous && code !== CH.UNAVAILABLE) return { kind: "in_doubt", code };
+  if (code === CH.UNAVAILABLE) return { kind: "retry", code, ambiguous };
   if (code === CH.IN_DOUBT) return { kind: "in_doubt", code };
   // The transport already holds this claim's key with a DIFFERENT payload (or the control number under another key): an earlier
   // attempt DID reach it, so this is not a clean refusal. A person decides (reconcile); the worker never marks it failed.
@@ -311,11 +316,15 @@ async function recordAccepted(
   deps.log?.({ event: "submission.sent", submissionId: sub.id });
 }
 
-/** Put a definite CH_UNAVAILABLE back in the queue after its backoff. */
+/**
+ * Put a CH_UNAVAILABLE back in the queue after its backoff. When the transport flagged it `ambiguous` (the payload may have reached
+ * the destination) the row becomes ambiguous for good, so it binds its payload and cannot end `failed`.
+ */
 async function requeue(
   deps: SubmissionWorkerDeps,
   sub: SubmissionRow,
   code: string,
+  ambiguous: boolean,
 ): Promise<void> {
   const at = nowOf(deps);
   await inOrg(deps, sub.organizationId, async (tx) => {
@@ -326,6 +335,7 @@ async function requeue(
         nextAttemptAt: new Date(at.getTime() + retryDelayMs(sub.attemptCount)),
         transportCallStartedAt: null,
         lastFailureCode: safeCode(code),
+        ...(ambiguous ? { ambiguous: true } : {}),
         updatedAt: at,
       })
       .where(and(eq(S.id, sub.id), eq(S.status, "queued")));
@@ -342,12 +352,15 @@ const hashOf = (x12: string): string => createHash("sha256").update(x12).digest(
  * two submissions of one claim can never both bind different hashes.
  *
  * The transport holds one key per claim, so every attempt must render the same bytes. The comparison is against the FIRST hash of a
- * payload the transport MAY hold: a submission that ended `failed` without ever being ambiguous (a definite refusal, or attempts
- * exhausted on a definite unavailable) never put its payload anywhere, so it binds nothing and the user can fix the data and resend.
- * One that ended `in_doubt`, `sent`, is still queued, or was settled "not received" by a person (`failed` but ambiguous) still binds.
+ * payload the transport MAY hold. A submission that ended `failed` without ever being ambiguous had only CLEAN refusals (a definite
+ * refusal, or a CH_UNAVAILABLE the transport did NOT flag: refused before the request left), so the transport holds nothing and it
+ * binds nothing: the user can fix the data and resend. A timeout or network error after the request left, a 5xx, or "submitted but the
+ * attempt could not be recorded" come back flagged `ambiguous` (see `DegradedError.ambiguous`); such a row is marked ambiguous, so it
+ * keeps binding and ends `in_doubt`. One that is `in_doubt`, `sent`, still queued, or was settled "not received" by a person
+ * (`failed` but ambiguous) also binds.
  * A legacy row with no hash binds nothing (the comparison is skipped).
  */
-async function bindPayloadAndMarkCallStarted(
+export async function bindPayloadAndMarkCallStarted(
   deps: SubmissionWorkerDeps,
   sub: SubmissionRow,
   payloadHash: string,
@@ -456,7 +469,7 @@ async function sendOne(deps: SubmissionWorkerDeps, sub: SubmissionRow): Promise<
     });
     outcome = result.ok
       ? { kind: "accepted", receiptId: result.data.clearinghouseSubmissionId }
-      : classifyTransportRefusal(result.degraded.code);
+      : classifyTransportRefusal(result.degraded.code, result.degraded.ambiguous === true);
   } catch {
     // The port promises never to throw; if it does, whether the file left is unknown. Never resent blind.
     outcome = { kind: "in_doubt", code: FAILURE.TRANSPORT_FAULT };
@@ -465,7 +478,7 @@ async function sendOne(deps: SubmissionWorkerDeps, sub: SubmissionRow): Promise<
     case "accepted":
       return recordAcceptedOrDoubt(deps, sub, outcome.receiptId);
     case "retry":
-      return requeue(deps, sub, outcome.code);
+      return requeue(deps, sub, outcome.code, outcome.ambiguous);
     case "in_doubt":
       return endSubmission(deps, sub, "in_doubt", outcome.code);
     default:

@@ -5,6 +5,11 @@
 // the routes consult this flag and refuse with a typed 503 while it is false. Peers (M25, M31, M33) log and swallow a schedule failure;
 // failing the whole API boot for a Redis blip would take every other module down with it, so M41 instead stays up, says so loudly,
 // refuses the one thing that cannot work, and keeps retrying the registration in the background with a bounded backoff.
+//
+// WHAT THIS PROVES, AND WHAT IT DOES NOT. The probe (`schedule-probe.ts`) shows that both repeatable schedules EXIST in Valkey. It does not
+// show that a consumer is running: a worker scaled to zero still lets submissions be accepted. They queue as durable rows, nothing is
+// sent, and the drain picks them up when a worker returns. No `getWorkers()` liveness is checked on purpose. The probe has a short
+// timeout (a dead store counts as "not scheduled"), so a Valkey outage can never hang a request.
 import type { Queue } from "bullmq";
 
 export interface DrainReadiness {
