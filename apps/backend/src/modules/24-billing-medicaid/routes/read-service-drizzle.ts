@@ -403,6 +403,7 @@ export function buildDrizzleM24ReadService(
             isCustom: false,
             customSeverity: o?.customSeverity ?? null,
             customOverrideRole: o?.customOverrideRole ?? null,
+            overrideRoleRequired: rule.overrideRoleRequired ?? null,
             regulatoryRequired: rule.regulatoryRequired,
             parametersOverlay: o?.parametersOverlay ?? null,
             version: o?.version ?? null,
@@ -424,6 +425,7 @@ export function buildDrizzleM24ReadService(
               isCustom: true,
               customSeverity: o.customSeverity ?? null,
               customOverrideRole: o.customOverrideRole ?? null,
+              overrideRoleRequired: null, // custom rules are not in the registry; the server refuses to override them
               regulatoryRequired: o.regulatoryRequiredSnapshot,
               parametersOverlay: o.parametersOverlay ?? null,
               version: o.version,

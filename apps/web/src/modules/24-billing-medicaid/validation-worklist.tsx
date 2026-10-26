@@ -80,7 +80,12 @@ interface ValidationRun {
 interface RuleConfig {
   ruleKey: string;
   regulatoryRequired: boolean;
+  /** The role the server requires for an override; null = not overridable. Absent on an older API. */
+  overrideRoleRequired?: OverrideRole | null;
 }
+
+const roleLabel = (role: OverrideRole): string =>
+  OVERRIDE_ROLES.find((r) => r.value === role)?.label ?? role;
 
 /** Map the structured remediation fixAction → the human label of its deep-link CTA (§4.5). */
 function fixActionLabel(action: string | null): string {
@@ -120,7 +125,7 @@ export function MedicaidValidationWorklist(): JSX.Element {
   const [runs, setRuns] = useState<ValidationRun[]>([]);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ValidationRun | null>(null);
-  const [regulatory, setRegulatory] = useState<Map<string, boolean>>(new Map());
+  const [ruleConfigs, setRuleConfigs] = useState<Map<string, RuleConfig>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [overrideTarget, setOverrideTarget] = useState<ValidationResult | null>(null);
@@ -151,7 +156,7 @@ export function MedicaidValidationWorklist(): JSX.Element {
     // falls back to the generic "overriding is audited" message rather than the regulatory escalation.
     if (!ruleRes.error) {
       const items = (ruleRes.data as unknown as RuleConfig[]) ?? [];
-      setRegulatory(new Map(items.map((r) => [r.ruleKey, r.regulatoryRequired])));
+      setRuleConfigs(new Map(items.map((r) => [r.ruleKey, r])));
     }
     setLoading(false);
   }, [client, claimId]);
@@ -348,7 +353,7 @@ export function MedicaidValidationWorklist(): JSX.Element {
                 <tbody>
                   {sorted.map((r) => {
                     const failed = r.outcome === "fail";
-                    const regReq = regulatory.get(r.ruleKey) === true;
+                    const regReq = ruleConfigs.get(r.ruleKey)?.regulatoryRequired === true;
                     const href = fixActionHref(r.remediationFixAction);
                     return (
                       <tr key={r.id} style={enhancedRowLine}>
@@ -419,7 +424,8 @@ export function MedicaidValidationWorklist(): JSX.Element {
       {overrideTarget ? (
         <OverrideModal
           result={overrideTarget}
-          regulatoryRequired={regulatory.get(overrideTarget.ruleKey)}
+          regulatoryRequired={ruleConfigs.get(overrideTarget.ruleKey)?.regulatoryRequired}
+          requiredRole={ruleConfigs.get(overrideTarget.ruleKey)?.overrideRoleRequired}
           onClose={() => setOverrideTarget(null)}
           onApplied={() => {
             setOverrideTarget(null);
@@ -436,17 +442,22 @@ export function MedicaidValidationWorklist(): JSX.Element {
 function OverrideModal({
   result,
   regulatoryRequired,
+  requiredRole,
   onClose,
   onApplied,
 }: {
   result: ValidationResult;
   regulatoryRequired: boolean | undefined;
+  /** undefined = unknown (rule config unreadable): fall back to a free pick, the server still enforces. */
+  requiredRole: OverrideRole | null | undefined;
   onClose: () => void;
   onApplied: () => void;
 }): JSX.Element {
   const client = useApiClient();
   const [reason, setReason] = useState("");
-  const [role, setRole] = useState<OverrideRole>("billing_manager");
+  const [pickedRole, setPickedRole] = useState<OverrideRole>("billing_manager");
+  const role = requiredRole ?? pickedRole;
+  const notOverridable = requiredRole === null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -455,7 +466,7 @@ function OverrideModal({
   const errorId = "m24-override-reason-error";
 
   const apply = useCallback(async () => {
-    if (tooShort) return;
+    if (tooShort || notOverridable) return;
     setBusy(true);
     setError(null);
     const { error: err, response } = (await client.POST(
@@ -467,11 +478,11 @@ function OverrideModal({
     )) as { error?: { error?: { code?: string } }; response?: Response };
     setBusy(false);
     if (err) {
-      setError(overrideErrorMessage(err?.error?.code, response?.status));
+      setError(overrideErrorMessage(err?.error?.code, response?.status, requiredRole));
       return;
     }
     onApplied();
-  }, [client, result, reason, role, tooShort, onApplied]);
+  }, [client, result, reason, role, tooShort, notOverridable, requiredRole, onApplied]);
 
   return (
     <Modal open onClose={onClose} ariaLabel="Override validation rule" width="34rem">
@@ -503,21 +514,27 @@ function OverrideModal({
           />
         )}
 
-        <label style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
           <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface)" }}>Acting role</span>
-          <select
-            aria-label="Override role"
-            value={role}
-            onChange={(e) => setRole(e.target.value as OverrideRole)}
-            style={selectStyle}
-          >
-            {OVERRIDE_ROLES.map((r) => (
-              <option key={r.value} value={r.value}>
-                {r.label}
-              </option>
-            ))}
-          </select>
-        </label>
+          {requiredRole !== undefined ? (
+            <span data-testid="override-acting-role" style={fixedRoleStyle}>
+              {requiredRole ? roleLabel(requiredRole) : "None — this rule cannot be overridden"}
+            </span>
+          ) : (
+            <select
+              aria-label="Override role"
+              value={pickedRole}
+              onChange={(e) => setPickedRole(e.target.value as OverrideRole)}
+              style={selectStyle}
+            >
+              {OVERRIDE_ROLES.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
 
         <label style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>
           <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface)" }}>
@@ -549,7 +566,11 @@ function OverrideModal({
           <Button tone="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => void apply()} disabled={tooShort || busy} loading={busy}>
+          <Button
+            onClick={() => void apply()}
+            disabled={tooShort || notOverridable || busy}
+            loading={busy}
+          >
             {busy ? "Applying…" : "Apply override"}
           </Button>
         </div>
@@ -611,6 +632,13 @@ const enhancedRowLine = {
   borderTop: "none",
   borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
 };
+const fixedRoleStyle = {
+  padding: "0.4rem 0.6rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-low)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.85rem",
+};
 const linkButtonStyle = {
   display: "inline-flex",
   alignItems: "center",
@@ -630,7 +658,11 @@ const primaryLinkButtonStyle = {
 };
 
 /** Map the override error envelope (§4.7 / §D12) to a precise, PHI-free inline message. */
-function overrideErrorMessage(code: string | undefined, status: number | undefined): string {
+function overrideErrorMessage(
+  code: string | undefined,
+  status: number | undefined,
+  requiredRole: OverrideRole | null | undefined,
+): string {
   switch (code) {
     case "OVERRIDE_ROLE_NOT_ELIGIBLE":
       return "Your role is not eligible to override this rule.";
@@ -639,6 +671,8 @@ function overrideErrorMessage(code: string | undefined, status: number | undefin
     case "STEP_UP_REQUIRED":
       return "Re-authentication (step-up) is required before applying an override.";
     default:
+      if (status === 403 && requiredRole)
+        return `This rule can only be overridden by a ${roleLabel(requiredRole)}, and your account does not hold that role.`;
       if (status === 401 || status === 403)
         return "Re-authentication (step-up) or a higher role is required to override this rule.";
       if (status === 422) return "The rationale did not meet the minimum length — add more detail.";

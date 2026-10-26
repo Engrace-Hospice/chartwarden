@@ -499,6 +499,7 @@ export const RuleConfigDto = Type.Object({
   isCustom: Type.Boolean(),
   customSeverity: nullableStr(),
   customOverrideRole: nullableStr(),
+  overrideRoleRequired: nullableStr(),
   regulatoryRequired: Type.Boolean(),
   parametersOverlay: Type.Unknown(),
   version: nullableInt(),

@@ -71153,6 +71153,7 @@ export interface operations {
                         isCustom: boolean;
                         customSeverity: string | null;
                         customOverrideRole: string | null;
+                        overrideRoleRequired: string | null;
                         regulatoryRequired: boolean;
                         parametersOverlay: unknown;
                         version: number | null;
