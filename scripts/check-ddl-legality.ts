@@ -23,6 +23,7 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { findPartitionKeyViolations, stripCommentsForScan } from "./ddl-source-scan";
 import { MODULES } from "../architecture/module-manifest";
 
 const REPO_ROOT = process.cwd();
@@ -114,11 +115,9 @@ for (const base of SCAN_DIRS) {
     // comment-stripped copy so a prose mention of "PARTITION BY" in a `--`/`/* */` comment (e.g. a
     // migration note that the partition conversion is DEFERRED to a later file) is not mistaken for
     // a real partition declaration.
-    // A TS schema file's `//` line comments are prose too (validation.ts mentions "PARTITION BY LIST(...)" for
-    // its partitioned tables above a NON-partitioned table's uniqueIndex) — strip them for .ts sources only.
-    const srcNoComments = (file.endsWith(".ts") ? src.replace(/(^|\s)\/\/[^\n]*/g, "$1") : src)
-      .replace(/--[^\n]*/g, "")
-      .replace(/\/\*[\s\S]*?\*\//g, "");
+    // A TS schema file's `//` comments are prose too (validation.ts mentions "PARTITION BY LIST(...)" above a
+    // NON-partitioned table's uniqueIndex); see scripts/ddl-source-scan.ts for the single-pass stripping.
+    const srcNoComments = stripCommentsForScan(src, file);
     const ordinal = /(?:^|\/)migrations\/(\d+)_[^/]*\.sql$/.exec(file)?.[1];
     if (
       ordinal &&
@@ -134,25 +133,8 @@ for (const base of SCAN_DIRS) {
         });
       }
     }
-    const partCol =
-      /partitionedBy\w*\(\s*['"](\w+)['"]/i.exec(srcNoComments)?.[1] ??
-      /PARTITION\s+BY\s+\w+\s*\(\s*(\w+)/i.exec(srcNoComments)?.[1];
-    if (partCol) {
-      const uniqRe =
-        /uniqueIndex\([^)]*\)\.on\(([^)]*)\)|UNIQUE\s*\(([^)]*)\)|PRIMARY\s+KEY\s*\(([^)]*)\)/gi;
-      let um: RegExpExecArray | null;
-      // biome-ignore lint/suspicious/noAssignInExpressions: idiomatic regex exec() iteration.
-      while ((um = uniqRe.exec(src))) {
-        const cols = um[1] ?? um[2] ?? um[3] ?? "";
-        if (!new RegExp(`\\b${partCol}\\b`).test(cols)) {
-          violations.push({
-            file,
-            rule: "partition-key-not-in-unique",
-            detail: `table partitioned by '${partCol}' has a UNIQUE/PK index not including it (\`${cols.trim().slice(0, 60)}\`) — illegal in PostgreSQL (ADR-0022 D1.1)`,
-          });
-        }
-      }
-    }
+    for (const detail of findPartitionKeyViolations(src, file))
+      violations.push({ file, rule: "partition-key-not-in-unique", detail });
   }
 }
 

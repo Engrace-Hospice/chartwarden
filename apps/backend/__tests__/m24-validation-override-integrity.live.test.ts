@@ -239,6 +239,77 @@ describe.skipIf(!DB_URL)("M24 validation override integrity - LIVE Postgres (#80
     expect(await overrideCount(f.latestFail)).toBe(1);
   });
 
+  it("returns 404 for a missing result id", async () => {
+    await expect(svc().applyOverride(ACTOR, randomUUID(), INPUT)).rejects.toMatchObject({
+      statusCode: 404,
+    });
+  });
+
+  it("returns a distinct 422 (not 403) when the result's rule is not in the registry", async () => {
+    const claimId = await seedClaim();
+    const run = await seedRun(claimId, "2026-03-01T00:00:00Z");
+    await admin.query("UPDATE medicaid_claim SET validation_run_id_latest=$2 WHERE id=$1", [
+      claimId,
+      run,
+    ]);
+    const resultId = await seedResult(run, "fail", "custom.not_in_registry");
+    await expect(svc().applyOverride(ACTOR, resultId, INPUT)).rejects.toMatchObject({
+      code: "OVERRIDE_RULE_UNKNOWN",
+      statusCode: 422,
+    });
+  });
+
+  const settledWithin = (p: Promise<unknown>, ms: number) =>
+    Promise.race([
+      p.then(
+        () => true,
+        () => true,
+      ),
+      new Promise<boolean>((r) => setTimeout(() => r(false), ms)),
+    ]);
+
+  it("validateClaim takes the claim lock first: it waits behind a concurrent claim lock holder", async () => {
+    const f = await fixture();
+    await admin.query("BEGIN");
+    try {
+      await admin.query("SELECT id FROM medicaid_claim WHERE id=$1 FOR UPDATE", [f.claimId]);
+      const validating = svc().validateClaim(ACTOR, f.claimId);
+      expect(await settledWithin(validating, 800)).toBe(false);
+      await admin.query("COMMIT");
+      await validating;
+    } catch (e) {
+      await admin.query("ROLLBACK");
+      throw e;
+    }
+  });
+
+  it("an override racing a revalidate that commits first is rejected as superseded", async () => {
+    const f = await fixture();
+    await admin.query("BEGIN");
+    let racing: Promise<unknown>;
+    try {
+      await admin.query("SELECT id FROM medicaid_claim WHERE id=$1 FOR UPDATE", [f.claimId]);
+      racing = svc().applyOverride(ACTOR, f.latestFail, INPUT);
+      const outcome = racing.then(
+        () => "applied",
+        (e: { code?: string }) => e.code,
+      );
+      expect(await settledWithin(racing, 800)).toBe(false);
+      // the "revalidate" commits a newer run + pointer while the override waits on the claim lock
+      const newer = await seedRun(f.claimId, "2026-02-03T00:00:00Z");
+      await admin.query("UPDATE medicaid_claim SET validation_run_id_latest=$2 WHERE id=$1", [
+        f.claimId,
+        newer,
+      ]);
+      await admin.query("COMMIT");
+      expect(await outcome).toBe("OVERRIDE_RESULT_SUPERSEDED");
+    } catch (e) {
+      await admin.query("ROLLBACK");
+      throw e;
+    }
+    expect(await overrideCount(f.latestFail)).toBe(0);
+  });
+
   it("the DB itself refuses a duplicate override row (unique index)", async () => {
     const f = await fixture();
     await svc().applyOverride(ACTOR, f.latestFail, INPUT);

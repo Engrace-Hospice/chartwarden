@@ -249,8 +249,9 @@ export function buildDrizzleM24WriteService(
   const LE = schema.medicaidClaimLineEncounter;
   const RULES_BY_KEY = new Map(DEFAULT_MEDICAID_RULES.map((r) => [r.key, r]));
 
-  async function loadClaim(tx: Tx, claimId: string) {
-    const rows = await tx.select().from(C).where(eq(C.id, claimId)).limit(1);
+  async function loadClaim(tx: Tx, claimId: string, lockForUpdate = false) {
+    const q = tx.select().from(C).where(eq(C.id, claimId)).limit(1);
+    const rows = await (lockForUpdate ? q.for("update") : q);
     if (!rows[0]) throw new NotFoundError("medicaid claim not found");
     return rows[0];
   }
@@ -727,7 +728,9 @@ export function buildDrizzleM24WriteService(
 
     async validateClaim(actor, claimId) {
       return withOrgContext(db, actor, async (tx) => {
-        const claim = await loadClaim(tx, claimId);
+        // Lock first so applyOverride (which locks the claim to check the latest run) serialises against this run.
+        // Lock order is claim -> run/result inserts here; applyOverride takes only the claim lock, so no cycle.
+        const claim = await loadClaim(tx, claimId, true);
         const lineRows = await tx
           .select()
           .from(schema.medicaidClaimLine)
@@ -1046,7 +1049,14 @@ export function buildDrizzleM24WriteService(
         if (!claimId) throw new NotFoundError("validation run");
         // The applied role is server-derived, never the client's claim: the actor must HOLD the claimed role and it
         // must be the role the rule requires (a rule with no required role cannot be overridden).
-        const requiredRole = RULES_BY_KEY.get(result.ruleKey)?.overrideRoleRequired;
+        const rule = RULES_BY_KEY.get(result.ruleKey);
+        if (!rule) {
+          throw new UnprocessableError(
+            "OVERRIDE_RULE_UNKNOWN",
+            `rule ${result.ruleKey} is not in the rules registry and cannot be overridden`,
+          );
+        }
+        const requiredRole = rule.overrideRoleRequired;
         if (
           !requiredRole ||
           input.overrideRoleClaimed !== requiredRole ||
