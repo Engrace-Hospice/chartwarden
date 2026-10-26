@@ -50,10 +50,10 @@ export const commercialAckQuarantine = pgTable(
     eventId: text("event_id").notNull(),
     controlNumber: text("control_number"),
     reason: text("reason").notNull(), // malformed | scope_mismatch | vendor_mismatch | no_receipt
-    // the validated event (codes and ids), kept only for `no_receipt` so the pull can replay it once the submission is settled
+    // the validated event (codes and ids), kept for no_receipt / scope_mismatch / vendor_mismatch (migration 1279) so the pull can replay it
     event: jsonb("event"),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
-    // applied | abandoned_no_submission | abandoned_scope_mismatch | abandoned_vendor_mismatch | abandoned_aged | abandoned_invalid
+    // applied | applied_status_inquiry | abandoned_no_submission | abandoned_scope_mismatch | abandoned_vendor_mismatch | abandoned_aged | abandoned_invalid
     resolution: text("resolution"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

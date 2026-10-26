@@ -181,6 +181,7 @@ describe("createScheduleProbe", () => {
           return (present[name] ?? []).map((pattern) => ({ pattern }));
         },
         close: async () => undefined,
+        disconnect: async () => undefined,
       }),
     });
 
@@ -201,17 +202,20 @@ describe("createScheduleProbe", () => {
 
   describe("during a Valkey outage (the client retries forever and never answers)", () => {
     const hanging = () => {
-      const made: { closed: boolean }[] = [];
+      const made: { closed: boolean; disconnected: boolean }[] = [];
       const probe = createScheduleProbe({
         connection: {},
         timeoutMs: 2_000,
         makeQueue: () => {
-          const q = { closed: false };
+          const q = { closed: false, disconnected: false };
           made.push(q);
           return {
             getRepeatableJobs: () => new Promise<never>(() => undefined), // never settles
             close: async () => {
               q.closed = true;
+            },
+            disconnect: async () => {
+              q.disconnected = true;
             },
           };
         },
@@ -228,10 +232,74 @@ describe("createScheduleProbe", () => {
         await first;
         expect(made).toHaveLength(1);
         expect(made[0]?.closed).toBe(true); // the failed one is discarded, never cached forever
+        expect(made[0]?.disconnected).toBe(true); // and its connection is force-ended, not left retrying
         const second = expect(probe()).rejects.toThrow(/timed out/);
         await vi.advanceTimersByTimeAsync(2_000);
         await second;
         expect(made).toHaveLength(2); // a fresh queue for the retry
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("does not accumulate connections over many probe cycles, even when close() never returns (QUIT stuck behind a dead store)", async () => {
+      vi.useFakeTimers();
+      try {
+        const live = new Set<number>();
+        let next = 0;
+        const probe = createScheduleProbe({
+          connection: {},
+          timeoutMs: 2_000,
+          makeQueue: () => {
+            const id = next++;
+            live.add(id);
+            return {
+              getRepeatableJobs: () => new Promise<never>(() => undefined),
+              close: () => new Promise<void>(() => undefined), // hangs forever, as BullMQ's does against a dead store
+              disconnect: async () => {
+                live.delete(id); // only the forced disconnect really frees the socket
+              },
+            };
+          },
+        });
+        for (let i = 0; i < 50; i++) {
+          const attempt = expect(probe()).rejects.toThrow(/timed out/);
+          await vi.advanceTimersByTimeAsync(2_000);
+          await attempt;
+        }
+        expect(next).toBe(50); // one queue per cycle (the first queue's look never reaches the second)
+        expect(live.size).toBe(0); // every one of them was force-disconnected
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("a probe abandoned by the timeout builds no further queue when its late answer finally arrives", async () => {
+      vi.useFakeTimers();
+      try {
+        let release: (() => void) | undefined;
+        const made: string[] = [];
+        const probe = createScheduleProbe({
+          connection: {},
+          timeoutMs: 2_000,
+          makeQueue: (name) => {
+            made.push(name);
+            return {
+              getRepeatableJobs: () =>
+                new Promise((resolve) => {
+                  release = () => resolve([{ pattern: M41_JOB_SCHEDULES.submissionDrain }]);
+                }),
+              close: async () => undefined,
+              disconnect: async () => undefined,
+            };
+          },
+        });
+        const attempt = expect(probe()).rejects.toThrow(/timed out/);
+        await vi.advanceTimersByTimeAsync(2_000);
+        await attempt;
+        release?.(); // the store comes back after the deadline
+        await vi.advanceTimersByTimeAsync(0);
+        expect(made).toHaveLength(1);
       } finally {
         vi.useRealTimers();
       }
