@@ -1,11 +1,11 @@
+import { ROLE_SEND_FLAG_KEY } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
 // M36 role-based send (ADR-0081, PROPOSED): the composer control is offered only behind the tenant flag + all three permissions + a care-team
 // conversation (no flag provider = closed); the dialog needs a role, then shows who is on call (name, role, shift end in the roster's zone)
 // and only the explicit send to that confirmed person goes out; a gap, an unconnected roster, a failed lookup and a changed resolution are
 // explicit states that send nothing; the dialog's form never submits the composer's form; axe clean in each state.
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ROLE_SEND_FLAG_KEY } from "@chartwarden/types";
-import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import type { JSX } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -355,9 +355,9 @@ describe("role send: the dialog", () => {
     ],
     ["a refused coverage", refusal(422, "ROLE_SEND_NO_COVERAGE"), false],
     [
-      "a failure that may have stored the message (a retry must be the same request)",
+      "a 502 (the server caches it under the key, so the retry needs a new one)",
       refusal(502),
-      true,
+      false,
     ],
   ])("after %s, the next send uses %s Idempotency-Key", async (_why, failure, sameKey) => {
     const post = vi.fn().mockResolvedValue(failure);
@@ -373,6 +373,21 @@ describe("role send: the dialog", () => {
       (sendCalls(post)[i] as [string, { params: { header: Record<string, string> } }])[1].params
         .header["Idempotency-Key"];
     expect(keyOf(0) === keyOf(1)).toBe(sameKey);
+  });
+
+  it("after a thrown fetch (no reply), the next send reuses the Idempotency-Key", async () => {
+    const post = vi.fn().mockRejectedValue(new TypeError("network"));
+    mount({ post });
+    await open();
+    await review();
+    await userEvent.click(await sendButton());
+    await waitFor(() => expect(sendCalls(post)).toHaveLength(1));
+    await userEvent.click(await sendButton());
+    await waitFor(() => expect(sendCalls(post)).toHaveLength(2));
+    const keyOf = (i: number) =>
+      (sendCalls(post)[i] as [string, { params: { header: Record<string, string> } }])[1].params
+        .header["Idempotency-Key"];
+    expect(keyOf(1)).toBe(keyOf(0));
   });
 
   it("a refused coverage at send time shows the telephone procedure and re-reads the roster", async () => {

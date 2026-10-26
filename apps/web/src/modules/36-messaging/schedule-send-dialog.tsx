@@ -93,7 +93,9 @@ export function ScheduleSendDialog({
         params: { path: { id: channelId }, header: { "Idempotency-Key": attempt.idempotencyKey } },
         body: { body: text, scheduledFor, timeZone: zone },
       });
-      // Rotate only after a definite refusal; a 5xx/408 may have committed behind the gateway, so a retry must replay.
+      // Deliberate exception to "drop the key on any HTTP response": this body has no client message id, so a 5xx/408 that committed
+      // behind the gateway would become a duplicate scheduled message under a fresh key. Rotate only after a definite 4xx refusal;
+      // a 5xx/408 or a thrown fetch keeps the key so the retry replays (the server may replay the cached 5xx until the 24h key expires).
       if (isDefiniteRefusal(response?.status)) {
         remembered.current = { attempt: rotateIdempotencyKey(attempt), value };
       }

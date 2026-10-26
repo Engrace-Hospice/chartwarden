@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { SNOOZE_MAX_MINUTES, SNOOZE_MIN_MINUTES } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 4.10 (ADR-0077): the header snooze control and the message "Remind me" control. A conversation that cannot be snoozed offers no
 // button and says why; presets are within the hard bounds; every write carries an Idempotency-Key; focus returns to the trigger;
 // results are announced; a refusal is words; nothing polls.
 import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { SNOOZE_MAX_MINUTES, SNOOZE_MIN_MINUTES } from "@chartwarden/types";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageReminderButton } from "./message-reminder-button";
@@ -314,6 +314,28 @@ describe("MessageReminderButton", () => {
     expect((await screen.findByRole("alert")).textContent).toBe(
       "A reminder cannot be set on an urgent or response-required message.",
     );
+  });
+
+  it("retrying a preset after an HTTP refusal sends a new Idempotency-Key; after a thrown fetch it reuses it", async () => {
+    const keysSeen: string[] = [];
+    const answers: unknown[] = [refusal(500, "X"), "throw", refusal(409, "X")];
+    const { PUT } = mount(<MessageReminderButton messageId="m1" />, {
+      GET: () => list(),
+      PUT: (_p, init) => {
+        keysSeen.push(init.params.header["Idempotency-Key"]);
+        const next = answers.shift();
+        if (next === "throw") throw new TypeError("network");
+        return next;
+      },
+    });
+    await userEvent.click(await screen.findByRole("button", { name: /Remind me/ }));
+    for (let n = 1; n <= 3; n += 1) {
+      await userEvent.click(screen.getByRole("button", { name: "In 3 hours" }));
+      await waitFor(() => expect(PUT).toHaveBeenCalledTimes(n));
+      await waitFor(() => expect(screen.getByRole("button", { name: "In 3 hours" })).toBeTruthy());
+    }
+    expect(keysSeen[1]).not.toBe(keysSeen[0]); // after the 500
+    expect(keysSeen[2]).toBe(keysSeen[1]); // after the thrown fetch
   });
 
   it("presets are all in the future, within 30 days, and 'tomorrow morning' is tomorrow", () => {
