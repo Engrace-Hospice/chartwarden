@@ -254,24 +254,64 @@ export function PrimaryNavEntry({
             )}
             pathname={pathname}
           />
-          {entry.subsections?.map((sub) => {
-            const links = sub.screens.filter((s) => s.path !== entry.href);
-            if (links.length === 0 && sub.borrowed.length === 0) return null;
-            return (
-              <div key={sub.key} role="group" aria-labelledby={`${listId}-${sub.key}`}>
-                <div
-                  id={`${listId}-${sub.key}`}
-                  className="wx-nav-section-label wx-nav-subsection-label"
-                >
-                  {sub.label}
-                </div>
-                <NavLinkList links={links} borrowed={sub.borrowed} pathname={pathname} />
-              </div>
-            );
-          })}
+          {entry.subsections?.map((sub) => (
+            <NavSubsection
+              key={sub.key}
+              sub={sub}
+              entry={entry}
+              listId={listId}
+              pathname={pathname}
+            />
+          ))}
           {entry.borrowed?.length ? (
             <NavLinkList links={[]} borrowed={entry.borrowed} pathname={pathname} />
           ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** A collapsible sub-section (Medicare / Medicaid / Commercial). */
+function NavSubsection({
+  sub,
+  entry,
+  listId,
+  pathname,
+}: {
+  sub: NonNullable<NavEntry["subsections"]>[number];
+  entry: NavEntry;
+  listId: string;
+  pathname: string;
+}): JSX.Element | null {
+  const links = sub.screens.filter((s) => s.path !== entry.href);
+  // Prefix match, like the parent entry, so a detail route (/x/:id) opens the section that owns /x.
+  const hasActive = links.some((s) => pathname === s.path || pathname.startsWith(`${s.path}/`));
+  const [open, setOpen] = useState(hasActive);
+  // Opens when the current page moves into the section; a manual collapse sticks until it moves out and back.
+  useEffect(() => {
+    if (hasActive) setOpen(true);
+  }, [hasActive]);
+  if (links.length === 0 && sub.borrowed.length === 0) return null;
+  const labelId = `${listId}-${sub.key}`;
+  const bodyId = `${labelId}-links`;
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a named group, not a <fieldset> (no form controls); pinned by primary-nav-entry.dom.test.tsx.
+    <div role="group" aria-labelledby={labelId}>
+      <button
+        type="button"
+        id={labelId}
+        className="wx-nav-section-label wx-nav-subsection-label wx-nav-subsection-toggle"
+        aria-expanded={open}
+        aria-controls={open ? bodyId : undefined}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span>{sub.label}</span>
+        <Glyph name={open ? "chevron-down" : "chevron-right"} size={14} strokeWidth={1.75} />
+      </button>
+      {open ? (
+        <div id={bodyId}>
+          <NavLinkList links={links} borrowed={sub.borrowed} pathname={pathname} />
         </div>
       ) : null}
     </div>

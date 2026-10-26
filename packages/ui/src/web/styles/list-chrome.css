@@ -610,3 +610,34 @@
   gap: 0.5rem;
   align-items: center;
 }
+
+/* Billing home "Most urgent" rows: fixed columns so patient / item / date / pills / action line up row to row. */
+.wx-urgent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.wx-urgent-row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1.2fr) minmax(8rem, 1fr) 6.5rem 7.5rem 7.5rem minmax(
+      10rem,
+      1.4fr
+    );
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+}
+.wx-urgent-row > * {
+  min-width: 0;
+}
+.wx-urgent-action {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+/* Too narrow for six columns: let the cells wrap as they did before the grid. */
+@media (max-width: 1200px) {
+  .wx-urgent-row {
+    display: flex;
+    flex-wrap: wrap;
+  }
+}

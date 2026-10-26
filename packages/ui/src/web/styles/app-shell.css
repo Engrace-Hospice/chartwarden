@@ -102,6 +102,21 @@
   .wx-nav-subsection-label {
     padding-left: 2.375rem; /* sits over the indented child links it heads */
   }
+  .wx-nav-subsection-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 1.75rem;
+    padding-right: 0.625rem;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    text-align: left;
+  }
+  .wx-nav-subsection-toggle:hover {
+    color: var(--color-on-surface);
+  }
   .wx-nav-row {
     display: flex;
     align-items: center;
