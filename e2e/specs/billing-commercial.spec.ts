@@ -393,3 +393,74 @@ test.describe("Billing — Commercial eligibility (M41)", () => {
     await expectNoAxeViolations(page);
   });
 });
+
+test.describe("Billing — Commercial claim assembly (M41)", () => {
+  const NEW_CLAIM = "66666666-6666-4666-8666-666666666666";
+  const plan = {
+    id: "44444444-4444-4444-8444-444444444444",
+    payerId: "55555555-5555-4555-8555-555555555555",
+    planName: "Synthetic PPO",
+    claimFilingIndicator: "CI",
+    authorizationRequirement: "required_at_admission",
+    authorizationLeadDays: 3,
+    eligibilityStalenessPolicy: "warn",
+    eligibilityMaxAgeDays: 30,
+    effectiveFrom: "2026-01-01",
+    effectiveTo: null,
+    payerStatus: "active",
+    routes: [],
+  };
+
+  test("main path: a refusal is shown in fixed words, then the retry opens the new claim", async ({
+    page,
+  }) => {
+    const posted: { key: string | undefined; body: unknown }[] = [];
+    await page.route(PLANS, (route) => route.fulfill({ json: { items: [plan] } }));
+    await page.route(CLAIMS, async (route) => {
+      if (route.request().method() === "GET") {
+        return route.fulfill({ json: { items: [], hasMore: false, nextCursor: null } });
+      }
+      return route.fallback();
+    });
+    await page.route("**/api/v1/billing/commercial/claims/assemble", async (route) => {
+      posted.push({
+        key: route.request().headers()["idempotency-key"],
+        body: route.request().postDataJSON(),
+      });
+      if (posted.length === 1) {
+        return route.fulfill({
+          status: 409,
+          json: { error: { code: "NON_COMMERCIAL_PRIMARY_PAYER", message: "must not be shown" } },
+        });
+      }
+      return route.fulfill({
+        status: 201,
+        json: { claimId: NEW_CLAIM, state: "draft", tob: "812", totalChargeCents: 620_000 },
+      });
+    });
+    await signInAs(page, ADMIN_ACCOUNT());
+    await page.goto("/commercial/billing/claims/new");
+
+    await expect(
+      page.getByRole("heading", { name: "Assemble commercial claim", level: 1 }),
+    ).toBeVisible();
+    const patient = page.getByRole("combobox", { name: /Patient/ });
+    await patient.click();
+    await patient.fill("Whitfield");
+    await page.getByRole("option").first().click();
+    await page.getByLabel("Service from").fill("2026-03-01");
+    await page.getByLabel("Service to").fill("2026-03-31");
+
+    await page.getByRole("button", { name: "Assemble claim" }).click();
+    const alert = page.getByRole("alert");
+    await expect(alert).toContainText("is not a commercial plan");
+    await expect(page.getByText("must not be shown")).toHaveCount(0);
+    await expectNoAxeViolations(page);
+
+    await page.getByRole("button", { name: "Assemble claim" }).click();
+    await expect(page).toHaveURL(new RegExp(`/commercial/billing/claims/${NEW_CLAIM}`));
+    expect(posted).toHaveLength(2);
+    expect(posted[0]?.key).toBeTruthy();
+    expect(posted[1]?.key).not.toBe(posted[0]?.key); // a response arrived, so the key was retired
+  });
+});

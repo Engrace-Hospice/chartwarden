@@ -12,7 +12,7 @@ The commercial lane of the billing area: the work queue of hospice claims whose 
 such claim (payer, plan, authorization, coordination of benefits, validation), and the supported-payers view that says which
 commercial payers the agency can bill and whether it can send to each. Medicare (M23) and Medicaid (M24) keep their own queues; this
 lane never shows their claims. It reads `GET /api/v1/billing/commercial/claims`, `.../claims/:id`, `.../payer-plans`,
-`.../enrollments` and `.../eligibility` (spec M41 section 4.1).
+`.../enrollments` and `.../eligibility`, and assembles a claim with `POST .../claims/assemble` (spec M41 section 4.1).
 
 ---
 
@@ -133,6 +133,25 @@ write needs a fresh step-up: on a stale session the typed draft is kept under th
 is discarded on an ordinary visit, Cancel, closing the drawer, switching entity or plan, and success. The Supported payers plan drawer
 links its eligibility policy to this screen. Outcomes are announced with a toast. No member id and no raw clearinghouse text appear
 anywhere on the screen.
+
+---
+
+## Assemble claim
+
+Route `/commercial/billing/claims/new` (`commercial.assemble-claim`, `commercial_billing.write`; the Claim queue shows an **Assemble
+claim** link, carrying the chosen provider entity, only to people with that permission). It posts to `POST .../claims/assemble` and
+opens the new claim at `/commercial/billing/claims/:id` on a 201. Fields: provider entity, patient (the shared lookup), first and
+last service day, an optional plan (automatic unless more than one plan of the payer covers the dates) and an optional clearinghouse
+key (the server's pattern, checked in the browser first). There is no dry run, so nothing is previewed; the server builds the lines
+and prices from the stay and the plan's contract rates.
+
+One Idempotency-Key per attempt, kept only when no HTTP response arrived (a thrown fetch) and dropped on any response and on any field
+change, because the server stores every answer, errors included, under the key for 24 hours. A double submit sends once. A refusal is
+shown in our own fixed words chosen by status and code, never the server's text: primary coverage not commercial (409), no plan in
+effect (422), more than one plan covers the dates, coverage changes inside the dates, no election, patient deceased before the first
+day, discharge codes unresolved, no level of care for the dates, and, by status alone, not in scope (404), not allowed (403), a claim
+already covers part of the dates or an earlier request clashed (409), unavailable (503). Without `commercial_billing.write` the screen
+says so and offers no form.
 
 ---
 

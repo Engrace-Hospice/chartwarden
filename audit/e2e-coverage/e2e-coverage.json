@@ -1,8 +1,8 @@
 {
   "generatedFrom": "audit/ui-parity/ui-parity.json + e2e/specs source text",
-  "totalStaticWebScreens": 210,
-  "e2eReachedCount": 25,
-  "axeReachedCount": 198,
+  "totalStaticWebScreens": 211,
+  "e2eReachedCount": 26,
+  "axeReachedCount": 199,
   "zeroE2eCoverage": [
     {
       "id": "saas.account",
@@ -1989,6 +1989,14 @@
       "module": "41-billing-commercial",
       "path": "/commercial/billing/claims",
       "permission": "commercial_billing.read",
+      "e2eReached": true,
+      "axeReached": true
+    },
+    {
+      "id": "commercial.assemble-claim",
+      "module": "41-billing-commercial",
+      "path": "/commercial/billing/claims/new",
+      "permission": "commercial_billing.write",
       "e2eReached": true,
       "axeReached": true
     },

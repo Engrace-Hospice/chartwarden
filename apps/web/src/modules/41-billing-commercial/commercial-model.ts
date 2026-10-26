@@ -11,6 +11,7 @@ export { dollars, statusLabel };
 
 export const COMMERCIAL_PATHS = {
   queue: "/commercial/billing/claims",
+  assemble: "/commercial/billing/claims/new",
   payers: "/commercial/billing/payers",
   authorizations: "/commercial/billing/authorizations",
   enrollments: "/commercial/billing/enrollments",
