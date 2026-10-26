@@ -3,7 +3,14 @@
 // urgent items below. It reads through the same hook and model as the Work Queue, so the two always agree, and it only
 // links: a source that failed or was refused shows "—" (never 0), and "Nothing is at risk" appears only once every
 // source has answered whole.
-import { KpiCard, KpiStrip, LoadingSpinner, StatusPill, useApiClient } from "@chartwarden/ui";
+import {
+  KpiCard,
+  KpiStrip,
+  LoadingSpinner,
+  Panel,
+  StatusPill,
+  useApiClient,
+} from "@chartwarden/ui";
 import { useMemo } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -94,22 +101,24 @@ export function BillingNeedsAttention(): JSX.Element {
       {!settled ? (
         <LoadingSpinner />
       ) : top.length > 0 ? (
-        <ul aria-label="Most urgent" className="wx-urgent-list">
-          {top.map((i) => (
-            <li key={i.key} className="wx-urgent-row">
-              <strong>
-                {i.patientId ? patientLabel(names[i.patientId], i.patientId) : "Unknown patient"}
-              </strong>
-              <span>{i.what}</span>
-              <span>{fmtDay(i.deadlineAt)}</span>
-              <UrgencyPill urgency={i.urgency} />
-              <StatusPill label={i.statusLabel} tone={i.statusTone} />
-              <Link to={i.href} className="wx-urgent-action">
-                {i.nextAction}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <Panel title="Most urgent">
+          <ul aria-label="Most urgent" className="wx-urgent-list">
+            {top.map((i) => (
+              <li key={i.key} className="wx-urgent-row">
+                <strong>
+                  {i.patientId ? patientLabel(names[i.patientId], i.patientId) : "Unknown patient"}
+                </strong>
+                <span>{i.what}</span>
+                <span>{fmtDay(i.deadlineAt)}</span>
+                <UrgencyPill urgency={i.urgency} />
+                <StatusPill label={i.statusLabel} tone={i.statusTone} />
+                <Link to={i.href} className="wx-urgent-action">
+                  {i.nextAction}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Panel>
       ) : failed.length + refused.length === 0 && !paged ? (
         <p style={{ margin: 0 }}>Nothing is at risk or overdue.</p>
       ) : null}

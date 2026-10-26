@@ -629,6 +629,7 @@
 }
 .wx-urgent-row > * {
   min-width: 0;
+  justify-self: start; /* pills hug their text instead of filling the column */
 }
 .wx-urgent-action {
   color: var(--color-primary);
