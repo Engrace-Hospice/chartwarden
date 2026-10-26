@@ -162,66 +162,66 @@ export function CommercialAssembleClaim(): JSX.Element {
               className="wx-form-stack"
               style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
             >
-            <div className="wx-filter-panel">
-              <EntityPicker state={entities} value={entityId} onChange={pickEntity} />
-            </div>
-            <PatientLookupField
-              label="Patient"
-              required
-              value={fields.patientId}
-              error={fieldErrors.patientId}
-              onChange={edit("patientId")}
-            />
-            <TextField
-              label="Service from"
-              required
-              type="date"
-              value={fields.serviceFrom}
-              error={fieldErrors.serviceFrom}
-              onChange={(e) => edit("serviceFrom")(e.target.value)}
-            />
-            <TextField
-              label="Service to"
-              required
-              type="date"
-              value={fields.serviceTo}
-              error={fieldErrors.serviceTo}
-              onChange={(e) => edit("serviceTo")(e.target.value)}
-            />
-            <SelectField
-              label="Plan"
-              value={fields.planId}
-              hint={
-                plans.state === "error"
-                  ? "Plans could not be loaded, so the plan is chosen automatically."
-                  : "Leave on automatic unless more than one plan of the payer covers the dates."
-              }
-              onChange={(e) => edit("planId")(e.target.value)}
-              options={planOptions}
-            />
-            {plans.state === "error" ? (
-              <Button tone="tertiary" size="sm" onClick={retryPlans}>
-                Reload plans
-              </Button>
-            ) : null}
-            <TextField
-              label="Clearinghouse key"
-              autoComplete="off"
-              spellCheck={false}
-              value={fields.clearinghouseKey}
-              error={fieldErrors.clearinghouseKey}
-              hint="Leave blank to use the clearinghouse the plan is routed to."
-              onChange={(e) => edit("clearinghouseKey")(e.target.value)}
-            />
-            {serverError ? <InlineAlert tone="error">{serverError}</InlineAlert> : null}
-            <div className="wx-modal-actions">
-              <Button tone="tertiary" size="sm" onClick={() => navigate(COMMERCIAL_PATHS.queue)}>
-                Cancel
-              </Button>
-              <Button type="submit" size="sm" disabled={busy}>
-                {busy ? "Assembling…" : "Assemble claim"}
-              </Button>
-            </div>
+              <div className="wx-filter-panel">
+                <EntityPicker state={entities} value={entityId} onChange={pickEntity} />
+              </div>
+              <PatientLookupField
+                label="Patient"
+                required
+                value={fields.patientId}
+                error={fieldErrors.patientId}
+                onChange={edit("patientId")}
+              />
+              <TextField
+                label="Service from"
+                required
+                type="date"
+                value={fields.serviceFrom}
+                error={fieldErrors.serviceFrom}
+                onChange={(e) => edit("serviceFrom")(e.target.value)}
+              />
+              <TextField
+                label="Service to"
+                required
+                type="date"
+                value={fields.serviceTo}
+                error={fieldErrors.serviceTo}
+                onChange={(e) => edit("serviceTo")(e.target.value)}
+              />
+              <SelectField
+                label="Plan"
+                value={fields.planId}
+                hint={
+                  plans.state === "error"
+                    ? "Plans could not be loaded, so the plan is chosen automatically."
+                    : "Leave on automatic unless more than one plan of the payer covers the dates."
+                }
+                onChange={(e) => edit("planId")(e.target.value)}
+                options={planOptions}
+              />
+              {plans.state === "error" ? (
+                <Button tone="tertiary" size="sm" onClick={retryPlans}>
+                  Reload plans
+                </Button>
+              ) : null}
+              <TextField
+                label="Clearinghouse key"
+                autoComplete="off"
+                spellCheck={false}
+                value={fields.clearinghouseKey}
+                error={fieldErrors.clearinghouseKey}
+                hint="Leave blank to use the clearinghouse the plan is routed to."
+                onChange={(e) => edit("clearinghouseKey")(e.target.value)}
+              />
+              {serverError ? <InlineAlert tone="error">{serverError}</InlineAlert> : null}
+              <div className="wx-modal-actions">
+                <Button tone="tertiary" size="sm" onClick={() => navigate(COMMERCIAL_PATHS.queue)}>
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" disabled={busy}>
+                  {busy ? "Assembling…" : "Assemble claim"}
+                </Button>
+              </div>
             </fieldset>
           </form>
         ) : (
