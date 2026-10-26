@@ -96,4 +96,82 @@ describe("PrimaryNavEntry", () => {
     ).toBeNull();
     expect(screen.getByRole("link", { name: "Intake" })).toBeTruthy();
   });
+
+  it("collapses a subsection that does not hold the current page, and expands it on click", () => {
+    const grouped: NavEntry = {
+      ...entry,
+      children: [{ id: "referrals", path: "/referrals", title: "Referral Inbox" }],
+      subsections: [
+        {
+          key: "s",
+          label: "Group S",
+          screens: [{ id: "referrals", path: "/referrals", title: "Referral Inbox" }],
+          borrowed: [],
+        },
+      ],
+    };
+    render(
+      <MemoryRouter>
+        <PrimaryNavEntry entry={grouped} active pathname="/elsewhere" />
+      </MemoryRouter>,
+    );
+    const toggle = screen.getByRole("button", { name: "Group S" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("link", { name: "Referral Inbox" })).toBeNull();
+    fireEvent.click(toggle);
+    expect(screen.getByRole("link", { name: "Referral Inbox" })).toBeTruthy();
+  });
+
+  it("starts open when the current page, or a detail route under it, is in the subsection", () => {
+    const grouped: NavEntry = {
+      ...entry,
+      children: [{ id: "referrals", path: "/referrals", title: "Referral Inbox" }],
+      subsections: [
+        {
+          key: "s",
+          label: "Group S",
+          screens: [{ id: "referrals", path: "/referrals", title: "Referral Inbox" }],
+          borrowed: [],
+        },
+      ],
+    };
+    render(
+      <MemoryRouter>
+        <PrimaryNavEntry entry={grouped} active pathname="/referrals/123" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("button", { name: "Group S" }).getAttribute("aria-expanded")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("link", { name: "Referral Inbox" })).toBeTruthy();
+  });
+
+  it("opens when navigation moves into the subsection, and a manual collapse sticks", () => {
+    const grouped: NavEntry = {
+      ...entry,
+      children: [{ id: "referrals", path: "/referrals", title: "Referral Inbox" }],
+      subsections: [
+        {
+          key: "s",
+          label: "Group S",
+          screens: [{ id: "referrals", path: "/referrals", title: "Referral Inbox" }],
+          borrowed: [],
+        },
+      ],
+    };
+    const view = render(
+      <MemoryRouter>
+        <PrimaryNavEntry entry={grouped} active pathname="/elsewhere" />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("link", { name: "Referral Inbox" })).toBeNull();
+    view.rerender(
+      <MemoryRouter>
+        <PrimaryNavEntry entry={grouped} active pathname="/referrals" />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("link", { name: "Referral Inbox" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Group S" }));
+    expect(screen.queryByRole("link", { name: "Referral Inbox" })).toBeNull();
+  });
 });

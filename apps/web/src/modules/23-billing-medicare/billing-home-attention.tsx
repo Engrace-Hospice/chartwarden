@@ -94,12 +94,9 @@ export function BillingNeedsAttention(): JSX.Element {
       {!settled ? (
         <LoadingSpinner />
       ) : top.length > 0 ? (
-        <ul aria-label="Most urgent" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+        <ul aria-label="Most urgent" className="wx-urgent-list">
           {top.map((i) => (
-            <li
-              key={i.key}
-              style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", padding: "0.4rem 0" }}
-            >
+            <li key={i.key} className="wx-urgent-row">
               <strong>
                 {i.patientId ? patientLabel(names[i.patientId], i.patientId) : "Unknown patient"}
               </strong>
@@ -107,7 +104,7 @@ export function BillingNeedsAttention(): JSX.Element {
               <span>{fmtDay(i.deadlineAt)}</span>
               <UrgencyPill urgency={i.urgency} />
               <StatusPill label={i.statusLabel} tone={i.statusTone} />
-              <Link to={i.href} style={{ color: "var(--color-primary)", fontWeight: 600 }}>
+              <Link to={i.href} className="wx-urgent-action">
                 {i.nextAction}
               </Link>
             </li>
