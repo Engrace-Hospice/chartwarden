@@ -63,6 +63,15 @@ export type NotrTriggerKind = "revocation" | "transfer_out" | "discharge";
 
 // ── claim view DTOs ───────────────────────────────────────────────────────────────────────────────────
 
+/** Org-wide count of claims by the outcome of their newest validation run (the claim-list scope rules apply). */
+export interface ClaimValidationOverviewView {
+  readonly totalClaims: number;
+  readonly neverValidated: number;
+  readonly byOutcome: Readonly<Record<ValidationRunOutcome, number>>;
+  /** Oldest `completedAt` among the claims' newest runs (the stalest validation), or `null` if none. */
+  readonly oldestLatestRunAt: string | null;
+}
+
 /** The newest validation run's outcome for a claim, as shown on the claim list (`runAt` = run completion). */
 export interface ClaimValidationSummaryView {
   readonly outcome: ValidationRunOutcome;
@@ -682,4 +691,9 @@ export interface M23ReadRouteService {
   // ── AR / metrics ──
   getClaimMetrics(actor: M23ReadActor, filter: MetricsFilter): Promise<readonly MetricsBucket[]>;
   getArAging(actor: M23ReadActor, filter: MetricsFilter): Promise<ArAgingDto>;
+  /** Claims by newest-validation outcome across the whole org, narrowed by `providerEntityScope`. */
+  getClaimValidationOverview(
+    actor: M23ReadActor,
+    scope: { readonly providerEntityScope?: readonly string[] },
+  ): Promise<ClaimValidationOverviewView>;
 }

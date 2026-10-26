@@ -47,6 +47,7 @@ import type {
   ClaimStateHistoryView,
   ClaimSubmissionView,
   ClaimSummaryView,
+  ClaimValidationOverviewView,
   EligibilityCheckView,
   M23ReadRouteService,
   MacCredentialView,
@@ -61,6 +62,7 @@ import type {
   ValidationOverrideView,
   ValidationResultView,
   ValidationRunDetailView,
+  ValidationRunOutcome,
   ValidationRunView,
 } from "./read-service";
 import { claimDischargeCodesView, perDiemClassPricingView } from "./read-service";
@@ -770,6 +772,34 @@ export function buildDrizzleM23ReadService(
 
     async getClaimMetrics(actor, filter: MetricsFilter): Promise<readonly MetricsBucket[]> {
       return read(actor, (tx) => aggregateByState(tx, actor.organizationId, filter));
+    },
+
+    async getClaimValidationOverview(actor, scope): Promise<ClaimValidationOverviewView> {
+      const groups = await read(actor, (tx) =>
+        new repositories.ValidationRunRepository(tx).summarizeLatestByOutcome(
+          actor.organizationId,
+          scope.providerEntityScope,
+        ),
+      );
+      const byOutcome: Record<ValidationRunOutcome, number> = {
+        all_pass: 0,
+        failures_present: 0,
+        overrides_required: 0,
+        ready_for_submission: 0,
+      };
+      let neverValidated = 0;
+      let oldest: Date | null = null;
+      for (const g of groups) {
+        if (g.outcome === null) neverValidated += g.claims;
+        else byOutcome[g.outcome] += g.claims;
+        if (g.oldestRunAt && (!oldest || g.oldestRunAt < oldest)) oldest = g.oldestRunAt;
+      }
+      return {
+        totalClaims: groups.reduce((n, g) => n + g.claims, 0),
+        neverValidated,
+        byOutcome,
+        oldestLatestRunAt: oldest ? oldest.toISOString() : null,
+      };
     },
 
     async getArAging(actor, filter: MetricsFilter): Promise<ArAgingDto> {

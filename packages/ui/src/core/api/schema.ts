@@ -5294,6 +5294,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/claim-validation-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Claims by newest validation outcome across the org (aggregate; narrowed to the caller's provider scope like the claim list) */
+        get: operations["getApiV1BillingClaimvalidationsummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/claims": {
         parameters: {
             query?: never;
@@ -43338,6 +43355,38 @@ export interface operations {
                         bucket31to60Cents: number;
                         bucket61to90Cents: number;
                         bucket90PlusCents: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingClaimvalidationsummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        totalClaims: number;
+                        neverValidated: number;
+                        byOutcome: {
+                            all_pass: number;
+                            failures_present: number;
+                            overrides_required: number;
+                            ready_for_submission: number;
+                        };
+                        oldestLatestRunAt: string | null;
                     };
                 };
             };

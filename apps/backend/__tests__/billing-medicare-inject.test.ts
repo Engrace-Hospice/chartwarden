@@ -588,6 +588,19 @@ function createM23TestBackend(): {
     async getClaimMetrics(_actor, _filter: MetricsFilter) {
       return [{ key: "submitted", count: 1, amountCents: 100000 }];
     },
+    async getClaimValidationOverview() {
+      return {
+        totalClaims: 1,
+        neverValidated: 1,
+        byOutcome: {
+          all_pass: 0,
+          failures_present: 0,
+          overrides_required: 0,
+          ready_for_submission: 0,
+        },
+        oldestLatestRunAt: null,
+      };
+    },
     async getArAging(_actor, _filter: MetricsFilter) {
       return {
         bucket0to30Cents: 100000,
@@ -1026,6 +1039,13 @@ const ROUTE_CASES: readonly RouteCase[] = [
     label: "2 GET /billing/claims",
     method: "GET",
     url: "/api/v1/billing/claims",
+    headers: SUPER_HEADERS,
+    expectStatus: 200,
+  },
+  {
+    label: "2b GET /billing/claim-validation-summary",
+    method: "GET",
+    url: "/api/v1/billing/claim-validation-summary",
     headers: SUPER_HEADERS,
     expectStatus: 200,
   },

@@ -494,6 +494,7 @@
     "test:m23:mac-credential-cipher:live": "vitest run apps/backend/__tests__/m23-mac-credential-cipher.live.test.ts",
     "test:m23:validation-queue-isolation:live": "vitest run apps/backend/__tests__/m23-m27-validation-queue-isolation.live.test.ts",
     "test:m23:validation-override:live": "vitest run apps/backend/__tests__/m23-validation-override.live.test.ts",
+    "test:m23:claim-validation-overview:live": "vitest run apps/backend/__tests__/m23-claim-validation-overview.live.test.ts",
     "test:m23:draft-claim-delete:live": "vitest run apps/backend/__tests__/m23-draft-claim-delete.live.test.ts",
     "test:m23:visit-charge-schedule:live": "vitest run apps/backend/__tests__/m23-visit-charge-schedule.live.test.ts",
     "test:m23:hospice-cbsa:live": "vitest run apps/backend/__tests__/m23-hospice-cbsa.live.test.ts",

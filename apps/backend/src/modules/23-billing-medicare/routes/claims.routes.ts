@@ -228,6 +228,26 @@ export function registerClaimsRoutes(app: FastifyInstance, deps: ClaimsRouteDeps
     },
   );
 
+  // GET /billing/claim-validation-summary — org-wide claim counts by newest-validation outcome. Aggregate only
+  // (counts + one timestamp, no claim or patient identity), so like the other M23 rollups it opts out of
+  // read-audit. It applies the SAME server-derived provider scope as the list, so it never counts claims the
+  // actor cannot list; a failing query surfaces as an error, never as zeros.
+  app.get(
+    "/api/v1/billing/claim-validation-summary",
+    {
+      preHandler: [READ],
+      config: {
+        auditRead: {
+          none: "claim counts by validation outcome — aggregate, no claim or patient identity",
+        },
+      },
+    },
+    async (request) =>
+      readService.getClaimValidationOverview(actorOf(request), {
+        providerEntityScope: resolveClaimProviderScope(request),
+      }),
+  );
+
   // #3 GET /claims/:id — single-claim detail (lines + HIPPS + SIA + latest run + submissions + acks). §4.1.
   app.get(
     "/api/v1/billing/claims/:id",

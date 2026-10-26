@@ -65713,6 +65713,81 @@
         }
       }
     },
+    "/api/v1/billing/claim-validation-summary": {
+      "get": {
+        "operationId": "getApiV1BillingClaimvalidationsummary",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Claims by newest validation outcome across the org (aggregate; narrowed to the caller's provider scope like the claim list)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "totalClaims",
+                    "neverValidated",
+                    "byOutcome",
+                    "oldestLatestRunAt"
+                  ],
+                  "properties": {
+                    "totalClaims": {
+                      "type": "integer"
+                    },
+                    "neverValidated": {
+                      "type": "integer"
+                    },
+                    "byOutcome": {
+                      "type": "object",
+                      "required": [
+                        "all_pass",
+                        "failures_present",
+                        "overrides_required",
+                        "ready_for_submission"
+                      ],
+                      "properties": {
+                        "all_pass": {
+                          "type": "integer"
+                        },
+                        "failures_present": {
+                          "type": "integer"
+                        },
+                        "overrides_required": {
+                          "type": "integer"
+                        },
+                        "ready_for_submission": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "oldestLatestRunAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/billing/claims": {
       "get": {
         "operationId": "getApiV1BillingClaims",
