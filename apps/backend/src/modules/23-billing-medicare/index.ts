@@ -221,6 +221,9 @@ export {
   registerDdeDailyChangeWorker,
   scheduleDdeDailyChange,
 } from "./jobs/dde-daily-change";
+// #767 — the daily DDE queue aging alert (store + cron worker).
+export { createDrizzleDdeAgingStore } from "./dde-aging-store";
+export { registerDdeAgingAlertWorker, scheduleDdeAgingAlert } from "./jobs/dde-aging-alert";
 export {
   type DdeNoticeAtRisk,
   type DdeWatchdogPort,

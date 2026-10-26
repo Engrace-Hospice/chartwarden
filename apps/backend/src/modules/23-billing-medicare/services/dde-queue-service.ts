@@ -14,10 +14,13 @@ import { randomUUID } from "node:crypto";
 // `payer_status_date` with source `dde_manual`. No MBI is stored: notes are capped and refused when MBI-shaped, and
 // are never copied into an event or log.
 import {
+  DDE_AGING_AT_RISK_BUSINESS_DAYS,
+  DDE_AGING_OVERDUE_BUSINESS_DAYS,
   DDE_AT_RISK_DAYS,
   type DdeItemType,
   type DdeWorkItemEvent,
   type DdeWorkItemState,
+  ddeAgingCutoffDate,
   ddeDeadlineStatus,
   ddeWorkItemMachine,
   isRealCalendarDate,
@@ -68,7 +71,12 @@ import {
   planProviderOutcome,
   runWithTimeout,
 } from "./dde-provider-ops";
-import { loadControlNumber, loadKeyingSheet, loadSubject } from "./dde-queue-subject";
+import {
+  type DdeProviderIdentityReader,
+  loadControlNumber,
+  loadKeyingSheet,
+  loadSubject,
+} from "./dde-queue-subject";
 
 type Item = repositories.DdeWorkItemRecord;
 export type DdeItemView = Static<typeof DdeItemViewSchema>;
@@ -119,6 +127,11 @@ export interface DdeQueueServicePorts {
    * (fail closed; manual keying is the baseline).
    */
   readonly ddeProvider?: DdeAccessProvider;
+  /**
+   * The read-only provider-identifier seam (#765): CCN + billing NPI for the keying sheet. Absent => the sheet has no
+   * Provider CCN / Billing NPI fields (fail closed to "not shown", never a guess). Never an MBI (ADR-0052 D7).
+   */
+  readonly providerIdentity?: DdeProviderIdentityReader;
   /**
    * The audited MBI seam (#793): unlocks the beneficiary for ONE provider operation, in memory only. Absent => the
    * operation carries no beneficiary (the composition root always binds it; a real adapter refuses an operation
@@ -258,7 +271,10 @@ function viewOf(row: Item, asOf: string): DdeItemView {
     priority: row.priority,
     source: row.source,
     deadlineAt: row.deadlineAt,
-    deadlineStatus: ddeDeadlineStatus(row, asOf),
+    deadlineStatus: ddeDeadlineStatus(
+      { ...row, openedOn: row.createdAt.toISOString().slice(0, 10) },
+      asOf,
+    ),
     submittedAt: row.submittedAt?.toISOString() ?? null,
     macAcceptedOn: row.macAcceptedOn,
     submissionMode: row.submissionMode,
@@ -579,7 +595,14 @@ export function buildDdeQueueService(
       const page = await inOrg(actor, (tx) =>
         new repositories.DdeWorkItemRepository(tx).listByOrgPage(
           actor.organizationId,
-          { ...filter, scope, asOf: toIsoDate(now()), atRiskDays: DDE_AT_RISK_DAYS },
+          {
+            ...filter,
+            scope,
+            asOf: toIsoDate(now()),
+            atRiskDays: DDE_AT_RISK_DAYS,
+            ageOverdueCutoff: ddeAgingCutoffDate(toIsoDate(now()), DDE_AGING_OVERDUE_BUSINESS_DAYS),
+            ageAtRiskCutoff: ddeAgingCutoffDate(toIsoDate(now()), DDE_AGING_AT_RISK_BUSINESS_DAYS),
+          },
           cursor,
           limit,
         ),
@@ -601,7 +624,7 @@ export function buildDdeQueueService(
         return {
           row: found,
           events: await new repositories.DdeWorkEventRepository(tx).listForItem(id),
-          keying: await loadKeyingSheet(tx, found),
+          keying: await loadKeyingSheet(tx, found, ports.providerIdentity),
         };
       });
       return {
@@ -888,7 +911,7 @@ export function buildDdeQueueService(
         }
         const controlNumber = await loadControlNumber(tx, item);
         if (!controlNumber) throw new NotFoundError("dde subject");
-        const keying = await loadKeyingSheet(tx, item);
+        const keying = await loadKeyingSheet(tx, item, ports.providerIdentity);
         // The MBI is unlocked per call, audited by the seam, and rides only this call's memory: never an event, log or
         // row. Before the marker, so a refused unlock leaves the item untouched instead of falsely "possibly sent".
         const beneficiary = await ports.ddeBeneficiary?.unlock({

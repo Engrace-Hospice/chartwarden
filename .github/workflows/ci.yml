@@ -1218,6 +1218,8 @@ jobs:
           - { name: "M23 DDE work queue", scripts: "test:m23:dde-queue:live" }
           - { name: "M23 DDE work queue hardening", scripts: "test:m23:dde-queue-hardening:live" }
           - { name: "M23 DDE work queue scope and respawn", scripts: "test:m23:dde-queue-scope:live" }
+          # #765 / #767 - provider CCN + billing NPI on the keying sheet through the read-only seam as chartwarden_app (unbound => absent, cross-tenant provider entity resolves to nothing, no MBI) and age-based status / list filters / the daily aging alert for no-deadline items, per-org.
+          - { name: "M23 DDE provider identity and aging", scripts: "test:m23:dde-provider-identity-aging:live" }
           - { name: "M23 DDE work queue provider send", scripts: "test:m23:dde-queue-provider:live" }
           # #793 - the provider's daily change report ingest as chartwarden_app: persisted per-operator cursor (CAS), outcomes applied as the system actor (dde_provider), replay idempotent, finalised items never move backwards, unknown references ignored with one deduped trace, poison event quarantined without stalling the stream, tenant isolation, no DELETE grant, audit triggers, and the MBI in no row, event, audit entry or log.
           - { name: "M23 DDE daily change ingest", scripts: "test:m23:dde-daily-change:live" }

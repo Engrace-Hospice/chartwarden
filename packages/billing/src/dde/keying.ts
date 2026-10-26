@@ -3,8 +3,8 @@
 // DDE (FISS) is a green-screen, per-user-credentialed terminal with no API, so the queue's job is to hand the human
 // operator everything M23 knows that they must key, and nothing they must not see. The sheet carries identifiers and
 // dates the notice / claim row already stores. It NEVER carries an MBI (ADR-0052 D7: the operator reveals it from the
-// M5 chart under existing controls) and never free text. Provider CCN / NPI live with M40 and have no M23 reader seam
-// yet, so they are not on the sheet (tracked as a follow-up).
+// M5 chart under existing controls) and never free text. Provider CCN / NPI come from the read-only provider-identifier
+// seam (#765) when the composition root binds it; unbound or unresolved, the two fields are simply absent.
 import type { DdeItemType } from "../machines/dde-work-item";
 
 export interface DdeKeyingField {
@@ -23,6 +23,12 @@ export interface DdeKeyingSheet {
   readonly screenHint: string;
   readonly fields: DdeKeyingField[];
   readonly rejectionCodes: DdeKeyingReasonCode[];
+}
+
+/** The provider entity's public identifiers (ADR-0052 amendment, #765). Never a beneficiary identifier. */
+export interface DdeKeyingProvider {
+  readonly ccn: string;
+  readonly npi: string;
 }
 
 export interface DdeKeyingNotice {
@@ -81,10 +87,20 @@ const SCREEN_HINT: Readonly<Record<DdeItemType, string>> = {
 
 export function buildDdeKeyingSheet(
   itemType: DdeItemType,
-  subject: { readonly notice?: DdeKeyingNotice; readonly claim?: DdeKeyingClaim },
+  subject: {
+    readonly notice?: DdeKeyingNotice;
+    readonly claim?: DdeKeyingClaim;
+    readonly provider?: DdeKeyingProvider | null;
+  },
 ): DdeKeyingSheet {
   const screenHint = SCREEN_HINT[itemType];
-  const { notice, claim } = subject;
+  const { notice, claim, provider } = subject;
+  const providerFields: DdeKeyingField[] = provider
+    ? [
+        { label: "Provider CCN", value: provider.ccn },
+        { label: "Billing NPI", value: provider.npi },
+      ]
+    : [];
   if (notice) {
     const fields: DdeKeyingField[] = [
       { label: "Type of bill", value: notice.kind === "noe" ? "81A" : "81B" },
@@ -97,6 +113,7 @@ export function buildDdeKeyingSheet(
       ...(notice.payerControlNumber
         ? [{ label: "Payer control number (DCN)", value: notice.payerControlNumber }]
         : []),
+      ...providerFields,
     ];
     return { screenHint, fields, rejectionCodes: notice.rejectionCodes.map(explainAckCode) };
   }
@@ -118,6 +135,7 @@ export function buildDdeKeyingSheet(
       ...(claim.admissionSourceCode
         ? [{ label: "Admission source", value: claim.admissionSourceCode }]
         : []),
+      ...providerFields,
     ];
     return { screenHint, fields, rejectionCodes: claim.rejectionCodes.map(explainAckCode) };
   }
