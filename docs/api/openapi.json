@@ -66187,6 +66187,45 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "latestValidationSummary": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "outcome",
+                                  "runAt"
+                                ],
+                                "properties": {
+                                  "outcome": {
+                                    "anyOf": [
+                                      {
+                                        "const": "all_pass",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "failures_present",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "overrides_required",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "ready_for_submission",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "runAt": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
@@ -66623,6 +66662,45 @@
                                   }
                                 ]
                               }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latestValidationSummary": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "outcome",
+                            "runAt"
+                          ],
+                          "properties": {
+                            "outcome": {
+                              "anyOf": [
+                                {
+                                  "const": "all_pass",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "failures_present",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "overrides_required",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ready_for_submission",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "runAt": {
+                              "type": "string"
                             }
                           }
                         },

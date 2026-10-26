@@ -43404,6 +43404,10 @@ export interface operations {
                                 } | null;
                                 flags: ("missing_discharge_details" | "tob_changed")[];
                             } | null;
+                            latestValidationSummary?: {
+                                outcome: "all_pass" | "failures_present" | "overrides_required" | "ready_for_submission";
+                                runAt: string;
+                            } | null;
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;
@@ -43466,6 +43470,10 @@ export interface operations {
                                 fixPath: string;
                             } | null;
                             flags: ("missing_discharge_details" | "tob_changed")[];
+                        } | null;
+                        latestValidationSummary?: {
+                            outcome: "all_pass" | "failures_present" | "overrides_required" | "ready_for_submission";
+                            runAt: string;
                         } | null;
                         electionPeriodIdFrom: string;
                         electionPeriodIdTo: string;

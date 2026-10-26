@@ -10,7 +10,7 @@
 // so a retried run never doubles. ENUM BOUNDARY: `trigger` / `outcome` are DB-native lowercase enums with
 // no domain-alphabet divergence, so rows pass through un-mapped (contrast `claim.state`). No PHI / MBI (D13).
 import * as schema from "@chartwarden/db/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { BillingDb } from "./db";
 
 const R = schema.validationRun;
@@ -86,5 +86,19 @@ export class ValidationRunRepository {
       .orderBy(desc(R.startedAt))
       .limit(1);
     return row ?? null;
+  }
+
+  /**
+   * The most-recent run for each of `claimIds` in ONE query (`DISTINCT ON (claim_id)`, newest-started first,
+   * served by `validation_run_claim_recent_idx`) — the list-page batch twin of {@link findLatestForClaim}.
+   * Claims never validated are simply absent from the result.
+   */
+  async findLatestForClaims(claimIds: readonly string[]): Promise<readonly schema.ValidationRun[]> {
+    if (claimIds.length === 0) return [];
+    return this.db
+      .selectDistinctOn([R.claimId])
+      .from(R)
+      .where(inArray(R.claimId, [...claimIds]))
+      .orderBy(R.claimId, desc(R.startedAt));
   }
 }

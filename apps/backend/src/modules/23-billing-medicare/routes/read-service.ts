@@ -63,6 +63,12 @@ export type NotrTriggerKind = "revocation" | "transfer_out" | "discharge";
 
 // ── claim view DTOs ───────────────────────────────────────────────────────────────────────────────────
 
+/** The newest validation run's outcome for a claim, as shown on the claim list (`runAt` = run completion). */
+export interface ClaimValidationSummaryView {
+  readonly outcome: ValidationRunOutcome;
+  readonly runAt: string;
+}
+
 export interface ClaimSummaryView {
   readonly claimId: string;
   readonly organizationId: string;
@@ -85,6 +91,11 @@ export interface ClaimSummaryView {
    * reads when the stay-end facts port is bound; absent/`null` otherwise.
    */
   readonly attention?: ClaimAttentionView | null;
+  /**
+   * The claim's newest validation run (outcome + when), or `null` if it was never validated. Populated on the
+   * LIST read only (absent on detail, which carries the full `latestValidation` run).
+   */
+  readonly latestValidationSummary?: ClaimValidationSummaryView | null;
 }
 
 export interface ClaimPricingView {

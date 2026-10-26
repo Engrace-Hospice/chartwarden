@@ -12555,6 +12555,12 @@ const M23ClaimSummaryView = Type.Object({
   totalExpectedPaymentCents: Type.Integer(),
   version: Type.Integer(),
   attention: Type.Optional(Type.Union([M23ClaimAttentionView, Type.Null()])),
+  latestValidationSummary: Type.Optional(
+    Type.Union([
+      Type.Object({ outcome: M23ValidationRunOutcome, runAt: Type.String() }),
+      Type.Null(),
+    ]),
+  ),
 });
 const M23ClaimListResponse = Type.Object({
   items: Type.Array(M23ClaimSummaryView),

@@ -356,6 +356,29 @@ export function buildDrizzleM23ReadService(
     }));
   };
 
+  /** Attach each claim's newest validation run (outcome + time) with ONE batched query for the page. */
+  const withValidation = async (
+    actor: M23ReadActor,
+    claims: readonly ClaimSummaryView[],
+  ): Promise<ClaimSummaryView[]> => {
+    if (claims.length === 0) return [];
+    const runs = await read(actor, (tx) =>
+      new repositories.ValidationRunRepository(tx).findLatestForClaims(
+        claims.map((c) => c.claimId),
+      ),
+    );
+    const byClaim = new Map(runs.map((r) => [r.claimId, r]));
+    return claims.map((c) => {
+      const run = byClaim.get(c.claimId);
+      return {
+        ...c,
+        latestValidationSummary: run
+          ? { outcome: run.outcome, runAt: isoReq(run.completedAt) }
+          : null,
+      };
+    });
+  };
+
   return {
     async listClaims(actor, filter: ClaimListFilter, cursor, limit) {
       const pageOf = (from: string | undefined) =>
@@ -375,7 +398,10 @@ export function buildDrizzleM23ReadService(
       if (filter.attention === undefined) {
         const page = await pageOf(cursor);
         return {
-          items: await withAttention(actor, page.items.map(mapClaimSummary)),
+          items: await withValidation(
+            actor,
+            await withAttention(actor, page.items.map(mapClaimSummary)),
+          ),
           nextCursor: page.nextCursor,
           hasMore: page.hasMore,
         } satisfies CursorPage<ClaimSummaryView>;
@@ -394,9 +420,11 @@ export function buildDrizzleM23ReadService(
         const decorated = await withAttention(actor, page.items.map(mapClaimSummary));
         items.push(...decorated.filter((c) => c.attention?.flags.includes(flag)));
         from = page.nextCursor ?? undefined;
-        if (!page.hasMore || !from) return { items, nextCursor: null, hasMore: false };
+        if (!page.hasMore || !from) {
+          return { items: await withValidation(actor, items), nextCursor: null, hasMore: false };
+        }
         if (items.length >= wanted || scanned >= ATTENTION_SCAN_MAX_CLAIMS) {
-          return { items, nextCursor: from, hasMore: true };
+          return { items: await withValidation(actor, items), nextCursor: from, hasMore: true };
         }
       }
     },
