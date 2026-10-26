@@ -7,6 +7,7 @@ import { Button, InlineAlert, useApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { useAttemptKey } from "./use-attempt-key";
 
 export type DdeFileItemType = "rtp_correction" | "adjustment" | "cancel" | "noe" | "notr";
 
@@ -60,11 +61,6 @@ export function noticeDdeOptions(kind: "noe" | "notr", state: string): DdeFileOp
   ];
 }
 
-const idempotencyKey = (): string =>
-  typeof globalThis.crypto?.randomUUID === "function"
-    ? globalThis.crypto.randomUUID()
-    : `${Date.now()}-${Math.random()}`;
-
 function failureText(error: unknown, status: number | undefined): string {
   const message = (error as { error?: { message?: string } } | undefined)?.error?.message;
   if (status === 401) return "Your session has ended. Sign in again.";
@@ -82,6 +78,7 @@ export function DdeFileAction({
   options: DdeFileOption[];
 }): JSX.Element | null {
   const client = useApiClient();
+  const attempt = useAttemptKey();
   const [busy, setBusy] = useState<DdeFileItemType | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [filed, setFiled] = useState<string | null>(null);
@@ -93,13 +90,17 @@ export function DdeFileAction({
     setFailure(null);
     setFiled(null);
     try {
-      const { error, response } = (await client.POST(
-        "/api/v1/billing/dde-items" as never,
-        {
-          params: { header: { "Idempotency-Key": idempotencyKey() } },
-          body: { itemType: option.itemType, subjectId },
-        } as never,
-      )) as { error?: unknown; response?: Response };
+      const { error, response } = await attempt.run(
+        `${option.itemType}|${subjectId}`,
+        async (key) =>
+          (await client.POST(
+            "/api/v1/billing/dde-items" as never,
+            {
+              params: { header: { "Idempotency-Key": key } },
+              body: { itemType: option.itemType, subjectId },
+            } as never,
+          )) as { error?: unknown; response?: Response },
+      );
       if (error) setFailure(failureText(error, response?.status));
       else setFiled(option.label);
     } catch {

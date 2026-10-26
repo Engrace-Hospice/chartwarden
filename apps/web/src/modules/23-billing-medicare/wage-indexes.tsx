@@ -35,6 +35,7 @@ import type { JSX } from "react";
 import { BillingTabs } from "../../shell/billing-tabs";
 import { useSession } from "../../shell/session";
 import { fiscalYearLabel, fiscalYearStartingOf } from "./rate-reference";
+import { useAttemptKey } from "./use-attempt-key";
 import {
   type DraftErrors,
   EMPTY_DRAFT,
@@ -426,6 +427,7 @@ function WageIndexEntryDrawer({
 }): JSX.Element {
   const drawer = useDrawerA11y<HTMLElement>(onClose);
   const client = useApiClient();
+  const attempt = useAttemptKey();
   const [draft, setDraft] = useState<WageIndexDraft>(
     supersedes ? draftFrom(supersedes) : EMPTY_DRAFT,
   );
@@ -446,14 +448,23 @@ function WageIndexEntryDrawer({
     setBusy(true);
     setError(null);
     const body = bodyFrom(draft, fy);
-    const header = { "Idempotency-Key": crypto.randomUUID() };
-    const res = supersedes
-      ? await client.POST("/api/v1/billing/wage-indexes/{id}/supersede", {
-          params: { header, path: { id: supersedes.wageIndexId } },
-          body,
-        })
-      : await client.POST("/api/v1/billing/wage-indexes", { params: { header }, body });
+    // A thrown fetch (no HTTP answer) leaves the key held, so a retry of the same body replays it.
+    const res = await attempt
+      .run(JSON.stringify([supersedes?.wageIndexId ?? null, body]), async (key) => {
+        const header = { "Idempotency-Key": key };
+        return supersedes
+          ? await client.POST("/api/v1/billing/wage-indexes/{id}/supersede", {
+              params: { header, path: { id: supersedes.wageIndexId } },
+              body,
+            })
+          : await client.POST("/api/v1/billing/wage-indexes", { params: { header }, body });
+      })
+      .catch(() => null);
     setBusy(false);
+    if (!res) {
+      setError("The wage index could not be saved. Check your connection and try again.");
+      return;
+    }
     if (res.error || !res.data) {
       setError(wageIndexWriteError(res.response?.status, res.error));
       return;

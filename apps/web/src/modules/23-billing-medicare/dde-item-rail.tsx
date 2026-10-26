@@ -45,6 +45,7 @@ import {
   fmtDay,
   isNoticeType,
 } from "./dde-queue-model";
+import { useAttemptKey } from "./use-attempt-key";
 import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
 
 type Panel = "none" | "submit" | "outcome";
@@ -81,11 +82,6 @@ function Row({ term, children }: { term: string; children: ReactNode }): JSX.Ele
     </>
   );
 }
-
-const newKey = (): string =>
-  typeof globalThis.crypto?.randomUUID === "function"
-    ? globalThis.crypto.randomUUID()
-    : `${Date.now()}-${Math.random()}`;
 
 export function ItemRail({
   item: n,
@@ -143,11 +139,16 @@ export function ItemRail({
   }, [n]);
 
   const setPanel = (panel: Panel) => setDrafts((d) => ({ ...d, panel }));
-  const params = () => ({ path: { id: n.ddeWorkItemId }, header: { "Idempotency-Key": newKey() } });
+  const attempt = useAttemptKey();
+  const params = (key: string) => ({
+    path: { id: n.ddeWorkItemId },
+    header: { "Idempotency-Key": key },
+  });
 
   /** One POST: route auth failures (step-up included), surface the server's refusal, hand a 412 to the parent. */
   const run = async (
-    call: () => Promise<{ data?: unknown; error?: unknown; response?: Response }>,
+    fingerprint: string,
+    call: (key: string) => Promise<{ data?: unknown; error?: unknown; response?: Response }>,
     fallback: string,
     opts: RunOptions = {},
   ): Promise<void> => {
@@ -157,7 +158,10 @@ export function ItemRail({
     setActionError(null);
     setSyncNote(null);
     try {
-      const { data, error, response } = await call();
+      const { data, error, response } = await attempt.run(
+        `${n.ddeWorkItemId}|${fingerprint}`,
+        call,
+      );
       if (error) {
         const redirect = authFailureRedirect(
           response?.status,
@@ -204,8 +208,8 @@ export function ItemRail({
     kind: "claim" | "start" | "retry" | "cancel" | "close",
     fallback: string,
   ): Promise<void> => {
-    const call = () => {
-      const args = { params: params(), body: { expectedVersion: n.version } };
+    const call = (key: string) => {
+      const args = { params: params(key), body: { expectedVersion: n.version } };
       switch (kind) {
         case "claim":
           return client.POST("/api/v1/billing/dde-items/{id}/claim", args);
@@ -219,14 +223,15 @@ export function ItemRail({
           return client.POST("/api/v1/billing/dde-items/{id}/close", args);
       }
     };
-    return run(call, fallback);
+    return run(`${kind}|${n.version}`, call, fallback);
   };
 
   const sendViaProvider = (): Promise<void> =>
     run(
-      () =>
+      `submit-via-provider|${n.version}`,
+      (key) =>
         client.POST("/api/v1/billing/dde-items/{id}/submit-via-provider", {
-          params: params(),
+          params: params(key),
           body: { expectedVersion: n.version },
         }),
       "The item could not be sent through the provider.",
@@ -235,7 +240,8 @@ export function ItemRail({
 
   const syncProvider = (): Promise<void> =>
     run(
-      () => client.POST("/api/v1/billing/dde-items/{id}/sync-provider", { params: params() }),
+      `sync-provider|${n.version}`,
+      (key) => client.POST("/api/v1/billing/dde-items/{id}/sync-provider", { params: params(key) }),
       "The provider could not be checked.",
       {
         provider: true,
@@ -249,9 +255,10 @@ export function ItemRail({
   const submitOutcome = (d: OutcomeDraft): Promise<void> =>
     d.outcome === "accepted"
       ? run(
-          () =>
+          `record-acceptance|${n.version}|${JSON.stringify(d)}`,
+          (key) =>
             client.POST("/api/v1/billing/dde-items/{id}/record-acceptance", {
-              params: params(),
+              params: params(key),
               body: {
                 expectedVersion: n.version,
                 ...(d.macAcceptedOn ? { macAcceptedOn: d.macAcceptedOn } : {}),
@@ -262,9 +269,10 @@ export function ItemRail({
           "The acceptance could not be recorded.",
         )
       : run(
-          () =>
+          `record-outcome|${n.version}|${JSON.stringify(d)}`,
+          (key) =>
             client.POST("/api/v1/billing/dde-items/{id}/record-outcome", {
-              params: params(),
+              params: params(key),
               body: {
                 expectedVersion: n.version,
                 outcome: "returned",
@@ -413,9 +421,10 @@ export function ItemRail({
                 onCancel={() => setPanel("none")}
                 onSubmit={(d) =>
                   run(
-                    () =>
+                    `record-submission|${n.version}|${JSON.stringify(d)}`,
+                    (key) =>
                       client.POST("/api/v1/billing/dde-items/{id}/record-submission", {
-                        params: params(),
+                        params: params(key),
                         body: {
                           expectedVersion: n.version,
                           ...(d.dcn ? { dcn: d.dcn } : {}),
