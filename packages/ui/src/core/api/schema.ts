@@ -43352,7 +43352,7 @@ export interface operations {
                 limit?: number;
                 providerEntityId?: string;
                 patientId?: string;
-                state?: "draft" | "validating" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "ack_partial" | "paid" | "denied" | "replaced" | "voided";
+                state?: "draft" | "validating" | "ready" | "submitted" | "ack_pending" | "ack_accepted" | "ack_rejected" | "ack_partial" | "paid" | "partial_paid" | "denied" | "replaced" | "voided";
                 attention?: "missing_discharge_details" | "tob_changed";
             };
             header?: never;
