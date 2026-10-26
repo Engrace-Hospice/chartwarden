@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1872,
-    "enriched": 1872,
+    "routes": 1876,
+    "enriched": 1876,
     "deficit": 0,
-    "mutating": 1068,
+    "mutating": 1070,
     "mutatingNoBody": 1,
-    "gets": 751,
+    "gets": 753,
     "getsNoResponse": 9
   },
   "modules": [
@@ -401,12 +401,12 @@
     },
     {
       "module": "41-billing-commercial",
-      "routes": 18,
-      "enriched": 18,
+      "routes": 22,
+      "enriched": 22,
       "deficit": 0,
-      "mutating": 11,
+      "mutating": 13,
       "mutatingNoBody": 0,
-      "gets": 7,
+      "gets": 9,
       "getsNoResponse": 0
     },
     {
