@@ -14,6 +14,12 @@ const CommercialAssembleClaim = lazy(() =>
 const CommercialClaimDetail = lazy(() =>
   import("./claim-detail").then((m) => ({ default: m.CommercialClaimDetail })),
 );
+const CommercialClaimSendGate = lazy(() =>
+  import("./claim-send-gate").then((m) => ({ default: m.CommercialClaimSendGate })),
+);
+const CommercialClaimTimeline = lazy(() =>
+  import("./claim-timeline").then((m) => ({ default: m.CommercialClaimTimeline })),
+);
 const SupportedPayers = lazy(() =>
   import("./supported-payers").then((m) => ({ default: m.SupportedPayers })),
 );
@@ -57,6 +63,22 @@ export const commercialBillingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "commercial_billing.read",
       screen: CommercialClaimDetail,
+    },
+    {
+      id: "commercial.claim-send-gate",
+      path: "/commercial/billing/claims/:claimId/send-gate",
+      title: "Commercial Claim Send Gate",
+      navGroup: "Billing",
+      requiredPermission: "commercial_billing.read",
+      screen: CommercialClaimSendGate,
+    },
+    {
+      id: "commercial.claim-timeline",
+      path: "/commercial/billing/claims/:claimId/timeline",
+      title: "Commercial Claim History",
+      navGroup: "Billing",
+      requiredPermission: "commercial_billing.read",
+      screen: CommercialClaimTimeline,
     },
     {
       id: "commercial.payers",

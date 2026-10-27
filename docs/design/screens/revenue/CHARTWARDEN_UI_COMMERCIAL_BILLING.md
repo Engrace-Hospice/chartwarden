@@ -155,6 +155,23 @@ says so and offers no form.
 
 ---
 
+## Send gate and claim history
+
+Two read-only pages per claim, linked from the claim detail's right rail (Sending and history). Both read with
+`commercial_billing.read`, are read-audited by the server, and show ids, dates and codes only.
+
+- **Send gate** (`commercial.claim-send-gate`, `/commercial/billing/claims/:claimId/send-gate`, `GET .../claims/:id/send-gate`):
+  a verdict pill (Ready to send or Cannot be sent), the claim state, and a list of every reason with its stable code, the server's fixed
+  message and, for rule-backed reasons, the rule keys. The browser displays the verdict; it never decides one.
+- **Claim history** (`commercial.claim-timeline`, `/commercial/billing/claims/:claimId/timeline`, `GET .../claims/:id/timeline`): a
+  captioned table of state changes, submissions (control number, attempts, failure code) and acknowledgments (stage, disposition,
+  reason codes, payer claim number). A submission's free-text failure message is never shown. When the server says `truncated`, a
+  warning says older events are not shown.
+- **States.** Loading (status), not found (404, with a link back to the queue), a retryable error (alert with Try again; a failed read is
+  never shown as a pass or as an empty history), and an empty history.
+
+---
+
 ## Accessibility
 
 Labelled selects, a caption on every table, rows operable by keyboard, a polite live region around the list, alerts for errors, status

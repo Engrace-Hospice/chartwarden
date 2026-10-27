@@ -2608,6 +2608,22 @@
       "app": "web",
       "module": "41-billing-commercial",
       "moduleId": 41,
+      "id": "commercial.claim-send-gate",
+      "path": "/commercial/billing/claims/:claimId/send-gate",
+      "permission": "commercial_billing.read"
+    },
+    {
+      "app": "web",
+      "module": "41-billing-commercial",
+      "moduleId": 41,
+      "id": "commercial.claim-timeline",
+      "path": "/commercial/billing/claims/:claimId/timeline",
+      "permission": "commercial_billing.read"
+    },
+    {
+      "app": "web",
+      "module": "41-billing-commercial",
+      "moduleId": 41,
       "id": "commercial.payers",
       "path": "/commercial/billing/payers",
       "permission": "commercial_billing.read"
