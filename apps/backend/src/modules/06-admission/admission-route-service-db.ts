@@ -1728,6 +1728,7 @@ export function createDbAdmissionRouteService(
     windowKind: string;
     severity: string;
     mustCompleteBy: Date;
+    patientId?: string | null;
   }): ComplianceWindowRow {
     return {
       ...toSummary(r),
@@ -2730,16 +2731,24 @@ export function createDbAdmissionRouteService(
         return rows.map(toComplianceWindowRow);
       });
     },
-    async listComplianceWindows(organizationId, query) {
+    async listComplianceWindows(organizationId, query, scope) {
       // FY2027 — its own read (not `pageByStatus`) so each row says what the window is and when it is due:
       // the dashboard could not tell an election-addendum window from any other kind.
       const limit = clampLimit(query.limit);
       const offset = parseOffset(query.cursor);
+      // Mirror `compliance.scope`: narrow to the caller's caseload in SQL (a window has no patient of its
+      // own — it is the admission's); an empty caseload reads nothing (no query).
+      const scopedIds = scope?.patientIds ?? null;
+      if (scopedIds !== null && scopedIds.length === 0) return { items: [], nextCursor: null };
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const filters: SQL[] = [];
+        if (query.state) filters.push(eq(CW.status, query.state as never));
+        if (scopedIds !== null) filters.push(inArray(ADM.patientId, [...scopedIds]));
         const rows = await tx
-          .select(complianceWindowColumns)
+          .select({ ...complianceWindowColumns, patientId: ADM.patientId })
           .from(CW)
-          .where(query.state ? eq(CW.status, query.state as never) : undefined)
+          .innerJoin(ADM, eq(CW.admissionId, ADM.id))
+          .where(filters.length ? and(...filters) : undefined)
           .orderBy(desc(CW.mustCompleteBy), desc(CW.id))
           .limit(limit + 1)
           .offset(offset);

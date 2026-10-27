@@ -124,6 +124,14 @@ const EMPTY_STATE: DashboardState = {
 };
 
 const DAY = 86_400_000;
+const MISSED_VISIT_LOOKBACK_DAYS = 7;
+/** Window kinds that are a physician certification (CTI) or recertification clock. */
+const CERT_WINDOW_KINDS: ReadonlySet<string> = new Set([
+  "cti_signature_lookahead_14d",
+  "recert_due_14d",
+  "recert_due_7d",
+  "f2f_recert_30d_prior",
+]);
 const SKELETON_KEYS = ["a", "b", "c", "d", "e"];
 
 const toneColor: Record<Tone, string> = {
@@ -381,15 +389,12 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
   {
     id: "hope",
     permission: "hope.timepoint.read",
-    async load(client, session) {
-      // hope.scope admits an unfiltered list only to org-wide-scope roles (anyone else gets a 404), so
-      // don't issue the call at all for a caseload-scoped actor.
-      if (!session?.orgWidePatientScope) return { unavailable: ["hope"] };
+    async load(client) {
+      // The backend narrows an unfiltered list to the caller's caseload (org-wide roles see everything).
       const res = await client.GET("/api/v1/hope/schedules", {
         params: { query: { status: "open" } },
       });
-      // The hope.scope ABAC answers an out-of-scope org-wide list with 404 (deny-as-not-found):
-      // the actor simply has no HOPE worklist here, which is not a load failure.
+      // A 404 (deny-as-not-found) means the actor has no HOPE worklist here, not a load failure.
       if (res.response.status === 404) return { unavailable: ["hope"] };
       if (res.error) throw res.error;
       const open = [...(res.data?.schedules ?? [])].sort((a, b) =>
@@ -559,6 +564,88 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
           href: `/scheduling/visits/${v.id}`,
         })),
       };
+    },
+  },
+  {
+    id: "missed-visits",
+    permission: ["visit.read_team", "visit.read"],
+    async load(client) {
+      const res = await client.GET("/api/v1/visits", {
+        params: {
+          query: {
+            from: startOfDay(-MISSED_VISIT_LOOKBACK_DAYS).toISOString(),
+            to: new Date().toISOString(),
+          },
+        },
+      });
+      if (res.error) throw res.error;
+      // A visit is missed when it was marked no-show, or its window ended without it ever starting.
+      const missed = countBy(
+        res.data ?? [],
+        (v) =>
+          v.status === "no_show" ||
+          ((v.status === "proposed" || v.status === "published") &&
+            Date.parse(v.scheduledEndedAt) < Date.now()),
+      );
+      return {
+        attention:
+          missed > 0
+            ? [
+                {
+                  id: "visits-missed",
+                  type: "HIGH",
+                  title: `${missed} missed visit${missed === 1 ? "" : "s"}`,
+                  description: `Last ${MISSED_VISIT_LOOKBACK_DAYS} days`,
+                  severity: "critical",
+                  href: "/scheduling/week",
+                  module: "Scheduling",
+                },
+              ]
+            : [],
+      };
+    },
+  },
+  {
+    id: "compliance-windows",
+    permission: "compliance.read",
+    async load(client) {
+      // The backend narrows the list to the caller's caseload (org-wide roles see everything). Two
+      // state-filtered reads, so a long tail of open/closed windows cannot crowd out the urgent ones.
+      const read = (state: "overdue" | "closing_soon") =>
+        client.GET("/api/v1/compliance-windows", { params: { query: { state, limit: 200 } } });
+      const [overdueRes, soonRes] = await Promise.all([read("overdue"), read("closing_soon")]);
+      if (overdueRes.error) throw overdueRes.error;
+      if (soonRes.error) throw soonRes.error;
+      const overdue = overdueRes.data?.items.length ?? 0;
+      // One page is read, so a full page with a cursor means "at least this many".
+      const overdueLabel = overdueRes.data?.nextCursor ? `${overdue}+` : String(overdue);
+      const certSoon = countBy(soonRes.data?.items ?? [], (w) =>
+        CERT_WINDOW_KINDS.has(w.windowKind ?? ""),
+      );
+      const attention: AttentionItem[] = [];
+      if (overdue > 0) {
+        attention.push({
+          id: "compliance-overdue",
+          type: "HIGH",
+          title: `${overdueLabel} compliance window${overdue === 1 ? "" : "s"} overdue`,
+          description: "Admission compliance",
+          severity: "critical",
+          href: "/compliance/admissions",
+          module: "Admissions",
+        });
+      }
+      if (certSoon > 0) {
+        attention.push({
+          id: "compliance-cert-soon",
+          type: "WARNING",
+          title: `${certSoon} certification${certSoon === 1 ? "" : "s"} due soon`,
+          description: "CTI / recertification",
+          severity: "warning",
+          href: "/compliance/admissions",
+          module: "Admissions",
+        });
+      }
+      return { attention };
     },
   },
   {

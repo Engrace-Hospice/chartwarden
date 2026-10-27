@@ -55,9 +55,12 @@ const TIMEPOINT_PARAM_TO_KIND: Record<string, FixedKind> = {
 };
 const LATE_REASONS = [
   { value: "hospitalization", label: "Patient hospitalization" },
-  { value: "patient_unavailable", label: "Patient unavailable" },
-  { value: "staffing_contingency", label: "Staffing contingency" },
-  { value: "documentation_delay", label: "Documentation delay" },
+  { value: "pto", label: "Staff time off" },
+  { value: "family_meeting_deferral", label: "Family meeting deferral" },
+  { value: "refused", label: "Patient or family refused" },
+  { value: "missed", label: "Missed visit" },
+  { value: "pandemic_cohort", label: "Pandemic cohorting" },
+  { value: "other", label: "Other" },
 ] as const;
 
 export function HopeTimepointCapture(): JSX.Element {
@@ -358,6 +361,10 @@ function messageForBackendError(err: unknown, item: WorkflowTimepoint | null): s
   const code = (err as { error?: { code?: string } } | null)?.error?.code;
   if (code === "M10_LATE_REASON_REQUIRED")
     return "This assessment is after the normal window. Select a late completion reason.";
+  if (code === "M10_LATE_REASON_INVALID")
+    return "That late completion reason is not accepted. Select a different reason.";
+  if (code === "M10_DISCIPLINE_NOT_PERMITTED")
+    return "Only an RN, NP or MD can author this HOPE assessment.";
   if (code === "M10_TIMEPOINT_NOT_OPEN")
     return `${item ? rfaLabel(item.kind) : "This assessment"} is not open yet.`;
   if (code === "M10_TIMEPOINT_EXPIRED")

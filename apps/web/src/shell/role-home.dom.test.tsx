@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
 import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { RoleHome } from "./role-home";
@@ -197,7 +197,7 @@ describe("RoleHome operational dashboard", () => {
     expect(screen.getByText(/Some dashboard sections could not be loaded: safety/i)).toBeTruthy();
   });
 
-  it("does not call HOPE or out-of-scope IDG schedules for a caseload-scoped actor", async () => {
+  it("asks HOPE but only the actor's own IDG locations for a caseload-scoped actor", async () => {
     const client = clientFor({
       "/api/v1/locations": {
         items: [
@@ -227,7 +227,7 @@ describe("RoleHome operational dashboard", () => {
       ),
     );
     const paths = (client.GET as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
-    expect(paths).not.toContain("/api/v1/hope/schedules");
+    expect(paths).toContain("/api/v1/hope/schedules");
     const locs = (client.GET as ReturnType<typeof vi.fn>).mock.calls
       .filter((c) => c[0] === "/api/v1/idg/schedule")
       .map((c) => c[1].params.query.location);
@@ -267,5 +267,81 @@ describe("RoleHome operational dashboard", () => {
         .map((c) => c[1].params.query.location)
         .sort(),
     ).toEqual(["loc-a", "loc-b"]);
+  });
+  it("alerts a caseload-scoped clinician to overdue HOPE windows", async () => {
+    const client = clientFor({
+      "/api/v1/hope/schedules": {
+        schedules: [
+          {
+            id: "s1",
+            patientId: "p1",
+            admissionId: "a1",
+            rfaKind: "01_admission",
+            windowClosesAt: "2020-01-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    renderHome(
+      { ...adminSession, permissions: ["hope.timepoint.read"], roles: ["rn"], isAdmin: false },
+      client,
+    );
+
+    expect(await screen.findByText(/1 HOPE assessment past window/i)).toBeTruthy();
+  });
+
+  it("alerts a clinician to missed visits in the last week", async () => {
+    const past = new Date(Date.now() - 2 * 86_400_000).toISOString();
+    const visit = (id: string, status: string) => ({
+      id,
+      patientId: "p1",
+      visitPurpose: "routine_visit",
+      scheduledStartedAt: past,
+      scheduledEndedAt: past,
+      status,
+    });
+    const client = clientFor({
+      "/api/v1/visits": [
+        visit("v1", "no_show"),
+        visit("v2", "published"),
+        visit("v3", "completed"),
+      ],
+    });
+    renderHome(
+      { ...adminSession, permissions: ["visit.read"], roles: ["rn"], isAdmin: false },
+      client,
+    );
+
+    expect(await screen.findByText(/2 missed visits/i)).toBeTruthy();
+  });
+  it("alerts a clinician to overdue and closing-soon certification windows", async () => {
+    const win = (id: string, windowKind: string, state: string) => ({
+      id,
+      state,
+      version: 1,
+      patientId: "p1",
+      admissionId: "a1",
+      windowKind,
+      severity: "warning",
+      dueAt: "2026-11-01T00:00:00.000Z",
+    });
+    const client = {
+      GET: vi.fn(async (path: string, init?: { params?: { query?: { state?: string } } }) => {
+        if (path !== "/api/v1/compliance-windows") return response({ items: [], nextCursor: null });
+        const state = init?.params?.query?.state;
+        const items =
+          state === "overdue"
+            ? [win("w1", "recert_due_7d", "overdue"), win("w2", "notice_of_rights", "overdue")]
+            : [win("w3", "cti_signature_lookahead_14d", "closing_soon")];
+        return response({ items, nextCursor: null });
+      }),
+    } as unknown as ApiClient;
+    renderHome(
+      { ...adminSession, permissions: ["compliance.read"], roles: ["rn"], isAdmin: false },
+      client,
+    );
+
+    expect(await screen.findByText(/2 compliance windows overdue/i)).toBeTruthy();
+    expect(await screen.findByText(/1 certification due soon/i)).toBeTruthy();
   });
 });

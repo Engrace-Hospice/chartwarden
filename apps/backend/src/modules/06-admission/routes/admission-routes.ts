@@ -1578,7 +1578,11 @@ export function registerAdmissionRoutes(app: FastifyInstance, deps: AdmissionRou
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(ComplianceListQuerySchema, request.query);
-      return service.listComplianceWindows(organizationId, q);
+      return service.listComplianceWindows(
+        organizationId,
+        q,
+        await readScopeOf(request, caseloadPatientIds),
+      );
     },
   );
 
