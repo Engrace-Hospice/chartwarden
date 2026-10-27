@@ -673,8 +673,17 @@ export function createDrizzleBillingEraseStore(
             .where(eq(schema.clearinghouseSubmissionAttempts.organizationId, organizationId))
             .returning({ id: schema.clearinghouseSubmissionAttempts.id })
         ).length;
+        // Migration 1281 — the interchange number (ISA13) remembered per submission (no PHI). Same RESTRICT FK to
+        // `organization`, same destruction-role grant, so it goes before the org does.
+        const clearinghouseInterchangeNumbers = (
+          await tx
+            .delete(schema.clearinghouseInterchangeNumber)
+            .where(eq(schema.clearinghouseInterchangeNumber.organizationId, organizationId))
+            .returning({ id: schema.clearinghouseInterchangeNumber.id })
+        ).length;
         return {
           clearinghouse_submission_attempt: clearinghouseSubmissionAttempts,
+          clearinghouse_interchange_number: clearinghouseInterchangeNumbers,
           tenant_wage_index: tenantWageIndexes,
           hospice_rate_table: hospiceRateTables,
           hospice_visit_charge_schedule: hospiceVisitChargeSchedules,

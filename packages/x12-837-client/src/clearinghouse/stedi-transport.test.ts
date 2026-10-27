@@ -695,6 +695,7 @@ function bind(s: SubmissionAttemptStore): SubmissionAttemptStore {
     retake: (o, sc, k, e, n) => s.retake(o, sc, k, e, n),
     find: (o, sc, k) => s.find(o, sc, k),
     allocateControlNumber: (u) => s.allocateControlNumber(u),
+    allocateInterchangeNumber: (o, sc, k, u) => s.allocateInterchangeNumber(o, sc, k, u),
     resolve: (o, sc, k, out, who, g) => s.resolve(o, sc, k, out, who, g),
   };
 }

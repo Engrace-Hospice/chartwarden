@@ -2,10 +2,9 @@
 // loader (real parties, subscriber, lines) and return the X12 to hand the transport. It replaces the sidecar's thin
 // `claimDocumentFor` document on that path; there is NO fallback to it. A loader gap THROWS an error naming the gaps
 // (field and reason only, never a value), which the caller's catch records as a `failed_worker` attempt.
-import { createHash } from "node:crypto";
 import type { repositories } from "@chartwarden/billing";
 import type { DbClient } from "@chartwarden/db";
-import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
+import type { ClearinghouseContext, StediClaimJson } from "@chartwarden/x12-837-client";
 import {
   type Claim837iLoaderDeps,
   buildClaim837iPersistencePort,
@@ -18,24 +17,11 @@ export type Claim837iSubmitDeps = Omit<Claim837iLoaderDeps, "persistence" | "par
   readonly parties: (tx: DbClient) => Claim837iLoaderDeps["parties"];
 };
 
-/** ISA13 is 1..999 999 999. */
-const MAX_INTERCHANGE_CONTROL_NUMBER = 999_999_999;
-
-/**
- * The interchange control number for one attempt, derived from its claim control number so a redelivered attempt renders
- * the identical interchange (the transport's idempotency key is the control number). A 32-bit hash into 1e9 slots: the
- * exposure is birthday-shaped, so it grows with a receiver's lifetime volume (about one colliding pair in ~45k attempts).
- * A receiver that enforces ISA13 uniqueness would reject that interchange (TA1 025); the retry derives a new control
- * number and so a new ISA13. Confirm the vendor/MAC does not enforce uniqueness, or replace this with a persisted
- * per-sender counter, before relying on it at volume.
- *
- * The Stedi transport additionally requires the submission's control number to BE the ISA13, while the workers submit
- * under the claim control number (acks route by it), so `CLEARINGHOUSE_VENDOR=stedi` refuses every 837I until the
- * workers submit under `attempts.allocateControlNumber` and the ack side maps ISA13 back to the claim.
- */
-export function interchangeNumberFor(claimControlNumber: string): number {
-  const word = createHash("sha256").update(claimControlNumber).digest().readUInt32BE(0);
-  return (word % MAX_INTERCHANGE_CONTROL_NUMBER) + 1;
+/** Both renderings of one claim; each carries the MBI, so transmit them and never store or log them. */
+export interface RenderedClaim {
+  readonly x12: string;
+  /** Absent only from a test stub; the loader always builds it. */
+  readonly stediJson?: StediClaimJson;
 }
 
 export async function renderClaimForTransport(args: {
@@ -48,8 +34,13 @@ export async function renderClaimForTransport(args: {
   readonly organizationId: string;
   readonly claim: { readonly id: string; readonly providerEntityId: string };
   readonly claimControlNumber: string;
+  /**
+   * The ISA13 for this submission. The caller (the worker) owns the key it is remembered under, so a redelivered job
+   * renders the identical interchange; the number is never derived here.
+   */
+  readonly interchangeNumberFor: (context: ClearinghouseContext) => Promise<number>;
   readonly now: Date;
-}): Promise<string> {
+}): Promise<RenderedClaim> {
   const context = await args.contextFor(args.organizationId, args.claim.providerEntityId);
   const loaded = await loadAndRender837i(
     {
@@ -60,12 +51,12 @@ export async function renderClaimForTransport(args: {
     {
       claimId: args.claim.id,
       context,
-      interchangeControlNumber: interchangeNumberFor(args.claimControlNumber),
+      interchangeControlNumber: await args.interchangeNumberFor(context),
       createdAt: args.now,
       claimControlNumber: args.claimControlNumber,
     },
   );
-  if (loaded.ok) return loaded.rendered.reveal().x12;
+  if (loaded.ok) return loaded.rendered.reveal();
   const why =
     loaded.kind === "claim_not_found"
       ? "claim not found for this organization and provider entity"

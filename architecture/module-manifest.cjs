@@ -859,6 +859,7 @@ exports.MODULES = [
       "claim_state_history",
       "claim_submission",
       "clearinghouse_ack_cursor",
+      "clearinghouse_interchange_number",
       "clearinghouse_submission_attempt",
       "dde_change_cursor",
       "dde_change_exception",

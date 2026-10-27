@@ -8,6 +8,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 //           back (key match preferred). Atomic, so concurrent reservations of one submission produce one writer. A
 //           conflict no read can explain is another tenant's live control number (platform-wide unique index).
 // find      the live attempt for a key.   allocateControlNumber  nextval of the per-usage platform sequence.
+// allocateInterchangeNumber  the same sequence, remembered per (tenant, scope, key) so a redelivered job renders the same ISA13.
 // complete  reserved -> sent, idempotent on an already-sent row.
 // release   reserved -> released (the key and number become free again). Never touches a sent row.
 // retake    compare-and-set of `reserved_at`, so exactly one retry takes over an abandoned reservation.
@@ -20,6 +21,7 @@ import {
 import { and, eq, lte, ne, or, sql } from "drizzle-orm";
 
 const T = schema.clearinghouseSubmissionAttempts;
+const I = schema.clearinghouseInterchangeNumber;
 
 /** How many times a reservation re-reads after a conflict whose holder vanished (released) before it is judged foreign. */
 const RESERVE_ATTEMPTS = 3;
@@ -29,6 +31,28 @@ const CONTROL_NUMBER_SEQUENCE: Record<AttemptUsage, ReturnType<typeof sql.raw>> 
   test: sql.raw("clearinghouse_control_number_test_seq"),
   production: sql.raw("clearinghouse_control_number_production_seq"),
 };
+
+/** The next value of the platform-wide per-usage sequence, 9 digits. Sequences are not transactional: a drawn number is never given back. */
+async function nextControlNumber(db: DbClient, usage: AttemptUsage): Promise<string> {
+  let res: { rows: { n: string }[] };
+  try {
+    res = (await db.execute(
+      sql`SELECT nextval('${CONTROL_NUMBER_SEQUENCE[usage]}'::regclass)::text AS n`,
+    )) as unknown as { rows: { n: string }[] };
+  } catch (e) {
+    // 55000: the 9-digit space is used up. Say so plainly instead of surfacing a raw driver error.
+    if (
+      (e as { cause?: { code?: string }; code?: string }).cause?.code === "55000" ||
+      (e as { code?: string }).code === "55000"
+    ) {
+      throw new Error(`clearinghouse control numbers are exhausted for ${usage} usage`);
+    }
+    throw e;
+  }
+  const n = res.rows[0]?.n;
+  if (!n) throw new Error("clearinghouse control number allocation returned nothing");
+  return n.padStart(9, "0");
+}
 
 type Row = typeof T.$inferSelect;
 
@@ -126,25 +150,44 @@ export function createDrizzleAttemptStore(db: DbClient): SubmissionAttemptStore 
       });
     },
 
-    async allocateControlNumber(usage) {
-      let res: { rows: { n: string }[] };
-      try {
-        res = (await db.execute(
-          sql`SELECT nextval('${CONTROL_NUMBER_SEQUENCE[usage]}'::regclass)::text AS n`,
-        )) as unknown as { rows: { n: string }[] };
-      } catch (e) {
-        // 55000: the 9-digit space is used up. Say so plainly instead of surfacing a raw driver error.
-        if (
-          (e as { cause?: { code?: string }; code?: string }).cause?.code === "55000" ||
-          (e as { code?: string }).code === "55000"
-        ) {
-          throw new Error(`clearinghouse control numbers are exhausted for ${usage} usage`);
-        }
-        throw e;
-      }
-      const n = res.rows[0]?.n;
-      if (!n) throw new Error("clearinghouse control number allocation returned nothing");
-      return n.padStart(9, "0");
+    allocateControlNumber(usage) {
+      return nextControlNumber(db, usage);
+    },
+
+    allocateInterchangeNumber(organizationId, scope, idempotencyKey, usage) {
+      return inOrg(organizationId, async (tx) => {
+        const known = async (): Promise<number | undefined> => {
+          const [row] = await tx
+            .select({ n: I.interchangeNumber, usage: I.usage })
+            .from(I)
+            .where(
+              and(
+                eq(I.organizationId, organizationId),
+                eq(I.scope, scope),
+                eq(I.idempotencyKey, idempotencyKey),
+              ),
+            )
+            .limit(1);
+          // A key remembered under the other usage would mix the test and production number spaces.
+          if (row && row.usage !== usage)
+            throw new Error("clearinghouse interchange number was allocated under a different usage");
+          return row?.n;
+        };
+        const existing = await known();
+        if (existing !== undefined) return String(existing).padStart(9, "0");
+        // Draw first, then try to bind it: a concurrent caller on the same key can win the insert, so this number is
+        // dropped (a gap in the sequence is legal, a reused number is not) and the winner's is read back.
+        const drawn = Number(await nextControlNumber(tx, usage));
+        const [inserted] = await tx
+          .insert(I)
+          .values({ organizationId, scope, idempotencyKey, usage, interchangeNumber: drawn })
+          .onConflictDoNothing()
+          .returning({ n: I.interchangeNumber });
+        const n = inserted?.n ?? (await known());
+        if (n === undefined)
+          throw new Error("clearinghouse interchange number allocation returned nothing");
+        return String(n).padStart(9, "0");
+      });
     },
 
     complete(organizationId, scope, idempotencyKey, clearinghouseSubmissionId, receivedAt) {

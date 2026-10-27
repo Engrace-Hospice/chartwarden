@@ -91,6 +91,20 @@ export interface SubmissionAttemptStore {
    */
   allocateControlNumber(usage: AttemptUsage): Promise<string>;
   /**
+   * The interchange control number (ISA13) for one submission: 9 digits, platform-unique like
+   * {@link allocateControlNumber}, and REMEMBERED under (tenant, scope, idempotency key). A job redelivered after the
+   * vendor took the file (before its own transaction committed) renders the identical ISA13. The interchange date and
+   * time (ISA09/ISA10) still follow the render clock, so a raw-X12 vendor can see a changed payload under the same key
+   * (issue #836). The memo is durable and independent of the
+   * caller's transaction. A new submission (a new control number, so a new key) gets a new number.
+   */
+  allocateInterchangeNumber(
+    organizationId: string,
+    scope: string,
+    idempotencyKey: string,
+    usage: AttemptUsage,
+  ): Promise<string>;
+  /**
    * reserved -> sent, recording the vendor's id. Idempotent: a row that is already sent is returned unchanged.
    * Null when no such row exists.
    */
@@ -135,6 +149,7 @@ export interface SubmissionAttemptStore {
 export class InMemoryAttemptStore implements SubmissionAttemptStore {
   private readonly rows: SubmissionAttempt[] = [];
   private readonly counters: Record<AttemptUsage, number> = { test: 0, production: 0 };
+  private readonly interchangeNumbers = new Map<string, { number: string; usage: AttemptUsage }>();
 
   private live(organizationId: string, scope: string): SubmissionAttempt[] {
     return this.rows.filter(
@@ -160,11 +175,38 @@ export class InMemoryAttemptStore implements SubmissionAttemptStore {
     return Promise.resolve(this.rows[this.indexOf(organizationId, scope, idempotencyKey)] ?? null);
   }
 
-  allocateControlNumber(usage: AttemptUsage): Promise<string> {
-    if (this.counters[usage] >= 999_999_999)
-      return Promise.reject(new Error("control numbers exhausted"));
+  private nextNumber(usage: AttemptUsage): string {
+    if (this.counters[usage] >= 999_999_999) throw new Error("control numbers exhausted");
     this.counters[usage] += 1;
-    return Promise.resolve(String(this.counters[usage]).padStart(9, "0"));
+    return String(this.counters[usage]).padStart(9, "0");
+  }
+
+  allocateControlNumber(usage: AttemptUsage): Promise<string> {
+    try {
+      return Promise.resolve(this.nextNumber(usage));
+    } catch (e) {
+      return Promise.reject(e);
+    }
+  }
+
+  allocateInterchangeNumber(
+    organizationId: string,
+    scope: string,
+    idempotencyKey: string,
+    usage: AttemptUsage,
+  ): Promise<string> {
+    const memo = JSON.stringify([organizationId, scope, idempotencyKey]);
+    try {
+      const prior = this.interchangeNumbers.get(memo);
+      if (prior && prior.usage !== usage) {
+        throw new Error("clearinghouse interchange number was allocated under a different usage");
+      }
+      const known = prior?.number ?? this.nextNumber(usage);
+      this.interchangeNumbers.set(memo, { number: known, usage });
+      return Promise.resolve(known);
+    } catch (e) {
+      return Promise.reject(e);
+    }
   }
 
   reserve(attempt: SubmissionAttempt): Promise<ReserveResult> {

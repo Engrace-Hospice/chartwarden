@@ -233,7 +233,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         probeHealth: async () => true,
       },
       // These cases exercise the transport, not the rendering (the loader has its own suites and the gap cases below).
-      renderClaim: async () => x12Text ?? "ISA*00*...~",
+      renderClaim: async () => ({ x12: x12Text ?? "ISA*00*...~" }),
       transport: {
         binding: { vendor, transport: clearinghouse },
         contexts: { contextFor: async () => CTX, providerEntitiesFor: async () => [PE] },
@@ -438,7 +438,13 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
     const unreachable = (what: string) => () => {
       throw new Error(`${what} must not be read for a claim that cannot be sent`);
     };
-    const { renderClaim: _stub, ...deps } = depsFor(clearinghouse);
+    // The durable store is bound as in production: the interchange number is allocated before the loader reports its gaps.
+    const { renderClaim: _stub, ...deps } = depsFor(
+      clearinghouse,
+      "in_memory",
+      undefined,
+      createDrizzleAttemptStore(handle.db),
+    );
     return {
       ...deps,
       claim837i: {
@@ -1068,6 +1074,70 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
       expect(await claimState(c.claimId)).toBe("SUBMITTED");
       expect((await submissionRow(c.submissionId)).outcome).toBe("submitted");
       expect(r.uploads).toEqual([c.ccn]);
+    });
+
+    describe("ISA13 (the interchange number) is remembered per submission", () => {
+      /** Renders by asking the worker for the interchange number, as the real renderer does, and records it. */
+      function numbering(r: ReturnType<typeof rig>) {
+        const numbers: number[] = [];
+        const deps: M23WorkerDeps = {
+          ...r.deps(),
+          renderClaim: async (args) => {
+            numbers.push(await args.interchangeNumberFor(CTX));
+            return { x12: X12_CLAIM };
+          },
+        };
+        return { numbers, deps };
+      }
+      const memo = async (ccn: string) =>
+        (
+          await admin.query(
+            "SELECT interchange_number::int AS n, usage FROM clearinghouse_interchange_number WHERE idempotency_key = $1",
+            [`m23.claim.${ccn}`],
+          )
+        ).rows;
+
+      it("a job redelivered after the vendor took the file renders the SAME ISA13; another claim gets another", async () => {
+        const r = rig();
+        const { numbers, deps } = numbering(r);
+        const c = await seed("a4a4a4a4-a4a4-a4a4-a4a4-a4a4a4a4a4a4");
+        await expect(runThenKill(deps, c.job)).rejects.toThrow(KILLED);
+        // The worker's transaction rolled back, but the number was committed on the store's own connection.
+        const [first] = await memo(c.ccn);
+        expect(first?.n).toBe(numbers[0]);
+
+        await runInOrg((tx) => runClaimSubmit(tx, deps, c.job));
+        expect(numbers).toHaveLength(2);
+        expect(numbers[1]).toBe(numbers[0]);
+        expect(await memo(c.ccn)).toHaveLength(1);
+
+        const other = await seed("b5b5b5b5-b5b5-b5b5-b5b5-b5b5b5b5b5b5");
+        const second = numbering(r);
+        await runInOrg((tx) => runClaimSubmit(tx, second.deps, other.job));
+        expect(second.numbers[0]).not.toBe(numbers[0]);
+      });
+
+      it("without a bound attempt store the attempt fails as failed_worker and sends nothing", async () => {
+        const r = rig();
+        const c = await seed("c6c6c6c6-c6c6-c6c6-c6c6-c6c6c6c6c6c6");
+        const full = r.deps();
+        const deps: M23WorkerDeps = {
+          ...full,
+          transport: full.transport && {
+            binding: full.transport.binding,
+            contexts: full.transport.contexts,
+          },
+          renderClaim: async (args) => {
+            await args.interchangeNumberFor(CTX);
+            return { x12: X12_CLAIM };
+          },
+        };
+        await runInOrg((tx) => runClaimSubmit(tx, deps, c.job));
+        const sub = await submissionRow(c.submissionId);
+        expect(sub.outcome).toBe("failed_worker");
+        expect(sub.outcome_reason).toMatch(/attempt store is not bound/);
+        expect(r.uploads).toEqual([]);
+      });
     });
   });
 });

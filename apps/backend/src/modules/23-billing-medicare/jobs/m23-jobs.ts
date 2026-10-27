@@ -52,8 +52,10 @@ import {
   CH,
   CLEARINGHOUSE_VENDOR_ENV,
   type HospiceHistory,
+  type StediClaimJson,
   assertNoMbi,
   parseClearinghouseVendor,
+  scopeKey,
 } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { type Claim837iSubmitDeps, renderClaimForTransport } from "../services/claim-837i-submit";
@@ -65,6 +67,7 @@ import {
   activeTransport,
   priorClaimAttempt,
   pullTransportAcks,
+  submissionKeyFor,
   transportUpload,
 } from "./clearinghouse-submission";
 import { type AckPayerDates, applyNoticeAck, sanitizeAckReasonCodes } from "./notice-ack-jobs";
@@ -274,6 +277,8 @@ export interface MacPortalPort {
     readonly providerEntityId: string;
     readonly kind: "claim_837i" | "noe" | "notr" | "transfer_notice";
     readonly x12: string;
+    /** The same claim as Stedi's JSON; a Stedi-bound transport sends this instead of the raw X12. */
+    readonly stediJson?: StediClaimJson;
     readonly controlNumber: string;
   }): Promise<{
     readonly accepted: boolean;
@@ -840,7 +845,11 @@ async function generateClaim837i(
   organizationId: string,
   claim: Parameters<typeof claimDocumentFor>[0] & { readonly providerEntityId: string },
   claimControlNumber: string,
-): Promise<{ readonly x12: string; readonly correlationId: string }> {
+): Promise<{
+  readonly x12: string;
+  readonly stediJson?: StediClaimJson;
+  readonly correlationId: string;
+}> {
   const transport = activeTransport(deps);
   if (!transport) {
     return x12Of(deps).generate837i({
@@ -856,17 +865,34 @@ async function generateClaim837i(
       "bind the 837I loader ports (admission, MBI unlock, patients, addresses, parties) beside the clearinghouse transport",
     );
   }
-  const x12 = await (deps.renderClaim ?? renderClaimForTransport)({
+  const attempts = transport.attempts;
+  const rendered = await (deps.renderClaim ?? renderClaimForTransport)({
     tx,
     deps: deps.claim837i as Claim837iSubmitDeps,
     contextFor: transport.contexts.contextFor,
     organizationId,
     claim,
     claimControlNumber,
+    // Remembered under the key the transport files this submission under, so a redelivery renders the same ISA13.
+    interchangeNumberFor: async (context) => {
+      if (!attempts) {
+        throw new Error(
+          "the clearinghouse attempt store is not bound, so an 837I interchange number cannot be allocated",
+        );
+      }
+      return Number(
+        await attempts.allocateInterchangeNumber(
+          organizationId,
+          scopeKey(context),
+          submissionKeyFor("claim", claimControlNumber),
+          context.usage,
+        ),
+      );
+    },
     now: (deps.now ?? (() => new Date()))(),
   });
   // A `submitted` attempt must carry a worker correlation id (the terminalize trigger); the sidecar used to mint it.
-  return { x12, correlationId: randomUUID() };
+  return { ...rendered, correlationId: randomUUID() };
 }
 
 // ── the §4.8 WORK processors (each runs INSIDE the worker's per-job withOrgContext tx) ──────────────────────
@@ -919,6 +945,7 @@ export async function runClaimSubmit(
 
   let generated: {
     readonly x12: string;
+    readonly stediJson?: StediClaimJson;
     readonly correlationId: string | null;
   } | null = null;
   let uploaded: {
@@ -938,6 +965,7 @@ export async function runClaimSubmit(
       providerEntityId: claim.providerEntityId,
       kind: "claim_837i",
       x12: generated.x12,
+      stediJson: generated.stediJson,
       controlNumber: job.claimControlNumber,
     });
   } catch (err) {
@@ -1152,6 +1180,7 @@ export async function runClaimSubmitRetry(
 
   let generated: {
     readonly x12: string;
+    readonly stediJson?: StediClaimJson;
     readonly correlationId: string | null;
   } | null = null;
   let uploaded: {
@@ -1169,6 +1198,7 @@ export async function runClaimSubmitRetry(
         providerEntityId: claim.providerEntityId,
         kind: "claim_837i",
         x12: generated.x12,
+        stediJson: generated.stediJson,
         controlNumber: claimControlNumber,
       });
       if (!uploaded.accepted) failureReason = "MAC portal rejected the retry upload";

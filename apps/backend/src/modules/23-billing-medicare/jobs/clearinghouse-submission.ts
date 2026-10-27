@@ -8,10 +8,12 @@ import type {
   ClearinghouseBinding,
   ClearinghouseContext,
   SubmissionAttempt,
+  StediClaimJson,
   SubmissionAttemptStore,
   SubmissionKind,
+  SubmissionPayload,
 } from "@chartwarden/x12-837-client";
-import { CH, routeAckEvent, scopeKey } from "@chartwarden/x12-837-client";
+import { CH, compareStediClaimJsonToX12, routeAckEvent, scopeKey } from "@chartwarden/x12-837-client";
 import {
   type CredentialAlertPort,
   type CredentialGuardDeps,
@@ -90,8 +92,34 @@ export type TransportUpload = (input: {
   readonly providerEntityId: string;
   readonly kind: TransportUploadKind;
   readonly x12: string;
+  /** The same claim as Stedi's JSON; used for a Stedi claim, where it replaces the raw X12 (no ISA13 to match). */
+  readonly stediJson?: StediClaimJson;
   readonly controlNumber: string;
 }) => Promise<{ readonly accepted: boolean; readonly generatedFileUri: string }>;
+
+/**
+ * Stedi's raw-X12 route requires ISA13 to equal the submission's control number, which ours (a numeric interchange
+ * number against an alphanumeric claim control number) never does; its JSON route carries no ISA13. So a Stedi claim
+ * goes as JSON, after proving it agrees with the X12 built from the same input. Everything else is raw X12.
+ */
+function payloadFor(
+  vendor: string | null,
+  kind: SubmissionKind,
+  input: { readonly kind: TransportUploadKind; readonly x12: string; readonly stediJson?: StediClaimJson },
+): SubmissionPayload {
+  if (vendor !== "stedi" || kind !== "claim" || !input.stediJson) {
+    return { format: "x12", x12: input.x12 };
+  }
+  const disagree = compareStediClaimJsonToX12(input.stediJson, input.x12);
+  if (disagree.length > 0) {
+    throw failure(
+      kind,
+      CH.INVALID_REQUEST,
+      `the Stedi JSON and the X12 of this claim disagree on: ${disagree.join(", ")}`,
+    );
+  }
+  return { format: "json", document: input.stediJson };
+}
 
 /**
  * `MacPortalPort.upload` over the transport. The legacy return shape is kept so the workers' success/failure handling
@@ -113,7 +141,7 @@ export function transportUpload(transport: M23TransportDeps): TransportUpload {
       kind,
       controlNumber: input.controlNumber,
       idempotencyKey: submissionKeyFor(kind, input.controlNumber),
-      payload: { format: "x12", x12: input.x12 },
+      payload: payloadFor(transport.binding.vendor, kind, input),
     } as const;
     const result = await withCredentialGuard(transport, ctx, () =>
       kind === "claim"
