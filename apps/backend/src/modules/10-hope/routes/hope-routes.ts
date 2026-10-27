@@ -26,7 +26,7 @@ import {
   requireAbac,
   requirePermission,
 } from "@chartwarden/auth";
-import { assertAuthorBoundToActor, assertAuthorDisciplineAllowed } from "@chartwarden/hope";
+import { assertAuthorBoundToActor } from "@chartwarden/hope";
 import { type HopeRfaKind, UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
@@ -117,8 +117,9 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
 
 /**
  * #850: the correct body accepts the SFV author union (RN/NP/MD/LPN/LVN) because the record's RFA kind is
- * only known server-side. Enforce the per-RFA floor here, and require an LPN/LVN attribution on an SFV to be
- * the actor's own discipline. An unresolvable id falls to the strict (non-SFV) floor.
+ * only known server-side. The claimed attribution must clear the per-RFA floor AND be one of the ACTOR's own
+ * role-derived disciplines, for every RFA kind and every claimed value (never the body's word). An
+ * unresolvable id falls to the strict (non-SFV) floor.
  */
 async function assertCorrectionAttribution(
   service: HopeRouteService,
@@ -129,10 +130,7 @@ async function assertCorrectionAttribution(
 ): Promise<void> {
   const facts = await service.loadAssessment(organizationId, assessmentId);
   const rfaKind = (facts?.rfaKind ?? "02_huv1") as HopeRfaKind;
-  assertAuthorDisciplineAllowed(rfaKind, claimed);
-  if (rfaKind === "04_sfv" && (claimed === "LPN" || claimed === "LVN")) {
-    assertAuthorBoundToActor(rfaKind, claimed, request.context?.roles ?? []);
-  }
+  assertAuthorBoundToActor(rfaKind, claimed, request.context?.roles ?? []);
 }
 
 // Static permission guards (§4.6).

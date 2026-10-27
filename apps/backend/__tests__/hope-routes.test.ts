@@ -453,6 +453,86 @@ describe("M10-T06 — §4.7 hope.sfvAuthorAllowed (RN/NP/LPN/LVN; CMS HOPE Guida
     expect(nonSfv.statusCode).toBe(403);
     await app.close();
   });
+
+  const correctBody = (authorDiscipline: string) => ({
+    correctionReason: "x",
+    targetDate: NOW,
+    authorDiscipline,
+    data: huv1Body().data,
+  });
+  const correct = (
+    app: Awaited<ReturnType<typeof openSfv>>["app"],
+    headers: Record<string, string>,
+    id: string,
+    authorDiscipline: string,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/hope/assessments/${id}/correct`,
+      headers,
+      payload: correctBody(authorDiscipline),
+    });
+
+  it("a correction cannot attribute an SFV to a discipline the actor does not hold (LPN as RN: 403)", async () => {
+    const { app, triggeringAssessmentId } = await openSfv();
+    const sfvId = (await postSfv(app, LPN, triggeringAssessmentId, "LPN")).json().id as string;
+    const res = await correct(app, LPN, sfvId, "RN");
+    expect(res.statusCode).toBe(403);
+    expect(JSON.stringify(res.json())).toContain("M10_DISCIPLINE_NOT_PERMITTED");
+    await app.close();
+  });
+  it("a correction cannot attribute a non-SFV record to another discipline (RN as NP: 403; as RN: 201)", async () => {
+    const { app, triggeringAssessmentId } = await openSfv();
+    expect((await correct(app, RN, triggeringAssessmentId, "NP")).statusCode).toBe(403);
+    expect((await correct(app, RN, triggeringAssessmentId, "LPN")).statusCode).toBe(403);
+    expect((await correct(app, RN, triggeringAssessmentId, "RN")).statusCode).toBe(201);
+    await app.close();
+  });
+  it("a chaplain cannot edit, patch or sign an SFV correction draft (403)", async () => {
+    const { app, triggeringAssessmentId } = await openSfv();
+    const sfvId = (await postSfv(app, LPN, triggeringAssessmentId, "LPN")).json().id as string;
+    const draftId = (await correct(app, LPN, sfvId, "LPN")).json().id as string;
+    const put = await app.inject({
+      method: "PUT",
+      url: `/api/v1/hope/assessments/${draftId}`,
+      headers: CHAPLAIN,
+      payload: { data: huv1Body().data },
+    });
+    const sign = await app.inject({
+      method: "POST",
+      url: `/api/v1/hope/assessments/${draftId}/sign`,
+      headers: CHAPLAIN,
+      payload: { ifVersion: 1, attestationConfirmed: true },
+    });
+    expect(put.statusCode).toBe(403);
+    expect(sign.statusCode).toBe(403);
+    await app.close();
+  });
+  it("an LPN cannot edit, patch or sign a NON-SFV draft (403)", async () => {
+    const { app } = makeServer();
+    const rec = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: RN,
+      payload: huv1Body(),
+    });
+    const id = rec.json().id as string;
+    const put = await app.inject({
+      method: "PUT",
+      url: `/api/v1/hope/assessments/${id}`,
+      headers: LPN,
+      payload: { data: huv1Body().data },
+    });
+    const sign = await app.inject({
+      method: "POST",
+      url: `/api/v1/hope/assessments/${id}/sign`,
+      headers: LPN,
+      payload: { ifVersion: rec.json().version, attestationConfirmed: true },
+    });
+    expect(put.statusCode).toBe(403);
+    expect(sign.statusCode).toBe(403);
+    await app.close();
+  });
 });
 
 describe("M10-T06 — §4.7 hope.authorDisciplineAllowed (RN/NP/MD only)", () => {
