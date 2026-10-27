@@ -12,9 +12,13 @@
 #
 # Least privilege. Two different off-site keys:
 #   - postgres (archive_command) holds ONLY the WAL key: get/put/list under pgbackrest/archive/ (no delete, no other
-#     prefix; backup/offsite-policies/wal-archive.json). A compromised database container can add WAL, nothing else.
-#   - the backup sidecar holds the backup key (backup/offsite-policies/backup.json): it can write and create delete
-#     markers, never delete a version or bypass retention; the bucket's COMPLIANCE object lock keeps the history.
+#     prefix; backup/offsite-policies/wal-archive.json). A compromised database container can write under
+#     pgbackrest/archive/, INCLUDING overwriting archive.info or an existing segment (S3 PutObject cannot be limited to
+#     new keys without conditional writes pgBackRest does not send). The COMPLIANCE lock keeps every prior version, and
+#     pgBackRest checksums each segment, so an overwrite is detectable and recoverable (--repo-target-time), not loss.
+#   - the backup sidecar holds the backup key (backup/offsite-policies/backup.json): it can write anywhere but delete
+#     only under pgbackrest/ (expire), never delete a version or bypass retention; the bucket's COMPLIANCE default
+#     retention (>= BACKUP_OFFSITE_MIN_LOCK_DAYS, checked by every snapshot) keeps the history.
 # Secrets are Docker secrets (files under ./secrets/, mode 0400, owned by uid 999 = postgres), read via <NAME>_FILE;
 # only non-secret settings and key ids are environment variables.
 
@@ -74,16 +78,28 @@ services:
       BACKUP_FULL_BACKUP_WEEKDAY: ${BACKUP_FULL_BACKUP_WEEKDAY:-7}
       BACKUP_MAX_AGE_S: ${BACKUP_MAX_AGE_S:-2700}
       BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
-      OPS_ALERT_WEBHOOK_URL: ${OPS_ALERT_WEBHOOK_URL:-}
+      # Mandatory and https-only: the scheduler refuses to start without it.
+      OPS_ALERT_WEBHOOK_URL: ${OPS_ALERT_WEBHOOK_URL:?set in .env.production (https://, backup failures page through it)}
+      BACKUP_OFFSITE_MIN_LOCK_DAYS: ${BACKUP_OFFSITE_MIN_LOCK_DAYS:-100}
+      BACKUP_PG_WAL_ALERT_BYTES: ${BACKUP_PG_WAL_ALERT_BYTES:-8589934592}
     secrets:
       - backup_pg_local_cipher_pass
       - backup_pg_offsite_cipher_pass
       - backup_offsite_secret_key
       - backup_object_sse_c_key
       - backup_source_minio_secret_key
+    # Hardened: no capabilities, no privilege gain, read-only root filesystem; only its volumes and tmpfs are writable.
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /etc/pgbackrest:uid=999,gid=999,mode=0700
+      - /var/spool/pgbackrest:uid=999,gid=999,mode=0700
     volumes:
-      # The sidecar reads PGDATA and talks to Postgres over the shared socket (pgBackRest backs up a LOCAL pg1-path).
-      - postgres-data:/var/lib/postgresql
+      # The sidecar reads PGDATA (read-only: pgBackRest backs up a LOCAL pg1-path and writes only to its repos) and
+      # talks to Postgres over the shared socket, where the shared pgBackRest lock also lives.
+      - postgres-data:/var/lib/postgresql:ro
       - pg-socket:/var/run/postgresql
       - pgbackrest-repo:/var/lib/pgbackrest
       - backup-state:/var/lib/cw-backup
@@ -104,7 +120,13 @@ services:
     restart: "no"
     user: postgres
     command: ["cw-backup.sh", "provision-source-reader"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs:
+      - /tmp
     environment:
+      BACKUP_STATE_DIR: /tmp/cw-backup
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       BACKUP_SOURCE_MINIO_URL: http://minio:9000

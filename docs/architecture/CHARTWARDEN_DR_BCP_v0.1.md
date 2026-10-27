@@ -414,12 +414,14 @@ reports it as `not-in-snapshot`.
 | Base backup | daily from `BACKUP_DB_BACKUP_HOUR_UTC` (2), full on `BACKUP_FULL_BACKUP_WEEKDAY` (7 = Sunday), else differential | |
 | Local repo retention | 2 full sets (+ their WAL) | `BACKUP_PG_RETENTION_FULL_LOCAL` |
 | Off-site repo retention | 13 full sets, about 90 days | `BACKUP_PG_RETENTION_FULL_OFFSITE` |
-| Object copies, manifests | kept by bucket versioning; expire with a bucket lifecycle rule matching the off-site retention | target configuration |
+| Off-site Object Lock | default retention COMPLIANCE, >= 100 days (covers the 13-week pgBackRest window); every snapshot refuses a shorter or non-COMPLIANCE default and records the mode in its marker | `BACKUP_OFFSITE_MIN_LOCK_DAYS` |
+| Off-site lifecycle | noncurrent versions and delete markers expire after 120 days (always LONGER than the lock); incomplete multipart uploads aborted after 7 days | target configuration |
 | Stale alert | no successful snapshot for 45 min | `BACKUP_MAX_AGE_S` |
+| WAL health alert | `archive_command` failing, or `pg_wal` above 8 GiB, checked every snapshot tick | `BACKUP_PG_WAL_ALERT_BYTES` |
 
 Targets (§3): coordinated RPO = snapshot interval (15 min, the Tier 2 target); database-only RPO = last archived WAL
 segment (about 60 s, inside the Tier 1 5 min target) via a manual `--type=time` restore; RTO target 1 h (Tier 1).
-Measured so far only at synthetic scale (`audit/restore-drill/2026-10-27-coordinated-backup-drill.md`: 7.5 s restore of 6 objects and 50k rows);
+Measured so far only at synthetic scale (`audit/restore-drill/2026-10-27-coordinated-backup-drill.md`: 7.0 s restore of 6 objects and 50k rows);
 production figures come from the first witnessed drill.
 
 #### 4.8.4 Configuration: environment (`.env.production`) and secret files (`./secrets/`)
@@ -438,8 +440,9 @@ key ids and settings are environment variables. (`<NAME>` env values still work,
 | `secrets/backup_pg_local_cipher_pass`, `secrets/backup_pg_offsite_cipher_pass` | file | pgBackRest repo1 / repo2 AES-256 passphrases, >= 32 chars, different |
 | `secrets/backup_object_sse_c_key` | file | base64 of 32 random bytes: the SSE-C key for every off-site object, manifest and marker (sidecar only) |
 | `BACKUP_SOURCE_MINIO_ACCESS_KEY` + `secrets/backup_source_minio_secret_key` | env + file | the read-only MinIO account `minio-backup-provision` creates |
-| `OPS_ALERT_WEBHOOK_URL` | the existing ops-notice webhook; failures POST `backup.snapshot_failed` / `backup.snapshot_timeout` / `backup.stale` |
-| `BACKUP_HEARTBEAT_URL` | optional dead-man's switch pinged after each successful snapshot (alerts when the host itself is gone) |
+| `OPS_ALERT_WEBHOOK_URL` | env | **mandatory, https only** (the sidecar refuses to start without it; curl `--proto =https`): POSTs `backup.snapshot_failed` / `backup.snapshot_timeout` / `backup.stale` / `backup.wal_archive_failing` / `backup.pg_wal_large` |
+| `BACKUP_OFFSITE_MIN_LOCK_DAYS`, `BACKUP_PG_WAL_ALERT_BYTES` | env | 100 days / 8 GiB defaults (above) |
+| `BACKUP_HEARTBEAT_URL` | env | optional dead-man's switch pinged after each successful snapshot (alerts when the host itself is gone) |
 
 #### 4.8.5 Key management
 
@@ -455,8 +458,8 @@ the old key until its last object expires.
 
 | Key | Holder | Can | Cannot |
 | --- | --- | --- | --- |
-| WAL (`offsite-policies/wal-archive.json`) | `postgres` container (`archive_command`) | list/get/put under `pgbackrest/archive/` | delete anything, touch backups, objects, snapshots |
-| backup (`offsite-policies/backup.json`) | `backup` sidecar | put, get, list, delete CURRENT versions (pgBackRest expire; on a versioned bucket that only adds delete markers) | delete a version, change retention, bypass the lock, change bucket policy |
+| WAL (`offsite-policies/wal-archive.json`) | `postgres` container (`archive_command`) | list/get/put under `pgbackrest/archive/`, including OVERWRITING an existing key there (residual risk, below) | delete anything, write outside `pgbackrest/archive/` |
+| backup (`offsite-policies/backup.json`) | `backup` sidecar | put, get, list; delete CURRENT versions under `pgbackrest/backup/` and `pgbackrest/archive/` only (pgBackRest expire; on a versioned bucket a delete only adds a marker) | delete under `objects/` or `snapshots/`, delete a version, change retention, bypass the lock, change bucket policy |
 | restore (`offsite-policies/restore.json`) | `restore.sh` (operator) | list and read, including old versions | write or delete |
 
 COMPLIANCE-mode Object Lock is what makes this hold: no key, not even the provider account root, can delete a locked
@@ -465,6 +468,31 @@ data versions age out through a lifecycle rule after the lock. Restoring from be
 pgBackRest's `--repo-target-time` (versioned S3 repositories). The WAL key still holds the off-site cipher passphrase
 (pgBackRest encrypts WAL client-side), so it can read WAL it is allowed to fetch; it cannot read base backups.
 `backup:coordinated-drill` proves each "cannot" against the real policy files.
+
+**Retention arithmetic.** The default retention N must be at least the pgBackRest retention window (13 weekly fulls =
+91 days, so N = 100), and the lifecycle rule that expires noncurrent versions and delete markers must be LONGER than N
+(120 days), or the lifecycle would try to remove versions the lock still protects. Storage cost: every version written
+in the last 120 days.
+
+**Residual risk: WAL overwrite.** S3 `PutObject` cannot be limited to new keys unless the client sends conditional
+writes (`If-None-Match`), which pgBackRest does not; a bucket-policy deny on writes without it would stop archiving.
+So the WAL key can overwrite `archive.info` or an archived segment. Mitigations: the COMPLIANCE lock keeps every prior
+version (the drill overwrites a probe key and checks the first version is retained), pgBackRest checksums every
+segment (a substituted segment fails `archive-get` / `verify`), and a restore can read the repository as of a time
+before the tampering with `RESTORE_REPO_TARGET_TIME` (`--repo-target-time`).
+
+**Removing delete markers (owner/root only).** A compromised backup key can hide current pgBackRest files behind
+delete markers; it cannot destroy them. Recovery: (1) restore with `RESTORE_REPO_TARGET_TIME=<before the incident>`
+(no change to the bucket needed); or (2) with the bucket OWNER credentials, list markers
+(`mc ls --versions --recursive <alias>/<bucket>/pgbackrest/`) and delete each marker by its version id
+(`mc rm --version-id <marker-id> <alias>/<bucket>/<key>`); deleting a marker is allowed under COMPLIANCE because the
+marker holds no data. Rotate the backup key first. Record the action in the incident log.
+
+**Accepted, documented risks.** The SSE-C key is on `mc`'s command line inside the backup container (`mc` has no env
+or file form for it); the WAL key's container holds the same off-site cipher passphrase as the sidecar (pgBackRest
+needs it to encrypt WAL; it gives no access to base backups without the backup or restore key); the alert webhook URL
+is on `curl`'s command line inside the container. All three are visible only to a process already inside that
+container, never in logs or `docker inspect`.
 
 #### 4.8.6 Restore procedure (isolated; never onto the running stack)
 
@@ -488,8 +516,10 @@ verified restore by pointing a fresh stack at the restored volume and MinIO data
 
 #### 4.8.7 What is operational, not code (tracked in the #857 follow-up issue)
 
-1. Provision the off-site bucket (Object Lock in COMPLIANCE mode + versioning + lifecycle) and its three scoped keys
-   (§4.8.5); generate and escrow the encryption keys; write `./secrets/`.
+1. Provision the off-site bucket: Object Lock + versioning at creation, default retention COMPLIANCE >= 100 days,
+   lifecycle: noncurrent versions and delete markers after 120 days, incomplete multipart uploads after 7 days. Create
+   its three scoped keys (§4.8.5); generate and escrow the encryption keys; write `./secrets/`; set the mandatory
+   https `OPS_ALERT_WEBHOOK_URL`. Mirror the backup image's base and `mc` digests into a registry you control.
 2. Set the §4.8.4 variables, build the image, run `minio-backup-provision`, `up -d postgres backup`.
 3. First witnessed restore of production data with `restore.sh` + the verifier; record it under `audit/restore-drill/`.
 4. Recurring cadence: monthly isolated restore + verify (§8.2), quarterly full off-site restore timed against the RTO

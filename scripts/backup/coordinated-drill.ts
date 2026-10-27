@@ -20,10 +20,10 @@
  * Never touches the shared Docker cluster: every container, volume and network is created here and removed at the end.
  * Needs: docker (Docker Desktop: host.docker.internal), bun, openssl.
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { createServer as createHttpServer } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -354,6 +354,8 @@ async function main(): Promise<number> {
       "BACKUP_OFFSITE_CA_FILE=/certs/public.crt",
       "BACKUP_PG_OFFSITE_CIPHER_PASS_FILE=/run/secrets/offsite_cipher",
       `CHARTWARDEN_DB_NAME=${DB}`,
+      // The drill bucket's lock is 1 day; production requires >= 100 (the pgBackRest retention window).
+      "BACKUP_OFFSITE_MIN_LOCK_DAYS=1",
     ];
     const writeEnv = (path: string, lines: readonly string[]): void =>
       writeFileSync(path, `${[...common, ...lines].join("\n")}\n`, { mode: 0o600 });
@@ -380,51 +382,87 @@ async function main(): Promise<number> {
       "BACKUP_OBJECT_SSE_C_KEY_FILE=/run/secrets/sse_c",
       "BACKUP_SOURCE_MINIO_SECRET_KEY_FILE=/run/secrets/source_secret",
     ]);
+    const backupArgs = (
+      args: readonly string[],
+      extra: readonly string[],
+      env: string,
+    ): string[] => [
+      "run",
+      "--rm",
+      "--label",
+      `${LABEL}=${runId}`,
+      "--network",
+      net,
+      "--user",
+      "postgres",
+      "--env-file",
+      env,
+      // The same hardening as compose.backup.yml's `backup` service: PGDATA read-only, no capabilities, read-only root.
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "--read-only",
+      "--tmpfs",
+      "/tmp",
+      "--tmpfs",
+      "/etc/pgbackrest:uid=999,gid=999,mode=0700",
+      "--tmpfs",
+      "/var/spool/pgbackrest:uid=999,gid=999,mode=0700",
+      "-v",
+      `${vols.pgdata}:/var/lib/postgresql:ro`,
+      "-v",
+      `${vols.pgsock}:/var/run/postgresql`,
+      "-v",
+      `${vols.pgrepo}:/var/lib/pgbackrest`,
+      "-v",
+      `${vols.state}:/var/lib/cw-backup`,
+      "-v",
+      `${certs}:/certs:ro`,
+      "-v",
+      `${secretsDir}:/run/secrets:ro`,
+      ...extra,
+      image,
+      "cw-backup.sh",
+      ...args,
+    ];
     const backupRun = (
       args: readonly string[],
       extra: readonly string[] = [],
       env = envFile,
     ): Run => {
-      const r = sh("docker", [
-        "run",
-        "--rm",
-        "--label",
-        `${LABEL}=${runId}`,
-        "--network",
-        net,
-        "--user",
-        "postgres",
-        "--env-file",
-        env,
-        "-v",
-        `${vols.pgdata}:/var/lib/postgresql`,
-        "-v",
-        `${vols.pgsock}:/var/run/postgresql`,
-        "-v",
-        `${vols.pgrepo}:/var/lib/pgbackrest`,
-        "-v",
-        `${vols.state}:/var/lib/cw-backup`,
-        "-v",
-        `${certs}:/certs:ro`,
-        "-v",
-        `${secretsDir}:/run/secrets:ro`,
-        ...extra,
-        image,
-        "cw-backup.sh",
-        ...args,
-      ]);
+      const r = sh("docker", backupArgs(args, extra, env));
       logs.push(r.out);
       return r;
     };
-    backupRun(
-      ["provision-source-reader"],
-      [
-        "-e",
-        `MINIO_ROOT_USER=${MINIO_ROOT_USER}`,
-        "-e",
-        `MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}`,
-      ],
-    );
+    /** Async variant: keeps the event loop free (the drill's own https alert receiver must answer meanwhile). */
+    const backupRunAsync = (
+      args: readonly string[],
+      env: string,
+    ): Promise<{ code: number; out: string }> =>
+      new Promise((resolve) => {
+        const child = spawn("docker", backupArgs(args, [], env));
+        let out = "";
+        child.stdout.on("data", (d: Buffer) => {
+          out += d.toString("utf8");
+        });
+        child.stderr.on("data", (d: Buffer) => {
+          out += d.toString("utf8");
+        });
+        child.on("close", (code) => resolve({ code: code ?? 1, out }));
+      });
+    // Twice: provisioning is rerun on every enablement and must be idempotent (no blanket `|| true`).
+    for (let i = 0; i < 2; i += 1) {
+      backupRun(
+        ["provision-source-reader"],
+        [
+          "-e",
+          `MINIO_ROOT_USER=${MINIO_ROOT_USER}`,
+          "-e",
+          `MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}`,
+        ],
+      );
+    }
 
     // Source Postgres: the backup image with WAL archiving on, exactly as compose.backup.yml runs it.
     sh("docker", [
@@ -502,12 +540,15 @@ async function main(): Promise<number> {
     console.log("  source migrated and seeded (2 tenants)");
 
     const snapshots: CoordinatedDrillRecord["snapshots"][number][] = [];
+    const lockSeen: string[] = [];
     const takeSnapshot = (type: string): SnapshotMarker => {
       const r = backupRun(["snapshot", type]);
       const m = JSON.parse(backupRun(["marker", "latest"]).stdout) as SnapshotMarker & {
         db: { backupLabel: string };
         objects: { bytes: number };
+        offsite?: { lockMode: string; lockDays: number };
       };
+      lockSeen.push(m.offsite?.lockMode ?? "missing");
       snapshots.push({
         id: m.snapshotId,
         baseBackup: `${m.db.backupLabel}${type === "none" ? " (reused)" : ` (${type})`}`,
@@ -604,35 +645,82 @@ async function main(): Promise<number> {
         "off/cw-offsite/snapshots/forged/marker.json",
       ),
       restoreReads: offMcAs(offUsers.restore, "ls", marker2),
+      backupDeletesSnapshot: offMcAs(offUsers.backup, "rm", marker2),
     };
+    // What the WAL key CAN do: overwrite a key under pgbackrest/archive/ (S3 has no create-only PutObject without
+    // conditional writes). Captured, not hidden: the lock must keep the first version.
+    const probe = "off/cw-offsite/pgbackrest/archive/chartwarden/drill-overwrite-probe";
+    const walOverwrites =
+      offMcAs(offUsers.wal, "cp", "/etc/hostname", probe) &&
+      offMcAs(offUsers.wal, "cp", "/etc/os-release", probe);
+    const probeVersions = spawnSync(
+      "docker",
+      [
+        "run",
+        "--rm",
+        "--entrypoint",
+        "mc",
+        "-e",
+        `MC_HOST_off=https://${offUsers.restore.user}:${offUsers.restore.pw}@host.docker.internal:${offPort}`,
+        image,
+        "--insecure",
+        "--json",
+        "ls",
+        "--versions",
+        probe,
+      ],
+      { encoding: "utf8" },
+    )
+      .stdout.split("\n")
+      .filter((l) => l.includes('"type":"file"')).length;
+    const walHealth =
+      spawnSync("docker", ["exec", "-u", "postgres", `${p}-srcpg`, "true"]).status === 0
+        ? (() => {
+            try {
+              backupRun(["wal-health"]);
+              return true;
+            } catch {
+              return false;
+            }
+          })()
+        : false;
 
     // Negative control 1: a failing snapshot exits non-zero and posts the ops notice.
     const alerts: string[] = [];
-    const hook = createHttpServer((req, res) => {
-      let body = "";
-      req.on("data", (chunk: Buffer) => {
-        body += chunk.toString("utf8");
-      });
-      req.on("end", () => {
-        alerts.push(body);
-        res.end("ok");
-      });
-    });
+    // https only (cw-backup.sh uses curl --proto =https); the container trusts the drill CA via CURL_CA_BUNDLE.
+    const hook = createHttpsServer(
+      {
+        key: readFileSync(join(certs, "private.key")),
+        cert: readFileSync(join(certs, "public.crt")),
+      },
+      (req, res) => {
+        let body = "";
+        req.on("data", (chunk: Buffer) => {
+          body += chunk.toString("utf8");
+        });
+        req.on("end", () => {
+          alerts.push(body);
+          res.end("ok");
+        });
+      },
+    );
     await new Promise<void>((resolve) => hook.listen(0, "0.0.0.0", resolve));
     const hookPort = (hook.address() as AddressInfo).port;
     let failedExit = 0;
+    let failedTail = "";
     const badEnv = join(work, "backup-bad.env");
     writeFileSync(
       badEnv,
-      `${readFileSync(envFile, "utf8").replace("/run/secrets/source_secret", "/run/secrets/wrong_secret")}OPS_ALERT_WEBHOOK_URL=http://host.docker.internal:${hookPort}/ops\n`,
+      `${readFileSync(envFile, "utf8").replace("/run/secrets/source_secret", "/run/secrets/wrong_secret")}OPS_ALERT_WEBHOOK_URL=https://host.docker.internal:${hookPort}/ops\nCURL_CA_BUNDLE=/certs/public.crt\n`,
       { mode: 0o600 },
     );
-    try {
-      backupRun(["snapshot", "none"], [], badEnv);
-    } catch (error) {
-      failedExit = 1;
-      logs.push(String(error));
-    }
+    const failed = await backupRunAsync(["snapshot", "none"], badEnv);
+    logs.push(failed.out);
+    if (failed.code !== 0) failedExit = 1;
+    failedTail = failed.out
+      .split("\n")
+      .filter((l) => /ALERT|webhook|ERROR/.test(l))
+      .join(" / ");
     await sleep(200);
     await new Promise<void>((resolve) => hook.close(() => resolve()));
     const alert = alerts[0]
@@ -664,7 +752,14 @@ async function main(): Promise<number> {
       RESTORE_ID: restoreId,
       RESTORE_PG_PORT: String(rPg),
       RESTORE_MINIO_PORT: String(rMinio),
-      RESTORE_MINIO_IMAGE: MINIO_IMAGE,
+      // restore.sh refuses a tag: resolve the local image to its digest.
+      RESTORE_MINIO_IMAGE: sh("docker", [
+        "image",
+        "inspect",
+        "--format",
+        "{{index .RepoDigests 0}}",
+        MINIO_IMAGE,
+      ]).stdout.trim(),
       RESTORE_OUT_DIR: restoreOut,
       RESTORE_PG_MAX_LOCKS: "1024",
       BACKUP_OFFSITE_CA_HOST_FILE: join(certs, "public.crt"),
@@ -748,10 +843,33 @@ async function main(): Promise<number> {
           !privilege.walDeletesArchiveInfo &&
           !privilege.backupPurgesVersions &&
           !privilege.restoreWrites &&
+          !privilege.backupDeletesSnapshot &&
           privilege.restoreReads,
         detail: Object.entries(privilege)
           .map(([k, v]) => `${k}=${v ? "allowed" : "denied"}`)
           .join(", "),
+      },
+      {
+        name: "residual risk captured: the WAL key CAN overwrite a key under pgbackrest/archive/, and the COMPLIANCE lock keeps the prior version",
+        ok: walOverwrites && probeVersions >= 2,
+        detail: `overwrite ${walOverwrites ? "allowed" : "denied"}; ${probeVersions} version(s) retained`,
+      },
+      {
+        name: "every snapshot verified the off-site default retention is COMPLIANCE and recorded it in its marker",
+        ok: lockSeen.length >= 2 && lockSeen.every((m) => m === "COMPLIANCE"),
+        detail: `marker lock modes: ${lockSeen.join(", ")}`,
+      },
+      {
+        name: "wal-health (archive_command failures, pg_wal size) runs clean against the archiving source",
+        ok: walHealth,
+        detail: walHealth
+          ? "archiver healthy, pg_wal under the alert threshold"
+          : "wal-health failed",
+      },
+      {
+        name: "provision-source-reader is idempotent (ran twice) and the sidecar ran hardened (PGDATA read-only, cap-drop ALL, read-only root)",
+        ok: true,
+        detail: "both provisioning runs and every snapshot succeeded under those flags",
       },
       {
         name: "an object deleted before the snapshot is not resurrected (the off-site history keeps it; the restore drops it)",
@@ -761,7 +879,7 @@ async function main(): Promise<number> {
       {
         name: "a failing snapshot exits non-zero and POSTs backup.snapshot_failed to OPS_ALERT_WEBHOOK_URL",
         ok: failedExit === 1 && alert?.kind === "backup.snapshot_failed",
-        detail: `exit ${failedExit ? "non-zero" : "0"}; alert ${alert ? `${alert.kind} at step ${alert.details.step}` : "not received"}`,
+        detail: `exit ${failedExit ? "non-zero" : "0"}; alert ${alert ? `${alert.kind} at step ${alert.details.step}` : `not received (${failedTail})`}`,
       },
     ];
     // Negative control 2: remove one referenced object from the restored store; the object check must fail.

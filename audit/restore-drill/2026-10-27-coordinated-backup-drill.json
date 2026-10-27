@@ -1,6 +1,6 @@
 {
-  "runId": "1418f9",
-  "startedAt": "2026-10-27T15:47:39.991Z",
+  "runId": "13d376",
+  "startedAt": "2026-10-27T16:13:44.720Z",
   "scale": "synthetic: 2 tenants seeded through the real M36 routes; 50293 rows in 658 tables (incl. reference data); 6 objects",
   "tooling": {
     "pgbackrest": "pgBackRest 2.60.0",
@@ -10,35 +10,35 @@
   },
   "snapshots": [
     {
-      "id": "20261027T154759Z",
-      "baseBackup": "20261027-154900F (full)",
+      "id": "20261027T161403Z",
+      "baseBackup": "20261027-161505F (full)",
       "lsn": "0/D000000",
       "objects": 6,
       "bytes": 1630228,
-      "wallMs": 65391
+      "wallMs": 66034
     },
     {
-      "id": "20261027T154905Z",
-      "baseBackup": "20261027-154900F (reused)",
-      "lsn": "0/E47F5F8",
+      "id": "20261027T161510Z",
+      "baseBackup": "20261027-161505F (reused)",
+      "lsn": "0/E480118",
       "objects": 6,
       "bytes": 1671168,
-      "wallMs": 1257
+      "wallMs": 1241
     }
   ],
   "rto": {
-    "restoreWallMs": 7528,
+    "restoreWallMs": 6980,
     "phasesMs": {
-      "pgBackRest restore from the off-site repo (base backup)": 3290,
-      "Postgres start + WAL replay to the marker LSN + promotion": 2352,
-      "objects: off-site -> fresh MinIO, sha256 checked against the manifest": 1886
+      "pgBackRest restore from the off-site repo (base backup)": 2799,
+      "Postgres start + WAL replay to the marker LSN + promotion": 2334,
+      "objects: off-site -> fresh MinIO, sha256 checked against the manifest": 1847
     },
-    "verifyWallMs": 3214
+    "verifyWallMs": 2904
   },
   "rpo": {
-    "snapshotAt": "2026-10-27T15:49:07.158Z",
-    "failureAt": "2026-10-27T15:49:19.886Z",
-    "windowMs": 12728,
+    "snapshotAt": "2026-10-27T16:15:12.014Z",
+    "failureAt": "2026-10-27T16:15:15.604Z",
+    "windowMs": 3590,
     "rowsLost": {
       "_chartwarden_migration": 0,
       "account": 0,
@@ -705,12 +705,12 @@
     {
       "name": "restore.sh picked the newest complete snapshot (snapshot 2, no base backup of its own)",
       "ok": true,
-      "detail": "restored 20261027T154905Z, expected 20261027T154905Z"
+      "detail": "restored 20261027T161510Z, expected 20261027T161510Z"
     },
     {
       "name": "restored cluster replayed WAL to the snapshot LSN, promoted, and does not archive",
       "ok": true,
-      "detail": "in_recovery=false wal>=0/E47F5F8:true archive_mode=off"
+      "detail": "in_recovery=false wal>=0/E480118:true archive_mode=off"
     },
     {
       "name": "migrations ledger equals the snapshot's (count and last applied file)",
@@ -780,7 +780,27 @@
     {
       "name": "least privilege: the WAL key (postgres container) cannot delete or write outside pgbackrest/archive/; the backup key cannot purge versions (COMPLIANCE lock); the restore key is read-only",
       "ok": true,
-      "detail": "walDeletesMarker=denied, walWritesOutsideArchive=denied, walDeletesArchiveInfo=denied, backupPurgesVersions=denied, restoreWrites=denied, restoreReads=allowed"
+      "detail": "walDeletesMarker=denied, walWritesOutsideArchive=denied, walDeletesArchiveInfo=denied, backupPurgesVersions=denied, restoreWrites=denied, restoreReads=allowed, backupDeletesSnapshot=denied"
+    },
+    {
+      "name": "residual risk captured: the WAL key CAN overwrite a key under pgbackrest/archive/, and the COMPLIANCE lock keeps the prior version",
+      "ok": true,
+      "detail": "overwrite allowed; 2 version(s) retained"
+    },
+    {
+      "name": "every snapshot verified the off-site default retention is COMPLIANCE and recorded it in its marker",
+      "ok": true,
+      "detail": "marker lock modes: COMPLIANCE, COMPLIANCE"
+    },
+    {
+      "name": "wal-health (archive_command failures, pg_wal size) runs clean against the archiving source",
+      "ok": true,
+      "detail": "archiver healthy, pg_wal under the alert threshold"
+    },
+    {
+      "name": "provision-source-reader is idempotent (ran twice) and the sidecar ran hardened (PGDATA read-only, cap-drop ALL, read-only root)",
+      "ok": true,
+      "detail": "both provisioning runs and every snapshot succeeded under those flags"
     },
     {
       "name": "an object deleted before the snapshot is not resurrected (the off-site history keeps it; the restore drops it)",
@@ -800,12 +820,12 @@
     {
       "name": "no secret (cipher passes, SSE-C key, S3/MinIO/Postgres passwords) appears in any backup/restore output",
       "ok": true,
-      "detail": "11 secrets scanned across 8 captured outputs; 0 found"
+      "detail": "11 secrets scanned across 10 captured outputs; 0 found"
     },
     {
       "name": "restore wall time within the documented RTO target (demo scale)",
       "ok": true,
-      "detail": "7.5 s measured vs 3600 s target"
+      "detail": "7.0 s measured vs 3600 s target"
     }
   ],
   "passed": true

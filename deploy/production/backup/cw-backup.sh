@@ -14,6 +14,7 @@
 #   marker [id|latest]         print a snapshot's marker (default: the newest complete one)
 #   restore-db <id|latest>     pgBackRest restore of a snapshot into the EMPTY $PGDATA (PITR to the marker's LSN)
 #   restore-objects <id>       copy the snapshot's objects into the RESTORE_MINIO_* store and verify every sha256
+#   wal-health                 alert when archive_command is failing or pg_wal grows past BACKUP_PG_WAL_ALERT_BYTES
 #
 # Coordination rule: the app writes an object BEFORE it commits the row that references it, and the object listing
 # starts AFTER the LSN is captured, so every row committed at or before the marker's LSN has its object in the
@@ -40,6 +41,10 @@ LEDGER_TABLE=_chartwarden_migration
 OFFSITE_REPO=2
 SNAPSHOT_ID=""
 STEP=init
+SNAPSHOT_ID_RE='^[0-9]{8}T[0-9]{6}Z$'
+# Object keys this job will copy or restore: no `..`, no leading `/`, a conservative character set (the app writes
+# opaque <prefix>/<uuid>/<uuid> keys). Anything else stops the snapshot instead of being trusted into a path.
+OBJECT_KEY_RE='^[A-Za-z0-9._-][A-Za-z0-9._/-]*$'
 
 log() { printf '%s cw-backup %s\n' "$(date -u +%FT%TZ)" "$*" >&2; }
 die() {
@@ -51,6 +56,7 @@ need() {
   for v in "$@"; do [ -n "${!v:-}" ] || die "$v is not set"; done
 }
 uri() { jq -rn --arg v "$1" '$v|@uri'; }
+valid_snapshot_id() { [[ $1 =~ $SNAPSHOT_ID_RE ]] || die "invalid snapshot id"; }
 mc_host() { # alias url user secret -> MC_HOST_<alias> (credentials stay in the environment, never on disk or argv)
   local user secret
   user="$(uri "$3")"
@@ -70,8 +76,15 @@ alert() { # kind summary details-json
     '{kind:$kind, summary:$summary, details:$details, correlationId:$cid, occurredAt:(now|todate)}')"
   log "ALERT [$1] $2"
   [ -n "${OPS_ALERT_WEBHOOK_URL:-}" ] || return 0
-  curl -fs -m 10 -H 'content-type: application/json' --data "$body" "$OPS_ALERT_WEBHOOK_URL" >/dev/null ||
-    log "alert webhook delivery failed"
+  curl -fs -m 10 --proto =https -H 'content-type: application/json' --data "$body" "$OPS_ALERT_WEBHOOK_URL" \
+    >/dev/null || log "alert webhook delivery failed"
+}
+
+require_alerting() { # the scheduler never runs silently: an https webhook is mandatory
+  case "${OPS_ALERT_WEBHOOK_URL:-}" in
+  https://*) ;;
+  *) die "OPS_ALERT_WEBHOOK_URL must be set to an https:// URL (backup failures must page someone)" ;;
+  esac
 }
 
 # EXIT trap (not ERR): `die` and errexit both end in exit, so every failure path alerts exactly once. Subshells do not
@@ -184,18 +197,40 @@ offsite_latest_backup_label() {
   pgbr --repo="$OFFSITE_REPO" info --output=json | jq -r '.[0].backup // [] | last | .label // empty'
 }
 
+offsite_lock() { # prints "<mode> <days>" of the off-site bucket's DEFAULT retention; refuses anything but COMPLIANCE
+  local info mode validity days min="${BACKUP_OFFSITE_MIN_LOCK_DAYS:-100}"
+  info="$(mcq retention info --default --json "$OFFSITE" </dev/null)" ||
+    die "off-site bucket has no Object Lock configuration (create it with Object Lock + versioning)"
+  mode="$(jq -r '.mode // empty' <<<"$info")"
+  validity="$(jq -r '.validity // empty' <<<"$info")"
+  case "$validity" in
+  *DAYS) days="${validity%DAYS}" ;;
+  *YEARS) days=$((${validity%YEARS} * 365)) ;;
+  *) days=0 ;;
+  esac
+  [ "$mode" = COMPLIANCE ] || die "off-site default retention must be COMPLIANCE (found '${mode:-none}')"
+  [ "$days" -ge "$min" ] || die "off-site default retention is $days day(s); BACKUP_OFFSITE_MIN_LOCK_DAYS requires >= $min"
+  echo "$mode $days"
+}
+
 build_manifest() { # $1 = output ndjson; reuses sha256/content-type from the previous manifest when bucket/key/etag/size match
-  local out="$1" prev="$STATE_DIR/manifest.ndjson" listing="$STATE_DIR/listing.ndjson" b
+  local out="$1" prev="$STATE_DIR/manifest.ndjson" listing="$STATE_DIR/listing.ndjson" b bad
   [ -f "$prev" ] || : >"$prev"
   : >"$listing"
-  # Every producer writes a file first: a failure inside `< <(...)` would be invisible to errexit and the ERR trap.
+  # Every producer writes a file first: a failure inside `< <(...)` would be invisible to errexit and the EXIT trap.
   mcq ls --json source/ </dev/null >"$STATE_DIR/buckets.json"
   jq -r 'select(.type == "folder") | .key | rtrimstr("/")' "$STATE_DIR/buckets.json" >"$STATE_DIR/buckets.txt"
+  # An object store that suddenly lists nothing is an outage or a credential problem, not an empty system.
+  if [ ! -s "$STATE_DIR/buckets.txt" ] && [ -s "$prev" ]; then
+    die "the source object store lists no bucket although the previous snapshot had objects"
+  fi
   while read -r b; do
     [ -n "$b" ] || continue
     mcq ls --recursive --json "source/$b" </dev/null >"$STATE_DIR/bucket-listing.json"
     jq -c --arg b "$b" 'select(.type == "file") | {b:$b, k:.key, s:.size, e:.etag}' "$STATE_DIR/bucket-listing.json" >>"$listing"
   done <"$STATE_DIR/buckets.txt"
+  bad="$(jq -r --arg re "$OBJECT_KEY_RE" 'select((.k | test($re) | not) or (.k | test("(^|/)\\.\\.(/|$)")) or (.b | test("^[a-z0-9.-]+$") | not)) | .b' "$listing" | wc -l)"
+  [ "$bad" -eq 0 ] || die "$bad object key(s) outside the allowed character set (see OBJECT_KEY_RE); refusing to snapshot"
   jq -nc --slurpfile prev "$prev" \
     '($prev | map({key:"\(.b)/\(.k)/\(.e)/\(.s)", value:{h, t}}) | from_entries) as $idx
      | inputs | . + ($idx["\(.b)/\(.k)/\(.e)/\(.s)"] // {h:null, t:null})' "$listing" >"$STATE_DIR/joined.ndjson"
@@ -206,6 +241,10 @@ build_manifest() { # $1 = output ndjson; reuses sha256/content-type from the pre
       bk="$(jq -r '"\(.b)/\(.k)"' <<<"$line")"
       # The content type is restored explicitly (restore-objects); the sha256 is of the bytes, not a stored header.
       t="$(mcq stat --json "source/$bk" </dev/null | jq -r '.metadata["Content-Type"] // "application/octet-stream"')"
+      # mc --attr splits on ';' and '=': keep the bare media type, and only a well-formed one.
+      t="${t%%;*}"
+      t="${t// /}"
+      [[ $t =~ ^[A-Za-z0-9!#\$\&^_.+-]+/[A-Za-z0-9!#\$\&^_.+-]+$ ]] || t=application/octet-stream
       h="$(mcq cat "source/$bk" </dev/null | sha256sum | cut -d' ' -f1)"
       line="$(jq -c --arg h "$h" --arg t "$t" '.h = $h | .t = $t' <<<"$line")"
     fi
@@ -235,6 +274,12 @@ cmd_snapshot() {
   mc_setup
   need BACKUP_SOURCE_MINIO_ACCESS_KEY
   mkdir -p "$STATE_DIR"
+  STEP=lock
+  exec 9>"$STATE_DIR/snapshot.lock"
+  flock -n 9 || die "another snapshot is still running"
+  STEP=offsite-lock-check
+  local lock_mode lock_days
+  read -r lock_mode lock_days <<<"$(offsite_lock)"
   log "snapshot $SNAPSHOT_ID start (base backup: $db_type)"
 
   STEP=stanza-create
@@ -289,9 +334,11 @@ cmd_snapshot() {
   jq -n --arg id "$SNAPSHOT_ID" --arg stanza "$STANZA" --arg db "$DB_NAME" --arg baseLabel "$label" --arg lsn "$lsn" \
     --arg dbTime "$db_time" --arg fp "$fingerprint" --arg lc "$ledger_count" --arg ll "$ledger_last" \
     --arg os "$objects_started" --arg sha "$manifest_sha" --slurpfile m "$work/manifest.ndjson" \
+    --arg lockMode "$lock_mode" --arg lockDays "$lock_days" \
     '{version:1, snapshotId:$id, createdAt:(now|todate),
       db:{stanza:$stanza, database:$db, repo:2, backupLabel:$baseLabel, lsn:$lsn, capturedAt:$dbTime,
           schemaFingerprint:$fp, migrations:{count:($lc|tonumber), last:$ll}},
+      offsite:{lockMode:$lockMode, lockDays:($lockDays|tonumber)},
       objects:{listingStartedAt:$os, count:($m|length), bytes:($m|map(.s)|add // 0),
                buckets:($m|map(.b)|unique), manifest:"snapshots/\($id)/manifest.ndjson.gz", manifestSha256:$sha}}' \
     >"$work/marker.json"
@@ -312,8 +359,10 @@ cmd_snapshot() {
 cmd_schedule() {
   local interval="${BACKUP_SNAPSHOT_INTERVAL_S:-900}" hour="${BACKUP_DB_BACKUP_HOUR_UTC:-2}"
   local full_day="${BACKUP_FULL_BACKUP_WEEKDAY:-7}" timeout_s="${BACKUP_SNAPSHOT_TIMEOUT_S:-21600}"
+  require_alerting
   mkdir -p "$STATE_DIR"
   while :; do
+    "$0" wal-health || true # alerts itself; a failing check must not stop the snapshot
     local today type=none rc=0
     today="$(date -u +%F)"
     if [ "$(date -u +%-H)" -ge "$hour" ] && [ "$(cat "$STATE_DIR/last-base-backup-day" 2>/dev/null)" != "$today" ]; then
@@ -330,6 +379,23 @@ cmd_schedule() {
     fi
     sleep "$interval"
   done
+}
+
+# A failing archive_command keeps every WAL segment in pg_wal until the disk fills: page well before that.
+cmd_wal_health() {
+  local row failing wal_bytes limit="${BACKUP_PG_WAL_ALERT_BYTES:-8589934592}"
+  row="$(psql_db -F '|' -c "SELECT coalesce(last_failed_time > coalesce(last_archived_time, 'epoch'), false),
+      failed_count, (SELECT coalesce(sum(size), 0) FROM pg_ls_waldir()) FROM pg_stat_archiver")"
+  IFS='|' read -r failing _ wal_bytes <<<"$row"
+  if [ "$failing" = t ]; then
+    alert backup.wal_archive_failing "archive_command is failing: WAL is accumulating in pg_wal" \
+      "$(jq -nc --arg b "$wal_bytes" '{pgWalBytes:($b|tonumber)}')"
+  fi
+  if [ "$wal_bytes" -gt "$limit" ]; then
+    alert backup.pg_wal_large "pg_wal holds more than BACKUP_PG_WAL_ALERT_BYTES" \
+      "$(jq -nc --arg b "$wal_bytes" --arg l "$limit" '{pgWalBytes:($b|tonumber), limit:($l|tonumber)}')"
+  fi
+  [ "$failing" != t ] && [ "$wal_bytes" -le "$limit" ]
 }
 
 cmd_healthcheck() {
@@ -355,7 +421,10 @@ cmd_provision_source_reader() {
 POLICY
   mcq admin policy create root "$policy" "$doc" >/dev/null
   mcq admin user add root "$BACKUP_SOURCE_MINIO_ACCESS_KEY" "$BACKUP_SOURCE_MINIO_SECRET_KEY" >/dev/null
-  mcq admin policy attach root "$policy" --user "$BACKUP_SOURCE_MINIO_ACCESS_KEY" >/dev/null 2>&1 || true # already attached
+  local out
+  if ! out="$(mcq admin policy attach root "$policy" --user "$BACKUP_SOURCE_MINIO_ACCESS_KEY" 2>&1)"; then
+    grep -qi "already" <<<"$out" || die "attaching policy $policy failed: $out"
+  fi
   log "read-only backup account ready (policy $policy)"
 }
 
@@ -369,7 +438,10 @@ resolve_snapshot() { # $1 = id or "latest"; prints the id of a snapshot whose ma
     jq -r 'select(.type == "file" and (.key | endswith("/marker.json"))) | .key | split("/")[0]' | sort | tail -n 1
 }
 
-fetch_marker() { mcq cat --enc-c "$ENC" "$OFFSITE/snapshots/$1/marker.json"; }
+fetch_marker() {
+  valid_snapshot_id "$1"
+  mcq cat --enc-c "$ENC" "$OFFSITE/snapshots/$1/marker.json"
+}
 
 cmd_marker() {
   mc_setup
@@ -390,15 +462,21 @@ cmd_restore_db() {
   lsn="$(jq -r .db.lsn <<<"$marker")"
   if [ -n "$(ls -A "$PGDATA_PATH" 2>/dev/null)" ]; then die "refusing to restore: $PGDATA_PATH is not empty"; fi
   log "restoring snapshot $id: base backup $label, replaying WAL to LSN $lsn (archive_mode forced off)"
+  # RESTORE_REPO_TARGET_TIME reads the versioned off-site repository as it was at that time, i.e. from before any
+  # delete markers a compromised backup key added (the versions themselves are kept by the COMPLIANCE lock).
+  local repo_time=()
+  if [ -n "${RESTORE_REPO_TARGET_TIME:-}" ]; then repo_time=(--repo-target-time="$RESTORE_REPO_TARGET_TIME"); fi
   pgbr --repo="$OFFSITE_REPO" --set="$label" --type=lsn --target="$lsn" --target-action=promote \
-    --archive-mode=off restore >&2 # stdout carries only the marker
+    --archive-mode=off "${repo_time[@]}" restore >&2 # stdout carries only the marker
   printf '%s\n' "$marker"
 }
 
 cmd_restore_objects() {
   mc_setup
   need RESTORE_MINIO_ACCESS_KEY
-  local id="${1:?snapshot id}" work="$STATE_DIR/restore-$1" marker want got b k h t f bad=0
+  local id="${1:?snapshot id}" work marker want got b k h t f bad=0
+  valid_snapshot_id "$id"
+  work="$STATE_DIR/restore-$id"
   mkdir -p "$work/stage"
   marker="$(fetch_marker "$id")"
   mcq cat --enc-c "$ENC" "$OFFSITE/$(jq -r .objects.manifest <<<"$marker")" >"$work/manifest.ndjson.gz"
@@ -450,5 +528,6 @@ provision-source-reader) cmd_provision_source_reader ;;
 marker) cmd_marker "$@" ;;
 restore-db) cmd_restore_db "$@" ;;
 restore-objects) cmd_restore_objects "$@" ;;
-*) die "usage: cw-backup.sh entrypoint|render-conf|snapshot|schedule|healthcheck|provision-source-reader|marker|restore-db|restore-objects" ;;
+wal-health) cmd_wal_health ;;
+*) die "usage: cw-backup.sh entrypoint|render-conf|snapshot|schedule|healthcheck|provision-source-reader|marker|restore-db|restore-objects|wal-health" ;;
 esac

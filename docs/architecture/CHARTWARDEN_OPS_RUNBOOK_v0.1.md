@@ -796,7 +796,9 @@ deploy directory with the overlay: `docker compose --env-file .env.production -f
 | Quarterly | the monthly drill restoring from the OFF-SITE copy only, on a host other than production, with the escrowed keys (not the host's `.env.production`) | as monthly, and the keys open the backup |
 | Every change to `deploy/production/backup/` | `bun run backup:coordinated-drill` on a workstation (private containers) | the new `audit/restore-drill/<date>-coordinated-backup-drill.md` reads PASS |
 
-**Alerts.** `backup.snapshot_failed` names the step (`pg-backup-repo2`, `wal-archive-check`, `object-mirror`, ...):
+**Alerts** (mandatory https `OPS_ALERT_WEBHOOK_URL`; the sidecar will not start without it).
+`backup.wal_archive_failing` / `backup.pg_wal_large` mean WAL is piling up in `pg_wal`: fix the off-site path or the WAL
+key before the database disk fills (the database keeps running meanwhile). `backup.snapshot_failed` names the step (`pg-backup-repo2`, `wal-archive-check`, `object-mirror`, ...):
 read `dc logs --since 1h backup`. `wal-archive-check` failing means WAL is not reaching a repository; Postgres keeps
 the segments in `pg_wal` meanwhile, so watch disk. `backup.stale` with no `snapshot_failed` before it means the loop
 hangs or died: `dc restart backup`. The common cause after maintenance is `postgres` recreated WITHOUT the overlay
@@ -818,10 +820,18 @@ the sidecar, read-only for restores; DR/BCP §4.8.5). Example, the WAL key (`BAC
 }
 ```
 
-The backup key adds `s3:DeleteObject` (current versions only) and bucket-wide get/put/list; it never has
+The bucket's default retention is COMPLIANCE for >= 100 days (each snapshot checks it); its lifecycle expires
+noncurrent versions and delete markers after 120 days (longer than the lock) and aborts incomplete multipart uploads
+after 7 days. The backup key adds bucket-wide get/put/list and `s3:DeleteObject` ONLY under `pgbackrest/backup/*`
+and `pgbackrest/archive/*` (pgBackRest expire; never `objects/` or `snapshots/`); it never has
 `s3:DeleteObjectVersion`, `s3:BypassGovernanceRetention`, `s3:PutObjectRetention` or any `s3:PutBucket*`. The restore
 key is `s3:ListBucket`, `s3:ListBucketVersions`, `s3:GetObject`, `s3:GetObjectVersion`. Secrets live in
 `<deploy dir>/secrets/` (0400, uid 999), never in `.env.production`.
+
+**If a key leaks.** WAL key: it can overwrite keys under `pgbackrest/archive/` (DR/BCP §4.8.5 residual risk); rotate it,
+run `pgbackrest verify`, restore with `RESTORE_REPO_TARGET_TIME` if a segment was replaced. Backup key: it can only add
+delete markers; rotate it, then restore with `RESTORE_REPO_TARGET_TIME=<before the incident>` or, as the bucket owner,
+delete the markers by version id (DR/BCP §4.8.5, "Removing delete markers").
 
 **Never** run `restore.sh` output against the live stack, and never point `backup:verify-restore` at the production
 database: the restore runs with `archive_mode=off` on its own network precisely so it cannot write into the

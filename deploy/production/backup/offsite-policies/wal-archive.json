@@ -11,7 +11,12 @@
     {
       "Sid": "PutAndReadWalOnly",
       "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:PutObject"],
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:AbortMultipartUpload",
+        "s3:ListMultipartUploadParts"
+      ],
       "Resource": ["arn:aws:s3:::BACKUP_BUCKET/pgbackrest/archive/*"]
     }
   ]

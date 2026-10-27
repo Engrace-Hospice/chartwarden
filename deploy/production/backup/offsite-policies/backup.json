@@ -4,14 +4,34 @@
     {
       "Sid": "ListBucket",
       "Effect": "Allow",
-      "Action": ["s3:ListBucket", "s3:GetBucketLocation", "s3:GetBucketObjectLockConfiguration"],
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:GetBucketObjectLockConfiguration",
+        "s3:ListBucketMultipartUploads"
+      ],
       "Resource": ["arn:aws:s3:::BACKUP_BUCKET"]
     },
     {
-      "Sid": "WriteCurrentVersionsOnly",
+      "Sid": "WriteCurrentVersions",
       "Effect": "Allow",
-      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:GetObjectRetention"],
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:GetObjectRetention",
+        "s3:AbortMultipartUpload",
+        "s3:ListMultipartUploadParts"
+      ],
       "Resource": ["arn:aws:s3:::BACKUP_BUCKET/*"]
+    },
+    {
+      "Sid": "PgBackRestExpireOnly",
+      "Effect": "Allow",
+      "Action": ["s3:DeleteObject"],
+      "Resource": [
+        "arn:aws:s3:::BACKUP_BUCKET/pgbackrest/backup/*",
+        "arn:aws:s3:::BACKUP_BUCKET/pgbackrest/archive/*"
+      ]
     }
   ]
 }

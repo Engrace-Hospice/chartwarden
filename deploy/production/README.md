@@ -143,8 +143,9 @@ dc up -d postgres backup               # recreates postgres once (same volume) w
 dc logs -f backup                      # the first snapshot takes a full base backup
 ```
 
-The off-site bucket must have Object Lock in COMPLIANCE mode and three keys with the policies in
-`backup/offsite-policies/` (WAL-only key in `postgres`, backup key in the sidecar, read-only key for restores).
+The off-site bucket must have Object Lock with a COMPLIANCE default retention of >= 100 days (every snapshot checks
+it), a lifecycle longer than the lock, and three keys with the policies in `backup/offsite-policies/` (WAL-only key
+in `postgres`, backup key in the sidecar, read-only key for restores). `OPS_ALERT_WEBHOOK_URL` (https) is mandatory.
 `deploy.sh` never recreates `postgres`, so releases keep archiving on. Recreating `postgres` with `compose.yml` alone
 turns archiving off; the next snapshot then fails and pages. Restore into an isolated target with
 `BACKUP_ENV_FILE=... ./backup/restore.sh latest`, then run the verifier it prints. Prove changes to `backup/` with

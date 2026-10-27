@@ -7,11 +7,13 @@
 #
 # The base is the exact image deploy/production/compose.yml runs (pgvector/pgvector:pg18, Debian bookworm with the
 # PGDG apt repository already configured), pinned by digest. `mc` is copied from the Chainguard MinIO client image
-# because the minio/mc Docker Hub repository is no longer published.
+# because the minio/mc Docker Hub repository is no longer published. Mirror that digest into a registry you control
+# (a vanished upstream digest breaks the next rebuild). pgBackRest is pinned to 2.60.x: PGDG keeps only current
+# versions, so a rebuild after 2.60 leaves the repo fails loudly; bump the pin deliberately and re-run the drill.
 FROM pgvector/pgvector:pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends pgbackrest jq curl ca-certificates \
+ && apt-get install -y --no-install-recommends "pgbackrest=2.60*" jq curl ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
  && install -d -o postgres -g postgres -m 0700 /etc/pgbackrest /var/spool/pgbackrest /var/lib/pgbackrest /var/lib/cw-backup \
  && install -d -o postgres -g postgres -m 0770 /var/log/pgbackrest
