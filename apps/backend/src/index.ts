@@ -244,6 +244,7 @@ import {
   createDbSessionProofReader,
   createDbSessionStepUpWriter,
 } from "./modules/02-identity/step-up-adapters-db";
+import { parsePayeeTinPolicy } from "./modules/25-remittance/ingest/payee-tin-policy";
 import { buildSeamMedicarePayerPort } from "./modules/25-remittance/ingest/medicare-payer-port";
 import { buildDrizzleRemittanceCursorStore } from "./modules/25-remittance/ingest/pull-cursor-store";
 import { partnerAccessAvailability } from "./modules/36-messaging/external-share/external-share-proxy";
@@ -4136,6 +4137,28 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             )?.npi ?? null,
         )
     : async () => null; // no database: no NPI on file, so every 835 is refused
+  // #671 - the tenant's TIN an 835 payee's REF*TJ must match, and the opt-in policy for tax-id-only (N103=FI) payees. The
+  // sealed EIN is read through M1's published reader and opened with M2's tax-id cipher (the M23 837I precedent), so M25
+  // touches neither table nor DEK. A decrypt failure rejects and the ingest service refuses the file (fail closed).
+  const m25PayeeTinDeps = {
+    payeeTinPolicy: parsePayeeTinPolicy(process.env.M25_PAYEE_TIN_POLICY),
+    payeeTin: dbHandle
+      ? (organizationId: string, providerEntityId: string): Promise<string | null> =>
+          withOrgContext(dbHandle.db, { organizationId, userId: "" }, async (tx) => {
+            const facts = await buildFoundationSiteReader().providerEntityBillingFacts(
+              tx,
+              organizationId,
+              providerEntityId,
+            );
+            if (!facts) return null;
+            return createTaxIdCipher({
+              dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+              dekForOrgVersion: (orgId, version) =>
+                getTenantKeyProvider().dekForOrgVersion(orgId, version),
+            }).decrypt({ organizationId, providerEntityId, sealed: facts.taxIdSealed });
+          })
+      : async (): Promise<string | null> => null,
+  };
   const m26OutboxPublisher = bindCallerModule(txOutboxPublisher, "m26");
   const m27OutboxPublisher = bindCallerModule(txOutboxPublisher, "m27");
   // WX-PR-013 — the real §4.8 BullMQ producer the M27 write-service's mutating routes call (refresh-inputs /
@@ -6200,6 +6223,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?",
               ),
             payeeNpi: m25PayeeNpi,
+ ...m25PayeeTinDeps,
             outbox: m25OutboxPublisher,
             terminology: m25Terminology,
             claims: {
@@ -8838,6 +8862,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               ),
             ),
             payeeNpi: m25PayeeNpi,
+ ...m25PayeeTinDeps,
             outbox: m25OutboxPublisher,
           }),
         }
@@ -12709,6 +12734,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?",
                 ),
               payeeNpi: m25PayeeNpi,
+ ...m25PayeeTinDeps,
               outbox: m25OutboxPublisher,
               claims: {
                 medicare: buildM23BackedClaimMatchCandidateProvider(),

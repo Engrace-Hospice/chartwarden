@@ -47,10 +47,35 @@ type AdviceContext = {
   payerId: string;
 };
 
+const TIN_DIGITS = 9;
+/** Digits only (REF*TJ and the sealed EIN may carry a hyphen); null unless exactly nine remain. */
+export function normaliseTin(raw: string | null | undefined): string | null {
+  const digits = (raw ?? "").replace(/\D/g, "");
+  return digits.length === TIN_DIGITS ? digits : null;
+}
+
 export type PayeeNpiLookup = (
   organizationId: string,
   providerEntityId: string,
 ) => Promise<string | null>;
+/**
+ * #671 — the tenant's own federal tax id (EIN) for a provider entity, opened by the composition root through M2's
+ * tax-id cipher (M25 never touches `provider_entity` or the DEK). null = no such entity. A rejection (decrypt
+ * failure, unbound key ring) is a refusal, never a pass; the value is never logged or put in a reason.
+ */
+export type PayeeTinLookup = (
+  organizationId: string,
+  providerEntityId: string,
+) => Promise<string | null>;
+/**
+ * #671 — may an 835 whose payee is identified ONLY by tax id (N103=FI) be accepted by comparing that TIN to the
+ * tenant's, for this payer program? Default (absent) = never: such a file is refused as it was before. Tenant- and
+ * program-scoped; it only widens what is accepted when the TINs match exactly.
+ */
+export type PayeeTinPolicy = (
+  organizationId: string,
+  payerKind: string,
+) => boolean | Promise<boolean>;
 /** Explicit opt-out of the payee check, for tests that are not about it. */
 export const PAYEE_UNCHECKED = "unchecked" as const;
 
@@ -77,6 +102,13 @@ export interface M25IngestDrizzleDeps {
    * PTAN has no tenant column, so neither is compared. A payee identified only by tax id (FI) is refused.
    */
   readonly payeeNpi: PayeeNpiLookup | typeof PAYEE_UNCHECKED;
+  /**
+   * #671 — when bound, the payee loop's REF*TJ (when present) must equal the provider entity's TIN even when the
+   * NPI matched, and {@link payeeTinPolicy} may let a tax-id-only (FI) payee through on a TIN match. Unbound = the
+   * NPI-only check of #659. The PTAN is still not compared (no tenant column; see docs/history/m25-835-payee-identity.md).
+   */
+  readonly payeeTin?: PayeeTinLookup;
+  readonly payeeTinPolicy?: PayeeTinPolicy;
   /**
    * Ops-visibility hook: called when `postAdvice` fails on a RETRYABLE degraded parse (e.g. no staged-object
    * reader wired, X12_835_RAW_UNAVAILABLE) so a dead pipeline is not silent. PHI-free by contract: ids and
@@ -166,20 +198,53 @@ export function buildDrizzleM25IngestService(
     });
   }
 
-  /** #659 — null when the payee is this tenant's, else a PHI-free refusal reason (fail closed). */
+  /** #671 — null when the payee's tax id is the tenant's, else a PHI-free refusal reason. Never logs either TIN. */
+  async function tinMismatch(
+    organizationId: string,
+    providerEntityId: string,
+    payeeTin: string,
+  ): Promise<string | null> {
+    if (!deps.payeeTin) return "payee check: no tax id lookup is bound";
+    let expected: string | null;
+    try {
+      expected = await deps.payeeTin(organizationId, providerEntityId);
+    } catch {
+      return "payee check: the provider entity's tax id could not be read";
+    }
+    const want = normaliseTin(expected);
+    const got = normaliseTin(payeeTin);
+    if (!want) return "payee check: the provider entity has no usable tax id on file";
+    if (!got) return "payee check: the 835 payee tax id is not a 9-digit TIN";
+    return got === want ? null : "payee check: the 835 payee tax id is not this provider entity's";
+  }
+
+  /** #659/#671 — null when the payee is this tenant's, else a PHI-free refusal reason (fail closed). */
   async function payeeMismatch(
     organizationId: string,
     providerEntityId: string,
     payee: ParsedRemittanceAdvice["payee"],
+    payerKind: string,
   ): Promise<string | null> {
     if (deps.payeeNpi === PAYEE_UNCHECKED) return null;
+    // A tax-id-only payee (N103=FI) is compared on the TIN alone, only when the tenant's policy allows it.
+    if (
+      payee?.idQualifier === "FI" &&
+      payee.id &&
+      deps.payeeTin &&
+      deps.payeeTinPolicy &&
+      (await deps.payeeTinPolicy(organizationId, payerKind))
+    )
+      return tinMismatch(organizationId, providerEntityId, payee.id);
     const expected = (await deps.payeeNpi(organizationId, providerEntityId))?.trim();
     if (!expected) return "payee check: the provider entity has no NPI on file";
     if (payee?.idQualifier !== "XX" || !payee.id)
       return "payee check: the 835 payee carries no NPI (N103 XX)";
-    return payee.id === expected
-      ? null
-      : "payee check: the 835 payee NPI is not this provider entity's";
+    if (payee.id !== expected)
+      return "payee check: the 835 payee NPI is not this provider entity's";
+    // NPI matched: a REF*TJ the payer sent must also be this tenant's (a mismatch is a mis-addressed file).
+    return deps.payeeTin && payee.taxId
+      ? tinMismatch(organizationId, providerEntityId, payee.taxId)
+      : null;
   }
 
   async function resolveCategory(carcCode: string): Promise<DenialCategory | null> {
@@ -325,7 +390,11 @@ export function buildDrizzleM25IngestService(
           organizationId: actor.organizationId,
           aggregateKind: "remittance_line",
           aggregateId: line.id,
-          payload: { ...eventBase, paidAmount: money(claim.totalPayment), ...(await capFacts()) },
+          payload: {
+            ...eventBase,
+            paidAmount: money(claim.totalPayment),
+            ...(await capFacts()),
+          },
         });
       } else if (outcome === "partial_paid") {
         await outbox.publish(tx, {
@@ -499,7 +568,11 @@ export function buildDrizzleM25IngestService(
           organizationId: actor.organizationId,
           aggregateKind: "patient_responsibility_ledger",
           aggregateId: pr.id,
-          payload: { ledgerId: pr.id, patientId: prLedgerPatientId, prAmount: money(adj.amount) },
+          payload: {
+            ledgerId: pr.id,
+            patientId: prLedgerPatientId,
+            prAmount: money(adj.amount),
+          },
         });
       }
     }
@@ -671,15 +744,40 @@ export function buildDrizzleM25IngestService(
       // One file may hold several ST/SE sets; each is its own advice (its own dedup key and event). Every set is
       // parsed and payee-checked BEFORE anything is stored, so one bad set refuses the whole file.
       const parsedSets: ParsedRemittanceAdvice[] = [];
-      for (const st02 of parseX12TransactionSetControlNumbers(input.rawEdi)) {
-        const parsed = await client.parse835({
-          minioObjectKey: input.minioObjectKey,
-          payerProgram: input.payerKind,
-          rawEdi: input.rawEdi,
-          transactionSetControlNumber: st02,
-        });
+      const st02s = parseX12TransactionSetControlNumbers(input.rawEdi);
+      const request = {
+        minioObjectKey: input.minioObjectKey,
+        payerProgram: input.payerKind,
+        rawEdi: input.rawEdi,
+      };
+      // One tokenize for the whole file when the client can; else one parse per ST02 (test doubles).
+      const all = client.parse835All ? await client.parse835All(request) : undefined;
+      if (all && !all.ok) {
+        // A retryable degraded result is a parser/transport outage, not a property of the file.
+        return {
+          outcome: "malformed",
+          reason: all.degraded.reason,
+          cause: all.degraded.retryable ? "environment" : "content",
+        };
+      }
+      if (all && all.value.length !== st02s.length) {
+        return {
+          outcome: "malformed",
+          reason: "parsed transaction-set count disagrees with the local ISA/ST header",
+          cause: "content",
+        };
+      }
+      for (const [index, st02] of st02s.entries()) {
+        const parsed = all
+          ? {
+              ok: true as const,
+              value: all.value[index] as ParsedRemittanceAdvice,
+            }
+          : await client.parse835({
+              ...request,
+              transactionSetControlNumber: st02,
+            });
         if (!parsed.ok) {
-          // A retryable degraded result is a parser/transport outage, not a property of the file.
           return {
             outcome: "malformed",
             reason: parsed.degraded.reason,
@@ -700,9 +798,15 @@ export function buildDrizzleM25IngestService(
           actor.organizationId,
           input.providerEntityId,
           parsed.value.payee,
+          input.payerKind,
         );
         // Payee/NPI checks depend on tenant configuration: transient, never counted toward quarantine.
-        if (mismatch) return { outcome: "malformed", reason: mismatch, cause: "environment" };
+        if (mismatch)
+          return {
+            outcome: "malformed",
+            reason: mismatch,
+            cause: "environment",
+          };
         parsedSets.push(parsed.value);
       }
 
@@ -793,6 +897,7 @@ export function buildDrizzleM25IngestService(
         actor.organizationId,
         advice.providerEntityId,
         parsed.value.payee,
+        advice.payerKind,
       );
       if (mismatch) {
         await markFailed(actor, adviceId, mismatch);
@@ -858,7 +963,11 @@ export function buildDrizzleM25IngestService(
                 postedAt: advice.receivedAt.toISOString(),
               },
             });
-            return { outcome: finalStatus, postedLineCount, unmatchedLineCount };
+            return {
+              outcome: finalStatus,
+              postedLineCount,
+              unmatchedLineCount,
+            };
           },
         );
         if (result.outcome === "already_posted") {
