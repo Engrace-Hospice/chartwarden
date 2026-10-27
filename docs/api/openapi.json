@@ -68778,6 +68778,305 @@
         }
       }
     },
+    "/api/v1/billing/commercial/ack-quarantine": {
+      "get": {
+        "operationId": "getApiV1BillingCommercialAckquarantine",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "The unresolved held acknowledgments of ONE provider entity (commercial_billing.read; provider scope): id, reason (malformed, scope_mismatch, vendor_mismatch, no_receipt), control number, clearinghouse key, whether a replayable event is kept, age. No patient data and no event payload; newest first, bounded to 200. Read-audited as none",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "reason",
+                          "controlNumber",
+                          "clearinghouseKey",
+                          "hasEvent",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "controlNumber": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "clearinghouseKey": {
+                            "type": "string"
+                          },
+                          "hasEvent": {
+                            "type": "boolean"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/ack-quarantine/{id}/resolve": {
+      "post": {
+        "operationId": "postApiV1BillingCommercialAckquarantineByIdResolve",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Close ONE unresolved quarantine row (the only exit for a `malformed` row, which keeps nothing to replay) with the resolution abandoned_operator and an m41.claim.ack_abandoned event naming the acting user. 404 for a row that is not this provider entity's; an already-closed row answers outcome already_resolved and publishes nothing. commercial_billing.submit + provider scope + a FRESH step-up, never an AI actor, Idempotency-Key required",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "outcome"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "const": "resolved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "already_resolved",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "providerEntityId"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/ack-quarantine/abandon-foreign": {
+      "post": {
+        "operationId": "postApiV1BillingCommercialAckquarantineAbandonforeign",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Close, now, the organization's held rows that belong to ANOTHER clearinghouse's stream than the bound one (abandoned_foreign_vendor, one m41.claim.ack_abandoned event each naming the acting user; bounded to 200 per call). Does nothing while no clearinghouse is bound. Needs an organization-wide billing scope (403 otherwise). commercial_billing.submit + a FRESH step-up, never an AI actor, Idempotency-Key required",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "abandoned"
+                  ],
+                  "properties": {
+                    "abandoned": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/ack-quarantine/replay": {
+      "post": {
+        "operationId": "postApiV1BillingCommercialAckquarantineReplay",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Run the held-acknowledgment replay for ONE provider entity now instead of waiting for the next pull: each unresolved no_receipt, scope_mismatch or vendor_mismatch row is re-applied if its blocking condition has cleared, otherwise it stays held (past 45 days it is asked about once, then abandoned with an m41.claim.ack_abandoned event). Idempotent. commercial_billing.submit + provider scope + a FRESH step-up, never an AI actor, Idempotency-Key required",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "applied",
+                    "abandoned"
+                  ],
+                  "properties": {
+                    "applied": {
+                      "type": "integer"
+                    },
+                    "abandoned": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "providerEntityId"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/commercial/authorizations": {
       "get": {
         "operationId": "getApiV1BillingCommercialAuthorizations",

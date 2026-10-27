@@ -183,6 +183,7 @@ export type {
   AckStage,
   ClaimAdjustment,
   ClaimStatus,
+  ClaimStatusInquiry,
   ClearinghouseContext,
   ClearinghouseCommercialEligibilityRequest,
   ClearinghouseEligibilityRequest,

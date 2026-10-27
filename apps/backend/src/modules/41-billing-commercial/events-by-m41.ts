@@ -170,8 +170,10 @@ export const M41_OUTBOX_EVENTS: ModuleEventContribution = [
         Type.Literal("no_receipt"),
         Type.Literal("scope_mismatch"),
         Type.Literal("vendor_mismatch"),
+        Type.Literal("malformed"),
       ]),
       resolution: Type.Union([
+        Type.Literal("abandoned_operator"),
         Type.Literal("abandoned_no_submission"),
         Type.Literal("abandoned_scope_mismatch"),
         Type.Literal("abandoned_vendor_mismatch"),
@@ -186,6 +188,8 @@ export const M41_OUTBOX_EVENTS: ModuleEventContribution = [
         Type.Literal("no_answer"),
         Type.Literal("applied"),
       ]),
+      /** Present only for an operator-driven closure (`abandoned_operator`, `abandoned_foreign_vendor` via the route). */
+      operatorUserId: Type.Optional(id),
     }),
     declaredConsumers: [],
     isOutboxOnly: true,

@@ -1768,6 +1768,7 @@ import {
   buildCommercialClaimAssemblyService,
   buildCommercialClaimLifecycleService,
   buildCommercialClaimReadService,
+  registerCommercialAckQuarantineRoutes,
   registerCommercialBillingRoutes,
   registerM41AbacPredicates,
   registerM41PublishedSeams,
@@ -6166,6 +6167,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 clearinghouseBinding,
                 m41DrainReadiness,
               ),
+            });
+            // #820: operator actions on held acknowledgments (replay now, close one row, close foreign-stream rows).
+            registerCommercialAckQuarantineRoutes(app, {
+              ack: {
+                db: dbHandle.db,
+                binding: clearinghouseBinding,
+                contexts: buildCommercialContextPort({
+                  env: process.env,
+                  providerNpi: m25PayeeNpi,
+                }),
+                outbox: m41OutboxPublisher as unknown as CommercialOutboxPort,
+                log: (event) => app.log.warn({ commercialAck: event }, "M41 acknowledgment"),
+              },
             });
             if (m41ScheduleProbe) app.addHook("onClose", async () => m41ScheduleProbe.close());
           }
