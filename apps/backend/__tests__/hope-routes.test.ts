@@ -69,6 +69,7 @@ const PERMISSION_SEED = [
     ],
   },
   { userId: "chap_1", permissions: [...READ_KEYS, ...WRITE_KEYS] },
+  { userId: "lpn_1", permissions: [...READ_KEYS, ...WRITE_KEYS] },
   // GAP-015 — the platform-admin deadline override is its own key; RN (hope.timepoint.write) does not hold it.
   {
     userId: "admin_1",
@@ -220,6 +221,7 @@ const MEDICAL_DIRECTOR = {
   "x-test-roles": "medical_director",
 };
 const CHAPLAIN = { "x-test-user": "chap_1", "x-test-org": ORG, "x-test-roles": "chaplain" };
+const LPN = { "x-test-user": "lpn_1", "x-test-org": ORG, "x-test-roles": "lpn", "x-test-pe": "pe_1" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 const COMPLIANCE = {
   "x-test-user": "compliance_1",
@@ -327,6 +329,43 @@ describe("M10-T06 — §4.6 RBAC gating", () => {
       payload: huv1Body(),
     });
     expect(write.statusCode).toBe(403);
+    await app.close();
+  });
+});
+
+describe("M10-T06 — §4.7 hope.sfvAuthorAllowed (RN/NP/LPN/LVN; CMS HOPE Guidance Manual v1.03)", () => {
+  const sfvBody = (authorDiscipline: string) => ({
+    triggeringAssessmentId: SIGNED_A,
+    targetDate: NOW,
+    authorDiscipline,
+    data: huv1Body().data,
+  });
+  const postSfv = async (headers: Record<string, string>, authorDiscipline: string) => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/sfv`,
+      headers,
+      payload: sfvBody(authorDiscipline),
+    });
+    await app.close();
+    return res;
+  };
+  it("an LPN clears the SFV discipline ABAC floor (not 403)", async () => {
+    expect((await postSfv(LPN, "LPN")).statusCode).not.toBe(403);
+  });
+  it("a medical director (MD) is still denied the SFV route (403)", async () => {
+    expect((await postSfv(MEDICAL_DIRECTOR, "MD")).statusCode).toBe(403);
+  });
+  it("an LPN is still denied a non-SFV timepoint (403)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION}/hope/timepoints`,
+      headers: LPN,
+      payload: huv1Body(),
+    });
+    expect(res.statusCode).toBe(403);
     await app.close();
   });
 });
