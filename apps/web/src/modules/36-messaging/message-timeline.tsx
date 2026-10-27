@@ -53,10 +53,11 @@ export function MessageTimeline({
   onJumpToMessage,
   pending,
 }: MessageTimelineProps): JSX.Element {
-  // The history scrolls, so a keyboard user must be able to reach it. Message rows and the Retry button
-  // are focusable, but a loading skeleton and an empty thread are not — then the region itself is the tab
-  // stop (axe `scrollable-region-focusable`). Otherwise it stays a script-only focus target.
-  const holdsFocusable = loadError !== null || (messages !== null && messages.length > 0);
+  // The history scrolls, so a keyboard user must be able to reach it (axe `scrollable-region-focusable`).
+  // Message rows are not tab stops and their action buttons depend on permissions (an archived thread has
+  // none), so the region itself is the tab stop. Only the error state, whose Retry button is focusable,
+  // leaves it a script-only focus target.
+  const holdsFocusable = loadError !== null;
   return (
     <div
       ref={timelineRef}
