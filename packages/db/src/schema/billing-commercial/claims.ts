@@ -2,6 +2,7 @@
 // (a claim names a patient): organization_id, provider_entity_id and location_id on every table, canonical app.org_id
 // RLS (FORCEd), write-audit triggers that scrub clinical content and free text. Closed sets are text + CHECK mirrored in
 // @chartwarden/types (commercial-claim.ts). Logical ids (patient, admission, coverage) carry no cross-module FK.
+import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
@@ -82,6 +83,8 @@ export const commercialClaims = pgTable(
     totalChargeCents: bigint("total_charge_cents", { mode: "number" }).notNull(),
     expectedPaymentCents: bigint("expected_payment_cents", { mode: "number" }),
     state: text("state").notNull().default("draft"), // CommercialClaimState
+    /** The payer's own claim number (835 CLP07), captured from the first posted line (migration 1283). Nullable; a lookup key per tenant. */
+    payerIcn: text("payer_icn"),
     latestValidationRunId: uuid("latest_validation_run_id"),
     readyAt: timestamp("ready_at", { withTimezone: true }),
     createdByMembershipId: uuid("created_by_membership_id").notNull(),
@@ -95,6 +98,9 @@ export const commercialClaims = pgTable(
       t.patientId,
       t.serviceFrom,
     ),
+    byPayerIcn: index("commercial_claim_payer_icn_ix")
+      .on(t.organizationId, t.payerIcn)
+      .where(sql`payer_icn IS NOT NULL`),
   }),
 );
 

@@ -301,6 +301,8 @@ export function buildDrizzleM25IngestService(
         // own `m23.claim.paid` / `.denied` / `.adjudicated` payloads (all three REQUIRE it). Without it
         // the consumer could only reach it by reading M25's own tables across the module boundary.
         remittanceAdviceId: advice.id,
+        // #835 — CLP07, so a consumer that has no ICN for the claim yet (M41) can store it for later ICN-only lines.
+        ...(claim.payerIcn ? { payerIcn: claim.payerIcn } : {}),
         // Was `new Date(0).toISOString()` — a literal 1970-01-01 on every posting event. Nothing consumed
         // it before, so nothing noticed; M23 now maps it to `paidAt` / `adjudicatedAt`, which feed M30's
         // and M33's date-bucketed measures. The 835's receipt instant is the posting instant.

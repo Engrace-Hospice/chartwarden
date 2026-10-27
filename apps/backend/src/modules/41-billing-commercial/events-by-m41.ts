@@ -141,6 +141,23 @@ export const M41_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m41.claim.adjudicated",
+    moduleOwner: "m41",
+    description:
+      "A posted 835 line moved the claim to paid, partially_paid or denied (the M41 consumer of m25.remittance.claim_paid / claim_partial_paid / claim_denied). Ids and the outcome only; the money lives in M25.",
+    payloadSchema: Type.Object({
+      claimId: id,
+      remittanceAdviceId: id,
+      outcome: Type.Union([
+        Type.Literal("paid"),
+        Type.Literal("partially_paid"),
+        Type.Literal("denied"),
+      ]),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m41.claim.ack_abandoned",
     moduleOwner: "m41",
     description:

@@ -52,6 +52,9 @@ const SENT_STATES: ReadonlySet<string> = new Set([
   "ack_pending",
   "accepted",
   "rejected",
+  "paid",
+  "partially_paid",
+  "denied",
 ]);
 
 function assertNotSent(claim: { readonly state: string }, what: string): void {
