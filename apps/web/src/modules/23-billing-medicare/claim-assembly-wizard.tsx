@@ -16,6 +16,11 @@ import { BillingTabs } from "../../shell/billing-tabs";
 import { PatientLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { tobLabel } from "./billing-status";
 import { assembleErrorMessage } from "./claim-assembly-errors";
+import {
+  BLOCKING_STATUSES,
+  PAYER_PREFLIGHT_MESSAGES,
+  usePayerPreflight,
+} from "./payer-preflight";
 import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
 
 // The four assemblable Type-of-Bill codes (§4.1: 817/818 route through :replace / :void, not assembly).
@@ -64,12 +69,16 @@ export function ClaimAssemblyWizard(): JSX.Element {
 
   const dateOrderInvalid =
     form.serviceFrom !== "" && form.serviceTo !== "" && form.serviceFrom > form.serviceTo;
+  // #851 — early, non-mutating payer check; the assemble call below stays authoritative.
+  const payerStatus = usePayerPreflight(form.patientId, form.serviceFrom, form.serviceTo);
+  const payerBlocked = BLOCKING_STATUSES.has(payerStatus);
   const valid =
     form.providerEntityId.trim() !== "" &&
     form.patientId.trim() !== "" &&
     form.serviceFrom !== "" &&
     form.serviceTo !== "" &&
-    !dateOrderInvalid;
+    !dateOrderInvalid &&
+    !payerBlocked;
 
   const assemble = useCallback(async () => {
     setBusy(true);
@@ -179,6 +188,7 @@ export function ClaimAssemblyWizard(): JSX.Element {
               The service-from date must be on or before the service-to date.
             </p>
           ) : null}
+          <PayerPreflightNote status={payerStatus} />
           <TobChoice form={form} setForm={setForm} />
         </section>
 
@@ -216,7 +226,7 @@ export function ClaimAssemblyWizard(): JSX.Element {
               {error}
             </p>
           ) : null}
-          {!valid && !dateOrderInvalid ? (
+          {!valid && !dateOrderInvalid && !payerBlocked ? (
             <p style={hintStyle}>Complete provider, patient and both dates to assemble.</p>
           ) : null}
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -224,6 +234,7 @@ export function ClaimAssemblyWizard(): JSX.Element {
               type="submit"
               style={!valid || busy ? disabledButtonStyle : primaryButtonStyle}
               disabled={!valid || busy}
+              aria-describedby={payerBlocked ? "payer-preflight" : undefined}
             >
               {busy ? "Assembling…" : "Assemble claim"}
             </button>
@@ -238,6 +249,28 @@ export function ClaimAssemblyWizard(): JSX.Element {
         </section>
       </form>
     </div>
+  );
+}
+
+function PayerPreflightNote({ status }: { status: string }): JSX.Element | null {
+  const message = PAYER_PREFLIGHT_MESSAGES[status];
+  if (!message) return null;
+  const blocking = BLOCKING_STATUSES.has(status as never);
+  return (
+    <p
+      id="payer-preflight"
+      role={blocking ? "alert" : "status"}
+      style={{
+        ...hintStyle,
+        color: blocking
+          ? "var(--color-error)"
+          : status === "ok"
+            ? "var(--color-on-surface)"
+            : "var(--color-on-surface-variant)",
+      }}
+    >
+      {message}
+    </p>
   );
 }
 
