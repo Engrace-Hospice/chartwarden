@@ -10,6 +10,7 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m10:submission-result:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
@@ -322,6 +323,30 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
       [b],
     );
     expect(rows[0].n).toBe(2);
+  });
+
+  it("replaying a report with its keys in another order, or one stored under the legacy digest, adds nothing", async () => {
+    const a1 = await seedAssessment();
+    const b = await seedBatch("submitted_pending_result", [a1, await seedAssessment()]);
+    const results = [{ assessmentId: a1, status: "accepted", message: "m" }];
+    await svc.importSubmissionResult(ORG_A, member, b, { reportReference: "ra", results });
+    const reordered = [{ message: "m", status: "accepted", assessmentId: a1 }];
+    await svc.importSubmissionResult(ORG_A, member, b, {
+      reportReference: "rb",
+      results: reordered,
+    });
+    // A batch recorded before the canonical form holds the plain JSON.stringify digest.
+    const legacy = createHash("sha256").update(JSON.stringify(results)).digest("hex");
+    await admin.query("UPDATE hope_submission SET result_report_hash=$1 WHERE id=$2", [legacy, b]);
+    await svc.importSubmissionResult(ORG_A, member, b, { reportReference: "rc", results });
+    const after = await row(b);
+    expect((after.acceptance_report as { reportReference: string }).reportReference).toBe("ra");
+    expect((after.acceptance_report as { results: unknown[] }).results).toHaveLength(1);
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM hope_submission_result_event WHERE hope_submission_id=$1",
+      [b],
+    );
+    expect(rows[0].n).toBe(1);
   });
 
   it("follows the NEWEST correction when an original was corrected twice", async () => {

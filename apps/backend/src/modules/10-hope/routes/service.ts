@@ -7,7 +7,6 @@
 // PPS / ESAS-r at sign (D8); when absent the snapshot is skipped and a warning is recorded (§7.13 / DR
 // Tier-2 — no external dependency blocks the write path). Every state transition records the §2.4 outbox
 // event the relay publishes (drainable for tests).
-import { createHash } from "node:crypto";
 import {
   type CaptureDecision,
   type HopeAttention,
@@ -53,6 +52,7 @@ import {
   isResultImportable,
   isSettledItemStatus,
   manualUploadTransmittedPayload,
+  reportHashes,
   resolveRejectedItem,
   settledBatchEvent,
   terminalCorrection,
@@ -1943,25 +1943,26 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         );
       }
       const at = args.submittedAt ?? now();
+      // Built first: a batch with no package hash throws here, before anything on the batch has changed
+      // (the DB backend gets the same all-or-nothing from its transaction).
+      const transmitted = manualUploadTransmittedPayload(id, r.packageSha256, new Date(at));
       r.status = "submitted_pending_result";
       r.transmittedAt = at;
       r.submittedAt = at;
       r.iqiesSubmissionReference = args.iqiesSubmissionReference ?? null;
       emit(
         "m10.hope.submission_transmitted",
-        {
-          ...manualUploadTransmittedPayload(id, r.packageSha256, new Date(at)),
-          submittedBy: userId,
-        },
+        { ...transmitted, submittedBy: userId },
         `${id}:manual-uploaded`,
       );
       return viewSub(r);
     },
     async importSubmissionResult(organizationId, userId, id, args) {
       const r = findSub(organizationId, id);
-      const reportHash = createHash("sha256").update(JSON.stringify(args.results)).digest("hex");
-      if (r.resultReportHash === reportHash || r.seenReportHashes?.includes(reportHash))
-        return viewSubDetail(r); // idempotent replay (latest or an older report)
+      const { canonical: reportHash, legacy: legacyReportHash } = reportHashes(args.results);
+      const isKnown = (hash: string | null | undefined): boolean =>
+        hash === reportHash || hash === legacyReportHash;
+      if (isKnown(r.resultReportHash) || r.seenReportHashes?.some(isKnown)) return viewSubDetail(r); // idempotent replay (latest or an older report)
       require_(
         isResultImportable(r.status),
         r.status === "packaged" || r.status === "queued" || r.status === "ready"

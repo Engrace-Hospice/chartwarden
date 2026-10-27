@@ -414,6 +414,22 @@ describe("record CMS result", () => {
     );
   });
 
+  it("asks only for items still awaiting a verdict: a settled item is not offered and not sent", async () => {
+    detail = baseDetail({
+      status: "in_flight",
+      items: [item(A1, P1, "01_admission", "accepted"), item(A2, P2, "05_discharge", "pending")],
+    });
+    const dialog = await openDialog();
+    expect(within(dialog).queryByLabelText(/Outcome for Lovelace, Ada/)).toBeNull();
+    fireEvent.change(within(dialog).getByLabelText(/Outcome for Turing, Alan/), {
+      target: { value: "rejected" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review and record" }));
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Confirm and record" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]?.results).toEqual([{ assessmentId: A2, status: "rejected" }]);
+  });
+
   it("gives identical-looking records unique accessible names", async () => {
     detail = baseDetail({
       items: [item(A1, P1, "01_admission", "pending"), item(A2, P1, "01_admission", "pending")],

@@ -1,6 +1,7 @@
 // M10 — pure rules for recording the CMS (iQIES) Final Validation Report against a submission batch.
 // Shared by the DB backend and the in-memory slice so the two cannot drift. iQIES has no submission API:
 // the user uploads the zip in the CMS portal, then records the outcome here.
+import { createHash } from "node:crypto";
 import { HopeStateError } from "@chartwarden/hope";
 import type { HopeSubmissionItemStatus, HopeSubmissionStatus } from "@chartwarden/types";
 
@@ -55,6 +56,28 @@ export function classifyCmsResult(
  * correction assessment in a new batch, not by re-reporting. */
 export const isSettledItemStatus = (status: string): boolean =>
   status === "accepted" || status === "accepted_with_warnings" || status === "rejected";
+
+const sha256Hex = (text: string): string => createHash("sha256").update(text).digest("hex");
+
+/**
+ * The identity of a report, for replay detection. `canonical` sorts each row's keys, so the same report
+ * re-serialised by another client (different key order) is still recognised as already recorded.
+ * `legacy` is the plain `JSON.stringify` digest that batches recorded before the canonical form stored:
+ * both count as "seen", but only `canonical` is written from now on. (Row ORDER still matters.)
+ */
+export function reportHashes(results: readonly Record<string, unknown>[]): {
+  canonical: string;
+  legacy: string;
+} {
+  const sortedRow = (row: Record<string, unknown>): string =>
+    JSON.stringify(
+      Object.fromEntries(Object.entries(row).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))),
+    );
+  return {
+    canonical: sha256Hex(`[${results.map(sortedRow).join(",")}]`),
+    legacy: sha256Hex(JSON.stringify(results)),
+  };
+}
 
 /** Matches the route schema's `maxItems` for `results`. */
 export const MAX_RETAINED_RESULTS = 2000;

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { audit } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/10-hope — PRODUCTION HopeRouteService (M10L reads + writes, mirrors M9L).
@@ -68,6 +67,7 @@ import {
   isResultImportable,
   isSettledItemStatus,
   manualUploadTransmittedPayload,
+  reportHashes,
   settledBatchEvent,
   worstOutcome,
 } from "./hope-submission-result";
@@ -2218,14 +2218,20 @@ export function createDbHopeBackend(
           .limit(1)
           .for("update")) as SubmissionRow[]; // row lock: serialises concurrent recordings of one batch
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
-        const reportHash = createHash("sha256").update(JSON.stringify(args.results)).digest("hex");
-        if (r.resultReportHash === reportHash) return loadSubmissionDetail(t, r); // idempotent replay
+        const { canonical: reportHash, legacy: legacyReportHash } = reportHashes(args.results);
+        if (r.resultReportHash === reportHash || r.resultReportHash === legacyReportHash)
+          return loadSubmissionDetail(t, r); // idempotent replay
         // Replay of an OLDER report (A, B, A): its rows are already stored; re-appending them or overwriting the
         // import metadata would corrupt the audit trail, and verdicts are final. Return the view untouched.
         const [seen] = await t
           .select({ id: RESULT.id })
           .from(RESULT)
-          .where(and(eq(RESULT.hopeSubmissionId, id), eq(RESULT.reportHash, reportHash)))
+          .where(
+            and(
+              eq(RESULT.hopeSubmissionId, id),
+              inArray(RESULT.reportHash, [reportHash, legacyReportHash]),
+            ),
+          )
           .limit(1);
         if (seen) return loadSubmissionDetail(t, r);
         require_(

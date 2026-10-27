@@ -27,6 +27,8 @@ import { RecordCmsResultModal } from "./record-cms-result-modal";
 const MANAGE_PERMISSION = "hope.submission.manage";
 /** Statuses where the CMS result may still be recorded (the server enforces the same set). */
 const RESULT_RECORDABLE = new Set(["exported", "in_flight", "submitted_pending_result"]);
+/** A CMS verdict on an item is final (the server ignores later rows for it), so the dialog never asks for one. */
+const SETTLED_ITEM_STATUS = new Set(["accepted", "accepted_with_warnings", "rejected"]);
 
 const ITEM_TONE: Record<string, StatusTone> = {
   accepted: "success",
@@ -507,7 +509,9 @@ export function SubmissionDetail(): JSX.Element {
         <RecordCmsResultModal
           open={recording}
           submissionId={row.id}
-          items={items.map((i) => ({ assessmentId: i.assessmentId, label: itemLabel(i) }))}
+          items={items
+            .filter((i) => !SETTLED_ITEM_STATUS.has(i.status))
+            .map((i) => ({ assessmentId: i.assessmentId, label: itemLabel(i) }))}
           onClose={() => setRecording(false)}
           onConflict={() => void reload()}
           onDone={() => {
