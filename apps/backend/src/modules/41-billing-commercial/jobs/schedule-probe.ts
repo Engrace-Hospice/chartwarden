@@ -19,13 +19,19 @@ export const M41_EXPECTED_SCHEDULES: readonly ExpectedSchedule[] = [
 /** The slice of a BullMQ queue the probe uses (injectable for tests). */
 export interface RepeatableLister {
   getRepeatableJobs(): Promise<readonly { readonly pattern?: string | null }[]>;
+  /** The consumers currently connected to this queue (BullMQ `Queue.getWorkers`, a CLIENT LIST by queue name; no job data, no PHI). */
+  getWorkers(): Promise<readonly unknown[]>;
   close(): Promise<void>;
   /** Force-end the connection now (BullMQ `Queue.disconnect`). `close()` alone waits for QUIT, which never returns on a dead store. */
   disconnect(): Promise<void>;
 }
 
 export interface ScheduleProbe {
-  /** True only when EVERY expected schedule exists. A Valkey fault rejects (the caller treats that as not scheduled). */
+  /**
+   * True only when EVERY expected schedule exists AND a worker is consuming that queue right now (a schedule alone proves nothing is
+   * sending: a worker scaled to zero or crashed leaves the repeatable job in place). A Valkey fault rejects (the caller treats that as
+   * not ready).
+   */
   (): Promise<boolean>;
   close(): Promise<void>;
 }
@@ -89,8 +95,11 @@ export function createScheduleProbe(options: {
     for (const { queue, pattern } of expected) {
       // a probe that already timed out must not build a new queue behind the reset (it would be cached and never torn down)
       if (abandoned()) throw new Error("schedule probe abandoned");
-      const jobs = await queueFor(queue).getRepeatableJobs();
+      const q = queueFor(queue); // held: after a reset, queueFor would build (and cache) a fresh queue behind the teardown
+      const jobs = await q.getRepeatableJobs();
       if (!jobs.some((j) => j.pattern === pattern)) return false;
+      if (abandoned()) throw new Error("schedule probe abandoned");
+      if ((await q.getWorkers()).length === 0) return false;
     }
     return true;
   };

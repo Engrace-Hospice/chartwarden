@@ -48,6 +48,12 @@ export {
   runAckPull,
   scheduleM41AckJobs,
 } from "./jobs/ack-worker";
+export {
+  type QuarantinePruneDeps,
+  registerM41QuarantinePruneWorker,
+  runQuarantinePrune,
+  scheduleM41QuarantinePrune,
+} from "./jobs/quarantine-prune";
 export { transitionForAck } from "./domain/ack-transition";
 export {
   abandonForeignHeldEvents,

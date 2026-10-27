@@ -11,11 +11,14 @@ export const M41_CRON_QUEUES = {
   submissionDrain: "m41.submission-drain",
   /** Pull 999-stage and 277CA-stage acknowledgments for sent commercial claims through the transport (persisted cursor). */
   ackPull: "m41.ack-pull",
+  /** Weekly retention prune of RESOLVED `commercial_ack_quarantine` rows (#824). Not a drain: readiness does not depend on it. */
+  quarantinePrune: "m41.quarantine-prune",
 } as const;
 
 export const M41_JOB_SCHEDULES = {
   submissionDrain: "* * * * *",
   ackPull: "*/5 * * * *",
+  quarantinePrune: "17 3 * * 0",
 } as const;
 
 /** The platform job id the drain enters `withPlatformContext` under to enumerate active orgs (must be allowlisted at boot). */

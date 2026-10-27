@@ -30,3 +30,12 @@ what could be closed without a vendor sandbox.
    none. Wiring needs a port change (a context-supplied inquiry source) as well as the sandbox run. The parser never returns `not_found` and
    always returns `latest: null`, so even when wired it reports a state and applies no acknowledgment until a verified ack mapping exists.
 3. The direct-MAC transport is untouched (still `CH_NOT_WIRED`).
+
+## #824: worker liveness in readiness, and retention
+
+- Readiness (`createScheduleProbe`) now also requires a connected consumer per queue (BullMQ `getWorkers`, a CLIENT LIST by queue name);
+  a schedule with no worker is not ready, and this process' own "scheduled" flag no longer overrides the probe. It proves a worker is
+  connected, not that it makes progress (a wedged-but-connected worker still counts).
+- Retention is in-repo, not a VPS cron: `m41.quarantine-prune` (Sundays 03:17) deletes RESOLVED `commercial_ack_quarantine` rows 180 days
+  after `resolved_at`, per active org, bounded per tick. Migration 1286 grants the app role DELETE and refuses an unresolved delete.
+- Not pruned: `clearinghouse_interchange_number` (M23 memo; app role has no DELETE, and #836 changes the table). Revisit with its owner.

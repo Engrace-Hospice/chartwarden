@@ -6,10 +6,10 @@
 // failing the whole API boot for a Redis blip would take every other module down with it, so M41 instead stays up, says so loudly,
 // refuses the one thing that cannot work, and keeps retrying the registration in the background with a bounded backoff.
 //
-// WHAT THIS PROVES, AND WHAT IT DOES NOT. The probe (`schedule-probe.ts`) shows that both repeatable schedules EXIST in Valkey. It does not
-// show that a consumer is running: a worker scaled to zero still lets submissions be accepted. They queue as durable rows, nothing is
-// sent, and the drain picks them up when a worker returns. No `getWorkers()` liveness is checked on purpose. The probe has a short
-// timeout (a dead store counts as "not scheduled"), so a Valkey outage can never hang a request.
+// WHAT THIS PROVES. The probe (`schedule-probe.ts`) shows that both repeatable schedules EXIST in Valkey AND that a worker is connected
+// to each queue (BullMQ `getWorkers`, #824): a worker scaled to zero or crashed turns readiness false, so a submit is refused with the
+// typed 503 instead of queueing a row nothing sends. It does not prove the worker is making progress (a connected-but-wedged worker
+// still counts). The probe has a short timeout (a dead store counts as "not ready"), so a Valkey outage can never hang a request.
 import type { Queue } from "bullmq";
 
 export interface DrainReadiness {
@@ -45,7 +45,7 @@ export const SHARED_READINESS_TTL_MS = 20_000;
 export const SHARED_READINESS_NEGATIVE_TTL_MS = 5_000;
 
 export interface SharedReadinessOptions {
-  /** This process' own registration flag (set by the worker / all roles when they register the schedule). */
+  /** This process' own registration flag. Authoritative ONLY when there is no probe; with a probe the shared state decides (#824). */
   readonly local: DrainReadiness;
   /**
    * Looks at the SHARED queue store (Valkey) for both schedules. Present whenever a queue connection exists. Absent = nothing to ask,
@@ -60,7 +60,7 @@ export interface SharedReadinessOptions {
 /**
  * Readiness that reflects SHARED state, not a per-process flag. In the split deployment (PROCESS_ROLE=api serving requests, a separate
  * worker process registering the repeatable jobs) the API process never registers anything itself, so its own flag stays false; it
- * asks the queue store whether both repeatable schedules exist instead. A fault in the probe is "not scheduled" (fail closed). The
+ * asks the queue store whether both repeatable schedules exist and have a live consumer instead. A fault in the probe is "not scheduled" (fail closed). The
  * answer is cached briefly so a request does not cost a round trip to Valkey.
  */
 export function createSharedDrainReadiness(options: SharedReadinessOptions): DrainReadiness {
@@ -71,9 +71,10 @@ export function createSharedDrainReadiness(options: SharedReadinessOptions): Dra
   let inFlight: Promise<boolean> | null = null;
   return {
     async drainScheduled(): Promise<boolean> {
-      if (await options.local.drainScheduled()) return true;
       const probe = options.probe;
-      if (!probe) return false;
+      // no queue connection = nothing to ask: only this process' own registration can say yes. With a probe, a local "scheduled" flag must
+      // NOT short-circuit it: this process registering a schedule says nothing about whether a worker is still consuming.
+      if (!probe) return options.local.drainScheduled();
       if (cached && now() - cached.at < (cached.value ? ttl : negativeTtl)) return cached.value;
       inFlight ??= probe()
         .catch(() => false)
