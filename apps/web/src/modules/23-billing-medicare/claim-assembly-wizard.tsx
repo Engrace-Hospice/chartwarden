@@ -9,13 +9,19 @@ import { Glyph, PageHeader, useApiClient } from "@chartwarden/ui";
 // lines, pricing and validation outcome. The server is the only authz point (ADR-0030): a 409
 // NON_MEDICARE_PRIMARY_PAYER (D15) / PATIENT_NOT_ELECTED, a 422 ASSEMBLY_VALIDATION_FAILED and a 503 (seams unbound,
 // fail-closed) each surface inline (role="alert"), never a toast. CSS-var tokens only; tones via billing-status.ts.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
 import { PatientLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { tobLabel } from "./billing-status";
 import { assembleErrorMessage } from "./claim-assembly-errors";
+import {
+  BLOCKING_STATUSES,
+  PAYER_PREFLIGHT_MESSAGES,
+  type PayerPreflightStatus,
+  usePayerPreflight,
+} from "./payer-preflight";
 import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
 
 // The four assemblable Type-of-Bill codes (§4.1: 817/818 route through :replace / :void, not assembly).
@@ -64,12 +70,23 @@ export function ClaimAssemblyWizard(): JSX.Element {
 
   const dateOrderInvalid =
     form.serviceFrom !== "" && form.serviceTo !== "" && form.serviceFrom > form.serviceTo;
+  // #851 — early, non-mutating payer check; the assemble call below stays authoritative.
+  const { status: payerStatus, retry: retryPayerCheck } = usePayerPreflight(
+    form.patientId,
+    form.serviceFrom,
+    form.serviceTo,
+  );
+  const payerBlocked = BLOCKING_STATUSES.has(payerStatus);
+  // Fail closed while a check is in flight (it always settles to ok / error / blocking, and Retry re-runs it).
+  const payerChecking = payerStatus === "loading";
   const valid =
     form.providerEntityId.trim() !== "" &&
     form.patientId.trim() !== "" &&
     form.serviceFrom !== "" &&
     form.serviceTo !== "" &&
-    !dateOrderInvalid;
+    !dateOrderInvalid &&
+    !payerBlocked &&
+    !payerChecking;
 
   const assemble = useCallback(async () => {
     setBusy(true);
@@ -179,6 +196,7 @@ export function ClaimAssemblyWizard(): JSX.Element {
               The service-from date must be on or before the service-to date.
             </p>
           ) : null}
+          <PayerPreflightNote status={payerStatus} onRetry={retryPayerCheck} />
           <TobChoice form={form} setForm={setForm} />
         </section>
 
@@ -216,7 +234,7 @@ export function ClaimAssemblyWizard(): JSX.Element {
               {error}
             </p>
           ) : null}
-          {!valid && !dateOrderInvalid ? (
+          {!valid && !dateOrderInvalid && !payerBlocked && !payerChecking ? (
             <p style={hintStyle}>Complete provider, patient and both dates to assemble.</p>
           ) : null}
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -224,6 +242,13 @@ export function ClaimAssemblyWizard(): JSX.Element {
               type="submit"
               style={!valid || busy ? disabledButtonStyle : primaryButtonStyle}
               disabled={!valid || busy}
+              aria-describedby={
+                payerBlocked
+                  ? "payer-preflight"
+                  : payerChecking
+                    ? "payer-preflight-status"
+                    : undefined
+              }
             >
               {busy ? "Assembling…" : "Assemble claim"}
             </button>
@@ -238,6 +263,50 @@ export function ClaimAssemblyWizard(): JSX.Element {
         </section>
       </form>
     </div>
+  );
+}
+
+// The polite live region is ALWAYS mounted (a region inserted together with its text is often not announced), and
+// only non-blocking text goes into it; a blocking refusal is a separate role="alert" so it is not announced twice.
+function PayerPreflightNote({
+  status,
+  onRetry,
+}: { status: PayerPreflightStatus; onRetry: () => void }): JSX.Element {
+  const regionRef = useRef<HTMLOutputElement>(null);
+  const message = PAYER_PREFLIGHT_MESSAGES[status];
+  const blocking = BLOCKING_STATUSES.has(status);
+  return (
+    <>
+      <output
+        ref={regionRef}
+        id="payer-preflight-status"
+        tabIndex={-1}
+        aria-atomic="true"
+        style={{ ...hintStyle, display: "block", outline: "none" }}
+      >
+        {message && !blocking ? message : null}
+      </output>
+      {status === "error" ? (
+        <div>
+          <button
+            type="button"
+            style={ghostButtonStyle}
+            onClick={() => {
+              onRetry();
+              // The button unmounts once the retry starts; keep keyboard focus on the live region instead.
+              regionRef.current?.focus();
+            }}
+          >
+            Retry payer check
+          </button>
+        </div>
+      ) : null}
+      {message && blocking ? (
+        <p id="payer-preflight" role="alert" style={{ ...hintStyle, color: "var(--color-error)" }}>
+          {message}
+        </p>
+      ) : null}
+    </>
   );
 }
 
