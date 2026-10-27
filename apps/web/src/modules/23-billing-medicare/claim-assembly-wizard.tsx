@@ -77,13 +77,16 @@ export function ClaimAssemblyWizard(): JSX.Element {
     form.serviceTo,
   );
   const payerBlocked = BLOCKING_STATUSES.has(payerStatus);
+  // Fail closed while a check is in flight (it always settles to ok / error / blocking, and Retry re-runs it).
+  const payerChecking = payerStatus === "loading";
   const valid =
     form.providerEntityId.trim() !== "" &&
     form.patientId.trim() !== "" &&
     form.serviceFrom !== "" &&
     form.serviceTo !== "" &&
     !dateOrderInvalid &&
-    !payerBlocked;
+    !payerBlocked &&
+    !payerChecking;
 
   const assemble = useCallback(async () => {
     setBusy(true);
@@ -231,7 +234,7 @@ export function ClaimAssemblyWizard(): JSX.Element {
               {error}
             </p>
           ) : null}
-          {!valid && !dateOrderInvalid && !payerBlocked ? (
+          {!valid && !dateOrderInvalid && !payerBlocked && !payerChecking ? (
             <p style={hintStyle}>Complete provider, patient and both dates to assemble.</p>
           ) : null}
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>

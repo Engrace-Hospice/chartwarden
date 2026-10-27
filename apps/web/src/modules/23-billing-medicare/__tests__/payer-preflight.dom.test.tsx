@@ -121,6 +121,7 @@ describe("ClaimAssemblyWizard payer preflight", () => {
     const region = liveRegion();
     fill();
     expect(region.textContent).toMatch(/checking/i);
+    expect(assemble().disabled).toBe(true); // fail closed while the check is in flight
     await waitFor(() => expect(region.textContent).toMatch(/primary payer/i));
     expect(liveRegion()).toBe(region);
     expect(assemble().disabled).toBe(false);
@@ -189,6 +190,7 @@ describe("ClaimAssemblyWizard payer preflight", () => {
     mount(get);
     fill(OLD);
     fireEvent.change(screen.getByLabelText("Patient"), { target: { value: NEW } });
+    expect(assemble().disabled).toBe(true); // still checking the new patient
     expect(signals[OLD]?.aborted).toBe(true);
     expect(signals[NEW]?.aborted).toBe(false);
     resolvers[NEW]?.({ data: { payers: [row()] } });
