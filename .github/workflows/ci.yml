@@ -1696,8 +1696,21 @@ jobs:
             sleep 1
           done
           echo "MinIO did not become ready" >&2; docker logs chartwarden-ci-minio-e2e; exit 1
+      # No `--with-deps`: it shells out to `sudo apt-get`, and the self-hosted runner user has no
+      # passwordless sudo, so the job used to die here in ~20s ("sudo: a password is required") before a
+      # single spec ran. The browser download itself needs no root.
       - name: Install the Chromium build this Playwright version pins
-        run: bunx playwright install --with-deps chromium
+        run: bunx playwright install chromium
+      # The system libraries Chromium links against are a one-time runner setup. Install them here only
+      # when passwordless sudo exists; otherwise say so and rely on what the runner already has (a launch
+      # failure in the specs then names the missing library, instead of the install step hiding it).
+      - name: Install Chromium system libraries when sudo allows
+        run: |
+          if sudo -n true 2>/dev/null; then
+            bunx playwright install-deps chromium
+          else
+            echo "no passwordless sudo: relying on the runner's preinstalled Chromium libraries"
+          fi
       - name: Migrate
         run: bun run db:migrate
       # A REAL provisioned role (carrier + BYPASSRLS), not a superuser alias — same as `outbox-boot`.
