@@ -37,10 +37,10 @@ export function MeetingProgress({
   return (
     <section className="wx-idg-progress" aria-label="Meeting progress">
       {alternate ? (
-        <div className="wx-idg-progress-terminal" role="status">
+        <output className="wx-idg-progress-terminal">
           <Glyph name="alert-circle" size={16} />
           This meeting was {status}; it did not advance to finalized adjournment.
-        </div>
+        </output>
       ) : null}
       <ol>
         {MEETING_STAGES.map(([value, label], index) => {

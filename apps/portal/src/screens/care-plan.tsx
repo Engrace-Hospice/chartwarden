@@ -62,12 +62,12 @@ function parseCareSummary(value: unknown): CareSummary | null {
 
 function PlanSkeleton(): JSX.Element {
   return (
-    <div className="wx-care-plan-skeleton" role="status" aria-label="Loading your care plan">
+    <output className="wx-care-plan-skeleton" aria-label="Loading your care plan">
       <span className="wx-care-plan-skeleton__intro" />
       <span className="wx-care-plan-skeleton__card" />
       <span className="wx-care-plan-skeleton__card" />
       <span className="wx-care-plan-skeleton__side" />
-    </div>
+    </output>
   );
 }
 

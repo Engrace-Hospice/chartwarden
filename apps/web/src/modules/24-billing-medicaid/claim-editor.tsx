@@ -269,9 +269,7 @@ export function MedicaidClaimEditor(): JSX.Element {
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           {claim.electronicSubmissionRefusal ? (
             <Card title="Submission">
-              <span role="status" style={mutedStyle}>
-                {claim.electronicSubmissionRefusal}
-              </span>
+              <output style={mutedStyle}>{claim.electronicSubmissionRefusal}</output>
             </Card>
           ) : null}
 

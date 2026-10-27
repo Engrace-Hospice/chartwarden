@@ -183,6 +183,7 @@ export function PortalSignedIn(): JSX.Element {
     <CenteredCardLayout brand={<PortalOnboardingBrand />} footer={<PortalOnboardingHelp />}>
       <div className="wx-portal-onboarding wx-portal-onboarding--accounts">
         {phase.kind === "working" ? (
+          // biome-ignore lint/a11y/useSemanticElements: <output> allows phrasing content only; this status holds flow content.
           <div role="status" className="wx-portal-onboarding__busy">
             <span className="wx-portal-onboarding__busy-icon" aria-hidden="true">
               <Glyph name="shield-check" size={26} />

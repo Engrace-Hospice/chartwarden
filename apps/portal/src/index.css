@@ -3094,6 +3094,7 @@
 }
 .wx-document-upload__error,
 .wx-document-upload__stage {
+  display: block;
   font-size: .8125rem;
 }
 .wx-document-upload__stage {

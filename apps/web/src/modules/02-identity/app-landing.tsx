@@ -36,6 +36,7 @@ export function AppLanding(): JSX.Element {
   return (
     <CenteredCardLayout brand={<BrandLockup />}>
       {sent ? (
+        // biome-ignore lint/a11y/useSemanticElements: <output> allows phrasing content only; this status holds flow content.
         <div role="status" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <h1 ref={confirmationHeading} tabIndex={-1} style={{ margin: 0, fontSize: "1.1rem" }}>
             Check your email

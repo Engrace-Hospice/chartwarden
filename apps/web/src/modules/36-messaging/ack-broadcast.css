@@ -89,6 +89,7 @@
 }
 
 .wx-bc-status {
+  display: block;
   margin: 0;
   color: var(--color-on-surface);
   font-size: 0.875rem;

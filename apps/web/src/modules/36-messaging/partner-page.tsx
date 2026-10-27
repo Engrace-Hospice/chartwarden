@@ -317,9 +317,7 @@ export function PartnerPage(): JSX.Element {
     : expiry.toLocaleString();
   // Always mounted while a session is held, so a screen reader announces the text when it appears.
   const idleNotice = (
-    <div role="status" style={mutedStyle}>
-      {idleWarning ? IDLE_WARNING : ""}
-    </div>
+    <output style={{ ...mutedStyle, display: "block" }}>{idleWarning ? IDLE_WARNING : ""}</output>
   );
 
   if (phase === "reading") {

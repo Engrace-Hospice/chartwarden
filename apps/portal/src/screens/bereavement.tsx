@@ -49,11 +49,11 @@ function safeResourceUrl(value: string | undefined): string | null {
 
 function SectionLoading({ label }: { label: string }): JSX.Element {
   return (
-    <div className="wx-bereavement-skeleton" role="status" aria-label={label}>
+    <output className="wx-bereavement-skeleton" aria-label={label}>
       <span />
       <span />
       <span />
-    </div>
+    </output>
   );
 }
 function SectionError({
@@ -367,6 +367,7 @@ function BereavementForPatient({
                 Outreach preferences are unavailable until your support access can be confirmed.
               </p>
             ) : optedOut ? (
+              // biome-ignore lint/a11y/useSemanticElements: <output> allows phrasing content only; this status holds flow content.
               <div className="wx-bereavement-opted-out" role="status">
                 <Glyph name="check-circle" size={20} aria-hidden="true" />
                 <div>

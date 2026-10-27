@@ -367,6 +367,7 @@ function RecordAdministrationDialog({
           </div>
         </header>
         {recorded ? (
+          // biome-ignore lint/a11y/useSemanticElements: <output> allows phrasing content only; this status holds flow content.
           <div className="wx-medications-dialog__complete" role="status">
             <Glyph name="check-circle" size={30} aria-hidden="true" />
             <h3>Administration recorded</h3>

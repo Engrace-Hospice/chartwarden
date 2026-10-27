@@ -333,15 +333,11 @@ function AmendmentsForPatient({
           {!patientId ? (
             <p className="wx-amendments-muted">Choose a patient to see their requests.</p>
           ) : history.status === "loading" ? (
-            <div
-              className="wx-amendments-skeleton"
-              role="status"
-              aria-label="Loading correction requests"
-            >
+            <output className="wx-amendments-skeleton" aria-label="Loading correction requests">
               <span />
               <span />
               <span />
-            </div>
+            </output>
           ) : history.status === "error" ? (
             <div className="wx-amendments-history-state" role="alert">
               <Glyph name="alert-circle" size={23} aria-hidden="true" />

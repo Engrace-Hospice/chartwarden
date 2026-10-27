@@ -286,13 +286,13 @@ function UploadDocumentDialog({
           </div>
         ) : null}
         {busy ? (
-          <p className="wx-document-upload__stage" role="status">
+          <output className="wx-document-upload__stage">
             {stage === "preparing"
               ? "Preparing secure upload…"
               : stage === "transferring"
                 ? "Sending file securely…"
                 : "Submitting for processing…"}
-          </p>
+          </output>
         ) : null}
         <footer>
           <Button tone="secondary" onClick={onClose} disabled={busy}>

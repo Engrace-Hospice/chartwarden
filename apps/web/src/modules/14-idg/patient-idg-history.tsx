@@ -606,10 +606,10 @@ export function PatientIdgHistory(): JSX.Element {
                 }
               >
                 {schedulePartial ? (
-                  <p className="wx-row-sub" role="status">
+                  <output className="wx-row-sub">
                     Upcoming meetings are partially unavailable. Your IDG history remains visible;
                     retry the page to refresh scheduling context.
-                  </p>
+                  </output>
                 ) : null}
                 {next === undefined ? (
                   <LoadingSpinner />

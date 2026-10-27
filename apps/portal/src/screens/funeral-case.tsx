@@ -91,7 +91,7 @@ export function PortalFuneralCase(): JSX.Element {
         </span>
         <h1>Funeral home access</h1>
         {status === "loading" ? (
-          <p role="status">Checking your secure access…</p>
+          <output style={{ display: "block" }}>Checking your secure access…</output>
         ) : status === "ready" && caseInfo ? (
           <>
             <p>Use the limited details below to confirm that you have the correct case.</p>
@@ -115,6 +115,7 @@ export function PortalFuneralCase(): JSX.Element {
             </Button>
           </>
         ) : (
+          // biome-ignore lint/a11y/useSemanticElements: <output> allows phrasing content only; this status holds flow content.
           <div role="status" className="wx-funeral-case__ended">
             <strong>This access is no longer available.</strong>
             <p>If you still need access, ask the hospice care team for a new secure link.</p>

@@ -1103,9 +1103,9 @@ export function LiveMeeting(): JSX.Element {
               action={<CountBadge count={actionItems.length} tone="primary" />}
             >
               {actionItemsUnavailable ? (
-                <p className="wx-row-sub" role="status">
+                <output className="wx-row-sub">
                   Your action items could not be refreshed. Other meeting data remains available.
-                </p>
+                </output>
               ) : actionItems.length === 0 ? (
                 <p className="wx-row-sub">No follow-ups from this meeting are assigned to you.</p>
               ) : (

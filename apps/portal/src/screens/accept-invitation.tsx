@@ -49,6 +49,7 @@ export function PortalAcceptInvitation(): JSX.Element {
     <CenteredCardLayout brand={<PortalOnboardingBrand />} footer={<PortalOnboardingHelp />}>
       <div className="wx-portal-onboarding wx-portal-auth-form">
         {state === "working" ? (
+          // biome-ignore lint/a11y/useSemanticElements: <output> allows phrasing content only; this status holds flow content.
           <div role="status">
             <PortalOnboardingHeading
               eyebrow="Secure invitation"
@@ -57,6 +58,7 @@ export function PortalAcceptInvitation(): JSX.Element {
             />
           </div>
         ) : state === "accepted" ? (
+          // biome-ignore lint/a11y/useSemanticElements: <output> allows phrasing content only; this status holds flow content.
           <div role="status" className="wx-portal-auth-form">
             <PortalOnboardingHeading
               eyebrow="Invitation accepted"

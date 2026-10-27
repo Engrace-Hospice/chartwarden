@@ -581,9 +581,8 @@ export function NomncPanel({
                   Record decision
                 </Button>
                 {confirmWithdraw ? (
-                  <span
-                    className="wx-action-row"
-                    role="group"
+                  <fieldset
+                    className="wx-choice-fieldset wx-action-row"
                     aria-label="Confirm withdrawing the review"
                   >
                     <span className="wx-row-sub">Withdraw this QIO review?</span>
@@ -613,7 +612,7 @@ export function NomncPanel({
                     >
                       Keep review
                     </Button>
-                  </span>
+                  </fieldset>
                 ) : (
                   <Button
                     tone="tertiary"

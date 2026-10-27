@@ -368,7 +368,7 @@ function DetailPanel({
       {c.outsideAudience > 0 ? (
         <p className="wx-bc-sub">{OUTSIDE_NOTE(c.outsideAudience)}</p>
       ) : null}
-      <div className="wx-bc-filters" role="group" aria-label="Show">
+      <fieldset className="wx-choice-fieldset wx-bc-filters" aria-label="Show">
         {ACK_BROADCAST_FILTERS.map((f) => (
           <Button
             key={f}
@@ -381,7 +381,7 @@ function DetailPanel({
             {FILTER_LABELS[f]}
           </Button>
         ))}
-      </div>
+      </fieldset>
       {view.status === "loading" ? <LoadingSpinner /> : null}
       {view.status === "error" ? <Problem text={DETAIL_LOAD_FAILED} retry={reload} /> : null}
       {view.status === "ready" ? (
@@ -488,7 +488,7 @@ export function AckBroadcast(): JSX.Element {
     clearWithdrawError,
   } = useAckBroadcast();
   const headingBase = useId();
-  const statusRef = useRef<HTMLParagraphElement>(null);
+  const statusRef = useRef<HTMLOutputElement>(null);
   const [notice, setNotice] = useState({ n: 0, text: "" });
   // After Acknowledge (or a withdrawal) the control that had focus leaves the page: move focus to the status line, which says what happened.
   useEffect(() => {
@@ -515,9 +515,9 @@ export function AckBroadcast(): JSX.Element {
         {mine.status === "off" ? null : <p className="wx-bc-sub">{BROADCAST_NOTICE}</p>}
       </PageHeader>
       <div className="wx-bc">
-        <p key={notice.n} ref={statusRef} role="status" tabIndex={-1} className="wx-bc-status">
+        <output key={notice.n} ref={statusRef} tabIndex={-1} className="wx-bc-status">
           {notice.text}
-        </p>
+        </output>
         {refreshFailed ? <Problem text={ACK_REFRESH_FAILED} retry={() => void reload()} /> : null}
         <MineSection
           headingBase={headingBase}
