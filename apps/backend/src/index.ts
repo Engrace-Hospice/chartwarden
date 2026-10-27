@@ -109,6 +109,7 @@ import {
   setPlatformStaffFailureSink,
 } from "./bootstrap/bind-platform-staff";
 import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
+import { hasPlatformPool } from "./bootstrap/platform-pool-guard";
 import { buildF2fClinicianRoleReader } from "./bootstrap/f2f-clinician-roles";
 import {
   createDrizzleFeatureFlagAdmin,
@@ -9208,79 +9209,100 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     app.log.info({ queues: m15Workers.length }, "M15 discipline-plan crons constructed");
 
     // ── M6 admission F2F due-reminder cron ───────────────────────────────────────────────────────────────
-    const m6ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: platformDbHandle?.db,
-      auditBypass: m34PlatformBypassAuditor,
-      jobId: M6_PLATFORM_JOB_ID,
-      reason: "M6 admission F2F due-reminder cron fan-out (active-org enumeration)",
-    });
-
-    const m6WorkerDeps = buildM6WorkerDeps({
-      connection: queueConnection,
-      db: dbHandle.db,
-      outbox: m6OutboxPublisher,
-      activeOrgs: m6ActiveOrgs,
-    });
-
-    const m6Workers = registerM6CronWorkers(m6WorkerDeps);
-
-    attachDlqAlertsToAll(m6Workers, "m6");
-
-    app.addHook("onClose", async () => {
-      await Promise.all(m6Workers.map((w) => w.close()));
-    });
-
-    try {
-      const m6ScheduleQueues = await scheduleM6Jobs(queueConnection);
-
-      app.addHook("onClose", async () => {
-        await Promise.all(m6ScheduleQueues.map((q) => q.close()));
-      });
-    } catch (err) {
-      app.log.error(err, "M6 cron-schedule registration failed");
-    }
-
-    app.log.info({ queues: m6Workers.length }, "M6 admission due-reminder crons constructed");
-
-    // ── M1 idempotency.cleanup (GAP-113) + M3 reap_breakglass (GAP-117) ──────────────────────────────────
-    const m1m3ActiveOrgs = (jobId: string, reason: string) =>
-      buildActiveOrgEnumerator({
+    // Every M6 cron fans out over the active-org enumerator, which rejects without the platform pool: skip the
+    // workers + schedules (one warning) rather than register crons that can only fail into the DLQ alert log.
+    if (
+      hasPlatformPool(
+        platformDbHandle?.db,
+        "M6 admission crons",
+        (m) => app.log.warn(m),
+        "F2F due-reminder and admission period-end jobs will not run",
+      )
+    ) {
+      const m6ActiveOrgs = buildActiveOrgEnumerator({
         platformDb: platformDbHandle?.db,
         auditBypass: m34PlatformBypassAuditor,
-        jobId,
-        reason,
+        jobId: M6_PLATFORM_JOB_ID,
+        reason: "M6 admission F2F due-reminder cron fan-out (active-org enumeration)",
       });
-    const m3ReaperWorkers = registerM3CronWorkers(queueConnection, {
-      db: dbHandle.db,
-      outbox: m3OutboxPublisher as M3OutboxPublisher,
-      activeOrgs: m1m3ActiveOrgs(
-        M3_PLATFORM_JOB_ID,
-        "M3 reap_breakglass cron (active-org enumeration)",
-      ),
-    });
-    const idempotencyCleanupWorker = registerIdempotencyCleanupWorker(queueConnection, {
-      db: dbHandle.db,
-      activeOrgs: m1m3ActiveOrgs(
-        IDEMPOTENCY_CLEANUP_JOB_ID,
-        "M1 idempotency.cleanup cron (active-org enumeration)",
-      ),
-    });
-    attachDlqAlertsToAll([...m3ReaperWorkers, idempotencyCleanupWorker], "m1m3");
-    app.addHook("onClose", async () => {
-      await Promise.all([...m3ReaperWorkers, idempotencyCleanupWorker].map((w) => w.close()));
-    });
-    try {
-      const m1m3ScheduleQueues = [
-        ...(await scheduleM3Jobs(queueConnection)),
-        await scheduleIdempotencyCleanup(queueConnection),
-      ];
+
+      const m6WorkerDeps = buildM6WorkerDeps({
+        connection: queueConnection,
+        db: dbHandle.db,
+        outbox: m6OutboxPublisher,
+        activeOrgs: m6ActiveOrgs,
+      });
+
+      const m6Workers = registerM6CronWorkers(m6WorkerDeps);
+
+      attachDlqAlertsToAll(m6Workers, "m6");
+
       app.addHook("onClose", async () => {
-        await Promise.all(m1m3ScheduleQueues.map((q) => q.close()));
+        await Promise.all(m6Workers.map((w) => w.close()));
       });
-    } catch (err) {
-      app.log.error(err, "M1/M3 cleanup cron-schedule registration failed");
+
+      try {
+        const m6ScheduleQueues = await scheduleM6Jobs(queueConnection);
+
+        app.addHook("onClose", async () => {
+          await Promise.all(m6ScheduleQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M6 cron-schedule registration failed");
+      }
+
+      app.log.info({ queues: m6Workers.length }, "M6 admission due-reminder crons constructed");
     }
-    app.log.info("M1 idempotency.cleanup and M3 reap_breakglass crons constructed");
+
+    // ── M1 idempotency.cleanup (GAP-113) + M3 reap_breakglass (GAP-117) ──────────────────────────────────
+    // Both crons fan out over the active-org enumerator, so they need the platform pool like M6 above.
+    if (
+      hasPlatformPool(
+        platformDbHandle?.db,
+        "M1/M3 cleanup crons",
+        (m) => app.log.warn(m),
+        "idempotency-key cleanup and the M3 reaper will not run",
+      )
+    ) {
+      const m1m3ActiveOrgs = (jobId: string, reason: string) =>
+        buildActiveOrgEnumerator({
+          platformDb: platformDbHandle?.db,
+          auditBypass: m34PlatformBypassAuditor,
+          jobId,
+          reason,
+        });
+      const m3ReaperWorkers = registerM3CronWorkers(queueConnection, {
+        db: dbHandle.db,
+        outbox: m3OutboxPublisher as M3OutboxPublisher,
+        activeOrgs: m1m3ActiveOrgs(
+          M3_PLATFORM_JOB_ID,
+          "M3 reap_breakglass cron (active-org enumeration)",
+        ),
+      });
+      const idempotencyCleanupWorker = registerIdempotencyCleanupWorker(queueConnection, {
+        db: dbHandle.db,
+        activeOrgs: m1m3ActiveOrgs(
+          IDEMPOTENCY_CLEANUP_JOB_ID,
+          "M1 idempotency.cleanup cron (active-org enumeration)",
+        ),
+      });
+      attachDlqAlertsToAll([...m3ReaperWorkers, idempotencyCleanupWorker], "m1m3");
+      app.addHook("onClose", async () => {
+        await Promise.all([...m3ReaperWorkers, idempotencyCleanupWorker].map((w) => w.close()));
+      });
+      try {
+        const m1m3ScheduleQueues = [
+          ...(await scheduleM3Jobs(queueConnection)),
+          await scheduleIdempotencyCleanup(queueConnection),
+        ];
+        app.addHook("onClose", async () => {
+          await Promise.all(m1m3ScheduleQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M1/M3 cleanup cron-schedule registration failed");
+      }
+      app.log.info("M1 idempotency.cleanup and M3 reap_breakglass crons constructed");
+    }
 
     // ── M21 §4.6 crons (GAP-062) ─────────────────────────────────────────────────────────────────────────
     // par-monitor (`m21.par.below_threshold` / `stockout_imminent`), unreturned-kit-monitor (the automatic
