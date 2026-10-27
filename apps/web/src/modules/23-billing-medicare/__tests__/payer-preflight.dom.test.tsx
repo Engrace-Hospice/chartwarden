@@ -2,7 +2,7 @@
 // outcome (role=status / role=alert), blocks assemble where the server would refuse, and ignores a stale response.
 import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { classifyPayerCoverage } from "../payer-preflight";
@@ -72,6 +72,19 @@ describe("classifyPayerCoverage", () => {
       "non-primary",
     );
   });
+  it("prefers the best-ranked in-force FFS row over an ended or lower-ranked one", () => {
+    const ended = row({ rank: 2, effectiveTo: "2026-12-31" });
+    expect(classifyPayerCoverage([ended, row()], "2026-10-01", "2026-10-31")).toBe("ok");
+  });
+  it("tolerates ISO timestamps on the coverage dates", () => {
+    const stamped = row({ effectiveFrom: "2026-10-01T00:00:00.000Z" });
+    expect(classifyPayerCoverage([stamped], "2026-10-01", "2026-10-31")).toBe("ok");
+  });
+  it("is no-medicare when different FFS rows cover each end of the range", () => {
+    const a = row({ effectiveTo: "2026-10-15" });
+    const b = row({ effectiveFrom: "2026-10-16" });
+    expect(classifyPayerCoverage([a, b], "2026-10-01", "2026-10-31")).toBe("no-medicare");
+  });
   it("is medicare-advantage when only MA, or MA outranks FFS", () => {
     const ma = row({ coverageKind: "medicare_advantage" });
     expect(classifyPayerCoverage([ma], "2026-10-01", "2026-10-31")).toBe("medicare-advantage");
@@ -82,6 +95,14 @@ describe("classifyPayerCoverage", () => {
 });
 
 describe("ClaimAssemblyWizard payer preflight", () => {
+  it("shows nothing and does not block until a service-date range is entered", async () => {
+    mount(payers());
+    fireEvent.change(screen.getByLabelText("Patient"), { target: { value: "pt1" } });
+    await Promise.resolve();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByText(/No Original Medicare/i)).toBeNull();
+  });
+
   it("announces loading, then ok, and leaves assemble enabled", async () => {
     mount(payers(row()));
     fill();
@@ -133,7 +154,7 @@ describe("ClaimAssemblyWizard payer preflight", () => {
     resolvers.new?.({ data: { payers: [row()] } });
     await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/primary payer/i));
     resolvers.old?.({ data: { payers: [] } }); // late, for the previous patient
-    await Promise.resolve();
+    await act(async () => {});
     expect(screen.queryByText(/No Original Medicare/i)).toBeNull();
     expect(assemble().disabled).toBe(false);
   });

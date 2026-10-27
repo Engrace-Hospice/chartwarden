@@ -19,6 +19,7 @@ import { assembleErrorMessage } from "./claim-assembly-errors";
 import {
   BLOCKING_STATUSES,
   PAYER_PREFLIGHT_MESSAGES,
+  type PayerPreflightStatus,
   usePayerPreflight,
 } from "./payer-preflight";
 import { authFailureRedirect, clearDraft, loadDraft, saveDraft } from "./write-workflow";
@@ -252,10 +253,10 @@ export function ClaimAssemblyWizard(): JSX.Element {
   );
 }
 
-function PayerPreflightNote({ status }: { status: string }): JSX.Element | null {
+function PayerPreflightNote({ status }: { status: PayerPreflightStatus }): JSX.Element | null {
   const message = PAYER_PREFLIGHT_MESSAGES[status];
   if (!message) return null;
-  const blocking = BLOCKING_STATUSES.has(status as never);
+  const blocking = BLOCKING_STATUSES.has(status);
   return (
     <p
       id="payer-preflight"

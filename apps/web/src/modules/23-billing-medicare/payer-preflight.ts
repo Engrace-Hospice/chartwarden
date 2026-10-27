@@ -27,7 +27,7 @@ export const BLOCKING_STATUSES: ReadonlySet<PayerPreflightStatus> = new Set([
   "non-primary",
 ]);
 
-export const PAYER_PREFLIGHT_MESSAGES: Readonly<Record<string, string>> = {
+export const PAYER_PREFLIGHT_MESSAGES: Readonly<Partial<Record<PayerPreflightStatus, string>>> = {
   loading: "Checking the patient's payer coverage…",
   error:
     "Payer coverage could not be checked. You can still assemble — the server re-checks the payer.",
@@ -40,24 +40,26 @@ export const PAYER_PREFLIGHT_MESSAGES: Readonly<Record<string, string>> = {
   ok: "Original Medicare is the primary payer for this service period.",
 };
 
-// Coverage in force on a date; with no date yet, fall back to the server's `current` flag.
+const day = (v: string): string => v.slice(0, 10);
 const covers = (row: PayerCoverageRow, date: string): boolean =>
-  date === ""
-    ? row.current
-    : row.effectiveFrom <= date && (row.effectiveTo === null || row.effectiveTo >= date);
+  day(row.effectiveFrom) <= date && (row.effectiveTo === null || day(row.effectiveTo) >= date);
+
+// Like the server's activeCoverageOfKind: among rows of a kind in force on a date, the best (lowest) rank wins.
+const bestOfKind = (rows: readonly PayerCoverageRow[], kind: string, date: string) =>
+  rows.filter((r) => r.coverageKind === kind && covers(r, date)).sort((x, y) => x.rank - y.rank)[0];
 
 export function classifyPayerCoverage(
   rows: readonly PayerCoverageRow[],
   serviceFrom: string,
   serviceTo: string,
 ): PayerPreflightStatus {
-  const ffs = rows.find(
-    (r) => r.coverageKind === "medicare_ffs" && covers(r, serviceFrom) && covers(r, serviceTo),
-  );
-  const advantage = rows.find(
-    (r) => r.coverageKind === "medicare_advantage" && covers(r, serviceFrom),
-  );
-  if (!ffs) return advantage ? "medicare-advantage" : "no-medicare";
+  const ffs = bestOfKind(rows, "medicare_ffs", serviceFrom);
+  const advantage = bestOfKind(rows, "medicare_advantage", serviceFrom);
+  // The server needs the SAME coverage row at both ends of the range (the list carries no usable row id here, so
+  // identity is the row object itself).
+  if (!ffs || ffs !== bestOfKind(rows, "medicare_ffs", serviceTo)) {
+    return advantage ? "medicare-advantage" : "no-medicare";
+  }
   if (ffs.rank === 1) return "ok";
   return advantage && advantage.rank < ffs.rank ? "medicare-advantage" : "non-primary";
 }
@@ -75,6 +77,7 @@ export function usePayerPreflight(
     null,
   );
 
+  // A failed check stays "error" until the patient changes (no retry): the server re-checks on assemble anyway.
   useEffect(() => {
     if (id === "") return;
     let stale = false;
@@ -86,7 +89,7 @@ export function usePayerPreflight(
       })
       .then(({ data, error }) => {
         if (stale) return;
-        setLoaded({ id, rows: error || !Array.isArray(data?.payers) ? null : (data.payers as PayerCoverageRow[]) });
+        setLoaded({ id, rows: error || !Array.isArray(data?.payers) ? null : data.payers });
       })
       .catch(() => {
         if (!stale) setLoaded({ id, rows: null });
@@ -97,7 +100,8 @@ export function usePayerPreflight(
     };
   }, [client, id]);
 
-  if (id === "") return "idle";
+  // Dates decide coverage; wait for a valid range rather than judging on the `current` flag.
+  if (id === "" || serviceFrom === "" || serviceTo === "" || serviceFrom > serviceTo) return "idle";
   if (loaded?.id !== id) return "loading";
   if (loaded.rows === null) return "error";
   return classifyPayerCoverage(loaded.rows, serviceFrom, serviceTo);
