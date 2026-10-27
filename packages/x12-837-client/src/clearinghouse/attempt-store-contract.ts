@@ -339,22 +339,33 @@ export const ATTEMPT_STORE_CONTRACT: readonly AttemptStoreContractCase[] = [
     async run(make, ids) {
       const store = await make();
       const scope = `scope-${ids.orgA}`;
-      const first = await store.allocateInterchangeNumber(ids.orgA, scope, "idem-1", "test");
+      const firstMemo = await store.allocateInterchangeNumber(ids.orgA, scope, "idem-1", "test");
+      const first = firstMemo.number;
       assert(/^[0-9]{9}$/.test(first), "an interchange number is 9 digits");
       assert(
-        (await store.allocateInterchangeNumber(ids.orgA, scope, "idem-1", "test")) === first,
+        (await store.allocateInterchangeNumber(ids.orgA, scope, "idem-1", "test")).number === first,
         "the same key gets the same number again",
       );
-      const second = await store.allocateInterchangeNumber(ids.orgA, scope, "idem-2", "test");
+      const second = (await store.allocateInterchangeNumber(ids.orgA, scope, "idem-2", "test")).number;
       assert(second !== first, "another key gets another number");
       assert(
-        (await store.allocateInterchangeNumber(ids.orgB, scope, "idem-1", "test")) !== first,
+        (await store.allocateInterchangeNumber(ids.orgB, scope, "idem-1", "test")).number !== first,
         "another tenant's identical key is a different submission and gets its own number",
       );
-      const concurrent = await Promise.all(
+      const concurrentMemos = await Promise.all(
         Array.from({ length: 12 }, () =>
           store.allocateInterchangeNumber(ids.orgA, scope, "idem-race", "test"),
         ),
+      );
+      const concurrent = concurrentMemos.map((m) => m.number);
+      assert(
+        new Set(concurrentMemos.map((m) => m.renderedAt.getTime())).size === 1,
+        "concurrent callers on one key agree on one render time",
+      );
+      const again = await store.allocateInterchangeNumber(ids.orgA, scope, "idem-1", "test");
+      assert(
+        again.renderedAt.getTime() === firstMemo.renderedAt.getTime(),
+        "the same key gets the same render time again (a redelivery renders byte-identically, issue #836)",
       );
       assert(new Set(concurrent).size === 1, "concurrent callers on one key agree on one number");
       const control = await store.allocateControlNumber("test");

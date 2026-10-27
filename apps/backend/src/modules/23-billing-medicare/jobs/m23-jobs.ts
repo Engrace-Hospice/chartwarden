@@ -874,22 +874,20 @@ async function generateClaim837i(
     claim,
     claimControlNumber,
     // Remembered under the key the transport files this submission under, so a redelivery renders the same ISA13.
-    interchangeNumberFor: async (context) => {
+    interchangeFor: async (context) => {
       if (!attempts) {
         throw new Error(
           "the clearinghouse attempt store is not bound, so an 837I interchange number cannot be allocated",
         );
       }
-      return Number(
-        await attempts.allocateInterchangeNumber(
-          organizationId,
-          scopeKey(context),
-          submissionKeyFor("claim", claimControlNumber),
-          context.usage,
-        ),
+      const memo = await attempts.allocateInterchangeNumber(
+        organizationId,
+        scopeKey(context),
+        submissionKeyFor("claim", claimControlNumber),
+        context.usage,
       );
+      return { interchangeNumber: Number(memo.number), renderedAt: memo.renderedAt };
     },
-    now: (deps.now ?? (() => new Date()))(),
   });
   // A `submitted` attempt must carry a worker correlation id (the terminalize trigger); the sidecar used to mint it.
   return { ...rendered, correlationId: randomUUID() };
