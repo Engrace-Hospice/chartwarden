@@ -1786,9 +1786,11 @@ import {
   createSharedDrainReadiness,
   mountM41Routes,
   registerM41AckWorker,
+  registerM41QuarantinePruneWorker,
   registerM41SubmissionWorker,
   scheduleM41AckJobs,
   scheduleM41Jobs,
+  scheduleM41QuarantinePrune,
   scheduleWithRetry,
   wireM41Tenancy,
 } from "./modules/41-billing-commercial/index";
@@ -8909,10 +8911,28 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       activeOrgs: m41ActiveOrgs,
       log: (event) => app.log.warn({ commercialAck: event }, "M41 acknowledgment"),
     });
-    attachDlqAlertsToAll([m41SubmissionWorker, m41AckWorker], "m41");
-    app.addHook("onClose", async () => {
-      await Promise.all([m41SubmissionWorker.close(), m41AckWorker.close()]);
+    // Weekly retention prune of resolved ack-quarantine rows (#824). Not a drain: readiness does not depend on it.
+    const m41PruneWorker = registerM41QuarantinePruneWorker(queueConnection, {
+      db: dbHandle.db,
+      activeOrgs: m41ActiveOrgs,
+      log: (event) => app.log.info({ commercialPrune: event }, "M41 quarantine prune"),
     });
+    attachDlqAlertsToAll([m41SubmissionWorker, m41AckWorker, m41PruneWorker], "m41");
+    app.addHook("onClose", async () => {
+      await Promise.all([
+        m41SubmissionWorker.close(),
+        m41AckWorker.close(),
+        m41PruneWorker.close(),
+      ]);
+    });
+    try {
+      const m41PruneQueues = await scheduleM41QuarantinePrune(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m41PruneQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M41 quarantine-prune schedule registration failed");
+    }
     // A schedule failure (a Valkey blip at boot) must not take the whole API down, so it is not fatal (the peers log and swallow). But
     // "bound is not computing": without the repeatable job POST /submit would keep queueing rows nothing sends. So the failure is logged
     // loudly, the M41 readiness flag stays false (submit and reconcile answer a typed 503 and the send-gate view says why), and the

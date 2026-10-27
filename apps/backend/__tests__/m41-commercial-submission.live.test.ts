@@ -18,11 +18,11 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import net from "node:net";
 import { join } from "node:path";
-import { createDbClient } from "@chartwarden/db";
-import { withOrgContext } from "@chartwarden/tenancy";
+import { createDbClient, schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { InMemoryClearinghouse } from "@chartwarden/x12-837-client/testing";
-import { type ConnectionOptions, Queue } from "bullmq";
-import { sql } from "drizzle-orm";
+import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import { eq, sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -57,6 +57,10 @@ import type {
   AckWorkerDeps,
   SubmissionWorkerDeps,
 } from "../src/modules/41-billing-commercial/index";
+import {
+  QUARANTINE_RETENTION_DAYS,
+  runQuarantinePrune,
+} from "../src/modules/41-billing-commercial/jobs/quarantine-prune";
 import { bindPayloadAndMarkCallStarted } from "../src/modules/41-billing-commercial/jobs/submission-worker";
 import {
   LIVE_APP_ROLE_PASSWORD,
@@ -2600,6 +2604,62 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
     });
   });
 
+  // #824: the weekly retention prune deletes only RESOLVED rows past the horizon, in the caller's tenant, and the database refuses
+  // the app role an unresolved delete.
+  describe("quarantine retention prune (#824)", () => {
+    const insertRow = async (eventId: string, resolvedDaysAgo: number | null) => {
+      if (resolvedDaysAgo === null) {
+        await admin.query(
+          `INSERT INTO commercial_ack_quarantine (organization_id, provider_entity_id, clearinghouse_key, event_id, reason)
+           VALUES ($1,$2,'stedi',$3,'malformed')`,
+          [ORG, providerEntityId, eventId],
+        );
+        return;
+      }
+      await admin.query(
+        `INSERT INTO commercial_ack_quarantine (organization_id, provider_entity_id, clearinghouse_key, event_id, reason, resolved_at, resolution)
+         VALUES ($1,$2,'stedi',$3,'malformed', now() - make_interval(days => $4::int), 'abandoned_invalid')`,
+        [ORG, providerEntityId, eventId, resolvedDaysAgo],
+      );
+    };
+    const remaining = async () =>
+      (
+        await admin.query(
+          "SELECT event_id FROM commercial_ack_quarantine WHERE event_id LIKE 'prune-%' ORDER BY event_id",
+        )
+      ).rows.map((r) => r.event_id as string);
+
+    it("deletes resolved rows older than the horizon and keeps young resolved and unresolved ones", async () => {
+      await insertRow("prune-old", QUARANTINE_RETENTION_DAYS + 5);
+      await insertRow("prune-young", QUARANTINE_RETENTION_DAYS - 5);
+      await insertRow("prune-open", null);
+      // another tenant's context never reaches this org's rows, even far in the future
+      await runQuarantinePrune({
+        db: handle.db,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_B }] },
+        now: () => new Date(Date.now() + 10 * 365 * 86_400_000),
+      });
+      expect(await remaining()).toEqual(["prune-old", "prune-open", "prune-young"]);
+      const deleted = await runQuarantinePrune({
+        db: handle.db,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG }] },
+      });
+      expect(deleted).toBe(1);
+      expect(await remaining()).toEqual(["prune-open", "prune-young"]);
+    });
+
+    it("the database refuses the app role an unresolved delete", async () => {
+      await expect(
+        withOrgContext(handle.db, systemOrgContext(ORG), (tx) =>
+          tx
+            .delete(schema.commercialAckQuarantine)
+            .where(eq(schema.commercialAckQuarantine.eventId, "prune-open")),
+        ),
+      ).rejects.toThrow();
+      expect(await remaining()).toContain("prune-open");
+    });
+  });
+
   // The split deployment: PROCESS_ROLE=api serves requests and never registers the repeatable jobs; a separate worker process does.
   // The API's readiness must therefore come from the SHARED queue store, not from a flag in its own process. Real Valkey, real BullMQ,
   // nothing injected: the "api" side builds its readiness exactly as index.ts does (a local flag that is never set, plus the probe).
@@ -2657,11 +2717,33 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       const drainQueues = await scheduleM41Jobs(connection);
       const ackQueues = await scheduleM41AckJobs(connection);
       open.push(...drainQueues, ...ackQueues);
+      // #824: schedules alone are not enough: with no consumer connected the API still refuses (a dead worker must not look ready)
+      const noConsumer = await failure(api.submit(actor, c1.claimId, `key-${randomUUID()}`));
+      expect(noConsumer?.code).toBe("COMMERCIAL_DRAIN_NOT_SCHEDULED");
+      expect(await submissionCount(c1.claimId)).toBe(0);
+      const workers = [M41_CRON_QUEUES.submissionDrain, M41_CRON_QUEUES.ackPull].map(
+        (name) => new Worker(name, async () => undefined, { connection }),
+      );
+      open.push(...workers);
+      await Promise.all(workers.map((w) => w.waitUntilReady()));
       const served = await api.submit(actor, c1.claimId, `key-${randomUUID()}`);
       expect(served.status).toBe("queued");
       expect((await api.sendGate(actor, c1.claimId)).reasons.map((r) => r.code)).not.toContain(
         "COMMERCIAL_DRAIN_NOT_SCHEDULED",
       );
+
+      // a worker dies (schedules still present): not ready again, then ready when it returns
+      const c3 = await readyClaim();
+      await workers[0]?.close();
+      const dead = await failure(api.submit(actor, c3.claimId, `key-${randomUUID()}`));
+      expect(dead?.code).toBe("COMMERCIAL_DRAIN_NOT_SCHEDULED");
+      expect(await submissionCount(c3.claimId)).toBe(0);
+      const back = new Worker(M41_CRON_QUEUES.submissionDrain, async () => undefined, {
+        connection,
+      });
+      open.push(back);
+      await back.waitUntilReady();
+      expect((await api.submit(actor, c3.claimId, `key-${randomUUID()}`)).status).toBe("queued");
 
       // one of the two schedules disappears: not ready again
       const c2 = await readyClaim();
