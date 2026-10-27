@@ -782,6 +782,30 @@ FROM pg_stat_progress_create_index;
 "
 ```
 
+### 5.7 Backups and Restore Drills (single-host stack, #857)
+
+The design, variables and key handling are in DR/BCP §4.8; this is the operating loop. Everything runs from the
+deploy directory with the overlay: `docker compose --env-file .env.production -f compose.yml -f compose.backup.yml`
+(below: `dc`).
+
+| When | What | Pass |
+| --- | --- | --- |
+| Continuous | `backup` sidecar: WAL archiving, a coordinated snapshot every 15 min, a base backup daily (full on Sunday) | no `backup.*` ops notice on `OPS_ALERT_WEBHOOK_URL`; heartbeat (`BACKUP_HEARTBEAT_URL`) not overdue |
+| Daily (08:30 check) | `dc ps backup` is `healthy`; `dc exec backup cw-backup.sh marker` shows a snapshot under 45 min old; `dc exec -u postgres backup pgbackrest --stanza=chartwarden info` lists today's base backup on repo1 and repo2 | all three |
+| Monthly (first Saturday) | isolated restore + verify (DR/BCP §4.8.6): `backup/restore.sh latest`, `backup:verify-restore`, record under `audit/restore-drill/<date>-production-restore.md`, `restore.sh destroy` | verifier exit 0; restore wall time inside the 1 h RTO target |
+| Quarterly | the monthly drill restoring from the OFF-SITE copy only, on a host other than production, with the escrowed keys (not the host's `.env.production`) | as monthly, and the keys open the backup |
+| Every change to `deploy/production/backup/` | `bun run backup:coordinated-drill` on a workstation (private containers) | the new `audit/restore-drill/<date>-coordinated-backup-drill.md` reads PASS |
+
+**Alerts.** `backup.snapshot_failed` names the step (`pg-backup-repo2`, `wal-archive-check`, `object-mirror`, ...):
+read `dc logs --since 1h backup`. `wal-archive-check` failing means WAL is not reaching a repository; Postgres keeps
+the segments in `pg_wal` meanwhile, so watch disk. `backup.stale` with no `snapshot_failed` before it means the loop
+hangs or died: `dc restart backup`. The common cause after maintenance is `postgres` recreated WITHOUT the overlay
+(archiving off): recreate it with `dc up -d postgres`.
+
+**Never** run `restore.sh` output against the live stack, and never point `backup:verify-restore` at the production
+database: the restore runs with `archive_mode=off` on its own network precisely so it cannot write into the
+production repository.
+
 ---
 
 ## 6. Storage Operations (MinIO)
@@ -1022,6 +1046,9 @@ Maintained in `infra/secrets/inventory.yaml` (encrypted via SOPS):
 | `PGBACKREST_REPO1_CIPHER_PASS` | Backups | Annual | | |
 | `PGBACKREST_REPO2_CIPHER_PASS` | Backup VM | Annual | | |
 | `PGBACKREST_REPO3_CIPHER_PASS` | Off-site backup | Annual | | |
+| `BACKUP_PG_LOCAL_CIPHER_PASS` / `BACKUP_PG_OFFSITE_CIPHER_PASS` (single-host stack, DR/BCP §4.8.5) | `postgres` + `backup` containers | Annual, new stanza; escrow offline, keep old passphrases until their backups expire | | |
+| `BACKUP_OBJECT_SSE_C_KEY` (off-site object copies) | `backup` container | Annual; keep old keys until their objects expire | | |
+| `BACKUP_OFFSITE_S3_ACCESS_KEY` / `_SECRET_KEY` | `postgres` + `backup` containers | 90 days | | |
 | TLS private key (Let's Encrypt) | Edge | Auto-renewed (60 days) | | |
 | Private CA root key | Internal mTLS | Every 3 years | | |
 | Per-VM mTLS client certs | Inter-service | Annual | | |
@@ -2274,7 +2301,9 @@ redis-cli -h chartwarden-data-01 PING
 # MinIO health
 mc admin info chartwarden-primary
 
-# Backup status
+# Backup status (single-host stack, §5.7)
+docker compose --env-file .env.production -f compose.yml -f compose.backup.yml exec backup cw-backup.sh marker
+# Backup status (multi-VM target)
 ssh chartwarden-db-01 "sudo -u postgres pgbackrest --stanza=chartwarden info"
 
 # All VMs status

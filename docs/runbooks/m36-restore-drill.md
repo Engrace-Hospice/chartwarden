@@ -11,6 +11,8 @@ cluster or the local Docker compose stack, and it is not wired into CI (a live, 
 
 ## 1. What production actually backs up (findings)
 
+> **Update 2026-10-27 (#857).** The table below is the state this drill was designed against. The repository now ships a coordinated backup: pgBackRest with WAL archiving (PITR) to a local and an off-site encrypted repository, a versioned SSE-C object mirror to an object-locked off-site bucket, and a snapshot marker tying a DB LSN to an object manifest (`deploy/production/backup/`, `compose.backup.yml`, DR/BCP §4.8), proven end to end by `bun run backup:coordinated-drill` (`audit/restore-drill/2026-10-27-coordinated-backup-drill.md`). It is not yet ENABLED on the VPS: provisioning the off-site target and keys and the first witnessed restore are operator steps (#857 follow-up). Until then the rows below still describe production.
+
 Read from `deploy/production/`, `ops/pgbackrest/`, `.github/workflows/` and the DR/BCP + ADR-0050 text. The DR/BCP
 document's own banner says the same: every backup topology in it is a target, not a build.
 

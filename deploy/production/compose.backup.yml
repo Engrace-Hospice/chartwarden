@@ -1,0 +1,103 @@
+# Coordinated, off-site, encrypted backups for the single-host stack (#857). An OVERLAY on compose.yml:
+#
+#   docker compose --env-file .env.production -f compose.yml -f compose.backup.yml build postgres
+#   docker compose --env-file .env.production -f compose.yml -f compose.backup.yml run --rm minio-backup-provision
+#   docker compose --env-file .env.production -f compose.yml -f compose.backup.yml up -d postgres backup
+#
+# Enabling it recreates `postgres` once (same volume, same data) with WAL archiving on. deploy.sh never recreates
+# postgres (it only touches api/worker/web/docling-worker/clamav and one-shots), so a release keeps archiving on. A
+# later `docker compose -f compose.yml up -d postgres` WITHOUT this overlay would turn archiving off: the next snapshot
+# then fails `pgbackrest check` and pages through OPS_ALERT_WEBHOOK_URL. Full procedure: deploy/production/README.md
+# ("Backups and restore") and CHARTWARDEN_DR_BCP_v0.1.md §4.8.
+
+x-backup-env: &backup-env
+  CHARTWARDEN_DB_NAME: ${CHARTWARDEN_DB_NAME:-chartwarden}
+  BACKUP_OFFSITE_S3_ENDPOINT: ${BACKUP_OFFSITE_S3_ENDPOINT:?set in .env.production (https://...)}
+  BACKUP_OFFSITE_S3_BUCKET: ${BACKUP_OFFSITE_S3_BUCKET:?set in .env.production}
+  BACKUP_OFFSITE_S3_REGION: ${BACKUP_OFFSITE_S3_REGION:?set in .env.production}
+  BACKUP_OFFSITE_S3_ACCESS_KEY: ${BACKUP_OFFSITE_S3_ACCESS_KEY:?set in .env.production}
+  BACKUP_OFFSITE_S3_SECRET_KEY: ${BACKUP_OFFSITE_S3_SECRET_KEY:?set in .env.production}
+  BACKUP_OFFSITE_S3_URI_STYLE: ${BACKUP_OFFSITE_S3_URI_STYLE:-path}
+  BACKUP_PG_LOCAL_CIPHER_PASS: ${BACKUP_PG_LOCAL_CIPHER_PASS:?set in .env.production (>= 32 chars)}
+  BACKUP_PG_OFFSITE_CIPHER_PASS: ${BACKUP_PG_OFFSITE_CIPHER_PASS:?set in .env.production (>= 32 chars, different from the local one)}
+  BACKUP_PG_RETENTION_FULL_LOCAL: ${BACKUP_PG_RETENTION_FULL_LOCAL:-2}
+  BACKUP_PG_RETENTION_FULL_OFFSITE: ${BACKUP_PG_RETENTION_FULL_OFFSITE:-13}
+
+services:
+  postgres:
+    image: chartwarden-backup:local
+    build: ./backup
+    environment: *backup-env
+    volumes:
+      - pg-socket:/var/run/postgresql
+      - pgbackrest-repo:/var/lib/pgbackrest
+    # archive_timeout bounds the database RPO at 60 s on a quiet system (DR/BCP §4.1.3).
+    command:
+      - postgres
+      - -c
+      - max_locks_per_transaction=4096
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=pgbackrest --stanza=chartwarden archive-push %p
+      - -c
+      - archive_timeout=60
+
+  backup:
+    image: chartwarden-backup:local
+    restart: unless-stopped
+    user: postgres
+    command: ["cw-backup.sh", "schedule"]
+    environment:
+      <<: *backup-env
+      BACKUP_OBJECT_SSE_C_KEY: ${BACKUP_OBJECT_SSE_C_KEY:?set in .env.production (openssl rand -base64 32)}
+      BACKUP_SOURCE_MINIO_URL: http://minio:9000
+      BACKUP_SOURCE_MINIO_ACCESS_KEY: ${BACKUP_SOURCE_MINIO_ACCESS_KEY:?set in .env.production}
+      BACKUP_SOURCE_MINIO_SECRET_KEY: ${BACKUP_SOURCE_MINIO_SECRET_KEY:?set in .env.production}
+      BACKUP_SNAPSHOT_INTERVAL_S: ${BACKUP_SNAPSHOT_INTERVAL_S:-900}
+      BACKUP_DB_BACKUP_HOUR_UTC: ${BACKUP_DB_BACKUP_HOUR_UTC:-2}
+      BACKUP_FULL_BACKUP_WEEKDAY: ${BACKUP_FULL_BACKUP_WEEKDAY:-7}
+      BACKUP_MAX_AGE_S: ${BACKUP_MAX_AGE_S:-2700}
+      BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
+      OPS_ALERT_WEBHOOK_URL: ${OPS_ALERT_WEBHOOK_URL:-}
+    volumes:
+      # The sidecar reads PGDATA and talks to Postgres over the shared socket (pgBackRest backs up a LOCAL pg1-path).
+      - postgres-data:/var/lib/postgresql
+      - pg-socket:/var/run/postgresql
+      - pgbackrest-repo:/var/lib/pgbackrest
+      - backup-state:/var/lib/cw-backup
+    healthcheck:
+      test: ["CMD", "cw-backup.sh", "healthcheck"]
+      interval: 5m
+      timeout: 10s
+      start_period: 2h
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  # Read-only MinIO account the backup lists and reads with (never the app account, which can delete).
+  minio-backup-provision:
+    image: chartwarden-backup:local
+    restart: "no"
+    user: postgres
+    command: ["cw-backup.sh", "provision-source-reader"]
+    environment:
+      <<: *backup-env
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      BACKUP_SOURCE_MINIO_URL: http://minio:9000
+      BACKUP_SOURCE_MINIO_ACCESS_KEY: ${BACKUP_SOURCE_MINIO_ACCESS_KEY:?set in .env.production}
+      BACKUP_SOURCE_MINIO_SECRET_KEY: ${BACKUP_SOURCE_MINIO_SECRET_KEY:?set in .env.production}
+    depends_on:
+      minio:
+        condition: service_healthy
+
+volumes:
+  pg-socket:
+    name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_pg-socket
+  pgbackrest-repo:
+    name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_pgbackrest-repo
+  backup-state:
+    name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_backup-state

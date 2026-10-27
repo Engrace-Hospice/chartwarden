@@ -125,6 +125,28 @@ dropped).
 the first time it runs (existing values are never touched, and this happens before the rollback backup is taken).
 To rotate the MinIO application secret, edit `MINIO_APP_SECRET_KEY` and deploy: `minio-provision` re-sets it.
 
+## Backups and restore (`compose.backup.yml`, `backup/`, #857)
+
+Coordinated, encrypted, off-site backups of Postgres (pgBackRest, WAL archiving / PITR) and every MinIO bucket
+(versioned SSE-C mirror to an object-locked bucket), tied together by a per-snapshot marker (DB LSN + object
+manifest with sha256). Design, variables, key management and RPO/RTO: `docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md`
+§4.8; operating loop and alerts: `CHARTWARDEN_OPS_RUNBOOK_v0.1.md` §5.7. `deploy.yml` ships `compose.backup.yml` and
+`backup/` with every release; nothing runs until it is enabled once:
+
+```sh
+cd /opt/chartwarden    # after setting the BACKUP_* variables in .env.production (DR/BCP §4.8.4)
+dc() { docker compose --env-file .env.production -f compose.yml -f compose.backup.yml "$@"; }
+dc build postgres                      # chartwarden-backup:local (pgvector/pgvector:pg18 + pgBackRest + mc)
+dc run --rm minio-backup-provision     # read-only MinIO account for the backup
+dc up -d postgres backup               # recreates postgres once (same volume) with archive_mode=on
+dc logs -f backup                      # the first snapshot takes a full base backup
+```
+
+`deploy.sh` never recreates `postgres`, so releases keep archiving on. Recreating `postgres` with `compose.yml` alone
+turns archiving off; the next snapshot then fails and pages. Restore into an isolated target with
+`BACKUP_ENV_FILE=... ./backup/restore.sh latest`, then run the verifier it prints. Prove changes to `backup/` with
+`bun run backup:coordinated-drill` (private containers; writes `audit/restore-drill/<date>-coordinated-backup-drill.md`).
+
 ## OWNER DECISION: production now enables the Oregon Medicaid gateway (GAP-146)
 
 `M24_LAUNCH_GATEWAY_ENABLED` used to be opt-in, so a production deploy that never set it silently built no Medicaid

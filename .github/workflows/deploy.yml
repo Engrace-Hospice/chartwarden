@@ -374,5 +374,12 @@ jobs:
           # M36 WP 1.5 — the ClamAV sidecar's config is bind-mounted from $DEPLOY_DIR/clamav/ by compose.yml.
           ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p $DEPLOY_DIR/clamav"
           scp -P "$port" deploy/clamav/clamd.conf "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/clamav/clamd.conf"
+          # #857 — the opt-in backup overlay and its image context ride along so the host copy matches the release;
+          # nothing runs until an operator enables it (deploy/production/README.md, "Backups and restore").
+          ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" "mkdir -p $DEPLOY_DIR/backup"
+          scp -P "$port" deploy/production/compose.backup.yml "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
+          scp -P "$port" deploy/production/backup/Dockerfile deploy/production/backup/cw-backup.sh \
+            deploy/production/backup/restore.sh deploy/production/backup/schema-fingerprint.sql \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/backup/"
           ssh -p "$port" "$DEPLOY_USER@$DEPLOY_HOST" \
             "chmod 700 $DEPLOY_DIR/deploy.sh $DEPLOY_DIR/smoke.sh $DEPLOY_DIR/preflight.sh && $DEPLOY_DIR/deploy.sh '$BACKEND_IMAGE' '$WEB_IMAGE' '$DOCLING_IMAGE'"
