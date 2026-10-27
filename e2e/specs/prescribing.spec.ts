@@ -133,19 +133,17 @@ test.describe("Prescribing", () => {
     const signDialog = page.getByRole("dialog", { name: "Sign medication order" });
     await expect(signDialog).toBeVisible();
 
-    // The signature must be ATTRIBUTED to a discipline before it can be taken, and Dr Harris holds two
-    // of M12's four prescriber roles — so the select opens on "Select a role…" and the commit is a real
-    // gate rather than decoration. Asserting the disabled state first is what proves that; a spec that
-    // only filled the form and clicked would pass just as happily against a control wired to nothing.
-    const commit = signDialog.getByRole("button", { name: "Sign", exact: true });
-    await expect(commit).toBeDisabled();
-    await signDialog.getByLabel("Signing as").selectOption("hospice_physician");
-    await expect(commit).toBeEnabled();
-
-    // §2.2 — the signer says whether they are the ordering physician. It is provenance the order
-    // records, not authorization: the server owns who may sign, and this says who did.
-    await signDialog.getByLabel("I am the ordering physician for this medication").check();
-    await commit.click();
+    // GAP-035 — signing takes no discipline and no "ordering physician" claim from the browser: the
+    // server derives both from the signer's session. The discipline is chosen once, when the order is
+    // sent for signature (above). Asserting the controls are ABSENT keeps the browser from quietly
+    // going back to asserting provenance it cannot vouch for.
+    const signButton = signDialog.getByRole("button", { name: "Sign", exact: true });
+    await expect(signButton).toBeVisible(); // the body has rendered, so the absences below mean something
+    await expect(signDialog.getByLabel("Signing as")).toHaveCount(0);
+    await expect(
+      signDialog.getByLabel("I am the ordering physician for this medication"),
+    ).toHaveCount(0);
+    await signButton.click();
     await expect(signDialog).toBeHidden({ timeout: 15_000 });
 
     // F-058 — the signature ACTIVATES the order, because nothing is being e-prescribed
