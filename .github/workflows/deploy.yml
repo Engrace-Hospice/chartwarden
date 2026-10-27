@@ -1,10 +1,12 @@
 name: Release and deploy
 
-# A successful CI run is the only automatic release source — enforced by the `verify` job below,
-# which CALLS ci.yml in full. This sentence described an intention rather than the configuration
-# until #16: ci.yml had no `push: main` trigger, so nothing verified a push that LANDED on main, and
-# a red SHA reached the VPS on 2026-08-25. The release SHA is baked into both immutable GHCR tags,
-# then the `deploy` job updates the VPS through SSH.
+# A successful CI run is the only release source — enforced by the `verify` job below, which CALLS
+# ci.yml in full: debounce -> verify -> release -> deploy, on a push to `main` and on a manual
+# dispatch alike (dispatch skips only the debounce wait). This sentence described an intention rather
+# than the configuration twice: until #16 (ci.yml had no `push: main` trigger, and a red SHA reached the
+# VPS on 2026-08-25), and again from 2026-10-01 to #846 (`verify` commented out). `arch:release-gate`
+# now pins the topology. The release SHA is baked into both immutable GHCR tags, then the `deploy` job
+# updates the VPS through SSH.
 #
 # STILL OUTSTANDING (owner decision, #16): `main` has no branch protection and the `production`
 # GitHub Environment has no protection rules — both need a paid plan. The gate below is a repo-level
@@ -88,17 +90,27 @@ jobs:
   # workflows or re-run a job. It is not a substitute for branch protection on `main` plus required
   # reviewers on the `production` Environment; those need a paid plan and an owner decision, and
   # remain open in #16.
-  # verify:
-  #   name: Verify (full CI)
-  #   needs: debounce
-  #   if: always() && (needs.debounce.result == 'skipped' || needs.debounce.outputs.proceed == 'true')
-  #   uses: ./.github/workflows/ci.yml
+  #
+  # #846: on 2026-10-01 this job was commented out ("Skipped the CI") and `release` was left needing only
+  # `debounce`, so every deploy until #846 shipped with no typecheck, lint, tests or live suites. It is
+  # restored, and `bun run arch:release-gate` (in `arch:fitness`) now fails if `release` stops needing a
+  # job that calls ci.yml or `deploy` stops needing `release`. To run the same CI on a branch without
+  # deploying, dispatch ci.yml directly (`gh workflow run ci.yml --ref <branch>`).
+  #
+  # `!cancelled()` rather than the implicit `success()`: on `workflow_dispatch` `debounce` is SKIPPED,
+  # and a skipped dependency makes the implicit `success()` false, so without it a dispatched deploy
+  # skipped every job (run 36995620625, 2026-10-02). The explicit result checks keep the gate:
+  # dispatch skips the debounce WAIT, never `verify`.
+  verify:
+    name: Verify (full CI)
+    needs: debounce
+    if: ${{ !cancelled() && (needs.debounce.result == 'skipped' || needs.debounce.outputs.proceed == 'true') }}
+    uses: ./.github/workflows/ci.yml
 
   release:
-    needs: debounce
-    if: needs.debounce.result == 'skipped' || needs.debounce.outputs.proceed == 'true'
+    needs: [debounce, verify]
+    if: ${{ !cancelled() && needs.verify.result == 'success' }}
     name: Build and publish immutable images
-    # needs: verify
     runs-on: [self-hosted, Linux, X64, hostinger]
     permissions:
       contents: read
@@ -319,6 +331,8 @@ jobs:
   deploy:
     name: Deploy to production VPS
     needs: release
+    # Explicit for the same reason as `release`: a skipped `debounce` (dispatch) is an ancestor.
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
     runs-on: [self-hosted, Linux, X64, hostinger]
     environment: production
     permissions:
