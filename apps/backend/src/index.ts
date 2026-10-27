@@ -1111,6 +1111,7 @@ import {
   buildDrizzleEligibilityWatchdogStore,
   buildDrizzleM24ReadService,
   buildDrizzleM24WriteService,
+  buildM24MedicaidCoverageResolver,
   buildDrizzleRbDaySweepStore,
   buildDrizzleStateChannelCredentialResolver,
   buildM24MedicarePrimaryAckConsumer,
@@ -4322,41 +4323,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // M24 → M5 §3.4 — the coverage read claim assembly + eligibility resolve a billed payer from. Resolved
   // through getSeam at CALL time (not boot), so registration order does not matter and an unregistered
   // reader denies loudly at the deny-stub rather than silently reporting "no coverage".
-  const m24CoverageResolver = {
-    async activeMedicaidCoverage(q: {
-      organizationId: string;
-      patientId: string;
-      onDate: string;
-      throughDate?: string;
-    }) {
-      const reader = getPatientCoverageReader();
-      // #845 — a claim window asks the range-wide resolver: one Medicaid row on top on EVERY day, else nothing.
-      const found =
-        q.throughDate === undefined
-          ? await reader.activeCoverageOfKind({
-              organizationId: q.organizationId,
-              patientId: q.patientId,
-              coverageKind: "medicaid",
-              onDate: q.onDate,
-            })
-          : await reader
-              .coverageForRange({
-                organizationId: q.organizationId,
-                patientId: q.patientId,
-                from: q.onDate,
-                to: q.throughDate,
-                coverageKind: "medicaid",
-              })
-              .then((r) => (r.status === "uniform" ? r.coverage : null));
-      return found
-        ? {
-            id: found.id,
-            payerId: found.payerId,
-            subscriberId: found.subscriberId,
-          }
-        : null;
-    },
-  };
+  const m24CoverageResolver = buildM24MedicaidCoverageResolver(getPatientCoverageReader);
   // M24 → M1 (`provider_entity` CCN) and M24 → M6 (`level_of_care_period`) — each owner's own reader, each
   // under its own `withOrgContext` (assembleClaim calls them outside its org-context transaction; the bare
   // `db.select`s these replaced ran with no `app.org_id` and 500'd every Medicaid claim assembly).

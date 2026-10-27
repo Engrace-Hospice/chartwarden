@@ -16,25 +16,70 @@
 -- starts. Each row then ends before its successor starts, so no two valid rows overlap. A row whose successor starts on
 -- the same day shrinks to an empty window (no longer in force); its id survives for any claim that stamped it. The update
 -- fires the PHI write-audit trigger, so every repaired row leaves an audit_event.
+--
+-- VISIBILITY: every repaired row a claim already references (M23 `claim.patient_payer_id`, M24
+-- `medicaid_claim.patient_payer_id`, M41 `commercial_claim.primary_/secondary_patient_payer_id`) is reported with a NOTICE
+-- (row id, org, old -> new dates, claim ids; no PHI), plus a total. It does not block: those claims keep resolving the row
+-- by id. Production is demo data and is reseeded rather than remediated by script.
+--
+-- MIGRATOR ROLE: patient_payer has FORCEd org RLS, so this must run as the DATABASE_ADMIN_URL role (superuser /
+-- BYPASSRLS), like 1151; under an RLS-subject role the repair would silently see zero rows, so the guard fails loudly.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = current_user AND (rolsuper OR rolbypassrls)) THEN
+    RAISE EXCEPTION 'migration 1291 must run as a superuser / BYPASSRLS role (DATABASE_ADMIN_URL): patient_payer has FORCEd RLS, so % could not repair every tenant', current_user;
+  END IF;
+END $$;--> statement-breakpoint
+
 CREATE EXTENSION IF NOT EXISTS btree_gist;--> statement-breakpoint
 
-WITH ordered AS (
-  SELECT
-    "id",
-    "effective_to",
-    lead("effective_from") OVER (
-      PARTITION BY "organization_id", "patient_id", "rank"
-      ORDER BY "effective_from", "created_at", "id"
-    ) AS "next_from"
-  FROM "patient_payer"
-  WHERE "effective_to" IS NULL OR "effective_to" >= "effective_from"
-)
-UPDATE "patient_payer" p
-SET "effective_to" = o."next_from" - 1
-FROM ordered o
-WHERE p."id" = o."id"
-  AND o."next_from" IS NOT NULL
-  AND (o."effective_to" IS NULL OR o."effective_to" >= o."next_from");--> statement-breakpoint
+DO $$
+DECLARE
+  r record;
+  claim_ids text;
+  repaired int := 0;
+  claim_referenced int := 0;
+BEGIN
+  FOR r IN
+    WITH ordered AS (
+      SELECT
+        "id",
+        "organization_id",
+        "effective_from",
+        "effective_to",
+        lead("effective_from") OVER (
+          PARTITION BY "organization_id", "patient_id", "rank"
+          ORDER BY "effective_from", "created_at", "id"
+        ) AS "next_from"
+      FROM "patient_payer"
+      WHERE "effective_to" IS NULL OR "effective_to" >= "effective_from"
+    )
+    SELECT * FROM ordered
+    WHERE "next_from" IS NOT NULL AND ("effective_to" IS NULL OR "effective_to" >= "next_from")
+    ORDER BY "organization_id", "id"
+  LOOP
+    SELECT string_agg(ref, ', ') INTO claim_ids FROM (
+      SELECT 'm23:' || c."id" AS ref FROM "claim" c
+        WHERE c."patient_payer_id" = r."id" AND c."organization_id" = r."organization_id"
+      UNION ALL
+      SELECT 'm24:' || m."id" FROM "medicaid_claim" m
+        WHERE m."patient_payer_id" = r."id" AND m."organization_id" = r."organization_id"
+      UNION ALL
+      SELECT 'm41:' || k."id" FROM "commercial_claim" k
+        WHERE r."id" IN (k."primary_patient_payer_id", k."secondary_patient_payer_id")
+          AND k."organization_id" = r."organization_id"
+    ) refs;
+    IF claim_ids IS NOT NULL THEN
+      claim_referenced := claim_referenced + 1;
+      RAISE NOTICE '1291 repair: patient_payer % (org %) % .. % -> % .. %, referenced by claims %',
+        r."id", r."organization_id", r."effective_from", coalesce(r."effective_to"::text, 'open'),
+        r."effective_from", r."next_from" - 1, claim_ids;
+    END IF;
+    UPDATE "patient_payer" SET "effective_to" = r."next_from" - 1 WHERE "id" = r."id";
+    repaired := repaired + 1;
+  END LOOP;
+  RAISE NOTICE '1291 repair: % patient_payer row(s) shrunk, % of them referenced by a claim', repaired, claim_referenced;
+END $$;--> statement-breakpoint
 
 DO $$ BEGIN
   ALTER TABLE "patient_payer" ADD CONSTRAINT "patient_payer_rank_no_overlap" EXCLUDE USING gist (

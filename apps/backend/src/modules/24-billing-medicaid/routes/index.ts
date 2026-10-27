@@ -4,7 +4,10 @@
 export type { M24ReadService } from "./read-service";
 export type { M24WriteService, WriteOutboxPort, OutboxEmission } from "./write-service";
 export { buildDrizzleM24ReadService } from "./read-service-drizzle";
-export { buildDrizzleM24WriteService } from "./write-service-drizzle";
+export {
+  buildDrizzleM24WriteService,
+  buildM24MedicaidCoverageResolver,
+} from "./write-service-drizzle";
 
 import type { M24ReadService } from "./read-service";
 import type { M24WriteService } from "./write-service";

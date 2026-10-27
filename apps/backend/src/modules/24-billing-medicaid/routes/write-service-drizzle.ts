@@ -28,7 +28,12 @@ import {
   voidTob,
 } from "@chartwarden/medicaid-adapters";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ChartWardenError, ForbiddenError, NotFoundError } from "@chartwarden/types";
+import {
+  ChartWardenError,
+  ForbiddenError,
+  NotFoundError,
+  type PatientCoverageReader,
+} from "@chartwarden/types";
 import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import type { CredentialCipherPort } from "../credential-crypto";
 import type { M24WriteActor } from "./actor";
@@ -118,6 +123,41 @@ export interface CoverageResolverPort {
      */
     throughDate?: string;
   }): Promise<{ id: string; payerId: string; subscriberId: string } | null>;
+}
+
+/**
+ * The production {@link CoverageResolverPort} over M5's §3.4 `PatientCoverageReader` seam, resolved at CALL time so
+ * registration order does not matter. #845 — a claim window (`throughDate` given) asks the range-wide resolver: one
+ * Medicaid row on top on EVERY day of the window, else nothing; a single date (eligibility) stays a point read.
+ */
+export function buildM24MedicaidCoverageResolver(
+  reader: () => Pick<PatientCoverageReader, "activeCoverageOfKind" | "coverageForRange">,
+): CoverageResolverPort {
+  return {
+    async activeMedicaidCoverage(q) {
+      const r = reader();
+      const found =
+        q.throughDate === undefined
+          ? await r.activeCoverageOfKind({
+              organizationId: q.organizationId,
+              patientId: q.patientId,
+              coverageKind: "medicaid",
+              onDate: q.onDate,
+            })
+          : await r
+              .coverageForRange({
+                organizationId: q.organizationId,
+                patientId: q.patientId,
+                from: q.onDate,
+                to: q.throughDate,
+                coverageKind: "medicaid",
+              })
+              .then((res) => (res.status === "uniform" ? res.coverage : null));
+      return found
+        ? { id: found.id, payerId: found.payerId, subscriberId: found.subscriberId }
+        : null;
+    },
+  };
 }
 
 /**

@@ -3,12 +3,13 @@
  * gates refuse a window whose primary payer is not the same coverage on every day.
  *
  * Runs as the real NOBYPASSRLS `chartwarden_app` role (the admin client only seeds and inspects):
- *   - migration 1291 repairs pre-existing overlaps deterministically (applied over legacy rows seeded BEFORE it runs);
+ *   - migration 1291 repairs pre-existing overlaps deterministically (applied over legacy rows seeded BEFORE it runs),
+ *     per tenant, reports every repaired row a claim references, keeps that row's id, and refuses an RLS-subject role;
  *   - a same-day, cross-kind replacement through the real M5 writer leaves one rank-1 coverage per day (the repro);
  *   - a payer switch strictly inside the window is seen (M23 and M41 refuse it);
  *   - two concurrent replacements at one rank: one wins, the other is a typed 409, and nothing overlaps;
  *   - the exclusion constraint itself rejects an overlapping row written directly (and admits an empty window);
- *   - M23 claim assembly refuses the transition-day window before any claim row is written.
+ *   - M23 and M24 claim assembly refuse a window whose payer changes, before any claim row is written.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m5:payer-intervals:live
  */
@@ -24,6 +25,10 @@ import { M5_OUTBOX_EVENTS } from "../src/modules/05-patient/index";
 import { createDbPatientRouteService } from "../src/modules/05-patient/patient-route-service-db";
 import { buildClaimAssemblyService } from "../src/modules/23-billing-medicare/services/claim-assembly";
 import { buildM23PatientPayerAdapter } from "../src/modules/23-billing-medicare/services/claim-assembly-seam-adapters";
+import {
+  buildDrizzleM24WriteService,
+  buildM24MedicaidCoverageResolver,
+} from "../src/modules/24-billing-medicaid/index";
 import { resolveCoverages } from "../src/modules/41-billing-commercial/index";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
 
@@ -32,6 +37,8 @@ const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const REPAIR_MIGRATION = "1291_m5_patient_payer_rank_no_overlap.sql";
 const ORG = "aaaaaaaa-0845-4000-8000-0000000000a1";
 const LEGACY_ORG = "bbbbbbbb-0845-4000-8000-0000000000b1";
+const LEGACY_ORG_B = "cccccccc-0845-4000-8000-0000000000c1";
+const CLAIM_PE = "f0000000-0845-4000-8000-0000000000e1";
 const STAFF = "d0000000-0845-4000-8000-000000000001";
 const MEDICARE = "e0000000-0845-4000-8000-000000000001";
 const COMMERCIAL = "e0000000-0845-4000-8000-000000000002";
@@ -42,6 +49,8 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
   let service: ReturnType<typeof createDbPatientRouteService>;
   let reader: ReturnType<typeof buildPatientCoverageReader>;
   const legacy: Record<string, string> = {};
+  const notices: string[] = [];
+  let stampedClaimId = "";
 
   async function seedPatient(organizationId: string): Promise<string> {
     const row = await admin.query(
@@ -58,12 +67,13 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
     kind: string,
     from: string,
     to: string | null,
+    organizationId = LEGACY_ORG,
   ): Promise<string> {
     const row = await admin.query(
       `INSERT INTO patient_payer
          (patient_id, organization_id, payer_id, rank, coverage_kind, subscriber_id, effective_from, effective_to)
        VALUES ($1,$2,$3,$4,$5,'SUB',$6,$7) RETURNING id`,
-      [patientId, LEGACY_ORG, MEDICARE, rank, kind, from, to],
+      [patientId, organizationId, MEDICARE, rank, kind, from, to],
     );
     return row.rows[0].id as string;
   }
@@ -116,8 +126,8 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
 
     // Legacy rows, written the way the pre-#845 writer wrote them, BEFORE the repair migration runs.
     await admin.query(
-      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'cw845-legacy','L','L')",
-      [LEGACY_ORG],
+      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'cw845-legacy','L','L'), ($2,'cw845-legacy-b','LB','LB')",
+      [LEGACY_ORG, LEGACY_ORG_B],
     );
     const p1 = await seedPatient(LEGACY_ORG);
     legacy.sameDayOld = await legacyRow(p1, 1, "medicare_ffs", "2026-01-01", "2026-01-15");
@@ -129,8 +139,41 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
     const p3 = await seedPatient(LEGACY_ORG);
     legacy.inverted = await legacyRow(p3, 1, "medicare_ffs", "2026-03-01", "2026-02-20");
     legacy.invertedSuccessor = await legacyRow(p3, 1, "commercial", "2026-02-20", null);
-    expect(await overlappingPairs()).toBe(2);
+    // A second tenant: its own overlap, plus a row on org A's patient id that would overlap org A's rows if the repair
+    // (or the constraint) ignored organization_id. Neither tenant's rows may move because of the other's.
+    const pB = await seedPatient(LEGACY_ORG_B);
+    legacy.orgBOld = await legacyRow(
+      pB,
+      1,
+      "medicare_ffs",
+      "2026-01-01",
+      "2026-01-10",
+      LEGACY_ORG_B,
+    );
+    legacy.orgBNew = await legacyRow(pB, 1, "commercial", "2026-01-10", null, LEGACY_ORG_B);
+    legacy.orgBOnOrgAPatient = await legacyRow(
+      p1,
+      1,
+      "commercial",
+      "2026-01-05",
+      "2026-01-20",
+      LEGACY_ORG_B,
+    );
+    // A claim already stamped with the row the repair will shrink (default partition; no PHI).
+    stampedClaimId = (
+      await admin.query(
+        `INSERT INTO claim (organization_id, provider_entity_id, patient_id, admission_id,
+         election_period_id_from, election_period_id_to, patient_payer_id, tob, service_from, service_to,
+         state, claim_control_number, mac_jurisdiction, total_expected_payment_cents,
+         sequestration_applied_pct, sequestration_policy_id, created_by_membership_id, patient_status_code)
+       VALUES ($1,$2,$3,$2,$2,$2,$4,'811','2026-01-01','2026-01-14','READY','cw845-1','ngs_j6',100000,'2.00',$2,$2,'01')
+       RETURNING id`,
+        [LEGACY_ORG, CLAIM_PE, p1, legacy.sameDayOld],
+      )
+    ).rows[0].id as string;
+    expect(await overlappingPairs()).toBe(3);
 
+    admin.on("notice", (n) => notices.push(n.message ?? ""));
     for (const f of files.slice(cut))
       await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
 
@@ -182,6 +225,57 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
       [LEGACY_ORG],
     );
     expect(audited.rows[0].n).toBe(2);
+  });
+
+  it("1291 repairs each tenant on its own: org B's rows never move org A's, nor the reverse", async () => {
+    expect(await datesOf(legacy.orgBOld as string)).toEqual({ f: "2026-01-01", t: "2026-01-09" });
+    expect(await datesOf(legacy.orgBNew as string)).toEqual({ f: "2026-01-10", t: null });
+    // Would have been cut to 2026-01-14 by org A's successor if the partition ignored the tenant.
+    expect(await datesOf(legacy.orgBOnOrgAPatient as string)).toEqual({
+      f: "2026-01-05",
+      t: "2026-01-20",
+    });
+    const audited = await admin.query(
+      "SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND event_type='patient_payer.update'",
+      [LEGACY_ORG_B],
+    );
+    expect(audited.rows[0].n).toBe(1);
+  });
+
+  it("1291 reports a repaired row a claim references, keeps its id, and the claim still resolves it", async () => {
+    const rowNotice = notices.find((m) => m.includes(legacy.sameDayOld as string));
+    expect(rowNotice).toContain(`m23:${stampedClaimId}`);
+    expect(rowNotice).toContain("2026-01-14");
+    expect(notices).toContain(
+      "1291 repair: 3 patient_payer row(s) shrunk, 1 of them referenced by a claim",
+    );
+    const claim = await admin.query("SELECT patient_payer_id FROM claim WHERE id=$1", [
+      stampedClaimId,
+    ]);
+    expect(claim.rows[0].patient_payer_id).toBe(legacy.sameDayOld);
+    const patientId = (
+      await admin.query("SELECT patient_id FROM patient_payer WHERE id=$1", [legacy.sameDayOld])
+    ).rows[0].patient_id as string;
+    const coverages = await reader.coveragesForPatient({ organizationId: LEGACY_ORG, patientId });
+    expect(coverages.find((c) => c.id === legacy.sameDayOld)).toMatchObject({
+      coverageKind: "medicare_ffs",
+      effectiveFrom: "2026-01-01",
+      effectiveTo: "2026-01-14",
+    });
+  });
+
+  it("1291 refuses to run under an RLS-subject role instead of repairing zero rows", async () => {
+    const app = new Client({
+      connectionString: await appRoleConnectionString(admin, DB_URL as string),
+    });
+    await app.connect();
+    try {
+      await expect(
+        app.query(readFileSync(join(MIGRATIONS_DIR, REPAIR_MIGRATION), "utf8")),
+      ).rejects.toThrow(/must run as a superuser \/ BYPASSRLS role/);
+    } finally {
+      await app.end();
+    }
   });
 
   it("same-day cross-kind replacement: one rank-1 coverage per day, and M23 sees commercial on the transition date (the repro)", async () => {
@@ -324,6 +418,58 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
     ).rejects.toMatchObject({ code: "NON_MEDICARE_PRIMARY_PAYER", statusCode: 409 });
     expect((await admin.query("SELECT count(*)::int AS n FROM claim")).rows[0].n).toBe(
       claimsBefore,
+    );
+  });
+
+  it("M24 claim assembly refuses a window whose Medicaid coverage changes mid-window, writing no claim", async () => {
+    const patientId = await seedPatient(ORG);
+    await add(patientId, 1, "medicaid", "2026-09-01");
+    await add(patientId, 1, "medicaid", "2026-09-16"); // e.g. a corrected recipient id: a new row mid-window
+    const m24 = buildDrizzleM24WriteService(
+      handle.db,
+      undefined,
+      undefined,
+      buildM24MedicaidCoverageResolver(() => reader),
+    );
+    const assemble = (serviceFrom: string, serviceTo: string) =>
+      m24.assembleClaim(
+        { organizationId: ORG, userId: STAFF, roles: [], stepUpRecent: true },
+        {
+          patientId,
+          admissionId: "f0000000-0845-4000-8000-0000000000a2",
+          providerEntityId: CLAIM_PE,
+          serviceFrom,
+          serviceTo,
+          kind: "hospice_only",
+        },
+      );
+    const before = (await admin.query("SELECT count(*)::int AS n FROM medicaid_claim")).rows[0].n;
+    await expect(assemble("2026-09-01", "2026-09-30")).rejects.toMatchObject({
+      code: "MEDICAID_COVERAGE_NOT_IN_FORCE",
+      statusCode: 409,
+    });
+    // Coverage that ends mid-window (a gap) is refused the same way.
+    const lapsed = await seedPatient(ORG);
+    await admin.query(
+      `INSERT INTO patient_payer (patient_id, organization_id, payer_id, rank, coverage_kind, subscriber_id, effective_from, effective_to)
+       VALUES ($1,$2,$3,1,'medicaid','MCD-1','2026-09-01','2026-09-10')`,
+      [lapsed, ORG, COMMERCIAL],
+    );
+    await expect(
+      m24.assembleClaim(
+        { organizationId: ORG, userId: STAFF, roles: [], stepUpRecent: true },
+        {
+          patientId: lapsed,
+          admissionId: "f0000000-0845-4000-8000-0000000000a3",
+          providerEntityId: CLAIM_PE,
+          serviceFrom: "2026-09-01",
+          serviceTo: "2026-09-30",
+          kind: "hospice_only",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "MEDICAID_COVERAGE_NOT_IN_FORCE" });
+    expect((await admin.query("SELECT count(*)::int AS n FROM medicaid_claim")).rows[0].n).toBe(
+      before,
     );
   });
 });
