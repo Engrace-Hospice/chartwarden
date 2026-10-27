@@ -170,7 +170,15 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
 
   /** A ready claim for a fresh patient, plan, route and (optionally) an enrollment. */
   async function readyClaim(
-    opts: { enrolled?: boolean; routed?: boolean; authorization?: boolean } = {},
+    opts: {
+      enrolled?: boolean;
+      routed?: boolean;
+      authorization?: boolean;
+      /** The clearinghouse the enrollment row names (default `stedi`). */
+      enrollmentKey?: string;
+      /** The enrollment status (default `enrolled`). */
+      enrollmentStatus?: string;
+    } = {},
   ): Promise<{
     claimId: string;
     controlNumber: string;
@@ -202,8 +210,14 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
     if (opts.enrolled !== false) {
       await admin.query(
         `INSERT INTO commercial_payer_enrollment (organization_id, provider_entity_id, payer_id, clearinghouse_key, status, effective_from)
-         VALUES ($1,$2,$3,'stedi','enrolled','2026-01-01')`,
-        [ORG, providerEntityId, payerId],
+         VALUES ($1,$2,$3,$4,$5,'2026-01-01')`,
+        [
+          ORG,
+          providerEntityId,
+          payerId,
+          opts.enrollmentKey ?? "stedi",
+          opts.enrollmentStatus ?? "enrolled",
+        ],
       );
     }
     await admin.query(
@@ -469,6 +483,39 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       expect(err?.details?.map((d) => d.code)).toEqual(["COMMERCIAL_PROVIDER_NOT_ENROLLED"]);
       expect(await submissionCount(c.claimId)).toBe(0);
       expect(await eventCount(c.claimId, "m41.claim.submit_requested")).toBe(0);
+    });
+
+    it("no silent fallback: routed on the bound clearinghouse but enrolled only on another one is refused, nothing written", async () => {
+      const c = await readyClaim();
+      // a second clearinghouse routes the plan after assembly (assembly itself refuses an ambiguous plan)
+      await admin.query(
+        `INSERT INTO commercial_payer_route (organization_id, plan_id, clearinghouse_key, clearinghouse_payer_id, effective_from)
+         VALUES ($1,$2,'other_vendor','SYNTH02','2026-01-01')`,
+        [ORG, c.planId],
+      );
+      const err = await failure(service("other_vendor").submit(actor, c.claimId, "key-nofallback"));
+      expect(err?.code).toBe("COMMERCIAL_SEND_REFUSED");
+      expect(err?.statusCode).toBe(409);
+      expect(err?.details?.map((d) => d.code)).toEqual(["COMMERCIAL_PROVIDER_NOT_ENROLLED"]);
+      expect(await submissionCount(c.claimId)).toBe(0);
+      expect(await eventCount(c.claimId, "m41.claim.submit_requested")).toBe(0);
+      // the refusal is stable: the same key answers the same refusal, still nothing queued
+      const again = await failure(
+        service("other_vendor").submit(actor, c.claimId, "key-nofallback"),
+      );
+      expect(again?.details?.map((d) => d.code)).toEqual(["COMMERCIAL_PROVIDER_NOT_ENROLLED"]);
+      expect(await submissionCount(c.claimId)).toBe(0);
+    });
+
+    it("an enrollment that is pending, suspended or not_enrolled is not an enrollment", async () => {
+      for (const enrollmentStatus of ["pending", "suspended", "not_enrolled"]) {
+        const c = await readyClaim({ enrollmentStatus });
+        const err = await failure(
+          service("stedi").submit(actor, c.claimId, `key-${enrollmentStatus}`),
+        );
+        expect(err?.details?.map((d) => d.code)).toEqual(["COMMERCIAL_PROVIDER_NOT_ENROLLED"]);
+        expect(await submissionCount(c.claimId)).toBe(0);
+      }
     });
 
     it("send-gate view lists the same reasons before the click", async () => {
