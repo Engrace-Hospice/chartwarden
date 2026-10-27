@@ -2,6 +2,9 @@
 // `payer_id` resolves an M40 canonical Payer — validated at runtime via the MdmEntityProvider seam,
 // NOT a cross-module FK constraint (modules own their tables; cross-module refs are app-validated).
 // PHI-bearing → three-column tenancy rule. One active coverage per (patient, rank).
+// Dates are INCLUSIVE at both ends; migration 1291 adds `patient_payer_rank_no_overlap` (an EXCLUDE USING gist over
+// org/patient/rank and `daterange(effective_from, effective_to, '[]')`, skipping empty windows), which Drizzle cannot
+// express, so it lives in SQL only. Writers close a replaced row the day BEFORE its successor (#845).
 import { sql } from "drizzle-orm";
 import {
   date,

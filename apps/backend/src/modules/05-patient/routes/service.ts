@@ -3,6 +3,7 @@
 // (writes under withOrgContext so RLS scopes by app.org_id). The slice runs the REAL T06 matcher so
 // the §7.1 admit-no-dup workflow is exercised end-to-end. Pure-ish: no clock except an injected
 // `now()` so the §7.7 60-day SLA is deterministic in tests.
+import { addDaysIso, replacementClosesOn } from "../coverage-intervals";
 import {
   type MatchCandidate,
   type RawSubject,
@@ -618,22 +619,20 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       const history = payers.get(patientId) ?? [];
 
       /*
-       * One active coverage per (patient, rank).
-       *
-       * Adding a new coverage at an occupied rank closes the previous
-       * current row rather than mutating it.
+       * One active coverage per (patient, rank). Adding a new coverage at an occupied rank closes the previous
+       * current row the day BEFORE the replacement starts (#845 — the same inclusive convention as the db
+       * service; `replacementClosesOn` refuses a replacement that would invert the old row's dates).
        */
-      for (let index = 0; index < history.length; index += 1) {
-        const payer = history[index]!;
-
-        if (payer.rank === input.rank && payer.current) {
-          history[index] = {
-            ...payer,
-            current: false,
-            effectiveTo: input.effectiveFrom,
-          };
-        }
-      }
+      addDaysIso(input.effectiveFrom, 0);
+      const closed = history.map((payer) =>
+        payer.rank === input.rank && payer.current
+          ? {
+              ...payer,
+              current: false,
+              effectiveTo: replacementClosesOn(payer.effectiveFrom, input.effectiveFrom),
+            }
+          : payer,
+      );
 
       const row: PatientPayerView = {
         id: nextId("payer"),
@@ -648,8 +647,7 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
         effectiveTo: null,
       };
 
-      history.push(row);
-      payers.set(patientId, history);
+      payers.set(patientId, [...closed, row]);
 
       events.push("m5.patient.payer_changed");
 

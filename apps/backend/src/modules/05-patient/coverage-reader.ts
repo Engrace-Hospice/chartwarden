@@ -14,20 +14,12 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { PatientCoverage, PatientCoverageReader } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
+import { coverageForRange, inForceOn } from "./coverage-intervals";
 
 const day = (d: Date | string | null): string | null => {
   if (d === null) return null;
   return (d instanceof Date ? d.toISOString() : new Date(d).toISOString()).slice(0, 10);
 };
-
-/**
- * Whether a coverage is in force on `onDate` (inclusive of both ends; an open `effectiveTo` never expires).
- * Date-only comparison on ISO yyyy-mm-dd strings is lexicographic, so no timezone drift is possible.
- */
-function inForceOn(coverage: PatientCoverage, onDate: string): boolean {
-  if (coverage.effectiveFrom > onDate) return false;
-  return coverage.effectiveTo === null || coverage.effectiveTo >= onDate;
-}
 
 export function buildPatientCoverageReader(db: DbClient): PatientCoverageReader {
   const PAYER = schema.patientPayers;
@@ -69,6 +61,11 @@ export function buildPatientCoverageReader(db: DbClient): PatientCoverageReader 
         .filter((c) => c.coverageKind === coverageKind && inForceOn(c, onDate))
         .sort((a, b) => a.rank - b.rank);
       return eligible[0] ?? null;
+    },
+
+    // #845 — the range-wide, cross-kind resolver. A billing gate asks this, never two point reads at the endpoints.
+    async coverageForRange({ organizationId, patientId, from, to, coverageKind }) {
+      return coverageForRange(await load(organizationId, patientId), { from, to }, coverageKind);
     },
   };
 }

@@ -727,6 +727,8 @@ jobs:
           - { name: "M5 SSN identifier", scripts: "test:m5:ssn-identifier:live" }
           # F-229 (#248) — M5 `PatientAddressReader.primaryAddress` (full street address seam).
           - { name: "M5 address reader", scripts: "test:m5:address-reader:live" }
+          # #845 — one coverage per rank per day: 1291 repair + exclusion constraint, writer closure, range-wide payer resolver.
+          - { name: "M5 payer intervals", scripts: "test:m5:payer-intervals:live" }
           - {
               name: "M25 Remittance",
               scripts: "test:m25:835-ingestion:live test:m25:interim-payments-seam:live test:m25:manual-match:live",

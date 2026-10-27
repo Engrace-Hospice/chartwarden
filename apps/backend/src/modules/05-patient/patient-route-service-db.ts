@@ -22,6 +22,7 @@ import {
   loadMatchCandidates,
 } from "./admit-matching-db";
 import { changeToApply, isAmendableField, normalizeRequestedChange } from "./amendments";
+import { addDaysIso, payerRankConflictAs409, replacementClosesOn } from "./coverage-intervals";
 import type { M5OutboxPort } from "./deceased-db";
 import {
   type PatientIdentifierCipher,
@@ -591,107 +592,111 @@ export function createDbPatientRouteService(
     input: AddPatientPayerInput,
     actorUserId: string,
   ): Promise<PatientPayerView> =>
-    withOrgContext(
-      db,
-      {
-        organizationId,
-        userId: actorUserId,
-      },
-      async (tx) => {
-        /*
-         * Fail closed if the patient does not belong to the current
-         * organization / is not visible under RLS.
-         */
-        const [patient] = await tx
-          .select({
-            id: P.id,
-          })
-          .from(P)
-          .where(eq(P.id, patientId))
-          .limit(1);
+    payerRankConflictAs409(() =>
+      withOrgContext(
+        db,
+        {
+          organizationId,
+          userId: actorUserId,
+        },
+        async (tx) => {
+          /*
+           * Fail closed if the patient does not belong to the current
+           * organization / is not visible under RLS.
+           */
+          const [patient] = await tx
+            .select({
+              id: P.id,
+            })
+            .from(P)
+            .where(eq(P.id, patientId))
+            .limit(1);
 
-        if (!patient) {
-          throw new Error(`patient ${patientId} not found`);
-        }
+          if (!patient) {
+            throw new Error(`patient ${patientId} not found`);
+          }
 
-        /*
-         * patient_payer has a partial unique index:
-         *
-         *   (patient_id, rank)
-         *   WHERE effective_to IS NULL
-         *
-         * Close the existing current coverage occupying this rank
-         * before inserting its replacement.
-         *
-         * We preserve history rather than updating the old coverage
-         * in place.
-         */
-        await tx
-          .update(PAYER)
-          .set({
-            effectiveTo: input.effectiveFrom,
-          })
-          .where(
-            and(
-              eq(PAYER.patientId, patientId),
-              eq(PAYER.rank, input.rank),
-              isNull(PAYER.effectiveTo),
-            ),
-          );
+          /*
+           * #845 — one inclusive interval convention (`coverage-intervals.ts`): the current coverage at this rank
+           * closes the day BEFORE its replacement starts, so the two never share a day. History is preserved (the
+           * old row is closed, never rewritten). The row is locked first so a concurrent replacement waits and then
+           * finds no open row; its insert then trips `patient_payer_active_rank_unique` / the 1291 exclusion
+           * constraint and is mapped to a typed 409 below, never a second overlapping coverage.
+           */
+          const [current] = await tx
+            .select({ id: PAYER.id, effectiveFrom: PAYER.effectiveFrom })
+            .from(PAYER)
+            .where(
+              and(
+                eq(PAYER.patientId, patientId),
+                eq(PAYER.rank, input.rank),
+                isNull(PAYER.effectiveTo),
+              ),
+            )
+            .for("update");
+          if (current) {
+            await tx
+              .update(PAYER)
+              .set({ effectiveTo: replacementClosesOn(current.effectiveFrom, input.effectiveFrom) })
+              .where(eq(PAYER.id, current.id));
+          } else {
+            addDaysIso(input.effectiveFrom, 0); // reject a non-date before it reaches the date column as a 500
+          }
 
-        const [inserted] = await tx
-          .insert(PAYER)
-          .values({
-            organizationId,
-            patientId,
+          const [inserted] = await tx
+            .insert(PAYER)
+            .values({
+              organizationId,
+              patientId,
 
-            payerId: input.payerId,
+              payerId: input.payerId,
 
-            rank: input.rank,
+              rank: input.rank,
 
-            coverageKind: input.coverageKind as typeof PAYER.$inferInsert.coverageKind,
+              coverageKind: input.coverageKind as typeof PAYER.$inferInsert.coverageKind,
 
-            subscriberId: input.subscriberId,
+              subscriberId: input.subscriberId,
 
-            groupNumber: input.groupNumber ?? null,
+              groupNumber: input.groupNumber ?? null,
 
-            binPcn: input.binPcn ?? null,
+              binPcn: input.binPcn ?? null,
 
-            effectiveFrom: input.effectiveFrom,
+              effectiveFrom: input.effectiveFrom,
 
-            effectiveTo: null,
-          })
-          .returning({
-            id: PAYER.id,
-            payerId: PAYER.payerId,
-            rank: PAYER.rank,
-            coverageKind: PAYER.coverageKind,
-            subscriberId: PAYER.subscriberId,
-            groupNumber: PAYER.groupNumber,
-            binPcn: PAYER.binPcn,
-            effectiveFrom: PAYER.effectiveFrom,
-            effectiveTo: PAYER.effectiveTo,
-          });
+              effectiveTo: null,
+            })
+            .returning({
+              id: PAYER.id,
+              payerId: PAYER.payerId,
+              rank: PAYER.rank,
+              coverageKind: PAYER.coverageKind,
+              subscriberId: PAYER.subscriberId,
+              groupNumber: PAYER.groupNumber,
+              binPcn: PAYER.binPcn,
+              effectiveFrom: PAYER.effectiveFrom,
+              effectiveTo: PAYER.effectiveTo,
+            });
 
-        if (!inserted) {
-          throw new Error("patient payer insert failed");
-        }
+          if (!inserted) {
+            throw new Error("patient payer insert failed");
+          }
 
-        await emitPatientEvent(tx, organizationId, patientId, "m5.patient.payer_changed");
+          await emitPatientEvent(tx, organizationId, patientId, "m5.patient.payer_changed");
 
-        return {
-          id: inserted.id,
-          payerId: inserted.payerId,
-          rank: inserted.rank,
-          coverageKind: inserted.coverageKind,
-          subscriberId: inserted.subscriberId,
-          groupNumber: inserted.groupNumber ?? null,
-          binPcn: inserted.binPcn ?? null,
-          current: inserted.effectiveTo === null,
-          effectiveFrom: inserted.effectiveFrom,
-          effectiveTo: inserted.effectiveTo ?? null,
-        };
-      },
+          return {
+            id: inserted.id,
+            payerId: inserted.payerId,
+            rank: inserted.rank,
+            coverageKind: inserted.coverageKind,
+            subscriberId: inserted.subscriberId,
+            groupNumber: inserted.groupNumber ?? null,
+            binPcn: inserted.binPcn ?? null,
+            current: inserted.effectiveTo === null,
+            effectiveFrom: inserted.effectiveFrom,
+            effectiveTo: inserted.effectiveTo ?? null,
+          };
+        },
+      ),
     );
 
   // §3.4/§3.5 Care Team & Assignments tab: the clinical assignment roster (`patient_assignment`) +
