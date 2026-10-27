@@ -54,6 +54,7 @@ the `docs/history/gates-*.md` files ([index](./docs/history/README.md)).
   ownership, DDL legality, event-catalog `mN.` convention / seam completeness / PHI RLS+audit triggers, UI corpus.
 - `check-tenancy` (`arch:tenancy`) — three-column rule, `app.org_id` GUC, banned policy shapes, RLS enabled ⇒ FORCEd (net-effect replay of migrations).
 - `check-migration-numbering` (`arch:migration-numbering`) — migration ordinals unique; gaps reported, not fatal.
+- `check-migration-compat` (`arch:migration-compat`) — every migration from 1288 on declares `-- compat: expand` or `-- compat: contract` in its header; an `expand` claim with obviously contracting DDL (DROP, RENAME, ALTER … TYPE, NOT NULL without default) fails. A conservative heuristic: declare `contract` when unsure. `deploy.sh` auto-restores the previous release after a failed deploy only over checked `expand` migrations, otherwise it halts (exit 75) for an operator (#861).
 - `check-test-typecheck-coverage` (`arch:test-typecheck`) — every test file vitest runs is in a typecheck program (`typecheck` = `tsc -b` + `typecheck:tests`).
 - `check-manifest-mirror` (`arch:manifest-mirror`) — `.ts` and `.cjs` manifests agree on data and on `allowedImportPaths`/`allowedTables`.
 - `check-merge-artifacts` (`arch:merge-artifacts`) — no committed conflict markers in any tracked file.

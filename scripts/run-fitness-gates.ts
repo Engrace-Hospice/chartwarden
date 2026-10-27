@@ -47,6 +47,9 @@ export const GATES = [
   "arch:tenancy",
   "arch:ddl",
   "arch:migration-numbering",
+  // #861 - every new migration declares expand|contract, and an expand claim has no obviously contracting DDL;
+  // deploy.sh only auto-rolls back to the previous image over migrations that pass this.
+  "arch:migration-compat",
   "arch:gaps",
   "arch:ai-governance",
   "arch:ai-messaging-readonly",

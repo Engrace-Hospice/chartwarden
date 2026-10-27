@@ -348,11 +348,21 @@ For SEV-1 or SEV-2 bugs requiring immediate fix:
 
 Migrations follow the **two-phase pattern** for breaking changes (Architecture v0.9 §25.12). Procedure:
 
+**Compatibility contract (#861).** Every migration from `1288` on declares `-- compat: expand` (the previous
+release still runs on the new schema) or `-- compat: contract` in its header. `bun run arch:migration-compat`
+(in `arch:fitness`) rejects a missing declaration and an `expand` claim that contains obviously contracting DDL
+(DROP, RENAME, ALTER ... TYPE, SET NOT NULL or ADD ... NOT NULL without a default, and similar). The check is a
+conservative text heuristic. It cannot see semantic changes, so declare `contract` when in doubt. The production
+`deploy.sh` restores the previous release after a failed deploy only when every migration it applied is a checked
+`expand`. Otherwise it halts with exit 75 and restarts nothing. The operator procedure for that halt is in
+`deploy/production/README.md`, under "When a deploy halts for an operator decision".
+
 #### Phase N — Additive migration
 
 ```bash
 # 1. Review migration in PR
-# Verify it's additive: adds columns/tables, no DROP, no RENAME of existing columns
+# Verify it's additive: adds columns/tables, no DROP, no RENAME of existing columns.
+# Declare it `-- compat: expand`; the Phase N+2 cleanup migration is `-- compat: contract`.
 
 # 2. Take pre-migration backup
 ssh chartwarden-db-01 "sudo -u postgres pgbackrest --stanza=chartwarden --type=incr --tag=pre-migration-<sha> backup"

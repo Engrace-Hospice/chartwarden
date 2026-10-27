@@ -430,6 +430,7 @@
     "arch:ddl": "bun run scripts/check-ddl-legality.ts",
     "arch:migration-numbering": "bun run scripts/check-migration-numbering.ts",
     "arch:merge-artifacts": "bun run scripts/check-merge-artifacts.ts",
+    "arch:migration-compat": "bun run scripts/check-migration-compat.ts",
     "arch:vuln-allowlist": "bun run scripts/check-vuln-allowlist.ts",
     "arch:manifest-mirror": "bun run scripts/check-manifest-mirror.ts",
     "arch:test-typecheck": "bun run scripts/check-test-typecheck-coverage.ts",

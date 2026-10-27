@@ -94,6 +94,7 @@ chmod 600 "$backup_file" "$next_file"
 
 cleanup() {
   rm -f "$next_file" "$backup_file"
+  [ -z "${ledger_before:-}" ] || rm -f "$ledger_before" "$ledger_before.after"
 }
 trap cleanup EXIT
 
@@ -112,22 +113,102 @@ awk -v backend="$backend_image" -v web="$web_image" -v docling="$docling_image" 
   exit 65
 }
 
-# Set by the migration step below to the number of migrations THIS deploy applied. It gates how loud the
-# rollback is, because the two cases are genuinely different and were previously indistinguishable:
+# #861 — what this deploy did to the schema decides what a failure may restart. Set after the migrate step from
+# the runner's ledger (`_chartwarden_migration`), read before and after, never from log parsing:
 #
-#   0 applied  — the previous image ran against this exact schema minutes ago. Restoring it is safe, and
-#                the deploy can say so rather than leaving the operator to wonder.
-#   N applied  — the previous image has never seen this schema. Restoring images does NOT reverse a
-#                migration; it leaves old code on new tables, which is safe ONLY if every migration in
-#                this release was expand-phase. Nothing in the toolchain enforces that, so the rollback
-#                names the migrations and says plainly that a human has to make the call.
-migrations_applied=0
+#   none    — no migration applied: the previous image ran on this exact schema minutes ago; restore it.
+#   expand  — every applied migration declares `-- compat: expand` and passes the arch:migration-compat
+#             heuristic (classified by the NEW image, which holds the files): the previous image stays valid.
+#   unsafe  — anything else (a `contract` or undeclared migration, or the ledger/classifier could not be read):
+#             the previous image is NOT restarted. See hold_for_operator.
+schema_verdict=none
+schema_applied=""
 # Containers are only recreated after the migrate step succeeds, so a failure before that leaves the previous,
 # healthy ones running. Recreating them then would start them from the NEW compose.yml (which names the
 # chartwarden_* database roles, migration 1139) against a schema that may not have been renamed yet.
 migrate_ok=0
+# Exit status of a deploy that stopped for an operator decision (EX_TEMPFAIL), distinct from a plain failure.
+HOLD_EXIT=75
+
+psql_admin() {
+  docker compose --env-file .env.production -f compose.yml exec -T postgres \
+    psql -U postgres -d "$db_name" -v ON_ERROR_STOP=1 -At "$@" </dev/null
+}
+
+# Prints the applied-migration filenames, sorted; nothing for a database with no ledger yet. Non-zero = unknown.
+ledger_snapshot() {
+  ledger_exists=$(psql_admin -c "SELECT to_regclass('_chartwarden_migration') IS NOT NULL") || return 1
+  case "$ledger_exists" in
+    t) ;;
+    f) return 0 ;;
+    *) return 1 ;;
+  esac
+  ledger_rows=$(psql_admin -c "SELECT filename FROM _chartwarden_migration") || return 1
+  [ -z "$ledger_rows" ] || printf '%s\n' "$ledger_rows" | LC_ALL=C sort
+}
+
+# Sets schema_verdict / schema_applied from the ledger snapshot taken before migrating ($1) and the ledger now.
+assess_schema_change() {
+  if ! ledger_snapshot >"$1.after"; then
+    echo "could not read the migration ledger after migrating; treating the schema as unverified" >&2
+    schema_verdict=unsafe; return 0
+  fi
+  # A bare failing assignment would end the script under `set -e` with neither a restore nor a hold.
+  schema_applied=$(LC_ALL=C comm -13 "$1" "$1.after") || { schema_verdict=unsafe; return 0; }
+  if [ -z "$schema_applied" ]; then schema_verdict=none; return 0; fi
+  echo "this deploy applied: $(printf '%s' "$schema_applied" | tr '\n' ' ')"
+  for f in $schema_applied; do
+    case "$f" in
+      *[!a-z0-9_.]*) schema_verdict=unsafe; return 0 ;;
+      [0-9][0-9][0-9][0-9]_*.sql) ;;
+      *) schema_verdict=unsafe; return 0 ;;
+    esac
+  done
+  # shellcheck disable=SC2086 # filenames validated above, one argument each
+  if docker compose --env-file .env.production -f compose.yml run --rm --no-deps migrate \
+    bun run scripts/check-migration-compat.ts --classify $schema_applied; then
+    schema_verdict=expand
+  else
+    schema_verdict=unsafe
+  fi
+}
+
+# The unsafe case. Neither image is verified against this schema, so this path (re)starts nothing: the previous
+# release is not brought back and the new one is not forced up. Whatever is running stays running. For an EHR a
+# clinician reading a chart through a partly working app beats every container stopped, and there is no maintenance
+# page to put in front of a stopped stack (#865). .env.production keeps the NEW release, the only code
+# written for this schema, so a later `up` does not quietly start the old one; the previous file is kept beside it
+# for an operator who has verified that rolling back is safe.
+hold_for_operator() {
+  cp "$backup_file" .env.production.previous-release
+  chmod 600 .env.production.previous-release
+  {
+    echo ""
+    echo "!! DEPLOY HALTED FOR AN OPERATOR DECISION: AUTOMATIC ROLLBACK REFUSED (#861)"
+    echo "!! The deploy failed after changing the schema, and the change is not proven expand-compatible:"
+    if [ -n "$schema_applied" ]; then
+      printf '%s\n' "$schema_applied" | sed 's/^/!!     /'
+    else
+      echo "!!     (the migration ledger could not be read, so what was applied is unknown)"
+    fi
+    echo "!! The previous release was NOT restarted and no container was recreated by this failure path. Whatever"
+    echo "!! was running is still running: the previous api/worker/web if the failure came at or before 'provision',"
+    echo "!! the new ones if it came at 'up' or smoke. .env.production names the NEW release; the previous one is"
+    echo "!! saved as $deploy_dir/.env.production.previous-release."
+    echo "!! Decide, then act (deploy/production/README.md, 'When a deploy halts for an operator decision'):"
+    echo "!!   roll forward: fix the cause and re-run deploy.sh with the new (or a fixed) release; migrate is idempotent"
+    echo "!!   roll back:    ONLY after confirming the previous code works on this schema:"
+    echo "!!     cp .env.production.previous-release .env.production"
+    echo "!!     docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate api worker web"
+    echo ""
+  } >&2
+  exit "$HOLD_EXIT"
+}
 
 restore_previous_release() {
+  if [ "$schema_verdict" = unsafe ]; then
+    hold_for_operator
+  fi
   echo "deploy failed; restoring the previous image references" >&2
   cp "$backup_file" .env.production
   if [ "$migrate_ok" -eq 1 ]; then
@@ -135,21 +216,9 @@ restore_previous_release() {
   else
     echo "migrations did not complete; leaving the running containers untouched" >&2
   fi
-  if [ "$migrations_applied" -ne 0 ]; then
-    echo "" >&2
-    echo "!! SCHEMA/CODE MISMATCH — READ THIS BEFORE WALKING AWAY" >&2
-    if [ "$migrations_applied" -lt 0 ]; then
-      echo "!! This deploy could not determine how many migrations it applied before failing." >&2
-    else
-      echo "!! This deploy applied $migrations_applied migration(s) BEFORE failing." >&2
-    fi
-    echo "!! Migrations are" >&2
-    echo "!! forward-only: the images have been rolled back, the schema has NOT." >&2
-    echo "!! The restored release is now running against a schema it has never seen. That is safe only" >&2
-    echo "!! if every migration in this release was expand-phase (additive, old code still valid)." >&2
-    echo "!! Verify that before treating this rollback as complete:" >&2
-    echo "!!   git diff --name-only <previous-sha>..<this-sha> -- packages/db/migrations" >&2
-    echo "" >&2
+  if [ "$schema_verdict" = expand ]; then
+    echo "rollback is expand-safe: every migration this deploy applied declares 'compat: expand' and passed" >&2
+    echo "the contracting-DDL check, so the previous release stays valid on the new schema." >&2
   else
     echo "rollback is clean: this deploy applied no migrations, so the restored image is running" >&2
     echo "against the same schema it ran against before." >&2
@@ -286,32 +355,27 @@ docker compose --env-file .env.production -f compose.yml run --rm minio-provisio
   exit 1
 }
 
-# Production migrations are forward-only. A code rollback can restore the prior image, but cannot
-# reverse a successfully applied schema migration; migrations must therefore remain compatible.
-#
-# The output is captured rather than streamed straight through so the rollback path can tell the two
-# cases apart (see `restore_previous_release`). It is echoed immediately afterwards, so the deploy log
-# is unchanged for a human reading it.
-migrate_log=$(mktemp)
+# Production migrations are forward-only and commit one file at a time. A code rollback can restore the prior
+# image but cannot reverse a migration, so the ledger is read before and after, and the difference decides what
+# a later failure may restart (schema_verdict). Reading it first is the last point where failing costs nothing.
+ledger_before=$(mktemp)
+# `exec` needs a running, healthy postgres; `run migrate` used to start it through depends_on. Never recreated here.
+if ! { docker compose --env-file .env.production -f compose.yml up -d --no-recreate --wait postgres \
+  && ledger_snapshot >"$ledger_before"; }; then
+  rm -f "$ledger_before"
+  echo "could not read the migration ledger (_chartwarden_migration); no migrations were applied" >&2
+  restore_previous_release
+  exit 1
+fi
 if docker compose --env-file .env.production -f compose.yml run --rm --no-deps migrate \
-  bun run scripts/db/migrate.ts --strict --schema-only >"$migrate_log" 2>&1; then
-  cat "$migrate_log"
+  bun run scripts/db/migrate.ts --strict --schema-only; then
   migrate_ok=1
-  # `migrate.ts` ends with "Applied N new migration(s)." — the one authoritative statement of what this
-  # deploy changed about the schema. A parse failure defaults to 0, which errs toward the LOUD rollback
-  # message only when it can prove migrations ran; claiming "rollback is clean" on a failed parse would
-  # be the dangerous direction to be wrong in, so the default below is corrected right after.
-  migrations_applied=$(awk '/Applied [0-9]+ new migration/ {print $2}' "$migrate_log" | tail -1)
-  case "$migrations_applied" in
-    ''|*[!0-9]*) migrations_applied=-1 ;;   # unparseable: treat as "unknown", which reports as unsafe
-  esac
-  rm -f "$migrate_log"
+  assess_schema_change "$ledger_before"
+  rm -f "$ledger_before" "$ledger_before.after"
 else
-  cat "$migrate_log"
-  rm -f "$migrate_log"
-  # The migration step itself failed. `migrate.ts --strict` is transactional per file, but a multi-file
-  # run can have committed earlier files before failing on a later one, so this is the unknown case too.
-  migrations_applied=-1
+  # A multi-file run can have committed earlier files before failing on a later one; the ledger says which.
+  assess_schema_change "$ledger_before"
+  rm -f "$ledger_before" "$ledger_before.after"
   restore_previous_release
   exit 1
 fi
