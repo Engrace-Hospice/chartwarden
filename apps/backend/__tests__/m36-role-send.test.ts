@@ -133,7 +133,7 @@ const grants = (permissionKeys: string[]) => [
 ];
 const without = (key: string) => FULL.filter((k) => k !== key);
 
-function makeServer() {
+function makeServer(flagRead: (orgId: string) => Promise<boolean> = async () => enabled) {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore([
       { orgId: ORG, userId: "nurse", grants: grants(FULL) },
@@ -163,7 +163,11 @@ function makeServer() {
   };
   registerRoleSendRoutes(
     app,
-    { service, patientExists: async (_org, id) => PATIENTS_IN_ORG.has(id) },
+    {
+      service,
+      isEnabled: flagRead,
+      patientExists: async (_org, id) => PATIENTS_IN_ORG.has(id),
+    },
     {
       read: requirePermission("messaging.read") as Handler,
       send: requirePermission("messaging.send") as Handler,
@@ -247,6 +251,16 @@ describe("GET /messaging/channels/:id/role-send/resolution", () => {
     expect(routerCalls).toBe(0);
   });
 
+  it("flag off is a 404 BEFORE the 403 (no key) and the 422 (malformed query or channel id), but a signed-out caller still gets the 401", async () => {
+    enabled = false;
+    const app = makeServer();
+    expect((await get(app, "no-role-key")).statusCode).toBe(404);
+    expect((await get(app, "nurse", "?role=admin&patient_id=nope")).statusCode).toBe(404);
+    expect((await get(app, "nurse", QS, "not-a-uuid")).statusCode).toBe(404);
+    expect((await get(app, null)).statusCode).toBe(401);
+    expect(routerCalls).toBe(0);
+  });
+
   it("needs every key (messaging.read, urgent.send, oncall.send, patient.read) and a signed-in caller", async () => {
     const app = makeServer();
     for (const user of ["no-role-key", "no-urgent", "no-chart"]) {
@@ -321,6 +335,27 @@ describe("POST /messaging/channels/:id/role-send", () => {
     enabled = false;
     expect((await post(makeServer(), "nurse")).statusCode).toBe(404);
     expect(routerCalls).toBe(0);
+    expect(sends).toEqual([]);
+  });
+
+  it("flag off is a 404 BEFORE the 403 (no key), the 422 (malformed body or channel id) and the missing Idempotency-Key, but a signed-out caller still gets the 401", async () => {
+    enabled = false;
+    const app = makeServer();
+    expect((await post(app, "no-role-key")).statusCode).toBe(404);
+    expect((await post(app, "nurse", { role: "admin" })).statusCode).toBe(404);
+    expect((await post(app, "nurse", {}, { key: null })).statusCode).toBe(404);
+    expect((await post(app, "nurse", {}, { channel: "not-a-uuid" })).statusCode).toBe(404);
+    expect((await post(app, null)).statusCode).toBe(401);
+    expect(routerCalls).toBe(0);
+    expect(sends).toEqual([]);
+  });
+
+  it("a throwing flag read is a 5xx, never a 404", async () => {
+    const app = makeServer(async () => {
+      throw new Error("flag store down");
+    });
+    expect((await post(app, "nurse")).statusCode).toBe(500);
+    expect((await get(app, "nurse")).statusCode).toBe(500);
     expect(sends).toEqual([]);
   });
 

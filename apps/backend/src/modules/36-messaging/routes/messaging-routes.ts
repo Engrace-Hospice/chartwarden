@@ -555,6 +555,7 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       ? {
           service: createRoleSendService({ ...deps.oncall.roleSend, urgent: deps.urgent.service }),
           patientExists: deps.oncall.patientExists,
+          isEnabled: deps.oncall.roleSend.isEnabled,
           ...(deps.urgent.rateLimit ? { rateLimit: deps.urgent.rateLimit } : {}),
         }
       : DISABLED_ROLE_SEND,

@@ -489,3 +489,53 @@ describe("role send: after-hours triage (ADR-0082)", () => {
     expect(screen.queryByText(/may not have been sent/)).toBeNull();
   });
 });
+
+describe("role send: focus and draft restore", () => {
+  const inDialog = () => screen.getByRole("dialog").contains(document.activeElement);
+
+  it("keeps focus inside the dialog after Try again, and Escape still works", async () => {
+    let calls = 0;
+    mount({ resolution: () => (++calls === 1 ? refusal(500) : uncovered("coverage_gap")) });
+    await open();
+    await review();
+    await screen.findByText(LOOKUP_FAILED_TEXT);
+    const again = screen.getByRole("button", { name: "Try again" });
+    again.focus();
+    await userEvent.keyboard("{Enter}");
+    await screen.findByText(NO_COVERAGE_TEXT);
+    expect(inDialog()).toBe(true);
+    await userEvent.keyboard("{Escape}");
+    expect(await screen.findByRole("alertdialog")).toBeTruthy();
+  });
+
+  it("returns focus into the dialog after dismissing the discard prompt", async () => {
+    mount();
+    await open();
+    await userEvent.type(screen.getByLabelText("Situation"), "x");
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    cancel.focus();
+    await userEvent.keyboard("{Escape}");
+    await screen.findByRole("alertdialog");
+    await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(document.activeElement).toBe(cancel);
+    await userEvent.keyboard("{Escape}");
+    expect(await screen.findByRole("alertdialog")).toBeTruthy();
+  });
+
+  it("restores the chosen role when a kept draft is reopened, and resets it after a discard", async () => {
+    mount();
+    await open();
+    await userEvent.click(screen.getByRole("radio", { name: "RN" }));
+    await userEvent.type(screen.getByLabelText("Situation"), "x");
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Close, keep draft/ }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await open();
+    expect((screen.getByRole("radio", { name: "RN" }) as HTMLInputElement).checked).toBe(true);
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Discard/ }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await open();
+    expect((screen.getByRole("radio", { name: "RN" }) as HTMLInputElement).checked).toBe(false);
+  });
+});

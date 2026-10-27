@@ -8,3 +8,48 @@
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
+
+/* Radios: the native control in dark mode paints an unchecked radio as a filled light dot. Draw them from shared tokens so unchecked
+   reads as an empty ring and checked as a primary ring with a primary dot. */
+.wx-urgent-form fieldset input[type="radio"] {
+  appearance: none;
+  flex: none;
+  display: grid;
+  place-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin: 0;
+  /* on-surface-variant, not outline: outline (#94a3b8) is ~2.6:1 on the light surface, under the 3:1 WCAG 1.4.11 asks of a control. */
+  border: 2px solid var(--color-on-surface-variant);
+  border-radius: 50%;
+  background: transparent;
+  accent-color: var(--color-primary);
+}
+
+.wx-urgent-form fieldset input[type="radio"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.wx-urgent-form fieldset input[type="radio"]::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--color-primary);
+  transform: scale(0);
+}
+
+.wx-urgent-form fieldset input[type="radio"]:checked {
+  border-color: var(--color-primary);
+}
+
+.wx-urgent-form fieldset input[type="radio"]:checked::before {
+  transform: scale(1);
+}
+
+@media (forced-colors: active) {
+  .wx-urgent-form fieldset input[type="radio"]::before {
+    background: CanvasText;
+  }
+}
