@@ -1,3 +1,5 @@
+import type { PermissionMirrorRow } from "@chartwarden/auth";
+import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/03-authorization/routes/authz-typebox.ts — M3 (§4.3–4.4) request schemas.
 //
 // TypeBox path-param + request-body schemas for the §4.1 authorization routes (the role catalog +
@@ -22,8 +24,6 @@
 // route's own `deps.roles.get()` → 404 is the real guard. Every other id param is uuid-shaped.
 import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { PermissionMirrorRow } from "@chartwarden/auth";
-import { ValidationError } from "@chartwarden/types";
 import type {
   BreakGlassStatus,
   BreakGlassView,

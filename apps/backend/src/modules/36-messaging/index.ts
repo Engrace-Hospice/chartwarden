@@ -150,6 +150,11 @@ import { createDbAckStore as _createDbAckStore } from "./ack-requests/ack-store-
 import { createOpenRequestLookup as _createOpenRequestLookup } from "./ack-requests/open-request-lookup";
 import { createDbUnacknowledgedReader as _createDbUnacknowledgedReader } from "./ack-requests/unacknowledged-reader-db";
 import { createUnacknowledgedService as _createUnacknowledgedService } from "./ack-requests/unacknowledged-service";
+import {
+  type AlarmIngestServiceDeps as _AlarmIngestServiceDeps,
+  createAlarmIngestService as _createAlarmIngestService,
+} from "./alarm-ingest/alarm-ingest-service";
+import { createDrizzleAlarmIngestStore as _createDrizzleAlarmIngestStore } from "./alarm-ingest/alarm-ingest-store";
 import { createDbAnnouncementService as _createDbAnnouncementService } from "./announcement-service-db";
 import type { AttachmentStoragePort, ScanPort } from "./attachments/attachment-ports";
 import { createAttachmentService as _createAttachmentService } from "./attachments/attachment-service-db";
@@ -157,11 +162,6 @@ import { createBreakGlassReadAccess as _createBreakGlassReadAccess } from "./bre
 import { createBreakGlassService as _createBreakGlassService } from "./break-glass/break-glass-service";
 import type { buildClinicalLinkDeps as _buildClinicalLinkDeps } from "./clinical-link/binding";
 import { createDbDeliveryTargetReader as _createDbDeliveryTargetReader } from "./delivery-target/delivery-target-reader-db";
-import {
-  type AlarmIngestServiceDeps as _AlarmIngestServiceDeps,
-  createAlarmIngestService as _createAlarmIngestService,
-} from "./alarm-ingest/alarm-ingest-service";
-import { createDrizzleAlarmIngestStore as _createDrizzleAlarmIngestStore } from "./alarm-ingest/alarm-ingest-store";
 import { createDeliveryTargetService as _createDeliveryTargetService } from "./delivery-target/delivery-target-service";
 import type { EndpointVerificationSender } from "./delivery/transport-binding";
 import { createDbDraftService as _createDbDraftService } from "./drafts/draft-service-db";
@@ -181,6 +181,10 @@ import {
   createDrizzleSharePartnerStore as _createDrizzleSharePartnerStore,
   createDrizzleShareStaffStore as _createDrizzleShareStaffStore,
 } from "./external-share/external-share-store";
+import {
+  type FamilyBindingInput as _FamilyBindingInput,
+  buildFamilyServices as _buildFamilyServices,
+} from "./family/family-binding";
 import {
   type GlobalSearchMountOptions,
   mountGlobalSearchRoutes as _mountGlobalSearchRoutes,
@@ -218,17 +222,16 @@ import {
   registerMessagingAdminPredicates as _registerMessagingAdminPredicates,
 } from "./routes/admin-alert-deliveries-routes";
 import type { AiRouteDeps as _AiRouteDeps } from "./routes/ai-routes";
+import { registerAlarmIngestRoutes as _registerAlarmIngestRoutes } from "./routes/alarm-ingest-routes";
 import { registerAttachmentRoutes as _registerAttachmentRoutes } from "./routes/attachment-routes";
 import { registerBreakGlassRoutes as _registerBreakGlassRoutes } from "./routes/break-glass-routes";
 import {
   type DeathBoardRouteDeps as _DeathBoardRouteDeps,
   registerDeathBoardRoutes as _registerDeathBoardRoutes,
 } from "./routes/death-board-routes";
-import { registerAlarmIngestRoutes as _registerAlarmIngestRoutes } from "./routes/alarm-ingest-routes";
 import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
 import { registerExportRoutes as _registerExportRoutes } from "./routes/export-routes";
 import { registerExternalShareRoutes as _registerExternalShareRoutes } from "./routes/external-share-routes";
-import { type FamilyBindingInput as _FamilyBindingInput, buildFamilyServices as _buildFamilyServices } from "./family/family-binding";
 import { registerFamilyRoutes as _registerFamilyRoutes } from "./routes/family-routes";
 import { registerGlobalSearchSettingsRoutes as _registerGlobalSearchSettingsRoutes } from "./routes/global-search-settings-routes";
 import type { HandoffRouteDeps as _HandoffRouteDeps } from "./routes/handoff-routes";
@@ -315,7 +318,9 @@ export function mountMessagingRoutes(
     /** WP 6.5 (ADR-0095, PROPOSED): AI summaries and reply drafts (flag `messaging.ai.enabled`). Omitted => the panel is absent and every call is the uniform 404. */
     ai?: _AiRouteDeps;
     /** ADR-0082: the optional budget of the after-hours thread-line read. */
-    afterHoursTriageRateLimit?: ((request: FastifyRequest, reply: FastifyReply) => Promise<void>) | undefined;
+    afterHoursTriageRateLimit?:
+      | ((request: FastifyRequest, reply: FastifyReply) => Promise<void>)
+      | undefined;
     /** WP 4.12: the on-call directory (read-only). Omitted => the uniform 404. */
     oncall?: ReturnType<typeof _buildOnCallDirectoryDeps>;
     /** WP 3.7: chart promotion (tenant flag + service). Omitted => flag off. */
@@ -448,7 +453,9 @@ export function mountMessagingRoutes(
       service: _createAckBroadcastService({ db, flags: opts.ackBroadcast?.flags }),
       ...(opts.ackBroadcast?.rateLimit ? { rateLimit: opts.ackBroadcast.rateLimit } : {}),
     },
-    ...(opts.afterHoursTriageRateLimit ? { afterHoursTriageRateLimit: opts.afterHoursTriageRateLimit } : {}),
+    ...(opts.afterHoursTriageRateLimit
+      ? { afterHoursTriageRateLimit: opts.afterHoursTriageRateLimit }
+      : {}),
     ...(opts.ai ? { ai: opts.ai } : {}),
     deliveryTarget: {
       service: _createDeliveryTargetService({

@@ -1,3 +1,5 @@
+import { ValidationError } from "@chartwarden/types";
+import type { ExtractionReviewStatus } from "@chartwarden/types";
 // apps/backend/src/modules/22-documents/routes/documents-typebox.ts — M22-T09 TypeBox route schemas (§4.2).
 // Named `documents-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a
 // TypeBox import for a Drizzle one. Validation runs through TypeBox `Value` → M1's VALIDATION_FAILED
@@ -7,8 +9,6 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@chartwarden/types";
-import type { ExtractionReviewStatus } from "@chartwarden/types";
 import type { CursorPage as ServiceCursorPage } from "./concurrency";
 import type {
   DocumentView as ServiceDocumentView,
@@ -263,12 +263,7 @@ export const SignedUrlRequest = Type.Object({
   /** §4.12 — the out-of-network recipient of a `disclosure` / `survey_export` presign: an M40 entity of
    *  a kind with a canonical registry table (facility, payer; the other kinds have none yet). Both or
    *  neither: a half-supplied pair is dropped and the service refuses the external purpose (403). */
-  recipientKind: Type.Optional(
-    Type.Union([
-      Type.Literal("facility"),
-      Type.Literal("payer"),
-    ]),
-  ),
+  recipientKind: Type.Optional(Type.Union([Type.Literal("facility"), Type.Literal("payer")])),
   recipientEntityId: Type.Optional(Type.String({ format: "uuid" })),
   ttlSeconds: Type.Optional(Type.Integer({ minimum: 30, maximum: 3600 })),
 });

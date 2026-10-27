@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 // @chartwarden/portal — #594: an unknown URL or a throwing screen must show a themed, family-safe page, never
 // React Router's developer-facing "Unexpected Application Error" default.
 import { createApiClient } from "@chartwarden/ui";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PortalApp } from "../src/app";
 
@@ -10,7 +10,8 @@ import { PortalApp } from "../src/app";
 const screenBehaviour = vi.hoisted(() => ({ throws: false }));
 vi.mock("../src/screens/patient-picker", () => ({
   PortalPatientPicker: () => {
-    if (screenBehaviour.throws) throw new Error("developer-only detail: undefined is not a function");
+    if (screenBehaviour.throws)
+      throw new Error("developer-only detail: undefined is not a function");
     return null;
   },
 }));

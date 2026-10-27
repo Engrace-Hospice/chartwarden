@@ -451,7 +451,8 @@ export function createDbDischargeWorklistService(
         if (query.bucket === "recently_discharged")
           return recentlyDischarged(tx, filters, limit, offset);
         if (query.bucket === "qio_review_open") return qioReviewOpen(tx, filters, limit, offset);
-        if (query.bucket === "nomnc_no_deadline") return nomncNoDeadline(tx, filters, limit, offset);
+        if (query.bucket === "nomnc_no_deadline")
+          return nomncNoDeadline(tx, filters, limit, offset);
         return awaitingCosign(tx, filters, limit, offset);
       });
       // The seam opens its own org context, so the names are read after the worklist transaction.

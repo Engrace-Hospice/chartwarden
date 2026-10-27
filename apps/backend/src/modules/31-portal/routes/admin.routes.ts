@@ -10,7 +10,7 @@
 // magic-link is accepted and the tenant DEK cipher (M1) encrypts the contact PHI, so this route does not
 // write plaintext into the `*_cipher` columns. The §164.528 audit view is M4's disclosure trail (read via
 // M4, empty here until the M4 read seam is bound).
-import { ForbiddenError, NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf } from "./actor";
 import {

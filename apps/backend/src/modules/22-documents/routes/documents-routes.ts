@@ -15,13 +15,14 @@ import {
   resolveActorPermissions,
 } from "@chartwarden/auth";
 import {
-  type DocumentAccessPurpose,
+  ChartWardenError,
   DegradedError,
+  type DocumentAccessPurpose,
   NotFoundError,
   UnauthorizedError,
-  ChartWardenError,
 } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { getSeam } from "../../../bootstrap/index";
 import {
   RECORDS_REQUEST_FILEABLE,
   type RecordsRequestService,
@@ -75,7 +76,6 @@ import {
   VersionParamsSchema,
   parse,
 } from "./documents-typebox";
-import { getSeam } from "../../../bootstrap/index";
 import {
   type DocumentScopePurpose,
   ORG_WIDE_LIST_PERMISSION,
@@ -745,7 +745,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     // EXISTING document would expose that document's extracted values and page images to every intake
     // reader. Naming one therefore requires the same read scope as opening the document itself.
     if (body.documentId) {
-      await assertDocumentInScope(request, await service.getDocument(organizationId, body.documentId));
+      await assertDocumentInScope(
+        request,
+        await service.getDocument(organizationId, body.documentId),
+      );
     }
     const res = await service.uploadBatch(organizationId, actor, {
       patientId,

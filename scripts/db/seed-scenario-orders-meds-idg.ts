@@ -445,7 +445,11 @@ async function main(): Promise<void> {
     await seedIdgPatientPacket(orgId, meetingId, patientId, admissionId);
 
     const attendees: Array<{ email: string; membershipId: string; discipline: string }> = [
-      { email: "rita@chartwarden.local", membershipId: ritaMembershipId, discipline: "rn_case_manager" },
+      {
+        email: "rita@chartwarden.local",
+        membershipId: ritaMembershipId,
+        discipline: "rn_case_manager",
+      },
       {
         email: "mira@chartwarden.local",
         membershipId: await membershipIdFor("mira@chartwarden.local"),

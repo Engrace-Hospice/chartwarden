@@ -1,3 +1,4 @@
+import type { OutboxEventEntry } from "@chartwarden/types";
 // @chartwarden/shared — Outbox publisher with catalog validation (M1 Foundation §3.17.3).
 //
 // `publishOutboxEvent` is the ONLY sanctioned way to emit a cross-module event. Before
@@ -13,7 +14,6 @@
 // leaf and never imports @chartwarden/db, so the real Drizzle insert into `outbox_event`
 // is supplied by the M1 backend bootstrap (M1-T10) and threaded through the caller's tx.
 import { Value } from "@sinclair/typebox/value";
-import type { OutboxEventEntry } from "@chartwarden/types";
 import { OUTBOX_EVENT_CATALOG_MAP } from "../outbox-events/registry";
 
 export type OutboxEventViolation =

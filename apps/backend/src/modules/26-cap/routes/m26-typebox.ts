@@ -1,3 +1,5 @@
+import { contracts } from "@chartwarden/cap-management";
+import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/26-cap/routes/m26-typebox.ts — the M26 route request/response TypeBox schemas.
 //
 // These serve TWO consumers, and until now only the first one used them:
@@ -20,8 +22,6 @@
 // impact was business-logic corruption and unhandled `pg` errors rather than takeover.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { contracts } from "@chartwarden/cap-management";
-import { ValidationError } from "@chartwarden/types";
 
 /**
  * Validate `raw` against `schema` (Convert-then-Check), throwing M1's VALIDATION_FAILED envelope on

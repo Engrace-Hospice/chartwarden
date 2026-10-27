@@ -1,6 +1,6 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 2.7b - the tenant global search settings screen (jsdom): checklist, gated enable, confirmation, server refusals.
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GlobalSearchSettings } from "./global-search-settings";

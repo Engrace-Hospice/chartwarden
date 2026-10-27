@@ -110,7 +110,11 @@ function pathOf(url: string | undefined): string | undefined {
  * The client's `onResponseStatus` hook (wired in main.tsx): feeds every observed response to the global signal. A 401/503
  * notifies directly; a tenant-host refusal (410/403/404) is told apart from an ordinary one by its body `error.code`.
  */
-export function handleObservedResponse(status: number, url: string | undefined, response: Response): void {
+export function handleObservedResponse(
+  status: number,
+  url: string | undefined,
+  response: Response,
+): void {
   const signal = signalForStatus(status, url);
   if (signal?.kind === "session-expired") {
     // A 401 is only session death once its body says so: an org-less session gets the same status (#589).

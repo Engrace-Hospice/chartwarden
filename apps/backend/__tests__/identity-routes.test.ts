@@ -257,9 +257,9 @@ describe("M2-T06 identity route inventory", () => {
       const setCookies = Array.isArray(authenticated.headers["set-cookie"])
         ? authenticated.headers["set-cookie"]
         : [authenticated.headers["set-cookie"]];
-      expect(setCookies.some((cookie) => String(cookie).startsWith(`chartwarden_csrf=${token};`))).toBe(
-        true,
-      );
+      expect(
+        setCookies.some((cookie) => String(cookie).startsWith(`chartwarden_csrf=${token};`)),
+      ).toBe(true);
 
       const anonymous = await app.inject({ method: "GET", url: "/api/v1/auth/csrf" });
       expect(anonymous.statusCode).toBe(401);
@@ -996,7 +996,9 @@ describe("M2-T06 identity route inventory", () => {
         headers: ADMIN,
         payload: { email: "new@example.com" },
       });
-      expect((res.json() as { inviteUrl?: string }).inviteUrl).toMatch(/^https:\/\/acme\.chartwarden\.com\/invite\//);
+      expect((res.json() as { inviteUrl?: string }).inviteUrl).toMatch(
+        /^https:\/\/acme\.chartwarden\.com\/invite\//,
+      );
       await resolved.app.close();
       const fallback = makeServer({
         emailTransport: capturingEmailTransport(),
@@ -1009,7 +1011,9 @@ describe("M2-T06 identity route inventory", () => {
         headers: ADMIN,
         payload: { email: "new2@example.com" },
       });
-      expect((res2.json() as { inviteUrl?: string }).inviteUrl).toMatch(/^https:\/\/app\.chartwarden\.example\/invite\//);
+      expect((res2.json() as { inviteUrl?: string }).inviteUrl).toMatch(
+        /^https:\/\/app\.chartwarden\.example\/invite\//,
+      );
       await fallback.app.close();
     });
 
@@ -1653,12 +1657,18 @@ describe("wave 5 identity hardening", () => {
   });
 
   it("invite refuses location ids that are not the org's, and fails closed when no site reader is bound", async () => {
-    const { app } = makeServer({ validateLocations: (_o, ids) => ids.every((i) => i === "loc_ok") });
-    const bad = await post(app, { email: "a@example.com", proposedDefaultLocationIds: ["loc_other"] });
+    const { app } = makeServer({
+      validateLocations: (_o, ids) => ids.every((i) => i === "loc_ok"),
+    });
+    const bad = await post(app, {
+      email: "a@example.com",
+      proposedDefaultLocationIds: ["loc_other"],
+    });
     expect(bad.statusCode).toBe(422);
     expect(bad.json().error.code).toBe("INVALID_LOCATION");
     expect(
-      (await post(app, { email: "a@example.com", proposedDefaultLocationIds: ["loc_ok"] })).statusCode,
+      (await post(app, { email: "a@example.com", proposedDefaultLocationIds: ["loc_ok"] }))
+        .statusCode,
     ).toBe(201);
     await app.close();
     const unbound = makeServer({ validateLocations: null });
@@ -1682,7 +1692,9 @@ describe("wave 5 identity hardening", () => {
       payload: { defaultLocationIds: ["loc_foreign"] },
     });
     expect(res.statusCode).toBe(422);
-    expect(memberships.all().find((m) => m.membershipId === "rn_1")?.defaultLocationIds).toEqual([]);
+    expect(memberships.all().find((m) => m.membershipId === "rn_1")?.defaultLocationIds).toEqual(
+      [],
+    );
     await app.close();
   });
 

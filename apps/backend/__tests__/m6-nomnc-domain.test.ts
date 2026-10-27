@@ -69,9 +69,9 @@ describe("validateNoticeFacts", () => {
   });
 
   it("refuses a delivery in the future", () => {
-    expect(
-      codeOf(() => validateNoticeFacts({ ...base, deliveredAt: hoursFromNow(1) })),
-    ).toBe("DELIVERED_IN_FUTURE");
+    expect(codeOf(() => validateNoticeFacts({ ...base, deliveredAt: hoursFromNow(1) }))).toBe(
+      "DELIVERED_IN_FUTURE",
+    );
   });
 
   it("requires a representative name for a representative recipient", () => {
@@ -95,7 +95,9 @@ describe("validateNoticeFacts", () => {
 
 describe("planReviewDecision", () => {
   it("only an open review can be decided or withdrawn", () => {
-    expect(codeOf(() => planReviewDecision("decided", { kind: "withdraw" }))).toBe("REVIEW_NOT_OPEN");
+    expect(codeOf(() => planReviewDecision("decided", { kind: "withdraw" }))).toBe(
+      "REVIEW_NOT_OPEN",
+    );
     expect(
       codeOf(() =>
         planReviewDecision("withdrawn", {
@@ -123,7 +125,12 @@ describe("planReviewDecision", () => {
   it("an 'other' outcome needs a note", () => {
     expect(
       codeOf(() =>
-        planReviewDecision("open", { kind: "decide", outcome: "other", receivedAt: NOW, note: " " }),
+        planReviewDecision("open", {
+          kind: "decide",
+          outcome: "other",
+          receivedAt: NOW,
+          note: " ",
+        }),
       ),
     ).toBe("DECISION_NOTE_REQUIRED");
   });
@@ -202,19 +209,25 @@ describe("promptsFor", () => {
 
   it("prompts for a missing NOMNC only on a prompting discharge reason", () => {
     expect(NOMNC_PROMPT_REASONS).toContain("no_longer_terminal");
-    expect(codes(promptsFor({ notice: null, review: null, deadlines: [], dischargeReason: "for_cause" }))).toEqual([
-      "NO_NOTICE",
-    ]);
-    expect(codes(promptsFor({ notice: null, review: null, deadlines: [], dischargeReason: "revocation" }))).toEqual(
-      [],
-    );
+    expect(
+      codes(
+        promptsFor({ notice: null, review: null, deadlines: [], dischargeReason: "for_cause" }),
+      ),
+    ).toEqual(["NO_NOTICE"]);
+    expect(
+      codes(
+        promptsFor({ notice: null, review: null, deadlines: [], dischargeReason: "revocation" }),
+      ),
+    ).toEqual([]);
     expect(codes(promptsFor({ notice: null, review: null, deadlines: [] }))).toEqual([]);
   });
 
   it("flags a notice with no appeal-request deadline, no acknowledgement and no copy", () => {
-    expect(
-      codes(promptsFor({ notice: noticeBase, review: null, deadlines: [] })).sort(),
-    ).toEqual(["NO_ACKNOWLEDGEMENT", "NO_APPEAL_DEADLINE", "NO_COPY"]);
+    expect(codes(promptsFor({ notice: noticeBase, review: null, deadlines: [] })).sort()).toEqual([
+      "NO_ACKNOWLEDGEMENT",
+      "NO_APPEAL_DEADLINE",
+      "NO_COPY",
+    ]);
   });
 
   it("is quiet once the notice facts are all recorded", () => {

@@ -1,3 +1,4 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — F-237: the DocLens review gates must hold in the DOM, not only in a
 // spec. Each gate here is one the server ALSO enforces; the point of asserting it client-side is that a
 // reviewer is never offered a control that silently does the wrong thing:
@@ -10,7 +11,6 @@
 //       registered to the image at any rendered width.
 // Assertions are on RECORDED FETCH CALLS, like documents-writes.dom.test.tsx.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";

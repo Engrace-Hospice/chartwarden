@@ -13,9 +13,9 @@ import { type DbClient, schema } from "@chartwarden/db";
 import type { MessageReactionPinService, MessagingRouteService } from "@chartwarden/messaging";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
+  ChartWardenError,
   MAX_PINS_PER_CHANNEL,
   NotFoundError,
-  ChartWardenError,
   isMessageReactionKey,
 } from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
@@ -262,7 +262,8 @@ export function createDbReactionPinService(deps: ReactionPinDeps): MessageReacti
         );
         return {
           pins,
-          patientId: channel.kind === "care_team" || channel.kind === "family" ? channel.subjectId : null,
+          patientId:
+            channel.kind === "care_team" || channel.kind === "family" ? channel.subjectId : null,
         };
       });
     },

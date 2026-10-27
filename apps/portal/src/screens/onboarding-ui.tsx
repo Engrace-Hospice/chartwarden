@@ -6,8 +6,15 @@ import { PORTAL_BASE_PATH } from "../base-path";
 export function PortalOnboardingBrand(): JSX.Element {
   return (
     <div className="wx-portal-auth-brand">
-      <img className="wx-portal-auth-brand__mark" src={`${PORTAL_BASE_PATH}/chartwarden-mark.svg`} alt="" />
-      <div><strong>ChartWarden</strong><span>Patient & Family Portal</span></div>
+      <img
+        className="wx-portal-auth-brand__mark"
+        src={`${PORTAL_BASE_PATH}/chartwarden-mark.svg`}
+        alt=""
+      />
+      <div>
+        <strong>ChartWarden</strong>
+        <span>Patient & Family Portal</span>
+      </div>
     </div>
   );
 }
@@ -30,7 +37,10 @@ export function PortalOnboardingHelp(): JSX.Element {
   return (
     <p className="wx-portal-auth-help">
       <Glyph name="shield-check" size={18} />
-      <span>Private, secure access. Need help? Contact your hospice care team. Never share your password or authenticator code.</span>
+      <span>
+        Private, secure access. Need help? Contact your hospice care team. Never share your password
+        or authenticator code.
+      </span>
     </p>
   );
 }

@@ -70,7 +70,9 @@ describe("alarm sources screen", () => {
     const [bed, call] = within(codes).getAllByRole("listitem");
     expect(bed?.textContent).toBe("bed_exit becomes Bed or fall sensor · Up to warning");
     expect(call?.textContent).toBe("call becomes Nurse call · Information only");
-    expect(screen.getByText(/12 alerted · 0 with nobody to alert · 0 unmapped code · 0 waiting/)).toBeTruthy();
+    expect(
+      screen.getByText(/12 alerted · 0 with nobody to alert · 0 unmapped code · 0 waiting/),
+    ).toBeTruthy();
     expect(screen.getByText("Active")).toBeTruthy();
     expect(screen.getByText(/Secret version 2/)).toBeTruthy();
   });
@@ -95,15 +97,23 @@ describe("alarm sources screen", () => {
 
   it("makes a silent drop visible: alarms with nobody to alert, an unmapped code or still waiting raise a plain warning", async () => {
     mount(() =>
-      ok({ sources: [source({ last24h: { alerted: 3, noRecipients: 2, unmapped: 1, pending: 1 } })] }),
+      ok({
+        sources: [source({ last24h: { alerted: 3, noRecipients: 2, unmapped: 1, pending: 1 } })],
+      }),
     );
     expect(await screen.findByText(/did not reach a person/)).toBeTruthy();
-    expect(screen.getByText(/3 alerted · 2 with nobody to alert · 1 unmapped code · 1 waiting/)).toBeTruthy();
+    expect(
+      screen.getByText(/3 alerted · 2 with nobody to alert · 1 unmapped code · 1 waiting/),
+    ).toBeTruthy();
   });
 
   it("shows a disabled source as Disabled (a word) with its time, and an empty list honestly", async () => {
     const view = mount(() =>
-      ok({ sources: [source({ enabled: false, disabledAt: "2026-10-23T11:00:00.000Z", lastAcceptedAt: null })] }),
+      ok({
+        sources: [
+          source({ enabled: false, disabledAt: "2026-10-23T11:00:00.000Z", lastAcceptedAt: null }),
+        ],
+      }),
     );
     expect(await screen.findByText("Disabled")).toBeTruthy();
     expect(screen.getByText(/Last delivered Never/)).toBeTruthy();

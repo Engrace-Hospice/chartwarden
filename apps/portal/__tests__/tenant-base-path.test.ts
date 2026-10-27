@@ -36,7 +36,7 @@ describe("portal under /portal/", () => {
     expect(Object.keys(config.server?.proxy ?? {})).toEqual(["/api", "/webhooks"]);
   });
 
-  it("resolves the build-time VITE_PORTAL_BASE: default /portal, \"\" or / for an origin-root deployment", () => {
+  it('resolves the build-time VITE_PORTAL_BASE: default /portal, "" or / for an origin-root deployment', () => {
     expect(resolvePortalBase(undefined)).toBe("/portal");
     expect(resolvePortalBase("")).toBe("");
     expect(resolvePortalBase("/")).toBe("");

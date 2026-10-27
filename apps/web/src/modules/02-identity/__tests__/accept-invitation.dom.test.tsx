@@ -1,10 +1,10 @@
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 // @vitest-environment jsdom
 // GAP-009 — the accept page when the visitor is already signed in. The server binds the one-time token to
 // the invited address (403 INVITATION_EMAIL_MISMATCH, token NOT burned), so the page must say "wrong
 // account" up front — not "invalid or expired", and not claim the INVITED address is the current account.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

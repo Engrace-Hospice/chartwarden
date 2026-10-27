@@ -1,4 +1,11 @@
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  t,
+  useApiClient,
+} from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the PRINTABLE PLAN SUMMARY (§5.1 #15, Track B).
 //
 // The survey-friendly single page: every discipline plan's goals and interventions in one document that

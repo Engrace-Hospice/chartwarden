@@ -138,11 +138,7 @@ export const messageBreakGlassReads = pgTable(
       columns: [t.organizationId, t.grantId],
       foreignColumns: [messageBreakGlassGrants.organizationId, messageBreakGlassGrants.id],
     }).onDelete("cascade"),
-    byGrant: index("message_break_glass_read_grant_idx").on(
-      t.organizationId,
-      t.grantId,
-      t.readAt,
-    ),
+    byGrant: index("message_break_glass_read_grant_idx").on(t.organizationId, t.grantId, t.readAt),
     kind: check(
       "message_break_glass_read_kind",
       sql`${t.readKind} IN ('channel', 'messages', 'thread', 'attachment', 'search', 'ack', 'handoff', 'context')`,

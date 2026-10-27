@@ -1,13 +1,13 @@
-// apps/backend/src/modules/36-messaging/routes/role-send-typebox.ts - ADR-0081 (PROPOSED) schemas for role-based send. The role is the
-// CLOSED list of the directory; `recipient_user_id` is the person the sender confirmed from the resolution (it is named `recipient_user_id`
-// so the urgent route's per-pair limiter reads it unchanged). `additionalProperties:false`: no urgency, deadline or tier field to set.
-import { type TSchema, Type } from "@sinclair/typebox";
 import {
   AFTERHOURS_TRIAGE_LINE_STATES,
   ONCALL_DIRECTORY_ROLES,
   ONCALL_RANKS,
   ROLE_SEND_RESOLUTION_STATUSES,
 } from "@chartwarden/types";
+// apps/backend/src/modules/36-messaging/routes/role-send-typebox.ts - ADR-0081 (PROPOSED) schemas for role-based send. The role is the
+// CLOSED list of the directory; `recipient_user_id` is the person the sender confirmed from the resolution (it is named `recipient_user_id`
+// so the urgent route's per-pair limiter reads it unchanged). `additionalProperties:false`: no urgency, deadline or tier field to set.
+import { type TSchema, Type } from "@sinclair/typebox";
 import { RichBodySchema, UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });

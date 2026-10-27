@@ -1,9 +1,9 @@
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 // @vitest-environment jsdom
 // FY2027 — the 42 CFR 418.24(c)/(d) election statement addendum panel: render states, the drawer, furnish,
 // and the refusal-reason guard. Fixtures are synthetic (no real patient names).
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import type { Session } from "../../../shell/session";

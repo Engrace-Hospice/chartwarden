@@ -301,17 +301,15 @@ export function DeathBoard(): JSX.Element {
     const item = reassigning;
     if (!item) return;
     setDialogError(null);
-    void run(() => actions.reassign(item.id, userId), `“${item.label}” reassigned.`).then(
-      (out) => {
-        if (out.kind === "skipped") return;
-        if (out.kind === "failed") {
-          setDialogError(out.error);
-          return;
-        }
-        setReassigning(null);
-        statusRef.current?.focus();
-      },
-    );
+    void run(() => actions.reassign(item.id, userId), `“${item.label}” reassigned.`).then((out) => {
+      if (out.kind === "skipped") return;
+      if (out.kind === "failed") {
+        setDialogError(out.error);
+        return;
+      }
+      setReassigning(null);
+      statusRef.current?.focus();
+    });
   };
 
   return (

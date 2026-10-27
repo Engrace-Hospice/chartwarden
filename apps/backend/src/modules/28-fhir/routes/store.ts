@@ -17,6 +17,7 @@ import {
   inboundPayloadSha256,
 } from "@chartwarden/fhir";
 import {
+  ChartWardenError,
   FHIR_INBOUND_REJECT_RATIONALE_MIN_CHARS,
   FHIR_SESSION_TTL_MINUTES,
   type FhirBulkExportRequestKind,
@@ -27,7 +28,6 @@ import {
   type FhirInboundOwnerModule,
   type FhirInboundStatus,
   type FhirReadDisclosureEnvelope,
-  ChartWardenError,
 } from "@chartwarden/types";
 
 import {

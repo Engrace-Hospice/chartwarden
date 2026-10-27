@@ -88,7 +88,10 @@ export const ROLE_SEND_ERROR_CODES = {
 } as const;
 
 /** ADR-0082: the resolution statuses of a role send are the directory's plus `lookup_failed` (only produced while after-hours triage is on). */
-export const ROLE_SEND_RESOLUTION_STATUSES = [...ONCALL_DIRECTORY_STATUSES, "lookup_failed"] as const;
+export const ROLE_SEND_RESOLUTION_STATUSES = [
+  ...ONCALL_DIRECTORY_STATUSES,
+  "lookup_failed",
+] as const;
 export type RoleSendResolutionStatus = (typeof ROLE_SEND_RESOLUTION_STATUSES)[number];
 
 export interface RoleSendPersonDto {

@@ -249,7 +249,11 @@ export function prepareOverlay(
 export const titleKey = (title: string): string => title.trim().toLowerCase();
 
 export const titleTakenError = (): ChartWardenError =>
-  new ChartWardenError("TEMPLATE_TITLE_TAKEN", "A saved reply with this title already exists.", 409);
+  new ChartWardenError(
+    "TEMPLATE_TITLE_TAKEN",
+    "A saved reply with this title already exists.",
+    409,
+  );
 
 export const limitReachedError = (): ChartWardenError =>
   new ChartWardenError("TEMPLATE_LIMIT_REACHED", "The saved reply limit has been reached.", 409);

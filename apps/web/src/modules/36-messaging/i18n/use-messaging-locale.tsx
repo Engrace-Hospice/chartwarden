@@ -12,7 +12,10 @@ export function currentLocale(): Locale {
   } catch {
     preference = null; // storage blocked: fall through to the browser language
   }
-  return resolveLocale(preference, typeof navigator === "undefined" ? [] : (navigator.languages ?? []));
+  return resolveLocale(
+    preference,
+    typeof navigator === "undefined" ? [] : (navigator.languages ?? []),
+  );
 }
 
 export function EnTag(): JSX.Element {

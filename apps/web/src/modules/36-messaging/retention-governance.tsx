@@ -264,7 +264,9 @@ export function RetentionGovernance(): JSX.Element {
   const owner = useStepUpOwner();
   const returning = useStepUpReturn(owner, RESUME_ACTIONS);
   const [resume] = useState<HoldResume>(() => (returning ? readResume(owner) : NO_RESUME));
-  const [redactionResume, setRedactionResume] = useState(() => (returning ? readRedactionResume(owner) : null));
+  const [redactionResume, setRedactionResume] = useState(() =>
+    returning ? readRedactionResume(owner) : null,
+  );
   const consumeRedactionResume = useCallback(() => setRedactionResume(null), []);
   const [tab, setTab] = useState<TabId>(() =>
     redactionResume !== null

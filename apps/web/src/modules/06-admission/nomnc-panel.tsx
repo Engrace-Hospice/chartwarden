@@ -97,7 +97,9 @@ export function rebindMode(mode: NomncDrawerMode, ov: NomncOverview): NomncDrawe
         : null;
     case "review_facts":
     case "decision":
-      return openReview && openReview.id === mode.review.id ? { ...mode, review: openReview } : null;
+      return openReview && openReview.id === mode.review.id
+        ? { ...mode, review: openReview }
+        : null;
     case "add_deadline": {
       const parent = mode.subject === "notice" ? activeNotice : openReview;
       return parent && parent.id === mode.parent.id ? { ...mode, parent } : null;
@@ -239,14 +241,25 @@ export function NomncPanel({
     reopened.current = true;
     const noticeId = findStepUpDraftResourceId(owner, NOMNC_STEP_UP_ACTIONS.withdraw_notice);
     const reviewDecisionId = findStepUpDraftResourceId(owner, NOMNC_STEP_UP_ACTIONS.decision);
-    const reviewWithdrawId = findStepUpDraftResourceId(owner, NOMNC_STEP_UP_ACTIONS.withdraw_review);
+    const reviewWithdrawId = findStepUpDraftResourceId(
+      owner,
+      NOMNC_STEP_UP_ACTIONS.withdraw_review,
+    );
     if (noticeId && ov.activeNotice?.id === noticeId) {
       setMode({ kind: "withdraw_notice", notice: ov.activeNotice });
       setRestored(true);
-    } else if (reviewDecisionId && ov.review?.id === reviewDecisionId && ov.review.state === "open") {
+    } else if (
+      reviewDecisionId &&
+      ov.review?.id === reviewDecisionId &&
+      ov.review.state === "open"
+    ) {
       setMode({ kind: "decision", review: ov.review });
       setRestored(true);
-    } else if (reviewWithdrawId && ov.review?.id === reviewWithdrawId && ov.review.state === "open") {
+    } else if (
+      reviewWithdrawId &&
+      ov.review?.id === reviewWithdrawId &&
+      ov.review.state === "open"
+    ) {
       setConfirmWithdraw(true);
     }
   }, [returning, ov, owner]);
@@ -279,7 +292,10 @@ export function NomncPanel({
   };
 
   /** An inline action (mark met, withdraw review): busy while it runs; a 409 reloads and says the record changed. */
-  const act = async (op: () => Promise<unknown>, stepUpKey: string | null = null): Promise<void> => {
+  const act = async (
+    op: () => Promise<unknown>,
+    stepUpKey: string | null = null,
+  ): Promise<void> => {
     setActionError(null);
     setBusy(true);
     try {
@@ -290,7 +306,9 @@ export function NomncPanel({
       if (isStepUp(e) && stepUpKey) {
         // not fresh enough: nothing was typed here, so the draft only marks "come back to the confirmation"
         stashStepUpDraft(stepUpKey, {});
-        navigate(`/step-up?returnTo=${encodeURIComponent(`${location.pathname}${location.search}`)}`);
+        navigate(
+          `/step-up?returnTo=${encodeURIComponent(`${location.pathname}${location.search}`)}`,
+        );
         return;
       }
       if (isConflict(e)) {
@@ -563,7 +581,11 @@ export function NomncPanel({
                   Record decision
                 </Button>
                 {confirmWithdraw ? (
-                  <span className="wx-action-row" role="group" aria-label="Confirm withdrawing the review">
+                  <span
+                    className="wx-action-row"
+                    role="group"
+                    aria-label="Confirm withdrawing the review"
+                  >
                     <span className="wx-row-sub">Withdraw this QIO review?</span>
                     <Button
                       tone="danger"
@@ -593,7 +615,11 @@ export function NomncPanel({
                     </Button>
                   </span>
                 ) : (
-                  <Button tone="tertiary" disabled={locked} onClick={() => setConfirmWithdraw(true)}>
+                  <Button
+                    tone="tertiary"
+                    disabled={locked}
+                    onClick={() => setConfirmWithdraw(true)}
+                  >
                     Withdraw review
                   </Button>
                 )}

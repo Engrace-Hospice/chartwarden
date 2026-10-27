@@ -21,11 +21,11 @@ import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator
 import { registerSeam } from "../src/bootstrap/index";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { buildM23ClaimSubmissionReader } from "../src/modules/23-billing-medicare/cost-report-seams";
 import {
   M23_OUTBOX_EVENTS,
   buildM23RemittanceConsumer,
 } from "../src/modules/23-billing-medicare/index";
-import { buildM23ClaimSubmissionReader } from "../src/modules/23-billing-medicare/cost-report-seams";
 import {
   M25_OUTBOX_EVENTS,
   buildDrizzleM25ReadService,
@@ -205,7 +205,13 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
         [ORG],
       )
     ).rows[0].id as string;
-    actor = { organizationId: ORG, userId, membershipId, roles: ["billing_manager"], stepUpRecent: true };
+    actor = {
+      organizationId: ORG,
+      userId,
+      membershipId,
+      roles: ["billing_manager"],
+      stepUpRecent: true,
+    };
 
     handle = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
@@ -231,9 +237,7 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
       db: handle.db,
       orgs,
       eventCatalog: catalog,
-      consumers: [
-        buildM23RemittanceConsumer({ db: handle.db, outbox: asModule("m23") as never }),
-      ],
+      consumers: [buildM23RemittanceConsumer({ db: handle.db, outbox: asModule("m23") as never })],
     });
   }, 180_000);
 
@@ -275,7 +279,11 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
       const { received, posted } = await postEra(GOLDEN, "minio/golden-1.835");
 
       expect(received).toMatchObject({ outcome: "queued" });
-      expect(posted).toMatchObject({ outcome: "partial_posted", postedLineCount: 3, unmatchedLineCount: 1 });
+      expect(posted).toMatchObject({
+        outcome: "partial_posted",
+        postedLineCount: 3,
+        unmatchedLineCount: 1,
+      });
       adviceId = (received as { adviceId: string }).adviceId;
       const states = await rows(
         "SELECT clp01_patient_control_number AS pcn, match_state FROM remittance_line WHERE remittance_advice_id=$1 ORDER BY 1",
@@ -330,13 +338,15 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
           GROUP BY 1,2,3 ORDER BY 1,2,4 DESC,3 DESC`,
         [adviceId],
       );
-      expect(adj.map((r) => [r.g, r.r, r.action, r.n, Number(r.amt)].join("|")).sort()).toEqual([
-        "CO|45|auto_posted|3|310",
-        "OA|23|flagged_review|1|40",
-        "PR|1|ledger_recorded|1|30",
-        "PR|1|flagged_review|1|20", // the unmatched line has no patient, so no ledger entry
-        "PR|2|ledger_recorded|1|20",
-      ].sort());
+      expect(adj.map((r) => [r.g, r.r, r.action, r.n, Number(r.amt)].join("|")).sort()).toEqual(
+        [
+          "CO|45|auto_posted|3|310",
+          "OA|23|flagged_review|1|40",
+          "PR|1|ledger_recorded|1|30",
+          "PR|1|flagged_review|1|20", // the unmatched line has no patient, so no ledger entry
+          "PR|2|ledger_recorded|1|20",
+        ].sort(),
+      );
     });
 
     it("the patient-responsibility ledger equals CLP05 of the matched lines, and the split line keeps both service lines", async () => {
@@ -357,7 +367,10 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
           WHERE l.remittance_advice_id=$1 AND l.clp01_patient_control_number='PCN-G-B' ORDER BY 1 DESC`,
         [adviceId],
       );
-      expect(svc.map((r) => [Number(r.charge), Number(r.paid)])).toEqual([[350, 250], [250, 150]]);
+      expect(svc.map((r) => [Number(r.charge), Number(r.paid)])).toEqual([
+        [350, 250],
+        [250, 150],
+      ]);
     });
 
     it("emits one posting event per matched line: partial, partial, recouped (no event for the unmatched line)", async () => {
@@ -450,19 +463,27 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
       const { received } = await postEra(bad, "minio/golden-bad.835");
 
       expect(received.outcome).toBe("malformed");
-      expect(Number((await one("SELECT count(*)::int AS n FROM remittance_advice")).n)).toBe(before);
+      expect(Number((await one("SELECT count(*)::int AS n FROM remittance_advice")).n)).toBe(
+        before,
+      );
     });
 
     it("a clearinghouse resend under NEW ISA/ST control numbers but the same TRN, payer and amount posts nothing twice", async () => {
       await seedClaim("PCN-G-R", "ACK_ACCEPTED");
       const body = ["CLP*PCN-G-R*1*250.00*250.00*0.00*MC*ICN-G-R"];
-      const first = await postEra(era("000007101", "0001", "250.00", body, undefined, "CHK-RESEND-1"), "minio/resend-1.835");
+      const first = await postEra(
+        era("000007101", "0001", "250.00", body, undefined, "CHK-RESEND-1"),
+        "minio/resend-1.835",
+      );
       const counts = () =>
         one(`SELECT (SELECT count(*) FROM remittance_advice)::int AS adv, (SELECT count(*) FROM remittance_line)::int AS lines,
                     (SELECT count(*) FROM outbox_event WHERE event_type='m25.remittance.claim_paid')::int AS ev`);
       const before = await counts();
 
-      const resend = await postEra(era("000007102", "0007", "250.00", body, undefined, "CHK-RESEND-1"), "minio/resend-2.835");
+      const resend = await postEra(
+        era("000007102", "0007", "250.00", body, undefined, "CHK-RESEND-1"),
+        "minio/resend-2.835",
+      );
 
       expect(first.posted).toMatchObject({ outcome: "posted" });
       expect(resend.received).toEqual({
@@ -475,29 +496,68 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
     it("the same TRN with a different amount, or a different TRN with the same content, is a new payment", async () => {
       await seedClaim("PCN-G-S", "ACK_ACCEPTED");
       const a = await postEra(
-        era("000007103", "0001", "100.00", ["CLP*PCN-G-S*1*100.00*100.00*0.00*MC*ICN-G-S"], undefined, "CHK-SAME"),
+        era(
+          "000007103",
+          "0001",
+          "100.00",
+          ["CLP*PCN-G-S*1*100.00*100.00*0.00*MC*ICN-G-S"],
+          undefined,
+          "CHK-SAME",
+        ),
         "minio/trn-a.835",
       );
       const b = await postEra(
-        era("000007104", "0001", "40.00", ["CLP*PCN-G-S*1*40.00*40.00*0.00*MC*ICN-G-S2"], undefined, "CHK-SAME"),
+        era(
+          "000007104",
+          "0001",
+          "40.00",
+          ["CLP*PCN-G-S*1*40.00*40.00*0.00*MC*ICN-G-S2"],
+          undefined,
+          "CHK-SAME",
+        ),
         "minio/trn-b.835",
       );
       const c = await postEra(
-        era("000007105", "0001", "100.00", ["CLP*PCN-G-S*1*100.00*100.00*0.00*MC*ICN-G-S"], undefined, "CHK-OTHER"),
+        era(
+          "000007105",
+          "0001",
+          "100.00",
+          ["CLP*PCN-G-S*1*100.00*100.00*0.00*MC*ICN-G-S"],
+          undefined,
+          "CHK-OTHER",
+        ),
         "minio/trn-c.835",
       );
-      expect([a.received.outcome, b.received.outcome, c.received.outcome]).toEqual(["queued", "queued", "queued"]);
+      expect([a.received.outcome, b.received.outcome, c.received.outcome]).toEqual([
+        "queued",
+        "queued",
+        "queued",
+      ]);
     });
 
     it("two different $0 remits that share a placeholder TRN are both posted (content, not just TRN, identifies a resend)", async () => {
       await seedClaim("PCN-G-Z1", "ACK_ACCEPTED");
       await seedClaim("PCN-G-Z2", "ACK_ACCEPTED");
       const z1 = await postEra(
-        era("000007201", "0001", "0.00", ["CLP*PCN-G-Z1*4*100.00*0.00*0.00*MC*ICN-Z1", "CAS*CO*50*100.00"], undefined, "0"),
+        era(
+          "000007201",
+          "0001",
+          "0.00",
+          ["CLP*PCN-G-Z1*4*100.00*0.00*0.00*MC*ICN-Z1", "CAS*CO*50*100.00"],
+          undefined,
+          "0",
+        ),
         "minio/z1.835",
       );
       const z2 = await postEra(
-        era("000007202", "0001", "0.00", ["CLP*PCN-G-Z2*4*80.00*0.00*0.00*MC*ICN-Z2", "CAS*CO*50*80.00"], undefined, "0"),
+        era(
+          "000007202",
+          "0001",
+          "0.00",
+          ["CLP*PCN-G-Z2*4*80.00*0.00*0.00*MC*ICN-Z2", "CAS*CO*50*80.00"],
+          undefined,
+          "0",
+        ),
         "minio/z2.835",
       );
       expect([z1.received.outcome, z2.received.outcome]).toEqual(["queued", "queued"]);
@@ -516,19 +576,31 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
 
       expect(results.filter((r) => r.received.outcome === "queued")).toHaveLength(1);
       expect(
-        Number((await one("SELECT count(*)::int AS n FROM remittance_advice WHERE check_or_eft_trace_number='CHK-RACE'")).n),
+        Number(
+          (
+            await one(
+              "SELECT count(*)::int AS n FROM remittance_advice WHERE check_or_eft_trace_number='CHK-RACE'",
+            )
+          ).n,
+        ),
       ).toBe(1);
     });
 
     it("a resend of an advice that FAILED is not swallowed: it is queued", async () => {
       await seedClaim("PCN-G-F", "ACK_ACCEPTED");
       const body = ["CLP*PCN-G-F*1*60.00*60.00*0.00*MC*ICN-G-F"];
-      const first = await postEra(era("000007301", "0001", "60.00", body, undefined, "CHK-FAIL"), "minio/f1.835");
+      const first = await postEra(
+        era("000007301", "0001", "60.00", body, undefined, "CHK-FAIL"),
+        "minio/f1.835",
+      );
       await admin.query("UPDATE remittance_advice SET parse_status='failed' WHERE id=$1", [
         (first.received as { adviceId: string }).adviceId,
       ]);
 
-      const resend = await postEra(era("000007302", "0001", "60.00", body, undefined, "CHK-FAIL"), "minio/f2.835");
+      const resend = await postEra(
+        era("000007302", "0001", "60.00", body, undefined, "CHK-FAIL"),
+        "minio/f2.835",
+      );
 
       expect(resend.received.outcome).toBe("queued");
     });
@@ -567,10 +639,9 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
         "SELECT id, version, remittance_line_id, carc_code, dollar_value::numeric AS value FROM denial_case WHERE claim_id=$1",
         [claimId],
       );
-      const originalLine = await one(
-        "SELECT * FROM remittance_line WHERE id=$1",
-        [denialCase.remittance_line_id],
-      );
+      const originalLine = await one("SELECT * FROM remittance_line WHERE id=$1", [
+        denialCase.remittance_line_id,
+      ]);
       const originalAdjustments = await rows(
         "SELECT id, cas_group_code, cas_reason_code, adjustment_amount::numeric AS amt FROM remittance_adjustment WHERE remittance_line_id=$1",
         [denialCase.remittance_line_id],
@@ -579,9 +650,18 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
       // The appeal is filed and won through the real write path (start -> escalate -> appeal -> decide).
       const w = write();
       let v = (await w.startDenial(actor as never, denialCase.id, denialCase.version)).version;
-      v = (await w.escalateDenial(actor as never, denialCase.id, { reason: "needs appeal" } as never, v)).version;
+      v = (
+        await w.escalateDenial(
+          actor as never,
+          denialCase.id,
+          { reason: "needs appeal" } as never,
+          v,
+        )
+      ).version;
       const appeal = await w.createAppeal(actor as never, denialCase.id, {});
-      expect((await one("SELECT state FROM denial_case WHERE id=$1", [denialCase.id])).state).toBe("appealed");
+      expect((await one("SELECT state FROM denial_case WHERE id=$1", [denialCase.id])).state).toBe(
+        "appealed",
+      );
       const appealId = appeal.id;
       // Submission needs the packet seams and evidence documents (covered by m25-appeal-packet.live); here the
       // draft is moved to under_review directly so the decision itself goes through the real service.
@@ -626,8 +706,16 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
 
       // Denial case: resolved via the appeal, then closed. The original evidence is untouched.
       const dc = await one("SELECT state, version FROM denial_case WHERE id=$1", [denialCase.id]);
-      await write().resolveDenial(actor as never, denialCase.id, { reason: "appeal won" } as never, dc.version);
-      const resolved = await one("SELECT state, version, closure_outcome FROM denial_case WHERE id=$1", [denialCase.id]);
+      await write().resolveDenial(
+        actor as never,
+        denialCase.id,
+        { reason: "appeal won" } as never,
+        dc.version,
+      );
+      const resolved = await one(
+        "SELECT state, version, closure_outcome FROM denial_case WHERE id=$1",
+        [denialCase.id],
+      );
       expect(resolved).toMatchObject({ state: "resolved", closure_outcome: "resolved_via_appeal" });
       await write().closeDenial(actor as never, denialCase.id, resolved.version);
       const closed = await one(
@@ -640,14 +728,19 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
         remittance_line_id: denialCase.remittance_line_id,
       });
       expect(Number(closed.value)).toBe(Number(denialCase.value));
-      expect(await one("SELECT * FROM remittance_line WHERE id=$1", [denialCase.remittance_line_id])).toEqual(originalLine);
+      expect(
+        await one("SELECT * FROM remittance_line WHERE id=$1", [denialCase.remittance_line_id]),
+      ).toEqual(originalLine);
       expect(
         await rows(
           "SELECT id, cas_group_code, cas_reason_code, adjustment_amount::numeric AS amt FROM remittance_adjustment WHERE remittance_line_id=$1",
           [denialCase.remittance_line_id],
         ),
       ).toEqual(originalAdjustments);
-      const events = await rows("SELECT event_kind FROM appeal_case_event WHERE appeal_case_id=$1", [appealId]);
+      const events = await rows(
+        "SELECT event_kind FROM appeal_case_event WHERE appeal_case_id=$1",
+        [appealId],
+      );
       expect(events.map((e) => e.event_kind)).toContain("decided");
     });
 
@@ -700,12 +793,18 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
     it("a second partial payment on a PARTIAL_PAID claim leaves the state; the cumulative paid is the sum of its remittance lines", async () => {
       const claimId = await seedClaim("PCN-S09E", "ACK_ACCEPTED");
       await postEra(
-        era("000009007", "0001", "500.00", ["CLP*PCN-S09E*1*1000.00*500.00*0.00*MC*ICN-S09E", "CAS*CO*45*500.00"]),
+        era("000009007", "0001", "500.00", [
+          "CLP*PCN-S09E*1*1000.00*500.00*0.00*MC*ICN-S09E",
+          "CAS*CO*45*500.00",
+        ]),
         "minio/s09e-1.835",
       );
       await drain();
       await postEra(
-        era("000009008", "0001", "200.00", ["CLP*PCN-S09E*1*500.00*200.00*0.00*MC*ICN-S09E2", "CAS*CO*45*300.00"]),
+        era("000009008", "0001", "200.00", [
+          "CLP*PCN-S09E*1*500.00*200.00*0.00*MC*ICN-S09E2",
+          "CAS*CO*45*300.00",
+        ]),
         "minio/s09e-2.835",
       );
       await drain();
@@ -716,7 +815,9 @@ describe.skipIf(!DB_URL)("S07/S09 golden 835 posting and supplemental 835 - LIVE
         [claimId],
       );
       expect(Number(paid.paid)).toBe(700);
-      const hist = await rows("SELECT to_state FROM claim_state_history WHERE claim_id=$1", [claimId]);
+      const hist = await rows("SELECT to_state FROM claim_state_history WHERE claim_id=$1", [
+        claimId,
+      ]);
       expect(hist.map((h) => h.to_state)).toEqual(["PARTIAL_PAID"]);
     });
 

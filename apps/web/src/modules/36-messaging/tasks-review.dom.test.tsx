@@ -1,8 +1,8 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 3.4 review fixes: the picker's single debounced lookup, scope-aware row replacement, a refetch after a stale
 // refusal, one shared "my tasks" read in the inbox, and a double-click guard on Accept.
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TaskCloseDialog } from "./task-close-dialog";

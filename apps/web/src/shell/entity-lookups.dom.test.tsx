@@ -1,3 +1,4 @@
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/shell — F-066 (#161): the admission lookup must be scoped to a PATIENT.
 //
 // `AdmissionLookupField` took a `patientId` prop and destructured it into `_patientId` — accepted and
@@ -11,7 +12,6 @@
 // These assert on the RECORDED REQUEST, because a spy on the component would not distinguish reading
 // the patient's admissions from reading everyone's and rendering the same-shaped list.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

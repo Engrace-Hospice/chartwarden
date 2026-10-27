@@ -1,7 +1,3 @@
-// @chartwarden/cost-report — PURE allocation-RESULT → derived-worksheet mapper unit suite (Form CMS-1984-14).
-// Asserts the inverse of `assemble-inputs`: the chain results map to the TypeBox-typed B/C `data` payloads a
-// recompute persists, the tie flags are stamped, and each payload validates against its worksheet schema.
-import { Value } from "@sinclair/typebox/value";
 import {
   type RawAllocationInputs,
   WorksheetB,
@@ -14,6 +10,10 @@ import {
   stepDownAllocate,
   stepDownToWorksheetB,
 } from "@chartwarden/cost-report";
+// @chartwarden/cost-report — PURE allocation-RESULT → derived-worksheet mapper unit suite (Form CMS-1984-14).
+// Asserts the inverse of `assemble-inputs`: the chain results map to the TypeBox-typed B/C `data` payloads a
+// recompute persists, the tie flags are stamped, and each payload validates against its worksheet schema.
+import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 
 function raw(over: Partial<RawAllocationInputs> = {}): RawAllocationInputs {

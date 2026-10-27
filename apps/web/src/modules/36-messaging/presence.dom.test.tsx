@@ -1,9 +1,9 @@
+import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
 /**
  * WP 2.12 presence/typing in the web client: nothing rendered or requested while the tenant flag is off, the online
  * list and the polite typing indicator when on, no requests from a hidden tab, and a permanent stop on 403.
  */
 import { act, cleanup, render, screen } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PresenceMembers, TypingIndicator } from "./presence-panel";
 import { PRESENCE_FLAG_KEY, TYPING_THROTTLE_MS } from "./presence-utils";

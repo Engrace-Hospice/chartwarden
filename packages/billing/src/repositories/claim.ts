@@ -119,7 +119,10 @@ export class ClaimRepository {
   /** Which of `ids` exist as Medicare claims (RLS-scoped, one query). Used by M25's payer badge to ask M23 once per page. */
   async existingIds(ids: readonly string[]): Promise<ReadonlySet<string>> {
     if (ids.length === 0) return new Set();
-    const rows = await this.db.select({ id: C.id }).from(C).where(inArray(C.id, [...ids]));
+    const rows = await this.db
+      .select({ id: C.id })
+      .from(C)
+      .where(inArray(C.id, [...ids]));
     return new Set(rows.map((r) => r.id));
   }
 

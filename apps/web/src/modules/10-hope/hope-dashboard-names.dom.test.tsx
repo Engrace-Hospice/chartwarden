@@ -1,7 +1,7 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // Finding 9 — the HOPE worklist names the patient (and shows no admission id prefix) instead of raw uuid
 // prefixes; a patient the viewer cannot read falls back to the "Name unavailable".
 import { render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";

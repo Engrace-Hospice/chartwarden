@@ -1,3 +1,9 @@
+import { ValidationError } from "@chartwarden/types";
+import { SCALE_TYPES } from "@chartwarden/types";
+import type {
+  ScaleDelta as ServiceScaleDelta,
+  ScaleSeries as ServiceScaleSeries,
+} from "@chartwarden/types";
 // apps/backend/src/modules/09-assessments/routes/assessments-typebox.ts — M9-T05 TypeBox route schemas
 // (§4.3). Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a
 // TypeBox import for a Drizzle one. Validation runs through TypeBox `Value` → M1's VALIDATION_FAILED
@@ -8,12 +14,6 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@chartwarden/types";
-import { SCALE_TYPES } from "@chartwarden/types";
-import type {
-  ScaleDelta as ServiceScaleDelta,
-  ScaleSeries as ServiceScaleSeries,
-} from "@chartwarden/types";
 import type {
   AssessmentDetailView as ServiceAssessmentDetailView,
   AssessmentView as ServiceAssessmentView,

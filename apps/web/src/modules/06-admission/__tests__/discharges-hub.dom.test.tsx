@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
@@ -259,10 +259,15 @@ describe("discharges hub screen", () => {
   });
 
   it("a failed 'no deadline' list is visible with a retry, not silently hidden", async () => {
-    mount(["admission.read", "discharge.create", "nomnc.read"], makeClient({ failNoDeadline: true }));
+    mount(
+      ["admission.read", "discharge.create", "nomnc.read"],
+      makeClient({ failNoDeadline: true }),
+    );
     const panel = await screen.findByText("NOMNC with no appeal-request deadline");
     expect(panel).toBeTruthy();
-    expect((await screen.findAllByText("This list could not be loaded.")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("This list could not be loaded.")).length).toBeGreaterThan(
+      0,
+    );
   });
 
   it("does not fetch or show the QIO buckets without nomnc.read", async () => {

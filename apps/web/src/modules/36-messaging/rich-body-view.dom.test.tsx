@@ -1,12 +1,12 @@
+import type { RichBody } from "@chartwarden/types";
+import { sanitizeRichBody } from "@chartwarden/types";
+import { STRUCTURAL_CORPUS, XSS_CORPUS } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 2.1 - the safe renderer under the XSS corpus (jsdom). Every payload is rendered as message text, a code
 // block, a link target, a mention label and an attachment filename; none may produce an executable DOM: no script,
 // no event-handler attribute, no non-allowlisted URL in any attribute, no raw HTML node, and the page global the
 // payloads would set stays unset. Hostile STRUCTURE (a document that never passed the server) is rendered too.
 import { cleanup, render } from "@testing-library/react";
-import type { RichBody } from "@chartwarden/types";
-import { sanitizeRichBody } from "@chartwarden/types";
-import { STRUCTURAL_CORPUS, XSS_CORPUS } from "@chartwarden/types";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 import { MessageRow } from "./message-row";

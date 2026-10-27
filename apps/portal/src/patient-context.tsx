@@ -96,16 +96,11 @@ export function PortalPatientContext({
     }),
     [patientId, state],
   );
-  return (
-    <PatientContext.Provider value={value}>{children}</PatientContext.Provider>
-  );
+  return <PatientContext.Provider value={value}>{children}</PatientContext.Provider>;
 }
 
 export function usePortalPatient(): PatientContextValue {
   const value = useContext(PatientContext);
-  if (!value)
-    throw new Error(
-      "usePortalPatient must be used inside PortalPatientContext",
-    );
+  if (!value) throw new Error("usePortalPatient must be used inside PortalPatientContext");
   return value;
 }

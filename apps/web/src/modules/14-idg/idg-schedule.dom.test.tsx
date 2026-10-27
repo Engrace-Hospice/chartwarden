@@ -1,8 +1,8 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // IDG Schedule — the "Schedule Meeting" write (POST /idg/meetings) and the name rendering that
 // replaced short ids (coordinator via /orgs/{id}/care-team-staff, patient via `patient.displayName`).
 // Asserts on RECORDED FETCH CALLS (method, path, body), like idg-writes.dom.test.tsx.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -53,10 +53,13 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   }
   if (path === "/api/v1/locations") {
     if (locationsFailure) return json({ error: { code: "UNAVAILABLE" } }, 503);
-    return json({ items: [
-      { id: LOC, name: "Main Campus", status: "active" },
-      { id: LOC_OUT, name: "Restricted Campus", status: "active" },
-    ], nextCursor: null });
+    return json({
+      items: [
+        { id: LOC, name: "Main Campus", status: "active" },
+        { id: LOC_OUT, name: "Restricted Campus", status: "active" },
+      ],
+      nextCursor: null,
+    });
   }
   if (path === "/api/v1/orgs/org-1/care-team-staff")
     return json({
@@ -199,12 +202,10 @@ describe("IDG schedule — Schedule Meeting", () => {
   });
 
   it("offers only server-session locations and hides scheduling controls without idg.schedule", async () => {
-    mount(
-      `/idg/schedule?location=${LOC}`,
-      <IdgSchedule />,
-      "/idg/schedule",
-      { ...SESSION, permissions: ["idg.read"] },
-    );
+    mount(`/idg/schedule?location=${LOC}`, <IdgSchedule />, "/idg/schedule", {
+      ...SESSION,
+      permissions: ["idg.read"],
+    });
     const picker = await screen.findByLabelText("Location");
     expect(picker.textContent).toContain("Main Campus");
     expect(picker.textContent).not.toContain("Restricted Campus");
@@ -212,23 +213,21 @@ describe("IDG schedule — Schedule Meeting", () => {
   });
 
   it("opens the actor's own site, not the first one by name, when the URL names no location", async () => {
-    mount(
-      "/idg/schedule",
-      <IdgSchedule />,
-      "/idg/schedule",
-      { ...SESSION, orgWidePatientScope: true, locationIds: [LOC_OUT] },
-    );
+    mount("/idg/schedule", <IdgSchedule />, "/idg/schedule", {
+      ...SESSION,
+      orgWidePatientScope: true,
+      locationIds: [LOC_OUT],
+    });
     const picker = (await screen.findByLabelText("Location")) as HTMLSelectElement;
     await waitFor(() => expect(picker.value).toBe(LOC_OUT));
   });
 
   it("falls back to the first site when the actor's own sites are not among those offered", async () => {
-    mount(
-      "/idg/schedule",
-      <IdgSchedule />,
-      "/idg/schedule",
-      { ...SESSION, orgWidePatientScope: true, locationIds: ["not-a-listed-site"] },
-    );
+    mount("/idg/schedule", <IdgSchedule />, "/idg/schedule", {
+      ...SESSION,
+      orgWidePatientScope: true,
+      locationIds: ["not-a-listed-site"],
+    });
     const picker = (await screen.findByLabelText("Location")) as HTMLSelectElement;
     await waitFor(() => expect(picker.value).toBe(LOC));
   });

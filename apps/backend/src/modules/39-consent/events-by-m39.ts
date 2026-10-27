@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/39-consent/events-by-m39.ts — Module 39's outbox-event contributions
 // (M39-T08, spec §4.5). The fourteen `m39.consent.*` events keyed on M39's own tables, under the
 // `m39.` namespace (M01 D8 / M03 D9). check-fitness-gaps.ts scans this file for naming
@@ -7,7 +8,6 @@
 // they land; the events are published now. `m39.consent.signed`/`revoked` drive M5's
 // privacy_flag_snapshot recompute (M5 D10); `expiring_soon` drives the M36 reminder alert (§4.10).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 /** Shared minimal payload core — every consent event carries the patient + org id. */
 const core = {

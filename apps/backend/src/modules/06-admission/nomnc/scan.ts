@@ -73,7 +73,12 @@ export async function markAndPublish(
           .update(D)
           .set({ overdueAlertedAt: now, updatedAt: now })
           .where(
-            and(eq(D.id, d.id), eq(D.dueAt, d.dueAt), isNull(D.overdueAlertedAt), isNull(D.satisfiedAt)),
+            and(
+              eq(D.id, d.id),
+              eq(D.dueAt, d.dueAt),
+              isNull(D.overdueAlertedAt),
+              isNull(D.satisfiedAt),
+            ),
           )
           .returning({ id: D.id })
       : await tx

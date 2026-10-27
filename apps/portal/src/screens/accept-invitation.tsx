@@ -19,9 +19,7 @@ export function tokenFromSearch(search: string): string | null {
 export function PortalAcceptInvitation(): JSX.Element {
   const client = useApiClient();
   const [token] = useState(() =>
-    tokenFromSearch(
-      typeof window === "undefined" ? "" : window.location.search,
-    ),
+    tokenFromSearch(typeof window === "undefined" ? "" : window.location.search),
   );
   const [state, setState] = useState<State>(token ? "working" : "failed");
 
@@ -29,15 +27,8 @@ export function PortalAcceptInvitation(): JSX.Element {
     if (!token) return;
     let active = true;
     // Remove the sensitive query from browser history after capturing it. The POST still uses the original token.
-    if (
-      typeof window !== "undefined" &&
-      window.location.search.includes("token=")
-    ) {
-      window.history.replaceState(
-        window.history.state,
-        "",
-        window.location.pathname,
-      );
+    if (typeof window !== "undefined" && window.location.search.includes("token=")) {
+      window.history.replaceState(window.history.state, "", window.location.pathname);
     }
     void (async () => {
       try {
@@ -55,10 +46,7 @@ export function PortalAcceptInvitation(): JSX.Element {
   }, [client, token]);
 
   return (
-    <CenteredCardLayout
-      brand={<PortalOnboardingBrand />}
-      footer={<PortalOnboardingHelp />}
-    >
+    <CenteredCardLayout brand={<PortalOnboardingBrand />} footer={<PortalOnboardingHelp />}>
       <div className="wx-portal-onboarding wx-portal-auth-form">
         {state === "working" ? (
           <div role="status">
@@ -75,9 +63,7 @@ export function PortalAcceptInvitation(): JSX.Element {
               title="Your access is ready"
               description="Sign in with the email address your hospice team invited to the portal."
             />
-            <InlineAlert tone="success">
-              Your invitation was accepted.
-            </InlineAlert>
+            <InlineAlert tone="success">Your invitation was accepted.</InlineAlert>
             <Link className="wx-portal-auth-primary-link" to="/">
               Continue to sign in →
             </Link>

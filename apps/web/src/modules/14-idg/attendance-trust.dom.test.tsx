@@ -1,3 +1,4 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — attendance trust (M14 0286) in the Check-in modal.
 //
 // The roster is what quorum and the per-discipline note authorization trust, so the modal no longer lets anyone type a
@@ -5,7 +6,6 @@
 // THEMSELF in; a coordinator picks the member and must tick an explicit attestation to record a discipline the member
 // does not hold. Assertions are on the RECORDED POST BODY (the server re-validates; a re-wired control would still render).
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AttendanceModal } from "./idg-meeting-modals";
 

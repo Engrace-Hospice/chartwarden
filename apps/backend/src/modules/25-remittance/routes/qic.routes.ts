@@ -1,3 +1,4 @@
+import { NotFoundError, ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/qic.routes.ts - M25 milestone 4 routes: the QIC reconsideration
 // (cited evidence, the QIC's 60-day decision clock) and the escalation to OMHA when the QIC is late. Reads gate on
 // `appeal.read`; the evidence list on `appeal.attach_document`; the QIC clock on `appeal.submit`; the escalation
@@ -5,7 +6,6 @@
 // forwarded the case on `appeal.decide`. Every change is If-Match (409 when stale) and requires an Idempotency-Key.
 // Org, actor and provider-entity scope are server-derived (actor.ts). Nothing here sends anything outside ChartWarden.
 import { Type } from "@sinclair/typebox";
-import { NotFoundError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { QIC_ESCALATION_CHANNELS, QIC_LATE_EVIDENCE_EXTENSION_MAX_DAYS } from "../domain";
 import { actorOf, writeActorOf } from "./actor";

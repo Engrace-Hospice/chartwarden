@@ -1,8 +1,8 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 3.4: closing a task. A clinical task cannot be closed without a reason code (the submit is blocked here and
 // refused by the server); a non-clinical task may close without one. No free text anywhere.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { TaskCloseDialog } from "./task-close-dialog";
 import { TASK_FIXTURE } from "./tasks-test-fixture";

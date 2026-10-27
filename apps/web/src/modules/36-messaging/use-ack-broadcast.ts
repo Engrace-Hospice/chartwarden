@@ -130,7 +130,9 @@ export function useAckBroadcast() {
           prev.status === "ready"
             ? {
                 status: "ready",
-                items: prev.items.map((i) => (i.messageId === messageId ? { ...i, acknowledgedAt } : i)),
+                items: prev.items.map((i) =>
+                  i.messageId === messageId ? { ...i, acknowledgedAt } : i,
+                ),
               }
             : prev,
         );
@@ -154,9 +156,12 @@ export function useAckBroadcast() {
       withdrawInFlight.current = true;
       setWithdrawState("busy");
       try {
-        const res = await client.POST("/api/v1/messaging/announcements/{messageId}/ack-broadcast/withdraw", {
-          params: { path: { messageId } },
-        });
+        const res = await client.POST(
+          "/api/v1/messaging/announcements/{messageId}/ack-broadcast/withdraw",
+          {
+            params: { path: { messageId } },
+          },
+        );
         if (!mounted.current) return false;
         if (!res.data) {
           setWithdrawState("failed");
@@ -241,7 +246,8 @@ export function useBroadcastDetail(messageId: string | null, filter: AckBroadcas
     setView({ status: "loading" });
     fetchPage(0)
       .then((detail) => {
-        if (run === seq.current) setView(detail ? { status: "ready", detail } : { status: "error" });
+        if (run === seq.current)
+          setView(detail ? { status: "ready", detail } : { status: "error" });
       })
       .catch(() => {
         if (run === seq.current) setView({ status: "error" });
@@ -269,7 +275,11 @@ export function useBroadcastDetail(messageId: string | null, filter: AckBroadcas
     setMoreState("idle");
     setView({
       status: "ready",
-      detail: { ...next, offset: view.detail.offset, people: [...view.detail.people, ...next.people] },
+      detail: {
+        ...next,
+        offset: view.detail.offset,
+        people: [...view.detail.people, ...next.people],
+      },
     });
   }, [fetchPage, view]);
 

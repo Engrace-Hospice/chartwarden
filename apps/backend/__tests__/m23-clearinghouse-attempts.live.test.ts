@@ -88,7 +88,9 @@ describe.skipIf(!DB_URL)("M23 durable clearinghouse attempt store — LIVE Postg
   });
 
   beforeEach(async () => {
-    await admin.query("TRUNCATE clearinghouse_submission_attempt, clearinghouse_interchange_number");
+    await admin.query(
+      "TRUNCATE clearinghouse_submission_attempt, clearinghouse_interchange_number",
+    );
   });
 
   afterAll(async () => {

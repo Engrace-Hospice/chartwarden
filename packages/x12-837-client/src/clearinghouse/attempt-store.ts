@@ -155,7 +155,10 @@ export interface SubmissionAttemptStore {
 export class InMemoryAttemptStore implements SubmissionAttemptStore {
   private readonly rows: SubmissionAttempt[] = [];
   private readonly counters: Record<AttemptUsage, number> = { test: 0, production: 0 };
-  private readonly interchangeNumbers = new Map<string, { number: string; usage: AttemptUsage; renderedAt: Date }>();
+  private readonly interchangeNumbers = new Map<
+    string,
+    { number: string; usage: AttemptUsage; renderedAt: Date }
+  >();
 
   private live(organizationId: string, scope: string): SubmissionAttempt[] {
     return this.rows.filter(

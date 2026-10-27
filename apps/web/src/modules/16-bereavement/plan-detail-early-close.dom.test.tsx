@@ -1,7 +1,7 @@
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/16-bereavement — GAP-047 web follow-up: the early close is a two-person control.
 // close-early only RECORDS a pending request (plan stays active); a DIFFERENT supervisor cosigns.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";

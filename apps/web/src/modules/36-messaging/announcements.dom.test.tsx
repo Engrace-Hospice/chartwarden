@@ -1,7 +1,7 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 2.9 — announcement read receipts, the announcement channel's composer rule, and department channels.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { AnnouncementReceiptsDialog } from "./announcement-receipts";

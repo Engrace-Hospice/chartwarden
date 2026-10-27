@@ -2,7 +2,6 @@
 // (same MINIO_* contract and `deriveTenantBucket` as M22) under `m25-835/<adviceId>`. The id is server-generated,
 // never the caller's key, so M25 can neither overwrite nor read an M22 object whatever key a caller names.
 import { M25_STAGED_EXPIRY_DAYS, M25_STAGED_PREFIX } from "./m25-staged-835-config";
-import type { RawAdviceStore } from "./modules/25-remittance";
 import {
   type S3ObjectStoreDeps,
   createS3ObjectStore,
@@ -10,6 +9,7 @@ import {
   deriveTenantBucket,
   s3ObjectStoreConfigFromEnv,
 } from "./modules/22-documents";
+import type { RawAdviceStore } from "./modules/25-remittance";
 
 /** Largest raw 835 the post path will read back (a real remittance file is well under 1 MiB). */
 export const M25_RAW_835_MAX_BYTES = 16 * 1024 * 1024;

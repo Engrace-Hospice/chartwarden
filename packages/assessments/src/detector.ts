@@ -14,7 +14,11 @@
 // rejected at policy-write time, never silently clamped). The §9.1 canonical case — a tenant cannot set
 // `painad ≥ 3` when the floor is `≥ 4` — is enforced by `resolveSignificantChangeThreshold`.
 
-import type { AssessmentAlertSeverity, ScaleType, SignificantChangeRuleId } from "@chartwarden/types";
+import type {
+  AssessmentAlertSeverity,
+  ScaleType,
+  SignificantChangeRuleId,
+} from "@chartwarden/types";
 import { require_ } from "./errors";
 import { RULE_SCALE, firstEmissionSeverity } from "./significant-change";
 

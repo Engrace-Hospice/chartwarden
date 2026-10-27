@@ -6,7 +6,9 @@ import { describe, expect, it, vi } from "vitest";
 const disagreements = vi.hoisted(() => ({ value: [] as string[], calls: [] as unknown[][] }));
 vi.mock("@chartwarden/x12-837-client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@chartwarden/x12-837-client")>()),
-  compareStediClaimJsonToX12: (...args: unknown[]) => (disagreements.calls.push(args), disagreements.value),
+  compareStediClaimJsonToX12: (...args: unknown[]) => (
+    disagreements.calls.push(args), disagreements.value
+  ),
 }));
 
 import {

@@ -1,8 +1,8 @@
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — F-238 prospect summary panel: renders the SERVER's summary (sections,
 // citations, coding checks, documents that differ, Part 2 withheld count), puts the server's plain text in a
 // read-only text box with a working Copy button, and treats 409 as "not complete yet" rather than an error.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PatientIntakeSummaries,

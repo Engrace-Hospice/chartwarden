@@ -682,9 +682,9 @@ describe.skipIf(!DB_URL)(
           [claim.id],
         );
         expect(subs.rowCount).toBe(1);
-        expect(
-          (published as { eventName: string }[]).map((e) => e.eventName),
-        ).toContain("m24.medicaid_claim.submit_requested");
+        expect((published as { eventName: string }[]).map((e) => e.eventName)).toContain(
+          "m24.medicaid_claim.submit_requested",
+        );
       });
 
       it("a READY Oregon claim is refused with the same code when the gateway is unbound", async () => {

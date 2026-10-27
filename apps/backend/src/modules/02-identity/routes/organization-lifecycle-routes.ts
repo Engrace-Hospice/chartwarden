@@ -13,7 +13,7 @@
 // wants to attribute the transition to, which may be a platform-ops actor's membership in a
 // DIFFERENT org than the one being suspended).
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type {
   OrganizationLifecycleEvent,

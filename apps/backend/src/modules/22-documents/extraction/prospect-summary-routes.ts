@@ -1,4 +1,3 @@
-import { type Static, Type } from "@sinclair/typebox";
 // apps/backend/src/modules/22-documents/extraction/prospect-summary-routes.ts — the F-238 prospect summary:
 //
 //   GET /api/v1/intake/uploads/:id/summary   a completed review's reviewer-approved values, grouped into one
@@ -13,6 +12,7 @@ import { type Static, Type } from "@sinclair/typebox";
 // until the review is complete. Built deterministically (`prospect-summary.ts`) — no model is involved.
 import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
 import { UnauthorizedError } from "@chartwarden/types";
+import { type Static, Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { parse } from "../routes/documents-typebox";
 import type { ProspectSummaryService } from "./prospect-summary-db";

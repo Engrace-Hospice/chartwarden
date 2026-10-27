@@ -38,6 +38,7 @@
 // it is never affected.
 import { getRequestContext } from "@chartwarden/tenancy";
 import {
+  ChartWardenError,
   type ChiefComplaintBucket,
   type EscalationTierCount,
   type IsoInstant,
@@ -56,7 +57,6 @@ import {
   type TriageDisposition,
   type TriageEscalationTier,
   type TriageMetricsWindow,
-  ChartWardenError,
 } from "@chartwarden/types";
 import type { OncallSeamStore, PortalTriageCallRow, RnCoverageRead } from "./store";
 

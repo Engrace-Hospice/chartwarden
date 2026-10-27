@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // @chartwarden/shared — M1 Foundation's outbox-event contributions (spec §3.17.1).
 //
 // M1 owns the platform broadcast events keyed on its own tables (system_status,
@@ -7,7 +8,6 @@
 // over Socket.IO (degraded-mode banner / live flag refresh, §4.8), but they are
 // registered in the catalog so the dispatcher validates their payloads (W-M1-11).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 export const M1_OUTBOX_EVENTS: ModuleEventContribution = [
   {

@@ -1,4 +1,3 @@
-import type { Meta, StoryObj } from "@storybook/react-vite";
 // Storybook (R0.5) — Tier-2 layouts (@chartwarden/ui), filled with realistic Lantern content so future
 // screens compose on-system by construction. A sample of the foundational + domain patterns.
 import {
@@ -15,6 +14,7 @@ import {
   SchedulingCalendarLayout,
   WorkQueueLayout,
 } from "@chartwarden/ui";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { JSX } from "react";
 
 const meta: Meta = { title: "Lantern/Layouts", parameters: { layout: "fullscreen" } };

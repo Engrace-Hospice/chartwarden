@@ -11,12 +11,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { usePortalPatient } from "../patient-context";
-import {
-  formatPortalInstant,
-  humanize,
-  readError,
-  statusTone,
-} from "./portal-format";
+import { formatPortalInstant, humanize, readError, statusTone } from "./portal-format";
 import { PortalPage } from "./portal-page";
 
 type TargetKind = "patient_demographic" | "encounter_narrative";
@@ -39,8 +34,7 @@ const TARGET_OPTIONS = [
 
 function requestType(value: string | undefined): string {
   if (value === "patient_demographic") return "Personal or contact information";
-  if (value === "encounter_narrative")
-    return "Information written about a visit";
+  if (value === "encounter_narrative") return "Information written about a visit";
   return value ? humanize(value) : "Record information";
 }
 function submittedDate(value: string | undefined): string {
@@ -51,16 +45,13 @@ function sortRequests(items: Amendment[]): Amendment[] {
     const parsed = value ? Date.parse(value) : NaN;
     return Number.isFinite(parsed) ? parsed : -Infinity;
   };
-  return [...items].sort(
-    (a, b) => timestamp(b.submittedAt) - timestamp(a.submittedAt),
-  );
+  return [...items].sort((a, b) => timestamp(b.submittedAt) - timestamp(a.submittedAt));
 }
 function parseHistory(value: unknown): Amendment[] | null {
   if (!value || typeof value !== "object" || !("items" in value)) return null;
   const items = (value as { items: unknown }).items;
   if (!Array.isArray(items)) return null;
-  const optionalText = (value: unknown): boolean =>
-    value == null || typeof value === "string";
+  const optionalText = (value: unknown): boolean => value == null || typeof value === "string";
   if (
     items.some((item) => {
       if (!item || typeof item !== "object" || Array.isArray(item)) return true;
@@ -81,12 +72,7 @@ function parseHistory(value: unknown): Amendment[] | null {
 /** Keyed by selected patient: drafts, requests and pending feedback never cross patient contexts. */
 export function PortalAmendments(): JSX.Element {
   const { patientId } = usePortalPatient();
-  return (
-    <AmendmentsForPatient
-      key={patientId ?? "no-patient"}
-      patientId={patientId}
-    />
-  );
+  return <AmendmentsForPatient key={patientId ?? "no-patient"} patientId={patientId} />;
 }
 
 function AmendmentsForPatient({
@@ -100,9 +86,7 @@ function AmendmentsForPatient({
     items: [],
   });
   const [attempt, setAttempt] = useState(0);
-  const [targetKind, setTargetKind] = useState<TargetKind>(
-    "patient_demographic",
-  );
+  const [targetKind, setTargetKind] = useState<TargetKind>("patient_demographic");
   const [requestedChange, setRequestedChange] = useState("");
   const [reviewing, setReviewing] = useState(false);
   const [sending, setSending] = useState(false);
@@ -221,9 +205,9 @@ function AmendmentsForPatient({
         <div>
           <strong>How correction requests work</strong>
           <p>
-            Tell us which information you believe is incorrect and what you
-            believe it should say. Your request goes through a review process;
-            submitting it does not automatically change the record.
+            Tell us which information you believe is incorrect and what you believe it should say.
+            Your request goes through a review process; submitting it does not automatically change
+            the record.
           </p>
         </div>
       </div>
@@ -242,9 +226,7 @@ function AmendmentsForPatient({
             </div>
           </div>
           {!patientId ? (
-            <p className="wx-amendments-muted">
-              Choose a patient to request a correction.
-            </p>
+            <p className="wx-amendments-muted">Choose a patient to request a correction.</p>
           ) : reviewing ? (
             <div className="wx-amendments-review">
               <h3>Review before sending</h3>
@@ -255,14 +237,11 @@ function AmendmentsForPatient({
                 </div>
                 <div>
                   <dt>Requested correction</dt>
-                  <dd className="wx-amendments-long-text">
-                    {requestedChange.trim()}
-                  </dd>
+                  <dd className="wx-amendments-long-text">{requestedChange.trim()}</dd>
                 </div>
               </dl>
               <p className="wx-amendments-muted">
-                Your team will review this request. This step does not edit the
-                medical record.
+                Your team will review this request. This step does not edit the medical record.
               </p>
               <div className="wx-amendments-actions">
                 <Button
@@ -312,13 +291,12 @@ function AmendmentsForPatient({
                 placeholder="The record currently says… It should say…"
               />
               <p className="wx-amendments-muted">
-                For questions about care, contact your hospice team. Do not
-                include passwords or account security codes.
+                For questions about care, contact your hospice team. Do not include passwords or
+                account security codes.
               </p>
               <div className="wx-amendments-actions">
                 <Button type="submit" disabled={!requestedChange.trim()}>
-                  Review request{" "}
-                  <Glyph name="arrow-right" size={16} aria-hidden="true" />
+                  Review request <Glyph name="arrow-right" size={16} aria-hidden="true" />
                 </Button>
               </div>
             </form>
@@ -329,9 +307,7 @@ function AmendmentsForPatient({
               role={feedback.kind === "error" ? "alert" : "status"}
             >
               <Glyph
-                name={
-                  feedback.kind === "error" ? "alert-circle" : "check-circle"
-                }
+                name={feedback.kind === "error" ? "alert-circle" : "check-circle"}
                 size={19}
                 aria-hidden="true"
               />
@@ -354,9 +330,7 @@ function AmendmentsForPatient({
             </div>
           </div>
           {!patientId ? (
-            <p className="wx-amendments-muted">
-              Choose a patient to see their requests.
-            </p>
+            <p className="wx-amendments-muted">Choose a patient to see their requests.</p>
           ) : history.status === "loading" ? (
             <div
               className="wx-amendments-skeleton"
@@ -384,16 +358,13 @@ function AmendmentsForPatient({
               <div>
                 <h3>No requests submitted yet</h3>
                 <p>
-                  When you send a request, it will appear here if the team has
-                  made it available for tracking.
+                  When you send a request, it will appear here if the team has made it available for
+                  tracking.
                 </p>
               </div>
             </div>
           ) : (
-            <ol
-              className="wx-amendments-requests"
-              aria-label="Correction request history"
-            >
+            <ol className="wx-amendments-requests" aria-label="Correction request history">
               {history.items.map((item, index) => (
                 <li
                   key={item.id ?? `${item.submittedAt ?? "unknown"}-${index}`}
@@ -402,18 +373,14 @@ function AmendmentsForPatient({
                   <div className="wx-amendments-request__top">
                     <span>{submittedDate(item.submittedAt)}</span>
                     {item.status ? (
-                      <StatusPill
-                        tone={statusTone(item.status)}
-                        label={humanize(item.status)}
-                      />
+                      <StatusPill tone={statusTone(item.status)} label={humanize(item.status)} />
                     ) : (
                       <span>Status unavailable</span>
                     )}
                   </div>
                   <h3>{requestType(item.targetKind)}</h3>
                   <p className="wx-amendments-long-text">
-                    {item.requestedChange?.trim() ||
-                      "Request details unavailable"}
+                    {item.requestedChange?.trim() || "Request details unavailable"}
                   </p>
                 </li>
               ))}

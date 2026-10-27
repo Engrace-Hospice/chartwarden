@@ -1,8 +1,8 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 3.5: the Handoffs tab list. Rows are patient-free, the toggles re-read with the chosen scope and state, and the
 // loading, empty and error states say so.
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { HandoffsList } from "./handoffs-list";
 import { HANDOFF_FIXTURE } from "./handoffs-test-fixture";

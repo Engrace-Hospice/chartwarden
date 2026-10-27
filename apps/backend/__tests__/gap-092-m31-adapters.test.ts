@@ -42,7 +42,9 @@ describe("portal invitation email delivery", () => {
         baseUrl: "https://portal.example.com",
         baseUrlFor: async () => "https://acme.chartwarden.com/portal/",
       }).deliver(input()),
-    ).resolves.toEqual({ inviteUrl: "https://acme.chartwarden.com/portal/accept-invitation?token=t0k3n" });
+    ).resolves.toEqual({
+      inviteUrl: "https://acme.chartwarden.com/portal/accept-invitation?token=t0k3n",
+    });
   });
 
   it("hands the link back to the admin when no transport is bound, and sends nothing without a base url", async () => {

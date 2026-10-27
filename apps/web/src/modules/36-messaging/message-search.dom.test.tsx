@@ -1,10 +1,10 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 /**
  * WP 2.7a in the web client: Ctrl/Cmd+F opens in-conversation search, results jump to the message, keyboard access,
  * loading / empty / error-with-retry states, a capped scan that can be continued, and no search in an archived
  * conversation.
  */
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationThread } from "./conversation-thread";

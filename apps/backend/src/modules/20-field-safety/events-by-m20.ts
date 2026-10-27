@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/20-field-safety/events-by-m20.ts — Module 20's outbox-event contributions
 // (§4.10). The `m20.safety.*` taxonomy under the `m20.` namespace (M01 D8 / M03 D9 / M04 D9).
 // check-fitness-gaps.ts scans this file for naming (`mN.<resource>.<verb>`), ownership
@@ -32,7 +33,6 @@
 // `tier` and `loopIteration` — are REQUIRED fields below: a payload that omitted them would be
 // unkeyable, and a conforming consumer would collapse the very repetition the design requires.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 const Id = Type.String({ minLength: 1 });
 const IdOrNull = Type.Union([Type.String({ minLength: 1 }), Type.Null()]);

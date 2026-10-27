@@ -317,7 +317,9 @@ describe.skipIf(!DB_URL)("M23 draft claim delete — LIVE Postgres (migration 10
   it("keeps the destruction role able to erase a non-draft claim's lines and claim (per-patient eraser)", async () => {
     const { claimId } = await seedClaim(ORG_A, "PAID");
     await admin.query("DROP ROLE IF EXISTS m23_destroyer");
-    await admin.query("CREATE ROLE m23_destroyer LOGIN PASSWORD 'x' IN ROLE chartwarden_destruction");
+    await admin.query(
+      "CREATE ROLE m23_destroyer LOGIN PASSWORD 'x' IN ROLE chartwarden_destruction",
+    );
     const url = new URL(DB_URL as string);
     url.username = "m23_destroyer";
     url.password = "x";

@@ -140,7 +140,9 @@ export async function insertDeadline(
       zone,
       sourceNote,
       noticeDocumentId: input.noticeDocumentId ?? null,
-      noticeDocumentVersionId: input.noticeDocumentId ? (input.noticeDocumentVersionId ?? null) : null,
+      noticeDocumentVersionId: input.noticeDocumentId
+        ? (input.noticeDocumentVersionId ?? null)
+        : null,
       overdueAlertedAt: typed.instant.getTime() <= c.now.getTime() ? c.now : null,
       createdByUserId: c.actorUserId || null,
     })

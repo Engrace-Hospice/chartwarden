@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 // @chartwarden/portal — lots 6/7 contracts for the priority lists, composer, and account appearance.
 import { createApiClient } from "@chartwarden/ui";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PortalApp } from "../src/app";
 
@@ -18,9 +18,7 @@ function fixtureClient(requests: string[] = []) {
     baseUrl: "http://localhost",
     fetch: async (input) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
-      requests.push(
-        `${input instanceof Request ? input.method : "GET"} ${url.pathname}`,
-      );
+      requests.push(`${input instanceof Request ? input.method : "GET"} ${url.pathname}`);
       if (url.pathname === "/api/v1/portal/visits/upcoming") {
         return json({
           items: [
@@ -35,16 +33,14 @@ function fixtureClient(requests: string[] = []) {
           ],
         });
       }
-      if (url.pathname === "/api/v1/portal/visits/history")
-        return json({ items: [] });
+      if (url.pathname === "/api/v1/portal/visits/history") return json({ items: [] });
       if (url.pathname === "/api/v1/portal/messages/channel") {
         return json({
           channelId: "33333333-3333-4333-8333-333333333333",
           lastReadPointer: null,
         });
       }
-      if (url.pathname === "/api/v1/portal/messages/history")
-        return json({ messages: [] });
+      if (url.pathname === "/api/v1/portal/messages/history") return json({ messages: [] });
       if (url.pathname === "/api/v1/portal/documents") {
         return json({
           items: [
@@ -71,8 +67,7 @@ function fixtureClient(requests: string[] = []) {
           ],
         });
       }
-      if (url.pathname === "/api/v1/portal/administrations/recent")
-        return json({ items: [] });
+      if (url.pathname === "/api/v1/portal/administrations/recent") return json({ items: [] });
       if (url.pathname === "/api/v1/portal/amendments") {
         return json({
           items: [
@@ -110,15 +105,11 @@ describe("portal priority screens", () => {
     window.history.pushState({}, "", `/portal/p/${PATIENT_ID}/visits`);
     render(<PortalApp client={fixtureClient()} />);
 
-    expect(
-      await screen.findByRole("heading", { name: "Registered Nurse" }),
-    ).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Registered Nurse" })).toBeTruthy();
     expect(screen.getByText("Telehealth")).toBeTruthy();
-    expect(
-      screen
-        .getByRole("link", { name: "Join video visit" })
-        .getAttribute("href"),
-    ).toContain("/telehealth");
+    expect(screen.getByRole("link", { name: "Join video visit" }).getAttribute("href")).toContain(
+      "/telehealth",
+    );
   });
 
   it("uses the shared, described composer for secure messages", async () => {
@@ -142,16 +133,10 @@ describe("portal priority screens", () => {
     window.history.pushState({}, "", `/portal/p/${PATIENT_ID}/documents`);
     render(<PortalApp client={fixtureClient()} />);
 
-    expect(
-      await screen.findByRole("heading", { name: "Welcome guide" }),
-    ).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Welcome guide" })).toBeTruthy();
     expect(screen.getByRole("list")).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Download Welcome guide" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Send a document" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Download Welcome guide" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Send a document" })).toBeTruthy();
   });
 
   it("offers and persists the account theme choice", async () => {
@@ -161,9 +146,7 @@ describe("portal priority screens", () => {
     const toggle = await screen.findByRole("button", { name: "Dark" });
     fireEvent.click(toggle);
 
-    await waitFor(() =>
-      expect(document.documentElement.classList.contains("dark")).toBe(true),
-    );
+    await waitFor(() => expect(document.documentElement.classList.contains("dark")).toBe(true));
     expect(window.localStorage.getItem("wx-theme")).toBe("dark");
   });
 
@@ -171,33 +154,21 @@ describe("portal priority screens", () => {
     window.history.pushState({}, "", `/portal/p/${PATIENT_ID}/medications`);
     render(<PortalApp client={fixtureClient()} />);
 
-    expect(
-      await screen.findByRole("heading", { name: "Sample medication" }),
-    ).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Sample medication" })).toBeTruthy();
     expect(screen.getByText("Every morning")).toBeTruthy();
-    expect(
-      screen.queryByRole("dialog", { name: "Record a dose given" }),
-    ).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Record a dose given" }),
-    );
+    expect(screen.queryByRole("dialog", { name: "Record a dose given" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Record a dose given" }));
     const dialog = screen.getByRole("dialog", { name: "Record a dose given" });
     expect(dialog.querySelector("select")).toBeTruthy();
-    expect(
-      screen.getByRole("textbox", { name: /Caregiver attestation/ }),
-    ).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: /Caregiver attestation/ })).toBeTruthy();
   });
 
   it("keeps amendment requests as a tracked request rather than a direct edit", async () => {
     window.history.pushState({}, "", `/portal/p/${PATIENT_ID}/amendments`);
     render(<PortalApp client={fixtureClient()} />);
 
-    expect(
-      await screen.findByText("Synthetic correction request"),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("textbox", { name: "Describe the correction" }),
-    ).toBeTruthy();
+    expect(await screen.findByText("Synthetic correction request")).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "Describe the correction" })).toBeTruthy();
     expect(
       (
         screen.getByRole("button", {
@@ -220,18 +191,14 @@ describe("portal priority screens", () => {
     const join = screen.getByRole("button", { name: "Join visit" });
     expect((join as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(join);
-    expect(requests.some((request) => request.includes("/telehealth/"))).toBe(
-      false,
-    );
+    expect(requests.some((request) => request.includes("/telehealth/"))).toBe(false);
     fireEvent.click(screen.getByRole("checkbox"));
     expect((join as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(join);
     await waitFor(() =>
       expect(
         requests.some((request) =>
-          request.includes(
-            "/portal/telehealth/visits/88888888-8888-4888-8888-888888888888/join",
-          ),
+          request.includes("/portal/telehealth/visits/88888888-8888-4888-8888-888888888888/join"),
         ),
       ).toBe(true),
     );

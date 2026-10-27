@@ -69,7 +69,11 @@ export const redeemInvitation = (organizationId: string, token: string) =>
   call<PartnerRedeemed>("/redeem", { method: "POST", body: { organizationId, token } });
 
 export const readPartnerState = (bearer: string, shareId: string, signal?: AbortSignal) =>
-  call<PartnerShareStateDto>(`/shares/${encodeURIComponent(shareId)}`, { method: "GET", bearer }, signal);
+  call<PartnerShareStateDto>(
+    `/shares/${encodeURIComponent(shareId)}`,
+    { method: "GET", bearer },
+    signal,
+  );
 
 export const verifyPartnerCode = (bearer: string, shareId: string, code: string) =>
   call<PartnerVerifiedDto>(`/shares/${encodeURIComponent(shareId)}/verify`, {

@@ -190,7 +190,12 @@ function RequireAcknowledgment({ messageId }: { messageId: string | null }): JSX
       {state === "done" ? <p role="status">{REQUIRE_DONE}</p> : null}
       {state === "off" ? <p role="alert">{REQUIRE_OFF}</p> : null}
       {state === "failed" ? <p role="alert">{REQUIRE_FAILED}</p> : null}
-      <Button tone="secondary" size="lg" disabled={state === "busy" || state === "done"} onClick={run}>
+      <Button
+        tone="secondary"
+        size="lg"
+        disabled={state === "busy" || state === "done"}
+        onClick={run}
+      >
         {REQUIRE_LABEL}
       </Button>
     </section>

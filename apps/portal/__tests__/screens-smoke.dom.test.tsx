@@ -1,10 +1,10 @@
-import { render, waitFor } from "@testing-library/react";
 // @chartwarden/portal — TASK-050C (TEST-004) registry-driven screen smoke render. Mounts the real
 // PortalApp once per §5.1 manifest entry (portalScreens, the same registry portal-screens.test.ts
 // already asserts uniqueness/permission-shape for) with a stubbed API client, and proves each route
 // mounts without tripping the top-level ErrorBoundary. See apps/web/src/shell/screens-smoke.dom.test.tsx
 // for the sibling web-app version and docs/audits/.../11-test-and-quality-report.md TEST-004.
 import { createApiClient } from "@chartwarden/ui";
+import { render, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { PortalApp } from "../src/app";
 import { portalScreens } from "../src/screens/registry";

@@ -1,19 +1,9 @@
-import {
-  Button,
-  CenteredCardLayout,
-  InlineAlert,
-  TextField,
-} from "@chartwarden/ui";
+import { Button, CenteredCardLayout, InlineAlert, TextField } from "@chartwarden/ui";
 import { useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { type SignInOutcome, requestMagicLink, signInWithPassword, verifyTotp } from "../auth-http";
 import { validateNext } from "../session-guard";
-import {
-  type SignInOutcome,
-  requestMagicLink,
-  signInWithPassword,
-  verifyTotp,
-} from "../auth-http";
 import {
   PortalOnboardingBrand,
   PortalOnboardingHeading,
@@ -41,8 +31,7 @@ export function PortalSignIn(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const linkProblem =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).has("link");
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).has("link");
   // Set by the expired-session redirect (#593); a plain flag, never a server code.
   const sessionExpired =
     typeof window !== "undefined" &&
@@ -53,9 +42,7 @@ export function PortalSignIn(): JSX.Element {
     typeof window !== "undefined"
       ? validateNext(new URLSearchParams(window.location.search).get("next"))
       : null;
-  const signedInPath = returnTo
-    ? `/signed-in?next=${encodeURIComponent(returnTo)}`
-    : "/signed-in";
+  const signedInPath = returnTo ? `/signed-in?next=${encodeURIComponent(returnTo)}` : "/signed-in";
 
   function changeStep(next: Step): void {
     if (inFlight.current) return;
@@ -73,9 +60,7 @@ export function PortalSignIn(): JSX.Element {
     try {
       await task();
     } catch {
-      setError(
-        "We couldn't connect securely. Please check your connection and try again.",
-      );
+      setError("We couldn't connect securely. Please check your connection and try again.");
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -127,15 +112,9 @@ export function PortalSignIn(): JSX.Element {
 
   const isLink = step === "email" || step === "link_sent";
   return (
-    <CenteredCardLayout
-      brand={<PortalOnboardingBrand />}
-      footer={<PortalOnboardingHelp />}
-    >
+    <CenteredCardLayout brand={<PortalOnboardingBrand />} footer={<PortalOnboardingHelp />}>
       <div className="wx-portal-onboarding" data-auth-step={step}>
-        <div
-          className="wx-portal-onboarding__method"
-          aria-label="Sign-in method"
-        >
+        <div className="wx-portal-onboarding__method" aria-label="Sign-in method">
           <span className={isLink ? "is-current" : ""}>Email link</span>
           <span className={!isLink ? "is-current" : ""}>Password</span>
         </div>
@@ -147,23 +126,18 @@ export function PortalSignIn(): JSX.Element {
               description="If this address has portal access, we'll send a secure, single-use sign-in link."
             />
             <InlineAlert tone="success">
-              If a portal account exists for that address, a sign-in email is on
-              its way.
+              If a portal account exists for that address, a sign-in email is on its way.
             </InlineAlert>
             <p className="wx-portal-auth-note">
-              Not seeing an email? Check your spam folder, then contact your
-              hospice care team if you still need help.
+              Not seeing an email? Check your spam folder, then contact your hospice care team if
+              you still need help.
             </p>
             <Button tone="secondary" onClick={() => changeStep("email")}>
               Use a different address
             </Button>
           </div>
         ) : step === "code" ? (
-          <form
-            onSubmit={onCode}
-            aria-label="Authenticator code"
-            className="wx-portal-auth-form"
-          >
+          <form onSubmit={onCode} aria-label="Authenticator code" className="wx-portal-auth-form">
             <PortalOnboardingHeading
               eyebrow="Identity verification"
               title="Enter your code"
@@ -179,18 +153,10 @@ export function PortalSignIn(): JSX.Element {
               onChange={(ev) => setCode(ev.target.value)}
             />
             {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
-            <Button
-              type="submit"
-              loading={busy}
-              disabled={busy || code.trim().length < 6}
-            >
+            <Button type="submit" loading={busy} disabled={busy || code.trim().length < 6}>
               Verify and continue
             </Button>
-            <Button
-              tone="tertiary"
-              disabled={busy}
-              onClick={() => changeStep("password")}
-            >
+            <Button tone="tertiary" disabled={busy} onClick={() => changeStep("password")}>
               Back to password
             </Button>
           </form>
@@ -222,36 +188,22 @@ export function PortalSignIn(): JSX.Element {
               onChange={(ev) => setPassword(ev.target.value)}
             />
             {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
-            <Button
-              type="submit"
-              loading={busy}
-              disabled={busy || !email.trim() || !password}
-            >
+            <Button type="submit" loading={busy} disabled={busy || !email.trim() || !password}>
               Sign in
             </Button>
-            <Button
-              tone="tertiary"
-              disabled={busy}
-              onClick={() => changeStep("email")}
-            >
+            <Button tone="tertiary" disabled={busy} onClick={() => changeStep("email")}>
               Email me a sign-in link instead
             </Button>
           </form>
         ) : (
-          <form
-            onSubmit={onLink}
-            aria-label="Sign in"
-            className="wx-portal-auth-form"
-          >
+          <form onSubmit={onLink} aria-label="Sign in" className="wx-portal-auth-form">
             <PortalOnboardingHeading
               eyebrow="Private and secure"
               title="Sign in"
               description="Visit updates, care information, and secure messages shared by your hospice team."
             />
             {sessionExpired && !linkProblem ? (
-              <InlineAlert tone="info">
-                Your session ended. Please sign in again.
-              </InlineAlert>
+              <InlineAlert tone="info">Your session ended. Please sign in again.</InlineAlert>
             ) : null}
             {linkProblem ? (
               <InlineAlert tone="error">
@@ -267,18 +219,10 @@ export function PortalSignIn(): JSX.Element {
               onChange={(ev) => setEmail(ev.target.value)}
             />
             {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
-            <Button
-              type="submit"
-              loading={busy}
-              disabled={busy || !email.trim()}
-            >
+            <Button type="submit" loading={busy} disabled={busy || !email.trim()}>
               Email me a sign-in link
             </Button>
-            <Button
-              tone="tertiary"
-              disabled={busy}
-              onClick={() => changeStep("password")}
-            >
+            <Button tone="tertiary" disabled={busy} onClick={() => changeStep("password")}>
               Use a password instead
             </Button>
           </form>

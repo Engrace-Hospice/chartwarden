@@ -1,17 +1,27 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createApiClient } from "@chartwarden/ui";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PortalApp } from "../src/app";
 
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 function renderFuneral(status = 200) {
   window.history.pushState({}, "", "/portal/funeral/case");
-  return render(<PortalApp client={createApiClient({ baseUrl: "http://localhost", fetch: async (input) => {
-    const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
-    if (path === "/api/v1/funeral/case") return status === 200
-      ? json({ decedentName: "Example Person", dateOfDeath: "2026-10-12" }) : json({}, status);
-    return json({}, 404);
-  } })} />);
+  return render(
+    <PortalApp
+      client={createApiClient({
+        baseUrl: "http://localhost",
+        fetch: async (input) => {
+          const path = new URL(input instanceof Request ? input.url : String(input)).pathname;
+          if (path === "/api/v1/funeral/case")
+            return status === 200
+              ? json({ decedentName: "Example Person", dateOfDeath: "2026-10-12" })
+              : json({}, status);
+          return json({}, 404);
+        },
+      })}
+    />,
+  );
 }
 afterEach(() => vi.unstubAllGlobals());
 
@@ -34,7 +44,9 @@ describe("PR4.4 restricted funeral-home case", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ ok: true })));
     renderFuneral();
     fireEvent.click(await screen.findByRole("button", { name: "Finish and close access" }));
-    await waitFor(() => expect(screen.getByText("This access is no longer available.")).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByText("This access is no longer available.")).toBeTruthy(),
+    );
     expect(screen.queryByText("Example Person")).toBeNull();
   });
 });

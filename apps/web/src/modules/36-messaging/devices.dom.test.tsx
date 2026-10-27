@@ -1,11 +1,11 @@
+import type { DeviceDto } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 5.5 (ADR-0083, PROPOSED) - the device and session manager screens: the owner's list (current marked in words, push state in words, one
 // Revoke per row that names its device), revoke of another device (row leaves only after the server confirms, polite announcement, failure
 // stays listed with a retry, already-gone is not a failure), the REQUIRED confirm step before revoking the current session (cancel does nothing,
 // confirm revokes then signs out), the 401/403/error/empty states, no IP / user agent / id in the page, axe clean; and the security officer's
 // page: a bad id is refused before any request, the list is that person's, a stale step-up sends the officer to the step-up screen.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { DeviceDto } from "@chartwarden/types";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";

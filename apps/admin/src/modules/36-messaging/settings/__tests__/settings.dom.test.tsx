@@ -1,7 +1,7 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // M36 settings screens: loading/error/empty/403 states and the optimistic-with-rollback alert-rule toggle,
 // preferences save, and endpoint add/verify/remove — all against a recording fake fetch.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";

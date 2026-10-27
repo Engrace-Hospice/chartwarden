@@ -46,8 +46,11 @@ const bindings = async (db: Client) =>
   ).rows as { tbl: string; tgname: string; fn: string; tgenabled: string }[];
 
 const eventTriggers = async (db: Client) =>
-  (await db.query("SELECT evtname, evtfoid::regproc::text AS fn, evtenabled FROM pg_event_trigger ORDER BY 1"))
-    .rows as { evtname: string; fn: string; evtenabled: string }[];
+  (
+    await db.query(
+      "SELECT evtname, evtfoid::regproc::text AS fn, evtenabled FROM pg_event_trigger ORDER BY 1",
+    )
+  ).rows as { evtname: string; fn: string; evtenabled: string }[];
 
 const wardenxCatalogNames = async (db: Client) =>
   (
@@ -91,7 +94,9 @@ describe.skipIf(!DB_URL)("migration 1143 — function / event-trigger rename —
   it("starts from the legacy catalog: all three functions bound, one event trigger", () => {
     expect(before.some((b) => b.fn === "wardenx_audit_trigger")).toBe(true);
     expect(before.filter((b) => b.fn === "wardenx_tenant_step_up_tighten_only")).toHaveLength(1);
-    expect(eventBefore).toEqual([{ evtname: OLD_EVENT_TRIGGER, fn: "wardenx_secure_new_partition", evtenabled: "O" }]);
+    expect(eventBefore).toEqual([
+      { evtname: OLD_EVENT_TRIGGER, fn: "wardenx_secure_new_partition", evtenabled: "O" },
+    ]);
   });
 
   it("leaves no wardenx-named function, trigger, event trigger or relation behind", async () => {

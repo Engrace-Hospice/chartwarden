@@ -1,10 +1,10 @@
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 // @vitest-environment jsdom
 // The overview's "Open onboarding" button went nowhere, and GET /platform/tenants/{slug}/onboarding plus
 // POST .../onboarding/{taskId}/skip had no consumer, so platform ops could not see which step blocked a tenant
 // from activating, nor skip one. This screen lists the tasks in canonical order and skips with a rationale.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { TenantOnboarding } from "./tenant-onboarding";

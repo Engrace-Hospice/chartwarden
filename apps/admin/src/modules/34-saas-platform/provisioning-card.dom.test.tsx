@@ -1,10 +1,10 @@
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 // @vitest-environment jsdom
 // After "Provision tenant" returns 202 the operator used to learn nothing: no progress, no failure, no retry — a
 // failed `tenant.provision` job left the tenant in `provisioning` indefinitely. The card shows the job's state,
 // polls while it is in flight, and offers a retry when it has failed.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { ProvisioningCard } from "./provisioning-card";
 

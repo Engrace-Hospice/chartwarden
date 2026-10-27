@@ -1,9 +1,9 @@
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/05-patient — the Privacy Officer screens (M5 §5.1 "Privacy flags", §4.2 resync):
 // the per-patient view renders the SERVER's restrictions/origin/consent state/WardenLens packets (with a
 // link to the intake review, never a confirm/reject control), re-syncs and reports the change; the queue
 // filters by origin through the query string.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { PatientPrivacy, type PatientPrivacyView } from "./patient-privacy";

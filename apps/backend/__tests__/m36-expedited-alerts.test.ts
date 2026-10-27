@@ -61,7 +61,10 @@ describe("expedited-review alerts", () => {
       eventType: "m6.expedited_deadline.overdue",
       payload: base,
     });
-    expect(plans.map((p) => p.correlationKey)).toEqual(["d1:overdue:team", "d1:overdue:compliance"]);
+    expect(plans.map((p) => p.correlationKey)).toEqual([
+      "d1:overdue:team",
+      "d1:overdue:compliance",
+    ]);
     expect(Object.keys(plans[0]?.safe ?? {}).sort()).toEqual(
       [
         "admissionId",

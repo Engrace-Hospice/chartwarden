@@ -113,12 +113,15 @@ for (const [from, to] of renamedTables) {
 // spec files: 7 -> docs/modules/CHARTWARDEN_MODULE_07_*.md
 const specFiles = (() => {
   try {
-    return readdirSync(join(ROOT, "docs/modules")).filter((f) => /^CHARTWARDEN_MODULE_\d\d_/.test(f));
+    return readdirSync(join(ROOT, "docs/modules")).filter((f) =>
+      /^CHARTWARDEN_MODULE_\d\d_/.test(f),
+    );
   } catch {
     return [];
   }
 })();
-const hasSpec = (id: number) => specFiles.some((f) => f.startsWith(`CHARTWARDEN_MODULE_${pad(id)}_`));
+const hasSpec = (id: number) =>
+  specFiles.some((f) => f.startsWith(`CHARTWARDEN_MODULE_${pad(id)}_`));
 
 // OpenAPI enrichment: real per-route coverage, joined route-by-route against the
 // enrichment registry. This was previously a per-module BOOLEAN derived by regexing

@@ -27,7 +27,17 @@ describe("validateTenantSlug", () => {
   });
 
   it("reserves every host ADR-0049 D2 names", () => {
-    for (const host of ["www", "admin", "api", "portal", "storage", "app", "status", "docs", "mail"]) {
+    for (const host of [
+      "www",
+      "admin",
+      "api",
+      "portal",
+      "storage",
+      "app",
+      "status",
+      "docs",
+      "mail",
+    ]) {
       expect(RESERVED_TENANT_SLUGS).toContain(host);
     }
   });

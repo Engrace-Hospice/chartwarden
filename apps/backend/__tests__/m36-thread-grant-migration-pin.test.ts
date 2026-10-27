@@ -40,7 +40,9 @@ describe("migration 1135 thread access grant", () => {
       "USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)",
     );
     // The guard reads under the caller's own RLS: no SECURITY DEFINER on the grant guard.
-    expect(sql).toMatch(/message_thread_grant_guard\(\) RETURNS trigger\s+LANGUAGE plpgsql SECURITY INVOKER/);
+    expect(sql).toMatch(
+      /message_thread_grant_guard\(\) RETURNS trigger\s+LANGUAGE plpgsql SECURITY INVOKER/,
+    );
   });
 
   it("is insert/revoke-only: no app DELETE, UPDATE only on revoked_at, guard on the database clock", () => {

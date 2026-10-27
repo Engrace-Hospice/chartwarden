@@ -13,11 +13,10 @@ import { Button, EmptyState, LoadingSpinner, Modal, PageHeader, StatusPill } fro
 import { type JSX, useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
+  ACKNOWLEDGED_ANNOUNCEMENT,
   ACK_FAILED,
   ACK_LABEL,
   ACK_REFRESH_FAILED,
-  ACKNOWLEDGED_ANNOUNCEMENT,
-  LOAD_MORE_FAILED,
   BROADCAST_BREADCRUMB,
   BROADCAST_DENIED,
   BROADCAST_LOAD_FAILED,
@@ -30,6 +29,7 @@ import {
   DONE_HEADING,
   FILTER_LABELS,
   LOAD_MORE,
+  LOAD_MORE_FAILED,
   MINE_EMPTY_TEXT,
   MINE_EMPTY_TITLE,
   MINE_HEADING,
@@ -52,17 +52,28 @@ import {
   progressLabel,
   sentLabel,
 } from "./ack-broadcast-wording";
-import { type MineView, type OverseeView, useAckBroadcast, useBroadcastDetail } from "./use-ack-broadcast";
+import {
+  type MineView,
+  type OverseeView,
+  useAckBroadcast,
+  useBroadcastDetail,
+} from "./use-ack-broadcast";
 import "./ack-broadcast.css";
 
-const channelPath = (channelId: string): string => `/messaging?${new URLSearchParams({ channelId })}`;
+const channelPath = (channelId: string): string =>
+  `/messaging?${new URLSearchParams({ channelId })}`;
 const when = (iso: string | null): string => {
   if (!iso) return "";
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "" : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return Number.isNaN(d.getTime())
+    ? ""
+    : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 };
 
-function Problem({ text, retry }: { readonly text: string; readonly retry?: () => void }): JSX.Element {
+function Problem({
+  text,
+  retry,
+}: { readonly text: string; readonly retry?: () => void }): JSX.Element {
   return (
     <div className="wx-bc-problem" role="alert">
       <p>{text}</p>
@@ -94,8 +105,12 @@ function MineRow({
     <li className="wx-bc-row">
       <div className="wx-bc-main">
         <p className="wx-bc-title">{sentLabel(item.createdAt)}</p>
-        {item.acknowledgedAt ? <p className="wx-bc-sub">Acknowledged {when(item.acknowledgedAt)}</p> : null}
-        {item.deadlineAt && !item.acknowledgedAt ? <p className="wx-bc-sub">{deadlineLabel(item.deadlineAt)}</p> : null}
+        {item.acknowledgedAt ? (
+          <p className="wx-bc-sub">Acknowledged {when(item.acknowledgedAt)}</p>
+        ) : null}
+        {item.deadlineAt && !item.acknowledgedAt ? (
+          <p className="wx-bc-sub">{deadlineLabel(item.deadlineAt)}</p>
+        ) : null}
         <span id={describedBy} className="sr-only">
           {sentLabel(item.createdAt)}, {position} of {total}
         </span>
@@ -104,7 +119,13 @@ function MineRow({
         {OPEN_LABEL}
       </Link>
       {item.acknowledgedAt ? null : (
-        <Button type="button" size="lg" disabled={busy} aria-describedby={describedBy} onClick={onAck}>
+        <Button
+          type="button"
+          size="lg"
+          disabled={busy}
+          aria-describedby={describedBy}
+          onClick={onAck}
+        >
           {ACK_LABEL}
         </Button>
       )}
@@ -128,7 +149,8 @@ function MineSection({
   readonly retry: () => void;
 }): JSX.Element {
   if (view.status === "loading") return <LoadingSpinner />;
-  if (view.status === "off") return <EmptyState title={BROADCAST_OFF_TITLE} description={BROADCAST_OFF_TEXT} />;
+  if (view.status === "off")
+    return <EmptyState title={BROADCAST_OFF_TITLE} description={BROADCAST_OFF_TEXT} />;
   if (view.status === "denied") return <Problem text={BROADCAST_DENIED} />;
   if (view.status === "error") return <Problem text={BROADCAST_LOAD_FAILED} retry={retry} />;
   const waitingId = `${headingBase}-waiting`;
@@ -166,7 +188,14 @@ function MineSection({
           </h2>
           <ul className="wx-bc-rows">
             {done.map((item, i) => (
-              <MineRow key={item.messageId} item={item} position={i + 1} total={done.length} busy={false} onAck={() => undefined} />
+              <MineRow
+                key={item.messageId}
+                item={item}
+                position={i + 1}
+                total={done.length}
+                busy={false}
+                onAck={() => undefined}
+              />
             ))}
           </ul>
         </section>
@@ -209,7 +238,13 @@ function WithdrawDialog({
 }): JSX.Element {
   // A confirmation holds nothing typed, so a scrim click may cancel it; while the request runs nothing can close it.
   return (
-    <Modal open role="alertdialog" ariaLabel={WITHDRAW_TITLE} onClose={busy ? undefined : onCancel} width="30rem">
+    <Modal
+      open
+      role="alertdialog"
+      ariaLabel={WITHDRAW_TITLE}
+      onClose={busy ? undefined : onCancel}
+      width="30rem"
+    >
       <div className="wx-bc-dialog">
         <h2>{WITHDRAW_TITLE}</h2>
         <p>{WITHDRAW_TEXT}</p>
@@ -220,10 +255,24 @@ function WithdrawDialog({
         ) : null}
         <div className="wx-bc-dialog-actions">
           {/* aria-disabled, not disabled: a disabled button would drop focus out of the dialog while the request runs. */}
-          <Button type="button" tone="secondary" size="lg" aria-disabled={busy || undefined} style={busy ? BUSY_STYLE : undefined} onClick={busy ? undefined : onCancel}>
+          <Button
+            type="button"
+            tone="secondary"
+            size="lg"
+            aria-disabled={busy || undefined}
+            style={busy ? BUSY_STYLE : undefined}
+            onClick={busy ? undefined : onCancel}
+          >
             {WITHDRAW_CANCEL}
           </Button>
-          <Button type="button" size="lg" aria-disabled={busy || undefined} aria-busy={busy || undefined} style={busy ? BUSY_STYLE : undefined} onClick={busy ? undefined : onConfirm}>
+          <Button
+            type="button"
+            size="lg"
+            aria-disabled={busy || undefined}
+            aria-busy={busy || undefined}
+            style={busy ? BUSY_STYLE : undefined}
+            onClick={busy ? undefined : onConfirm}
+          >
             {WITHDRAW_CONFIRM}
           </Button>
         </div>
@@ -244,7 +293,9 @@ function BroadcastMarks({ b }: { readonly b: AckBroadcastSummary }): JSX.Element
     <span className="wx-bc-marks">
       {b.withdrawnAt ? <StatusPill tone="neutral" label={WITHDRAWN_MARK} /> : null}
       {b.pastDeadline ? <StatusPill tone="warning" label={PAST_DEADLINE_MARK} /> : null}
-      {b.deadlineAt && !b.withdrawnAt && !b.pastDeadline ? <span className="wx-bc-sub">{deadlineLabel(b.deadlineAt)}</span> : null}
+      {b.deadlineAt && !b.withdrawnAt && !b.pastDeadline ? (
+        <span className="wx-bc-sub">{deadlineLabel(b.deadlineAt)}</span>
+      ) : null}
     </span>
   );
 }
@@ -270,7 +321,9 @@ function DetailPanel({
   const c = broadcast.counts;
   return (
     <section className="wx-bc-detail" aria-labelledby={headingId}>
-      <h3 id={headingId} className="wx-bc-heading">{sentLabel(broadcast.createdAt)}</h3>
+      <h3 id={headingId} className="wx-bc-heading">
+        {sentLabel(broadcast.createdAt)}
+      </h3>
       <BroadcastMarks b={broadcast} />
       {broadcast.deadlineAt && (broadcast.withdrawnAt || broadcast.pastDeadline) ? (
         <p className="wx-bc-sub">{deadlineLabel(broadcast.deadlineAt)}</p>
@@ -279,10 +332,15 @@ function DetailPanel({
         <p className="wx-bc-sub">{WITHDRAWN_NOTE}</p>
       ) : (
         <div className="wx-bc-withdraw">
-          <Button type="button" tone="secondary" size="lg" onClick={() => {
-            controls.clearError();
-            setConfirming(true);
-          }}>
+          <Button
+            type="button"
+            tone="secondary"
+            size="lg"
+            onClick={() => {
+              controls.clearError();
+              setConfirming(true);
+            }}
+          >
             {WITHDRAW_LABEL}
           </Button>
         </div>
@@ -303,13 +361,23 @@ function DetailPanel({
         />
       ) : null}
       <p className="wx-bc-sub" aria-live="polite">
-        {progressLabel(c.acknowledged, c.audience)}. {c.pending} still to acknowledge ({c.notOpened} not opened).
+        {progressLabel(c.acknowledged, c.audience)}. {c.pending} still to acknowledge ({c.notOpened}{" "}
+        not opened).
         {c.ineligible > 0 ? ` ${c.ineligible} no longer active.` : ""}
       </p>
-      {c.outsideAudience > 0 ? <p className="wx-bc-sub">{OUTSIDE_NOTE(c.outsideAudience)}</p> : null}
+      {c.outsideAudience > 0 ? (
+        <p className="wx-bc-sub">{OUTSIDE_NOTE(c.outsideAudience)}</p>
+      ) : null}
       <div className="wx-bc-filters" role="group" aria-label="Show">
         {ACK_BROADCAST_FILTERS.map((f) => (
-          <Button key={f} type="button" size="lg" tone={f === filter ? "primary" : "secondary"} aria-pressed={f === filter} onClick={() => setFilter(f)}>
+          <Button
+            key={f}
+            type="button"
+            size="lg"
+            tone={f === filter ? "primary" : "secondary"}
+            aria-pressed={f === filter}
+            onClick={() => setFilter(f)}
+          >
             {FILTER_LABELS[f]}
           </Button>
         ))}
@@ -340,7 +408,13 @@ function DetailPanel({
           {view.detail.hasMore ? (
             <div className="wx-bc-more">
               {moreState === "failed" ? <Problem text={LOAD_MORE_FAILED} /> : null}
-              <Button type="button" tone="secondary" size="lg" disabled={moreState === "busy"} onClick={() => void more()}>
+              <Button
+                type="button"
+                tone="secondary"
+                size="lg"
+                disabled={moreState === "busy"}
+                onClick={() => void more()}
+              >
                 {moreState === "failed" ? BROADCAST_RETRY : LOAD_MORE}
               </Button>
             </div>
@@ -385,7 +459,9 @@ function OverseeSection({
                   onClick={() => setSelected(b.messageId)}
                 >
                   <span>{sentLabel(b.createdAt)}</span>
-                  <span className="wx-bc-sub">{progressLabel(b.counts.acknowledged, b.counts.audience)}</span>
+                  <span className="wx-bc-sub">
+                    {progressLabel(b.counts.acknowledged, b.counts.audience)}
+                  </span>
                   <BroadcastMarks b={b} />
                 </button>
               </li>
@@ -399,8 +475,18 @@ function OverseeSection({
 }
 
 export function AckBroadcast(): JSX.Element {
-  const { mine, oversee, ackError, refreshFailed, busy, acknowledge, reload, withdraw, withdrawState, clearWithdrawError } =
-    useAckBroadcast();
+  const {
+    mine,
+    oversee,
+    ackError,
+    refreshFailed,
+    busy,
+    acknowledge,
+    reload,
+    withdraw,
+    withdrawState,
+    clearWithdrawError,
+  } = useAckBroadcast();
   const headingBase = useId();
   const statusRef = useRef<HTMLParagraphElement>(null);
   const [notice, setNotice] = useState({ n: 0, text: "" });
@@ -433,8 +519,17 @@ export function AckBroadcast(): JSX.Element {
           {notice.text}
         </p>
         {refreshFailed ? <Problem text={ACK_REFRESH_FAILED} retry={() => void reload()} /> : null}
-        <MineSection headingBase={headingBase} view={mine} busy={busy} ackError={ackError} onAck={onAck} retry={() => void reload()} />
-        {mine.status === "off" ? null : <OverseeSection view={oversee} retry={() => void reload()} controls={controls} />}
+        <MineSection
+          headingBase={headingBase}
+          view={mine}
+          busy={busy}
+          ackError={ackError}
+          onAck={onAck}
+          retry={() => void reload()}
+        />
+        {mine.status === "off" ? null : (
+          <OverseeSection view={oversee} retry={() => void reload()} controls={controls} />
+        )}
       </div>
     </>
   );

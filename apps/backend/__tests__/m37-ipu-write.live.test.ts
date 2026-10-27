@@ -15,8 +15,8 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { Value } from "@sinclair/typebox/value";
 import { createDbClient } from "@chartwarden/db";
+import { Value } from "@sinclair/typebox/value";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eraseIpuRecord } from "../src/modules/37-ipu/eraser";

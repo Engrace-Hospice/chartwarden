@@ -18,7 +18,7 @@
 // (out-of-scope = 404).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   type PostingOutcome,

@@ -34,7 +34,8 @@ const NOMNC_READ = requirePermission("nomnc.read") as PreHandler;
 const bucketPermission: PreHandler = async (request, reply) => {
   const bucket = (request.query as { bucket?: unknown } | undefined)?.bucket;
   if (bucket === "awaiting_cosign") await COSIGN(request, reply);
-  if (bucket === "qio_review_open" || bucket === "nomnc_no_deadline") await NOMNC_READ(request, reply);
+  if (bucket === "qio_review_open" || bucket === "nomnc_no_deadline")
+    await NOMNC_READ(request, reply);
 };
 
 export function registerDischargeWorklistRoutes(

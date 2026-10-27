@@ -1,7 +1,7 @@
-// Shared by the WP 3.7 chart-proposal tests: one proposal in the API's shape, a client double and a mount helper.
-import { render } from "@testing-library/react";
 import type { ChartPromotionDto } from "@chartwarden/types";
 import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
+// Shared by the WP 3.7 chart-proposal tests: one proposal in the API's shape, a client double and a mount helper.
+import { render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";

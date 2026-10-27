@@ -1,7 +1,7 @@
-// @vitest-environment jsdom
-import { render, screen, waitFor } from "@testing-library/react";
 import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
+// @vitest-environment jsdom
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
@@ -38,7 +38,11 @@ function clientFor(patientReadUnavailable = false): ApiClient {
       }
       if (path === "/api/v1/patients/{id}") {
         if (patientReadUnavailable)
-          return { data: undefined, error: { code: "FORBIDDEN" }, response: new Response(null, { status: 403 }) };
+          return {
+            data: undefined,
+            error: { code: "FORBIDDEN" },
+            response: new Response(null, { status: 403 }),
+          };
         return ok({
           id: "patient-1",
           organizationId: "org-1",

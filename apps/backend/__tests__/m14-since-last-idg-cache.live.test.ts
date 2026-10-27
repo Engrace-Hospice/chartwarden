@@ -216,7 +216,10 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
       redis = new IORedis({ ...parseRedisUrl(REDIS_URL as string), maxRetriesPerRequest: null });
-      for (const pattern of ["wardenx:m14:idg:since-last-idg:*", "chartwarden:m14:idg:since-last-idg:*"]) {
+      for (const pattern of [
+        "wardenx:m14:idg:since-last-idg:*",
+        "chartwarden:m14:idg:since-last-idg:*",
+      ]) {
         await redis.keys(pattern).then((keys) => (keys.length ? redis.del(...keys) : undefined));
       }
 

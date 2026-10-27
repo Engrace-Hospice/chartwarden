@@ -1,3 +1,4 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/11-orders — #91: the M11 write controls must not be inert.
 //
 // Before this change `apps/web/src/modules/11-orders` issued ZERO mutations — 2731 lines across seven
@@ -12,7 +13,6 @@
 // client: a mocked client would still pass if a button were re-wired to a handler that never issues the
 // request, which is the exact failure being fixed. (Same shape as `13-emar/emar-writes.dom.test.tsx`.)
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

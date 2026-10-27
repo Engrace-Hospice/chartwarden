@@ -41,7 +41,10 @@ function reader(result: "found" | "none" | "throws") {
 describe("DDE beneficiary seam", () => {
   it("unlocks through the audited reader with the DDE purpose and the item as subject", async () => {
     const { r, inputs } = reader("found");
-    const b = await buildDdeBeneficiaryPort(() => r).unlock({ ...REQ, correlationId: REQ.ddeItemId });
+    const b = await buildDdeBeneficiaryPort(() => r).unlock({
+      ...REQ,
+      correlationId: REQ.ddeItemId,
+    });
     expect(b).toEqual({ mbi: MBI, lastName: "Doe", firstName: "Jane", dateOfBirth: "1950-01-01" });
     expect(inputs[0]?.disclosure).toEqual({
       purpose: "dde_provider_operation",

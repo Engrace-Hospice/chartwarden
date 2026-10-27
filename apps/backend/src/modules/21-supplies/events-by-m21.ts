@@ -1,3 +1,5 @@
+import { HospiceCoverageSchema } from "@chartwarden/types";
+import type { M21EventName, ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/21-supplies/events-by-m21.ts — Module 21's outbox-event contributions
 // (spec §4.5.2). The `m21.*` taxonomy under the `m21.` namespace (M01 D8 / M03 D9 / M04 D9).
 //
@@ -28,8 +30,6 @@
 // through a JS float is not the quantity the perpetual log recorded. Money is integer CENTS for the same
 // reason (a rounding drift on a cap-relevant accrual is a reportable finding).
 import { Type } from "@sinclair/typebox";
-import { HospiceCoverageSchema } from "@chartwarden/types";
-import type { M21EventName, ModuleEventContribution } from "@chartwarden/types";
 
 const Id = Type.String({ minLength: 1 });
 const IdN = Type.Union([Type.String({ minLength: 1 }), Type.Null()]);

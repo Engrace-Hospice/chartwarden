@@ -1,3 +1,5 @@
+import type { AckRequestDto } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 4.2 - the acknowledgment-request card and its loader: text+icon status, buttons only from viewer_actions, one POST per
 // click, indeterminate/definitive failure wording, a late answer for a left channel ignored, a transient load error with retry,
 // and no request at all from opening, reading or focusing.
@@ -10,8 +12,6 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { AckRequestDto } from "@chartwarden/types";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

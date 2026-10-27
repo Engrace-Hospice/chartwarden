@@ -8,7 +8,10 @@ import { afterAll, describe, expect, it } from "vitest";
 // deploy/production/volumes-copy.sh against a stubbed `docker`: refusal paths and the "never report identical when nothing
 // was compared" guard (POSIX sh has no pipefail). The real copy was rehearsed on private containers (see the PR body).
 
-const SCRIPT = resolve(dirname(fileURLToPath(import.meta.url)), "../../deploy/production/volumes-copy.sh");
+const SCRIPT = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../deploy/production/volumes-copy.sh",
+);
 const scratch = mkdtempSync(join(tmpdir(), "vcopy-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
@@ -70,7 +73,10 @@ describe("volumes-copy.sh", () => {
   });
 
   it("refuses a destination that already holds data", () => {
-    const r = run(["copy", "old", "new"], { STUB_VOLUMES: `${SRC}\nnew_postgres-data`, STUB_NONEMPTY: "new_postgres-data" });
+    const r = run(["copy", "old", "new"], {
+      STUB_VOLUMES: `${SRC}\nnew_postgres-data`,
+      STUB_NONEMPTY: "new_postgres-data",
+    });
     expect(r.code).toBe(1);
     expect(r.out).toContain("already exists and holds data");
   });
@@ -82,13 +88,18 @@ describe("volumes-copy.sh", () => {
   });
 
   it("never prints identical when the manifest cannot be read", () => {
-    const r = run(["verify", "old", "new"], { STUB_VOLUMES: `${SRC}\nnew_postgres-data\nnew_minio-data`, STUB_RUN_FAIL: "1" });
+    const r = run(["verify", "old", "new"], {
+      STUB_VOLUMES: `${SRC}\nnew_postgres-data\nnew_minio-data`,
+      STUB_RUN_FAIL: "1",
+    });
     expect(r.code).toBe(1);
     expect(r.out).not.toContain("identical");
   });
 
   it("verifies identical trees and leaves the source untouched", () => {
-    const r = run(["verify", "old", "new"], { STUB_VOLUMES: `${SRC}\nnew_postgres-data\nnew_minio-data` });
+    const r = run(["verify", "old", "new"], {
+      STUB_VOLUMES: `${SRC}\nnew_postgres-data\nnew_minio-data`,
+    });
     expect(r.code, r.out).toBe(0);
     expect(r.out).toContain("ok   postgres-data identical");
   });

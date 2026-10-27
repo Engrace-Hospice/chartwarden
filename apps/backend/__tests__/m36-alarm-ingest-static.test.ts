@@ -102,9 +102,7 @@ describe("alarm ingest is watch only: no response request, no routing, no page, 
         (f) =>
           !f.startsWith(DIR) &&
           f !== "packages/db/src/schema/messaging/alarm-ingest.ts" &&
-          /schema\.alarm(Source|SourceMapping|IngestEvent)s?\b/.test(
-            read(f),
-          ),
+          /schema\.alarm(Source|SourceMapping|IngestEvent)s?\b/.test(read(f)),
       );
     // The seeds, permission mirrors and tests may name the tables or keys; nothing else may import the schema objects.
     expect(writers).toEqual([]);

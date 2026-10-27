@@ -4,7 +4,7 @@
 // move: no behaviour differs from when these lived inline.
 import { requirePermission, requireStepUp } from "@chartwarden/auth";
 import { ConsentRouteError } from "@chartwarden/consent";
-import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { ConsentStaffActor } from "../access-scope";
 import { accessActorOf } from "./consent-guards";

@@ -1152,7 +1152,12 @@ export function AdmissionDetail({
               }}
             >
               Patient{" "}
-              <AdmissionPatientLink patientId={admission.patientId} patient={patient} identity={admission.patient} compact />
+              <AdmissionPatientLink
+                patientId={admission.patientId}
+                patient={patient}
+                identity={admission.patient}
+                compact
+              />
               {admission.referralId ? (
                 <>
                   {" "}
@@ -1581,7 +1586,12 @@ export function AdmissionDetail({
               <>
                 {" "}
                 · Patient{" "}
-                <AdmissionPatientLink patientId={admission.patientId} patient={patient} identity={admission.patient} compact />
+                <AdmissionPatientLink
+                  patientId={admission.patientId}
+                  patient={patient}
+                  identity={admission.patient}
+                  compact
+                />
               </>
             ) : null}
           </div>
@@ -2818,8 +2828,8 @@ function PrivacyReviewDialog({
         ) : batches.length === 0 ? (
           <p style={hintTextStyle} data-testid="privacy-intake-none">
             No intake document for this patient is waiting on this review, so it can't be resolved
-            from intake review. This restriction can't be cleared in ChartWarden yet — escalate to your
-            privacy officer.
+            from intake review. This restriction can't be cleared in ChartWarden yet — escalate to
+            your privacy officer.
           </p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.3rem" }}>

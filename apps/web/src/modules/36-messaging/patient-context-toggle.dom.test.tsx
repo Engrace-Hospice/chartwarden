@@ -1,10 +1,10 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 /**
  * Regression: the first click on "Patient context" did nothing (aria-expanded stayed false). The thread's
  * channel-reset effect also closes the panel, so any dependency that changed identity on a render re-ran it and undid
  * the toggle. Opening the panel must survive the re-render it causes, and must not re-read the conversation.
  */
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationThread } from "./conversation-thread";

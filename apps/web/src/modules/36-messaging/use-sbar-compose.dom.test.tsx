@@ -1,6 +1,6 @@
+import type { SbarSections } from "@chartwarden/types";
 // M36 WP 3.3: restoring a server draft into the SBAR form never throws away an urgency the user already picked.
 import { act, renderHook } from "@testing-library/react";
-import type { SbarSections } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { useSbarCompose } from "./use-sbar-compose";
 

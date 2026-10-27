@@ -4,8 +4,8 @@ import { type ClinicalLinkKind, type ClinicalLinkSummary, type RichBody } from "
 import { sanitizeRichBody } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
-  CLINICAL_LINK_NOT_AVAILABLE,
   CLINICAL_LINK_KINDS,
+  CLINICAL_LINK_NOT_AVAILABLE,
   type ClinicalLinkSourcePorts,
   type LinkPermits,
   assertLinksMatchBody,
@@ -55,15 +55,24 @@ function fakes(opts: {
     if (opts.allow === "crash") throw new Error("abac down");
     return opts.allow !== false;
   };
-  return { calls, deps: { ports, permits, onSeamFailure: (k: ClinicalLinkKind) => calls.failures.push(k) } };
+  return {
+    calls,
+    deps: { ports, permits, onSeamFailure: (k: ClinicalLinkKind) => calls.failures.push(k) },
+  };
 }
 
-const refusal = { code: CLINICAL_LINK_NOT_AVAILABLE, message: "link not available", statusCode: 422 };
+const refusal = {
+  code: CLINICAL_LINK_NOT_AVAILABLE,
+  message: "link not available",
+  statusCode: 422,
+};
 
 describe("validateClinicalLinks", () => {
   it("returns the validated (kind, source, patient) for every kind and touches no seam for a body without links", async () => {
     for (const kind of CLINICAL_LINK_KINDS) {
-      const { deps } = fakes({ result: summary({ patientId: kind === "idg_meeting" ? null : (PAT as never) }) });
+      const { deps } = fakes({
+        result: summary({ patientId: kind === "idg_meeting" ? null : (PAT as never) }),
+      });
       const out = await validateClinicalLinks(ORG, bodyWith({ kind, entityId: SRC }), deps);
       expect(out).toEqual([
         { kind, sourceId: SRC, patientId: kind === "idg_meeting" ? null : PAT },
@@ -83,9 +92,11 @@ describe("validateClinicalLinks", () => {
     ["null patient on a patient kind", { result: summary({ patientId: null }) }],
   ])("refuses with the identical error: %s", async (_name, opts) => {
     const { deps } = fakes(opts as never);
-    const err = await validateClinicalLinks(ORG, bodyWith({ kind: "order", entityId: SRC }), deps).catch(
-      (e) => e,
-    );
+    const err = await validateClinicalLinks(
+      ORG,
+      bodyWith({ kind: "order", entityId: SRC }),
+      deps,
+    ).catch((e) => e);
     expect(err).toMatchObject(refusal);
   });
 
@@ -98,7 +109,9 @@ describe("validateClinicalLinks", () => {
 
   it("logs the kind only on a seam failure, never the error text", async () => {
     const { calls, deps } = fakes({ result: "throw" });
-    await validateClinicalLinks(ORG, bodyWith({ kind: "visit", entityId: SRC }), deps).catch(() => {});
+    await validateClinicalLinks(ORG, bodyWith({ kind: "visit", entityId: SRC }), deps).catch(
+      () => {},
+    );
     expect(calls.failures).toEqual(["visit"]);
     expect(JSON.stringify(calls.failures)).not.toContain("Jane");
   });
@@ -121,9 +134,9 @@ describe("assertLinksMatchBody", () => {
     expect(assertLinksMatchBody(undefined, undefined)).toEqual([]);
   });
   it("refuses an unvalidated node, a stray validated link, or a different one", () => {
-    expect(() => assertLinksMatchBody(bodyWith({ kind: "order", entityId: SRC }), undefined)).toThrow(
-      /link not available/,
-    );
+    expect(() =>
+      assertLinksMatchBody(bodyWith({ kind: "order", entityId: SRC }), undefined),
+    ).toThrow(/link not available/);
     expect(() => assertLinksMatchBody(undefined, ok)).toThrow(/link not available/);
     expect(() => assertLinksMatchBody(bodyWith({ kind: "visit", entityId: SRC }), ok)).toThrow(
       /link not available/,
@@ -151,9 +164,12 @@ describe("resolveClinicalLink", () => {
 
   it("is the identical unavailable for missing, forbidden, erased-as-null, failing and crashing sources", async () => {
     const answers = await Promise.all(
-      [{ result: null }, { allow: false }, { result: "throw" as const }, { allow: "crash" as const }].map(
-        (opts) => resolveClinicalLink(link, ORG, { ...fakes(opts as never).deps, now }),
-      ),
+      [
+        { result: null },
+        { allow: false },
+        { result: "throw" as const },
+        { allow: "crash" as const },
+      ].map((opts) => resolveClinicalLink(link, ORG, { ...fakes(opts as never).deps, now })),
     );
     for (const a of answers) expect(a).toEqual({ state: "unavailable" });
   });

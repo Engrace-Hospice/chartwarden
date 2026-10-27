@@ -1,5 +1,5 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { JSX } from "react";
 import { describe, expect, it } from "vitest";
 import { PortalApp } from "../src/app";
@@ -48,14 +48,20 @@ describe("PR5 portal cross-screen regression checks", () => {
       const context = usePortalPatient();
       return (
         <div>
-          <output>{context.loading ? "Loading" : context.summary?.patient.layLabel ?? context.error}</output>
-          <button type="button" onClick={context.retry}>Retry patient information</button>
+          <output>
+            {context.loading ? "Loading" : (context.summary?.patient.layLabel ?? context.error)}
+          </output>
+          <button type="button" onClick={context.retry}>
+            Retry patient information
+          </button>
         </div>
       );
     }
     render(
       <ApiClientProvider client={client}>
-        <PortalPatientContext patientId={A}><Probe /></PortalPatientContext>
+        <PortalPatientContext patientId={A}>
+          <Probe />
+        </PortalPatientContext>
       </ApiClientProvider>,
     );
     expect(await screen.findByText(/We could not load this right now/)).toBeTruthy();
@@ -69,11 +75,16 @@ describe("PR5 portal cross-screen regression checks", () => {
     renderAt(`/p/${A}/messages`, (request) => {
       const path = new URL(request.url).pathname;
       if (path.endsWith("/channel")) return json({ channelId: CHANNEL, lastReadPointer: null });
-      if (path.endsWith("/history")) { historyRequests++; return json({ messages: [] }); }
+      if (path.endsWith("/history")) {
+        historyRequests++;
+        return json({ messages: [] });
+      }
       return json({}, 404);
     });
     await screen.findByText("No messages yet");
-    const input = screen.getByRole("textbox", { name: /Message your care team/ }) as HTMLTextAreaElement;
+    const input = screen.getByRole("textbox", {
+      name: /Message your care team/,
+    }) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "Please call when convenient." } });
     fireEvent.click(screen.getByRole("button", { name: "Refresh conversation" }));
     await waitFor(() => expect(historyRequests).toBe(2));
@@ -91,11 +102,16 @@ describe("PR5 portal cross-screen regression checks", () => {
         if (historyRequests > 1) throw new Error("history offline");
         return json({ messages: [] });
       }
-      if (path.endsWith("/send")) { sends++; return json({ messageId: "accepted" }); }
+      if (path.endsWith("/send")) {
+        sends++;
+        return json({ messageId: "accepted" });
+      }
       return json({}, 404);
     });
     await screen.findByText("No messages yet");
-    const input = screen.getByRole("textbox", { name: /Message your care team/ }) as HTMLTextAreaElement;
+    const input = screen.getByRole("textbox", {
+      name: /Message your care team/,
+    }) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "I have a question." } });
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     await screen.findByText(/Message sent/);

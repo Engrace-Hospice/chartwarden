@@ -1,7 +1,7 @@
+import { SNOOZE_MAX_MINUTES, SNOOZE_MIN_MINUTES } from "@chartwarden/types";
 // apps/backend/src/modules/36-messaging/routes/snooze-reminder-typebox.ts - WP 4.10 (ADR-0077) request/response schemas (schemas only,
 // so the OpenAPI emitter does not import the auth stack).
 import { Type } from "@sinclair/typebox";
-import { SNOOZE_MAX_MINUTES, SNOOZE_MIN_MINUTES } from "@chartwarden/types";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });

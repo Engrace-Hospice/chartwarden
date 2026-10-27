@@ -1,6 +1,6 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 3.5: the Handoffs gate reads the list route's `enabled` once per client and fails closed on any failure.
 import { renderHook, waitFor } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { useHandoffsEnabled } from "./use-handoffs-enabled";

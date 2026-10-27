@@ -1,8 +1,8 @@
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 // The lab order's LOINC test code is picked from the M38 LOINC catalog (CodeSearchInput) while the order
 // payload keeps its original shape: testCodes[0] = { system: "http://loinc.org", code, display }.
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { CanonicalOrderFields } from "./order-kind-fields";

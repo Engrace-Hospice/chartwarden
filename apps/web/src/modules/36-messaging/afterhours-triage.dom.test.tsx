@@ -1,8 +1,8 @@
+import { AFTERHOURS_TRIAGE_LINE_TEXT, type AckRequestDto } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 ADR-0082 slice S5 - the after-hours triage line under a role-addressed request: closed-map text with an icon, "Triage call not confirmed"
 // as a visible state, withheld wording, nothing for a message with no role / a flag-off tenant / a failed read, and no axe violations.
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { AFTERHOURS_TRIAGE_LINE_TEXT, type AckRequestDto } from "@chartwarden/types";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -40,7 +40,8 @@ function mount(opts: { requests?: AckRequestDto[]; lines?: () => unknown }) {
         data: { requests: opts.requests ?? [request()] },
         response: { status: 200 },
       });
-    if (path === LINES) return Promise.resolve(opts.lines?.() ?? { error: {}, response: { status: 404 } });
+    if (path === LINES)
+      return Promise.resolve(opts.lines?.() ?? { error: {}, response: { status: 404 } });
     return Promise.resolve({ error: {}, response: { status: 404 } });
   });
   render(
@@ -78,7 +79,8 @@ describe("after-hours triage line", () => {
     mount({ lines: () => answer("not_confirmed") });
     await screen.findByText("Triage call not confirmed");
     expect(
-      (await axe.run(document.body, { rules: { "color-contrast": { enabled: false } } })).violations,
+      (await axe.run(document.body, { rules: { "color-contrast": { enabled: false } } }))
+        .violations,
     ).toEqual([]);
   });
 

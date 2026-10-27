@@ -62,11 +62,7 @@ function parseCareSummary(value: unknown): CareSummary | null {
 
 function PlanSkeleton(): JSX.Element {
   return (
-    <div
-      className="wx-care-plan-skeleton"
-      role="status"
-      aria-label="Loading your care plan"
-    >
+    <div className="wx-care-plan-skeleton" role="status" aria-label="Loading your care plan">
       <span className="wx-care-plan-skeleton__intro" />
       <span className="wx-care-plan-skeleton__card" />
       <span className="wx-care-plan-skeleton__card" />
@@ -105,9 +101,7 @@ function PlanEmpty({ restricted }: { restricted: boolean }): JSX.Element {
         <Glyph name="clipboard-list" size={26} />
       </span>
       <h2>
-        {restricted
-          ? "No care-plan details available to show"
-          : "No care-plan items shared yet"}
+        {restricted ? "No care-plan details available to show" : "No care-plan items shared yet"}
       </h2>
       <p>
         {restricted
@@ -120,19 +114,15 @@ function PlanEmpty({ restricted }: { restricted: boolean }): JSX.Element {
 
 function RestrictedContentNotice(): JSX.Element {
   return (
-    <aside
-      className="wx-care-plan-restricted"
-      role="note"
-      aria-label="Care plan privacy notice"
-    >
+    <aside className="wx-care-plan-restricted" role="note" aria-label="Care plan privacy notice">
       <span className="wx-care-plan-restricted__icon" aria-hidden="true">
         <Glyph name="shield-check" size={21} />
       </span>
       <div>
         <strong>Some details are not shown here</strong>
         <p>
-          This portal shows only the care-plan information available to your
-          account. Your care team can help explain what can be shared.
+          This portal shows only the care-plan information available to your account. Your care team
+          can help explain what can be shared.
         </p>
       </div>
     </aside>
@@ -161,10 +151,7 @@ function CareAreaCard({
       {hasDetails ? (
         <div className="wx-care-plan-area__content">
           {problem.goals.length > 0 ? (
-            <section
-              className="wx-care-plan-area__goals"
-              aria-label={`Goals for ${problem.label}`}
-            >
+            <section className="wx-care-plan-area__goals" aria-label={`Goals for ${problem.label}`}>
               <h4>
                 <Glyph name="target" size={17} aria-hidden="true" /> Care goals
               </h4>
@@ -172,10 +159,7 @@ function CareAreaCard({
                 {problem.goals.map((goal, goalIndex) => (
                   // No individual goal IDs in the read-only lay-summary response.
                   <li key={`${goalIndex}-${goal}`}>
-                    <span
-                      className="wx-care-plan-goal-mark"
-                      aria-hidden="true"
-                    />
+                    <span className="wx-care-plan-goal-mark" aria-hidden="true" />
                     <span>{goal}</span>
                   </li>
                 ))}
@@ -188,8 +172,7 @@ function CareAreaCard({
               aria-label={`Focus areas for ${problem.label}`}
             >
               <h4>
-                <Glyph name="heart" size={17} aria-hidden="true" />{" "}
-                Areas of focus
+                <Glyph name="heart" size={17} aria-hidden="true" /> Areas of focus
               </h4>
               <ul>
                 {problem.focus.map((item, focusIndex) => (
@@ -217,19 +200,13 @@ function CarePlanContent({ summary }: { summary: CareSummary }): JSX.Element {
         </span>
         <div>
           <span className="wx-care-plan-eyebrow">Your care overview</span>
-          <p>
-            See the goals and care priorities your hospice team has shared with
-            you.
-          </p>
+          <p>See the goals and care priorities your hospice team has shared with you.</p>
         </div>
       </div>
       {summary.redacted ? <RestrictedContentNotice /> : null}
       {summary.problems.length > 0 ? (
         <div className="wx-care-plan-layout">
-          <section
-            className="wx-care-plan-main"
-            aria-labelledby="wx-care-plan-areas-title"
-          >
+          <section className="wx-care-plan-main" aria-labelledby="wx-care-plan-areas-title">
             <div className="wx-care-plan-section-head">
               <div>
                 <span className="wx-care-plan-eyebrow">Shared care plan</span>
@@ -237,8 +214,7 @@ function CarePlanContent({ summary }: { summary: CareSummary }): JSX.Element {
                 <p>Goals and areas of focus provided by your care team.</p>
               </div>
               <span className="wx-care-plan-count">
-                {summary.problems.length}{" "}
-                {summary.problems.length === 1 ? "area" : "areas"} shared
+                {summary.problems.length} {summary.problems.length === 1 ? "area" : "areas"} shared
               </span>
             </div>
             <ol className="wx-care-plan-area-list" aria-label="Care areas">
@@ -251,21 +227,18 @@ function CarePlanContent({ summary }: { summary: CareSummary }): JSX.Element {
               ))}
             </ol>
           </section>
-          <aside
-            className="wx-care-plan-guide"
-            aria-labelledby="wx-care-plan-guide-title"
-          >
+          <aside className="wx-care-plan-guide" aria-labelledby="wx-care-plan-guide-title">
             <span className="wx-care-plan-guide__icon" aria-hidden="true">
               <Glyph name="info" size={20} />
             </span>
             <h2 id="wx-care-plan-guide-title">Understanding your care plan</h2>
             <p>
-              Care goals describe what your team is working toward. Focus areas
-              describe what they are paying attention to.
+              Care goals describe what your team is working toward. Focus areas describe what they
+              are paying attention to.
             </p>
             <div className="wx-care-plan-guide__footnote">
-              This is a read-only summary. For questions or changes to your care
-              plan, speak with your hospice care team.
+              This is a read-only summary. For questions or changes to your care plan, speak with
+              your hospice care team.
             </div>
           </aside>
         </div>
@@ -279,9 +252,7 @@ function CarePlanContent({ summary }: { summary: CareSummary }): JSX.Element {
 /** Remount by patient key so no previous patient's plan can appear under a new patient context. */
 export function PortalCarePlanView(): JSX.Element {
   const { patientId } = usePortalPatient();
-  return (
-    <CarePlanForPatient key={patientId ?? "no-patient"} patientId={patientId} />
-  );
+  return <CarePlanForPatient key={patientId ?? "no-patient"} patientId={patientId} />;
 }
 
 function CarePlanForPatient({
@@ -303,10 +274,7 @@ function CarePlanForPatient({
       };
     void (async () => {
       try {
-        const response = await client.GET(
-          "/api/v1/portal/care-plan/summary",
-          {},
-        );
+        const response = await client.GET("/api/v1/portal/care-plan/summary", {});
         if (!active) return;
         if ("error" in response) {
           setResource({
@@ -354,10 +322,7 @@ function CarePlanForPatient({
       ) : resource.status === "loading" ? (
         <PlanSkeleton />
       ) : resource.status === "error" ? (
-        <PlanError
-          message={resource.error}
-          onRetry={() => setAttempt((value) => value + 1)}
-        />
+        <PlanError message={resource.error} onRetry={() => setAttempt((value) => value + 1)} />
       ) : (
         <CarePlanContent summary={resource.summary} />
       )}

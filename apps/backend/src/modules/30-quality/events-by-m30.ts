@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/30-quality/events-by-m30.ts — Module 30's outbox-event contributions
 // (spec §4.10 Outbox Event Catalog). The full `m30.*` taxonomy keyed on M30's own resources, under the
 // `m30.` namespace (M01 D8 outbox_event_catalog / M03 D9 / M04 D9). check-fitness-gaps.ts scans this
@@ -15,7 +16,6 @@
 // the event never went out" is closed in the same transaction as the mutation (transactional outbox).
 // Every `event_id` is UUIDv5 over `(orgId, scope, businessKey)` for replay safety (§4.10).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

@@ -24,7 +24,9 @@ export type AppointmentDraftInput = ReqBody<
 >;
 export type AppointmentPatchInput = ReqBody<operations["patchApiV1RepresentativeappointmentsById"]>;
 export type AppointmentVersioned = Ok<operations["patchApiV1RepresentativeappointmentsById"]>;
-export type AppointmentActivated = Ok<operations["postApiV1RepresentativeappointmentsByIdActivate"]>;
+export type AppointmentActivated = Ok<
+  operations["postApiV1RepresentativeappointmentsByIdActivate"]
+>;
 export type FormVersionsPage = Ok<operations["getApiV1Representativeformversions"]>;
 export type FormVersion = FormVersionsPage["items"][number];
 export type FormVersionInput = ReqBody<operations["postApiV1Representativeformversions"]>;

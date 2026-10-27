@@ -6,8 +6,10 @@ export const BROADCAST_BREADCRUMB = "Messaging";
 export const BROADCAST_NOTICE =
   "Opening an announcement does not acknowledge it. Select Acknowledge yourself once you have read it; nobody can acknowledge for you.";
 export const BROADCAST_OFF_TITLE = "Acknowledge-required announcements are not turned on";
-export const BROADCAST_OFF_TEXT = "Ask your administrator to turn them on. Your announcements are unchanged.";
-export const BROADCAST_LOAD_FAILED = "The list could not be loaded. What is waiting on you is not shown.";
+export const BROADCAST_OFF_TEXT =
+  "Ask your administrator to turn them on. Your announcements are unchanged.";
+export const BROADCAST_LOAD_FAILED =
+  "The list could not be loaded. What is waiting on you is not shown.";
 export const BROADCAST_DENIED = "You do not have access to this screen.";
 export const BROADCAST_RETRY = "Try again";
 export const MINE_HEADING = "Waiting for your acknowledgment";
@@ -17,19 +19,23 @@ export const DONE_HEADING = "Acknowledged";
 export const OPEN_LABEL = "Open announcement";
 export const ACK_LABEL = "Acknowledge";
 export const ACKNOWLEDGED_ANNOUNCEMENT = "Acknowledged.";
-export const ACK_REFRESH_FAILED = "The list could not be refreshed. What is shown may be out of date.";
-export const LOAD_MORE_FAILED = "The next people could not be loaded. The ones already shown are kept.";
+export const ACK_REFRESH_FAILED =
+  "The list could not be refreshed. What is shown may be out of date.";
+export const LOAD_MORE_FAILED =
+  "The next people could not be loaded. The ones already shown are kept.";
 export const ACK_FAILED = "Your acknowledgment could not be recorded. Try again.";
 export const SUPERVISE_HEADING = "Announcements you oversee";
 export const SUPERVISE_EMPTY = "No announcement has required acknowledgment yet.";
 export const DETAIL_LOAD_FAILED = "This announcement's list could not be loaded.";
 export const LOAD_MORE = "Show more";
 export const REQUIRE_LABEL = "Require acknowledgment";
-export const REQUIRE_DONE = "Acknowledgment is now required. Track it under Announcements to acknowledge.";
+export const REQUIRE_DONE =
+  "Acknowledgment is now required. Track it under Announcements to acknowledge.";
 export const REQUIRE_OFF =
   "Acknowledge-required announcements are not turned on for your organization, or only the author of this announcement can require acknowledgment.";
 export const REQUIRE_SECTION = "Acknowledgment setting";
-export const REQUIRE_FAILED = "Acknowledgment could not be required because of a problem on our side or your connection. Try again.";
+export const REQUIRE_FAILED =
+  "Acknowledgment could not be required because of a problem on our side or your connection. Try again.";
 export const REQUIRE_HINT =
   "Everyone active today will be asked to acknowledge. The list is fixed now; people who join later are counted but not asked.";
 
@@ -77,6 +83,8 @@ export const WITHDRAW_TEXT =
   "People will no longer be asked to acknowledge this announcement and it leaves their list. Acknowledgments already given are kept. This cannot be undone.";
 export const WITHDRAW_CONFIRM = "Withdraw";
 export const WITHDRAW_CANCEL = "Keep asking";
-export const WITHDRAW_FAILED = "The requirement could not be withdrawn. Nothing changed. Try again.";
+export const WITHDRAW_FAILED =
+  "The requirement could not be withdrawn. Nothing changed. Try again.";
 export const WITHDRAWN_NOTICE = "Requirement withdrawn. People are no longer asked.";
-export const WITHDRAWN_NOTE = "Withdrawn. People are no longer asked; the acknowledgments already given are kept.";
+export const WITHDRAWN_NOTE =
+  "Withdrawn. People are no longer asked; the acknowledgments already given are kept.";

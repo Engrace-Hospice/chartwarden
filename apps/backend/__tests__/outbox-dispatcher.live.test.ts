@@ -15,9 +15,9 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { Type } from "@sinclair/typebox";
 import { createDbClient } from "@chartwarden/db";
 import type { OutboxEventEntry } from "@chartwarden/types";
+import { Type } from "@sinclair/typebox";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";

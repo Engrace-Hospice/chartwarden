@@ -120,7 +120,10 @@ export function ScreenLock(): JSX.Element | null {
       // that is truly gone (UNAUTHORIZED, or SESSION_EXPIRED once the idle/absolute timeout fired) is reported here.
       // 423 UNLOCK_LOCKED_OUT: the final failed attempt, after which the server has already ended the session.
       // A 401 only counts when it says so: a bodiless/odd 401 from a proxy on a live session must not wipe drafts.
-      if ((status === 401 && (code === "UNAUTHORIZED" || code === "SESSION_EXPIRED")) || status === 423) {
+      if (
+        (status === 401 && (code === "UNAUTHORIZED" || code === "SESSION_EXPIRED")) ||
+        status === 423
+      ) {
         setGlobalResponseSignal({ kind: "session-expired" });
       }
       // An account with no password can never unlock: stop offering the form, leave "Sign out instead" as the way out.

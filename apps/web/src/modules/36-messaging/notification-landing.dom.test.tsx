@@ -1,9 +1,9 @@
+import { createApiClient } from "@chartwarden/ui";
 // WP 4.8 (ADR-0075) - the real shell and the real landing screen, a stubbed API.
 //   signed out : nothing is rendered or asked of the API; the visitor goes to sign-in and only the opaque id is remembered
 //   signed in  : one resolve call, then the thread route with the ids the server named; the /n/ entry is replaced
 //   any failure: the SAME generic page (404, 403, 500, a network error, a malformed id) with no id-derived text anywhere
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { createApiClient } from "@chartwarden/ui";
 import axe from "axe-core";
 import { type JSX, StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

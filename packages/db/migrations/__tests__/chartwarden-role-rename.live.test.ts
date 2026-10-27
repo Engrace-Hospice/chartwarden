@@ -27,7 +27,9 @@ describe.skipIf(!DB_URL)("migration 1139 — role rename — LIVE Postgres", () 
   const count = async (sql: string, params: unknown[] = []) =>
     (await db.query(sql, params)).rows[0].n as number;
   const grantCount = (role: string) =>
-    count("SELECT count(*)::int n FROM information_schema.role_table_grants WHERE grantee = $1", [role]);
+    count("SELECT count(*)::int n FROM information_schema.role_table_grants WHERE grantee = $1", [
+      role,
+    ]);
   const policyCount = (role: string) =>
     count("SELECT count(*)::int n FROM pg_policies WHERE $1 = ANY(roles::text[])", [role]);
 
@@ -55,22 +57,29 @@ describe.skipIf(!DB_URL)("migration 1139 — role rename — LIVE Postgres", () 
   });
 
   it("renames every carrier and keeps only the destruction alias under the old name", async () => {
-    const names = (await db.query("SELECT rolname FROM pg_roles WHERE rolname ~ '^(wardenx|chartwarden)_'")).rows.map(
-      (r) => r.rolname as string,
-    );
+    const names = (
+      await db.query("SELECT rolname FROM pg_roles WHERE rolname ~ '^(wardenx|chartwarden)_'")
+    ).rows.map((r) => r.rolname as string);
     for (const r of CARRIERS) expect(names).toContain(`chartwarden_${r}`);
     expect(names.filter((n) => n.startsWith("wardenx_"))).toEqual(["wardenx_destruction"]);
   });
 
-  it.each(CARRIERS)("carries chartwarden_%s's grants and RLS policies over unchanged", async (r) => {
-    expect(await grantCount(`chartwarden_${r}`)).toBe(grantsBefore.get(r));
-    expect(await policyCount(`chartwarden_${r}`)).toBe(policiesBefore.get(r));
-  });
+  it.each(CARRIERS)(
+    "carries chartwarden_%s's grants and RLS policies over unchanged",
+    async (r) => {
+      expect(await grantCount(`chartwarden_${r}`)).toBe(grantsBefore.get(r));
+      expect(await policyCount(`chartwarden_${r}`)).toBe(policiesBefore.get(r));
+    },
+  );
 
   it("keeps the applied pg_has_role('wardenx_destruction') bodies true for the new role, via a privilege-free alias", async () => {
-    const member = await db.query("SELECT pg_has_role('chartwarden_destruction', 'wardenx_destruction', 'MEMBER') t");
+    const member = await db.query(
+      "SELECT pg_has_role('chartwarden_destruction', 'wardenx_destruction', 'MEMBER') t",
+    );
     expect(member.rows[0].t).toBe(true);
-    const alias = await db.query("SELECT rolcanlogin, rolbypassrls, rolsuper FROM pg_roles WHERE rolname = 'wardenx_destruction'");
+    const alias = await db.query(
+      "SELECT rolcanlogin, rolbypassrls, rolsuper FROM pg_roles WHERE rolname = 'wardenx_destruction'",
+    );
     expect(alias.rows[0]).toEqual({ rolcanlogin: false, rolbypassrls: false, rolsuper: false });
     expect(await grantCount("wardenx_destruction")).toBe(0);
     const members = await db.query(

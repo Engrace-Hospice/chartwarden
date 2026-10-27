@@ -22,7 +22,11 @@ describe("tenantAppOrigin", () => {
   });
 
   it("falls back to the global origin, ignoring PORTAL_APP_URL, when the slug is unknown or the lookup fails", async () => {
-    const unknown = createTenantAppOrigin({ ...base, baseDomain: "chartwarden.com", slugForOrg: async () => null });
+    const unknown = createTenantAppOrigin({
+      ...base,
+      baseDomain: "chartwarden.com",
+      slugForOrg: async () => null,
+    });
     expect(await unknown.appOrigin(ORG)).toBe("https://demo.chartwarden.cloud");
     expect(await unknown.portalOrigin(ORG)).toBe("https://demo.chartwarden.cloud");
     const failing = createTenantAppOrigin({
@@ -36,13 +40,21 @@ describe("tenantAppOrigin", () => {
   });
 
   it("returns undefined when nothing is configured", async () => {
-    const o = createTenantAppOrigin({ baseDomain: null, fallbackOrigin: undefined, slugForOrg: async () => null });
+    const o = createTenantAppOrigin({
+      baseDomain: null,
+      fallbackOrigin: undefined,
+      slugForOrg: async () => null,
+    });
     expect(await o.appOrigin(ORG)).toBeUndefined();
   });
 
   it("never builds a host from a legacy slug that is not a valid tenant label", async () => {
     for (const bad of ["Legacy_Org", "a.b", "www", "x"]) {
-      const o = createTenantAppOrigin({ ...base, baseDomain: "chartwarden.com", slugForOrg: async () => bad });
+      const o = createTenantAppOrigin({
+        ...base,
+        baseDomain: "chartwarden.com",
+        slugForOrg: async () => bad,
+      });
       expect(await o.appOrigin(ORG), bad).toBe("https://demo.chartwarden.cloud");
       expect(await o.portalOrigin(ORG), bad).toBe("https://demo.chartwarden.cloud");
     }

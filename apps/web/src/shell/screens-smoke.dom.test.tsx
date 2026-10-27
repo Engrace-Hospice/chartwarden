@@ -1,4 +1,3 @@
-import { render, waitFor } from "@testing-library/react";
 // apps/web/src/shell — TASK-050C (TEST-004) registry-driven screen smoke render. Auto-discovers
 // every module's screens.ts the same way apps/web/src/main.tsx composes them (import.meta.glob,
 // not a hand-copied import list — so a module lands covered automatically and this file can't drift
@@ -10,6 +9,7 @@ import { render, waitFor } from "@testing-library/react";
 // docs/audits/chartwarden-production-readiness/11-test-and-quality-report.md TEST-004.
 import type { ScreenRegistryModule } from "@chartwarden/types";
 import { createApiClient } from "@chartwarden/ui";
+import { render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "./app";
 import { createScreenRegistry } from "./screen-registry";

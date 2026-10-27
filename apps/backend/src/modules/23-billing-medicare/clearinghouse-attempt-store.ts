@@ -171,7 +171,9 @@ export function createDrizzleAttemptStore(db: DbClient): SubmissionAttemptStore 
             .limit(1);
           // A key remembered under the other usage would mix the test and production number spaces.
           if (row && row.usage !== usage)
-            throw new Error("clearinghouse interchange number was allocated under a different usage");
+            throw new Error(
+              "clearinghouse interchange number was allocated under a different usage",
+            );
           return row && { number: String(row.n).padStart(9, "0"), renderedAt: row.renderedAt };
         };
         const existing = await known();
@@ -185,7 +187,10 @@ export function createDrizzleAttemptStore(db: DbClient): SubmissionAttemptStore 
           .onConflictDoNothing()
           .returning({ n: I.interchangeNumber, renderedAt: I.renderedAt });
         const memo =
-          (inserted && { number: String(inserted.n).padStart(9, "0"), renderedAt: inserted.renderedAt }) ??
+          (inserted && {
+            number: String(inserted.n).padStart(9, "0"),
+            renderedAt: inserted.renderedAt,
+          }) ??
           (await known());
         if (!memo) throw new Error("clearinghouse interchange number allocation returned nothing");
         return memo;

@@ -1,9 +1,9 @@
+import { ApiClientProvider, ToastProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 // @vitest-environment jsdom
 // The overview's "Transition status" and "Open onboarding" buttons rendered with no handler: suspend / resume /
 // activate and the platform onboarding view were unreachable from the console.
 import { fireEvent, render, screen } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { TenantOverview } from "./tenant-overview";

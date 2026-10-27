@@ -31,7 +31,10 @@ function SourceRow({ source }: { readonly source: AlarmSourceDto }): JSX.Element
           {source.rotatedAt ? ` (replaced ${formatTime(source.rotatedAt)})` : ""}
           {source.disabledAt ? ` · Disabled ${formatTime(source.disabledAt)}` : ""}
         </span>
-        <ul className="wx-export-detail wx-export-codes" aria-label={`Alarm codes of ${source.name}`}>
+        <ul
+          className="wx-export-detail wx-export-codes"
+          aria-label={`Alarm codes of ${source.name}`}
+        >
           {source.mappings.map((m) => (
             <li key={m.alarmKind}>
               <code>{m.alarmKind}</code> becomes {W.kindWord(m.alertType)} ·{" "}
@@ -42,8 +45,8 @@ function SourceRow({ source }: { readonly source: AlarmSourceDto }): JSX.Element
         <span className="wx-export-detail">{countsText(source)}</span>
         {attention > 0 ? (
           <span className="wx-export-detail">
-            Some alarms from this source did not reach a person. Check the alert rules and the
-            codes the sender uses.
+            Some alarms from this source did not reach a person. Check the alert rules and the codes
+            the sender uses.
           </span>
         ) : null}
       </div>

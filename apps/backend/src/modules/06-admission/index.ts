@@ -22,8 +22,8 @@ import {
 import { createDbDischargeDetailsService } from "./discharge-details-service-db";
 import { createDbDischargeWorklistService } from "./discharge-worklist-service-db";
 import type { ElectionAddendumService } from "./election-addendum/service";
-import type { NomncService } from "./nomnc/service";
 import { mapMalformedIdTo404 } from "./malformed-id-guard";
+import type { NomncService } from "./nomnc/service";
 import { createDbPhysicianAuthority } from "./physician-authority-db";
 import { createDbReadmissionService } from "./readmission-service-db";
 import { registerAdmissionRoutes as _registerM6Routes } from "./routes/admission-routes";

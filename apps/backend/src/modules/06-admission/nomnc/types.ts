@@ -80,4 +80,3 @@ export interface PatchDeadlineInput {
   /** Mark the deadline met (the server stamps the time). Irreversible: a satisfied deadline is frozen. */
   readonly satisfy?: boolean;
 }
-

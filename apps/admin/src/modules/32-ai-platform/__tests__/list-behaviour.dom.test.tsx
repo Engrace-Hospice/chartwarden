@@ -1,9 +1,9 @@
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 // apps/admin/src/modules/32-ai-platform — the a11y/list-behaviour sweep: rows are keyboard-operable buttons that open
 // their drawer, Escape closes the drawer and returns focus to the row, a deep link to a record the screen cannot find
 // keeps the screen's own "not found" message, a late response never overwrites a newer one, and a StandingNotice is
 // announced (alert for urgent, status otherwise).
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";

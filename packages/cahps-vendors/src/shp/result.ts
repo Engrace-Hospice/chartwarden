@@ -27,7 +27,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function numberMap(value: unknown, field: string): Record<string, number> {
   if (!isRecord(value)) {
-    throw new ChartWardenError("VALIDATION_FAILED", `SHP aggregate '${field}' must be an object`, 422);
+    throw new ChartWardenError(
+      "VALIDATION_FAILED",
+      `SHP aggregate '${field}' must be an object`,
+      422,
+    );
   }
   const out: Record<string, number> = {};
   for (const [k, v] of Object.entries(value)) {
@@ -105,7 +109,11 @@ export function parseShpAggregate(payload: Buffer): CahpsResultSummaryInput[] {
     );
   }
   if (!Array.isArray(decoded)) {
-    throw new ChartWardenError("VALIDATION_FAILED", "SHP aggregate payload must be a JSON array", 422);
+    throw new ChartWardenError(
+      "VALIDATION_FAILED",
+      "SHP aggregate payload must be a JSON array",
+      422,
+    );
   }
 
   return decoded.map((raw) => {

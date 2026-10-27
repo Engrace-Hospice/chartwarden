@@ -7,7 +7,6 @@ import { InMemoryDdeProvider } from "@chartwarden/x12-837-client/testing";
 import { describe, expect, it } from "vitest";
 import {
   ANSWER_INVALID_CODE,
-  runDdeDailyChangeCron,
   type DdeChangeApplier,
   type DdeChangeCursorKey,
   type DdeChangeStore,
@@ -15,6 +14,7 @@ import {
   MAX_NEW_UNMATCHED_TRACES_PER_TICK,
   MAX_REFUSALS_PER_CHANGE,
   ingestDdeChanges,
+  runDdeDailyChangeCron,
 } from "../src/modules/23-billing-medicare/jobs/dde-daily-change";
 import { ddeProviderAnswerRejected } from "../src/modules/23-billing-medicare/services/dde-provider-ops";
 

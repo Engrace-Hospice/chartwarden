@@ -8,7 +8,7 @@
 import { repositories } from "@chartwarden/billing";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import {
   type AppealTier,
@@ -27,9 +27,9 @@ import type { M25WriteActor } from "./actor";
 import { loadAppealPacketPayload } from "./appeal-packet-payload";
 import { type AppealSourcePorts, UNBOUND_APPEAL_SOURCES } from "./appeal-packet-sources";
 import { VersionConflictError } from "./concurrency";
+import { assertNotMedicaidDenial, resolveDenialPayer } from "./denial-payer";
 import { resolveDenialRoute } from "./denial-route-service";
 import { type RemittanceCommandDeps, buildRemittanceCommands } from "./remittance-commands-drizzle";
-import { assertNotMedicaidDenial, resolveDenialPayer } from "./denial-payer";
 import { recordAppealFilingAttempt } from "./submission-service";
 import type {
   AppealCreateInput,
@@ -230,7 +230,11 @@ export function buildDrizzleM25WriteService(
       );
     }
     if (day > noticeDayOf(new Date(Date.now() + 86_400_000))) {
-      throw new ChartWardenError("NOTICE_DATE_IN_FUTURE", "notice date cannot be in the future", 422);
+      throw new ChartWardenError(
+        "NOTICE_DATE_IN_FUTURE",
+        "notice date cannot be in the future",
+        422,
+      );
     }
     return day;
   }
@@ -659,7 +663,9 @@ export function buildDrizzleM25WriteService(
         if (input.outcome === "unfavorable") {
           // Never carry a Medicaid denial up the Medicare chain (an appeal opened before the payer guard existed).
           const nt =
-            (await resolveDenialPayer(tx, actor.organizationId, cur.denialCaseId)) === "medicaid" ? null : nextTier(cur.tier);
+            (await resolveDenialPayer(tx, actor.organizationId, cur.denialCaseId)) === "medicaid"
+              ? null
+              : nextTier(cur.tier);
           if (nt) {
             // The printed decision-letter date (validated above), not the calendar day of an instant.
             await tx.insert(AC).values({

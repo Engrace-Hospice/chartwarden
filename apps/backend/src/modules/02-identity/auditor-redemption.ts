@@ -104,7 +104,11 @@ export interface AuditorRedemption {
 export function auditorRefusalError(reason: AuditorRefusalReason): ChartWardenError {
   switch (reason) {
     case "consumed":
-      return new ChartWardenError("LINK_ALREADY_USED", "this auditor link has already been used", 409);
+      return new ChartWardenError(
+        "LINK_ALREADY_USED",
+        "this auditor link has already been used",
+        409,
+      );
     case "expired":
       return new ChartWardenError("LINK_EXPIRED", "this auditor link has expired", 410);
     case "not_yet_open":

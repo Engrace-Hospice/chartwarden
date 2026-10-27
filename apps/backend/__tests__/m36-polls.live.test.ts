@@ -323,7 +323,9 @@ describe.skipIf(!DB_URL)("WP 2.10 - message polls - LIVE Postgres", () => {
       messageId: made.messageId,
       optionId: made.poll.options[0]!.optionId,
     });
-    await admin.query("UPDATE message SET status='deleted', deleted_at=now() WHERE id=$1", [made.messageId]);
+    await admin.query("UPDATE message SET status='deleted', deleted_at=now() WHERE id=$1", [
+      made.messageId,
+    ]);
     for (const userId of [alice, bob, dave]) {
       await expect(
         polls.getPoll(orgA, { userId, channelId: chan, messageId: made.messageId }),

@@ -21,8 +21,9 @@ export interface RecipientEntityProviderPort {
 /** The recipient kinds that have a canonical M40 table today. */
 type DisclosureRecipientKind = Extract<ExternalRecipientRef["kind"], "facility" | "payer">;
 
-const RESOLVER_BY_KIND: Readonly<Record<DisclosureRecipientKind, keyof RecipientEntityProviderPort>> =
-  { facility: "resolveFacility", payer: "resolvePayer" };
+const RESOLVER_BY_KIND: Readonly<
+  Record<DisclosureRecipientKind, keyof RecipientEntityProviderPort>
+> = { facility: "resolveFacility", payer: "resolvePayer" };
 
 /** The recipient a disclosure request names (`recipientKind` + `recipientEntityId` on the wire). */
 export interface NamedRecipient {

@@ -1,8 +1,8 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — 2026-09 redesign of IDG Schedule + Meeting Detail: the spec gaps
 // (location + live quorum in the header, agenda kinds, carry-forward compliance alert, packets-building
 // progress, empty state) render from the data the routes actually return.
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";

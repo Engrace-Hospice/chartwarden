@@ -722,7 +722,10 @@ describe("M22 §4.12 — the disclosure recipient is resolved from the request, 
         },
       },
     });
-    await logged.mint({ ...args({ kind: "facility", entityId: ENTITY }), actorMembershipId: "m-1" });
+    await logged.mint({
+      ...args({ kind: "facility", entityId: ENTITY }),
+      actorMembershipId: "m-1",
+    });
     expect(rows).toEqual([
       expect.objectContaining({
         accessorMembershipId: "m-1",

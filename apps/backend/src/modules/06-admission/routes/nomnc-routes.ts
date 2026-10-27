@@ -24,10 +24,10 @@ import {
   AddDeadlineSchema,
   DeadlineParamsSchema,
   DeadlineViewSchema,
-  NoticeParamsSchema,
-  NoticeViewSchema,
   NomncOverviewQuerySchema,
   NomncOverviewSchema,
+  NoticeParamsSchema,
+  NoticeViewSchema,
   OpenReviewSchema,
   PatchDeadlineSchema,
   PatchNoticeSchema,
@@ -133,7 +133,10 @@ export function registerNomncRoutes(app: FastifyInstance, deps: NomncRouteDeps):
 
   app.post(
     "/api/v1/admissions/:id/nomnc/:noticeId/withdraw",
-    { preHandler: [...write.preHandler, WITHDRAW_NOTICE_STEP_UP], schema: { response: { 200: NoticeViewSchema } } },
+    {
+      preHandler: [...write.preHandler, WITHDRAW_NOTICE_STEP_UP],
+      schema: { response: { 200: NoticeViewSchema } },
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id, noticeId } = parse(NoticeParamsSchema, request.params);
@@ -183,7 +186,10 @@ export function registerNomncRoutes(app: FastifyInstance, deps: NomncRouteDeps):
 
   app.patch(
     "/api/v1/admissions/:id/expedited-reviews/:reviewId",
-    { preHandler: [...write.preHandler, decisionStepUp], schema: { response: { 200: ReviewViewSchema } } },
+    {
+      preHandler: [...write.preHandler, decisionStepUp],
+      schema: { response: { 200: ReviewViewSchema } },
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id, reviewId } = parse(ReviewParamsSchema, request.params);
@@ -199,7 +205,10 @@ export function registerNomncRoutes(app: FastifyInstance, deps: NomncRouteDeps):
 
   app.post(
     "/api/v1/admissions/:id/expedited-reviews/:reviewId/withdraw",
-    { preHandler: [...write.preHandler, WITHDRAW_REVIEW_STEP_UP], schema: { response: { 200: ReviewViewSchema } } },
+    {
+      preHandler: [...write.preHandler, WITHDRAW_REVIEW_STEP_UP],
+      schema: { response: { 200: ReviewViewSchema } },
+    },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id, reviewId } = parse(ReviewParamsSchema, request.params);

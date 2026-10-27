@@ -1,3 +1,4 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // The order detail's "Resend transmission" action (M11 F-182) over RECORDED FETCH CALLS. A lab order whose HL7 request
 // was REFUSED before any message was built (`orm_refused:*` / `dispatch_refused:*`) is not on the Held Transmissions
 // list, and before this the order view did not say why it failed — so the resend route had no place in the UI. The
@@ -5,7 +6,6 @@
 // route would act on it (resendable state + `orders.transmission.recover`). The net asserts what is SENT and that the
 // order is re-read afterwards.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { OrderDetail } from "./order-detail";

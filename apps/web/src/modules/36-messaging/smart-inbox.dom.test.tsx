@@ -1,8 +1,8 @@
+import type { SmartInboxItemDto, SmartInboxResponse } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 6.1 (ADR-0091) - the work inbox screen: loading, rows in the server's band order with the server's reason, restricted rows with no
 // link, flag off, empty, error with retry, a missing source and an incomplete urgent list said in words, no write controls, axe clean.
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { SmartInboxItemDto, SmartInboxResponse } from "@chartwarden/types";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -10,9 +10,9 @@ import { SmartInbox } from "./smart-inbox";
 import {
   INBOX_DENIED,
   INBOX_EMPTY_TITLE,
+  INBOX_INCOMPLETE,
   INBOX_LOAD_FAILED,
   INBOX_OFF_TITLE,
-  INBOX_INCOMPLETE,
   INBOX_STALE,
   INBOX_URGENT_INCOMPLETE,
   SOURCE_UNAVAILABLE,
@@ -60,7 +60,13 @@ const inbox = (over: Partial<SmartInboxResponse> = {}): SmartInboxResponse => ({
   ...over,
 });
 
-const EMPTY_COUNTS = { urgent_ack: 0, handoff_awaiting: 0, task_assigned: 0, mention: 0, care_team_unread: 0 };
+const EMPTY_COUNTS = {
+  urgent_ack: 0,
+  handoff_awaiting: 0,
+  task_assigned: 0,
+  mention: 0,
+  care_team_unread: 0,
+};
 
 function mount(handler: () => unknown) {
   const GET = vi.fn((..._args: unknown[]) => Promise.resolve(handler()));
@@ -69,7 +75,13 @@ function mount(handler: () => unknown) {
     <MemoryRouter>
       <ApiClientProvider
         client={
-          { GET, POST: writes[0], PUT: writes[1], PATCH: writes[2], DELETE: writes[3] } as unknown as ApiClient
+          {
+            GET,
+            POST: writes[0],
+            PUT: writes[1],
+            PATCH: writes[2],
+            DELETE: writes[3],
+          } as unknown as ApiClient
         }
       >
         <main>
@@ -107,7 +119,13 @@ describe("SmartInbox", () => {
     mount(() => ({
       data: inbox({
         items: [item({ restricted: true, channel_id: null, target_id: null })],
-        band_counts: { urgent_ack: 1, handoff_awaiting: 0, task_assigned: 0, mention: 0, care_team_unread: 0 },
+        band_counts: {
+          urgent_ack: 1,
+          handoff_awaiting: 0,
+          task_assigned: 0,
+          mention: 0,
+          care_team_unread: 0,
+        },
       }),
     }));
     await screen.findByText(/cannot open this conversation/i);
@@ -120,7 +138,18 @@ describe("SmartInbox", () => {
   });
 
   it("says nothing is waiting only when every source was read", async () => {
-    mount(() => ({ data: inbox({ items: [], band_counts: { urgent_ack: 0, handoff_awaiting: 0, task_assigned: 0, mention: 0, care_team_unread: 0 } }) }));
+    mount(() => ({
+      data: inbox({
+        items: [],
+        band_counts: {
+          urgent_ack: 0,
+          handoff_awaiting: 0,
+          task_assigned: 0,
+          mention: 0,
+          care_team_unread: 0,
+        },
+      }),
+    }));
     expect(await screen.findByText(INBOX_EMPTY_TITLE)).toBeTruthy();
   });
 
@@ -163,7 +192,9 @@ describe("SmartInbox", () => {
       ],
     ];
     for (const [, over, warning] of cases) {
-      const view = mount(() => ({ data: inbox({ items: [], band_counts: EMPTY_COUNTS, ...over }) }));
+      const view = mount(() => ({
+        data: inbox({ items: [], band_counts: EMPTY_COUNTS, ...over }),
+      }));
       expect(await screen.findByText(warning)).toBeTruthy();
       expect(screen.queryByText(INBOX_EMPTY_TITLE)).toBeNull();
       view.unmount();
@@ -175,7 +206,14 @@ describe("SmartInbox", () => {
       data: inbox({
         items: [
           item({ key: "a", title: "First request", channel_id: "chan 1" }),
-          item({ key: "b", band: "handoff_awaiting", rank: 2, title: "A handoff", channel_id: null, target: "handoff" }),
+          item({
+            key: "b",
+            band: "handoff_awaiting",
+            rank: 2,
+            title: "A handoff",
+            channel_id: null,
+            target: "handoff",
+          }),
         ],
       }),
     }));
@@ -250,7 +288,14 @@ describe("SmartInbox", () => {
   it("clears the previous user's inbox and a 403 when the API client changes", async () => {
     const first = { GET: vi.fn(() => Promise.resolve({ error: {}, response: { status: 403 } })) };
     let release: (v: unknown) => void = () => {};
-    const second = { GET: vi.fn(() => new Promise((resolve) => { release = resolve; })) };
+    const second = {
+      GET: vi.fn(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      ),
+    };
     const tree = (c: unknown) => (
       <MemoryRouter>
         <ApiClientProvider client={c as ApiClient}>

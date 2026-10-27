@@ -1,3 +1,4 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 /**
  * Phase 2 gate: "draft isolation" acceptance, through the REAL StaffMessaging tree (production keys: the thread is
  * keyed `org:channel` and the whole tree `org:user`). The server draft store is a stateful fake keyed by
@@ -6,7 +7,6 @@
  * Clause map lives in the PR / report; per-clause names are prefixed G1..G10.
  */
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";

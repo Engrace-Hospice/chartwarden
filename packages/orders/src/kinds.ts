@@ -5,9 +5,9 @@
  * discriminator for kind-specific payload validation.
  */
 
+import type { OrderKind } from "@chartwarden/types";
 import { FormatRegistry, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { OrderKind } from "@chartwarden/types";
 
 // TypeBox's `Value` treats an UNREGISTERED format as a hard failure ("Unknown format 'uuid'"), so the
 // `uuid`/`date-time` fields below only validate when some other module happened to register the checkers

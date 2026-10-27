@@ -15,12 +15,12 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { CHANNEL_KIND_DESCRIPTORS, type MessagingRouteService } from "@chartwarden/messaging";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
+  ChartWardenError,
   ForbiddenError,
   NotFoundError,
   type PollDetailView,
   type PollView,
   ValidationError,
-  ChartWardenError,
   checkPollInput,
 } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
@@ -112,7 +112,8 @@ export function createDbPollService(deps: PollServiceDeps): MessagePollService {
       )
       .limit(1);
     if (!state || state.status === "deleted") throw new NotFoundError("poll", input.messageId);
-    if (state.isArchived) throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
+    if (state.isArchived)
+      throw new ChartWardenError("CHANNEL_ARCHIVED", "channel is archived", 410);
     const [poll] = await tx
       .select({ id: POLL.id, createdByUserId: POLL.createdByUserId, closedAt: POLL.closedAt })
       .from(POLL)

@@ -15,17 +15,24 @@ export function createDbPublicTenantLookups(db: DbClient): {
 } {
   return {
     async resolvePublic(label) {
-      const result = await db.execute(sql`SELECT status, display_name FROM resolve_tenant_public(${label})`);
-      const row = (result as unknown as Rows<{ status: string; display_name: string | null }>).rows?.[0];
+      const result = await db.execute(
+        sql`SELECT status, display_name FROM resolve_tenant_public(${label})`,
+      );
+      const row = (result as unknown as Rows<{ status: string; display_name: string | null }>)
+        .rows?.[0];
       return row ? { status: row.status, displayName: row.display_name } : null;
     },
     async linksForEmail(email) {
-      const result = await db.execute(sql`SELECT slug, display_name FROM tenant_links_for_email(${email})`);
+      const result = await db.execute(
+        sql`SELECT slug, display_name FROM tenant_links_for_email(${email})`,
+      );
       const rows = (result as unknown as Rows<{ slug: string; display_name: string }>).rows ?? [];
       return rows.map((r) => ({ slug: r.slug, displayName: r.display_name }));
     },
     async emailBelongsToTenant(email, label) {
-      const result = await db.execute(sql`SELECT email_belongs_to_tenant(${email}, ${label}) AS ok`);
+      const result = await db.execute(
+        sql`SELECT email_belongs_to_tenant(${email}, ${label}) AS ok`,
+      );
       return (result as unknown as Rows<{ ok: boolean }>).rows?.[0]?.ok === true;
     },
   };
@@ -41,6 +48,8 @@ export function createUserMayUseTenantHost(
 ): (email: string, host: string) => Promise<boolean> {
   return async (email, host) => {
     const label = classifyTenantHost(host, baseDomain);
-    return label.kind === "tenant" && lookups.emailBelongsToTenant(email.toLowerCase(), label.label);
+    return (
+      label.kind === "tenant" && lookups.emailBelongsToTenant(email.toLowerCase(), label.label)
+    );
   };
 }

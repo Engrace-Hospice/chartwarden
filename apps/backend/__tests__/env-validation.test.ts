@@ -79,7 +79,12 @@ describe("collectEnvProblems", () => {
     expect(collectEnvProblems({ ...GOOD, TRUSTED_ORIGINS: "chartwarden://" })).toEqual([
       { key: "TRUSTED_ORIGINS", problem: expect.stringMatching(/HTTP\(S\) origins/) },
     ]);
-    for (const invalid of ["*", "exp://", "https://app.chartwarden.cloud", "chartwarden://callback"]) {
+    for (const invalid of [
+      "*",
+      "exp://",
+      "https://app.chartwarden.cloud",
+      "chartwarden://callback",
+    ]) {
       expect(collectEnvProblems({ ...GOOD, MOBILE_AUTH_TRUSTED_ORIGINS: invalid })).toEqual([
         {
           key: "MOBILE_AUTH_TRUSTED_ORIGINS",
@@ -496,15 +501,19 @@ describe("TENANT_BASE_DOMAIN (ADR-0049 D2 / D4, ADR-0088)", () => {
     expect(keysFor({})).toEqual([]);
   });
   it("accepts a bare domain when PASSKEY_RP_ID equals it", () => {
-    expect(keysFor({ TENANT_BASE_DOMAIN: "chartwarden.com", PASSKEY_RP_ID: "chartwarden.com" })).toEqual([]);
+    expect(
+      keysFor({ TENANT_BASE_DOMAIN: "chartwarden.com", PASSKEY_RP_ID: "chartwarden.com" }),
+    ).toEqual([]);
   });
   it("fails boot when PASSKEY_RP_ID differs, so passkeys cannot silently break on tenant hosts", () => {
-    expect(keysFor({ TENANT_BASE_DOMAIN: "chartwarden.com", PASSKEY_RP_ID: "app.chartwarden.com" })).toEqual([
-      "TENANT_BASE_DOMAIN",
-    ]);
+    expect(
+      keysFor({ TENANT_BASE_DOMAIN: "chartwarden.com", PASSKEY_RP_ID: "app.chartwarden.com" }),
+    ).toEqual(["TENANT_BASE_DOMAIN"]);
   });
   it.each(["https://chartwarden.com", "*.chartwarden.com", "localhost"])("refuses %s", (value) => {
-    expect(keysFor({ TENANT_BASE_DOMAIN: value, PASSKEY_RP_ID: value })).toContain("TENANT_BASE_DOMAIN");
+    expect(keysFor({ TENANT_BASE_DOMAIN: value, PASSKEY_RP_ID: value })).toContain(
+      "TENANT_BASE_DOMAIN",
+    );
   });
   it("is not validated outside production", () => {
     expect(collectEnvProblems({ NODE_ENV: "development", TENANT_BASE_DOMAIN: "nope" })).toEqual([]);

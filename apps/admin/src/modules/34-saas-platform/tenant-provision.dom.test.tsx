@@ -2,13 +2,7 @@ import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 // apps/admin/src/modules/34-saas-platform — "New tenant" used to be a browser alert() placeholder. The drawer posts
 // the six fields the route requires, and a step-up refusal must keep what was typed and offer Re-verify rather than
 // claim success or wipe the form.
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TenantProvisionDrawer } from "./tenant-provision";
@@ -28,8 +22,7 @@ function mount(respond: () => Response): {
   const client = createApiClient({
     baseUrl: "http://localhost",
     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
-      const req =
-        input instanceof Request ? input : new Request(String(input), init);
+      const req = input instanceof Request ? input : new Request(String(input), init);
       let body: Record<string, unknown> | null = null;
       try {
         body = JSON.parse(await req.clone().text()) as Record<string, unknown>;
@@ -43,10 +36,7 @@ function mount(respond: () => Response): {
   render(
     <ApiClientProvider client={client}>
       <MemoryRouter initialEntries={["/tenants?tenant=new"]}>
-        <TenantProvisionDrawer
-          onClose={() => undefined}
-          onAccepted={onAccepted}
-        />
+        <TenantProvisionDrawer onClose={() => undefined} onAccepted={onAccepted} />
       </MemoryRouter>
     </ApiClientProvider>,
   );
@@ -88,15 +78,11 @@ describe("TenantProvisionDrawer", () => {
     expect(submit.disabled).toBe(false);
     expect(screen.queryByText("Enter the billing contact email.")).toBeNull();
     fireEvent.click(submit);
-    expect(
-      await screen.findByText("Enter the billing contact email."),
-    ).toBeTruthy();
+    expect(await screen.findByText("Enter the billing contact email.")).toBeTruthy();
     expect(screen.getByText(/Enter the legal business name/)).toBeTruthy();
     expect(calls).toEqual([]);
     await waitFor(() =>
-      expect(document.activeElement).toBe(
-        screen.getByLabelText(/^Legal business name/),
-      ),
+      expect(document.activeElement).toBe(screen.getByLabelText(/^Legal business name/)),
     );
     fillAll();
     fill("Billing contact email", "not-an-email");
@@ -167,9 +153,9 @@ describe("TenantProvisionDrawer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Provision tenant" }));
     expect(await screen.findByRole("link", { name: "Re-verify" })).toBeTruthy();
     expect(onAccepted).not.toHaveBeenCalled();
-    expect(
-      (screen.getByLabelText(/^First admin email/) as HTMLInputElement).value,
-    ).toBe("ada@cedar.example");
+    expect((screen.getByLabelText(/^First admin email/) as HTMLInputElement).value).toBe(
+      "ada@cedar.example",
+    );
   });
 
   it("shows a taken subdomain on the field, keeps the typed value, and the form stays usable", async () => {
@@ -186,9 +172,7 @@ describe("TenantProvisionDrawer", () => {
     fill("Subdomain", "sunrise");
     fireEvent.click(screen.getByRole("button", { name: "Provision tenant" }));
     expect(await screen.findByText("that subdomain is taken")).toBeTruthy();
-    expect(
-      (screen.getByLabelText(/^Subdomain/) as HTMLInputElement).value,
-    ).toBe("sunrise");
+    expect((screen.getByLabelText(/^Subdomain/) as HTMLInputElement).value).toBe("sunrise");
     expect(onAccepted).not.toHaveBeenCalled();
     fill("Subdomain", "sunrise2");
     expect(screen.queryByText("that subdomain is taken")).toBeNull();
@@ -210,9 +194,7 @@ describe("TenantProvisionDrawer", () => {
     fireEvent.click(await screen.findByRole("link", { name: "Re-verify" }));
     cleanup();
     mount(() => json(202, {}));
-    expect(
-      (screen.getByLabelText(/^Subdomain/) as HTMLInputElement).value,
-    ).toBe("sunrise");
+    expect((screen.getByLabelText(/^Subdomain/) as HTMLInputElement).value).toBe("sunrise");
   });
 
   it("restores the typed values after the Re-verify round trip", async () => {
@@ -230,12 +212,12 @@ describe("TenantProvisionDrawer", () => {
     fireEvent.click(await screen.findByRole("link", { name: "Re-verify" }));
     cleanup();
     mount(() => json(202, {}));
-    expect(
-      (screen.getByLabelText(/^Legal business name/) as HTMLInputElement).value,
-    ).toBe("  Cedar Ridge Hospice LLC ");
-    expect(
-      (screen.getByLabelText(/^First admin email/) as HTMLInputElement).value,
-    ).toBe("ada@cedar.example");
+    expect((screen.getByLabelText(/^Legal business name/) as HTMLInputElement).value).toBe(
+      "  Cedar Ridge Hospice LLC ",
+    );
+    expect((screen.getByLabelText(/^First admin email/) as HTMLInputElement).value).toBe(
+      "ada@cedar.example",
+    );
   });
 
   it("shows the server's reason when provisioning is refused (e.g. a duplicate name)", async () => {
@@ -277,8 +259,6 @@ describe("TenantProvisionDrawer", () => {
     fillAll();
     fireEvent.click(screen.getByRole("button", { name: "Provision tenant" }));
 
-    expect(
-      await screen.findByText(/open the tenant to follow its progress/i),
-    ).toBeTruthy();
+    expect(await screen.findByText(/open the tenant to follow its progress/i)).toBeTruthy();
   });
 });

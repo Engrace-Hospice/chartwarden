@@ -61,7 +61,9 @@ function Harness(): JSX.Element {
 describe("Care Team row actions are 24px targets (#664)", () => {
   it("the email and message links reserve a 24 x 24 box", async () => {
     render(
-      <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
+      <ApiClientProvider
+        client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}
+      >
         <SessionProvider session={session}>
           <ToastProvider>
             <MemoryRouter>

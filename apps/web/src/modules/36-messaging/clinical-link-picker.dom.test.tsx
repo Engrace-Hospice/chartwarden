@@ -1,6 +1,6 @@
+import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";

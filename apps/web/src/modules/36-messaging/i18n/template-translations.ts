@@ -11,7 +11,11 @@ import { DEFAULT_LOCALE, type Locale } from "./catalog";
 
 export type ReviewState =
   | { readonly state: "unreviewed" }
-  | { readonly state: "clinician_reviewed"; readonly reviewer: string; readonly reviewedOn: string };
+  | {
+      readonly state: "clinician_reviewed";
+      readonly reviewer: string;
+      readonly reviewedOn: string;
+    };
 
 export interface TemplateTranslation {
   readonly templateKey: string;
@@ -24,11 +28,41 @@ export interface TemplateTranslation {
 const draft: ReviewState = { state: "unreviewed" };
 
 export const TEMPLATE_TRANSLATIONS: readonly TemplateTranslation[] = [
-  { templateKey: "scheduling.running_late", locale: "es", review: draft, title: "Llego tarde", body: "Voy un poco retrasado y llegaré más tarde de lo previsto. Le avisaré en cuanto tenga una nueva hora de llegada." },
-  { templateKey: "scheduling.reschedule_request", locale: "es", review: draft, title: "Solicitud para reprogramar", body: "¿Podemos cambiar esta visita a otro horario? Por favor responda con una hora que le convenga." },
-  { templateKey: "administrative.documentation_reminder", locale: "es", review: draft, title: "Recordatorio de documentación", body: "Recordatorio: por favor complete su documentación pendiente antes del final del día." },
-  { templateKey: "logistics.delivery_requested", locale: "es", review: draft, title: "Entrega de suministros solicitada", body: "Se ha solicitado la entrega de suministros. Le confirmaré cuando esté en camino." },
-  { templateKey: "confirmation.received", locale: "es", review: draft, title: "Mensaje recibido", body: "Gracias, mensaje recibido. Le responderé en breve." },
+  {
+    templateKey: "scheduling.running_late",
+    locale: "es",
+    review: draft,
+    title: "Llego tarde",
+    body: "Voy un poco retrasado y llegaré más tarde de lo previsto. Le avisaré en cuanto tenga una nueva hora de llegada.",
+  },
+  {
+    templateKey: "scheduling.reschedule_request",
+    locale: "es",
+    review: draft,
+    title: "Solicitud para reprogramar",
+    body: "¿Podemos cambiar esta visita a otro horario? Por favor responda con una hora que le convenga.",
+  },
+  {
+    templateKey: "administrative.documentation_reminder",
+    locale: "es",
+    review: draft,
+    title: "Recordatorio de documentación",
+    body: "Recordatorio: por favor complete su documentación pendiente antes del final del día.",
+  },
+  {
+    templateKey: "logistics.delivery_requested",
+    locale: "es",
+    review: draft,
+    title: "Entrega de suministros solicitada",
+    body: "Se ha solicitado la entrega de suministros. Le confirmaré cuando esté en camino.",
+  },
+  {
+    templateKey: "confirmation.received",
+    locale: "es",
+    review: draft,
+    title: "Mensaje recibido",
+    body: "Gracias, mensaje recibido. Le responderé en breve.",
+  },
 ];
 
 export interface TemplateText {
@@ -54,7 +88,8 @@ export function pickTemplateText(
 ): TemplateText {
   // Only an untouched platform template is ours to translate. Org/personal/customized text is the author's own
   // words in an unknown language: shown as written, with no EN tag (and no lang claim beyond the page default).
-  const translatable = reply.scope === "platform" && !reply.customized && reply.templateKey !== null;
+  const translatable =
+    reply.scope === "platform" && !reply.customized && reply.templateKey !== null;
   const english: TemplateText = {
     title: reply.title,
     body: reply.body,

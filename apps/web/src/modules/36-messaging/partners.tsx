@@ -29,9 +29,9 @@ import { useRef, useState } from "react";
 import type { JSX } from "react";
 import { LoadGate, formatTime, useFailureText } from "./export-common";
 import { useOnlineStatus } from "./offline-banner";
-import type { ExportResult } from "./use-export";
 import { buildPartnerInvitationLink } from "./partner-link";
 import { PartnerPreview } from "./partner-preview";
+import type { ExportResult } from "./use-export";
 import { useExternalShares, usePartnerActions } from "./use-partners";
 import "./export.css";
 

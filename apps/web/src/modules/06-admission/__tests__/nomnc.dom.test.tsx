@@ -17,13 +17,7 @@ import {
   stepUpDraftKey,
 } from "../../../shell/step-up-redirect";
 import { NomncApiError } from "../nomnc-api";
-import type {
-  DeadlineView,
-  NomncApi,
-  NomncOverview,
-  NoticeView,
-  ReviewView,
-} from "../nomnc-api";
+import type { DeadlineView, NomncApi, NomncOverview, NoticeView, ReviewView } from "../nomnc-api";
 import { countdownLabel, formatInZone, nextOpenDeadline, typedEcho } from "../nomnc-format";
 import { NomncPanel, NomncPromptStrip, rebindMode } from "../nomnc-panel";
 
@@ -224,15 +218,27 @@ describe("NomncPanel", () => {
     const ov = overview({
       activeNotice: notice(),
       prompts: [
-        { code: "NO_APPEAL_DEADLINE", severity: "warn", message: "No deadline recorded: enter it from the notice." },
-        { code: "NO_ACKNOWLEDGEMENT", severity: "info", message: "Signature or refusal not recorded." },
+        {
+          code: "NO_APPEAL_DEADLINE",
+          severity: "warn",
+          message: "No deadline recorded: enter it from the notice.",
+        },
+        {
+          code: "NO_ACKNOWLEDGEMENT",
+          severity: "info",
+          message: "Signature or refusal not recorded.",
+        },
       ],
     });
     renderWith(<NomncPanel admissionId="adm-1" api={fakeApi(ov)} />);
     const warn = await screen.findAllByText("No deadline recorded: enter it from the notice.");
     expect(warn.some((el) => el.closest('[role="alert"]'))).toBe(true);
-    expect(screen.getByText("Signature or refusal not recorded.").closest('[role="status"]')).toBeTruthy();
-    expect(screen.getByText(/from your notice or the QIO's call, not a computed CMS time/)).toBeTruthy();
+    expect(
+      screen.getByText("Signature or refusal not recorded.").closest('[role="status"]'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/from your notice or the QIO's call, not a computed CMS time/),
+    ).toBeTruthy();
   });
 
   it("shows a typed deadline exactly as typed, with a unique Mark met label, and marks it met", async () => {
@@ -244,9 +250,13 @@ describe("NomncPanel", () => {
       screen.getByRole("button", { name: "Mark Appeal request deadline due 2099-01-12 12:00 met" }),
     );
     await waitFor(() =>
-      expect(api.editDeadline).toHaveBeenCalledWith("adm-1", expect.objectContaining({ id: "d-1" }), {
-        satisfy: true,
-      }),
+      expect(api.editDeadline).toHaveBeenCalledWith(
+        "adm-1",
+        expect.objectContaining({ id: "d-1" }),
+        {
+          satisfy: true,
+        },
+      ),
     );
     // the second row has its own distinct label
     expect(
@@ -258,7 +268,9 @@ describe("NomncPanel", () => {
     const ov = overview({
       activeNotice: notice(),
       review: review({ state: "decided" }),
-      deadlines: [deadline({ id: "d-9", subject: "review", kind: "qio_decision", status: "closed" })],
+      deadlines: [
+        deadline({ id: "d-9", subject: "review", kind: "qio_decision", status: "closed" }),
+      ],
     });
     renderWith(<NomncPanel admissionId="adm-1" api={fakeApi(ov)} />);
     expect(await screen.findByText("Closed")).toBeTruthy();
@@ -272,7 +284,9 @@ describe("NomncPanel", () => {
     expect((screen.getByLabelText(/^Date/) as HTMLInputElement).value).toBe("");
     expect((screen.getByLabelText(/^Time of day/) as HTMLInputElement).value).toBe("");
     expect(save().disabled).toBe(true);
-    expect(needs()).toMatch(/last day of services; delivery date; delivery time of day; where this came from/);
+    expect(needs()).toMatch(
+      /last day of services; delivery date; delivery time of day; where this came from/,
+    );
     expect(save().getAttribute("aria-describedby")).toBe(screen.getByText(/^Needs:/).id);
 
     fill(/^Last day of services/, "2026-01-14");
@@ -294,13 +308,17 @@ describe("NomncPanel", () => {
         }),
       ),
     );
-    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Record NOMNC delivery" })).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Record NOMNC delivery" })).toBeNull(),
+    );
   });
 
   it("a representative recipient needs a name", async () => {
     renderWith(<NomncPanel admissionId="adm-1" api={fakeApi()} />);
     fireEvent.click(await screen.findByRole("button", { name: "Record NOMNC delivery" }));
-    fireEvent.change(screen.getByLabelText("Delivered to"), { target: { value: "representative" } });
+    fireEvent.change(screen.getByLabelText("Delivered to"), {
+      target: { value: "representative" },
+    });
     expect(needs()).toMatch(/representative's name/);
   });
 
@@ -338,7 +356,11 @@ describe("NomncPanel", () => {
       fill(/^Why is this record being withdrawn/, "entered on the wrong chart");
       fireEvent.click(save());
       await waitFor(() =>
-        expect(api.withdrawNotice).toHaveBeenCalledWith("adm-1", expect.objectContaining({ id: "n-1" }), "entered on the wrong chart"),
+        expect(api.withdrawNotice).toHaveBeenCalledWith(
+          "adm-1",
+          expect.objectContaining({ id: "n-1" }),
+          "entered on the wrong chart",
+        ),
       );
     });
 
@@ -356,7 +378,10 @@ describe("NomncPanel", () => {
         expect(api.openReview).toHaveBeenCalledWith(
           "adm-1",
           expect.objectContaining({ id: "n-1" }),
-          expect.objectContaining({ qioName: "Example BFCC-QIO", qioNotified: { date: "2026-01-10", time: "14:20" } }),
+          expect.objectContaining({
+            qioName: "Example BFCC-QIO",
+            qioNotified: { date: "2026-01-10", time: "14:20" },
+          }),
         ),
       );
     });
@@ -373,10 +398,14 @@ describe("NomncPanel", () => {
       expect(needs()).toBeNull();
       fireEvent.click(save());
       await waitFor(() =>
-        expect(api.recordReviewFacts).toHaveBeenCalledWith("adm-1", expect.objectContaining({ id: "r-1" }), {
-          recordsSent: { date: "2026-01-10", time: "16:10" },
-          recordsSentNote: "faxed",
-        }),
+        expect(api.recordReviewFacts).toHaveBeenCalledWith(
+          "adm-1",
+          expect.objectContaining({ id: "r-1" }),
+          {
+            recordsSent: { date: "2026-01-10", time: "16:10" },
+            recordsSentNote: "faxed",
+          },
+        ),
       );
     });
 
@@ -392,9 +421,17 @@ describe("NomncPanel", () => {
       fill(/^Note/, "QIO asked for more records");
       fireEvent.click(save());
       await waitFor(() =>
-        expect(api.recordReviewFacts).toHaveBeenCalledWith("adm-1", expect.objectContaining({ id: "r-1" }), {
-          decision: { outcome: "other", received: { date: "2026-01-10", time: "18:00" }, note: "QIO asked for more records" },
-        }),
+        expect(api.recordReviewFacts).toHaveBeenCalledWith(
+          "adm-1",
+          expect.objectContaining({ id: "r-1" }),
+          {
+            decision: {
+              outcome: "other",
+              received: { date: "2026-01-10", time: "18:00" },
+              note: "QIO asked for more records",
+            },
+          },
+        ),
       );
     });
 
@@ -408,12 +445,16 @@ describe("NomncPanel", () => {
       fill(/^Where this came from/, "line 3 of the notice");
       fireEvent.click(save());
       await waitFor(() =>
-        expect(api.addNoticeDeadline).toHaveBeenCalledWith("adm-1", expect.objectContaining({ id: "n-1" }), {
-          kind: "appeal_request",
-          label: null,
-          due: { date: "2026-01-12", time: "12:00" },
-          sourceNote: "line 3 of the notice",
-        }),
+        expect(api.addNoticeDeadline).toHaveBeenCalledWith(
+          "adm-1",
+          expect.objectContaining({ id: "n-1" }),
+          {
+            kind: "appeal_request",
+            label: null,
+            due: { date: "2026-01-12", time: "12:00" },
+            sourceNote: "line 3 of the notice",
+          },
+        ),
       );
     });
 
@@ -440,10 +481,14 @@ describe("NomncPanel", () => {
       fill(/^Where this came from/, "the notice was corrected");
       fireEvent.click(save());
       await waitFor(() =>
-        expect(api.editDeadline).toHaveBeenCalledWith("adm-1", expect.objectContaining({ id: "d-1" }), {
-          due: { date: "2099-01-12", time: "11:45" },
-          sourceNote: "the notice was corrected",
-        }),
+        expect(api.editDeadline).toHaveBeenCalledWith(
+          "adm-1",
+          expect.objectContaining({ id: "d-1" }),
+          {
+            due: { date: "2099-01-12", time: "11:45" },
+            sourceNote: "the notice was corrected",
+          },
+        ),
       );
     });
   });
@@ -455,7 +500,9 @@ describe("NomncPanel", () => {
       const drawer = screen.getByRole("complementary", { name: "Signature or refusal" });
       await waitFor(() => expect(drawer.contains(document.activeElement)).toBe(true));
       fireEvent.keyDown(drawer, { key: "Escape" });
-      await waitFor(() => expect(screen.queryByRole("complementary", { name: "Signature or refusal" })).toBeNull());
+      await waitFor(() =>
+        expect(screen.queryByRole("complementary", { name: "Signature or refusal" })).toBeNull(),
+      );
       fireEvent.click(screen.getByRole("button", { name: "Signature or refusal" }));
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
       expect(screen.queryByRole("complementary", { name: "Signature or refusal" })).toBeNull();
@@ -463,11 +510,19 @@ describe("NomncPanel", () => {
 
     it("a different target is a different form: typed values never carry over", async () => {
       renderWith(<NomncPanel admissionId="adm-1" api={fakeApi(FULL)} />);
-      fireEvent.click(await screen.findByRole("button", { name: "Edit Appeal request deadline due 2099-01-12 12:00" }));
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: "Edit Appeal request deadline due 2099-01-12 12:00",
+        }),
+      );
       fill(/^Where this came from/, "typed for d-1");
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-      fireEvent.click(screen.getByRole("button", { name: "Edit DENC delivery deadline due 2099-01-13 09:30" }));
-      expect((screen.getByLabelText(/^Where this came from/) as HTMLTextAreaElement).value).toBe("");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Edit DENC delivery deadline due 2099-01-13 09:30" }),
+      );
+      expect((screen.getByLabelText(/^Where this came from/) as HTMLTextAreaElement).value).toBe(
+        "",
+      );
     });
 
     it("other actions are disabled while the open form has unsaved input", async () => {
@@ -486,7 +541,9 @@ describe("NomncPanel", () => {
       const fresh = overview({ activeNotice: notice({ version: 2 }) });
       const api = fakeApi(stale);
       vi.mocked(api.setAcknowledgement)
-        .mockRejectedValueOnce(new NomncApiError("NOMNC record n-1 changed since it was read", true))
+        .mockRejectedValueOnce(
+          new NomncApiError("NOMNC record n-1 changed since it was read", true),
+        )
         .mockResolvedValue(notice({ version: 3 }));
       renderWith(<NomncPanel admissionId="adm-1" api={api} />);
       fireEvent.click(await screen.findByRole("button", { name: "Signature or refusal" }));
@@ -495,7 +552,9 @@ describe("NomncPanel", () => {
       vi.mocked(api.overview).mockResolvedValue(fresh);
       fireEvent.click(save());
       expect(await screen.findByText(/This record changed while the form was open/)).toBeTruthy();
-      expect((screen.getByLabelText(/^Note/) as HTMLTextAreaElement).value).toBe("declined in person");
+      expect((screen.getByLabelText(/^Note/) as HTMLTextAreaElement).value).toBe(
+        "declined in person",
+      );
       fireEvent.click(save());
       await waitFor(() =>
         expect(api.setAcknowledgement).toHaveBeenLastCalledWith(
@@ -513,11 +572,17 @@ describe("NomncPanel", () => {
         .mockRejectedValueOnce(new NomncApiError("deadline d-1 changed", true))
         .mockRejectedValueOnce(new NomncApiError("a satisfied deadline cannot change", false));
       renderWith(<NomncPanel admissionId="adm-1" api={api} />);
-      const mark = await screen.findByRole("button", { name: "Mark Appeal request deadline due 2099-01-12 12:00 met" });
+      const mark = await screen.findByRole("button", {
+        name: "Mark Appeal request deadline due 2099-01-12 12:00 met",
+      });
       fireEvent.click(mark);
       expect(await screen.findByText(/This record changed since you opened it/)).toBeTruthy();
       expect(vi.mocked(api.overview).mock.calls.length).toBeGreaterThanOrEqual(2);
-      fireEvent.click(await screen.findByRole("button", { name: "Mark Appeal request deadline due 2099-01-12 12:00 met" }));
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: "Mark Appeal request deadline due 2099-01-12 12:00 met",
+        }),
+      );
       expect(await screen.findByText("a satisfied deadline cannot change")).toBeTruthy();
     });
 
@@ -526,7 +591,11 @@ describe("NomncPanel", () => {
       renderWith(<NomncPanel admissionId="adm-1" api={api} />);
       await screen.findByText("2099-01-12 12:00 (America/New_York)");
       vi.mocked(api.overview).mockRejectedValueOnce(new Error("network down"));
-      fireEvent.click(screen.getByRole("button", { name: "Mark Appeal request deadline due 2099-01-12 12:00 met" }));
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Mark Appeal request deadline due 2099-01-12 12:00 met",
+        }),
+      );
       expect(await screen.findByText(/Could not refresh this record/)).toBeTruthy();
       expect(screen.getByText("2099-01-12 12:00 (America/New_York)")).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -539,7 +608,9 @@ describe("NomncPanel", () => {
       renderWith(<NomncPanel admissionId="adm-1" api={api} />);
       expect(await screen.findByText("boom")).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-      expect(await screen.findByText("No NOMNC delivery recorded for this admission.")).toBeTruthy();
+      expect(
+        await screen.findByText("No NOMNC delivery recorded for this admission."),
+      ).toBeTruthy();
     });
 
     it("a slow response for the previous admission never replaces the current one", async () => {
@@ -550,12 +621,22 @@ describe("NomncPanel", () => {
           ? new Promise<NomncOverview>((r) => {
               resolveA = r;
             })
-          : Promise.resolve(overview({ admissionId: "adm-B", activeNotice: notice({ id: "n-B", sourceNote: "B notice" }) })),
+          : Promise.resolve(
+              overview({
+                admissionId: "adm-B",
+                activeNotice: notice({ id: "n-B", sourceNote: "B notice" }),
+              }),
+            ),
       );
       const { rerender } = renderWith(<NomncPanel admissionId="adm-A" api={api} />);
       rerender(wrap(<NomncPanel admissionId="adm-B" api={api} />, READ_RECORD));
       expect(await screen.findByText("B notice")).toBeTruthy();
-      resolveA(overview({ admissionId: "adm-A", activeNotice: notice({ id: "n-A", sourceNote: "A notice" }) }));
+      resolveA(
+        overview({
+          admissionId: "adm-A",
+          activeNotice: notice({ id: "n-A", sourceNote: "A notice" }),
+        }),
+      );
       await new Promise((r) => setTimeout(r, 20));
       expect(screen.queryByText("A notice")).toBeNull();
       expect(screen.getByText("B notice")).toBeTruthy();
@@ -564,7 +645,10 @@ describe("NomncPanel", () => {
 
   describe("permissions", () => {
     it("a reader without nomnc.record sees the facts but no record actions", async () => {
-      renderWith(<NomncPanel admissionId="adm-1" api={fakeApi(overview({ activeNotice: notice() }))} />, ["nomnc.read"]);
+      renderWith(
+        <NomncPanel admissionId="adm-1" api={fakeApi(overview({ activeNotice: notice() }))} />,
+        ["nomnc.read"],
+      );
       expect(await screen.findByText("NOMNC and QIO review")).toBeTruthy();
       expect(screen.queryByRole("button", { name: "Open QIO review" })).toBeNull();
     });
@@ -572,7 +656,10 @@ describe("NomncPanel", () => {
     it("without nomnc.read, or with an unknown permission set, nothing renders and nothing is fetched", () => {
       for (const perms of [["admission.read"], [] as string[]]) {
         const api = fakeApi();
-        const { container, unmount } = renderWith(<NomncPanel admissionId="adm-1" api={api} />, perms);
+        const { container, unmount } = renderWith(
+          <NomncPanel admissionId="adm-1" api={api} />,
+          perms,
+        );
         expect(container.textContent).toBe(PATH); // only the router probe: the panel renders nothing
         expect(api.overview).not.toHaveBeenCalled();
         unmount();
@@ -613,13 +700,19 @@ describe("step-up on the irreversible writes", () => {
     // back from the ceremony: the one-shot marker names this path
     markStepUpReturn(PATH);
     renderWith(<NomncPanel admissionId="adm-1" api={api} />);
-    expect(await screen.findByRole("complementary", { name: "Withdraw NOMNC record" })).toBeTruthy();
-    expect((screen.getByLabelText(/^Why is this record being withdrawn/) as HTMLTextAreaElement).value).toBe(
-      "entered on the wrong chart",
-    );
+    expect(
+      await screen.findByRole("complementary", { name: "Withdraw NOMNC record" }),
+    ).toBeTruthy();
+    expect(
+      (screen.getByLabelText(/^Why is this record being withdrawn/) as HTMLTextAreaElement).value,
+    ).toBe("entered on the wrong chart");
     fireEvent.click(save());
     await waitFor(() =>
-      expect(api.withdrawNotice).toHaveBeenLastCalledWith("adm-1", expect.objectContaining({ id: "n-1" }), "entered on the wrong chart"),
+      expect(api.withdrawNotice).toHaveBeenLastCalledWith(
+        "adm-1",
+        expect.objectContaining({ id: "n-1" }),
+        "entered on the wrong chart",
+      ),
     );
     await waitFor(() =>
       expect(peekStepUpDraft(stepUpDraftKey(OWNER, "m6-nomnc-withdraw-notice", "n-1"))).toBeNull(),
@@ -645,13 +738,23 @@ describe("step-up on the irreversible writes", () => {
     expect((screen.getByLabelText("Outcome") as HTMLSelectElement).value).toBe("other");
     expect((screen.getByLabelText(/^Date/) as HTMLInputElement).value).toBe("2026-01-10");
     expect((screen.getByLabelText(/^Time of day/) as HTMLInputElement).value).toBe("18:00");
-    expect((screen.getByLabelText(/^Note/) as HTMLTextAreaElement).value).toBe("QIO asked for more records");
+    expect((screen.getByLabelText(/^Note/) as HTMLTextAreaElement).value).toBe(
+      "QIO asked for more records",
+    );
     expect(needs()).toBeNull();
     fireEvent.click(save());
     await waitFor(() =>
-      expect(api.recordReviewFacts).toHaveBeenLastCalledWith("adm-1", expect.objectContaining({ id: "r-1" }), {
-        decision: { outcome: "other", received: { date: "2026-01-10", time: "18:00" }, note: "QIO asked for more records" },
-      }),
+      expect(api.recordReviewFacts).toHaveBeenLastCalledWith(
+        "adm-1",
+        expect.objectContaining({ id: "r-1" }),
+        {
+          decision: {
+            outcome: "other",
+            received: { date: "2026-01-10", time: "18:00" },
+            note: "QIO asked for more records",
+          },
+        },
+      ),
     );
   });
 
@@ -666,7 +769,9 @@ describe("step-up on the irreversible writes", () => {
 
     markStepUpReturn(PATH);
     renderWith(<NomncPanel admissionId="adm-1" api={api} />);
-    expect(await screen.findByRole("group", { name: "Confirm withdrawing the review" })).toBeTruthy();
+    expect(
+      await screen.findByRole("group", { name: "Confirm withdrawing the review" }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Confirm withdraw" }));
     await waitFor(() => expect(api.withdrawReview).toHaveBeenCalledTimes(2));
   });
@@ -691,7 +796,9 @@ describe("step-up on the irreversible writes", () => {
 
   it("closing the form clears its draft; a non-step-up failure shows the message and stashes nothing", async () => {
     const api = fakeApi(NOTICE_ONLY);
-    vi.mocked(api.withdrawNotice).mockRejectedValueOnce(new NomncApiError("a reason is required", false));
+    vi.mocked(api.withdrawNotice).mockRejectedValueOnce(
+      new NomncApiError("a reason is required", false),
+    );
     renderWith(<NomncPanel admissionId="adm-1" api={api} />);
     fireEvent.click(await screen.findByRole("button", { name: "Withdraw" }));
     fill(/^Why is this record being withdrawn/, "typed");
@@ -707,7 +814,9 @@ describe("step-up on the irreversible writes", () => {
 describe("NomncPromptStrip (discharge stepper)", () => {
   it("passes the chosen reason and renders the prompts, never blocking", async () => {
     const api = fakeApi(
-      overview({ prompts: [{ code: "NO_NOTICE", severity: "warn", message: "No NOMNC delivery recorded." }] }),
+      overview({
+        prompts: [{ code: "NO_NOTICE", severity: "warn", message: "No NOMNC delivery recorded." }],
+      }),
     );
     renderWith(<NomncPromptStrip admissionId="adm-1" dischargeReason="for_cause" api={api} />);
     expect(await screen.findByText("No NOMNC delivery recorded.")).toBeTruthy();
@@ -729,19 +838,34 @@ describe("NomncPromptStrip (discharge stepper)", () => {
         ? new Promise<NomncOverview>((r) => {
             resolveFirst = r;
           })
-        : Promise.resolve(overview({ prompts: [{ code: "X", severity: "info", message: "second reason prompt" }] })),
+        : Promise.resolve(
+            overview({
+              prompts: [{ code: "X", severity: "info", message: "second reason prompt" }],
+            }),
+          ),
     );
-    const { rerender } = renderWith(<NomncPromptStrip admissionId="adm-1" dischargeReason="for_cause" api={api} />);
-    rerender(wrap(<NomncPromptStrip admissionId="adm-1" dischargeReason="revocation" api={api} />, READ_RECORD));
+    const { rerender } = renderWith(
+      <NomncPromptStrip admissionId="adm-1" dischargeReason="for_cause" api={api} />,
+    );
+    rerender(
+      wrap(
+        <NomncPromptStrip admissionId="adm-1" dischargeReason="revocation" api={api} />,
+        READ_RECORD,
+      ),
+    );
     expect(await screen.findByText("second reason prompt")).toBeTruthy();
-    resolveFirst(overview({ prompts: [{ code: "Y", severity: "warn", message: "first reason prompt" }] }));
+    resolveFirst(
+      overview({ prompts: [{ code: "Y", severity: "warn", message: "first reason prompt" }] }),
+    );
     await new Promise((r) => setTimeout(r, 20));
     expect(screen.queryByText("first reason prompt")).toBeNull();
   });
 
   it("renders nothing without nomnc.read", () => {
     const api = fakeApi();
-    const { container } = renderWith(<NomncPromptStrip admissionId="adm-1" api={api} />, ["admission.read"]);
+    const { container } = renderWith(<NomncPromptStrip admissionId="adm-1" api={api} />, [
+      "admission.read",
+    ]);
     expect(container.textContent).toBe(PATH);
     expect(api.overview).not.toHaveBeenCalled();
   });

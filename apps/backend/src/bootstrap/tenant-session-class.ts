@@ -10,7 +10,11 @@
 import { ChartWardenError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 
-const PORTAL_CLASSES: ReadonlySet<string> = new Set(["patient_portal", "caregiver_portal", "bereaved_portal"]);
+const PORTAL_CLASSES: ReadonlySet<string> = new Set([
+  "patient_portal",
+  "caregiver_portal",
+  "bereaved_portal",
+]);
 const PORTAL_PREFIX = "/api/v1/portal/";
 const PORTAL_SIGN_IN_PREFIX = "/api/v1/portal/sign-in/";
 /** What a portal session may reach besides the portal API: session plumbing, health, public routes. */
@@ -23,7 +27,10 @@ const PORTAL_SESSION_ALLOWED_PREFIXES: readonly string[] = [
   "/ready",
 ];
 
-export type SessionClassPathVerdict = "allowed" | "portal-session-on-staff-path" | "staff-session-on-portal-path";
+export type SessionClassPathVerdict =
+  | "allowed"
+  | "portal-session-on-staff-path"
+  | "staff-session-on-portal-path";
 
 /**
  * Token-authenticated routes whose caller is, by design, not the session's class: the credential is the token in the
@@ -42,14 +49,19 @@ export function sessionClassPathVerdict(
   method = "GET",
 ): SessionClassPathVerdict {
   if (!sessionClass) return "allowed";
-  if (method.toUpperCase() === "POST" && TOKEN_FLOW_ROUTES.get(sessionClass)?.includes(pathname)) return "allowed";
+  if (method.toUpperCase() === "POST" && TOKEN_FLOW_ROUTES.get(sessionClass)?.includes(pathname))
+    return "allowed";
   if (PORTAL_CLASSES.has(sessionClass)) {
-    const ok = pathname === "/api/v1/portal" || PORTAL_SESSION_ALLOWED_PREFIXES.some((p) => pathname.startsWith(p));
+    const ok =
+      pathname === "/api/v1/portal" ||
+      PORTAL_SESSION_ALLOWED_PREFIXES.some((p) => pathname.startsWith(p));
     return ok ? "allowed" : "portal-session-on-staff-path";
   }
   if (sessionClass === "staff") {
     const onPortal = pathname === "/api/v1/portal" || pathname.startsWith(PORTAL_PREFIX);
-    return onPortal && !pathname.startsWith(PORTAL_SIGN_IN_PREFIX) ? "staff-session-on-portal-path" : "allowed";
+    return onPortal && !pathname.startsWith(PORTAL_SIGN_IN_PREFIX)
+      ? "staff-session-on-portal-path"
+      : "allowed";
   }
   return "allowed";
 }

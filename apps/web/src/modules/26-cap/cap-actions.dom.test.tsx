@@ -1,9 +1,9 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // GAP-079 — the M26 screens used to be GET-only. This pins the write half: settlement propose + finalize (with
 // the attestation minimum and the step-up hand-off), period close / reopen, PS&R variance resolve, and
 // threshold-event acknowledge each send the right request and re-read; a STEP_UP_REQUIRED refusal goes to
 // `/step-up?returnTo=`; any other refusal stays an inline error.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

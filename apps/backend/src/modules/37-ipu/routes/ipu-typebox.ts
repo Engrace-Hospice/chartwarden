@@ -1,11 +1,11 @@
+import { GipCriteriaPayload } from "@chartwarden/inpatient";
+import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/37-ipu/routes/ipu-typebox.ts — M37 §4.2 request/response DTOs for the T11b core
 // route spine (unit list/create, admission list/read/open, bed cleaning-status, census read). PHI-lean:
 // ids + enum lifecycle codes + counts. The route layer validates the body against these before the service
 // touches Drizzle; the enrichment registry points at the same schemas so openapi.json carries the contract.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { GipCriteriaPayload } from "@chartwarden/inpatient";
-import { ValidationError } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 

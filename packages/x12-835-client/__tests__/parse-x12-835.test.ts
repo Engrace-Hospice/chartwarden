@@ -5,8 +5,8 @@ import {
   CLEAN_BODY,
   DENIAL_BODY,
   FLOAT_TRAP_BODY,
-  replaceSeg,
   type WrapOptions,
+  replaceSeg,
   wrap835,
   wrap835Sets,
 } from "./fixtures-835";
@@ -140,11 +140,19 @@ describe("parseX12835 fails closed", () => {
 
   it("rejects an unbalanced BPR02", () => {
     const body = replaceSeg(CLEAN_BODY, "BPR", CLEAN_BODY[0]!.replace("1250.00", "1250.01"));
-    expectDegraded(wrap835(body), "X12_835_UNBALANCED", "BPR02 1250.01 != sum(CLP04) - sum(PLB) 1250.00");
+    expectDegraded(
+      wrap835(body),
+      "X12_835_UNBALANCED",
+      "BPR02 1250.01 != sum(CLP04) - sum(PLB) 1250.00",
+    );
   });
 
   it("rejects a claim whose CLP03-CLP04-CAS does not foot", () => {
-    const body = replaceSeg(CLEAN_BODY, "CLP*PCN-0003", "CLP*PCN-0003*4*300.00*0.00*0.00*MC*ICN-A3");
+    const body = replaceSeg(
+      CLEAN_BODY,
+      "CLP*PCN-0003",
+      "CLP*PCN-0003*4*300.00*0.00*0.00*MC*ICN-A3",
+    );
     const bad = replaceSeg(body, "CAS*CO*45*300.00", "CAS*CO*45*299.99");
     expectDegraded(wrap835(bad), "X12_835_UNBALANCED", "claim 3 does not balance");
   });
@@ -155,12 +163,20 @@ describe("parseX12835 fails closed", () => {
   });
 
   it("rejects CLP05 that disagrees with the PR adjustments", () => {
-    const bad = replaceSeg(CLEAN_BODY, "CLP*PCN-0001", "CLP*PCN-0001*1*1000.00*800.00*40.00*MC*ICN-A1*11*1");
+    const bad = replaceSeg(
+      CLEAN_BODY,
+      "CLP*PCN-0001",
+      "CLP*PCN-0001*1*1000.00*800.00*40.00*MC*ICN-A1*11*1",
+    );
     expectDegraded(wrap835(bad), "X12_835_UNBALANCED", "patient responsibility");
   });
 
   it("rejects service-line charges that do not sum to CLP03", () => {
-    const bad = replaceSeg(CLEAN_BODY, "CLP*PCN-0002", "CLP*PCN-0002*1*510.00*410.00*0.00*MC*ICN-A2");
+    const bad = replaceSeg(
+      CLEAN_BODY,
+      "CLP*PCN-0002",
+      "CLP*PCN-0002*1*510.00*410.00*0.00*MC*ICN-A2",
+    );
     expectDegraded(wrap835(bad), "X12_835_UNBALANCED", "service-line charges do not sum");
   });
 
@@ -202,10 +218,26 @@ describe("parseX12835 fails closed", () => {
   });
 
   it("rejects an unknown CAS group, a missing payer loop, a bad payment method and a debit BPR", () => {
-    expectDegraded(wrap835(replaceSeg(CLEAN_BODY, "CAS*CO*45*300.00", "CAS*ZZ*45*300.00")), "X12_835_PARSE_FAILED", "CAS01");
-    expectDegraded(wrap835(replaceSeg(CLEAN_BODY, "N1*PR", "N3*X")), "X12_835_PARSE_FAILED", "N1 payer");
-    expectDegraded(wrap835(replaceSeg(CLEAN_BODY, "BPR", CLEAN_BODY[0]!.replace("ACH", "XXX"))), "X12_835_PARSE_FAILED", "BPR04");
-    expectDegraded(wrap835(replaceSeg(CLEAN_BODY, "BPR", CLEAN_BODY[0]!.replace("*C*", "*D*"))), "X12_835_PARSE_FAILED", "BPR03");
+    expectDegraded(
+      wrap835(replaceSeg(CLEAN_BODY, "CAS*CO*45*300.00", "CAS*ZZ*45*300.00")),
+      "X12_835_PARSE_FAILED",
+      "CAS01",
+    );
+    expectDegraded(
+      wrap835(replaceSeg(CLEAN_BODY, "N1*PR", "N3*X")),
+      "X12_835_PARSE_FAILED",
+      "N1 payer",
+    );
+    expectDegraded(
+      wrap835(replaceSeg(CLEAN_BODY, "BPR", CLEAN_BODY[0]!.replace("ACH", "XXX"))),
+      "X12_835_PARSE_FAILED",
+      "BPR04",
+    );
+    expectDegraded(
+      wrap835(replaceSeg(CLEAN_BODY, "BPR", CLEAN_BODY[0]!.replace("*C*", "*D*"))),
+      "X12_835_PARSE_FAILED",
+      "BPR03",
+    );
   });
 
   it("rejects two transaction sets when GE01 still says one", () => {
@@ -236,7 +268,10 @@ describe("createX12835Client.parse835 (in-process, no sidecar)", () => {
   });
 
   it("degrades (retryable) when neither raw text nor a reader is available", async () => {
-    const r = await createX12835Client().parse835({ minioObjectKey: "k", payerProgram: "medicare" });
+    const r = await createX12835Client().parse835({
+      minioObjectKey: "k",
+      payerProgram: "medicare",
+    });
     expect(r.ok).toBe(false);
     if (r.ok) return;
     expect(r.degraded.code).toBe("X12_835_RAW_UNAVAILABLE");

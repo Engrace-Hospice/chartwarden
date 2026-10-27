@@ -26,7 +26,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** membership_id / patient_id / admission_id are NOT NULL but carry NO SQL FK (§3.3 — cross/intra-module
@@ -284,7 +289,8 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
       readFileSync(join(MIGRATIONS_DIR, "0305_m14_idg_decision_application_ack.sql"), "utf8");
     // (0283 adds columns + a CHECK + a trigger-function replacement to the same table: no new policy.)
     const policyBlocks = (rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []).filter(
-      (b) => /TO (?:wardenx|chartwarden)_app/.test(b) && COVERED.some((t) => b.includes(`"${t.table}"`)),
+      (b) =>
+        /TO (?:wardenx|chartwarden)_app/.test(b) && COVERED.some((t) => b.includes(`"${t.table}"`)),
     );
     // All ten M14 tables carry a direct app.org_id policy — the partitioned idg_patient_packet's policy
     // lives on the parent (0043) and is inherited by every leaf, so it counts here too.

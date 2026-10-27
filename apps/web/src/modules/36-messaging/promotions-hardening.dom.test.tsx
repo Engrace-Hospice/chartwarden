@@ -1,9 +1,9 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 3.7 review fixes: no read without the permission, a failure is remembered briefly, a superseded read never
 // overwrites a newer one, the trigger names the message and keeps focus, the filter switch never shows the other
 // filter's rows, and the inbox tab needs the flag AND messaging.promote.
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AlertInboxProvider } from "../../shell/alert-inbox";

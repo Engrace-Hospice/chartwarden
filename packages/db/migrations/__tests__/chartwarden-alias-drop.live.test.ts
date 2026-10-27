@@ -30,17 +30,24 @@ const REWRITTEN = [
   "m23_is_destruction_role",
   "message_ack_event_append_only",
 ];
-const GUARDS_WITH_TRIGGER_SHAPE = ["message_ack_event_append_only", "dde_work_event_append_only"] as const;
+const GUARDS_WITH_TRIGGER_SHAPE = [
+  "message_ack_event_append_only",
+  "dde_work_event_append_only",
+] as const;
 
 describe.skipIf(!DB_URL)("migration 1142 — wardenx_destruction alias drop — LIVE Postgres", () => {
   let db: Client;
   const run = () => db.query(readFileSync(join(MIGRATIONS_DIR, DROP_MIGRATION), "utf8"));
   const defOf = async (name: string) =>
-    (await db.query("SELECT pg_get_functiondef(oid) d FROM pg_proc WHERE proname = $1", [name])).rows[0].d as string;
+    (await db.query("SELECT pg_get_functiondef(oid) d FROM pg_proc WHERE proname = $1", [name]))
+      .rows[0].d as string;
   const signatures = async () =>
-    (await db.query("SELECT oid::regprocedure::text s FROM pg_proc WHERE proname = ANY($1) ORDER BY 1", [REWRITTEN])).rows.map(
-      (r) => r.s as string,
-    );
+    (
+      await db.query(
+        "SELECT oid::regprocedure::text s FROM pg_proc WHERE proname = ANY($1) ORDER BY 1",
+        [REWRITTEN],
+      )
+    ).rows.map((r) => r.s as string);
   let signaturesBefore: string[];
 
   beforeAll(async () => {
@@ -63,15 +70,21 @@ describe.skipIf(!DB_URL)("migration 1142 — wardenx_destruction alias drop — 
   });
 
   it("leaves no function body mentioning wardenx_destruction, and keeps every signature", async () => {
-    const stale = await db.query("SELECT proname FROM pg_proc WHERE prosrc LIKE '%wardenx\\_destruction%'");
+    const stale = await db.query(
+      "SELECT proname FROM pg_proc WHERE prosrc LIKE '%wardenx\\_destruction%'",
+    );
     expect(stale.rows).toEqual([]);
     expect(await signatures()).toEqual(signaturesBefore);
   });
 
   it("drops the alias role and its membership", async () => {
-    const gone = await db.query("SELECT count(*)::int n FROM pg_roles WHERE rolname = 'wardenx_destruction'");
+    const gone = await db.query(
+      "SELECT count(*)::int n FROM pg_roles WHERE rolname = 'wardenx_destruction'",
+    );
     expect(gone.rows[0].n).toBe(0);
-    const chart = await db.query("SELECT count(*)::int n FROM pg_roles WHERE rolname = 'chartwarden_destruction'");
+    const chart = await db.query(
+      "SELECT count(*)::int n FROM pg_roles WHERE rolname = 'chartwarden_destruction'",
+    );
     expect(chart.rows[0].n).toBe(1);
   });
 
@@ -95,25 +108,30 @@ describe.skipIf(!DB_URL)("migration 1142 — wardenx_destruction alias drop — 
     expect(await as("chartwarden_app")).toBe(false);
   });
 
-  it.each(GUARDS_WITH_TRIGGER_SHAPE)("%s still permits DELETE for chartwarden_destruction and refuses it for chartwarden_app", async (fn) => {
-    const t = `alias_drop_probe_${fn}`;
-    await db.query(`CREATE TABLE ${t} (id int PRIMARY KEY)`);
-    await db.query(`GRANT SELECT, DELETE ON ${t} TO chartwarden_app, chartwarden_destruction`);
-    await db.query(`CREATE TRIGGER t BEFORE UPDATE OR DELETE ON ${t} FOR EACH ROW EXECUTE FUNCTION ${fn}()`);
-    try {
-      await db.query(`INSERT INTO ${t} VALUES (1), (2)`);
-      await db.query("SET ROLE chartwarden_app");
-      await expect(db.query(`DELETE FROM ${t} WHERE id = 1`)).rejects.toThrow();
-      await db.query("RESET ROLE");
-      await db.query("SET ROLE chartwarden_destruction");
-      const del = await db.query(`DELETE FROM ${t} WHERE id = 1`);
-      await db.query("RESET ROLE");
-      expect(del.rowCount).toBe(1);
-    } finally {
-      await db.query("RESET ROLE");
-      await db.query(`DROP TABLE ${t}`);
-    }
-  });
+  it.each(GUARDS_WITH_TRIGGER_SHAPE)(
+    "%s still permits DELETE for chartwarden_destruction and refuses it for chartwarden_app",
+    async (fn) => {
+      const t = `alias_drop_probe_${fn}`;
+      await db.query(`CREATE TABLE ${t} (id int PRIMARY KEY)`);
+      await db.query(`GRANT SELECT, DELETE ON ${t} TO chartwarden_app, chartwarden_destruction`);
+      await db.query(
+        `CREATE TRIGGER t BEFORE UPDATE OR DELETE ON ${t} FOR EACH ROW EXECUTE FUNCTION ${fn}()`,
+      );
+      try {
+        await db.query(`INSERT INTO ${t} VALUES (1), (2)`);
+        await db.query("SET ROLE chartwarden_app");
+        await expect(db.query(`DELETE FROM ${t} WHERE id = 1`)).rejects.toThrow();
+        await db.query("RESET ROLE");
+        await db.query("SET ROLE chartwarden_destruction");
+        const del = await db.query(`DELETE FROM ${t} WHERE id = 1`);
+        await db.query("RESET ROLE");
+        expect(del.rowCount).toBe(1);
+      } finally {
+        await db.query("RESET ROLE");
+        await db.query(`DROP TABLE ${t}`);
+      }
+    },
+  );
 
   it("is idempotent (re-run with the alias already gone is a no-op)", async () => {
     const before = await defOf("m23_is_destruction_role");

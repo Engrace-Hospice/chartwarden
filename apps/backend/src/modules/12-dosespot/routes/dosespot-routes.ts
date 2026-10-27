@@ -24,7 +24,12 @@
 // service inside the sign transaction from the STORED order and the signer's roster row — no discipline or
 // ordering-physician flag is read from the body. M11's `signer_eligible` / `cosigner_role_match` resolve against
 // M11's order store (no row for a medication_order id) so they are not bound here; cosign (GAP-034) is enforced in the service from the session + stored order.
-import { type AbacTarget, hasOrgWideScope, requireAbac, requirePermission } from "@chartwarden/auth";
+import {
+  type AbacTarget,
+  hasOrgWideScope,
+  requireAbac,
+  requirePermission,
+} from "@chartwarden/auth";
 import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";

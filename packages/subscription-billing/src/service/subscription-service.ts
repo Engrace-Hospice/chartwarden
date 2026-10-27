@@ -11,7 +11,13 @@
 // publish the returned {@link OutboxIntent}s. NOTHING here calls Stripe (that is the T04 dispatcher) or
 // registers a seam (T05).
 
-import type { IsoInstant, MembershipId, OrgId, PlanId, SubscriptionStatus } from "@chartwarden/types";
+import type {
+  IsoInstant,
+  MembershipId,
+  OrgId,
+  PlanId,
+  SubscriptionStatus,
+} from "@chartwarden/types";
 import {
   canTransitionSubscription,
   isTerminalSubscriptionStatus,

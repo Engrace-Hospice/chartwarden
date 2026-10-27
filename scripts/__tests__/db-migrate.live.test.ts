@@ -131,7 +131,9 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
       expect(rows[0]!.relation).toBeNull();
     } finally {
       await db.query(`DROP TABLE IF EXISTS ${firstTable}, ${secondTable}`);
-      await db.query("DELETE FROM _chartwarden_migration WHERE filename = ANY($1)", [[first, second]]);
+      await db.query("DELETE FROM _chartwarden_migration WHERE filename = ANY($1)", [
+        [first, second],
+      ]);
       await rm(migrationsDir, { force: true, recursive: true });
     }
   }, 60_000);
@@ -140,132 +142,141 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
 // The ledger rename (_wardenx_migration -> _chartwarden_migration) must keep rows/checksums, and the
 // former rollback-compat view must be dropped (never a real table). Uses a tiny temp migrations dir
 // so it does not depend on the full chain.
-describe.skipIf(!DB_URL)("scripts/db/migrate.ts — ledger rename + compat view removal (LIVE Postgres)", () => {
-  const OLD = "_wardenx_migration";
-  const NEW = "_chartwarden_migration";
-  const FILE_A = "9101_ledger_a.sql";
-  const FILE_B = "9102_ledger_b.sql";
-  let db: Client;
-  let dir: string;
+describe.skipIf(!DB_URL)(
+  "scripts/db/migrate.ts — ledger rename + compat view removal (LIVE Postgres)",
+  () => {
+    const OLD = "_wardenx_migration";
+    const NEW = "_chartwarden_migration";
+    const FILE_A = "9101_ledger_a.sql";
+    const FILE_B = "9102_ledger_b.sql";
+    let db: Client;
+    let dir: string;
 
-  const kindOf = async (name: string) =>
-    (
-      await db.query<{ relkind: string }>(
-        "SELECT relkind FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relname = $1",
-        [name],
-      )
-    ).rows[0]?.relkind ?? null;
+    const kindOf = async (name: string) =>
+      (
+        await db.query<{ relkind: string }>(
+          "SELECT relkind FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relname = $1",
+          [name],
+        )
+      ).rows[0]?.relkind ?? null;
 
-  async function legacyLedger(rows: readonly (readonly [string, string])[]) {
-    await db.query(
-      `CREATE TABLE ${OLD} (filename text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`,
-    );
-    for (const [f, c] of rows) {
-      await db.query(`INSERT INTO ${OLD}(filename, checksum) VALUES ($1,$2)`, [f, c]);
+    async function legacyLedger(rows: readonly (readonly [string, string])[]) {
+      await db.query(
+        `CREATE TABLE ${OLD} (filename text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`,
+      );
+      for (const [f, c] of rows) {
+        await db.query(`INSERT INTO ${OLD}(filename, checksum) VALUES ($1,$2)`, [f, c]);
+      }
     }
-  }
 
-  beforeAll(async () => {
-    db = new Client({ connectionString: DB_URL });
-    await db.connect();
-    dir = await mkdtemp(join(tmpdir(), "chartwarden-ledger-"));
-    await writeFile(join(dir, FILE_A), "SELECT 1;\n");
-    await writeFile(join(dir, FILE_B), "SELECT 2;\n");
-  });
+    beforeAll(async () => {
+      db = new Client({ connectionString: DB_URL });
+      await db.connect();
+      dir = await mkdtemp(join(tmpdir(), "chartwarden-ledger-"));
+      await writeFile(join(dir, FILE_A), "SELECT 1;\n");
+      await writeFile(join(dir, FILE_B), "SELECT 2;\n");
+    });
 
-  beforeEach(async () => {
-    await db.query("DROP SCHEMA IF EXISTS public CASCADE");
-    await db.query("CREATE SCHEMA public");
-  });
+    beforeEach(async () => {
+      await db.query("DROP SCHEMA IF EXISTS public CASCADE");
+      await db.query("CREATE SCHEMA public");
+    });
 
-  afterAll(async () => {
-    await db.query("DROP SCHEMA IF EXISTS public CASCADE");
-    await db.query("CREATE SCHEMA public");
-    await db.end();
-    await rm(dir, { force: true, recursive: true });
-  });
+    afterAll(async () => {
+      await db.query("DROP SCHEMA IF EXISTS public CASCADE");
+      await db.query("CREATE SCHEMA public");
+      await db.end();
+      await rm(dir, { force: true, recursive: true });
+    });
 
-  const sha = (s: string) => createHash("sha256").update(s).digest("hex");
+    const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
-  it("renames a populated legacy ledger, preserving rows and checksums, and leaves no legacy relation", async () => {
-    await legacyLedger([[FILE_A, sha("SELECT 1;\n")]]);
+    it("renames a populated legacy ledger, preserving rows and checksums, and leaves no legacy relation", async () => {
+      await legacyLedger([[FILE_A, sha("SELECT 1;\n")]]);
 
-    const result = await applyMigrations(db, { migrationsDir: dir, strict: true });
+      const result = await applyMigrations(db, { migrationsDir: dir, strict: true });
 
-    expect(result.ran).toEqual([FILE_B]);
-    expect(await kindOf(NEW)).toBe("r");
-    expect(await kindOf(OLD)).toBeNull();
-    const { rows } = await db.query("SELECT filename, checksum FROM _chartwarden_migration ORDER BY filename");
-    expect(rows).toEqual([
-      { filename: FILE_A, checksum: sha("SELECT 1;\n") },
-      { filename: FILE_B, checksum: sha("SELECT 2;\n") },
-    ]);
-  });
+      expect(result.ran).toEqual([FILE_B]);
+      expect(await kindOf(NEW)).toBe("r");
+      expect(await kindOf(OLD)).toBeNull();
+      const { rows } = await db.query(
+        "SELECT filename, checksum FROM _chartwarden_migration ORDER BY filename",
+      );
+      expect(rows).toEqual([
+        { filename: FILE_A, checksum: sha("SELECT 1;\n") },
+        { filename: FILE_B, checksum: sha("SELECT 2;\n") },
+      ]);
+    });
 
-  it("a second run is a no-op", async () => {
-    await legacyLedger([]);
-    await applyMigrations(db, { migrationsDir: dir });
-    const again = await applyMigrations(db, { migrationsDir: dir });
-    expect(again.ran).toEqual([]);
-    expect(await kindOf(NEW)).toBe("r");
-    expect(await kindOf(OLD)).toBeNull();
-  });
+    it("a second run is a no-op", async () => {
+      await legacyLedger([]);
+      await applyMigrations(db, { migrationsDir: dir });
+      const again = await applyMigrations(db, { migrationsDir: dir });
+      expect(again.ran).toEqual([]);
+      expect(await kindOf(NEW)).toBe("r");
+      expect(await kindOf(OLD)).toBeNull();
+    });
 
-  it("a fresh database gets the ledger table and no compat view", async () => {
-    await applyMigrations(db, { migrationsDir: dir });
-    expect(await kindOf(NEW)).toBe("r");
-    expect(await kindOf(OLD)).toBeNull();
-  });
+    it("a fresh database gets the ledger table and no compat view", async () => {
+      await applyMigrations(db, { migrationsDir: dir });
+      expect(await kindOf(NEW)).toBe("r");
+      expect(await kindOf(OLD)).toBeNull();
+    });
 
-  it("drops a pre-existing compat view over the new ledger, idempotently", async () => {
-    await applyMigrations(db, { migrationsDir: dir });
-    await db.query(`CREATE VIEW ${OLD} WITH (security_invoker = true) AS SELECT * FROM ${NEW}`);
+    it("drops a pre-existing compat view over the new ledger, idempotently", async () => {
+      await applyMigrations(db, { migrationsDir: dir });
+      await db.query(`CREATE VIEW ${OLD} WITH (security_invoker = true) AS SELECT * FROM ${NEW}`);
 
-    await ensureLedger(db);
-    expect(await kindOf(OLD)).toBeNull();
-    await ensureLedger(db);
-    expect(await kindOf(OLD)).toBeNull();
-    expect(await kindOf(NEW)).toBe("r");
-  });
+      await ensureLedger(db);
+      expect(await kindOf(OLD)).toBeNull();
+      await ensureLedger(db);
+      expect(await kindOf(OLD)).toBeNull();
+      expect(await kindOf(NEW)).toBe("r");
+    });
 
-  it("keeps the rows of a populated ledger when the compat view is dropped", async () => {
-    await applyMigrations(db, { migrationsDir: dir });
-    await db.query(`CREATE VIEW ${OLD} WITH (security_invoker = true) AS SELECT * FROM ${NEW}`);
+    it("keeps the rows of a populated ledger when the compat view is dropped", async () => {
+      await applyMigrations(db, { migrationsDir: dir });
+      await db.query(`CREATE VIEW ${OLD} WITH (security_invoker = true) AS SELECT * FROM ${NEW}`);
 
-    await ensureLedger(db);
+      await ensureLedger(db);
 
-    expect(await kindOf(OLD)).toBeNull();
-    const { rows } = await db.query(`SELECT filename FROM ${NEW} ORDER BY filename`);
-    expect(rows.map((r) => r.filename)).toEqual([FILE_A, FILE_B]);
-  });
+      expect(await kindOf(OLD)).toBeNull();
+      const { rows } = await db.query(`SELECT filename FROM ${NEW} ORDER BY filename`);
+      expect(rows.map((r) => r.filename)).toEqual([FILE_A, FILE_B]);
+    });
 
-  it("still detects a tampered checksum after the rename", async () => {
-    await legacyLedger([[FILE_A, "deliberately-corrupted"]]);
-    const lenient = await applyMigrations(db, { migrationsDir: dir });
-    expect(lenient.drifted).toEqual([FILE_A]);
-    await expect(applyMigrations(db, { migrationsDir: dir, strict: true })).rejects.toThrow(
-      /checksum drift/i,
-    );
-  });
+    it("still detects a tampered checksum after the rename", async () => {
+      await legacyLedger([[FILE_A, "deliberately-corrupted"]]);
+      const lenient = await applyMigrations(db, { migrationsDir: dir });
+      expect(lenient.drifted).toEqual([FILE_A]);
+      await expect(applyMigrations(db, { migrationsDir: dir, strict: true })).rejects.toThrow(
+        /checksum drift/i,
+      );
+    });
 
-  it("refuses to guess when both ledgers are tables", async () => {
-    await legacyLedger([]);
-    await db.query(`CREATE TABLE ${NEW} (filename text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`);
-    await expect(applyMigrations(db, { migrationsDir: dir })).rejects.toThrow(/both .* are tables/);
-    expect(await kindOf(OLD)).toBe("r");
-  });
-  it("is a no-op when the new table exists and the legacy name is absent", async () => {
-    await db.query(
-      `CREATE TABLE ${NEW} (filename text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`,
-    );
-    await ensureLedger(db);
-    expect(await kindOf(NEW)).toBe("r");
-    expect(await kindOf(OLD)).toBeNull();
-  });
+    it("refuses to guess when both ledgers are tables", async () => {
+      await legacyLedger([]);
+      await db.query(
+        `CREATE TABLE ${NEW} (filename text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`,
+      );
+      await expect(applyMigrations(db, { migrationsDir: dir })).rejects.toThrow(
+        /both .* are tables/,
+      );
+      expect(await kindOf(OLD)).toBe("r");
+    });
+    it("is a no-op when the new table exists and the legacy name is absent", async () => {
+      await db.query(
+        `CREATE TABLE ${NEW} (filename text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())`,
+      );
+      await ensureLedger(db);
+      expect(await kindOf(NEW)).toBe("r");
+      expect(await kindOf(OLD)).toBeNull();
+    });
 
-  it("throws when the legacy name is a view and the new table does not exist", async () => {
-    await db.query(`CREATE VIEW ${OLD} AS SELECT 1 AS filename`);
-    await expect(ensureLedger(db)).rejects.toThrow(/non-table relation/);
-    expect(await kindOf(NEW)).toBeNull();
-  });
-});
+    it("throws when the legacy name is a view and the new table does not exist", async () => {
+      await db.query(`CREATE VIEW ${OLD} AS SELECT 1 AS filename`);
+      await expect(ensureLedger(db)).rejects.toThrow(/non-table relation/);
+      expect(await kindOf(NEW)).toBeNull();
+    });
+  },
+);

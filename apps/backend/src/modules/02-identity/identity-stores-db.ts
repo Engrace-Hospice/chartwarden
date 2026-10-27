@@ -126,8 +126,11 @@ export function createDbInvitationStore(db: DbClient): InvitationStore {
           .select({ id: I.id })
           .from(I)
           .where(
-            and(eq(I.organizationId, organizationId), sql`lower(${I.email}) = ${email.trim().toLowerCase()}`,
-            eq(I.status, "pending")),
+            and(
+              eq(I.organizationId, organizationId),
+              sql`lower(${I.email}) = ${email.trim().toLowerCase()}`,
+              eq(I.status, "pending"),
+            ),
           )
           .limit(1);
         return rows.length > 0;

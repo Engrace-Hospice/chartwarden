@@ -64,7 +64,12 @@ describe.skipIf(!DB_URL)("M41 commercial payer and plan model - LIVE Postgres", 
     cfi = "CI",
     from = "2026-01-01",
     to: string | null = null,
-  ) => asOrg(org, async () => (await app.query(planSql, [org, payer, name, cfi, from, to])).rows[0].id as string);
+  ) =>
+    asOrg(
+      org,
+      async () =>
+        (await app.query(planSql, [org, payer, name, cfi, from, to])).rows[0].id as string,
+    );
 
   beforeAll(async () => {
     admin = new Client({ connectionString: DB_URL });
@@ -137,12 +142,18 @@ describe.skipIf(!DB_URL)("M41 commercial payer and plan model - LIVE Postgres", 
       expect(other.rows[0].n).toBe(0);
     }
     // writing a row stamped with A while scoped to B fails the WITH CHECK
-    expect(await failure(asOrg(ORG_B, () => app.query(planSql, [ORG_A, commercialPayer, "x", "CI", "2026-01-01", null])))).toMatch(
-      /row-level security/,
-    );
+    expect(
+      await failure(
+        asOrg(ORG_B, () =>
+          app.query(planSql, [ORG_A, commercialPayer, "x", "CI", "2026-01-01", null]),
+        ),
+      ),
+    ).toMatch(/row-level security/);
     // B cannot update or delete A's rows (invisible, zero rows)
     const upd = await asOrg(ORG_B, () =>
-      app.query("UPDATE commercial_payer_plan SET effective_to = '2026-12-31' WHERE id = $1", [planA]),
+      app.query("UPDATE commercial_payer_plan SET effective_to = '2026-12-31' WHERE id = $1", [
+        planA,
+      ]),
     );
     expect(upd.rowCount).toBe(0);
   });
@@ -153,39 +164,63 @@ describe.skipIf(!DB_URL)("M41 commercial payer and plan model - LIVE Postgres", 
       [TABLES],
     );
     expect(rows).toHaveLength(3);
-    for (const r of rows) expect([r.relname, r.relrowsecurity, r.relforcerowsecurity]).toEqual([r.relname, true, true]);
+    for (const r of rows)
+      expect([r.relname, r.relrowsecurity, r.relforcerowsecurity]).toEqual([r.relname, true, true]);
     const planA = await newPlan(ORG_A, commercialPayer, "nodelete-plan");
-    expect(await failure(asOrg(ORG_A, () => app.query("DELETE FROM commercial_payer_plan WHERE id=$1", [planA])))).toMatch(
-      /permission denied/,
-    );
+    expect(
+      await failure(
+        asOrg(ORG_A, () => app.query("DELETE FROM commercial_payer_plan WHERE id=$1", [planA])),
+      ),
+    ).toMatch(/permission denied/);
   });
 
   it("refuses a plan whose payer is not an active commercial payer", async () => {
-    for (const bad of [medicarePayer, medicaidPayer, advantagePayer, mergedPayer, inactivePayer, randomUUID()]) {
-      expect(await failure(newPlan(ORG_A, bad, "bad-payer"))).toMatch(/M41_PLAN_PAYER_NOT_COMMERCIAL/);
+    for (const bad of [
+      medicarePayer,
+      medicaidPayer,
+      advantagePayer,
+      mergedPayer,
+      inactivePayer,
+      randomUUID(),
+    ]) {
+      expect(await failure(newPlan(ORG_A, bad, "bad-payer"))).toMatch(
+        /M41_PLAN_PAYER_NOT_COMMERCIAL/,
+      );
     }
     await newPlan(ORG_A, otherPayer, "tricare-like", "CH"); // non-Medicare program payers are kind 'other'
   });
 
   it("limits the claim filing indicator to the commercial set", async () => {
     for (const bad of ["MA", "MB", "MC", "16", "09"]) {
-      expect(await failure(newPlan(ORG_A, commercialPayer, `cfi-${bad}`, bad))).toMatch(/claim_filing_indicator/);
+      expect(await failure(newPlan(ORG_A, commercialPayer, `cfi-${bad}`, bad))).toMatch(
+        /claim_filing_indicator/,
+      );
     }
     for (const ok of ["12", "HM", "BL"]) await newPlan(ORG_A, commercialPayer, `cfi-ok-${ok}`, ok);
   });
 
   it("effective dating: overlap refused, adjacent periods and other tenants allowed", async () => {
     await newPlan(ORG_A, commercialPayer, "dated", "CI", "2026-01-01", "2026-06-30");
-    expect(await failure(newPlan(ORG_A, commercialPayer, "Dated", "CI", "2026-06-30", null))).toMatch(/no_overlap/);
+    expect(
+      await failure(newPlan(ORG_A, commercialPayer, "Dated", "CI", "2026-06-30", null)),
+    ).toMatch(/no_overlap/);
     await newPlan(ORG_A, commercialPayer, "dated", "CI", "2026-07-01", null); // adjacent
     await newPlan(ORG_B, commercialPayer, "dated", "CI", "2026-01-01", null); // other tenant, same payer and name
-    expect(await failure(newPlan(ORG_A, commercialPayer, "backwards", "CI", "2026-05-01", "2026-04-01"))).toMatch(/plan_dates/);
+    expect(
+      await failure(newPlan(ORG_A, commercialPayer, "backwards", "CI", "2026-05-01", "2026-04-01")),
+    ).toMatch(/plan_dates/);
   });
 
   it("routes and rates: composite FK blocks another tenant's plan; overlap and amount shape enforced", async () => {
     const planA = await newPlan(ORG_A, commercialPayer, "child-plan");
     const planB = await newPlan(ORG_B, commercialPayer, "child-plan-b");
-    const route = (org: string, plan: string, from = "2026-01-01", to: string | null = null, key = "stedi") =>
+    const route = (
+      org: string,
+      plan: string,
+      from = "2026-01-01",
+      to: string | null = null,
+      key = "stedi",
+    ) =>
       asOrg(org, () =>
         app.query(
           `INSERT INTO commercial_payer_route (organization_id, plan_id, clearinghouse_key, clearinghouse_payer_id, effective_from, effective_to)
@@ -197,9 +232,17 @@ describe.skipIf(!DB_URL)("M41 commercial payer and plan model - LIVE Postgres", 
     await route(ORG_A, planA, "2026-01-01", "2026-03-31");
     expect(await failure(route(ORG_A, planA, "2026-03-01"))).toMatch(/no_overlap/);
     await route(ORG_A, planA, "2026-01-01", null, "claimmd"); // another clearinghouse, same dates
-    expect(await failure(route(ORG_A, planA, "2026-04-01", null, "Bad Key!"))).toMatch(/clearinghouse_key/);
+    expect(await failure(route(ORG_A, planA, "2026-04-01", null, "Bad Key!"))).toMatch(
+      /clearinghouse_key/,
+    );
 
-    const rate = (basis: string, cents: number | null, pct: number | null, from = "2026-01-01", to: string | null = null) =>
+    const rate = (
+      basis: string,
+      cents: number | null,
+      pct: number | null,
+      from = "2026-01-01",
+      to: string | null = null,
+    ) =>
       asOrg(ORG_A, () =>
         app.query(
           `INSERT INTO commercial_contract_rate (organization_id, plan_id, level_of_care, revenue_code, rate_basis, rate_cents, percent_of_charges, effective_from, effective_to)
@@ -208,21 +251,41 @@ describe.skipIf(!DB_URL)("M41 commercial payer and plan model - LIVE Postgres", 
         ),
       );
     expect(await failure(rate("per_diem", null, 80))).toMatch(/commercial_contract_rate_amount/);
-    expect(await failure(rate("percent_of_charges", 100, null))).toMatch(/commercial_contract_rate_amount/);
+    expect(await failure(rate("percent_of_charges", 100, null))).toMatch(
+      /commercial_contract_rate_amount/,
+    );
     expect(await failure(rate("percent_of_charges", null, 120))).toMatch(/percent_of_charges/);
     await rate("per_diem", 90000, null, "2026-01-01", "2026-06-30");
     await rate("percent_of_charges", null, 85, "2026-07-01");
-    expect(await failure(rate("per_hour", 5000, null, "2026-06-01", "2026-06-15"))).toMatch(/rate_hourly/);
-    expect(await failure(rate("per_diem", 1000, null, "2026-06-01", "2026-06-15"))).toMatch(/no_overlap/);
+    expect(await failure(rate("per_hour", 5000, null, "2026-06-01", "2026-06-15"))).toMatch(
+      /rate_hourly/,
+    );
+    expect(await failure(rate("per_diem", 1000, null, "2026-06-01", "2026-06-15"))).toMatch(
+      /no_overlap/,
+    );
   });
 
   it("keeps anchor columns immutable for the app role but lets terms and end dates change", async () => {
     const plan = await newPlan(ORG_A, commercialPayer, "immutable-plan");
     expect(
-      await failure(asOrg(ORG_A, () => app.query("UPDATE commercial_payer_plan SET payer_id=$2 WHERE id=$1", [plan, medicarePayer]))),
+      await failure(
+        asOrg(ORG_A, () =>
+          app.query("UPDATE commercial_payer_plan SET payer_id=$2 WHERE id=$1", [
+            plan,
+            medicarePayer,
+          ]),
+        ),
+      ),
     ).toMatch(/permission denied/);
     expect(
-      await failure(asOrg(ORG_A, () => app.query("UPDATE commercial_payer_plan SET organization_id=$2 WHERE id=$1", [plan, ORG_B]))),
+      await failure(
+        asOrg(ORG_A, () =>
+          app.query("UPDATE commercial_payer_plan SET organization_id=$2 WHERE id=$1", [
+            plan,
+            ORG_B,
+          ]),
+        ),
+      ),
     ).toMatch(/permission denied/);
     const ok = await asOrg(ORG_A, () =>
       app.query(
@@ -232,7 +295,14 @@ describe.skipIf(!DB_URL)("M41 commercial payer and plan model - LIVE Postgres", 
     );
     expect(ok.rowCount).toBe(1);
     expect(
-      await failure(asOrg(ORG_A, () => app.query("UPDATE commercial_payer_plan SET authorization_requirement='not_required' WHERE id=$1", [plan]))),
+      await failure(
+        asOrg(ORG_A, () =>
+          app.query(
+            "UPDATE commercial_payer_plan SET authorization_requirement='not_required' WHERE id=$1",
+            [plan],
+          ),
+        ),
+      ),
     ).toMatch(/auth_lead/);
   });
 
@@ -265,23 +335,28 @@ describe.skipIf(!DB_URL)("M41 commercial payer and plan model - LIVE Postgres", 
       ["commercial_contract_rate", rate, "level_of_care='general_inpatient'"],
       ["commercial_contract_rate", rate, "effective_from='2025-01-01'"],
     ] as const) {
-      expect(await failure(asOrg(ORG_A, () => app.query(`UPDATE ${t} SET ${set} WHERE id=$1`, [id])))).toMatch(
-        /permission denied/,
-      );
+      expect(
+        await failure(asOrg(ORG_A, () => app.query(`UPDATE ${t} SET ${set} WHERE id=$1`, [id]))),
+      ).toMatch(/permission denied/);
     }
     for (const [t, id] of [
       ["commercial_payer_route", route],
       ["commercial_contract_rate", rate],
     ] as const) {
-      expect(await failure(asOrg(ORG_A, () => app.query(`DELETE FROM ${t} WHERE id=$1`, [id])))).toMatch(
-        /permission denied/,
+      expect(
+        await failure(asOrg(ORG_A, () => app.query(`DELETE FROM ${t} WHERE id=$1`, [id]))),
+      ).toMatch(/permission denied/);
+      await asOrg(ORG_A, () =>
+        app.query(`UPDATE ${t} SET effective_to='2026-12-31' WHERE id=$1`, [id]),
       );
-      await asOrg(ORG_A, () => app.query(`UPDATE ${t} SET effective_to='2026-12-31' WHERE id=$1`, [id]));
       const { rows } = await admin.query(
         "SELECT event_type FROM audit_event WHERE resource_kind=$1 AND resource_id=$2 ORDER BY event_type",
         [t, id],
       );
-      expect(rows.map((r: { event_type: string }) => r.event_type)).toEqual([`${t}.insert`, `${t}.update`]);
+      expect(rows.map((r: { event_type: string }) => r.event_type)).toEqual([
+        `${t}.insert`,
+        `${t}.update`,
+      ]);
     }
   });
 
@@ -296,7 +371,8 @@ describe.skipIf(!DB_URL)("M41 commercial payer and plan model - LIVE Postgres", 
       "SELECT column_name FROM information_schema.columns WHERE table_name = ANY($1)",
       [TABLES],
     );
-    const phi = /patient|member|subscriber|mbi|ssn|dob|birth|name_(first|last)|group_number|policy_number/i;
+    const phi =
+      /patient|member|subscriber|mbi|ssn|dob|birth|name_(first|last)|group_number|policy_number/i;
     expect(cols.rows.map((r) => r.column_name).filter((c: string) => phi.test(c))).toEqual([]);
   });
 });

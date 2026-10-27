@@ -16,7 +16,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, type PortalDataCategory, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError, type PortalDataCategory } from "@chartwarden/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { type M31EventEmitter, emitGrantGranted } from "../events";
 import { requirePortal } from "../lifecycle/errors";
@@ -78,7 +78,11 @@ export function overlayForProposedScope(
   const known = new Set<string>(PORTAL_DATA_CATEGORIES);
   for (const name of proposed) {
     if (!known.has(name)) {
-      throw new ChartWardenError("VALIDATION_FAILED", `'${name}' is not a portal data category`, 422);
+      throw new ChartWardenError(
+        "VALIDATION_FAILED",
+        `'${name}' is not a portal data category`,
+        422,
+      );
     }
     if (!categoryAllowedByFloor(grantKind, name as PortalDataCategory)) {
       throw new ChartWardenError(
@@ -386,7 +390,11 @@ export function createPortalInvitations(deps: PortalInvitationsDeps): PortalInvi
           .where(and(eq(INV.organizationId, organizationId), eq(INV.tokenHash, tokenHash)))
           .limit(1);
         if (!row) {
-          throw new ChartWardenError("INVITATION_INVALID", "this invitation link is not valid", 404);
+          throw new ChartWardenError(
+            "INVITATION_INVALID",
+            "this invitation link is not valid",
+            404,
+          );
         }
         const asState: PortalInvitation = {
           tokenHash,

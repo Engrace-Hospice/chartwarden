@@ -166,8 +166,7 @@ export function TemplatePicker({
         : translate(locale, visible.length === 1 ? "picker.count.one" : "picker.count.other", {
             n: visible.length,
           }).text;
-  const statusLang =
-    translate(locale, "picker.count.other").lang;
+  const statusLang = translate(locale, "picker.count.other").lang;
 
   return (
     <div className="wx-template-picker" ref={rootRef} onBlur={onPickerBlur}>
@@ -248,30 +247,30 @@ export function TemplatePicker({
             {visible.map((reply) => {
               const text = pickTemplateText(reply, locale);
               return (
-              <button
-                key={reply.id}
-                id={optionId(reply)}
-                type="button"
-                // biome-ignore lint/a11y/useSemanticElements: a native option cannot render the title, scope and preview markup
-                role="option"
-                tabIndex={-1}
-                aria-selected={reply.id === active?.id}
-                className={
-                  reply.id === active?.id ? "wx-template-option is-active" : "wx-template-option"
-                }
-                // mousedown would blur the search box before the click lands; the click does the work.
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => choose(reply)}
-              >
-                <strong lang={text.lang}>
-                  {text.title}
-                  {text.fallback ? <EnTag /> : null}
-                </strong>
-                <small>
-                  {SCOPE_LABEL[reply.scope]} · {CATEGORY_LABEL[reply.category]}
-                </small>
-                <span lang={text.lang}>{text.body}</span>
-              </button>
+                <button
+                  key={reply.id}
+                  id={optionId(reply)}
+                  type="button"
+                  // biome-ignore lint/a11y/useSemanticElements: a native option cannot render the title, scope and preview markup
+                  role="option"
+                  tabIndex={-1}
+                  aria-selected={reply.id === active?.id}
+                  className={
+                    reply.id === active?.id ? "wx-template-option is-active" : "wx-template-option"
+                  }
+                  // mousedown would blur the search box before the click lands; the click does the work.
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => choose(reply)}
+                >
+                  <strong lang={text.lang}>
+                    {text.title}
+                    {text.fallback ? <EnTag /> : null}
+                  </strong>
+                  <small>
+                    {SCOPE_LABEL[reply.scope]} · {CATEGORY_LABEL[reply.category]}
+                  </small>
+                  <span lang={text.lang}>{text.body}</span>
+                </button>
               );
             })}
           </div>

@@ -31,15 +31,22 @@ async function replay(db: Client, files: string[]) {
 }
 
 const validated = async (db: Client) =>
-  (await db.query("SELECT convalidated FROM pg_constraint WHERE conname = $1", [CONSTRAINT])).rows[0]
-    .convalidated as boolean;
+  (await db.query("SELECT convalidated FROM pg_constraint WHERE conname = $1", [CONSTRAINT]))
+    .rows[0].convalidated as boolean;
 
 const insertUser = (db: Client, id: string, username: string | null) =>
-  db.query(`INSERT INTO "user" (id, email, username) VALUES ($1, $2, $3)`, [id, `${id}@x.test`, username]);
+  db.query(`INSERT INTO "user" (id, email, username) VALUES ($1, $2, $3)`, [
+    id,
+    `${id}@x.test`,
+    username,
+  ]);
 
 async function expectReservedRejected(db: Client, tag: string) {
   for (const [i, name] of ["chartwarden", "wardenx", "admin"].entries()) {
-    await expect(insertUser(db, `00000000-0000-4000-8000-00000000${tag}${i}`, name), name).rejects.toMatchObject({
+    await expect(
+      insertUser(db, `00000000-0000-4000-8000-00000000${tag}${i}`, name),
+      name,
+    ).rejects.toMatchObject({
       code: "23514",
     });
   }

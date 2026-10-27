@@ -1,9 +1,9 @@
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 // @vitest-environment jsdom
 // The auditor enrolment screen (M2 §7.7): terms first-class, a first-time authenticator setup that ends in
 // one-time recovery codes, a challenge for a returning auditor, plain refusals, and a lockout that disables entry.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { AuditorEnrolment } from "../auditor-enrolment";

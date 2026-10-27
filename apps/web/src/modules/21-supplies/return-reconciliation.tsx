@@ -24,7 +24,14 @@
 // one". The dispatch carries no witness (see S21.3's note), and the schema's witness is the DISPOSAL witness
 // — required only for at-home witnessed destruction, and required by §3.1.10's CHECK to be distinct from
 // both the reconciler and the retriever. The form arms it on exactly that method and says why.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  t,
+  useApiClient,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";

@@ -12,6 +12,7 @@ import {
   urgentRecipientInvalid,
 } from "@chartwarden/messaging";
 import {
+  ChartWardenError,
   NotFoundError,
   type RichBody,
   URGENT_CANDIDATE_CAP,
@@ -19,7 +20,6 @@ import {
   type UrgentMessageOptions,
   type UrgentMessageResponse,
   type UrgentRecipient,
-  ChartWardenError,
 } from "@chartwarden/types";
 import { linkNotAvailable } from "../clinical-link/clinical-link-service";
 import type { HintOutboxPort } from "../message-hint-events";

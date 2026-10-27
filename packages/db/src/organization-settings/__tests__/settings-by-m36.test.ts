@@ -8,7 +8,9 @@ import {
   THREAD_ACCESS_GRANT_HOURS_MAX,
 } from "../settings-by-m36";
 
-const entry = ORGANIZATION_SETTINGS_REGISTRY.find((e) => e.settingsKey === THREAD_ACCESS_GRANT_HOURS_KEY);
+const entry = ORGANIZATION_SETTINGS_REGISTRY.find(
+  (e) => e.settingsKey === THREAD_ACCESS_GRANT_HOURS_KEY,
+);
 
 describe("thread_access_grant_hours", () => {
   it("is registered by m36, optional, with the placeholder default", () => {

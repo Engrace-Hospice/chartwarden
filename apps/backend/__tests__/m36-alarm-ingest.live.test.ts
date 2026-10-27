@@ -71,7 +71,13 @@ describe.skipIf(!DB_URL)("M36 WP 6.10 alarm ingest - LIVE Postgres", () => {
   let supervisorA: string;
   let supervisorB: string;
 
-  const call = (method: "GET" | "POST", url: string, user: string | null, org: string, payload?: unknown) =>
+  const call = (
+    method: "GET" | "POST",
+    url: string,
+    user: string | null,
+    org: string,
+    payload?: unknown,
+  ) =>
     app.inject({
       method,
       url,
@@ -99,13 +105,23 @@ describe.skipIf(!DB_URL)("M36 WP 6.10 alarm ingest - LIVE Postgres", () => {
         "content-type": "application/json",
         "x-wx-key-id": keyId,
         "x-wx-timestamp": timestamp,
-        "x-wx-signature": signAlarmRequest({ secret: over.secret ?? cred.secret, keyId, timestamp, rawBody }),
+        "x-wx-signature": signAlarmRequest({
+          secret: over.secret ?? cred.secret,
+          keyId,
+          timestamp,
+          rawBody,
+        }),
       },
       payload: rawBody,
     });
   };
   const alerts = (org: string, type?: string) =>
-    kit.one<{ id: string; severity: string; payload: Record<string, unknown>; correlation_id: string }>(
+    kit.one<{
+      id: string;
+      severity: string;
+      payload: Record<string, unknown>;
+      correlation_id: string;
+    }>(
       `SELECT id, severity, payload, correlation_id FROM alert WHERE organization_id=$1 ${type ? "AND event_type=$2" : ""} ORDER BY created_at`,
       type ? [org, type] : [org],
     );
@@ -200,8 +216,13 @@ describe.skipIf(!DB_URL)("M36 WP 6.10 alarm ingest - LIVE Postgres", () => {
     flags[FLAG] = false;
     stepUpFresh = false;
     try {
-      expect((await call("POST", SOURCES, officerA, ORG_A, { name: "x", mappings: MAPPINGS })).statusCode).toBe(404);
-      expect((await call("POST", `${SOURCES}/${cred.id}/rotate-secret`, officerA, ORG_A, {})).statusCode).toBe(404);
+      expect(
+        (await call("POST", SOURCES, officerA, ORG_A, { name: "x", mappings: MAPPINGS }))
+          .statusCode,
+      ).toBe(404);
+      expect(
+        (await call("POST", `${SOURCES}/${cred.id}/rotate-secret`, officerA, ORG_A, {})).statusCode,
+      ).toBe(404);
       expect((await post(cred, { eventId: "off-1", alarmKind: "call" })).statusCode).toBe(401);
       expect((await call("GET", SOURCES, officerA, ORG_A)).statusCode).toBe(200);
     } finally {
@@ -211,17 +232,31 @@ describe.skipIf(!DB_URL)("M36 WP 6.10 alarm ingest - LIVE Postgres", () => {
     expect((await post(cred, { eventId: "off-1", alarmKind: "call" })).statusCode).toBe(202);
     expect((await call("GET", SOURCES, null, ORG_A)).statusCode).toBe(401);
     expect((await call("GET", SOURCES, nurseA, ORG_A)).statusCode).toBe(403);
-    expect((await call("POST", SOURCES, nurseA, ORG_A, { name: "x", mappings: MAPPINGS })).statusCode).toBe(403);
+    expect(
+      (await call("POST", SOURCES, nurseA, ORG_A, { name: "x", mappings: MAPPINGS })).statusCode,
+    ).toBe(403);
     stepUpFresh = false;
-    for (const url of [SOURCES, `${SOURCES}/${cred.id}/rotate-secret`, `${SOURCES}/${cred.id}/disable`]) {
-      const res = await call("POST", url, officerA, ORG_A, url === SOURCES ? { name: "x", mappings: MAPPINGS } : {});
+    for (const url of [
+      SOURCES,
+      `${SOURCES}/${cred.id}/rotate-secret`,
+      `${SOURCES}/${cred.id}/disable`,
+    ]) {
+      const res = await call(
+        "POST",
+        url,
+        officerA,
+        ORG_A,
+        url === SOURCES ? { name: "x", mappings: MAPPINGS } : {},
+      );
       expect(res.statusCode, url).toBe(403);
       expect(res.json().error.code, url).toBe("STEP_UP_REQUIRED");
     }
     stepUpFresh = true;
     // disable works with the flag off
     flags[FLAG] = false;
-    expect((await call("POST", `${SOURCES}/${cred.id}/disable`, officerA, ORG_A, {})).statusCode).toBe(200);
+    expect(
+      (await call("POST", `${SOURCES}/${cred.id}/disable`, officerA, ORG_A, {})).statusCode,
+    ).toBe(200);
     flags[FLAG] = true;
   });
 
@@ -255,7 +290,11 @@ describe.skipIf(!DB_URL)("M36 WP 6.10 alarm ingest - LIVE Postgres", () => {
   it("3. a signed alarm becomes ONE ordinary in-app alert for the supervisors: capped at warn, fixed message, no response request, no message", async () => {
     const cred = await create(ORG_A, officerA, "Ward 3 bed sensors");
     const before = await tableCounts();
-    const res = await post(cred, { eventId: "bed-100", alarmKind: "bed_exit", severity: "critical" });
+    const res = await post(cred, {
+      eventId: "bed-100",
+      alarmKind: "bed_exit",
+      severity: "critical",
+    });
     expect(res.statusCode).toBe(202);
     expect(res.json()).toEqual({ status: "accepted", outcome: "alerted" });
 
@@ -289,17 +328,28 @@ describe.skipIf(!DB_URL)("M36 WP 6.10 alarm ingest - LIVE Postgres", () => {
     // Watch only: no response request, no event, no message was created.
     expect(await tableCounts()).toEqual(before);
     // A sender-supplied kind cannot reach a non-alarm catalog type: the event row's alert type is a mapped alarm_ingest.* type only.
-    expect(await kit.count(`SELECT count(*)::int AS n FROM alarm_ingest_event WHERE alert_type NOT LIKE 'alarm_ingest.%'`)).toBe(0);
+    expect(
+      await kit.count(
+        `SELECT count(*)::int AS n FROM alarm_ingest_event WHERE alert_type NOT LIKE 'alarm_ingest.%'`,
+      ),
+    ).toBe(0);
   });
 
   it("4. idempotency: a replay, a retry after a failed emit and 6 concurrent copies alert exactly once; a changed body is 409", async () => {
     const cred = await create(ORG_A, officerA, "Idempotency probe");
     const first = await post(cred, { eventId: "dup-1", alarmKind: "call" });
     expect(first.json()).toEqual({ status: "accepted", outcome: "alerted" });
-    expect((await post(cred, { eventId: "dup-1", alarmKind: "call" })).json()).toEqual({ status: "duplicate", outcome: "alerted" });
-    expect((await post(cred, { eventId: "dup-1", alarmKind: "call", severity: "warn" })).statusCode).toBe(409);
+    expect((await post(cred, { eventId: "dup-1", alarmKind: "call" })).json()).toEqual({
+      status: "duplicate",
+      outcome: "alerted",
+    });
+    expect(
+      (await post(cred, { eventId: "dup-1", alarmKind: "call", severity: "warn" })).statusCode,
+    ).toBe(409);
 
-    const concurrent = await Promise.all(Array.from({ length: 6 }, () => post(cred, { eventId: "race-1", alarmKind: "call" })));
+    const concurrent = await Promise.all(
+      Array.from({ length: 6 }, () => post(cred, { eventId: "race-1", alarmKind: "call" })),
+    );
     for (const r of concurrent) expect([202, 503]).toContain(r.statusCode);
     // any copy that lost a race to settle may have been told to retry; a retry now is a plain duplicate
     expect((await post(cred, { eventId: "race-1", alarmKind: "call" })).statusCode).toBe(202);
@@ -308,8 +358,18 @@ describe.skipIf(!DB_URL)("M36 WP 6.10 alarm ingest - LIVE Postgres", () => {
       [cred.id],
     );
     expect(race!.status).toBe("alerted");
-    expect(await kit.count(`SELECT count(*)::int AS n FROM alarm_ingest_event WHERE source_id=$1 AND event_id='race-1'`, [cred.id])).toBe(1);
-    expect(await kit.count(`SELECT count(*)::int AS n FROM alert WHERE organization_id=$1 AND correlation_id=$2`, [ORG_A, `alarm:${race!.id}`])).toBe(1);
+    expect(
+      await kit.count(
+        `SELECT count(*)::int AS n FROM alarm_ingest_event WHERE source_id=$1 AND event_id='race-1'`,
+        [cred.id],
+      ),
+    ).toBe(1);
+    expect(
+      await kit.count(
+        `SELECT count(*)::int AS n FROM alert WHERE organization_id=$1 AND correlation_id=$2`,
+        [ORG_A, `alarm:${race!.id}`],
+      ),
+    ).toBe(1);
 
     failEmits = 1;
     const down = await post(cred, { eventId: "retry-1", alarmKind: "call" });
@@ -320,8 +380,16 @@ describe.skipIf(!DB_URL)("M36 WP 6.10 alarm ingest - LIVE Postgres", () => {
       [cred.id],
     );
     expect(pending!.status).toBe("received");
-    expect((await post(cred, { eventId: "retry-1", alarmKind: "call" })).json()).toEqual({ status: "duplicate", outcome: "alerted" });
-    expect(await kit.count(`SELECT count(*)::int AS n FROM alert WHERE organization_id=$1 AND correlation_id=$2`, [ORG_A, `alarm:${pending!.id}`])).toBe(1);
+    expect((await post(cred, { eventId: "retry-1", alarmKind: "call" })).json()).toEqual({
+      status: "duplicate",
+      outcome: "alerted",
+    });
+    expect(
+      await kit.count(
+        `SELECT count(*)::int AS n FROM alert WHERE organization_id=$1 AND correlation_id=$2`,
+        [ORG_A, `alarm:${pending!.id}`],
+      ),
+    ).toBe(1);
   });
 
   it("5. unmapped kinds are recorded and refused; rotated, disabled, stale and tampered requests are the one 401", async () => {
@@ -329,8 +397,15 @@ describe.skipIf(!DB_URL)("M36 WP 6.10 alarm ingest - LIVE Postgres", () => {
     const unmapped = await post(cred, { eventId: "u-1", alarmKind: "smoke_detector" });
     expect(unmapped.statusCode).toBe(422);
     expect(unmapped.json().error.code).toBe("ALARM_KIND_UNMAPPED");
-    expect(await kit.count(`SELECT count(*)::int AS n FROM alarm_ingest_event WHERE source_id=$1 AND status='unmapped'`, [cred.id])).toBe(1);
-    const listed = (await call("GET", SOURCES, officerA, ORG_A)).json().sources.find((s: { id: string }) => s.id === cred.id);
+    expect(
+      await kit.count(
+        `SELECT count(*)::int AS n FROM alarm_ingest_event WHERE source_id=$1 AND status='unmapped'`,
+        [cred.id],
+      ),
+    ).toBe(1);
+    const listed = (await call("GET", SOURCES, officerA, ORG_A))
+      .json()
+      .sources.find((s: { id: string }) => s.id === cred.id);
     expect(listed.last24h.unmapped).toBe(1);
 
     const body = { eventId: "dead-1", alarmKind: "call" };
@@ -339,12 +414,19 @@ describe.skipIf(!DB_URL)("M36 WP 6.10 alarm ingest - LIVE Postgres", () => {
       await post(cred, body, { secret: "wxas_nope" }),
       await post(cred, body, { timestamp: String(Number(nowSec()) - 1000) }),
       await post(cred, body, { keyId: `${ORG_A}.${randomUUID()}` }),
-      await app.inject({ method: "POST", url: INGEST, headers: { "content-type": "application/json" }, payload: JSON.stringify(body) }),
+      await app.inject({
+        method: "POST",
+        url: INGEST,
+        headers: { "content-type": "application/json" },
+        payload: JSON.stringify(body),
+      }),
     ];
     for (const r of refusals) expect(r.statusCode).toBe(401);
     expect(new Set(refusals.map((r) => strip(r.body))).size).toBe(1);
 
-    const rotated = (await call("POST", `${SOURCES}/${cred.id}/rotate-secret`, officerA, ORG_A, {})).json() as Cred;
+    const rotated = (
+      await call("POST", `${SOURCES}/${cred.id}/rotate-secret`, officerA, ORG_A, {})
+    ).json() as Cred;
     expect(rotated.secret).not.toBe(cred.secret);
     expect((await post(cred, body)).statusCode).toBe(401); // the old secret is dead at once
     expect((await post(rotated, body)).statusCode).toBe(202);
@@ -355,10 +437,16 @@ describe.skipIf(!DB_URL)("M36 WP 6.10 alarm ingest - LIVE Postgres", () => {
     expect(src!.secret_generation).toBe(2);
     expect(src!.rotated_at).not.toBeNull();
 
-    expect((await call("POST", `${SOURCES}/${cred.id}/disable`, officerA, ORG_A, {})).statusCode).toBe(200);
+    expect(
+      (await call("POST", `${SOURCES}/${cred.id}/disable`, officerA, ORG_A, {})).statusCode,
+    ).toBe(200);
     expect((await post(rotated, { eventId: "dead-2", alarmKind: "call" })).statusCode).toBe(401);
-    expect((await call("POST", `${SOURCES}/${cred.id}/rotate-secret`, officerA, ORG_A, {})).statusCode).toBe(404);
-    expect((await call("POST", `${SOURCES}/${cred.id}/disable`, officerA, ORG_A, {})).statusCode).toBe(200); // idempotent
+    expect(
+      (await call("POST", `${SOURCES}/${cred.id}/rotate-secret`, officerA, ORG_A, {})).statusCode,
+    ).toBe(404);
+    expect(
+      (await call("POST", `${SOURCES}/${cred.id}/disable`, officerA, ORG_A, {})).statusCode,
+    ).toBe(200); // idempotent
   });
 
   it("6. the database: no delete, no critical, no re-enable, no mapping edit, an event settles once, a generation moves by one", async () => {
@@ -373,9 +461,15 @@ describe.skipIf(!DB_URL)("M36 WP 6.10 alarm ingest - LIVE Postgres", () => {
         await kit.appConn.query("ROLLBACK");
       }
     };
-    await expect(app_(`DELETE FROM alarm_source WHERE id=$1`, [cred.id])).rejects.toThrow(/permission denied/i);
-    await expect(app_(`DELETE FROM alarm_ingest_event WHERE source_id=$1`, [cred.id])).rejects.toThrow(/permission denied/i);
-    await expect(app_(`UPDATE alarm_source_mapping SET severity_ceiling='info' WHERE source_id=$1`, [cred.id])).rejects.toThrow(/permission denied/i);
+    await expect(app_(`DELETE FROM alarm_source WHERE id=$1`, [cred.id])).rejects.toThrow(
+      /permission denied/i,
+    );
+    await expect(
+      app_(`DELETE FROM alarm_ingest_event WHERE source_id=$1`, [cred.id]),
+    ).rejects.toThrow(/permission denied/i);
+    await expect(
+      app_(`UPDATE alarm_source_mapping SET severity_ceiling='info' WHERE source_id=$1`, [cred.id]),
+    ).rejects.toThrow(/permission denied/i);
     await expect(
       app_(
         `INSERT INTO alarm_source_mapping (organization_id,source_id,alarm_kind,alert_type,severity_ceiling) VALUES ($1,$2,'x','alarm_ingest.equipment','critical')`,
@@ -395,20 +489,41 @@ describe.skipIf(!DB_URL)("M36 WP 6.10 alarm ingest - LIVE Postgres", () => {
         [ORG_A, cred.id, "0".repeat(64)],
       ),
     ).rejects.toThrow(/alarm_ingest_event_effective_severity/);
-    await expect(app_(`UPDATE alarm_source SET secret_generation = secret_generation + 5 WHERE id=$1`, [cred.id])).rejects.toThrow(/alarm_source_rotation/);
-    await expect(app_(`UPDATE alarm_source SET name='renamed' WHERE id=$1`, [cred.id])).rejects.toThrow(/permission denied/i);
-    await expect(app_(`UPDATE alarm_ingest_event SET status='received' WHERE source_id=$1`, [cred.id])).rejects.toThrow(/alarm_ingest_event_forward_only/);
-    await expect(app_(`UPDATE alarm_ingest_event SET payload_digest=$2 WHERE source_id=$1`, [cred.id, "1".repeat(64)])).rejects.toThrow(/permission denied/i);
+    await expect(
+      app_(`UPDATE alarm_source SET secret_generation = secret_generation + 5 WHERE id=$1`, [
+        cred.id,
+      ]),
+    ).rejects.toThrow(/alarm_source_rotation/);
+    await expect(
+      app_(`UPDATE alarm_source SET name='renamed' WHERE id=$1`, [cred.id]),
+    ).rejects.toThrow(/permission denied/i);
+    await expect(
+      app_(`UPDATE alarm_ingest_event SET status='received' WHERE source_id=$1`, [cred.id]),
+    ).rejects.toThrow(/alarm_ingest_event_forward_only/);
+    await expect(
+      app_(`UPDATE alarm_ingest_event SET payload_digest=$2 WHERE source_id=$1`, [
+        cred.id,
+        "1".repeat(64),
+      ]),
+    ).rejects.toThrow(/permission denied/i);
 
     await call("POST", `${SOURCES}/${cred.id}/disable`, officerA, ORG_A, {});
-    await expect(app_(`UPDATE alarm_source SET enabled=true, disabled_at=NULL, disabled_by=NULL WHERE id=$1`, [cred.id])).rejects.toThrow(/alarm_source_final|alarm_source_disabled_shape/);
+    await expect(
+      app_(`UPDATE alarm_source SET enabled=true, disabled_at=NULL, disabled_by=NULL WHERE id=$1`, [
+        cred.id,
+      ]),
+    ).rejects.toThrow(/alarm_source_final|alarm_source_disabled_shape/);
   });
 
   it("7. tenancy: org B sees and changes nothing of org A; cross-org credentials are the same 401; the alert reaches only the right org", async () => {
     const credA = await create(ORG_A, officerA, "Tenant A probe");
     const credB = await create(ORG_B, officerB, "Tenant B probe");
-    const idsA = (await call("GET", SOURCES, officerA, ORG_A)).json().sources.map((s: { id: string }) => s.id);
-    const listB = (await call("GET", SOURCES, officerB, ORG_B)).json().sources.map((s: { id: string }) => s.id);
+    const idsA = (await call("GET", SOURCES, officerA, ORG_A))
+      .json()
+      .sources.map((s: { id: string }) => s.id);
+    const listB = (await call("GET", SOURCES, officerB, ORG_B))
+      .json()
+      .sources.map((s: { id: string }) => s.id);
     expect(listB).toContain(credB.id);
     expect(listB.filter((id: string) => idsA.includes(id))).toEqual([]);
 
@@ -417,33 +532,64 @@ describe.skipIf(!DB_URL)("M36 WP 6.10 alarm ingest - LIVE Postgres", () => {
       JSON.stringify(await kit.one(`SELECT * FROM alarm_source WHERE id=$1`, [credA.id]));
     const before = await snapshot();
     const foreign = await call("POST", `${SOURCES}/${credA.id}/rotate-secret`, officerB, ORG_B, {});
-    const random = await call("POST", `${SOURCES}/${randomUUID()}/rotate-secret`, officerB, ORG_B, {});
-    const strip = (b: string) => b.replace(/"(requestId|correlationId)":"[^"]*"/g, "").replace(/[0-9a-f-]{36}/g, "ID");
+    const random = await call(
+      "POST",
+      `${SOURCES}/${randomUUID()}/rotate-secret`,
+      officerB,
+      ORG_B,
+      {},
+    );
+    const strip = (b: string) =>
+      b.replace(/"(requestId|correlationId)":"[^"]*"/g, "").replace(/[0-9a-f-]{36}/g, "ID");
     expect(foreign.statusCode).toBe(404);
     expect(strip(foreign.body)).toBe(strip(random.body));
-    expect((await call("POST", `${SOURCES}/${credA.id}/disable`, officerB, ORG_B, {})).statusCode).toBe(404);
+    expect(
+      (await call("POST", `${SOURCES}/${credA.id}/disable`, officerB, ORG_B, {})).statusCode,
+    ).toBe(404);
     expect(await snapshot()).toBe(before);
 
     // A credential of one org under the other org's key id: the same 401, and nothing is written in either org.
     const eventsBefore = await kit.count(`SELECT count(*)::int AS n FROM alarm_ingest_event`);
-    const aSecretUnderB = await post(credA, { eventId: "x-1", alarmKind: "call" }, { keyId: `${ORG_B}.${credA.id}` });
-    const bSecretUnderA = await post(credB, { eventId: "x-2", alarmKind: "call" }, { keyId: `${ORG_A}.${credB.id}` });
-    const bIdUnderA = await post(credB, { eventId: "x-3", alarmKind: "call" }, { keyId: `${ORG_A}.${credB.id}`, secret: credA.secret });
+    const aSecretUnderB = await post(
+      credA,
+      { eventId: "x-1", alarmKind: "call" },
+      { keyId: `${ORG_B}.${credA.id}` },
+    );
+    const bSecretUnderA = await post(
+      credB,
+      { eventId: "x-2", alarmKind: "call" },
+      { keyId: `${ORG_A}.${credB.id}` },
+    );
+    const bIdUnderA = await post(
+      credB,
+      { eventId: "x-3", alarmKind: "call" },
+      { keyId: `${ORG_A}.${credB.id}`, secret: credA.secret },
+    );
     for (const r of [aSecretUnderB, bSecretUnderA, bIdUnderA]) expect(r.statusCode).toBe(401);
-    expect(new Set([aSecretUnderB, bSecretUnderA, bIdUnderA].map((r) => strip(r.body))).size).toBe(1);
+    expect(new Set([aSecretUnderB, bSecretUnderA, bIdUnderA].map((r) => strip(r.body))).size).toBe(
+      1,
+    );
     expect(await kit.count(`SELECT count(*)::int AS n FROM alarm_ingest_event`)).toBe(eventsBefore);
 
     // A's alarm alerts A's supervisor only; B's supervisor has no delivery from it.
     const ok = await post(credA, { eventId: "tenant-1", alarmKind: "call" });
     expect(ok.statusCode).toBe(202);
-    const [ev] = await kit.one<{ id: string }>(`SELECT id FROM alarm_ingest_event WHERE source_id=$1 AND event_id='tenant-1'`, [credA.id]);
+    const [ev] = await kit.one<{ id: string }>(
+      `SELECT id FROM alarm_ingest_event WHERE source_id=$1 AND event_id='tenant-1'`,
+      [credA.id],
+    );
     const recipients = await kit.one<{ recipient_user_id: string }>(
       `SELECT d.recipient_user_id FROM notification_delivery d JOIN alert a ON a.id=d.alert_id WHERE a.correlation_id=$1`,
       [`alarm:${ev!.id}`],
     );
     expect(recipients.map((r) => r.recipient_user_id)).toEqual([supervisorA]);
     expect(recipients.map((r) => r.recipient_user_id)).not.toContain(supervisorB);
-    expect(await kit.count(`SELECT count(*)::int AS n FROM alert WHERE organization_id=$1 AND event_type LIKE 'alarm_ingest.%'`, [ORG_B])).toBe(0);
+    expect(
+      await kit.count(
+        `SELECT count(*)::int AS n FROM alert WHERE organization_id=$1 AND event_type LIKE 'alarm_ingest.%'`,
+        [ORG_B],
+      ),
+    ).toBe(0);
 
     // RLS at the database, as chartwarden_app with app.org_id = B: zero of A's alarm rows; an A-org insert is rejected.
     await kit.appConn.query("BEGIN");
@@ -451,7 +597,10 @@ describe.skipIf(!DB_URL)("M36 WP 6.10 alarm ingest - LIVE Postgres", () => {
       await kit.appConn.query(`SELECT set_config('app.org_id', $1, true)`, [ORG_B]);
       for (const t of ["alarm_source", "alarm_source_mapping", "alarm_ingest_event"]) {
         const rows = await kit.appConn.query(`SELECT organization_id FROM ${t}`);
-        expect(rows.rows.every((r: { organization_id: string }) => r.organization_id === ORG_B), t).toBe(true);
+        expect(
+          rows.rows.every((r: { organization_id: string }) => r.organization_id === ORG_B),
+          t,
+        ).toBe(true);
       }
       await expect(
         kit.appConn.query(
@@ -466,9 +615,26 @@ describe.skipIf(!DB_URL)("M36 WP 6.10 alarm ingest - LIVE Postgres", () => {
 
   it("8. bounds: a body over the cap is refused, an unknown field is refused, nothing is written for either", async () => {
     const cred = await create(ORG_A, officerA, "Bounds probe");
-    const before = await kit.count(`SELECT count(*)::int AS n FROM alarm_ingest_event WHERE source_id=$1`, [cred.id]);
-    expect((await post(cred, JSON.stringify({ eventId: "big-1", alarmKind: "call", pad: "x".repeat(2000) }))).statusCode).toBe(413);
-    expect((await post(cred, { eventId: "extra-1", alarmKind: "call", note: "Mrs Jones, room 4" })).statusCode).toBe(422);
-    expect(await kit.count(`SELECT count(*)::int AS n FROM alarm_ingest_event WHERE source_id=$1`, [cred.id])).toBe(before);
+    const before = await kit.count(
+      `SELECT count(*)::int AS n FROM alarm_ingest_event WHERE source_id=$1`,
+      [cred.id],
+    );
+    expect(
+      (
+        await post(
+          cred,
+          JSON.stringify({ eventId: "big-1", alarmKind: "call", pad: "x".repeat(2000) }),
+        )
+      ).statusCode,
+    ).toBe(413);
+    expect(
+      (await post(cred, { eventId: "extra-1", alarmKind: "call", note: "Mrs Jones, room 4" }))
+        .statusCode,
+    ).toBe(422);
+    expect(
+      await kit.count(`SELECT count(*)::int AS n FROM alarm_ingest_event WHERE source_id=$1`, [
+        cred.id,
+      ]),
+    ).toBe(before);
   });
 });

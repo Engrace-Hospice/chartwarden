@@ -1,3 +1,4 @@
+import { getRequestContext } from "@chartwarden/tenancy";
 // apps/backend/src/modules/22-documents/routes/signed-url-service.ts — M22-T07 (§4.1 content route / §4.12).
 //
 // The signed-URL service the `GET …/versions/:versionId/content` route composes. It is the seam between
@@ -25,7 +26,6 @@ import type {
   SignedUrlDescriptor,
 } from "@chartwarden/types";
 import { ForbiddenError, NotFoundError } from "@chartwarden/types";
-import { getRequestContext } from "@chartwarden/tenancy";
 import { planSignedUrl } from "../lifecycle/storage";
 import { resolveExternalBaaActive } from "../outbox-consumers/baa-gate";
 import { resolveSudConsentPresent } from "../outbox-consumers/consent-gate";

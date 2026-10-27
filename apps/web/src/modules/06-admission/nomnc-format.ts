@@ -82,7 +82,8 @@ export function formatInZone(iso: string | null | undefined, timeZone: string): 
     timeZone,
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(d)
+  })
+    .format(d)
     .concat(` ${zoneName(d, timeZone)}`);
 }
 

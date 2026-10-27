@@ -1,3 +1,4 @@
+import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/35-subscription/routes/subscription-typebox.ts — M35 (§4.4) wire contracts.
 //
 // TypeBox path-param / query / body request schemas for the §4.1 tenant + §4.2 admin routes AND the §4.4
@@ -12,7 +13,6 @@
 // conflict. M35 carries NO PHI (§8.5); every money field is INTEGER CENTS.
 import { FormatRegistry, type Static, type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {

@@ -76,7 +76,11 @@ export function createBudgetedRateLimiter(
      *  the abuse control (an unauthenticated route that sends email), so an outage must not remove it. */
     failClosed?: boolean;
   },
-): { consume(key: string): Promise<{ allowed: boolean; retryAfterSeconds?: number; storeError?: true }> } {
+): {
+  consume(
+    key: string,
+  ): Promise<{ allowed: boolean; retryAfterSeconds?: number; storeError?: true }>;
+} {
   return {
     async consume(key) {
       let count: number;

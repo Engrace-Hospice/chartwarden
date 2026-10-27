@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 /**
  * M1-T08 — Outbox dispatcher + event catalog (spec §3.17).
  *
@@ -10,7 +11,6 @@
  *   - happy path: a valid publish reaches the injected persister exactly once.
  */
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   M1_OUTBOX_EVENTS,

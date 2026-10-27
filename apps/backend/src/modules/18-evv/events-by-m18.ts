@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/18-evv/events-by-m18.ts — Module 18's outbox-event contributions (M18-T07,
 // spec §4.10). The full `m18.evv.*` taxonomy keyed on M18's own `evv_event` / `evv_missing_resolution` /
 // `evv_device` / `evv_geofence_policy` / `evv_aggregator_submission` lifecycle, under the `m18.` namespace
@@ -21,7 +22,6 @@
 // and **M25** denial-management (`aggregator_rejected`) — M18 never calls their routes, it only emits the typed
 // outbox event. Consumer dedup is keyed on `(eventId, consumerName)` per the M1 outbox-consumer pattern.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

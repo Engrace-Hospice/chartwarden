@@ -84,7 +84,12 @@ function RequireChrome({ children }: { children: ReactNode }): JSX.Element {
   }
   if (outcome === "outage") {
     const tenantReason = getLastTenantUnavailableReason();
-    return <Navigate to={tenantReason ? `/tenant-unavailable?reason=${tenantReason}` : "/offline"} replace />;
+    return (
+      <Navigate
+        to={tenantReason ? `/tenant-unavailable?reason=${tenantReason}` : "/offline"}
+        replace
+      />
+    );
   }
   return <>{children}</>;
 }
@@ -232,7 +237,9 @@ export function AppShell({
               </RequireChrome>
             ),
             children: [
-              ...(chromelessOwnsRoot ? [] : [{ index: true, element: <RoleHome screens={chromed} /> }]),
+              ...(chromelessOwnsRoot
+                ? []
+                : [{ index: true, element: <RoleHome screens={chromed} /> }]),
               ...chromed.map((s) => ({
                 path: s.path.replace(/^\//, ""),
                 // Param-path screens (`/x/:id`) are reached by links, and their descriptor key was only ever a

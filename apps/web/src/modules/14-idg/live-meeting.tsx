@@ -75,8 +75,8 @@ import {
   AttendanceModal,
   LifecycleModal,
 } from "./idg-meeting-modals";
-import { ACTION_TONE, MEETING_TONE, stateLabel } from "./idg-status";
 import { MeetingProgress } from "./idg-page-kit";
+import { ACTION_TONE, MEETING_TONE, stateLabel } from "./idg-status";
 import "./live-meeting.css";
 import { useSession } from "../../shell/session";
 import { loadStaffNames } from "./idg-people";
@@ -600,13 +600,15 @@ export function LiveMeeting(): JSX.Element {
       header: <span className="wx-sr-only">Actions</span>,
       cell: (d) => (
         <span className="wx-idg-live-cell-actions">
-          {canCoordinate && isLive ? <Button
-            tone="tertiary"
-            size="sm"
-            onClick={() => setDialog({ kind: "action-item", decisionId: d.id })}
-          >
-            Assign follow-up
-          </Button> : null}
+          {canCoordinate && isLive ? (
+            <Button
+              tone="tertiary"
+              size="sm"
+              onClick={() => setDialog({ kind: "action-item", decisionId: d.id })}
+            >
+              Assign follow-up
+            </Button>
+          ) : null}
           {/* No Supersede action here on purpose. The server records the successor in a LATER, live, quorate
               meeting (POST /idg/decisions/:id/supersede takes that TARGET meeting id), and this row's decision
               belongs to the meeting being viewed, so offering it here could only ever 409/422. Follow-up: a
@@ -665,27 +667,24 @@ export function LiveMeeting(): JSX.Element {
           </div>
           {meeting && (canAttend || canCoordinate || canDecide) ? (
             <div className="wx-idg-live-actions">
-              {canAttend && !closed ? <Button
-                tone="secondary"
-                onClick={() => setDialog({ kind: "attendance" })}
-              >
-                Check in
-              </Button> : null}
-              {canCoordinate && !closed ? <Button
-                tone="secondary"
-                onClick={() => setDialog({ kind: "agenda" })}
-              >
-                Add agenda item
-              </Button> : null}
-              {canDecide && isLive ? <Button onClick={() => setDialog({ kind: "decision" })}>
-                Record decision
-              </Button> : null}
-              {canCoordinate && isLive ? <Button
-                tone="secondary"
-                onClick={() => setDialog({ kind: "adjourn" })}
-              >
-                Finalize &amp; Adjourn
-              </Button> : null}
+              {canAttend && !closed ? (
+                <Button tone="secondary" onClick={() => setDialog({ kind: "attendance" })}>
+                  Check in
+                </Button>
+              ) : null}
+              {canCoordinate && !closed ? (
+                <Button tone="secondary" onClick={() => setDialog({ kind: "agenda" })}>
+                  Add agenda item
+                </Button>
+              ) : null}
+              {canDecide && isLive ? (
+                <Button onClick={() => setDialog({ kind: "decision" })}>Record decision</Button>
+              ) : null}
+              {canCoordinate && isLive ? (
+                <Button tone="secondary" onClick={() => setDialog({ kind: "adjourn" })}>
+                  Finalize &amp; Adjourn
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </header>
@@ -724,15 +723,16 @@ export function LiveMeeting(): JSX.Element {
                     Historical attendance, agenda and decisions are read-only
                     {meeting.adjournedAt
                       ? ` since ${new Date(meeting.adjournedAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}`
-                      : ""}. Action-item follow-up and authorized late addenda remain available.
+                      : ""}
+                    . Action-item follow-up and authorized late addenda remain available.
                   </span>
                 </p>
               ) : (
                 <p className="wx-idg-alert" data-tone="warning">
                   <Glyph name="alert-circle" size={16} />
                   <span>
-                    This meeting is {stateLabel(meeting.status).toLowerCase()}, not live — decisions,
-                    new action items and adjournment are unavailable at this stage.
+                    This meeting is {stateLabel(meeting.status).toLowerCase()}, not live —
+                    decisions, new action items and adjournment are unavailable at this stage.
                   </span>
                 </p>
               )
@@ -969,14 +969,16 @@ export function LiveMeeting(): JSX.Element {
                 action={
                   <>
                     <CountBadge count={decisions.length} tone="primary" />
-                    {canDecide ? <Button
-                      tone="secondary"
-                      size="sm"
-                      onClick={() => setDialog({ kind: "decision" })}
-                      disabled={!isLive}
-                    >
-                      Record for this patient
-                    </Button> : null}
+                    {canDecide ? (
+                      <Button
+                        tone="secondary"
+                        size="sm"
+                        onClick={() => setDialog({ kind: "decision" })}
+                        disabled={!isLive}
+                      >
+                        Record for this patient
+                      </Button>
+                    ) : null}
                   </>
                 }
               >
@@ -1062,26 +1064,30 @@ export function LiveMeeting(): JSX.Element {
                           tone={ATTENDANCE_TONE[r.status] ?? "neutral"}
                         />
                       </div>
-                      {canCoordinate && !closed ? <div className="wx-idg-rail-tools">
-                        <select
-                          className="wx-select"
-                          aria-label={`Attendance status for ${who(r.membershipId)}`}
-                          value={r.status}
-                          disabled={closed}
-                          onChange={(e) => void onStatus(r.id, e.target.value as AttendanceStatus)}
-                        >
-                          {ATTENDANCE_STATUSES.map((s) => (
-                            <option key={s} value={s}>
-                              {humanize(s)}
-                            </option>
-                          ))}
-                        </select>
-                        {r.status !== "excused" ? (
-                          <Button tone="tertiary" size="sm" onClick={() => void onExcuse(r.id)}>
-                            Excuse
-                          </Button>
-                        ) : null}
-                      </div> : null}
+                      {canCoordinate && !closed ? (
+                        <div className="wx-idg-rail-tools">
+                          <select
+                            className="wx-select"
+                            aria-label={`Attendance status for ${who(r.membershipId)}`}
+                            value={r.status}
+                            disabled={closed}
+                            onChange={(e) =>
+                              void onStatus(r.id, e.target.value as AttendanceStatus)
+                            }
+                          >
+                            {ATTENDANCE_STATUSES.map((s) => (
+                              <option key={s} value={s}>
+                                {humanize(s)}
+                              </option>
+                            ))}
+                          </select>
+                          {r.status !== "excused" ? (
+                            <Button tone="tertiary" size="sm" onClick={() => void onExcuse(r.id)}>
+                              Excuse
+                            </Button>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

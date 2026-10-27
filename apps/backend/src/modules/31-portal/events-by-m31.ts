@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/31-portal/events-by-m31.ts - M31's transactional-outbox event contribution (GAP-159).
 //
 // The 22 spec section-4.10 events, catalogued so `m31OutboxPublisher` (`bindCallerModule(txOutboxPublisher,
@@ -7,7 +8,6 @@
 // metric/channel consumers (M30/M33/M36/M2) pull. Emit sites live next to the mutation they describe
 // (`events.ts` documents which are same-transaction and which are decision-point emits).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 const str = Type.String({ minLength: 1 });
 const nstr = Type.Union([Type.String({ minLength: 1 }), Type.Null()]);

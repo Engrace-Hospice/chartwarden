@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/35-subscription/events-by-m35.ts — Module 35's outbox-event contributions
 // (spec §4.11 Outbox Event Catalog). The full `m35.*` taxonomy keyed on M35's own resources, under the
 // `m35.` namespace (M01 D8 outbox_event_catalog / M03 D9 / M04 D9). check-fitness-gaps.ts scans this file
@@ -12,7 +13,6 @@
 // enforces); the cross-module fan-outs target M29 (Xero AR sync on paid/executed), M33 (dashboards),
 // M34 (tenant billing gate), and M36 (alerts).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const nullableId = Type.Union([id, Type.Null()]);

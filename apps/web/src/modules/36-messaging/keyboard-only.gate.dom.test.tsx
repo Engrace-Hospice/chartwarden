@@ -1,3 +1,4 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 /**
  * Phase 2 gate: "keyboard-only" acceptance, through the REAL StaffMessaging tree. Every step below is a key press
  * (userEvent.tab / keyboard); nothing is clicked or focused programmatically except where a clause says so.
@@ -9,7 +10,6 @@
  */
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";

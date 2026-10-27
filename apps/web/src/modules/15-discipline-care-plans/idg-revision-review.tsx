@@ -1,4 +1,11 @@
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  t,
+  useApiClient,
+} from "@chartwarden/ui";
 // apps/web/src/modules/15-discipline-care-plans — the IDG-DRIVEN REVISION REVIEW (§5.1 #14, Track B).
 // Spec layout: "Use Detail Page."
 //

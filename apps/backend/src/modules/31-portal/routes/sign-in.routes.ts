@@ -22,7 +22,7 @@
 // unverified email, a non-active tenant and an account with no live grant. Idempotent: a replay of the same bind
 // answers 200 `replayed:true`; a different bind of an already-bound session is a 409, never a silent re-scope.
 import { CredentialThrottleError } from "@chartwarden/auth";
-import { ForbiddenError, UnauthorizedError, type ChartWardenError } from "@chartwarden/types";
+import { type ChartWardenError, ForbiddenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { PortalStateError } from "../lifecycle/errors";
 import { accountRefusal, decideSignIn } from "../sign-in";

@@ -33,7 +33,10 @@ export function createLinkDelivery(input: {
     async deliver({ kind, organizationId, email, token, expiresAt }) {
       const resolved = (await input.baseUrlFor?.(organizationId)) ?? input.baseUrl;
       // Better a typed failure (the invite route maps it to its delivery-failed answer) than a link to nowhere.
-      if (!resolved) throw new Error("no landing origin for this organization (no tenant host and no PORTAL_APP_URL / WEB_APP_URL)");
+      if (!resolved)
+        throw new Error(
+          "no landing origin for this organization (no tenant host and no PORTAL_APP_URL / WEB_APP_URL)",
+        );
       const base = resolved.replace(/\/$/, "");
       const url = `${base}${LANDING_PATH[kind]}#token=${encodeURIComponent(token)}`;
       await input.transport.send({

@@ -18,7 +18,12 @@
 //     vendor-covered night is distinguishable from an uncovered one;
 //   • M18's coordinates do not exist on the far side of `lastKnownLocationFrom`;
 //   • the §7.7 badge is org-keyed, expires at 12 hours, and gates nothing.
-import type { EvvLocationDto, OnCallActor, OrgId, SafetyPolicyEffectiveDto } from "@chartwarden/types";
+import type {
+  EvvLocationDto,
+  OnCallActor,
+  OrgId,
+  SafetyPolicyEffectiveDto,
+} from "@chartwarden/types";
 import { SAFETY_POLICY_FLOOR } from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";

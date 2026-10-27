@@ -149,8 +149,8 @@ export function SupportGrants(): JSX.Element {
             }
           >
             <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
-              A consent grant lets a ChartWarden support engineer access your tenant for up to 72 hours.
-              Issuing requires a compliance officer and a step-up challenge.
+              A consent grant lets a ChartWarden support engineer access your tenant for up to 72
+              hours. Issuing requires a compliance officer and a step-up challenge.
             </p>
           </PageHeader>
         }

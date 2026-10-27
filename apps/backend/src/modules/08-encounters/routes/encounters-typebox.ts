@@ -1,3 +1,4 @@
+import { CHART_PROMOTION_REJECT_REASONS, ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/08-encounters/routes/encounters-typebox.ts — M8-T09 TypeBox route schemas
 // (§4.2). Named `encounters-typebox` (NOT `*schema*`) so the table-ownership import heuristic never
 // mistakes a TypeBox import for a Drizzle one. Validation runs through TypeBox `Value` → M1's
@@ -7,7 +8,6 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { CHART_PROMOTION_REJECT_REASONS, ValidationError } from "@chartwarden/types";
 import type {
   CreatedEncounter as ServiceCreatedEncounter,
   EncounterView as ServiceEncounterView,

@@ -1,8 +1,8 @@
+import { formatWristbandPayload } from "@chartwarden/types";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // GAP-020 -- the print-wristband dialog. The raw payload is a one-time secret: the dialog must request a first
 // print with no expected generation, show the code only while it is open, and drop it when it closes.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { formatWristbandPayload } from "@chartwarden/types";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WristbandAction } from "./wristband-action";
 

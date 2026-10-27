@@ -60,7 +60,8 @@ async function loadVisitFacts(
 const TENANT_ADMIN_ROLES: readonly string[] = ["administrator", "org_admin"];
 
 async function actorMayAccess(actor: M31Actor, facts: StaffVisitFacts): Promise<boolean> {
-  if (hasOrgWideScope(actor.roles.filter((role) => !TENANT_ADMIN_ROLES.includes(role)))) return true;
+  if (hasOrgWideScope(actor.roles.filter((role) => !TENANT_ADMIN_ROLES.includes(role))))
+    return true;
   if (actor.membershipId !== null && actor.membershipId === facts.assignedMembershipId) return true;
   const onCaseload = await getSeam("CaseloadProvider").isInCaseload({
     organizationId: actor.organizationId,

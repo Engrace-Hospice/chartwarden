@@ -76,15 +76,34 @@ describe.skipIf(!DB_URL)("M41 commercial eligibility and enrollment - LIVE Postg
     from = "2026-01-01",
     to: string | null = null,
     pe = PE,
-  ) => asOrg(org, async () => (await app.query(enrollSql, [org, pe, payer, ch, status, from, to])).rows[0].id as string);
+  ) =>
+    asOrg(
+      org,
+      async () =>
+        (await app.query(enrollSql, [org, pe, payer, ch, status, from, to])).rows[0].id as string,
+    );
 
   const checkSql = `INSERT INTO commercial_eligibility_check
     (organization_id, provider_entity_id, patient_id, plan_id, patient_payer_id, clearinghouse_key, clearinghouse_payer_id,
      service_date, outcome, as_of_date, request_id, idempotency_key, checked_by_user_id)
     VALUES ($1,$2,$3,$4,$5,'in_memory','CH-9','2026-10-25',$6,'2026-10-25',$7,$8,$9) RETURNING id`;
   const newCheck = (org: string, plan: string, outcome = "active", key = randomUUID()) =>
-    asOrg(org, async () =>
-      (await app.query(checkSql, [org, PE, PATIENT, plan, COVERAGE_ID, outcome, randomUUID(), key, USER])).rows[0].id as string,
+    asOrg(
+      org,
+      async () =>
+        (
+          await app.query(checkSql, [
+            org,
+            PE,
+            PATIENT,
+            plan,
+            COVERAGE_ID,
+            outcome,
+            randomUUID(),
+            key,
+            USER,
+          ])
+        ).rows[0].id as string,
     );
 
   beforeAll(async () => {
@@ -101,13 +120,19 @@ describe.skipIf(!DB_URL)("M41 commercial eligibility and enrollment - LIVE Postg
       [ORG_A, "m41e-a"],
       [ORG_B, "m41e-b"],
     ] as const) {
-      await admin.query("INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,'A','A')", [org, slug]);
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,'A','A')",
+        [org, slug],
+      );
     }
     // The write-audit trigger attributes rows to app.user_id, which is a foreign key to "user".
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m41-elig@example.test')`, [USER]);
     const mkPayer = async (kind: string, name: string) =>
       (
-        await admin.query("INSERT INTO payer (kind, name, status) VALUES ($1::payer_kind,$2,'active') RETURNING id", [kind, name])
+        await admin.query(
+          "INSERT INTO payer (kind, name, status) VALUES ($1::payer_kind,$2,'active') RETURNING id",
+          [kind, name],
+        )
       ).rows[0].id as string;
     commercialPayer = await mkPayer("commercial", "Synthetic Commercial Health");
     medicarePayer = await mkPayer("medicare", "Synthetic Medicare");
@@ -146,15 +171,34 @@ describe.skipIf(!DB_URL)("M41 commercial eligibility and enrollment - LIVE Postg
       const other = await asOrg(ORG_B, () => app.query(`SELECT count(*)::int AS n FROM ${t}`));
       expect(own.rows[0].n).toBeGreaterThan(0);
       expect(other.rows[0].n).toBe(0);
-      const flags = await admin.query("SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname = $1", [t]);
+      const flags = await admin.query(
+        "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname = $1",
+        [t],
+      );
       expect(flags.rows[0]).toEqual({ relrowsecurity: true, relforcerowsecurity: true });
     }
-    expect(await failure(asOrg(ORG_B, () => app.query(enrollSql, [ORG_A, PE, commercialPayer, "x1", "enrolled", "2026-01-01", null])))).toMatch(
-      /row-level security/,
-    );
     expect(
       await failure(
-        asOrg(ORG_B, () => app.query(checkSql, [ORG_A, PE, PATIENT, planA, COVERAGE_ID, "active", randomUUID(), randomUUID(), USER])),
+        asOrg(ORG_B, () =>
+          app.query(enrollSql, [ORG_A, PE, commercialPayer, "x1", "enrolled", "2026-01-01", null]),
+        ),
+      ),
+    ).toMatch(/row-level security/);
+    expect(
+      await failure(
+        asOrg(ORG_B, () =>
+          app.query(checkSql, [
+            ORG_A,
+            PE,
+            PATIENT,
+            planA,
+            COVERAGE_ID,
+            "active",
+            randomUUID(),
+            randomUUID(),
+            USER,
+          ]),
+        ),
       ),
     ).toMatch(/row-level security/);
   });
@@ -168,35 +212,59 @@ describe.skipIf(!DB_URL)("M41 commercial eligibility and enrollment - LIVE Postg
       ["UPDATE commercial_eligibility_check SET outcome = 'inactive' WHERE id = $1", chk],
       ["UPDATE commercial_payer_enrollment SET payer_id = payer_id WHERE id = $1", enr],
       ["UPDATE commercial_payer_enrollment SET clearinghouse_key = 'other' WHERE id = $1", enr],
-      ["UPDATE commercial_payer_enrollment SET provider_entity_id = provider_entity_id WHERE id = $1", enr],
+      [
+        "UPDATE commercial_payer_enrollment SET provider_entity_id = provider_entity_id WHERE id = $1",
+        enr,
+      ],
     ] as const) {
-      expect(await failure(asOrg(ORG_A, () => app.query(sql[0], [sql[1]]))), sql[0]).toMatch(/permission denied/);
+      expect(await failure(asOrg(ORG_A, () => app.query(sql[0], [sql[1]]))), sql[0]).toMatch(
+        /permission denied/,
+      );
     }
     const ok = await asOrg(ORG_A, () =>
-      app.query("UPDATE commercial_payer_enrollment SET status = 'suspended', updated_at = now() WHERE id = $1", [enr]),
+      app.query(
+        "UPDATE commercial_payer_enrollment SET status = 'suspended', updated_at = now() WHERE id = $1",
+        [enr],
+      ),
     );
     expect(ok.rowCount).toBe(1);
   });
 
   it("requires an ACTIVE COMMERCIAL payer for an enrollment", async () => {
-    expect(await failure(newEnrollment(ORG_A, medicarePayer, "medicare"))).toMatch(/M41_PLAN_PAYER_NOT_COMMERCIAL/);
+    expect(await failure(newEnrollment(ORG_A, medicarePayer, "medicare"))).toMatch(
+      /M41_PLAN_PAYER_NOT_COMMERCIAL/,
+    );
   });
 
   it("refuses overlapping enrollment periods and allows adjacent ones", async () => {
     await newEnrollment(ORG_A, commercialPayer, "dates", "enrolled", "2025-01-01", "2025-06-30");
-    expect(await failure(newEnrollment(ORG_A, commercialPayer, "dates", "enrolled", "2025-06-30", null))).toMatch(
-      /exclusion|conflicting key/,
-    );
-    await expect(newEnrollment(ORG_A, commercialPayer, "dates", "enrolled", "2025-07-01", null)).resolves.toBeTruthy();
+    expect(
+      await failure(newEnrollment(ORG_A, commercialPayer, "dates", "enrolled", "2025-06-30", null)),
+    ).toMatch(/exclusion|conflicting key/);
+    await expect(
+      newEnrollment(ORG_A, commercialPayer, "dates", "enrolled", "2025-07-01", null),
+    ).resolves.toBeTruthy();
     // a different provider entity, payer-and-clearinghouse pair is independent
     await expect(
-      newEnrollment(ORG_A, commercialPayer, "dates", "enrolled", "2025-01-01", null, "00000000-0000-4000-8000-0000000000e2"),
+      newEnrollment(
+        ORG_A,
+        commercialPayer,
+        "dates",
+        "enrolled",
+        "2025-01-01",
+        null,
+        "00000000-0000-4000-8000-0000000000e2",
+      ),
     ).resolves.toBeTruthy();
   });
 
   it("holds the enrollment CHECKs (status set, dates, clearinghouse key shape, opaque evidence reference)", async () => {
     expect(await failure(newEnrollment(ORG_A, commercialPayer, "chk1", "maybe"))).toMatch(/check/i);
-    expect(await failure(newEnrollment(ORG_A, commercialPayer, "chk2", "enrolled", "2026-02-01", "2026-01-01"))).toMatch(/check/i);
+    expect(
+      await failure(
+        newEnrollment(ORG_A, commercialPayer, "chk2", "enrolled", "2026-02-01", "2026-01-01"),
+      ),
+    ).toMatch(/check/i);
     expect(await failure(newEnrollment(ORG_A, commercialPayer, "Bad Key!"))).toMatch(/check/i);
     expect(
       await failure(
@@ -221,11 +289,19 @@ describe.skipIf(!DB_URL)("M41 commercial eligibility and enrollment - LIVE Postg
   });
 
   it("defaults a plan's staleness policy to warn / 30 days and holds its CHECKs", async () => {
-    const row = (await admin.query("SELECT eligibility_staleness_policy AS p, eligibility_max_age_days AS d FROM commercial_payer_plan WHERE id = $1", [planA])).rows[0];
+    const row = (
+      await admin.query(
+        "SELECT eligibility_staleness_policy AS p, eligibility_max_age_days AS d FROM commercial_payer_plan WHERE id = $1",
+        [planA],
+      )
+    ).rows[0];
     expect(row).toEqual({ p: "warn", d: 30 });
     const set = (policy: string, days: number) =>
       asOrg(ORG_A, () =>
-        app.query("UPDATE commercial_payer_plan SET eligibility_staleness_policy = $2, eligibility_max_age_days = $3, updated_at = now() WHERE id = $1", [planA, policy, days]),
+        app.query(
+          "UPDATE commercial_payer_plan SET eligibility_staleness_policy = $2, eligibility_max_age_days = $3, updated_at = now() WHERE id = $1",
+          [planA, policy, days],
+        ),
       );
     expect((await set("block", 14)).rowCount).toBe(1);
     expect(await failure(set("off", 14))).toMatch(/check/i);
@@ -241,15 +317,25 @@ describe.skipIf(!DB_URL)("M41 commercial eligibility and enrollment - LIVE Postg
     );
     expect(cols.rows.length).toBeGreaterThan(20);
     for (const c of cols.rows) {
-      expect(c.column_name, `${c.table_name}.${c.column_name}`).not.toMatch(/member|subscriber|mbi|ssn|name|dob|birth|payload|response|body|raw/i);
+      expect(c.column_name, `${c.table_name}.${c.column_name}`).not.toMatch(
+        /member|subscriber|mbi|ssn|name|dob|birth|payload|response|body|raw/i,
+      );
     }
   });
 
   it("records enrollment and check writes in the audit trail", async () => {
-    const before = (await admin.query("SELECT count(*)::int AS n FROM audit_event WHERE resource_kind IN ('commercial_payer_enrollment','commercial_eligibility_check')")).rows[0].n;
+    const before = (
+      await admin.query(
+        "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind IN ('commercial_payer_enrollment','commercial_eligibility_check')",
+      )
+    ).rows[0].n;
     await newEnrollment(ORG_A, commercialPayer, "audited");
     await newCheck(ORG_A, planA);
-    const after = (await admin.query("SELECT count(*)::int AS n FROM audit_event WHERE resource_kind IN ('commercial_payer_enrollment','commercial_eligibility_check')")).rows[0].n;
+    const after = (
+      await admin.query(
+        "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind IN ('commercial_payer_enrollment','commercial_eligibility_check')",
+      )
+    ).rows[0].n;
     expect(after - before).toBe(2);
   });
 
@@ -279,7 +365,10 @@ describe.skipIf(!DB_URL)("M41 commercial eligibility and enrollment - LIVE Postg
           transport: {
             async checkEligibility(ctx, req) {
               calls.push({ payerId: ctx.payerId, req });
-              return { ok: true as const, data: { outcome: "active" as const, asOfDate: "2026-10-25" } };
+              return {
+                ok: true as const,
+                data: { outcome: "active" as const, asOfDate: "2026-10-25" },
+              };
             },
           },
         },
@@ -299,38 +388,66 @@ describe.skipIf(!DB_URL)("M41 commercial eligibility and enrollment - LIVE Postg
       });
     };
     const actorA = { organizationId: ORG_A, userId: USER };
-    const args = (key: string) => ({ providerEntityId: PE, patientId: PATIENT, planId: planA, serviceDate: "2026-10-25", idempotencyKey: key });
-    const codeOf = async (p: Promise<unknown>) => ((await p.then(() => null, (e: unknown) => e)) as { code?: string } | null)?.code;
+    const args = (key: string) => ({
+      providerEntityId: PE,
+      patientId: PATIENT,
+      planId: planA,
+      serviceDate: "2026-10-25",
+      idempotencyKey: key,
+    });
+    const codeOf = async (p: Promise<unknown>) =>
+      (
+        (await p.then(
+          () => null,
+          (e: unknown) => e,
+        )) as { code?: string } | null
+      )?.code;
 
     it("refuses unbound, then not enrolled, and never calls the transport", async () => {
       expect(await codeOf(build(null).check(actorA, args("e2e-0")))).toBe("CH_NOT_WIRED");
       // the in_memory route exists for plan A, but this provider entity has no 'in_memory' enrollment in effect on 2026-10-25
-      expect(await codeOf(build("in_memory").check(actorA, args("e2e-1")))).toBe("COMMERCIAL_PROVIDER_NOT_ENROLLED");
+      expect(await codeOf(build("in_memory").check(actorA, args("e2e-1")))).toBe(
+        "COMMERCIAL_PROVIDER_NOT_ENROLLED",
+      );
       expect(calls).toHaveLength(0);
     });
 
     it("refuses a clearinghouse the plan has no route on, even when enrolled there", async () => {
       await newEnrollment(ORG_A, commercialPayer, "stedi", "enrolled", "2026-01-01", null);
-      expect(await codeOf(build("stedi").check(actorA, args("e2e-2")))).toBe("COMMERCIAL_PAYER_NOT_ROUTED");
+      expect(await codeOf(build("stedi").check(actorA, args("e2e-2")))).toBe(
+        "COMMERCIAL_PAYER_NOT_ROUTED",
+      );
       expect(calls).toHaveLength(0);
     });
 
     it("sends once with the routed payer id, stores outcome and as-of date only, and replays by idempotency key", async () => {
       // end any open 'in_memory' enrollment from the earlier tests, then enroll cleanly
-      await admin.query("DELETE FROM commercial_payer_enrollment WHERE clearinghouse_key = 'in_memory'");
+      await admin.query(
+        "DELETE FROM commercial_payer_enrollment WHERE clearinghouse_key = 'in_memory'",
+      );
       await newEnrollment(ORG_A, commercialPayer, "in_memory", "enrolled", "2026-01-01", null);
       const svc = build("in_memory");
       const first = await svc.check(actorA, args("e2e-3"));
       expect(calls).toHaveLength(1);
-      expect(calls[0]).toEqual({ payerId: "CH-9", req: { memberId: MEMBER_ID, serviceDate: "2026-10-25" } });
+      expect(calls[0]).toEqual({
+        payerId: "CH-9",
+        req: { memberId: MEMBER_ID, serviceDate: "2026-10-25" },
+      });
       expect(first).toMatchObject({ outcome: "active", asOfDate: "2026-10-25", replayed: false });
 
       const second = await svc.check(actorA, args("e2e-3"));
       expect(calls).toHaveLength(1);
       expect(second).toMatchObject({ id: first.id, replayed: true });
 
-      const stored = (await admin.query("SELECT * FROM commercial_eligibility_check WHERE id = $1", [first.id])).rows[0];
-      expect(stored).toMatchObject({ outcome: "active", clearinghouse_payer_id: "CH-9", patient_payer_id: COVERAGE_ID, checked_by_user_id: USER });
+      const stored = (
+        await admin.query("SELECT * FROM commercial_eligibility_check WHERE id = $1", [first.id])
+      ).rows[0];
+      expect(stored).toMatchObject({
+        outcome: "active",
+        clearinghouse_payer_id: "CH-9",
+        patient_payer_id: COVERAGE_ID,
+        checked_by_user_id: USER,
+      });
       expect(JSON.stringify([stored, first, second, logs])).not.toContain(MEMBER_ID);
 
       const audit = await admin.query(
@@ -342,25 +459,46 @@ describe.skipIf(!DB_URL)("M41 commercial eligibility and enrollment - LIVE Postg
     });
 
     it("reports freshness from the stored check under the plan policy", async () => {
-      const latest = await build("in_memory").latest(actorA, { providerEntityId: PE, patientId: PATIENT, planId: planA });
+      const latest = await build("in_memory").latest(actorA, {
+        providerEntityId: PE,
+        patientId: PATIENT,
+        planId: planA,
+      });
       expect(latest.latest?.outcome).toBe("active");
       expect(latest.freshness.severity).toBe("pass");
-      const none = await build("in_memory").latest(actorA, { providerEntityId: PE, patientId: "00000000-0000-4000-8000-0000000000a9", planId: planA });
+      const none = await build("in_memory").latest(actorA, {
+        providerEntityId: PE,
+        patientId: "00000000-0000-4000-8000-0000000000a9",
+        planId: planA,
+      });
       expect(none.freshness).toMatchObject({ status: "missing", severity: "warning" });
     });
 
     it("a read scoped to another provider entity sees none of this provider entity's checks", async () => {
       const svc = build("in_memory");
       const otherPe = "00000000-0000-4000-8000-0000000000e9";
-      expect((await svc.list(actorA, { providerEntityId: PE, patientId: PATIENT })).length).toBeGreaterThan(0);
-      expect(await svc.list(actorA, { providerEntityId: otherPe, patientId: PATIENT })).toHaveLength(0);
-      const latest = await svc.latest(actorA, { providerEntityId: otherPe, patientId: PATIENT, planId: planA });
+      expect(
+        (await svc.list(actorA, { providerEntityId: PE, patientId: PATIENT })).length,
+      ).toBeGreaterThan(0);
+      expect(
+        await svc.list(actorA, { providerEntityId: otherPe, patientId: PATIENT }),
+      ).toHaveLength(0);
+      const latest = await svc.latest(actorA, {
+        providerEntityId: otherPe,
+        patientId: PATIENT,
+        planId: planA,
+      });
       expect(latest.latest).toBeNull();
       expect(latest.freshness.status).toBe("missing");
     });
 
     it("does not see another tenant's plan (404) and the admin service creates an enrollment through RLS", async () => {
-      const e = (await build("in_memory").check({ organizationId: ORG_B, userId: USER }, args("e2e-4")).then(() => null, (x: unknown) => x)) as { code?: string };
+      const e = (await build("in_memory")
+        .check({ organizationId: ORG_B, userId: USER }, args("e2e-4"))
+        .then(
+          () => null,
+          (x: unknown) => x,
+        )) as { code?: string };
       expect(e.code).toBe("NOT_FOUND");
       const admSvc = createCommercialAdminService(buildDrizzleEligibilityStore(handle.db));
       const row = await admSvc.createEnrollment(actorA, {
@@ -373,11 +511,28 @@ describe.skipIf(!DB_URL)("M41 commercial eligibility and enrollment - LIVE Postg
         evidenceRef: "ticket#4521",
       });
       expect(row.status).toBe("pending");
-      const dup = await admSvc.createEnrollment(actorA, { providerEntityId: PE, payerId: commercialPayer, clearinghouseKey: "svc-created", status: "pending", effectiveFrom: "2026-06-01", effectiveTo: null, evidenceRef: null }).then(() => null, (x: unknown) => x);
+      const dup = await admSvc
+        .createEnrollment(actorA, {
+          providerEntityId: PE,
+          payerId: commercialPayer,
+          clearinghouseKey: "svc-created",
+          status: "pending",
+          effectiveFrom: "2026-06-01",
+          effectiveTo: null,
+          evidenceRef: null,
+        })
+        .then(
+          () => null,
+          (x: unknown) => x,
+        );
       expect((dup as { code?: string }).code).toBe("CONFLICT");
       const patched = await admSvc.patchEnrollment(actorA, PE, row.id, { status: "enrolled" });
       expect(patched.status).toBe("enrolled");
-      await expect(admSvc.patchEnrollment({ organizationId: ORG_B, userId: USER }, PE, row.id, { status: "suspended" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+      await expect(
+        admSvc.patchEnrollment({ organizationId: ORG_B, userId: USER }, PE, row.id, {
+          status: "suspended",
+        }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
     });
   });
 });

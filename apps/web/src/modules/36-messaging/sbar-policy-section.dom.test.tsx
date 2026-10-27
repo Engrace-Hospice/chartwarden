@@ -1,8 +1,8 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 3.3: the SBAR policy panel for a template manager. Tighten-only: the platform floor is the lowest value offered,
 // the server's floor refusal is shown, and the panel is absent when the policy cannot be read (403 / flag off).
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { SbarPolicySection } from "./sbar-policy-section";
 

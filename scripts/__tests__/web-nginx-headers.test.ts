@@ -65,7 +65,9 @@ describe("deploy/production SPA security headers (SECURITY_HARDENING §9.6)", ()
     const csp = snippet.match(/Content-Security-Policy "([^"]*)"/)?.[1] ?? "";
     expect(csp).toMatch(/img-src [^;]* https:;/);
     expect(csp).toMatch(/frame-src [^;]* https:;/);
-    expect(read(".github/workflows/release-tenant-web.yml")).toContain("CSP_STORAGE_ORIGIN=https://storage.");
+    expect(read(".github/workflows/release-tenant-web.yml")).toContain(
+      "CSP_STORAGE_ORIGIN=https://storage.",
+    );
   });
 
   it("smoke.sh asserts the headers on the live SPA response", () => {

@@ -1,7 +1,7 @@
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 // GAP-048: the incident lifecycle writes (submit / resolve / close / reopen) are reachable from the UI. Asserts the
 // RECORDED FETCH CALLS (method, path, body), not a spy over the client, and that a server refusal is shown.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IncidentActions } from "./incident-actions";
 import type { IncidentLifecycleState } from "./incident-lifecycle";

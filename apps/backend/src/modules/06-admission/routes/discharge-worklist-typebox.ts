@@ -65,7 +65,8 @@ export const DischargeWorklistItemSchema = Type.Object({
     Nullable(
       Type.String({
         format: "date-time",
-        description: "qio_review_open only: the soonest unsatisfied typed deadline; null = none typed.",
+        description:
+          "qio_review_open only: the soonest unsatisfied typed deadline; null = none typed.",
       }),
     ),
   ),

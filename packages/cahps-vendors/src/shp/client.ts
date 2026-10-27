@@ -131,5 +131,9 @@ function parseVendorJobId(body: string): string {
   } catch {
     // fall through to the structured error below
   }
-  throw new ChartWardenError("CAHPS_PUSH_REJECTED", "SHP intake response did not carry a jobId", 502);
+  throw new ChartWardenError(
+    "CAHPS_PUSH_REJECTED",
+    "SHP intake response did not carry a jobId",
+    502,
+  );
 }

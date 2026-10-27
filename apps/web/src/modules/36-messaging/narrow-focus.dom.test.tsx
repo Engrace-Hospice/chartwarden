@@ -1,8 +1,8 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // Opening a conversation from the inbox at <=767px unmounts the list the user was on, so focus would fall to <body>.
 // It must land on the thread heading (mirroring Back -> "Conversations" heading) - and only for a user pick: never on
 // wide layouts (auto-select), a deep link, or a realtime refresh.
 import { fireEvent, render, screen } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";

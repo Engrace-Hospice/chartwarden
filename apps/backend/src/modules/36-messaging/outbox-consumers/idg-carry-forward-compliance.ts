@@ -1,3 +1,5 @@
+import type { AlertEmitter } from "@chartwarden/messaging";
+import type { AlertPayloadEntry } from "@chartwarden/types";
 // apps/backend/src/modules/36-messaging/outbox-consumers/idg-carry-forward-compliance.ts — M36's consumer of
 // `m14.action_item.carry_forward`: raises the CRITICAL typed alert `m14.action_item.carry_forward.compliance`
 // (M14 §2.7 / D8, alert catalog in 14-idg/alerts-by-m14.ts) when — and only when — an action item's carry-forward
@@ -27,8 +29,6 @@
 // RELAY, NOT A REQUEST: `handle` runs in the outbox relay. It opens no tenant reads itself — `alerts.emit` and the
 // membership lookup each wrap their own `withOrgContext` with the event's org id.
 import { Value } from "@sinclair/typebox/value";
-import type { AlertEmitter } from "@chartwarden/messaging";
-import type { AlertPayloadEntry } from "@chartwarden/types";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 
 export const IDG_CARRY_FORWARD_COMPLIANCE_CONSUMER = {

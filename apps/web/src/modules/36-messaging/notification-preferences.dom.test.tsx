@@ -1,7 +1,7 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 4.6 - my notification preferences (`/messaging/preferences`): flag off is absent, locked quiet-hours rows say why, a save is one PUT,
 // a server refusal keeps the draft, unsaved changes are guarded, axe clean.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NotificationPreferences } from "./notification-preferences";

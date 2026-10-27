@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/33-reporting/events-by-m33.ts — Module 33's outbox-event contributions
 // (spec §4.10 Outbox Event Catalog). The full `m33.*` taxonomy keyed on M33's own resources, under the
 // `m33.` namespace (M01 D8 outbox_event_catalog / M03 D9 / M04 D9). check-fitness-gaps.ts scans this
@@ -14,7 +15,6 @@
 // transaction as the mutation (M1 §25.5/§25.6). The matching M36 alert payloads ship in
 // packages/reporting/src/alerts.ts (§4.9).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

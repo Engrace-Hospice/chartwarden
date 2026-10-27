@@ -1,3 +1,4 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/05-patient — the patient chart's "Assign care team member" dialog (M5 §4.3).
 //
 // The dialog posted `{ clinicianMembershipId, role }` to POST /api/v1/patients/:id/assignments behind an
@@ -5,7 +6,6 @@
 // fields — so EVERY assignment answered 400 "request validation failed" in production. These tests
 // assert on the RECORDED REQUEST BODY, which is the contract the route validates.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";

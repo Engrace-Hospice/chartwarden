@@ -1,3 +1,5 @@
+import { DISCIPLINE_NOTE_ADDENDUM_REASON_MAX } from "@chartwarden/idg";
+import { CHART_PROMOTION_REJECT_REASONS, ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/14-idg/routes/idg-typebox.ts — M14-T05 TypeBox route schemas (§4.2).
 // Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import
 // for a Drizzle one, and so the OpenAPI route scanner skips it. Validation runs through TypeBox `Value` →
@@ -8,8 +10,6 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { DISCIPLINE_NOTE_ADDENDUM_REASON_MAX } from "@chartwarden/idg";
-import { CHART_PROMOTION_REJECT_REASONS, ValidationError } from "@chartwarden/types";
 import { IDG_DECISION_PAYLOAD_SCHEMA } from "../decision-payload-schema";
 import type {
   ActionItemView as ServiceActionItemView,

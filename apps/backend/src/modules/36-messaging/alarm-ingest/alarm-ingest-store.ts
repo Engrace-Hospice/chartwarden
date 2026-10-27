@@ -253,9 +253,7 @@ export function createDrizzleAlarmIngestStore(db: DbClient): AlarmIngestStore {
         await tx
           .update(E)
           .set({ status: outcome, alertId, recipientCount })
-          .where(
-            and(eq(E.organizationId, organizationId), eq(E.id, id), eq(E.status, "received")),
-          );
+          .where(and(eq(E.organizationId, organizationId), eq(E.id, id), eq(E.status, "received")));
       }),
 
     createSource: (actor, input) =>

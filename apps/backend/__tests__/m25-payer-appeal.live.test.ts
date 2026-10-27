@@ -227,7 +227,10 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
       security: { rateLimitEnabled: false },
     });
     registerPayerAppealPathRoutes(app, { payerAppealPathService: pathSvc(seam) });
-    registerPayerAppealRoutes(app, { payerAppealService: appealSvc(seam), laterTierService: tier() });
+    registerPayerAppealRoutes(app, {
+      payerAppealService: appealSvc(seam),
+      laterTierService: tier(),
+    });
     registerCaseViewRoutes(app, { caseViewService: buildDrizzleCaseViewService(fx.handle.db) });
     return app;
   }
@@ -1013,7 +1016,10 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
     });
 
     // no typed notice date: the window is complete but nothing is computed
-    const noNotice = await realAppeal.open(A(), denial, { levelLabel: "L1", levelKind: "internal" });
+    const noNotice = await realAppeal.open(A(), denial, {
+      levelLabel: "L1",
+      levelKind: "internal",
+    });
     expect(noNotice.deadlineSource).toBe("none");
     const noticeless = await realAppeal.getCase(A(), noNotice.id);
     expect(noticeless?.deadlineAt).toBeNull();
@@ -1025,11 +1031,18 @@ describe.skipIf(!DB_URL)("M25 payer appeals (milestone 12a-1) - LIVE Postgres", 
     expect(opened.deadlineSource).toBe("path_rule");
     const c = await realAppeal.getCase(A(), opened.id);
     expect(c?.deadlineAt).toBe((await expectedDeadline(notice))?.toISOString());
-    expect(c).toMatchObject({ pathId: created.id, windowVerified: true, deadlineState: "computed" });
+    expect(c).toMatchObject({
+      pathId: created.id,
+      windowVerified: true,
+      deadlineState: "computed",
+    });
 
     // the route returns the same non-null path and payer name
     const app = makeApp(["appeal.read", "payer_appeal.read"], buildSeamPayerSeam());
-    const res = await app.inject({ method: "GET", url: `/api/v1/denials/${denial2}/payer-appeals` });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/denials/${denial2}/payer-appeals`,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({
       payerName: "Real Seam Payer",

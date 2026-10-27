@@ -1,7 +1,7 @@
+import { SBAR_MAX_SECTION_CHARS } from "@chartwarden/types";
 // apps/backend/src/modules/36-messaging/routes/draft-typebox.ts — WP 2.5 draft request/response schemas (kept apart
 // from draft-routes.ts so the OpenAPI emitter imports schemas only, not the auth stack).
 import { Type } from "@sinclair/typebox";
-import { SBAR_MAX_SECTION_CHARS } from "@chartwarden/types";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const Id = Type.String({ minLength: 1, maxLength: 64 });

@@ -17,7 +17,11 @@ function jsonNumberMap(raw: string, field: string): Record<string, number> {
   try {
     parsed = raw.length === 0 ? {} : JSON.parse(raw);
   } catch {
-    throw new ChartWardenError("VALIDATION_FAILED", `manual result '${field}' is not valid JSON`, 422);
+    throw new ChartWardenError(
+      "VALIDATION_FAILED",
+      `manual result '${field}' is not valid JSON`,
+      422,
+    );
   }
   if (typeof parsed !== "object" || parsed === null) {
     throw new ChartWardenError(

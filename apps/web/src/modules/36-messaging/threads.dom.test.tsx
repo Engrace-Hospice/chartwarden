@@ -1,10 +1,10 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 /**
  * WP 2.2 threads in the web client: the reply affordances on a row, the side panel (open, close, focus, keyboard,
  * in-thread send), jump-to-parent (on screen, and not loaded -> the anchored page), the archived and unavailable states,
  * and refresh on a realtime hint that names the thread.
  */
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import type { ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";

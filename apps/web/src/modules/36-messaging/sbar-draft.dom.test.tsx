@@ -1,8 +1,8 @@
+import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
 // M36 WP 3.3 + WP 2.5: the in-progress SBAR form lives in the server-side draft slot (sealed with the text draft), so it
 // survives a channel switch, a reload and another device; sending or discarding clears only the SBAR part.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";

@@ -22,7 +22,7 @@ import type {
   UpsertConsentOverlayInput,
 } from "@chartwarden/consent";
 import { ConsentRouteError } from "@chartwarden/consent";
-import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { ConsentAccessDeps, ConsentStaffActor } from "../access-scope";
 import { createScopedConsentRouteService } from "../scoped-consent-service";

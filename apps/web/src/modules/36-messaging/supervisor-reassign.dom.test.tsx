@@ -168,7 +168,9 @@ describe("supervisor reassign (G-2)", () => {
     }
     // the offboarding-only reason is never offered to a supervisor, but history still has wording for it
     expect(
-      within(dialog).queryByRole("radio", { name: REASSIGN_REASON_TEXT.assignee_left_organisation }),
+      within(dialog).queryByRole("radio", {
+        name: REASSIGN_REASON_TEXT.assignee_left_organisation,
+      }),
     ).toBeNull();
     expect(REASSIGN_REASON_TEXT.assignee_left_organisation).toBe(
       "The assigned person has left the organisation",

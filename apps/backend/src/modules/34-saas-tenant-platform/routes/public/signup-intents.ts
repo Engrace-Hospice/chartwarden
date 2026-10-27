@@ -1,3 +1,4 @@
+import { ChartWardenError, RateLimitedError } from "@chartwarden/types";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/public/signup-intents.ts — M34 the PUBLIC
 // self-serve signup surface (§4.1 "Public routes (no session)"; §7.1 Phase-3). Three pre-organization,
 // session-less routes that drive a prospect from "interested" → verified email → first-admin acceptance:
@@ -24,7 +25,6 @@
 // is returned to the prospect's email channel (M36), NEVER in the HTTP response, and only its SHA256 hash is
 // persisted (value-capture-denylisted in the audit projection, §3.10).
 import { type Static, Type } from "@sinclair/typebox";
-import { RateLimitedError, ChartWardenError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   AcceptInvitationRequest,

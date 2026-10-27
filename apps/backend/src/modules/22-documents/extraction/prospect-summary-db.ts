@@ -11,10 +11,10 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
+  ChartWardenError,
   DegradedError,
   type DocLensBatchSudStatus,
   NotFoundError,
-  ChartWardenError,
 } from "@chartwarden/types";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { CandidateValueCipher } from "./candidate-value-cipher";

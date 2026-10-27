@@ -1,7 +1,3 @@
-// apps/backend/src/modules/36-messaging/routes/review-typebox.ts - WP 3.8 lifecycle review-queue schemas (request + OpenAPI
-// response). Ids are canonical uuids. The close reason is a closed enum here (a typed 422 names the field); there is no
-// free-text justification anywhere - the code is the justification.
-import { type TSchema, Type } from "@sinclair/typebox";
 import {
   REVIEW_ACTIONS,
   REVIEW_CAUSES,
@@ -11,6 +7,10 @@ import {
   REVIEW_STATES,
   TASK_CLOSE_REASONS,
 } from "@chartwarden/types";
+// apps/backend/src/modules/36-messaging/routes/review-typebox.ts - WP 3.8 lifecycle review-queue schemas (request + OpenAPI
+// response). Ids are canonical uuids. The close reason is a closed enum here (a typed 422 names the field); there is no
+// free-text justification anywhere - the code is the justification.
+import { type TSchema, Type } from "@sinclair/typebox";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });

@@ -1,3 +1,13 @@
+import { requirePermission } from "@chartwarden/auth";
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
+import {
+  type ExternalGriefResource,
+  type ExternalGriefResourceReader,
+  NotFoundError,
+  UnauthorizedError,
+  ValidationError,
+} from "@chartwarden/types";
 // apps/backend/src/modules/40-mdm/grief-resources.ts - M40 `external_grief_resource` catalog (GAP-158).
 //
 // The grief-counseling referral catalog M16 references and M31's bereaved portal lists. TENANT-CURATED reference
@@ -9,16 +19,6 @@
 // asserts its row count: a write that matched nothing is a 404/409, never a silent success.
 import { Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { requirePermission } from "@chartwarden/auth";
-import { type DbClient, schema } from "@chartwarden/db";
-import { withOrgContext } from "@chartwarden/tenancy";
-import {
-  type ExternalGriefResource,
-  type ExternalGriefResourceReader,
-  NotFoundError,
-  UnauthorizedError,
-  ValidationError,
-} from "@chartwarden/types";
 import { and, asc, desc, eq } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 

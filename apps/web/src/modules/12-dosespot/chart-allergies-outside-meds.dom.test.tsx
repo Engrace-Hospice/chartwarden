@@ -1,8 +1,8 @@
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/12-dosespot/chart-allergies-outside-meds.dom.test.tsx — F-238: the prescriber-facing
 // allergy banner and the outside medication list. An UNVERIFIED allergy is drawn, labelled; a failed read is
 // never shown as "no allergies"; reconciling an outside line posts the decision and nothing else.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { AllergyBanner, OutsideMedicationList } from "./chart-allergies-outside-meds";

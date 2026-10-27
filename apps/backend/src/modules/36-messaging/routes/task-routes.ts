@@ -10,7 +10,7 @@
 // Participant rules (creator or assignee only), channel re-visibility and the state machine live in the service; a missing
 // task, a non-participant, a hidden channel and a deleted message are ONE 404. No `Idempotency-Key`: idempotency is the
 // partial unique index (one active task per message and assignee), so no request header is read here.
-import { NotFoundError, UnauthorizedError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { TaskActorRef, TaskService } from "../tasks/task-service";
 import { ThreadParamsSchema, parse } from "./messaging-typebox";
