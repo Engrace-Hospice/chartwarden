@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 // apps/backend/src/modules/25-remittance/ingest/service-drizzle.ts — the Drizzle-backed WX-PR-012
 // implementation of {@link M25IngestService} (see ./service.ts for the full design rationale).
 import { type DbClient, schema } from "@chartwarden/db";
@@ -7,7 +8,6 @@ import {
   parseX12TransactionSetControlNumbers,
 } from "@chartwarden/x12-835-client";
 import type { ParsedClaim835, ParsedRemittanceAdvice } from "@chartwarden/x12-835-client";
-import { createHash } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { autoMatch, classifyPostingOutcome, effectiveCategory, routeAdjustment } from "../domain";
 import type { DenialCategory } from "../domain";
@@ -16,9 +16,9 @@ import type {
   ClaimMatchCandidateProvider,
   ClaimMatchCandidateProviderByPayer,
   M25IngestActor,
-  RawAdviceStore,
   M25IngestService,
   PostAdviceResult,
+  RawAdviceStore,
   ReceiveAdviceInput,
   ReceiveAdviceResult,
   TerminologyLookupPort,
@@ -44,6 +44,7 @@ type AdviceContext = {
   providerEntityId: string;
   receivedAt: Date;
   payerKind: ReceiveAdviceInput["payerKind"];
+  payerId: string;
 };
 
 export type PayeeNpiLookup = (
@@ -111,7 +112,13 @@ function money(n: number): string {
 function contentDigestOf(parsed: ParsedRemittanceAdvice): string {
   const rows = parsed.claims
     .map((c) =>
-      [c.patientControlNumber ?? "", c.statusCode, c.totalCharge, c.totalPayment, c.payerIcn ?? ""].join("|"),
+      [
+        c.patientControlNumber ?? "",
+        c.statusCode,
+        c.totalCharge,
+        c.totalPayment,
+        c.payerIcn ?? "",
+      ].join("|"),
     )
     .sort();
   return createHash("sha256").update(rows.join("\n"), "utf8").digest("hex");
@@ -194,6 +201,7 @@ export function buildDrizzleM25IngestService(
     const candidates = await claimCandidates.candidatesForLine({
       organizationId: actor.organizationId,
       providerEntityId: advice.providerEntityId,
+      payerId: advice.payerId,
       payerIcn: claim.payerIcn,
       patientControlNumber: claim.patientControlNumber,
       patientMemberId: claim.patientMemberId,
@@ -723,6 +731,7 @@ export function buildDrizzleM25IngestService(
               providerEntityId: RA.providerEntityId,
               transactionSetControlNumber: RA.transactionSetControlNumber,
               payerKind: RA.payerKind,
+              payerId: RA.payerId,
               minioObjectKey: RA.minioObjectKey,
               parseStatus: RA.parseStatus,
               receivedAt: RA.receivedAt,
@@ -815,6 +824,7 @@ export function buildDrizzleM25IngestService(
                   providerEntityId: advice.providerEntityId,
                   receivedAt: advice.receivedAt,
                   payerKind: advice.payerKind,
+                  payerId: advice.payerId,
                 },
                 claim,
               );

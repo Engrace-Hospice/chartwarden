@@ -94,6 +94,8 @@ export interface ClaimMatchCandidateProvider {
   candidatesForLine(args: {
     readonly organizationId: string;
     readonly providerEntityId: string;
+    /** The advice's payer (M40 id). Payer-keyed providers (commercial) refuse a claim of any other payer. */
+    readonly payerId?: string;
     readonly payerIcn?: string;
     readonly patientControlNumber?: string;
     readonly patientMemberId?: string;

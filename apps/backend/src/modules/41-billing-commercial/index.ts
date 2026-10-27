@@ -9,6 +9,11 @@ export type {
   CommercialAuthorizationService,
   RecordAuthorizationInput,
 } from "./services/authorization-service";
+export {
+  type CommercialClaimReader,
+  buildCommercialClaimReader,
+  registerM41PublishedSeams,
+} from "./services/remittance-match-seam";
 export { buildCommercialClaimAssemblyService, resolveCoverages } from "./services/claim-assembly";
 export type {
   AssembledCommercialClaim,

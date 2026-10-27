@@ -216,10 +216,10 @@ import {
   buildPrimaryProviderEntityResolver,
   buildProviderEligibilityIdentityReader,
   buildProviderEntityCcnResolver,
-  readProviderIdentityOnTx,
   buildProviderEntityLocationLister,
   buildProviderEntityOrgCheck,
   buildRequiredProviderEntityCcnResolver,
+  readProviderIdentityOnTx,
 } from "./bootstrap/provider-entity-resolver";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
@@ -1014,6 +1014,8 @@ import {
   M23_QUEUES,
   ORG_WIDE_BILLING_SCOPE_ROLES,
   type ProviderCcnPort,
+  buildClaim837iPartiesPortFactory,
+  buildClaim837iProviderReader,
   buildClaimStateService,
   buildClaimValidationContextPort,
   buildClaimValidationRunner,
@@ -1022,10 +1024,9 @@ import {
   buildDdeBeneficiaryPort,
   buildDdeQueueService,
   buildDdeWatchdog,
-  registerDdeAgingAlertWorker,
-  scheduleDdeAgingAlert,
-  createDrizzleDdeAgingStore,
   buildDirectMacGateway,
+  buildDrizzleEdiProfileReader,
+  buildDrizzleEdiProfileService,
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
   buildDrizzleOrgMacJurisdictionReader,
@@ -1033,7 +1034,6 @@ import {
   buildDrizzleRateTableService,
   buildDrizzleRevalidationTargetResolver,
   buildDrizzleSequestrationPolicyService,
-  buildDrizzleEdiProfileService,
   buildDrizzleVisitChargeService,
   buildDrizzleWageIndexService,
   buildHetsEligibilityPort,
@@ -1054,15 +1054,13 @@ import {
   buildM23WorkQueueEnqueuePort,
   buildM23WorkRequestConsumer,
   buildM23WorkerDeps,
-  buildClaim837iPartiesPortFactory,
-  buildClaim837iProviderReader,
-  buildDrizzleEdiProfileReader,
   buildMacJurisdictionLister,
   buildMacSecretCipherFromEnv,
   buildNoticeWindowPort,
   buildSubmissionControlNumberReader,
   buildTransferNoticeService,
   createDrizzleBillingEraseStore,
+  createDrizzleDdeAgingStore,
   createDrizzleDdeChangeStore,
   createM23HetsTransport,
   createM23LaunchGateway,
@@ -1071,6 +1069,7 @@ import {
   mountM23Routes,
   priorElectionClosureForOrg,
   registerBillingErasers,
+  registerDdeAgingAlertWorker,
   registerDdeDailyChangeWorker,
   registerM23AbacPredicates,
   registerM23DomainWorkers,
@@ -1078,6 +1077,7 @@ import {
   registerM23PortalHealthWorker,
   registerM23PublishedSeams,
   registerM23WatchCronWorkers,
+  scheduleDdeAgingAlert,
   scheduleDdeDailyChange,
   scheduleM23Jobs,
   scheduleM23WatchJobs,
@@ -1169,6 +1169,7 @@ import {
   buildM24BackedClaimMatchCandidateProvider,
   buildM25EdiReceivedConsumer,
   buildM25WorkerDeps,
+  buildM41BackedClaimMatchCandidateProvider,
   buildMedicalReviewReportService,
   buildSeamAppealSourcePorts,
   buildSeamLinkedDocumentPort,
@@ -1741,6 +1742,7 @@ import {
   M40_OUTBOX_EVENTS,
   M40_PLATFORM_JOB_ID,
   buildM29NppesPlatformConsumers,
+  buildPayerNameByX12IdReader,
   createDbBaaStore,
   createDbMdmStore,
   createDbNppesNpiSource,
@@ -1748,7 +1750,6 @@ import {
   facilityKindsForIds,
   facilityPostalCodesForIds,
   getMdmEntityProvider,
-  buildPayerNameByX12IdReader,
   mountMdmRoutes,
   registerM40CronWorkers,
   registerMdmAbacPredicates,
@@ -1768,6 +1769,7 @@ import {
   buildCommercialClaimReadService,
   registerCommercialBillingRoutes,
   registerM41AbacPredicates,
+  registerM41PublishedSeams,
 } from "./modules/41-billing-commercial/index";
 import {
   M41_PLATFORM_JOB_ID,
@@ -2019,6 +2021,8 @@ export function wireModuleSeams(
   // M24 — build the eight §4.3 published reader-seam impls (registration deferred — no live getSeam consumer
   // yet; M24 stays reachable cross-module via its §4.11 outbox events, the M26 unconsumed-seam posture).
   registerM24PublishedSeams(deps.db);
+  // M41 — register the PUBLISHED CommercialClaimReader seam (#725) so M25's 835 auto-match can bind a commercial advice.
+  registerM41PublishedSeams(deps.db);
   // M23 — register the PUBLISHED PatientDaysProvider seam so M27's cost-report Worksheet-D census reconciliation
   // resolves the live billed-and-accepted patient-day aggregate via getSeam (M23's first M1 publish). The M1
   // fail-closed deny-stub stands when no db is present.
@@ -6201,6 +6205,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             claims: {
               medicare: buildM23BackedClaimMatchCandidateProvider(),
               medicaid: buildM24BackedClaimMatchCandidateProvider(),
+              commercial: buildM41BackedClaimMatchCandidateProvider(),
             },
           });
           const m25TpeService = buildDrizzleTpeService(dbHandle.db, {
@@ -12708,6 +12713,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               claims: {
                 medicare: buildM23BackedClaimMatchCandidateProvider(),
                 medicaid: buildM24BackedClaimMatchCandidateProvider(),
+                commercial: buildM41BackedClaimMatchCandidateProvider(),
               },
               terminology: {
                 async lookup(carcCode) {

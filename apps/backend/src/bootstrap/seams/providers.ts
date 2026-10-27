@@ -618,6 +618,10 @@ export const medicaidClaimMatchProviderDenyStub: unknown = denyingSeamProxy(
   "MedicaidClaimMatchProvider",
 );
 
+/** M41 — the commercial sibling of {@link medicaidClaimMatchProviderDenyStub} (#725): M25 resolves this one when the
+ *  advice's `payerKind === "commercial"`. Same degrade, "no candidates" / "no patient id", never a cross-payer match. */
+export const commercialClaimReaderDenyStub: unknown = denyingSeamProxy("CommercialClaimReader");
+
 /** M29 — the §4.11 DiagnosticReport result-value read M28 CONSUMES. Opaque rich-seam; M29 is a Phase-1
  *  placeholder, so this stays fail-closed and M28's DiagnosticReport projection refuses at egress until
  *  M29 registers the real reader. */
