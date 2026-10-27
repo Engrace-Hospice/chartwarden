@@ -1647,6 +1647,12 @@ jobs:
       # A throwaway 32-byte test KEK. It wraps DEKs minted by this run's seed and nothing else; a real
       # deployment's lives in its secret manager (ADR-0045).
       M34_TENANT_KEK: kek-1:Y2ktdGVuYW50LWtlay10ZXN0LTAxMjM0NTY3ODlhYmM=
+      # The billing demo seed (`db:seed:scenario-billing`, #823) seals a MAC submitter secret through
+      # `POST /billing/mac-credentials`, which needs the shared billing KEK (M23 + M24), and submits an Oregon
+      # Medicaid claim, which the route refuses with MEDICAID_STATE_NO_ELECTRONIC_GATEWAY unless the M24 launch
+      # gateway capability gate is on (outside production an unset gate is OFF). Throwaway key, this run only.
+      M24_CREDENTIAL_ENCRYPTION_KEY: Y2ktbTI0LWNyZWRlbnRpYWwta2VrLTAxMjM0NTY3ODk=
+      M24_LAUNCH_GATEWAY_ENABLED: "true"
       # Document upload (documents.spec) needs the MinIO/S3 adapter: without MINIO_* the upload route answers
       # 503 DEGRADED and the SPA drops to its maintenance page. The adapter creates its own buckets.
       MINIO_ENDPOINT: http://localhost:9000
