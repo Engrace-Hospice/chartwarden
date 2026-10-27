@@ -1,9 +1,9 @@
-import { addDaysIso, replacementClosesOn } from "../coverage-intervals";
 // apps/backend/src/modules/05-patient/routes/service.ts — the PatientRouteService + an in-memory
 // slice (M5-T09, §4.2). The routes compose over this; production injects the Drizzle-backed service
 // (writes under withOrgContext so RLS scopes by app.org_id). The slice runs the REAL T06 matcher so
 // the §7.1 admit-no-dup workflow is exercised end-to-end. Pure-ish: no clock except an injected
 // `now()` so the §7.7 60-day SLA is deterministic in tests.
+import { addDaysIso, replacementClosesOn } from "../coverage-intervals";
 import {
   type MatchCandidate,
   type RawSubject,

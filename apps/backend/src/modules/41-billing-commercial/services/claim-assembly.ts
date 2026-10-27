@@ -108,6 +108,13 @@ export function resolveCoverages(
   if (primaryForRange.status === "none" && primaryForRange.onDate === range.from) {
     return { primary: null, secondary: null };
   }
+  if (primaryForRange.status === "ambiguous") {
+    throw new ChartWardenError(
+      "COVERAGE_CHANGES_IN_WINDOW",
+      `Two coverages share the primary rank on ${primaryForRange.onDate}. Correct the patient's coverage ranks before billing.`,
+      409,
+    );
+  }
   if (primaryForRange.status !== "uniform") {
     throw new ChartWardenError(
       "COVERAGE_CHANGES_IN_WINDOW",

@@ -103,10 +103,9 @@ export function buildM23PatientPayerAdapter(
           medicareAdvantageEnrollee: true,
         };
       }
+      // Not Medicare-primary: name the patient's FFS row (never another kind's row) when there is one.
       const resolution: MedicarePrimaryResolution | null =
-        primary.status === "uniform"
-          ? { patientPayerId: primary.coverage.id, medicarePrimary: false }
-          : null;
+        ffs === null ? null : { patientPayerId: ffs.id, medicarePrimary: false };
       return resolution;
     },
   };

@@ -201,7 +201,7 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
       from: "2026-01-15",
       to: "2026-01-15",
     });
-    expect(transition).toEqual({ patientPayerId: commercial.id, medicarePrimary: false });
+    expect(transition).toBeNull(); // no Medicare FFS row is in force that day: commercial is the only primary
     const before = await m23.medicarePrimaryForRange(ORG, patientId, {
       from: "2026-01-01",
       to: "2026-01-14",
@@ -231,7 +231,9 @@ describe.skipIf(!DB_URL)("#845 — patient_payer interval integrity — LIVE Pos
       onDate: "2026-05-10",
     });
     const m23 = buildM23PatientPayerAdapter(() => reader);
-    expect(await m23.medicarePrimaryForRange(ORG, patientId, range)).toBeNull();
+    expect(await m23.medicarePrimaryForRange(ORG, patientId, range)).toMatchObject({
+      medicarePrimary: false,
+    });
 
     // M41's old endpoint sampling missed a rank-1 payer that starts AND ends inside the window over a rank-2 commercial plan.
     const m41Patient = await seedPatient(ORG);
