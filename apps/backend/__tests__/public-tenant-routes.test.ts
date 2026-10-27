@@ -126,7 +126,7 @@ describe("POST /api/v1/public/find-my-organization", () => {
     expect(sent).toHaveLength(0);
   });
 
-  it.each([undefined, "", "not-an-email", "a@b", 42, "x".repeat(300) + "@example.test"])(
+  it.each([undefined, "", "not-an-email", "a@b", 42, `${"x".repeat(300)}@example.test`])(
     "422 for malformed email %j",
     async (bad) => {
       const { app: a } = await build();
@@ -241,6 +241,7 @@ describe("POST /api/v1/public/find-my-organization", () => {
     const text =
       buildFindMyOrganizationEmail(BASE, [{ slug: "acme", displayName: name }])?.text ?? "";
     expect(text).not.toContain("evil.test");
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: the assertion is precisely that no control character survives
     expect(text).not.toMatch(/[\u0000-\u0009\u000b-\u001f]/);
     const line = text.split("\n").find((l) => l.includes("acme.chartwarden.com")) ?? "";
     expect(line).toMatch(/^ {2}.{1,80}: https:\/\/acme\.chartwarden\.com\/$/);

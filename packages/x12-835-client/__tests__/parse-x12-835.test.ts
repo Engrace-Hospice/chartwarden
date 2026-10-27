@@ -206,8 +206,8 @@ describe("parseX12835 fails closed", () => {
 
   it("rejects non-X12 text and garbled delimiters", () => {
     expectDegraded("hello world".repeat(20), "X12_835_PARSE_FAILED", "no ISA");
-    expectDegraded(ok.slice(0, 3) + "A" + ok.slice(4), "X12_835_PARSE_FAILED", "delimiters");
-    expectDegraded(ok.slice(0, 104) + "*" + ok.slice(105), "X12_835_PARSE_FAILED", "not distinct");
+    expectDegraded(`${ok.slice(0, 3)}A${ok.slice(4)}`, "X12_835_PARSE_FAILED", "delimiters");
+    expectDegraded(`${ok.slice(0, 104)}*${ok.slice(105)}`, "X12_835_PARSE_FAILED", "not distinct");
   });
 
   it("rejects amounts with more than two decimals and non-numeric amounts", () => {

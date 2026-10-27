@@ -6,9 +6,10 @@ import { describe, expect, it, vi } from "vitest";
 const disagreements = vi.hoisted(() => ({ value: [] as string[], calls: [] as unknown[][] }));
 vi.mock("@chartwarden/x12-837-client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@chartwarden/x12-837-client")>()),
-  compareStediClaimJsonToX12: (...args: unknown[]) => (
-    disagreements.calls.push(args), disagreements.value
-  ),
+  compareStediClaimJsonToX12: (...args: unknown[]) => {
+    disagreements.calls.push(args);
+    return disagreements.value;
+  },
 }));
 
 import {
@@ -35,8 +36,14 @@ function rig(vendor: string) {
     data: { clearinghouseSubmissionId: "sub-1", replayed: false },
   };
   const port = {
-    submitClaim: async (_c: unknown, s: { payload: unknown }) => (sent.push(s.payload), receipt),
-    submitNotice: async (_c: unknown, s: { payload: unknown }) => (sent.push(s.payload), receipt),
+    submitClaim: async (_c: unknown, s: { payload: unknown }) => {
+      sent.push(s.payload);
+      return receipt;
+    },
+    submitNotice: async (_c: unknown, s: { payload: unknown }) => {
+      sent.push(s.payload);
+      return receipt;
+    },
   };
   const deps = {
     binding: { vendor, transport: port },

@@ -42,8 +42,8 @@ function submittedDate(value: string | undefined): string {
 }
 function sortRequests(items: Amendment[]): Amendment[] {
   const timestamp = (value?: string): number => {
-    const parsed = value ? Date.parse(value) : NaN;
-    return Number.isFinite(parsed) ? parsed : -Infinity;
+    const parsed = value ? Date.parse(value) : Number.NaN;
+    return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
   };
   return [...items].sort((a, b) => timestamp(b.submittedAt) - timestamp(a.submittedAt));
 }
@@ -107,6 +107,7 @@ function AmendmentsForPatient({
   const reload = useCallback(() => setAttempt((value) => value + 1), []);
 
   useEffect(() => {
+    void attempt;
     let active = true;
     setHistory({ status: "loading", items: [] });
     if (!patientId)

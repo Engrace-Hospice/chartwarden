@@ -1,6 +1,6 @@
 // WP 3.2 - clinical link decision logic with in-memory fakes: every denial is the SAME refusal, a null patient is refused
 // for every kind but idg_meeting, the cap and flag live in the sanitiser / route, and open states are identical.
-import { type ClinicalLinkKind, type ClinicalLinkSummary, type RichBody } from "@chartwarden/types";
+import type { ClinicalLinkKind, ClinicalLinkSummary, RichBody } from "@chartwarden/types";
 import { sanitizeRichBody } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {

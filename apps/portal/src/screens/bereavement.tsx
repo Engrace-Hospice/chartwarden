@@ -114,6 +114,7 @@ function BereavementForPatient({
   }, []);
 
   useEffect(() => {
+    void programAttempt;
     let active = true;
     setProgram({ status: "loading", items: [] });
     if (!patientId)
@@ -153,6 +154,7 @@ function BereavementForPatient({
   }, [client, patientId, programAttempt]);
 
   useEffect(() => {
+    void resourcesAttempt;
     let active = true;
     setResources({ status: "loading", items: [] });
     if (!patientId)
@@ -317,6 +319,7 @@ function BereavementForPatient({
                     const url = safeResourceUrl(item.url);
                     const title = item.title?.trim() || "Support resource";
                     return (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: resources carry no id and titles may repeat; read-only list
                       <li key={`${title}-${index}`} className="wx-bereavement-resource">
                         <div className="wx-bereavement-resource__body">
                           {item.kind ? (

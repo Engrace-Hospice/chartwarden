@@ -106,7 +106,9 @@ describe("GET /api/v1/messaging/channels/:id/afterhours-triage rate limit", () =
 
   it("serves when the limiter lets the request through", async () => {
     let seen = 0;
-    const app = makeServer(async () => void (seen += 1), okService());
+    const app = makeServer(async () => {
+      seen += 1;
+    }, okService());
     expect((await get(app, "nurse")).statusCode).toBe(200);
     expect(seen).toBe(1);
     await app.close();

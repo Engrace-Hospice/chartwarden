@@ -131,7 +131,10 @@ describe.skipIf(!DB_URL)("M2 wave-5 hardening — LIVE Postgres", () => {
     let releaseA: () => void = () => undefined;
     const heldA = memberships.withAdminLock(
       ORG_A,
-      () => new Promise<void>((resolve) => (releaseA = resolve)),
+      () =>
+        new Promise<void>((resolve) => {
+          releaseA = resolve;
+        }),
     );
     await new Promise((r) => setTimeout(r, 50));
     await expect(memberships.withAdminLock(ORG_B, async () => "b-ran")).resolves.toBe("b-ran");
@@ -167,7 +170,10 @@ describe.skipIf(!DB_URL)("M2 wave-5 hardening — LIVE Postgres", () => {
       memberships.withAdminLock(
         ORG_A,
         i === 0
-          ? () => new Promise<void>((resolve) => (releaseA = resolve))
+          ? () =>
+              new Promise<void>((resolve) => {
+                releaseA = resolve;
+              })
           : async () => undefined,
       ),
     );

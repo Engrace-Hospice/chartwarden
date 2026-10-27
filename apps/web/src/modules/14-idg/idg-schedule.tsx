@@ -112,6 +112,7 @@ export function IdgSchedule(): JSX.Element {
 
   // The org's sites, for the location picker and to name the location column.
   useEffect(() => {
+    void locationsRetry;
     let active = true;
     setLocationsError(false);
     void client

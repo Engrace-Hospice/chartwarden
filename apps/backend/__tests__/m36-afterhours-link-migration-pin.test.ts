@@ -79,7 +79,7 @@ describe("migration 1132 message_afterhours_triage_link", () => {
     expect(flat).toContain("NEW.message_id <> OLD.message_id");
     expect(flat).toContain("NEW.source_outbox_event_id <> OLD.source_outbox_event_id");
     expect(flat).toContain("IF OLD.outcome IS NOT NULL THEN");
-    expect(flat).toContain("BEFORE UPDATE ON " + T);
+    expect(flat).toContain(`BEFORE UPDATE ON ${T}`);
     expect(flat).toContain("EXECUTE FUNCTION wardenx_audit_trigger()");
   });
 

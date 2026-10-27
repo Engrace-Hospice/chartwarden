@@ -36,6 +36,7 @@ export function PortalNotificationPreferences(): JSX.Element {
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    void attempt;
     let active = true;
     setState({ id: patientId, prefs: null, loading: true, error: null });
     void (async () => {

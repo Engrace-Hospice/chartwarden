@@ -54,6 +54,7 @@ export function PortalSignedIn(): JSX.Element {
   const bindRef = useRef<((id: string) => void) | null>(null);
 
   useEffect(() => {
+    void attempt;
     const version = ++generation.current;
     const current = () => version === generation.current;
     setPhase({ kind: "working" });

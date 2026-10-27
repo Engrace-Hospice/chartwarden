@@ -94,7 +94,6 @@ export function PatientContextTiles({ patientId }: { patientId: string }): JSX.E
           ) : (
             <ul>
               {d.entries.map((a, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: entries carry no id and are never reordered client-side
                 <li key={`${i}-${a.allergen}`}>
                   {a.allergen}
                   {a.severity && a.severity !== "unknown" ? ` (${a.severity})` : ""}

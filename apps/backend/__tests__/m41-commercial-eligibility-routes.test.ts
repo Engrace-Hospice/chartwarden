@@ -213,7 +213,7 @@ let keySeq = 0;
 // A fresh key per request: the M1 idempotency middleware (rightly) answers 409 when a key is reused with a different body.
 const as = (user: string, extra: Record<string, string> = {}) => ({
   "x-test-user": user,
-  "idempotency-key": `idem-${(keySeq += 1)}`,
+  "idempotency-key": `idem-${++keySeq}`,
   ...extra,
 });
 const code = (res: { json(): { error?: { code?: string } } }) => res.json().error?.code;

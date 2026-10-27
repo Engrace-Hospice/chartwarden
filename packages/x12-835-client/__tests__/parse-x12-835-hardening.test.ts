@@ -26,7 +26,7 @@ describe("whitespace and terminator tolerance", () => {
   it("tolerates CRLF, blanks between segments and a leading BOM", () => {
     expect(parse(ok.replace(/~/g, "~\r\n"))).toEqual(parse(ok));
     expect(parse(ok.replace(/~/g, "~ \n  "))).toEqual(parse(ok));
-    expect(parse("﻿" + ok)).toEqual(parse(ok));
+    expect(parse(`\uFEFF${ok}`)).toEqual(parse(ok));
   });
 
   it("fails closed when a bare-LF-terminated file is CRLF-converted (ISA[105] becomes CR)", () => {

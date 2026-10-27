@@ -100,7 +100,7 @@ export interface UrgentServiceDeps {
         readonly assigneeUserId: string;
         readonly addressedRole?: string | undefined;
       },
-    ) => Promise<{ readonly requestId: string } | void>;
+    ) => Promise<{ readonly requestId: string } | undefined>;
   };
   /**
    * ADR-0082 (flag `messaging.afterhours_triage`, absent = off): writes the after-hours request event and its link row in the send

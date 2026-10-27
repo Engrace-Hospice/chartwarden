@@ -212,7 +212,6 @@ function DraftsBody(
     <>
       <ol className="wx-ai-drafts">
         {props.drafts.map((text, index) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: a static list of at most two drafts, identical texts are possible
           <li key={`${index}|${text}`}>
             <p>{text}</p>
             {props.canDraft ? (

@@ -58,7 +58,17 @@ async function setup(opts: { emit?: ReturnType<typeof vi.fn> } = {}) {
       ip: over.ip ?? "203.0.113.5",
     });
   };
-  return { svc, created, send, emit, events, warn, setFlag: (on: boolean) => void (flag = on) };
+  return {
+    svc,
+    created,
+    send,
+    emit,
+    events,
+    warn,
+    setFlag: (on: boolean) => {
+      flag = on;
+    },
+  };
 }
 
 const refusal = { name: "UnauthorizedError", message: "Alarm request refused" };
@@ -171,7 +181,7 @@ describe("alarm ingest: inbound authentication (one refusal for everything)", ()
       svc.ingest({
         keyId: created.keyId,
         timestamp: TS,
-        signature: "v1=" + "0".repeat(64),
+        signature: `v1=${"0".repeat(64)}`,
         rawBody: undefined,
         ip: "x",
       }),

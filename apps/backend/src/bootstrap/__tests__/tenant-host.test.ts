@@ -243,7 +243,12 @@ describe("createCachingTenantHostResolver", () => {
   it("drops the answer of a lookup that was in flight when its organization was invalidated", async () => {
     let release!: (v: TenantHostResolution | null) => void;
     const inner = {
-      resolve: vi.fn(() => new Promise<TenantHostResolution | null>((r) => (release = r))),
+      resolve: vi.fn(
+        () =>
+          new Promise<TenantHostResolution | null>((r) => {
+            release = r;
+          }),
+      ),
     };
     const cached = createCachingTenantHostResolver(inner, { ttlMs: 60_000, now: () => 0 });
     const pending = cached.resolve("sunrise");

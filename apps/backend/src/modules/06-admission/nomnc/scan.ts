@@ -4,7 +4,7 @@
 // product boundary (`m6.expedited_deadline.approaching`) or the one-time `m6.expedited_deadline.overdue`. The
 // bookkeeping mark is written in the SAME transaction as the publish and guarded in the UPDATE itself, so a second
 // replica or a replayed tick cannot page twice. PHI-free payloads: ids, kind and instants only.
-import { type DbClient } from "@chartwarden/db";
+import type { DbClient } from "@chartwarden/db";
 import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import {
   EXPEDITED_ALERT_BOUNDARY_HOURS,

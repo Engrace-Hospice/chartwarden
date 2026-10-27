@@ -40,7 +40,7 @@ describe("alarm ingest core", () => {
       "",
       "v1=",
       "v1=zz",
-      "v2=" + "0".repeat(64),
+      `v2=${"0".repeat(64)}`,
       "0".repeat(64),
       5,
       null,

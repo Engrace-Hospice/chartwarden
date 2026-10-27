@@ -191,7 +191,7 @@ function AdministrationHistory({
   return (
     <ul className="wx-medications-history" aria-label="Recent administrations">
       {sortAdministrations(resource.items).map((item, index) => (
-        // The existing endpoint does not expose administration IDs. Index is safe for this read-only snapshot.
+        // biome-ignore lint/suspicious/noArrayIndexKey: the endpoint exposes no administration id; read-only snapshot, never reordered
         <li key={index}>
           <span className="wx-medications-history__icon" aria-hidden="true">
             <Glyph name="check-circle" size={18} />
@@ -571,6 +571,7 @@ function MedicationPageForPatient({
 
   useEffect(() => {
     void medAttempt;
+    void patientId; // the session is patient-bound: a patient switch refetches
     let active = true;
     setMeds(loading());
     void (async () => {
@@ -601,6 +602,7 @@ function MedicationPageForPatient({
 
   useEffect(() => {
     void historyAttempt;
+    void patientId;
     let active = true;
     setHistory(loading());
     void (async () => {

@@ -65,7 +65,7 @@ const PUBLIC_API_PREFIX = "/api/v1/public/";
 export function mayCarryTenantRefusal(status: number, url?: string): boolean {
   if (!TENANT_REFUSAL_STATUSES.has(status)) return false;
   const path = pathOf(url);
-  return path !== undefined && path.startsWith("/api/") && !path.startsWith(PUBLIC_API_PREFIX);
+  return path?.startsWith("/api/") === true && !path.startsWith(PUBLIC_API_PREFIX);
 }
 
 /** The tenant-unavailable signal for a refusal body `{ error: { code } }`, or null for any other body. Reads a clone. */

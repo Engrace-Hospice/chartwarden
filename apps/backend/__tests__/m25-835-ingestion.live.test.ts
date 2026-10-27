@@ -949,12 +949,9 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       if (!first) throw new Error("need a set");
       const seg = (st02: string, b: string[]) =>
         `${b.map((x) => `${x}~`).join("")}SE*${b.length + 2}*${st02}~`;
-      return (
-        buildRawEdi(isa13, first.st02) +
-        seg(first.st02, body(first.icn, first.npi)) +
-        rest.map((x) => `ST*835*${x.st02}~${seg(x.st02, body(x.icn, x.npi))}`).join("") +
-        `GE*${sets.length}*1~IEA*1*${isa13.padStart(9, "0")}~`
-      );
+      const head = buildRawEdi(isa13, first.st02) + seg(first.st02, body(first.icn, first.npi));
+      const more = rest.map((x) => `ST*835*${x.st02}~${seg(x.st02, body(x.icn, x.npi))}`).join("");
+      return `${head}${more}GE*${sets.length}*1~IEA*1*${isa13.padStart(9, "0")}~`;
     }
 
     const input = (key: string, raw: string): ReceiveAdviceInput => ({
