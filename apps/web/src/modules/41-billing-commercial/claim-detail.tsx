@@ -367,6 +367,21 @@ function ClaimDetailView({ claimId }: { claimId: string }): JSX.Element {
           </p>
         </Panel>
 
+        <Panel title="Sending and history" icon="clock">
+          <ul className="wx-checklist" aria-label="Sending and history">
+            <li>
+              <span className="wx-checklist-text">
+                <Link to={COMMERCIAL_PATHS.sendGate(claim.id)}>Send gate</Link>
+              </span>
+            </li>
+            <li>
+              <span className="wx-checklist-text">
+                <Link to={COMMERCIAL_PATHS.timeline(claim.id)}>Claim history</Link>
+              </span>
+            </li>
+          </ul>
+        </Panel>
+
         <Panel title="Authorization" icon="shield-check">
           <p style={{ margin: "0 0 0.5rem" }}>
             <StatusPill label={auth.label} tone={auth.tone} />
