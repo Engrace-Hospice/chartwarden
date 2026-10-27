@@ -13,7 +13,8 @@
  * Commented-out lines do not count — that is the exact failure this exists to catch.
  *
  * The parse is deliberately textual (no YAML dependency): top-level jobs are the two-space keys under
- * `jobs:`, and `needs:` is read in its scalar, `[a, b]` and block-list forms.
+ * `jobs:`, `needs:` is read in its scalar, `[a, b]` and block-list forms, and a job-level `if:` on `release`/`deploy`
+ * must itself demand the upstream `result == 'success'` (an `if:` replaces the implicit `success()`).
  *
  * Run:  bun run arch:release-gate   (in `arch:fitness`)
  */
@@ -31,20 +32,26 @@ const CI_WORKFLOW = "./.github/workflows/ci.yml";
 interface Job {
   readonly needs: readonly string[];
   readonly uses: string | undefined;
+  /** The job-level `if:` (single-line), when present. */
+  readonly cond: string | undefined;
 }
 
 /** Top-level jobs of a workflow, with their `needs` and `uses`. Comment lines are dropped first. */
 export function parseJobs(yaml: string): ReadonlyMap<string, Job> {
-  const lines = yaml.split("\n").filter((l) => !/^\s*#/.test(l));
+  const lines = yaml
+    .split("\n")
+    .filter((l) => !/^\s*#/.test(l))
+    .map((l) => l.replace(/\s+#.*$/, ""));
   const start = lines.findIndex((l) => /^jobs:\s*$/.test(l));
   const jobs = new Map<string, Job>();
   if (start < 0) return jobs;
   let name: string | undefined;
   let needs: string[] = [];
   let uses: string | undefined;
+  let cond: string | undefined;
   let inNeedsList = false;
   const flush = () => {
-    if (name) jobs.set(name, { needs, uses });
+    if (name) jobs.set(name, { needs, uses, cond });
   };
   for (const line of lines.slice(start + 1)) {
     if (/^\S/.test(line)) break; // next top-level key
@@ -54,6 +61,7 @@ export function parseJobs(yaml: string): ReadonlyMap<string, Job> {
       name = job[1];
       needs = [];
       uses = undefined;
+      cond = undefined;
       inNeedsList = false;
       continue;
     }
@@ -76,8 +84,10 @@ export function parseJobs(yaml: string): ReadonlyMap<string, Job> {
         );
       continue;
     }
-    const u = /^ {4}uses:\s*(\S+)/.exec(line);
+    const u = /^ {4}uses:\s*["']?([^"'\s]+)/.exec(line);
     if (u) uses = u[1];
+    const c = /^ {4}if:\s*(.+?)\s*$/.exec(line);
+    if (c) cond = c[1];
   }
   flush();
   return jobs;
@@ -109,6 +119,20 @@ export function releaseGateProblems(yaml: string): string[] {
     problems.push(`\`release\` does not (transitively) need a job that \`uses: ${CI_WORKFLOW}\``);
   if (!transitiveNeeds(jobs, "deploy").has("release"))
     problems.push("`deploy` does not need `release`");
+  // An `if:` replaces the implicit success(); `!cancelled()`/`always()` would then run the job after a
+  // red CI unless the condition itself demands the upstream success.
+  const ciJobs = [...transitiveNeeds(jobs, "release")].filter(
+    (j) => jobs.get(j)?.uses === CI_WORKFLOW,
+  );
+  const releaseIf = jobs.get("release")?.cond;
+  if (
+    releaseIf !== undefined &&
+    !ciJobs.some((j) => releaseIf.includes(`needs.${j}.result == 'success'`))
+  )
+    problems.push("`release` has an `if:` that does not require the CI job's result == 'success'");
+  const deployIf = jobs.get("deploy")?.cond;
+  if (deployIf !== undefined && !deployIf.includes("needs.release.result == 'success'"))
+    problems.push("`deploy` has an `if:` that does not require needs.release.result == 'success'");
   return problems;
 }
 

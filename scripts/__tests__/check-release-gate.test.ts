@@ -46,6 +46,33 @@ describe("check-release-gate", () => {
     expect(releaseGateProblems(y)).toEqual(["`deploy` does not need `release`"]);
   });
 
+  it("passes the real idiom: !cancelled() plus an explicit success check", () => {
+    const y = wf(
+      `${DEBOUNCE}${VERIFY}  release:\n    needs: [debounce, verify] # gate\n    if: \${{ !cancelled() && needs.verify.result == 'success' }}\n  deploy:\n    needs: release\n    if: \${{ !cancelled() && needs.release.result == 'success' }}\n`,
+    );
+    expect(releaseGateProblems(y)).toEqual([]);
+  });
+
+  it("fails when release's if: runs it regardless of the CI result", () => {
+    for (const cond of ["always()", "${{ !cancelled() && needs.debounce.result == 'skipped' }}"]) {
+      const y = wf(
+        `${DEBOUNCE}${VERIFY}  release:\n    needs: [debounce, verify]\n    if: ${cond}\n${DEPLOY}`,
+      );
+      expect(releaseGateProblems(y)).toEqual([
+        "`release` has an `if:` that does not require the CI job's result == 'success'",
+      ]);
+    }
+  });
+
+  it("fails when deploy's if: does not require release success", () => {
+    const y = wf(
+      `${DEBOUNCE}${VERIFY}  release:\n    needs: verify\n  deploy:\n    needs: release\n    if: always()\n`,
+    );
+    expect(releaseGateProblems(y)).toEqual([
+      "`deploy` has an `if:` that does not require needs.release.result == 'success'",
+    ]);
+  });
+
   it("fails when the needed job calls a different workflow", () => {
     const other = VERIFY.replace("ci.yml", "lint-only.yml");
     const y = wf(`${DEBOUNCE}${other}  release:\n    needs: verify\n${DEPLOY}`);
