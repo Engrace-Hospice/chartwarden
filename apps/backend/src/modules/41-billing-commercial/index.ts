@@ -137,3 +137,8 @@ export { buildDrizzleEligibilityStore } from "./eligibility/store-drizzle";
 export type { EligibilityStore } from "./eligibility/store";
 export { CommercialRefusalError } from "./errors";
 export { type M41RouteServices, mountM41Routes } from "./routes/mount";
+export {
+  type CommercialBillingEraseCounts,
+  type CommercialBillingEraseStore,
+  createDrizzleCommercialBillingEraseStore,
+} from "./erasers/commercial-billing-eraser";

@@ -28,6 +28,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { buildM41OverrideAuditPort } from "../src/m41-override-audit";
 import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
+import { createDrizzleCommercialBillingEraseStore } from "../src/modules/41-billing-commercial/erasers/commercial-billing-eraser";
 import {
   type CommercialActor,
   type CommercialClaimSeams,
@@ -3096,5 +3097,135 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       );
       expect(err).not.toBeNull();
     });
+  });
+  // #838: org erasure. Runs LAST (it erases ORG, which the tests above share): the real eraser, as the real NOBYPASSRLS
+  // chartwarden_destruction role under withOrgContext, empties every M41 table for one org and leaves the other org alone.
+  describe("org erasure as chartwarden_destruction (#838)", () => {
+    const M41_TABLES = [
+      "commercial_payer_plan",
+      "commercial_payer_route",
+      "commercial_contract_rate",
+      "commercial_payer_enrollment",
+      "commercial_eligibility_check",
+      "commercial_authorization",
+      "commercial_claim",
+      "commercial_claim_line",
+      "commercial_claim_state_history",
+      "commercial_validation_run",
+      "commercial_validation_result",
+      "commercial_validation_override",
+      "commercial_submission",
+      "commercial_acknowledgment",
+      "commercial_ack_quarantine",
+      "commercial_ack_cursor",
+    ];
+    const rowsIn = async (org: string) => {
+      const out: Record<string, number> = {};
+      for (const t of M41_TABLES) {
+        out[t] = await scalar<number>(
+          `SELECT count(*)::int AS n FROM ${t} WHERE organization_id=$1`,
+          [org],
+        );
+      }
+      return out;
+    };
+
+    it("deletes every M41 row of one org, none of the other's, and unblocks the RESTRICT FKs", async () => {
+      // ORG: a full graph (claim, line, history, run, result, authorization, plan, route, rate, enrollment via readyClaim) plus
+      // submission, acknowledgment, an UNRESOLVED quarantine row, cursor and eligibility check.
+      const c = await readyClaim({ authorization: true });
+      const submitted = await service("stedi").submit(actor, c.claimId, "key-erase");
+      await admin.query(
+        `INSERT INTO commercial_acknowledgment (organization_id, provider_entity_id, claim_id, submission_id, clearinghouse_key, event_id, stage, disposition)
+         SELECT organization_id, provider_entity_id, claim_id, id, 'stedi', 'erase-ack', 'clearinghouse', 'accepted' FROM commercial_submission WHERE claim_id=$1`,
+        [c.claimId],
+      );
+      await admin.query(
+        `INSERT INTO commercial_ack_quarantine (organization_id, provider_entity_id, clearinghouse_key, event_id, reason)
+         VALUES ($1,$2,'stedi','erase-q','malformed')`,
+        [ORG, providerEntityId],
+      );
+      await admin.query(
+        `INSERT INTO commercial_ack_cursor (organization_id, provider_entity_id, vendor, usage, cursor) VALUES ($1,$2,'stedi','test','c1') ON CONFLICT DO NOTHING`,
+        [ORG, providerEntityId],
+      );
+      await admin.query(
+        `INSERT INTO commercial_eligibility_check (organization_id, provider_entity_id, patient_id, plan_id, patient_payer_id, clearinghouse_key, clearinghouse_payer_id, service_date, outcome, as_of_date, request_id, idempotency_key, checked_by_user_id)
+         VALUES ($1,$2,$3,$4,$5,'stedi','SYNTH01','2026-03-01','active','2026-03-01',$6,'erase-elig',$7)`,
+        [ORG, providerEntityId, c.patientId, c.planId, randomUUID(), randomUUID(), USER],
+      );
+      // ORG_B: its own provider entity, plan, quarantine row and cursor.
+      const existingB = (
+        await admin.query("SELECT id FROM provider_entity WHERE organization_id=$1 LIMIT 1", [
+          ORG_B,
+        ])
+      ).rows[0]?.id as string | undefined;
+      const peB =
+        existingB ??
+        ((
+          await admin.query(
+            `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+             VALUES ($1,'777001','Other Hospice','9988770001','\\x00','12-31') RETURNING id`,
+            [ORG_B],
+          )
+        ).rows[0].id as string);
+      const payerB = (
+        await admin.query(
+          "INSERT INTO payer (kind, name) VALUES ('commercial'::payer_kind, 'Erase B Health') RETURNING id",
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        `INSERT INTO commercial_payer_plan (organization_id, payer_id, plan_name, claim_filing_indicator, authorization_requirement, effective_from)
+         VALUES ($1,$2,'B PPO','CI','not_required','2026-01-01')`,
+        [ORG_B, payerB],
+      );
+      await admin.query(
+        `INSERT INTO commercial_ack_quarantine (organization_id, provider_entity_id, clearinghouse_key, event_id, reason)
+         VALUES ($1,$2,'stedi','erase-qb','malformed')`,
+        [ORG_B, peB],
+      );
+      await admin.query(
+        `INSERT INTO commercial_ack_cursor (organization_id, provider_entity_id, vendor, usage, cursor) VALUES ($1,$2,'stedi','test','cb') ON CONFLICT DO NOTHING`,
+        [ORG_B, peB],
+      );
+      expect(submitted).toBeTruthy();
+      const seeded = await rowsIn(ORG);
+      for (const t of M41_TABLES.filter((x) => x !== "commercial_validation_override")) {
+        expect(seeded[t], t).toBeGreaterThan(0);
+      }
+      const beforeB = await rowsIn(ORG_B);
+
+      await admin.query(`ALTER ROLE chartwarden_destruction LOGIN PASSWORD 'destroy-live'`);
+      const url = new URL(DB_URL as string);
+      url.username = "chartwarden_destruction";
+      url.password = "destroy-live";
+      const destruction = createDbClient({ connectionString: url.toString() });
+      let counts: Record<string, number> = {};
+      try {
+        await withOrgContext(destruction.db, { organizationId: ORG, userId: "" }, async (tx) => {
+          counts = {
+            ...(await createDrizzleCommercialBillingEraseStore(
+              tx as unknown as typeof destruction.db,
+            ).eraseOrgCommercialBilling({ organizationId: ORG })),
+          };
+        });
+      } finally {
+        await destruction.close();
+      }
+
+      const after = await rowsIn(ORG);
+      for (const t of M41_TABLES) {
+        expect(after[t], t).toBe(0);
+        expect(counts[t], t).toBe(seeded[t]);
+      }
+      expect(await rowsIn(ORG_B)).toEqual(beforeB);
+      expect(beforeB.commercial_ack_quarantine).toBe(1);
+      // nothing M41 still references the org or its provider entity, so deleting the org is no longer blocked by M41
+      const blockers = await scalar<number>(
+        `SELECT (SELECT count(*) FROM commercial_claim WHERE organization_id=$1 OR provider_entity_id=$2)::int AS n`,
+        [ORG, providerEntityId],
+      );
+      expect(blockers).toBe(0);
+    }, 120_000);
   });
 });

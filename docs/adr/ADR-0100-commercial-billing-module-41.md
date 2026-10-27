@@ -100,6 +100,7 @@ Built: `commercial_payer_enrollment`, `commercial_eligibility_check`, the per-pl
 - Freshness for a claim must be asked with the claim's date of service (`latest(..., serviceDate)`): a check made for another date of service does not count. Without a service date the newest check of any date is used.
 - `commercial_eligibility_check.location_id` exists for the three-column rule but is not set by the API yet (no M1 location reader is wired here).
 - Rate limiting on the mutating routes relies on the platform-wide limiter; there is no per-route budget.
+- Tenant erasure: every M41 table has a RESTRICT FK to `organization`; migration 1287 grants `chartwarden_destruction` SELECT+DELETE with an `app.org_id`-pinned policy per table, and `eraseOrgCommercialBilling` empties them (see `docs/history/m41-org-erasure.md`, #838). It is not yet bound to an M4 org-destruction driver.
 
 ## Open questions
 
