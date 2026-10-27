@@ -62,7 +62,7 @@ other. A provider acceptance feeds `payer_status_date` with a new source value; 
 **D6 — PHI and idempotency.** An operation payload is PHI-bearing (an NOE, NOTR or claim entry names the beneficiary), so an adapter never logs it, echoes it into a reason, or keeps it beyond the vendor call. Receipts, outcomes and degraded reasons carry codes and ids only. State is
 partitioned by (organization, provider entity, usage), idempotency keys replay an identical operation by the same operator and conflict on a
 different operation or a different operator (an operation is keyed under one person's DDE ID). `controlNumber` is not unique per
-operation, so callers derive a deterministic key per queue item and attempt (#760), and `usage: "test"` must reach only vendor test mode. These are conformance cases D1 to D13, not
+operation, so callers derive a deterministic key per queue item and attempt (#760), and `usage: "test"` must reach only vendor test mode. These are conformance cases D1 to D14, not
 adapter-specific promises.
 
 **D7 — Open vendor questions (issue #762).** Does Episode Alert expose NOE/NOTR, RTP correction, cancel and adjustment
