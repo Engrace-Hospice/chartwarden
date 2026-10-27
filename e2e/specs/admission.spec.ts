@@ -33,6 +33,27 @@ async function pickFromLookup(page: Page, label: string, query: string): Promise
   return text;
 }
 
+/**
+ * "Continue" is always enabled (#329): pressing it on an incomplete step shows that step's field
+ * error and stays put, instead of the button being disabled up front.
+ */
+async function continueBlockedWith(page: Page, message: string): Promise<void> {
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect(page.getByText(message)).toBeVisible();
+}
+
+/**
+ * Complete step 1 ("Intake context"): the patient and the UB-04 admission type and point of origin.
+ * Those three gate "Continue" (`intakeReady` in admission-create), alongside the benefit-period number,
+ * which the screen prefills. The HETS confirmation is only a warning and is left alone.
+ */
+async function completeIntakeContext(page: Page): Promise<void> {
+  await pickFromLookup(page, "Patient", "Whitfield");
+  // By option value (the UB-04 code), not label: the labels are "<code> — <text>" and would break on relabel.
+  await page.getByRole("combobox", { name: /Type of admission/ }).selectOption("3"); // Elective
+  await page.getByRole("combobox", { name: /Point of origin/ }).selectOption("1"); // Non-health care facility
+}
+
 test.describe("Admission", () => {
   test("main path: direct-intake wizard creates an admission for a real patient", async ({
     page,
@@ -43,18 +64,16 @@ test.describe("Admission", () => {
     await page.goto("/admissions/new");
     await expect(page.getByRole("heading", { name: "New admission" })).toBeVisible();
 
-    // Step 1 — Intake context. "Continue" stays disabled until a patient is selected.
+    // Step 1 — Intake context. "Continue" without a patient shows the error and stays on the step.
     const advance = page.getByRole("button", { name: "Continue" });
-    await expect(advance).toBeDisabled();
-    await pickFromLookup(page, "Patient", "Whitfield");
-    await expect(advance).toBeEnabled();
+    await continueBlockedWith(page, "Select a patient before continuing.");
+    await completeIntakeContext(page);
     await advance.click();
 
     // Step 2 — Clinical responsibility. Only the medical director is required.
     await expect(page.getByRole("heading", { name: "Clinical responsibility" })).toBeVisible();
-    await expect(advance).toBeDisabled();
+    await continueBlockedWith(page, "Select a hospice medical director.");
     await pickFromLookup(page, "Hospice medical director", "a");
-    await expect(advance).toBeEnabled();
     await advance.click();
 
     // Step 3 — Review & create. A real browser → generated client → CSRF → Fastify → Drizzle round
@@ -82,15 +101,34 @@ test.describe("Admission", () => {
     await expect(page.getByRole("button", { name: /Review & create/ })).toBeDisabled();
 
     const advance = page.getByRole("button", { name: "Continue" });
-    await expect(advance).toBeDisabled();
-    await pickFromLookup(page, "Patient", "Whitfield");
-    await expect(advance).toBeEnabled();
+    await continueBlockedWith(page, "Select a patient before continuing.");
+    await expect(page.getByRole("heading", { name: "Clinical responsibility" })).toBeHidden();
+    await completeIntakeContext(page);
     await advance.click();
 
     // Step 2 gates independently: an attending physician is optional, the director is not.
-    await expect(advance).toBeDisabled();
+    await expect(page.getByRole("heading", { name: "Clinical responsibility" })).toBeVisible();
+    await continueBlockedWith(page, "Select a hospice medical director.");
+    await expect(page.getByRole("heading", { name: "Review admission" })).toBeHidden();
     await pickFromLookup(page, "Hospice medical director", "a");
-    await expect(advance).toBeEnabled();
+    await advance.click();
+    await expect(page.getByRole("heading", { name: "Review admission" })).toBeVisible();
+  });
+
+  test("step 1 also gates on the admission type and the point of origin", async ({ page }) => {
+    await signInAs(page, ADMIN_ACCOUNT());
+    await page.goto("/admissions/new");
+    const clinical = page.getByRole("heading", { name: "Clinical responsibility" });
+    const advance = page.getByRole("button", { name: "Continue" });
+    await pickFromLookup(page, "Patient", "Whitfield");
+
+    // A patient alone is not enough: each remaining intake gate holds the step on its own.
+    await continueBlockedWith(page, "Choose the type of admission.");
+    await page.getByRole("combobox", { name: /Type of admission/ }).selectOption("3");
+    await continueBlockedWith(page, "Choose the point of origin.");
+    await page.getByRole("combobox", { name: /Point of origin/ }).selectOption("1");
+    await advance.click();
+    await expect(clinical).toBeVisible();
   });
 
   test("accessibility: the direct-intake wizard has no WCAG 2A/AA violations", async ({ page }) => {

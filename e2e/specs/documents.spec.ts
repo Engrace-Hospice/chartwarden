@@ -169,7 +169,12 @@ function documentsLibrary(page: Page): Locator {
  */
 async function createReferral(page: Page): Promise<string> {
   await page.goto("/referrals");
-  await page.getByRole("button", { name: "New Referral" }).click();
+  // "New Referral" is a link (to /referrals/new), and the page carries two of them — the module nav and
+  // the header action — so scope to the nav rather than taking `.first()`.
+  await page
+    .getByRole("navigation", { name: "Admissions pages" })
+    .getByRole("link", { name: "New Referral" })
+    .click();
   await page.waitForURL(/\/referrals\/new/);
   await page.getByLabel("Patient full name").fill(`E2E Referral ${Date.now()}`);
   await page.getByLabel("Source channel").selectOption({ label: "Fax" });
