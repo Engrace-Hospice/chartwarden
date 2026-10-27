@@ -71,7 +71,11 @@ export function ClaimAssemblyWizard(): JSX.Element {
   const dateOrderInvalid =
     form.serviceFrom !== "" && form.serviceTo !== "" && form.serviceFrom > form.serviceTo;
   // #851 — early, non-mutating payer check; the assemble call below stays authoritative.
-  const payerStatus = usePayerPreflight(form.patientId, form.serviceFrom, form.serviceTo);
+  const { status: payerStatus, retry: retryPayerCheck } = usePayerPreflight(
+    form.patientId,
+    form.serviceFrom,
+    form.serviceTo,
+  );
   const payerBlocked = BLOCKING_STATUSES.has(payerStatus);
   const valid =
     form.providerEntityId.trim() !== "" &&
@@ -189,7 +193,7 @@ export function ClaimAssemblyWizard(): JSX.Element {
               The service-from date must be on or before the service-to date.
             </p>
           ) : null}
-          <PayerPreflightNote status={payerStatus} />
+          <PayerPreflightNote status={payerStatus} onRetry={retryPayerCheck} />
           <TobChoice form={form} setForm={setForm} />
         </section>
 
@@ -253,25 +257,37 @@ export function ClaimAssemblyWizard(): JSX.Element {
   );
 }
 
-function PayerPreflightNote({ status }: { status: PayerPreflightStatus }): JSX.Element | null {
+// The polite live region is ALWAYS mounted (a region inserted together with its text is often not announced), and
+// only non-blocking text goes into it; a blocking refusal is a separate role="alert" so it is not announced twice.
+function PayerPreflightNote({
+  status,
+  onRetry,
+}: { status: PayerPreflightStatus; onRetry: () => void }): JSX.Element {
   const message = PAYER_PREFLIGHT_MESSAGES[status];
-  if (!message) return null;
   const blocking = BLOCKING_STATUSES.has(status);
   return (
-    <p
-      id="payer-preflight"
-      role={blocking ? "alert" : "status"}
-      style={{
-        ...hintStyle,
-        color: blocking
-          ? "var(--color-error)"
-          : status === "ok"
-            ? "var(--color-on-surface)"
-            : "var(--color-on-surface-variant)",
-      }}
-    >
-      {message}
-    </p>
+    <>
+      <output aria-atomic="true" style={{ display: "block" }}>
+        {message && !blocking ? (
+          <p style={{ ...hintStyle, color: "var(--color-on-surface)" }}>
+            {message}
+            {status === "error" ? (
+              <>
+                {" "}
+                <button type="button" style={ghostButtonStyle} onClick={onRetry}>
+                  Retry payer check
+                </button>
+              </>
+            ) : null}
+          </p>
+        ) : null}
+      </output>
+      {message && blocking ? (
+        <p id="payer-preflight" role="alert" style={{ ...hintStyle, color: "var(--color-error)" }}>
+          {message}
+        </p>
+      ) : null}
+    </>
   );
 }
 

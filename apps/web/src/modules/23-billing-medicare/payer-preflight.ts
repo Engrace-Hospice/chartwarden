@@ -5,6 +5,7 @@ import { useApiClient } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 
 export interface PayerCoverageRow {
+  id: string;
   coverageKind: string;
   rank: number;
   current: boolean;
@@ -40,6 +41,7 @@ export const PAYER_PREFLIGHT_MESSAGES: Readonly<Partial<Record<PayerPreflightSta
   ok: "Original Medicare is the primary payer for this service period.",
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const day = (v: string): string => v.slice(0, 10);
 const covers = (row: PayerCoverageRow, date: string): boolean =>
   day(row.effectiveFrom) <= date && (row.effectiveTo === null || day(row.effectiveTo) >= date);
@@ -55,9 +57,8 @@ export function classifyPayerCoverage(
 ): PayerPreflightStatus {
   const ffs = bestOfKind(rows, "medicare_ffs", serviceFrom);
   const advantage = bestOfKind(rows, "medicare_advantage", serviceFrom);
-  // The server needs the SAME coverage row at both ends of the range (the list carries no usable row id here, so
-  // identity is the row object itself).
-  if (!ffs || ffs !== bestOfKind(rows, "medicare_ffs", serviceTo)) {
+  // The server needs the SAME coverage row (patient_payer.id) at both ends of the range.
+  if (!ffs || ffs.id !== bestOfKind(rows, "medicare_ffs", serviceTo)?.id) {
     return advantage ? "medicare-advantage" : "no-medicare";
   }
   if (ffs.rank === 1) return "ok";
@@ -69,15 +70,19 @@ export function usePayerPreflight(
   patientId: string,
   serviceFrom: string,
   serviceTo: string,
-): PayerPreflightStatus {
+): { status: PayerPreflightStatus; retry: () => void } {
   const client = useApiClient();
-  const id = patientId.trim();
+  const trimmed = patientId.trim();
+  // The route is an audited PHI read: only ever call it for a well-formed patient id (the lookup field emits the
+  // selected option id or "", but a restored draft or a typed value must never reach the API as partial text).
+  const id = UUID_RE.test(trimmed) ? trimmed : "";
+  const [attempt, setAttempt] = useState(0);
+  const key = `${id}#${attempt}`;
   // rows === null means the request failed.
-  const [loaded, setLoaded] = useState<{ id: string; rows: PayerCoverageRow[] | null } | null>(
+  const [loaded, setLoaded] = useState<{ key: string; rows: PayerCoverageRow[] | null } | null>(
     null,
   );
 
-  // A failed check stays "error" until the patient changes (no retry): the server re-checks on assemble anyway.
   useEffect(() => {
     if (id === "") return;
     let stale = false;
@@ -89,20 +94,23 @@ export function usePayerPreflight(
       })
       .then(({ data, error }) => {
         if (stale) return;
-        setLoaded({ id, rows: error || !Array.isArray(data?.payers) ? null : data.payers });
+        setLoaded({ key, rows: error || !Array.isArray(data?.payers) ? null : data.payers });
       })
       .catch(() => {
-        if (!stale) setLoaded({ id, rows: null });
+        if (!stale) setLoaded({ key, rows: null });
       });
     return () => {
       stale = true;
       controller.abort();
     };
-  }, [client, id]);
+  }, [client, id, key]);
 
+  const retry = () => setAttempt((n) => n + 1);
   // Dates decide coverage; wait for a valid range rather than judging on the `current` flag.
-  if (id === "" || serviceFrom === "" || serviceTo === "" || serviceFrom > serviceTo) return "idle";
-  if (loaded?.id !== id) return "loading";
-  if (loaded.rows === null) return "error";
-  return classifyPayerCoverage(loaded.rows, serviceFrom, serviceTo);
+  if (id === "" || serviceFrom === "" || serviceTo === "" || serviceFrom > serviceTo) {
+    return { status: "idle", retry };
+  }
+  if (loaded?.key !== key) return { status: "loading", retry };
+  if (loaded.rows === null) return { status: "error", retry };
+  return { status: classifyPayerCoverage(loaded.rows, serviceFrom, serviceTo), retry };
 }
