@@ -2093,7 +2093,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       const r = assessments.get(assessmentId);
       if (!r || r.organizationId !== organizationId) return null;
       // The signer of the corrected-of-record chain is the most-recent signed row's signer.
-      return { patientId: r.patientId, originalSignedBy: r.signedBy };
+      return { patientId: r.patientId, originalSignedBy: r.signedBy, rfaKind: r.rfaKind };
     },
     async loadSchedule(organizationId, scheduleId) {
       const r = schedules.get(scheduleId);

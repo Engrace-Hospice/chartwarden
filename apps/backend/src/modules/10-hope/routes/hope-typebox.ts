@@ -234,7 +234,7 @@ export const CorrectTimepointSchema = Type.Object({
   correctionReason: Type.String({ minLength: 1, maxLength: 2000 }),
   ifVersion: Type.Optional(Type.Integer({ minimum: 1 })),
   targetDate: Type.String({ format: "date-time" }),
-  authorDiscipline: AUTHOR_DISCIPLINE,
+  authorDiscipline: SFV_AUTHOR_DISCIPLINE,
   data: HopeData,
 });
 export const InactivateTimepointSchema = Type.Object({

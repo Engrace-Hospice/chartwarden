@@ -62184,7 +62184,7 @@ export interface operations {
                     ifVersion?: number;
                     /** Format: date-time */
                     targetDate: string;
-                    authorDiscipline: "RN" | "NP" | "MD";
+                    authorDiscipline: "RN" | "NP" | "MD" | "LPN" | "LVN";
                     data: {
                         I?: {
                             primaryDiagnosisIcd10?: string;

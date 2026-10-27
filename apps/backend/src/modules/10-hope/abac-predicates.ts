@@ -92,6 +92,9 @@ function isClinicalLead(context: AbacContext): boolean {
 export interface HopeAssessmentAbacFacts {
   readonly patientId: string;
   readonly originalSignedBy: string | null;
+  /** The record's RFA kind: lets the author-discipline predicate apply the SFV rule to an SFV's
+   * draft-edit/sign/correct routes (#850). */
+  readonly rfaKind: string;
 }
 
 /** Loads a HOPE assessment's org-scoped signer + patient facts (in-memory in the slice; Drizzle in prod
@@ -178,8 +181,16 @@ export function buildHopeAbacPredicates(
     hasOrgWideScope(context.roles) || context.providerEntityIds.includes(providerEntityId);
 
   return {
-    "hope.authorDisciplineAllowed": async (context) =>
-      hopeDisciplinesOf(context).some((d) => isHopeAuthorDisciplineAllowed(d)),
+    "hope.authorDisciplineAllowed": async (context, target) => {
+      // An SFV's (RFA-04) correction draft is edited and signed on the generic assessment routes, so a
+      // target naming an SFV row applies the SFV rule (LPN/LVN included). No target (new-timepoint
+      // routes) or any other RFA keeps the RN/NP/MD floor. Unresolvable ids fall to the strict floor.
+      const id = targetStr(target, "id") ?? targetStr(target, "assessmentId");
+      const facts = id ? await resolver.loadAssessment(context.organizationId, id) : null;
+      const allowed =
+        facts?.rfaKind === "04_sfv" ? isSfvAuthorDisciplineAllowed : isHopeAuthorDisciplineAllowed;
+      return hopeDisciplinesOf(context).some((d) => allowed(d));
+    },
     "hope.sfvAuthorAllowed": async (context) =>
       hopeDisciplinesOf(context).some((d) => isSfvAuthorDisciplineAllowed(d)),
     "hope.correctionAuthorAllowed": async (context, target) => {

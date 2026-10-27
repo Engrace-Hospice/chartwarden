@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertAuthorDisciplineAllowed,
   isHopeAuthorDisciplineAllowed,
+  assertAuthorBoundToActor,
   isSfvAuthorDisciplineAllowed,
 } from "../src/recording/discipline";
 import {
@@ -144,6 +145,26 @@ describe("assertSectionQForDischarge — D9 reason branch", () => {
     expect(() => assertSectionQForDischarge("revocation", true)).not.toThrow();
     expect(() => assertSectionQForDischarge("transfer_to_hospice", false)).toThrowError(
       expect.objectContaining({ code: "M10_REQUIRED_SECTION_MISSING" }),
+    );
+  });
+});
+
+describe("author attribution is bound to the actor's own roles (#850)", () => {
+  it("an LPN may attribute an SFV to LPN but not to RN", () => {
+    expect(() => assertAuthorBoundToActor("04_sfv", "LPN", ["lpn"])).not.toThrow();
+    expect(() => assertAuthorBoundToActor("04_sfv", "RN", ["lpn"])).toThrowError(
+      expect.objectContaining({ code: "M10_DISCIPLINE_NOT_PERMITTED", statusCode: 403 }),
+    );
+  });
+  it("an RN may not claim LPN; an LVN-role actor may claim LVN", () => {
+    expect(() => assertAuthorBoundToActor("04_sfv", "LPN", ["rn"])).toThrowError(
+      expect.objectContaining({ code: "M10_DISCIPLINE_NOT_PERMITTED" }),
+    );
+    expect(() => assertAuthorBoundToActor("04_sfv", "LVN", ["lvn", "viewer"])).not.toThrow();
+  });
+  it("a non-SFV record still refuses LPN even when the actor holds the lpn role", () => {
+    expect(() => assertAuthorBoundToActor("02_huv1", "LPN", ["lpn"])).toThrowError(
+      expect.objectContaining({ code: "M10_DISCIPLINE_NOT_PERMITTED" }),
     );
   });
 });

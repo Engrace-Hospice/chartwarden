@@ -36,6 +36,24 @@ export function isSfvAuthorDisciplineAllowed(discipline: DisciplineCode): boolea
 }
 
 /**
+ * #850 — the CMS attribution claimed in the request body must be one of the ACTOR's own role-derived
+ * disciplines (never trust the body: an LPN must not attribute an SFV to "RN"), on top of the
+ * {@link assertAuthorDisciplineAllowed} floor. Raises `M10_DISCIPLINE_NOT_PERMITTED` (403).
+ */
+export function assertAuthorBoundToActor(
+  rfaKind: HopeRfaKind,
+  claimed: DisciplineCode,
+  actorRoleKeys: readonly string[],
+): void {
+  assertAuthorDisciplineAllowed(rfaKind, claimed);
+  require_(
+    actorRoleKeys.some((role) => role.toUpperCase() === claimed),
+    "M10_DISCIPLINE_NOT_PERMITTED",
+    `Discipline '${claimed}' is not one of the acting user's own disciplines.`,
+  );
+}
+
+/**
  * §2.3 / §4.7 — guard the recording path on the author's discipline, branching on `rfa_kind`: an SFV
  * (RFA 04) requires RN/NP/LPN/LVN; every other RFA requires RN/NP/MD. Raises `M10_DISCIPLINE_NOT_PERMITTED`
  * (403). This is the service-layer enforcement behind the M3 ABAC predicate (defense in depth).

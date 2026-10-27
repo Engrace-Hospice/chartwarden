@@ -140462,6 +140462,14 @@
                       {
                         "const": "MD",
                         "type": "string"
+                      },
+                      {
+                        "const": "LPN",
+                        "type": "string"
+                      },
+                      {
+                        "const": "LVN",
+                        "type": "string"
                       }
                     ]
                   },
