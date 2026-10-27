@@ -9,8 +9,11 @@
 # production repository. Then run the verifier (printed at the end) against the restore.env it writes.
 #
 # Environment:
-#   BACKUP_ENV_FILE      (required) env file with the BACKUP_* variables. Use the restore credentials of the off-site
-#                        bucket (read-only), not the backup sidecar's, when the target supports it.
+#   BACKUP_ENV_FILE      (required) env file with the BACKUP_* variables. Use the READ-ONLY restore key of the off-site
+#                        bucket (offsite-policies/restore.json), never the backup sidecar's. Only the variables a
+#                        restore needs are passed on (see RESTORE_ENV_ALLOW); the source MinIO and local-repo secrets
+#                        are dropped even when present.
+#   BACKUP_SECRETS_DIR   optional host directory mounted read-only at /run/secrets, for <NAME>_FILE secrets
 #   BACKUP_IMAGE         image built from this directory (default chartwarden-backup:local)
 #   RESTORE_ID           default: a random hex id
 #   RESTORE_PG_PORT      host port for the restored Postgres (default 55433), bound to 127.0.0.1
@@ -27,6 +30,8 @@ die() {
   log "ERROR: $*"
   exit 1
 }
+# The restore needs the off-site repository, its passphrase and the SSE-C key: nothing else reaches its containers.
+RESTORE_ENV_ALLOW='^(BACKUP_OFFSITE_S3_[A-Z_]+|BACKUP_OFFSITE_CA_FILE|BACKUP_PG_OFFSITE_CIPHER_PASS(_FILE)?|BACKUP_OBJECT_SSE_C_KEY(_FILE)?|BACKUP_PG_STANZA|CHARTWARDEN_DB_NAME)='
 rand_hex() { head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
 now_ms() { # GNU date has %N; BSD/macOS date does not
   local t
@@ -65,6 +70,10 @@ main() {
   local out="${RESTORE_OUT_DIR:-./restore-$id}"
   mkdir -p "$out"
   chmod 700 "$out"
+  envf="$out/.restore-container.env" # global: the EXIT trap runs after main returns
+  grep -E "$RESTORE_ENV_ALLOW" "$BACKUP_ENV_FILE" >"$envf" || die "BACKUP_ENV_FILE holds none of the off-site variables"
+  # EXIT, not ERR: an ERR trap is inherited by $(...) subshells (set -E) and would delete the file mid-run.
+  trap 'rm -f "$envf"' EXIT
   trap 'log "restore failed; inspect, then: restore.sh destroy '"$id"'"' ERR
 
   local t0 t_db t_pg
@@ -74,7 +83,7 @@ main() {
 
   # 1. pgBackRest restore (base backup + WAL replay to the marker's LSN) into the empty volume.
   log "restoring database for snapshot '$snapshot' (restore id $id)"
-  docker run --rm --label "$LABEL=$id" --user postgres --env-file "$BACKUP_ENV_FILE" -e BACKUP_PG_LOCAL_REPO=none \
+  docker run --rm --label "$LABEL=$id" --user postgres --env-file "$envf" -e BACKUP_PG_LOCAL_REPO=none \
     -v "$vol:/var/lib/postgresql" ${BACKUP_CA_MOUNT[@]+"${BACKUP_CA_MOUNT[@]}"} "$IMAGE" cw-backup.sh restore-db "$snapshot" >"$out/marker.json"
   t_db="$(now_ms)"
   local snapshot_id db_name
@@ -83,8 +92,8 @@ main() {
 
   # 2. Start it: WAL replay runs here (restore_command fetches from the off-site repo), then promotion.
   docker run -d --name "$pg" --label "$LABEL=$id" --network "$net" -p "127.0.0.1:$pg_port:5432" \
-    --env-file "$BACKUP_ENV_FILE" -e BACKUP_PG_LOCAL_REPO=none -v "$vol:/var/lib/postgresql" ${BACKUP_CA_MOUNT[@]+"${BACKUP_CA_MOUNT[@]}"} \
-    "$IMAGE" postgres -c archive_mode=off -c "max_locks_per_transaction=${RESTORE_PG_MAX_LOCKS:-4096}" >/dev/null
+    --env-file "$envf" -e BACKUP_PG_LOCAL_REPO=none -v "$vol:/var/lib/postgresql" ${BACKUP_CA_MOUNT[@]+"${BACKUP_CA_MOUNT[@]}"} \
+    "$IMAGE" postgres -c archive_mode=off -c archive_command=/bin/false -c "max_locks_per_transaction=${RESTORE_PG_MAX_LOCKS:-4096}" >/dev/null
   wait_for "restored postgres (WAL replay to the target LSN, then promotion)" pg_promoted "$pg"
   t_pg="$(now_ms)"
 
@@ -103,7 +112,7 @@ main() {
     "${RESTORE_MINIO_IMAGE:-minio/minio:latest}" server /data >/dev/null
   wait_for "restored minio" curl -fs "http://127.0.0.1:$minio_port/minio/health/ready"
   RESTORE_MINIO_ACCESS_KEY="$minio_user" RESTORE_MINIO_SECRET_KEY="$minio_pw" docker run --rm --label "$LABEL=$id" \
-    --network "$net" --user postgres --env-file "$BACKUP_ENV_FILE" -e "RESTORE_MINIO_URL=http://$minio:9000" \
+    --network "$net" --user postgres --env-file "$envf" -e "RESTORE_MINIO_URL=http://$minio:9000" \
     -e RESTORE_MINIO_ACCESS_KEY -e RESTORE_MINIO_SECRET_KEY ${BACKUP_CA_MOUNT[@]+"${BACKUP_CA_MOUNT[@]}"} "$IMAGE" \
     cw-backup.sh restore-objects "$snapshot_id" >"$out/manifest.ndjson.gz"
   local t_end
@@ -133,8 +142,9 @@ main() {
 # BACKUP_OFFSITE_CA_FILE (a private CA for the off-site endpoint) is a path inside the container; mount the host file
 # at the same path when it exists on the host.
 BACKUP_CA_MOUNT=()
+if [ -n "${BACKUP_SECRETS_DIR:-}" ]; then BACKUP_CA_MOUNT+=(-v "$BACKUP_SECRETS_DIR:/run/secrets:ro"); fi
 if [ -n "${BACKUP_OFFSITE_CA_HOST_FILE:-}" ]; then
-  BACKUP_CA_MOUNT=(-v "$BACKUP_OFFSITE_CA_HOST_FILE:${BACKUP_OFFSITE_CA_FILE:?set BACKUP_OFFSITE_CA_FILE too}:ro")
+  BACKUP_CA_MOUNT+=(-v "$BACKUP_OFFSITE_CA_HOST_FILE:${BACKUP_OFFSITE_CA_FILE:?set BACKUP_OFFSITE_CA_FILE too}:ro")
 fi
 
 if [ "${1:-}" = destroy ]; then destroy "${2:?restore id}"; else main "$@"; fi

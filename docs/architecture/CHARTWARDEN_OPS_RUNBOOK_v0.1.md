@@ -802,6 +802,27 @@ the segments in `pg_wal` meanwhile, so watch disk. `backup.stale` with no `snaps
 hangs or died: `dc restart backup`. The common cause after maintenance is `postgres` recreated WITHOUT the overlay
 (archiving off): recreate it with `dc up -d postgres`.
 
+**Keys and lock.** The off-site bucket MUST use Object Lock in COMPLIANCE mode with versioning, and three keys
+with the policies in `deploy/production/backup/offsite-policies/` (WAL-only for the `postgres` container, backup for
+the sidecar, read-only for restores; DR/BCP §4.8.5). Example, the WAL key (`BACKUP_BUCKET` = the bucket name):
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    { "Effect": "Allow", "Action": ["s3:ListBucket"], "Resource": ["arn:aws:s3:::BACKUP_BUCKET"],
+      "Condition": { "StringLike": { "s3:prefix": ["pgbackrest/archive/*"] } } },
+    { "Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject"],
+      "Resource": ["arn:aws:s3:::BACKUP_BUCKET/pgbackrest/archive/*"] }
+  ]
+}
+```
+
+The backup key adds `s3:DeleteObject` (current versions only) and bucket-wide get/put/list; it never has
+`s3:DeleteObjectVersion`, `s3:BypassGovernanceRetention`, `s3:PutObjectRetention` or any `s3:PutBucket*`. The restore
+key is `s3:ListBucket`, `s3:ListBucketVersions`, `s3:GetObject`, `s3:GetObjectVersion`. Secrets live in
+`<deploy dir>/secrets/` (0400, uid 999), never in `.env.production`.
+
 **Never** run `restore.sh` output against the live stack, and never point `backup:verify-restore` at the production
 database: the restore runs with `archive_mode=off` on its own network precisely so it cannot write into the
 production repository.

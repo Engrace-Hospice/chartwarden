@@ -1,44 +1,44 @@
 {
-  "runId": "b41a2a",
-  "startedAt": "2026-10-27T15:24:42.484Z",
+  "runId": "1418f9",
+  "startedAt": "2026-10-27T15:47:39.991Z",
   "scale": "synthetic: 2 tenants seeded through the real M36 routes; 50293 rows in 658 tables (incl. reference data); 6 objects",
   "tooling": {
     "pgbackrest": "pgBackRest 2.60.0",
     "postgres": "postgres (PostgreSQL) 18.6 (Debian 18.6-1.pgdg12+2)",
     "objectStore": "cgr.dev/chainguard/minio:latest (source, restore target and off-site stand-in)",
-    "offsite": "second private MinIO over TLS (throwaway self-signed cert), object lock GOVERNANCE + versioning, bucket-scoped account, SSE-C"
+    "offsite": "second private MinIO over TLS (throwaway self-signed cert), object lock COMPLIANCE + versioning, three scoped keys from deploy/production/backup/offsite-policies (WAL-only in the postgres container, backup in the sidecar, read-only for the restore), secrets passed as files, SSE-C"
   },
   "snapshots": [
     {
-      "id": "20261027T152500Z",
-      "baseBackup": "20261027-152539F (full)",
-      "lsn": "0/E000000",
+      "id": "20261027T154759Z",
+      "baseBackup": "20261027-154900F (full)",
+      "lsn": "0/D000000",
       "objects": 6,
       "bytes": 1630228,
-      "wallMs": 41470
+      "wallMs": 65391
     },
     {
-      "id": "20261027T152543Z",
-      "baseBackup": "20261027-152539F (reused)",
-      "lsn": "0/F045A38",
+      "id": "20261027T154905Z",
+      "baseBackup": "20261027-154900F (reused)",
+      "lsn": "0/E47F5F8",
       "objects": 6,
       "bytes": 1671168,
-      "wallMs": 1174
+      "wallMs": 1257
     }
   ],
   "rto": {
-    "restoreWallMs": 7249,
+    "restoreWallMs": 7528,
     "phasesMs": {
-      "pgBackRest restore from the off-site repo (base backup)": 2929,
-      "Postgres start + WAL replay to the marker LSN + promotion": 2345,
-      "objects: off-site -> fresh MinIO, sha256 checked against the manifest": 1975
+      "pgBackRest restore from the off-site repo (base backup)": 3290,
+      "Postgres start + WAL replay to the marker LSN + promotion": 2352,
+      "objects: off-site -> fresh MinIO, sha256 checked against the manifest": 1886
     },
-    "verifyWallMs": 2776
+    "verifyWallMs": 3214
   },
   "rpo": {
-    "snapshotAt": "2026-10-27T15:25:44.866Z",
-    "failureAt": "2026-10-27T15:25:56.305Z",
-    "windowMs": 11439,
+    "snapshotAt": "2026-10-27T15:49:07.158Z",
+    "failureAt": "2026-10-27T15:49:19.886Z",
+    "windowMs": 12728,
     "rowsLost": {
       "_chartwarden_migration": 0,
       "account": 0,
@@ -705,12 +705,12 @@
     {
       "name": "restore.sh picked the newest complete snapshot (snapshot 2, no base backup of its own)",
       "ok": true,
-      "detail": "restored 20261027T152543Z, expected 20261027T152543Z"
+      "detail": "restored 20261027T154905Z, expected 20261027T154905Z"
     },
     {
       "name": "restored cluster replayed WAL to the snapshot LSN, promoted, and does not archive",
       "ok": true,
-      "detail": "in_recovery=false wal>=0/F045A38:true archive_mode=off"
+      "detail": "in_recovery=false wal>=0/E47F5F8:true archive_mode=off"
     },
     {
       "name": "migrations ledger equals the snapshot's (count and last applied file)",
@@ -778,6 +778,11 @@
       "detail": "2 month seal(s) written from the M4 chain digest across 2 orgs"
     },
     {
+      "name": "least privilege: the WAL key (postgres container) cannot delete or write outside pgbackrest/archive/; the backup key cannot purge versions (COMPLIANCE lock); the restore key is read-only",
+      "ok": true,
+      "detail": "walDeletesMarker=denied, walWritesOutsideArchive=denied, walDeletesArchiveInfo=denied, backupPurgesVersions=denied, restoreWrites=denied, restoreReads=allowed"
+    },
+    {
       "name": "an object deleted before the snapshot is not resurrected (the off-site history keeps it; the restore drops it)",
       "ok": true,
       "detail": "absent after restore"
@@ -795,12 +800,12 @@
     {
       "name": "no secret (cipher passes, SSE-C key, S3/MinIO/Postgres passwords) appears in any backup/restore output",
       "ok": true,
-      "detail": "9 secrets scanned across 8 captured outputs; 0 found"
+      "detail": "11 secrets scanned across 8 captured outputs; 0 found"
     },
     {
       "name": "restore wall time within the documented RTO target (demo scale)",
       "ok": true,
-      "detail": "7.2 s measured vs 3600 s target"
+      "detail": "7.5 s measured vs 3600 s target"
     }
   ],
   "passed": true

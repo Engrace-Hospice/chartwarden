@@ -419,20 +419,25 @@ reports it as `not-in-snapshot`.
 
 Targets (§3): coordinated RPO = snapshot interval (15 min, the Tier 2 target); database-only RPO = last archived WAL
 segment (about 60 s, inside the Tier 1 5 min target) via a manual `--type=time` restore; RTO target 1 h (Tier 1).
-Measured so far only at synthetic scale (`audit/restore-drill/2026-10-27-coordinated-backup-drill.md`: 7.2 s restore of 6 objects and 50k rows);
+Measured so far only at synthetic scale (`audit/restore-drill/2026-10-27-coordinated-backup-drill.md`: 7.5 s restore of 6 objects and 50k rows);
 production figures come from the first witnessed drill.
 
-#### 4.8.4 Environment variables (`.env.production`)
+#### 4.8.4 Configuration: environment (`.env.production`) and secret files (`./secrets/`)
 
-| Variable | Meaning |
-| --- | --- |
-| `BACKUP_OFFSITE_S3_ENDPOINT` | `https://host[:port]` of the off-site S3-compatible target (`http://` is refused) |
-| `BACKUP_OFFSITE_S3_BUCKET`, `BACKUP_OFFSITE_S3_REGION` | the bucket, created with Object Lock + versioning |
-| `BACKUP_OFFSITE_S3_ACCESS_KEY`, `BACKUP_OFFSITE_S3_SECRET_KEY` | a key scoped to that bucket (no delete-version / bypass-governance right) |
-| `BACKUP_OFFSITE_S3_URI_STYLE` | `path` (default) or `host` |
-| `BACKUP_PG_LOCAL_CIPHER_PASS`, `BACKUP_PG_OFFSITE_CIPHER_PASS` | pgBackRest repo1 / repo2 AES-256 passphrases, >= 32 chars, different |
-| `BACKUP_OBJECT_SSE_C_KEY` | base64 of 32 random bytes: the SSE-C key for every off-site object, manifest and marker |
-| `BACKUP_SOURCE_MINIO_ACCESS_KEY`, `BACKUP_SOURCE_MINIO_SECRET_KEY` | the read-only MinIO account `minio-backup-provision` creates |
+Secrets are Docker secrets: files in `<deploy dir>/secrets/` (mode 0400, owner uid 999 = the image's `postgres`),
+mounted at `/run/secrets/` and read through `<NAME>_FILE`; `cw-backup.sh` reads them into shell variables only. Only
+key ids and settings are environment variables. (`<NAME>` env values still work, for restores run by hand.)
+
+| Setting | Where | Meaning |
+| --- | --- | --- |
+| `BACKUP_OFFSITE_S3_ENDPOINT` | env | `https://host[:port]` of the off-site S3-compatible target (`http://` is refused) |
+| `BACKUP_OFFSITE_S3_BUCKET`, `BACKUP_OFFSITE_S3_REGION` | env | the bucket: Object Lock in **COMPLIANCE** mode + versioning, set at creation |
+| `BACKUP_OFFSITE_WAL_ACCESS_KEY` + `secrets/backup_offsite_wal_secret_key` | env + file | the WAL key, the ONLY off-site key inside the `postgres` container (policy `backup/offsite-policies/wal-archive.json`) |
+| `BACKUP_OFFSITE_S3_ACCESS_KEY` + `secrets/backup_offsite_secret_key` | env + file | the backup key, sidecar only (policy `backup/offsite-policies/backup.json`) |
+| `BACKUP_OFFSITE_S3_URI_STYLE` | env | `path` (default) or `host` |
+| `secrets/backup_pg_local_cipher_pass`, `secrets/backup_pg_offsite_cipher_pass` | file | pgBackRest repo1 / repo2 AES-256 passphrases, >= 32 chars, different |
+| `secrets/backup_object_sse_c_key` | file | base64 of 32 random bytes: the SSE-C key for every off-site object, manifest and marker (sidecar only) |
+| `BACKUP_SOURCE_MINIO_ACCESS_KEY` + `secrets/backup_source_minio_secret_key` | env + file | the read-only MinIO account `minio-backup-provision` creates |
 | `OPS_ALERT_WEBHOOK_URL` | the existing ops-notice webhook; failures POST `backup.snapshot_failed` / `backup.snapshot_timeout` / `backup.stale` |
 | `BACKUP_HEARTBEAT_URL` | optional dead-man's switch pinged after each successful snapshot (alerts when the host itself is gone) |
 
@@ -444,14 +449,30 @@ sealed copy, §4.6). Losing them loses every backup: the off-site provider never
 pgBackRest encryption; SSE-C). Restores additionally need `MESSAGING_ENCRYPTION_KEY` and `M34_TENANT_KEK` from the same
 escrow, or restored message bodies cannot be decrypted. Rotation: a new pgBackRest passphrase needs a new stanza (old
 backups stay readable with the old passphrase until they expire); a new SSE-C key applies to new copies only, so keep
-the old key until its last object expires. Use a separate read-only key for restores where the target supports it.
+the old key until its last object expires.
+
+**Three off-site keys, least privilege.** A leaked key must not be able to remove history:
+
+| Key | Holder | Can | Cannot |
+| --- | --- | --- | --- |
+| WAL (`offsite-policies/wal-archive.json`) | `postgres` container (`archive_command`) | list/get/put under `pgbackrest/archive/` | delete anything, touch backups, objects, snapshots |
+| backup (`offsite-policies/backup.json`) | `backup` sidecar | put, get, list, delete CURRENT versions (pgBackRest expire; on a versioned bucket that only adds delete markers) | delete a version, change retention, bypass the lock, change bucket policy |
+| restore (`offsite-policies/restore.json`) | `restore.sh` (operator) | list and read, including old versions | write or delete |
+
+COMPLIANCE-mode Object Lock is what makes this hold: no key, not even the provider account root, can delete a locked
+version before its retention ends, so pgBackRest's `expire` and a stolen backup key only ever add delete markers; the
+data versions age out through a lifecycle rule after the lock. Restoring from before a delete marker uses
+pgBackRest's `--repo-target-time` (versioned S3 repositories). The WAL key still holds the off-site cipher passphrase
+(pgBackRest encrypts WAL client-side), so it can read WAL it is allowed to fetch; it cannot read base backups.
+`backup:coordinated-drill` proves each "cannot" against the real policy files.
 
 #### 4.8.6 Restore procedure (isolated; never onto the running stack)
 
 ```bash
 cd /opt/chartwarden
 docker compose --env-file .env.production -f compose.yml -f compose.backup.yml build postgres # image chartwarden-backup:local
-BACKUP_ENV_FILE=/root/restore.env ./backup/restore.sh latest          # or a snapshot id; prints the restore id
+# restore.env: endpoint/bucket + the READ-ONLY restore key id + *_FILE paths; restore-secrets/: escrowed key files
+BACKUP_ENV_FILE=/root/restore.env BACKUP_SECRETS_DIR=/root/restore-secrets ./backup/restore.sh latest   # or a snapshot id
 docker run --rm --network host --env-file ./restore-<id>/restore.env -v "$PWD/restore-<id>:$PWD/restore-<id>:ro" \
   "$CHARTWARDEN_IMAGE" bun run backup:verify-restore                   # exit 0 = every check passed
 ./backup/restore.sh destroy <id>
@@ -467,7 +488,8 @@ verified restore by pointing a fresh stack at the restored volume and MinIO data
 
 #### 4.8.7 What is operational, not code (tracked in the #857 follow-up issue)
 
-1. Provision the off-site bucket (Object Lock + versioning + lifecycle) and its scoped key; generate and escrow the keys.
+1. Provision the off-site bucket (Object Lock in COMPLIANCE mode + versioning + lifecycle) and its three scoped keys
+   (§4.8.5); generate and escrow the encryption keys; write `./secrets/`.
 2. Set the §4.8.4 variables, build the image, run `minio-backup-provision`, `up -d postgres backup`.
 3. First witnessed restore of production data with `restore.sh` + the verifier; record it under `audit/restore-drill/`.
 4. Recurring cadence: monthly isolated restore + verify (§8.2), quarterly full off-site restore timed against the RTO

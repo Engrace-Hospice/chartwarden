@@ -206,7 +206,7 @@ async function main(): Promise<number> {
       ]).out.trim(),
       objectStore: `${MINIO_IMAGE} (source, restore target and off-site stand-in)`,
       offsite:
-        "second private MinIO over TLS (throwaway self-signed cert), object lock GOVERNANCE + versioning, bucket-scoped account, SSE-C",
+        "second private MinIO over TLS (throwaway self-signed cert), object lock COMPLIANCE + versioning, three scoped keys from deploy/production/backup/offsite-policies (WAL-only in the postgres container, backup in the sidecar, read-only for the restore), secrets passed as files, SSE-C",
     };
     makeCert(certs);
     sh("docker", ["network", "create", "--label", `${LABEL}=${runId}`, net]);
@@ -216,8 +216,12 @@ async function main(): Promise<number> {
     // Off-site stand-in: TLS, object lock, a bucket-scoped account for the backup job.
     const offPort = await freePort();
     const offRoot = { user: `off-admin-${hex(3)}`, pw: hex(16) };
-    const offUser = { user: `cw-backup-${hex(3)}`, pw: hex(16) };
-    secrets.push(offRoot.pw, offUser.pw);
+    const offUsers = {
+      wal: { user: `cw-wal-${hex(3)}`, pw: hex(16) },
+      backup: { user: `cw-backup-${hex(3)}`, pw: hex(16) },
+      restore: { user: `cw-restore-${hex(3)}`, pw: hex(16) },
+    };
+    secrets.push(offRoot.pw, offUsers.wal.pw, offUsers.backup.pw, offUsers.restore.pw);
     sh("docker", [
       "run",
       "-d",
@@ -262,50 +266,57 @@ async function main(): Promise<number> {
       }
     }
     offMc("mb", "--with-lock", "off/cw-offsite");
-    offMc("retention", "set", "--default", "GOVERNANCE", "7d", "off/cw-offsite");
-    const policy = join(work, "offsite-policy.json");
-    writeFileSync(
-      policy,
-      JSON.stringify({
-        Version: "2012-10-17",
-        Statement: [
-          {
-            Effect: "Allow",
-            Action: [
-              "s3:ListBucket",
-              "s3:GetBucketLocation",
-              "s3:ListBucketVersions",
-              "s3:GetBucketObjectLockConfiguration",
-            ],
-            Resource: ["arn:aws:s3:::cw-offsite"],
-          },
-          {
-            Effect: "Allow",
-            Action: [
-              "s3:GetObject",
-              "s3:PutObject",
-              "s3:DeleteObject",
-              "s3:GetObjectVersion",
-              "s3:GetObjectRetention",
-            ],
-            Resource: ["arn:aws:s3:::cw-offsite/*"],
-          },
-        ],
-      }),
-    );
+    offMc("retention", "set", "--default", "COMPLIANCE", "1d", "off/cw-offsite");
+    // The production policy files, bucket substituted: what the drill proves is what the operator installs.
+    const policyDir = join(work, "policies");
+    mkdirSync(policyDir);
+    for (const [name, file] of [
+      ["wal", "wal-archive.json"],
+      ["backup", "backup.json"],
+      ["restore", "restore.json"],
+    ] as const) {
+      const text = readFileSync(join(BACKUP_DIR, "offsite-policies", file), "utf8").replaceAll(
+        "BACKUP_BUCKET",
+        "cw-offsite",
+      );
+      writeFileSync(join(policyDir, `${name}.json`), text);
+    }
     sh("docker", [
       "run",
       "--rm",
       "--entrypoint",
       "sh",
       "-v",
-      `${policy}:/policy.json:ro`,
+      `${policyDir}:/policies:ro`,
       "-e",
       `MC_HOST_off=https://${offRoot.user}:${offRoot.pw}@host.docker.internal:${offPort}`,
       image,
       "-c",
-      `mc --insecure admin policy create off cw-backup /policy.json && mc --insecure admin user add off '${offUser.user}' '${offUser.pw}' && mc --insecure admin policy attach off cw-backup --user '${offUser.user}'`,
+      (["wal", "backup", "restore"] as const)
+        .map(
+          (n) =>
+            `mc --insecure admin policy create off cw-${n} /policies/${n}.json && mc --insecure admin user add off '${offUsers[n].user}' '${offUsers[n].pw}' && mc --insecure admin policy attach off cw-${n} --user '${offUsers[n].user}'`,
+        )
+        .join(" && "),
     ]);
+    /** true when `mc <args>` succeeds as the given off-site account. */
+    const offMcAs = (who: { user: string; pw: string }, ...args: string[]): boolean =>
+      spawnSync(
+        "docker",
+        [
+          "run",
+          "--rm",
+          "--entrypoint",
+          "mc",
+          "-e",
+          `MC_HOST_off=https://${who.user}:${who.pw}@host.docker.internal:${offPort}`,
+          image,
+          "--insecure",
+          "--quiet",
+          ...args,
+        ],
+        { stdio: "ignore" },
+      ).status === 0;
 
     // Source object store (the app's MinIO) on the drill network.
     const srcMinio = await startMinio(runId, "src");
@@ -321,26 +332,54 @@ async function main(): Promise<number> {
       PG_PW,
       APP_PW,
     );
-    writeFileSync(
-      envFile,
-      [
-        `BACKUP_OFFSITE_S3_ENDPOINT=https://host.docker.internal:${offPort}`,
-        "BACKUP_OFFSITE_S3_BUCKET=cw-offsite",
-        "BACKUP_OFFSITE_S3_REGION=us-east-1",
-        `BACKUP_OFFSITE_S3_ACCESS_KEY=${offUser.user}`,
-        `BACKUP_OFFSITE_S3_SECRET_KEY=${offUser.pw}`,
-        "BACKUP_OFFSITE_CA_FILE=/certs/public.crt",
-        `BACKUP_PG_LOCAL_CIPHER_PASS=${keys.local}`,
-        `BACKUP_PG_OFFSITE_CIPHER_PASS=${keys.offsite}`,
-        `BACKUP_OBJECT_SSE_C_KEY=${keys.sse}`,
-        "BACKUP_SOURCE_MINIO_URL=http://srcminio:9000",
-        `BACKUP_SOURCE_MINIO_ACCESS_KEY=${reader.user}`,
-        `BACKUP_SOURCE_MINIO_SECRET_KEY=${reader.pw}`,
-        `CHARTWARDEN_DB_NAME=${DB}`,
-        "",
-      ].join("\n"),
-      { mode: 0o600 },
-    );
+    // Secrets travel as files (/run/secrets, as compose.backup.yml mounts them); env files carry only ids and paths.
+    const secretsDir = join(work, "secrets");
+    mkdirSync(secretsDir);
+    const secretFiles: Record<string, string> = {
+      wal_secret: offUsers.wal.pw,
+      backup_secret: offUsers.backup.pw,
+      restore_secret: offUsers.restore.pw,
+      local_cipher: keys.local,
+      offsite_cipher: keys.offsite,
+      sse_c: keys.sse,
+      source_secret: reader.pw,
+      wrong_secret: "wrong-secret",
+    };
+    for (const [name, value] of Object.entries(secretFiles))
+      writeFileSync(join(secretsDir, name), value, { mode: 0o644 });
+    const common = [
+      `BACKUP_OFFSITE_S3_ENDPOINT=https://host.docker.internal:${offPort}`,
+      "BACKUP_OFFSITE_S3_BUCKET=cw-offsite",
+      "BACKUP_OFFSITE_S3_REGION=us-east-1",
+      "BACKUP_OFFSITE_CA_FILE=/certs/public.crt",
+      "BACKUP_PG_OFFSITE_CIPHER_PASS_FILE=/run/secrets/offsite_cipher",
+      `CHARTWARDEN_DB_NAME=${DB}`,
+    ];
+    const writeEnv = (path: string, lines: readonly string[]): void =>
+      writeFileSync(path, `${[...common, ...lines].join("\n")}\n`, { mode: 0o600 });
+    const srcEnv = join(work, "postgres.env");
+    const restoreEnv = join(work, "restore.env");
+    writeEnv(srcEnv, [
+      `BACKUP_OFFSITE_S3_ACCESS_KEY=${offUsers.wal.user}`,
+      "BACKUP_OFFSITE_S3_SECRET_KEY_FILE=/run/secrets/wal_secret",
+      "BACKUP_PG_LOCAL_CIPHER_PASS_FILE=/run/secrets/local_cipher",
+    ]);
+    writeEnv(envFile, [
+      `BACKUP_OFFSITE_S3_ACCESS_KEY=${offUsers.backup.user}`,
+      "BACKUP_OFFSITE_S3_SECRET_KEY_FILE=/run/secrets/backup_secret",
+      "BACKUP_PG_LOCAL_CIPHER_PASS_FILE=/run/secrets/local_cipher",
+      "BACKUP_OBJECT_SSE_C_KEY_FILE=/run/secrets/sse_c",
+      "BACKUP_SOURCE_MINIO_URL=http://srcminio:9000",
+      `BACKUP_SOURCE_MINIO_ACCESS_KEY=${reader.user}`,
+      "BACKUP_SOURCE_MINIO_SECRET_KEY_FILE=/run/secrets/source_secret",
+    ]);
+    // The restore gets the READ-ONLY key; restore.sh additionally filters what reaches its containers.
+    writeEnv(restoreEnv, [
+      `BACKUP_OFFSITE_S3_ACCESS_KEY=${offUsers.restore.user}`,
+      "BACKUP_OFFSITE_S3_SECRET_KEY_FILE=/run/secrets/restore_secret",
+      "BACKUP_OBJECT_SSE_C_KEY_FILE=/run/secrets/sse_c",
+      "BACKUP_SOURCE_MINIO_SECRET_KEY_FILE=/run/secrets/source_secret",
+    ]);
     const backupRun = (
       args: readonly string[],
       extra: readonly string[] = [],
@@ -367,6 +406,8 @@ async function main(): Promise<number> {
         `${vols.state}:/var/lib/cw-backup`,
         "-v",
         `${certs}:/certs:ro`,
+        "-v",
+        `${secretsDir}:/run/secrets:ro`,
         ...extra,
         image,
         "cw-backup.sh",
@@ -398,7 +439,9 @@ async function main(): Promise<number> {
       "-p",
       `127.0.0.1:${PG_PORT}:5432`,
       "--env-file",
-      envFile,
+      srcEnv,
+      "-v",
+      `${secretsDir}:/run/secrets:ro`,
       "-e",
       `POSTGRES_PASSWORD=${PG_PW}`,
       "-e",
@@ -424,15 +467,8 @@ async function main(): Promise<number> {
     ]);
     const srcAdmin = `postgres://postgres:${PG_PW}@127.0.0.1:${PG_PORT}/${DB}`;
     await waitPg(srcAdmin);
-    sh("docker", [
-      "exec",
-      "-u",
-      "postgres",
-      `${p}-srcpg`,
-      "pgbackrest",
-      "--stanza=chartwarden",
-      "stanza-create",
-    ]);
+    // No stanza-create here: the postgres container holds only the WAL key, which cannot write pgbackrest/backup/.
+    // The first snapshot (sidecar, backup key) creates the stanza; archive-push retries until then.
     const migEnv = {
       ...process.env,
       DATABASE_ADMIN_URL: srcAdmin,
@@ -538,6 +574,38 @@ async function main(): Promise<number> {
     const snapAt = new Date();
     console.log(`  snapshots taken: ${snapshots.map((s) => s.id).join(", ")}`);
 
+    // Least privilege, proven against the real policies: a leaked key cannot remove or rewrite the history.
+    const marker2 = `off/cw-offsite/snapshots/${snap2.snapshotId}/marker.json`;
+    const privilege = {
+      walDeletesMarker: offMcAs(offUsers.wal, "rm", marker2),
+      walWritesOutsideArchive: offMcAs(
+        offUsers.wal,
+        "cp",
+        "/etc/hostname",
+        "off/cw-offsite/snapshots/forged/marker.json",
+      ),
+      walDeletesArchiveInfo: offMcAs(
+        offUsers.wal,
+        "rm",
+        "off/cw-offsite/pgbackrest/archive/chartwarden/archive.info",
+      ),
+      backupPurgesVersions: offMcAs(
+        offUsers.backup,
+        "rm",
+        "--recursive",
+        "--versions",
+        "--force",
+        `off/cw-offsite/snapshots/${snap2.snapshotId}/`,
+      ),
+      restoreWrites: offMcAs(
+        offUsers.restore,
+        "cp",
+        "/etc/hostname",
+        "off/cw-offsite/snapshots/forged/marker.json",
+      ),
+      restoreReads: offMcAs(offUsers.restore, "ls", marker2),
+    };
+
     // Negative control 1: a failing snapshot exits non-zero and posts the ops notice.
     const alerts: string[] = [];
     const hook = createHttpServer((req, res) => {
@@ -556,7 +624,7 @@ async function main(): Promise<number> {
     const badEnv = join(work, "backup-bad.env");
     writeFileSync(
       badEnv,
-      `${readFileSync(envFile, "utf8").replace(`BACKUP_SOURCE_MINIO_SECRET_KEY=${reader.pw}`, "BACKUP_SOURCE_MINIO_SECRET_KEY=wrong-secret")}OPS_ALERT_WEBHOOK_URL=http://host.docker.internal:${hookPort}/ops\n`,
+      `${readFileSync(envFile, "utf8").replace("/run/secrets/source_secret", "/run/secrets/wrong_secret")}OPS_ALERT_WEBHOOK_URL=http://host.docker.internal:${hookPort}/ops\n`,
       { mode: 0o600 },
     );
     try {
@@ -590,7 +658,8 @@ async function main(): Promise<number> {
     const [rPg, rMinio] = [await freePort(), await freePort()];
     const restored = sh("bash", [join(BACKUP_DIR, "restore.sh"), "latest"], {
       ...process.env,
-      BACKUP_ENV_FILE: envFile,
+      BACKUP_ENV_FILE: restoreEnv,
+      BACKUP_SECRETS_DIR: secretsDir,
       BACKUP_IMAGE: image,
       RESTORE_ID: restoreId,
       RESTORE_PG_PORT: String(rPg),
@@ -670,6 +739,19 @@ async function main(): Promise<number> {
           sealedMonths >= 2 &&
           result.checks.some((c) => c.name.startsWith("M4 audit hash chain") && c.ok),
         detail: `${sealedMonths} month seal(s) written from the M4 chain digest across 2 orgs`,
+      },
+      {
+        name: "least privilege: the WAL key (postgres container) cannot delete or write outside pgbackrest/archive/; the backup key cannot purge versions (COMPLIANCE lock); the restore key is read-only",
+        ok:
+          !privilege.walDeletesMarker &&
+          !privilege.walWritesOutsideArchive &&
+          !privilege.walDeletesArchiveInfo &&
+          !privilege.backupPurgesVersions &&
+          !privilege.restoreWrites &&
+          privilege.restoreReads,
+        detail: Object.entries(privilege)
+          .map(([k, v]) => `${k}=${v ? "allowed" : "denied"}`)
+          .join(", "),
       },
       {
         name: "an object deleted before the snapshot is not resurrected (the off-site history keeps it; the restore drops it)",

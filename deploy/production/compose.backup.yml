@@ -9,17 +9,23 @@
 # later `docker compose -f compose.yml up -d postgres` WITHOUT this overlay would turn archiving off: the next snapshot
 # then fails `pgbackrest check` and pages through OPS_ALERT_WEBHOOK_URL. Full procedure: deploy/production/README.md
 # ("Backups and restore") and CHARTWARDEN_DR_BCP_v0.1.md §4.8.
+#
+# Least privilege. Two different off-site keys:
+#   - postgres (archive_command) holds ONLY the WAL key: get/put/list under pgbackrest/archive/ (no delete, no other
+#     prefix; backup/offsite-policies/wal-archive.json). A compromised database container can add WAL, nothing else.
+#   - the backup sidecar holds the backup key (backup/offsite-policies/backup.json): it can write and create delete
+#     markers, never delete a version or bypass retention; the bucket's COMPLIANCE object lock keeps the history.
+# Secrets are Docker secrets (files under ./secrets/, mode 0400, owned by uid 999 = postgres), read via <NAME>_FILE;
+# only non-secret settings and key ids are environment variables.
 
-x-backup-env: &backup-env
+x-backup-common: &backup-common
   CHARTWARDEN_DB_NAME: ${CHARTWARDEN_DB_NAME:-chartwarden}
   BACKUP_OFFSITE_S3_ENDPOINT: ${BACKUP_OFFSITE_S3_ENDPOINT:?set in .env.production (https://...)}
   BACKUP_OFFSITE_S3_BUCKET: ${BACKUP_OFFSITE_S3_BUCKET:?set in .env.production}
   BACKUP_OFFSITE_S3_REGION: ${BACKUP_OFFSITE_S3_REGION:?set in .env.production}
-  BACKUP_OFFSITE_S3_ACCESS_KEY: ${BACKUP_OFFSITE_S3_ACCESS_KEY:?set in .env.production}
-  BACKUP_OFFSITE_S3_SECRET_KEY: ${BACKUP_OFFSITE_S3_SECRET_KEY:?set in .env.production}
   BACKUP_OFFSITE_S3_URI_STYLE: ${BACKUP_OFFSITE_S3_URI_STYLE:-path}
-  BACKUP_PG_LOCAL_CIPHER_PASS: ${BACKUP_PG_LOCAL_CIPHER_PASS:?set in .env.production (>= 32 chars)}
-  BACKUP_PG_OFFSITE_CIPHER_PASS: ${BACKUP_PG_OFFSITE_CIPHER_PASS:?set in .env.production (>= 32 chars, different from the local one)}
+  BACKUP_PG_LOCAL_CIPHER_PASS_FILE: /run/secrets/backup_pg_local_cipher_pass
+  BACKUP_PG_OFFSITE_CIPHER_PASS_FILE: /run/secrets/backup_pg_offsite_cipher_pass
   BACKUP_PG_RETENTION_FULL_LOCAL: ${BACKUP_PG_RETENTION_FULL_LOCAL:-2}
   BACKUP_PG_RETENTION_FULL_OFFSITE: ${BACKUP_PG_RETENTION_FULL_OFFSITE:-13}
 
@@ -27,7 +33,14 @@ services:
   postgres:
     image: chartwarden-backup:local
     build: ./backup
-    environment: *backup-env
+    environment:
+      <<: *backup-common
+      BACKUP_OFFSITE_S3_ACCESS_KEY: ${BACKUP_OFFSITE_WAL_ACCESS_KEY:?set in .env.production (the WAL-only key id)}
+      BACKUP_OFFSITE_S3_SECRET_KEY_FILE: /run/secrets/backup_offsite_wal_secret_key
+    secrets:
+      - backup_pg_local_cipher_pass
+      - backup_pg_offsite_cipher_pass
+      - backup_offsite_wal_secret_key
     volumes:
       - pg-socket:/var/run/postgresql
       - pgbackrest-repo:/var/lib/pgbackrest
@@ -49,17 +62,25 @@ services:
     user: postgres
     command: ["cw-backup.sh", "schedule"]
     environment:
-      <<: *backup-env
-      BACKUP_OBJECT_SSE_C_KEY: ${BACKUP_OBJECT_SSE_C_KEY:?set in .env.production (openssl rand -base64 32)}
+      <<: *backup-common
+      BACKUP_OFFSITE_S3_ACCESS_KEY: ${BACKUP_OFFSITE_S3_ACCESS_KEY:?set in .env.production (the backup key id)}
+      BACKUP_OFFSITE_S3_SECRET_KEY_FILE: /run/secrets/backup_offsite_secret_key
+      BACKUP_OBJECT_SSE_C_KEY_FILE: /run/secrets/backup_object_sse_c_key
       BACKUP_SOURCE_MINIO_URL: http://minio:9000
       BACKUP_SOURCE_MINIO_ACCESS_KEY: ${BACKUP_SOURCE_MINIO_ACCESS_KEY:?set in .env.production}
-      BACKUP_SOURCE_MINIO_SECRET_KEY: ${BACKUP_SOURCE_MINIO_SECRET_KEY:?set in .env.production}
+      BACKUP_SOURCE_MINIO_SECRET_KEY_FILE: /run/secrets/backup_source_minio_secret_key
       BACKUP_SNAPSHOT_INTERVAL_S: ${BACKUP_SNAPSHOT_INTERVAL_S:-900}
       BACKUP_DB_BACKUP_HOUR_UTC: ${BACKUP_DB_BACKUP_HOUR_UTC:-2}
       BACKUP_FULL_BACKUP_WEEKDAY: ${BACKUP_FULL_BACKUP_WEEKDAY:-7}
       BACKUP_MAX_AGE_S: ${BACKUP_MAX_AGE_S:-2700}
       BACKUP_HEARTBEAT_URL: ${BACKUP_HEARTBEAT_URL:-}
       OPS_ALERT_WEBHOOK_URL: ${OPS_ALERT_WEBHOOK_URL:-}
+    secrets:
+      - backup_pg_local_cipher_pass
+      - backup_pg_offsite_cipher_pass
+      - backup_offsite_secret_key
+      - backup_object_sse_c_key
+      - backup_source_minio_secret_key
     volumes:
       # The sidecar reads PGDATA and talks to Postgres over the shared socket (pgBackRest backs up a LOCAL pg1-path).
       - postgres-data:/var/lib/postgresql
@@ -84,15 +105,30 @@ services:
     user: postgres
     command: ["cw-backup.sh", "provision-source-reader"]
     environment:
-      <<: *backup-env
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       BACKUP_SOURCE_MINIO_URL: http://minio:9000
       BACKUP_SOURCE_MINIO_ACCESS_KEY: ${BACKUP_SOURCE_MINIO_ACCESS_KEY:?set in .env.production}
-      BACKUP_SOURCE_MINIO_SECRET_KEY: ${BACKUP_SOURCE_MINIO_SECRET_KEY:?set in .env.production}
+      BACKUP_SOURCE_MINIO_SECRET_KEY_FILE: /run/secrets/backup_source_minio_secret_key
+    secrets:
+      - backup_source_minio_secret_key
     depends_on:
       minio:
         condition: service_healthy
+
+secrets:
+  backup_pg_local_cipher_pass:
+    file: ./secrets/backup_pg_local_cipher_pass
+  backup_pg_offsite_cipher_pass:
+    file: ./secrets/backup_pg_offsite_cipher_pass
+  backup_offsite_wal_secret_key:
+    file: ./secrets/backup_offsite_wal_secret_key
+  backup_offsite_secret_key:
+    file: ./secrets/backup_offsite_secret_key
+  backup_object_sse_c_key:
+    file: ./secrets/backup_object_sse_c_key
+  backup_source_minio_secret_key:
+    file: ./secrets/backup_source_minio_secret_key
 
 volumes:
   pg-socket:

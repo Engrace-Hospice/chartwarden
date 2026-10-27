@@ -19,11 +19,17 @@
 # starts AFTER the LSN is captured, so every row committed at or before the marker's LSN has its object in the
 # snapshot's manifest. Restoring the DB to exactly that LSN plus exactly that manifest gives a consistent pair.
 # Objects created after the LSN are harmless orphans. Failures exit non-zero and POST an ops notice to
-# OPS_ALERT_WEBHOOK_URL (the payload shape of apps/backend/src/bootstrap/platform-ops-notices.ts). Secrets are never
-# echoed: no `set -x`, mc credentials travel in MC_HOST_* env, pgBackRest redacts its secure options.
+# OPS_ALERT_WEBHOOK_URL (the payload shape of apps/backend/src/bootstrap/platform-ops-notices.ts).
+#
+# Secrets: every secret can be given as <NAME>_FILE (a Docker secret under /run/secrets) instead of <NAME>; files are
+# read into shell variables only (never exported). No `set -x`; mc credentials travel in MC_HOST_* env; pgBackRest
+# redacts its secure options in its logs. Known limit: mc has no env/file form for an SSE-C key, so the key is on mc's
+# command line, visible to `ps` INSIDE the backup container (not in logs, not in `docker inspect`).
 set -Eeuo pipefail
 umask 077
 
+SECRET_VARS=(BACKUP_OFFSITE_S3_SECRET_KEY BACKUP_PG_LOCAL_CIPHER_PASS BACKUP_PG_OFFSITE_CIPHER_PASS
+  BACKUP_OBJECT_SSE_C_KEY BACKUP_SOURCE_MINIO_SECRET_KEY RESTORE_MINIO_SECRET_KEY MINIO_ROOT_PASSWORD)
 STANZA="${BACKUP_PG_STANZA:-chartwarden}"
 CONF=/etc/pgbackrest/pgbackrest.conf
 STATE_DIR="${BACKUP_STATE_DIR:-/var/lib/cw-backup}"
@@ -68,17 +74,28 @@ alert() { # kind summary details-json
     log "alert webhook delivery failed"
 }
 
+# EXIT trap (not ERR): `die` and errexit both end in exit, so every failure path alerts exactly once. Subshells do not
+# inherit EXIT traps; pipefail carries their failure to the main shell.
 on_snapshot_failure() {
   local rc="$1"
-  # A subshell (a pipeline stage) only exits; pipefail hands the failure to the main shell, which alerts once.
-  if [ "$BASHPID" != "$$" ]; then exit "$rc"; fi
-  trap - ERR
+  trap - EXIT
+  [ "$rc" != 0 ] || exit 0
   alert backup.snapshot_failed "coordinated backup snapshot failed at step '$STEP'" \
     "$(jq -nc --arg step "$STEP" --arg rc "$rc" --arg host "$(hostname)" '{step:$step, exitCode:($rc|tonumber), host:$host}')"
   exit "$rc"
 }
 
 # ---- configuration ----------------------------------------------------------------------------------------------
+load_secret_files() { # <NAME>_FILE -> <NAME> (shell variable only)
+  local v f
+  for v in "${SECRET_VARS[@]}"; do
+    f="${v}_FILE"
+    [ -n "${!f:-}" ] || continue
+    [ -r "${!f}" ] || die "$f names a file that is not readable"
+    printf -v "$v" '%s' "$(cat "${!f}")"
+  done
+}
+
 offsite_host_port() { # prints "host port"; refuses plain http (backups leave the host)
   local e="$BACKUP_OFFSITE_S3_ENDPOINT"
   case "$e" in
@@ -213,7 +230,7 @@ cmd_snapshot() {
   local db_type="${1:-none}"
   case "$db_type" in full | diff | incr | none) ;; *) die "snapshot type must be full|diff|incr|none" ;; esac
   SNAPSHOT_ID="$(date -u +%Y%m%dT%H%M%SZ)"
-  trap 'on_snapshot_failure $?' ERR
+  trap 'on_snapshot_failure $?' EXIT
   render_conf
   mc_setup
   need BACKUP_SOURCE_MINIO_ACCESS_KEY
@@ -287,7 +304,7 @@ cmd_snapshot() {
   rm -rf "$work"
   echo "$SNAPSHOT_ID" >"$STATE_DIR/last-success"
   if [ -n "${BACKUP_HEARTBEAT_URL:-}" ]; then curl -fs -m 10 "$BACKUP_HEARTBEAT_URL" >/dev/null || log "heartbeat ping failed"; fi
-  trap - ERR
+  trap - EXIT
   log "snapshot $SNAPSHOT_ID done: lsn $lsn, base backup $label, $object_count object(s)"
 }
 
@@ -414,11 +431,13 @@ cmd_restore_objects() {
 }
 
 # ---- dispatch ---------------------------------------------------------------------------------------------------
+load_secret_files
 cmd="${1:-}"
 shift || true
 case "$cmd" in
 entrypoint)
-  render_conf
+  # Only the Postgres server needs the rendered config (archive_command). Other roles render their own when they run.
+  if [ "${1:-}" = postgres ]; then render_conf; fi
   if [ "$(id -u)" = 0 ]; then chown -R postgres:postgres /etc/pgbackrest /var/spool/pgbackrest; fi
   umask 022 # the stock entrypoint creates PGDATA's parents as root, then drops to postgres
   exec docker-entrypoint.sh "$@"
