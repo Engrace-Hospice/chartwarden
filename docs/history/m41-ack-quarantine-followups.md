@@ -69,4 +69,4 @@ write audit plus one `m41.claim.ack_abandoned` event carrying `operatorUserId`; 
   connected, not that it makes progress (a wedged-but-connected worker still counts).
 - Retention is in-repo, not a VPS cron: `m41.quarantine-prune` (Sundays 03:17) deletes RESOLVED `commercial_ack_quarantine` rows 180 days
   after `resolved_at`, per active org, bounded per tick. Migration 1286 grants the app role DELETE and refuses an unresolved delete.
-- Not pruned: `clearinghouse_interchange_number` (M23 memo; app role has no DELETE, and #836 changes the table). Revisit with its owner.
+- Not pruned: `clearinghouse_interchange_number` (M23 memo; app role has no DELETE, and the memo must outlive any redelivery window). Revisit with its owner.

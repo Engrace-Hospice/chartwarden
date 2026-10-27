@@ -8,8 +8,8 @@
 //     pruned row while its stream is still polled (a late redelivery would at worst re-quarantine and re-resolve it).
 //   - tenant-safe: one `withOrgContext` per active org (RLS applies) plus an explicit organization filter; bounded per tick.
 //   - every delete is audited by the table's write-audit trigger (ids and codes, no body). PHI-free log: counts only.
-//   - `clearinghouse_interchange_number` (M23) is deliberately NOT pruned here: its owner is changing that table (#836) and the app role has
-//     no DELETE on it; revisit with its owner once the redelivery window is settled.
+//   - `clearinghouse_interchange_number` (M23) is deliberately NOT pruned here: the app role has no DELETE on it (migration 1281) and
+//     the memo must outlive any redelivery window; revisit with its owner.
 import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
