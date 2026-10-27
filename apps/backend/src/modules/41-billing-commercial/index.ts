@@ -55,6 +55,13 @@ export {
   scheduleM41QuarantinePrune,
 } from "./jobs/quarantine-prune";
 export { transitionForAck } from "./domain/ack-transition";
+export { transitionForRemittance } from "./domain/remittance-transition";
+export {
+  type M41RemittanceConsumerDeps,
+  type M41RemittanceOutboxPort,
+  type M41RemittanceSkipReason,
+  buildM41RemittanceConsumer,
+} from "./outbox-consumers/m25-remittance";
 export {
   abandonForeignHeldEvents,
   applyAckEvent,

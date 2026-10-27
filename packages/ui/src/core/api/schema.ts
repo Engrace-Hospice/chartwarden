@@ -44340,7 +44340,7 @@ export interface operations {
         parameters: {
             query: {
                 providerEntityId: string;
-                state?: "draft" | "ready" | "submitted" | "ack_pending" | "accepted" | "rejected" | "void";
+                state?: "draft" | "ready" | "submitted" | "ack_pending" | "accepted" | "rejected" | "paid" | "partially_paid" | "denied" | "void";
                 payerKind?: "commercial_only" | "medicare_secondary" | "medicaid_secondary";
                 patientId?: string;
                 limit?: number;

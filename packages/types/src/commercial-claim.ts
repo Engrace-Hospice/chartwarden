@@ -4,8 +4,8 @@
 
 /**
  * Commercial claim lifecycle (spec section 2.1). `submitted` means the clearinghouse transport ACCEPTED the file (never "queued");
- * `accepted` is the PAYER stage only (ADR-0053 D2, ADR-0100 D9). `adjudicated`, `paid`, `denied` and `replaced` arrive with the
- * remittance slice (M25).
+ * `accepted` is the PAYER stage only (ADR-0053 D2, ADR-0100 D9). `paid`, `partially_paid` and `denied` are written only by the M41
+ * consumer of the M25 835 posting events (migration 1283, ADR-0100 D8 amendment #835). `replaced` is not built.
  */
 export const COMMERCIAL_CLAIM_STATE_VALUES = [
   "draft",
@@ -14,6 +14,9 @@ export const COMMERCIAL_CLAIM_STATE_VALUES = [
   "ack_pending",
   "accepted",
   "rejected",
+  "paid",
+  "partially_paid",
+  "denied",
   "void",
 ] as const;
 export type CommercialClaimState = (typeof COMMERCIAL_CLAIM_STATE_VALUES)[number];

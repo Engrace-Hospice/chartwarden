@@ -69227,6 +69227,18 @@
                   "type": "string"
                 },
                 {
+                  "const": "paid",
+                  "type": "string"
+                },
+                {
+                  "const": "partially_paid",
+                  "type": "string"
+                },
+                {
+                  "const": "denied",
+                  "type": "string"
+                },
+                {
                   "const": "void",
                   "type": "string"
                 }

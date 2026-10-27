@@ -1771,6 +1771,8 @@ import {
   registerCommercialBillingRoutes,
   registerM41AbacPredicates,
   registerM41PublishedSeams,
+  buildM41RemittanceConsumer,
+  type M41RemittanceOutboxPort,
 } from "./modules/41-billing-commercial/index";
 import {
   M41_PLATFORM_JOB_ID,
@@ -12183,6 +12185,23 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   state: info.currentState,
                 },
                 "M24 remittance transition skipped",
+              ),
+          }),
+          // #835 (ADR-0100 D8) — M41's consumer of the same three 835 posting events: moves a COMMERCIAL claim to
+          // paid / partially_paid / denied and stores the payer ICN. M23/M24 settle a commercial id as claim_not_found.
+          buildM41RemittanceConsumer({
+            db: dbHandle.db,
+            outbox: m41OutboxPublisher as unknown as M41RemittanceOutboxPort,
+            onSkipped: (info) =>
+              app.log.warn(
+                {
+                  reason: info.reason,
+                  event: info.eventType,
+                  org: info.organizationId,
+                  claim: info.claimId,
+                  state: info.currentState,
+                },
+                "M41 remittance transition skipped",
               ),
           }),
           ...(m34ProvisionQueue ? [buildM34ProvisionStartedConsumer(m34ProvisionQueue.port)] : []),

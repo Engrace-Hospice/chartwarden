@@ -29,6 +29,10 @@ const money = Type.String({ description: "Decimal string — never a float" });
 // fabricated); `serviceFrom`/`serviceTo` are the 835's own optional DTM dates, `null` when the payer omits
 // them (M26 refuses such a line rather than invent a service period). Cents are integer, computed from the
 // parsed amount — never a dollars-string conversion on the consumer side.
+// #835 — the payer's own claim number (835 CLP07), optional because most payers send it but some omit it. A commercial claim
+// has no ICN until its first 835 posts; M41's consumer stores it from here so a later ICN-only line can bind.
+const payerIcnFact = { payerIcn: Type.Optional(Type.String()) };
+
 const capAccrualFacts = {
   patientId: Type.Union([id, Type.Null()]),
   paidAmountCents: Type.Integer(),
@@ -109,6 +113,7 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       remittanceAdviceId: id,
       paidAmount: money,
       ...capAccrualFacts,
+      ...payerIcnFact,
       postedAt: isoInstant,
     }),
     // F-140 (#248) — m24 ADDED: M24's own authoritative `M24_SUBSCRIPTION_MAP` names this event
@@ -117,7 +122,7 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
     // (`would-defer-a-bound-event`) that assumed adding a second declared consumer would interrupt M23's
     // live delivery — `buildOutboxRoutingPlan` delivers to every BOUND consumer regardless of what else
     // is declared (verified directly against `outbox-dispatcher.ts`, the F-139/m31 precedent).
-    declaredConsumers: ["m23", "m24", "m26"],
+    declaredConsumers: ["m23", "m24", "m26", "m41"],
     isOutboxOnly: true,
   },
   {
@@ -131,9 +136,10 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       paidAmount: money,
       adjustedAmount: money,
       ...capAccrualFacts,
+      ...payerIcnFact,
       postedAt: isoInstant,
     }),
-    declaredConsumers: ["m23", "m26"],
+    declaredConsumers: ["m23", "m26", "m41"],
     isOutboxOnly: true,
   },
   {
@@ -146,11 +152,12 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       remittanceLineId: id,
       remittanceAdviceId: id,
       carcCodes: Type.Array(str),
+      ...payerIcnFact,
       postedAt: isoInstant,
     }),
     // F-140 (#248) — m24 ADDED: same reasoning as `.claim_paid` above (`mark-claim-denied` /
     // `handleClaimDenied`).
-    declaredConsumers: ["m23", "m24"],
+    declaredConsumers: ["m23", "m24", "m41"],
     isOutboxOnly: true,
   },
   {
@@ -173,6 +180,7 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       remittanceAdviceId: id,
       recoupedAmount: money,
       recoupedAmountCents: Type.Integer(),
+      ...payerIcnFact,
       serviceFrom: Type.Union([str, Type.Null()]),
       serviceTo: Type.Union([str, Type.Null()]),
       postedAt: isoInstant,
