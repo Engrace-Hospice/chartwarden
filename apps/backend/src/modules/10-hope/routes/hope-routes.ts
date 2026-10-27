@@ -96,7 +96,8 @@ async function listScopeOf(
   try {
     const caseload = await lookup({ organizationId: ctx.organizationId, userId: ctx.userId });
     return [...new Set([...caseload, ...sessionIds])];
-  } catch {
+  } catch (err) {
+    request.log.warn({ err }, "HOPE caseload lookup failed — narrowing to the session patient");
     return sessionIds;
   }
 }
@@ -270,19 +271,16 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(ScheduleListQuerySchema, request.query);
-      const { schedules } = await service.listSchedules(organizationId, {
+      // A named `patientId` was verified against the caseload by `hope.scope`. An unfiltered list is
+      // narrowed in the query (GAP-182, as for the SFV worklist): org-wide roles see all, everyone else
+      // only their caseload, so a clinician's home can show their own overdue windows.
+      const scope = q.patientId ? null : await listScopeOf(request, caseloadPatientIds);
+      return service.listSchedules(organizationId, {
         patientId: q.patientId,
         status: q.status,
         rfaKind: q.rfaKind,
+        ...(scope ? { patientIds: scope } : {}),
       });
-      // A named `patientId` was verified against the caseload by `hope.scope`. An unfiltered list is
-      // narrowed here (GAP-182, as for the SFV worklist): org-wide roles see all, everyone else only
-      // their caseload, so a clinician's home can show their own overdue windows.
-      if (q.patientId) return { schedules };
-      const scope = await listScopeOf(request, caseloadPatientIds);
-      if (scope === null) return { schedules };
-      const allowed = new Set(scope);
-      return { schedules: schedules.filter((s) => allowed.has(s.patientId)) };
     },
   );
 

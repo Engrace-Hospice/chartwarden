@@ -165,7 +165,8 @@ async function readScopeOf(
       userId: ctx.userId,
     });
     return { patientIds: [...new Set([...caseload, ...sessionIds])] };
-  } catch {
+  } catch (err) {
+    request.log.warn({ err }, "admission caseload lookup failed — narrowing to the session patient");
     return { patientIds: sessionIds };
   }
 }

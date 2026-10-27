@@ -347,7 +347,13 @@ export interface InactivateTimepointArgs {
 export interface HopeRouteService extends HopeAbacResolver {
   listSchedules(
     organizationId: string,
-    filter: { patientId?: string; status?: string; rfaKind?: string },
+    filter: {
+      patientId?: string;
+      status?: string;
+      rfaKind?: string;
+      /** Caseload narrowing: only these patients' rows. `[]` matches nothing; omitted = no narrowing. */
+      patientIds?: readonly string[];
+    },
   ): Promise<{ schedules: HopeScheduleView[] }>;
   getSchedule(organizationId: string, id: string): Promise<HopeScheduleView>;
   skipSchedule(organizationId: string, id: string, reasonCode: string): Promise<HopeScheduleView>;
@@ -1031,6 +1037,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         (r) =>
           r.organizationId === organizationId &&
           (!filter.patientId || r.patientId === filter.patientId) &&
+          (!filter.patientIds || filter.patientIds.includes(r.patientId)) &&
           (!filter.status || r.status === filter.status) &&
           (!filter.rfaKind || r.rfaKind === filter.rfaKind),
       );
