@@ -15,10 +15,17 @@ REBOOT_TIME="${REBOOT_TIME:-04:00}"
 [ "$(id -u)" = 0 ] || { echo "run as root"; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
 
+# Password login is switched off below, so a mangled key would leave only the provider console. Fail first.
+ssh-keygen -l -f /dev/stdin <<<"$SSH_PUBKEY" >/dev/null 2>&1 || { echo "SSH_PUBKEY is not a valid public key"; exit 1; }
+# Ubuntu starts sshd through ssh.socket, which ignores `Port`; moving the port needs more than this script does.
+if [ "$SSH_PORT" != 22 ] && systemctl is-active --quiet ssh.socket 2>/dev/null; then
+  echo "SSH_PORT other than 22 is not supported while ssh.socket is active"; exit 1
+fi
+
 echo "== 1. updates + automatic security updates (with scheduled reboot)"
 apt-get update -y
 apt-get upgrade -y
-apt-get install -y ufw fail2ban unattended-upgrades chrony curl ca-certificates \
+apt-get install -y sudo ufw fail2ban unattended-upgrades chrony curl ca-certificates \
   auditd audispd-plugins aide lynis
 dpkg-reconfigure -f noninteractive unattended-upgrades
 # Kernel and libc fixes only take effect after a reboot. Containers must have restart: unless-stopped.
@@ -74,6 +81,9 @@ ufw allow 21820/udp comment gerbil-clients
 # below (the ufw-docker approach) drops new connections from outside to any container address unless a
 # `ufw route allow` rule names the port. Rules match the container port (after DNAT); Pangolin's default
 # compose uses the same numbers as the host ports. Add a route rule for anything else you mean to expose.
+# Known limits: sources inside RFC1918 are trusted (fine on a host with only a public NIC; on a provider LAN,
+# match the public interface instead); established replies are returned by conntrack; IPv4 only, so add the
+# same block to /etc/ufw/after6.rules before enabling Docker IPv6 (Pangolin's compose sets enable_ipv6).
 if ! grep -q "BEGIN UFW AND DOCKER" /etc/ufw/after.rules; then
   cat >> /etc/ufw/after.rules <<'EOF'
 
@@ -84,18 +94,18 @@ if ! grep -q "BEGIN UFW AND DOCKER" /etc/ufw/after.rules; then
 :DOCKER-USER - [0:0]
 -A DOCKER-USER -j ufw-user-forward
 
+-A DOCKER-USER -m conntrack --ctstate RELATED,ESTABLISHED -j RETURN
+
 -A DOCKER-USER -j RETURN -s 10.0.0.0/8
 -A DOCKER-USER -j RETURN -s 172.16.0.0/12
 -A DOCKER-USER -j RETURN -s 192.168.0.0/16
 
--A DOCKER-USER -p udp -m udp --sport 53 --dport 1024:65535 -j RETURN
-
 -A DOCKER-USER -j ufw-docker-logging-deny -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -d 192.168.0.0/16
 -A DOCKER-USER -j ufw-docker-logging-deny -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -d 10.0.0.0/8
 -A DOCKER-USER -j ufw-docker-logging-deny -p tcp -m tcp --tcp-flags FIN,SYN,RST,ACK SYN -d 172.16.0.0/12
--A DOCKER-USER -j ufw-docker-logging-deny -p udp -m udp --dport 0:32767 -d 192.168.0.0/16
--A DOCKER-USER -j ufw-docker-logging-deny -p udp -m udp --dport 0:32767 -d 10.0.0.0/8
--A DOCKER-USER -j ufw-docker-logging-deny -p udp -m udp --dport 0:32767 -d 172.16.0.0/12
+-A DOCKER-USER -j ufw-docker-logging-deny -p udp -d 192.168.0.0/16
+-A DOCKER-USER -j ufw-docker-logging-deny -p udp -d 10.0.0.0/8
+-A DOCKER-USER -j ufw-docker-logging-deny -p udp -d 172.16.0.0/12
 
 -A DOCKER-USER -j RETURN
 
@@ -142,7 +152,8 @@ kernel.dmesg_restrict = 1
 fs.protected_hardlinks = 1
 fs.protected_symlinks = 1
 EOF
-sysctl --system >/dev/null
+# a key the kernel rejects (e.g. an ipv6 knob with IPv6 off) must not stop the remaining steps
+sysctl --system >/dev/null || echo "   warning: sysctl --system reported an error; check 'sysctl --system'"
 
 echo "== 7. time sync"
 systemctl enable --now chrony
@@ -156,7 +167,6 @@ cat > /etc/audit/rules.d/99-hardening.rules <<'EOF'
 -w /etc/gshadow -p wa -k identity
 -w /etc/sudoers -p wa -k privilege
 -w /etc/sudoers.d/ -p wa -k privilege
--w /var/log/sudo.log -p wa -k privilege
 # ssh and firewall configuration
 -w /etc/ssh/sshd_config -p wa -k sshd
 -w /etc/ssh/sshd_config.d/ -p wa -k sshd
@@ -167,17 +177,23 @@ cat > /etc/audit/rules.d/99-hardening.rules <<'EOF'
 -w /var/spool/cron/ -p wa -k cron
 -w /etc/systemd/system/ -p wa -k systemd
 -w /usr/lib/systemd/system/ -p wa -k systemd
-# docker daemon and its config
--w /etc/docker/ -p wa -k docker
--w /usr/bin/dockerd -p x -k docker
-# time changes and kernel module loading
+# time changes and kernel module loading (32-bit compat syscalls too)
 -a always,exit -F arch=b64 -S adjtimex,settimeofday,clock_settime -k time
+-a always,exit -F arch=b32 -S adjtimex,settimeofday,clock_settime -k time
 -a always,exit -F arch=b64 -S init_module,finit_module,delete_module -k modules
-# every command run by a real user with root privileges
--a always,exit -F arch=b64 -S execve -C uid!=euid -F euid=0 -k rootcmd
+-a always,exit -F arch=b32 -S init_module,finit_module,delete_module -k modules
+# commands run as root by a logged-in human (auid is the original login uid; unset for daemons)
+-a always,exit -F arch=b64 -S execve -F euid=0 -F auid>=1000 -F auid!=unset -k rootcmd
+-a always,exit -F arch=b32 -S execve -F euid=0 -F auid>=1000 -F auid!=unset -k rootcmd
 EOF
+# a watch on a missing path makes auditctl reject the file, so add Docker's only once it is installed
+for p in /etc/docker /usr/bin/dockerd; do
+  [ -e "$p" ] && echo "-w $p -p wa -k docker" >> /etc/audit/rules.d/99-hardening.rules
+done
 systemctl enable auditd
-augenrules --load || true
+augenrules --load || echo "   warning: augenrules --load failed; check 'auditctl -l'"
+[ "$(auditctl -l 2>/dev/null | grep -c -E 'k (identity|privilege|sshd|firewall|cron|systemd|time|modules|rootcmd)$')" -gt 0 ] \
+  || echo "   warning: no hardening audit rules are loaded"
 install -d /var/log/journal
 sed -i -E 's/^#?Storage=.*/Storage=persistent/; s/^#?SystemMaxUse=.*/SystemMaxUse=500M/' /etc/systemd/journald.conf
 grep -q '^Storage=persistent' /etc/systemd/journald.conf || printf '[Journal]\nStorage=persistent\nSystemMaxUse=500M\n' >> /etc/systemd/journald.conf
@@ -196,5 +212,7 @@ grep -E "Hardening index" /root/lynis-baseline.txt || true
 echo "== done. Verify:"
 echo "   ufw status verbose; fail2ban-client status sshd; sshd -T | grep -Ei 'permitroot|passwordauth|allowusers'"
 echo "   auditctl -l | head; aide --check | head; grep -E 'Automatic-Reboot' /etc/apt/apt.conf.d/52unattended-upgrades-local"
-echo "   After Pangolin is up, from another machine: nmap -Pn -p- 216.219.95.157  (only 22, 80, 443 should answer; 51820/21820 are UDP)"
+echo "   After Pangolin is up, from another machine: nmap -Pn -p- <this-host-ip>  (only 22, 80, 443 should answer; 51820/21820 are UDP)"
+echo "   The AIDE baseline predates Docker/Pangolin: run 'aideinit -y -f && cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db' once the stack is installed."
+echo "   Re-run this script after installing Docker so its audit watches are added."
 echo "   Review /root/lynis-baseline.txt for further suggestions."
