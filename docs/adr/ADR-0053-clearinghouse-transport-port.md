@@ -199,7 +199,7 @@ receive-side yet, so there is no Stedi mapping to change.
 **The interchange number is remembered, not derived.** The 837I ISA13 used to be a hash of the claim control number.
 `SubmissionAttemptStore.allocateInterchangeNumber(org, scope, key, usage)` now returns a 9-digit number drawn from the
 same platform-wide per-usage sequences as `allocateControlNumber` and memoizes it per (tenant, scope, idempotency key)
-in `clearinghouse_interchange_number` (migration 1280). The memo commits on the store's own org-scoped connection, so a
+in `clearinghouse_interchange_number` (migration 1281). The memo commits on the store's own org-scoped connection, so a
 job that dies after the vendor took the file and is redelivered renders the identical ISA13; a new attempt (new control
 number, new key) gets a new one. A key remembered under one usage refuses the other. With no attempt store bound, the
 claim attempt fails as `failed_worker`; there is no derived fallback. A number drawn for an attempt that then fails on
