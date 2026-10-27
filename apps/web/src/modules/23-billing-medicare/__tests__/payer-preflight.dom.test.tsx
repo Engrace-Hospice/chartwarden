@@ -6,7 +6,7 @@ import type { ApiClient } from "@chartwarden/ui";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { classifyPayerCoverage } from "../payer-preflight";
+import { PAYER_CHECK_TIMEOUT_MS, classifyPayerCoverage } from "../payer-preflight";
 import type { PayerCoverageRow } from "../payer-preflight";
 import { clearAllDrafts } from "../write-workflow";
 
@@ -168,6 +168,35 @@ describe("ClaimAssemblyWizard payer preflight", () => {
     await waitFor(() => expect(liveRegion().textContent).toMatch(/primary payer/i));
     expect(get).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole("button", { name: /retry payer check/i })).toBeNull();
+  });
+
+  it("gives up on a request that never settles: fails open with Retry instead of locking the form", async () => {
+    vi.useFakeTimers();
+    try {
+      mount(vi.fn(() => new Promise(() => {})));
+      fill();
+      expect(assemble().disabled).toBe(true);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PAYER_CHECK_TIMEOUT_MS);
+      });
+      expect(liveRegion().textContent).toMatch(/could not be checked/i);
+      expect(assemble().disabled).toBe(false);
+      expect(screen.getByRole("button", { name: /retry payer check/i })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows loading again when the same patient is re-selected", async () => {
+    mount(payers());
+    fill();
+    await screen.findByText(/No Original Medicare/i);
+    fireEvent.change(screen.getByLabelText("Patient"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Patient"), { target: { value: PT1 } });
+    expect(screen.queryByText(/No Original Medicare/i)).toBeNull();
+    expect(liveRegion().textContent).toMatch(/checking/i);
+    expect(assemble().disabled).toBe(true);
+    await screen.findByText(/No Original Medicare/i);
   });
 
   it("does not block on an error response either", async () => {

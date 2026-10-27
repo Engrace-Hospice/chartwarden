@@ -40,6 +40,8 @@ export const PAYER_PREFLIGHT_MESSAGES: Readonly<Partial<Record<PayerPreflightSta
   ok: "Original Medicare is the primary payer for this service period.",
 };
 
+/** How long the preflight may stay "loading" before it gives up and fails open. */
+export const PAYER_CHECK_TIMEOUT_MS = 10_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const day = (v: string): string => v.slice(0, 10);
 const covers = (row: PayerCoverageRow, date: string): boolean =>
@@ -103,6 +105,13 @@ export function usePayerPreflight(
     if (id === "") return;
     let stale = false;
     const controller = new AbortController();
+    // A request that never settles must not lock the form: after the timeout it degrades to "error" (non-blocking,
+    // with Retry).
+    const timer = setTimeout(() => {
+      if (stale) return;
+      controller.abort();
+      setLoaded({ key, rows: null });
+    }, PAYER_CHECK_TIMEOUT_MS);
     client
       .GET("/api/v1/patients/{id}/payers", {
         params: { path: { id } },
@@ -117,7 +126,10 @@ export function usePayerPreflight(
       });
     return () => {
       stale = true;
+      clearTimeout(timer);
       controller.abort();
+      // Re-selecting the same patient later must show "loading", not this earlier result.
+      setLoaded(null);
     };
   }, [client, id, key]);
 

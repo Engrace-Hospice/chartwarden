@@ -242,7 +242,13 @@ export function ClaimAssemblyWizard(): JSX.Element {
               type="submit"
               style={!valid || busy ? disabledButtonStyle : primaryButtonStyle}
               disabled={!valid || busy}
-              aria-describedby={payerBlocked ? "payer-preflight" : undefined}
+              aria-describedby={
+                payerBlocked
+                  ? "payer-preflight"
+                  : payerChecking
+                    ? "payer-preflight-status"
+                    : undefined
+              }
             >
               {busy ? "Assembling…" : "Assemble claim"}
             </button>
@@ -273,6 +279,7 @@ function PayerPreflightNote({
     <>
       <output
         ref={regionRef}
+        id="payer-preflight-status"
         tabIndex={-1}
         aria-atomic="true"
         style={{ ...hintStyle, display: "block", outline: "none" }}
