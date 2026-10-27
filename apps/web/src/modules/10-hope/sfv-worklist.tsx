@@ -21,7 +21,7 @@ import {
 //
 // #91 — this is the queue whose reason to exist is COMPLETING the follow-up, and it offered no way to.
 // Each OPEN or OVERDUE row now carries Record, which commits through `POST /admissions/:id/hope/sfv` —
-// a different endpoint from the timepoint capture, with its own RN/NP author floor, that matches the
+// a different endpoint from the timepoint capture, with its own RN/NP/LPN/LVN author floor, that matches the
 // OPEN obligation rather than creating a free-standing RFA-04. A missed or completed row offers
 // nothing: `planSfvCompletion` refuses both, and offering a refused control is the F-007 rule.
 import { useCallback, useEffect, useMemo, useState } from "react";

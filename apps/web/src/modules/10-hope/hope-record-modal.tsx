@@ -40,7 +40,7 @@ import {
 // The SERVER decides everything that matters. §4.4's capture gate runs against the STORED window, so the
 // late-completion branch here reads the schedule's own dates only to know what to ASK for; a client
 // clock is not an authority and `M10_LATE_REASON_REQUIRED` / `M10_TIMEPOINT_EXPIRED` are the answers.
-// §4.7's author floor (RN/NP/MD; RN/NP for an SFV) is resolved from the caller's M3 role grants, never
+// §4.7's author floor (RN/NP/MD; RN/NP/LPN/LVN for an SFV) is resolved from the caller's M3 role grants, never
 // from the `authorDiscipline` sent here — that field is CMS attribution, which is why it is offered
 // from the caller's OWN roles rather than as a free choice (the `discipline-derivation.test.ts` rule:
 // M3's role keys are the platform's one authority-derivation input).

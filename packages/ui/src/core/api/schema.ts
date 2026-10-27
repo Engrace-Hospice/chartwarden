@@ -2036,7 +2036,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record an SFV completion (RFA-04; RN/NP author) */
+        /** Record an SFV completion (RFA-04; RN/NP/LPN/LVN author) */
         post: operations["postApiV1AdmissionsByAdmissionIdHopeSfv"];
         delete?: never;
         options?: never;
@@ -33512,7 +33512,7 @@ export interface operations {
                     triggeringAssessmentId: string;
                     /** Format: date-time */
                     targetDate: string;
-                    authorDiscipline: "RN" | "NP" | "MD";
+                    authorDiscipline: "RN" | "NP" | "MD" | "LPN" | "LVN";
                     adminOverride?: boolean;
                     adminOverrideJustification?: string;
                     data: {

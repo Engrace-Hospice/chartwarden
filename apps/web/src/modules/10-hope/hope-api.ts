@@ -20,7 +20,7 @@
 //     never to decide what is permitted — a client clock is not an authority, and the 400/409 the
 //     server returns is the answer.
 //   • §4.7 the author floor. `hope.authorDisciplineAllowed` (RN/NP/MD) and `hope.sfvAuthorAllowed`
-//     (RN/NP) read the caller's discipline from their session role grants, never from the
+//     (RN/NP/LPN/LVN) read the caller's discipline from their session role grants, never from the
 //     `authorDiscipline` sent here — that field is the CMS attribution recorded on the row, which is
 //     why it is offered from the caller's own roles rather than as a free choice.
 //   • §2.3 / D9 Section Q, and the whole CMS pre-submission rule set. The client renders the findings
@@ -62,6 +62,8 @@ export type SkipScheduleBody = ReqBody<operations["postApiV1HopeSchedulesByIdSki
 export type RfaKind = RecordTimepointBody["rfaKind"];
 /** The §4.7 author disciplines the server accepts on a capture. */
 export type AuthorDiscipline = RecordTimepointBody["authorDiscipline"];
+/** The SFV author disciplines: the timepoint set plus LPN/LVN (CMS HOPE Guidance Manual v1.03). */
+export type SfvAuthorDiscipline = RecordSfvBody["authorDiscipline"];
 /** The D9 discharge reasons (which decide whether Section Q is required or forbidden). */
 export type DischargeReason = NonNullable<RecordTimepointBody["dischargeReason"]>;
 /** The closed D12 late-completion codelist. */
@@ -133,7 +135,7 @@ export async function recordTimepoint(
   return { ok: true, value: data as AssessmentView };
 }
 
-/** §4.1 route 5 — record an SFV completion (RFA-04) against an OPEN follow-up obligation. RN/NP only. */
+/** §4.1 route 5 — record an SFV completion (RFA-04) against an OPEN follow-up obligation. RN/NP/LPN/LVN. */
 export async function recordSfv(
   client: ApiClient,
   admissionId: string,
@@ -248,17 +250,19 @@ export async function regenerateSchedules(
 /** §4.7 — disciplines permitted to author any HOPE timepoint (mirrors `HOPE_AUTHOR_DISCIPLINES`). */
 const HOPE_AUTHOR_DISCIPLINES: readonly AuthorDiscipline[] = ["RN", "NP", "MD"];
 /** §4.7 — the narrower CMS floor for a Symptom-Follow-Up Visit (mirrors `SFV_AUTHOR_DISCIPLINES`). */
-const SFV_AUTHOR_DISCIPLINES: readonly AuthorDiscipline[] = ["RN", "NP"];
+const SFV_AUTHOR_DISCIPLINES: readonly SfvAuthorDiscipline[] = ["RN", "NP", "LPN", "LVN"];
 
 /** Readable expansion of the CMS code; the CODE is what is recorded, so it leads. */
-const DISCIPLINE_LABELS: Record<AuthorDiscipline, string> = {
+const DISCIPLINE_LABELS: Record<SfvAuthorDiscipline, string> = {
   RN: "RN — Registered nurse",
   NP: "NP — Nurse practitioner",
   MD: "MD — Physician",
+  LPN: "LPN — Licensed practical nurse",
+  LVN: "LVN — Licensed vocational nurse",
 };
 
 /** The label shown beside a discipline code in an attribution control. */
-export function authorDisciplineLabel(discipline: AuthorDiscipline): string {
+export function authorDisciplineLabel(discipline: SfvAuthorDiscipline): string {
   return DISCIPLINE_LABELS[discipline];
 }
 
@@ -273,8 +277,9 @@ export function authorDisciplineLabel(discipline: AuthorDiscipline): string {
 export function authorDisciplinesForRoles(
   roles: readonly string[],
   options: { readonly sfv?: boolean } = {},
-): readonly AuthorDiscipline[] {
-  const permitted = options.sfv === true ? SFV_AUTHOR_DISCIPLINES : HOPE_AUTHOR_DISCIPLINES;
+): readonly SfvAuthorDiscipline[] {
+  const permitted: readonly SfvAuthorDiscipline[] =
+    options.sfv === true ? SFV_AUTHOR_DISCIPLINES : HOPE_AUTHOR_DISCIPLINES;
   const held = new Set(roles.map((r) => r.toUpperCase()));
   return permitted.filter((d) => held.has(d));
 }

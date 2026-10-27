@@ -5,7 +5,7 @@
 // slice; Drizzle in prod under `withOrgContext` so RLS backstops).
 //
 // §4.7 wiring: the timepoint write/sign routes add `requireAbac('hope.authorDisciplineAllowed')` (RN/NP/MD
-// only — the D4 author rule M10 owns); the SFV route adds `requireAbac('hope.sfvAuthorAllowed')` (RN/NP
+// only — the D4 author rule M10 owns); the SFV route adds `requireAbac('hope.sfvAuthorAllowed')` (RN/NP/LPN/LVN
 // only); the correction route adds `requireAbac('hope.correctionAuthorAllowed')` (original signer or
 // clinical-lead, target = `:id`).
 //
@@ -335,7 +335,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     },
   );
 
-  // 5 — record an SFV completion (RFA 04); RN/NP-only author (§4.7); matches an open SFV row.
+  // 5 — record an SFV completion (RFA 04); RN/NP/LPN/LVN author (§4.7); matches an open SFV row.
   app.post(
     "/api/v1/admissions/:admissionId/hope/sfv",
     { preHandler: [WRITE, LATE_OVERRIDE_GATE, SCOPE("hope.timepoint.write"), ABAC_SFV] },

@@ -7,7 +7,7 @@
 // M10-T03 adds the pure timepoint engine + SFV domain logic the recording/scheduling services compose:
 // the org-TZ window calculator + schedule planner (`scheduling/`), the server-authoritative J2051 trigger
 // (`triggers/`), the SFV creation/completion/watchdog machines (`sfv/`), and the recording-boundary
-// guards — author-discipline (RN/NP-only) + capture-window/late-reason + the discharge Section-Q branch
+// guards — author-discipline (RN/NP/MD; SFV adds LPN/LVN) + capture-window/late-reason + the discharge Section-Q branch
 // (`recording/`). Still pure, IO-free, `@chartwarden/types`-only: the services that compose these over
 // Drizzle + the M6/M9/M39 seams land in M10-T06; the iQIES submission workers in M10-T07.
 //

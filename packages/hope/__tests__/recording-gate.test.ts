@@ -154,9 +154,23 @@ describe("author-discipline rule (§4.7, RN/NP-only author rule)", () => {
     expect(isHopeAuthorDisciplineAllowed("MD")).toBe(true);
     expect(isHopeAuthorDisciplineAllowed("LPN")).toBe(false);
   });
-  it("only RN/NP may author an SFV", () => {
-    expect(isSfvAuthorDisciplineAllowed("NP")).toBe(true);
-    expect(isSfvAuthorDisciplineAllowed("MD")).toBe(false);
+  it("only RN/NP/LPN/LVN may author an SFV (CMS HOPE Guidance Manual v1.03)", () => {
+    for (const d of ["RN", "NP", "LPN", "LVN"]) expect(isSfvAuthorDisciplineAllowed(d)).toBe(true);
+    for (const d of ["MD", "SW", "CHAPLAIN", "AIDE", "lpn", ""])
+      expect(isSfvAuthorDisciplineAllowed(d)).toBe(false);
+  });
+  it("LPN/LVN stay excluded from the non-SFV timepoints (rule unchanged)", () => {
+    expect(isHopeAuthorDisciplineAllowed("LVN")).toBe(false);
+    expect(() => assertAuthorDisciplineAllowed("01_admission", "LPN")).toThrowError(
+      expect.objectContaining({ code: "M10_DISCIPLINE_NOT_PERMITTED", statusCode: 403 }),
+    );
+  });
+  it("service guard and ABAC data agree for an LPN SFV", () => {
+    expect(() => assertAuthorDisciplineAllowed("04_sfv", "LPN")).not.toThrow();
+    expect(() => assertAuthorDisciplineAllowed("04_sfv", "LVN")).not.toThrow();
+    expect(() => assertAuthorDisciplineAllowed("04_sfv", "SW")).toThrowError(
+      expect.objectContaining({ code: "M10_DISCIPLINE_NOT_PERMITTED" }),
+    );
   });
   it("assertAuthorDisciplineAllowed branches on rfa_kind (403 M10_DISCIPLINE_NOT_PERMITTED)", () => {
     expect(() => assertAuthorDisciplineAllowed("01_admission", "MD")).not.toThrow();

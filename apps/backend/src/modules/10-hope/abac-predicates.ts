@@ -12,8 +12,9 @@ import {
 //   hope.authorDisciplineAllowed   — D-decision: only RN / NP / MD may author/sign/correct a HOPE
 //        timepoint. The actor's discipline set is assembled from session roles/attributes (never client
 //        input). A discipline NOT in the set is a structural floor — break-glass cannot grant it (§6).
-//   hope.sfvAuthorAllowed          — the CMS HOPE manual restricts the SFV (RFA-04) author further: only
-//        RN / NP may sign an SFV completion.
+//   hope.sfvAuthorAllowed          — the CMS HOPE manual limits the SFV (RFA-04) author: only
+//        RN / NP / LPN / LVN may sign an SFV completion (HOPE Guidance Manual v1.03; the hospice decides
+//        whether its LPN/LVNs are appropriate).
 //   hope.correctionAuthorAllowed   — the correction (§4.1 `/correct`) author must be the original signer
 //        OR hold the clinical-lead role (broadened scope). The original-signer fact loads through the
 //        injected {@link HopeAbacResolver} (org-scoped, RLS-backstopped); a missing/cross-tenant row
