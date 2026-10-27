@@ -3226,6 +3226,25 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         [ORG, providerEntityId],
       );
       expect(blockers).toBe(0);
+      // Org B only has rows in 3 tables (and no commercial_validation_override row anywhere), so prove the org pin and grants on
+      // ALL 16 from the catalog: a `<t>_destruction` policy for the destruction role, USING and WITH CHECK on app.org_id, and DELETE granted.
+      for (const t of M41_TABLES) {
+        const pol = (
+          await admin.query(
+            `SELECT roles::text AS roles, qual, with_check FROM pg_policies WHERE tablename=$1 AND policyname=$2`,
+            [t, `${t}_destruction`],
+          )
+        ).rows;
+        expect(pol.length, t).toBe(1);
+        expect(pol[0].roles, t).toContain("chartwarden_destruction");
+        expect(pol[0].qual, t).toContain("app.org_id");
+        expect(pol[0].with_check, t).toContain("app.org_id");
+        const canDelete = await scalar<boolean>(
+          `SELECT has_table_privilege('chartwarden_destruction', $1, 'DELETE') AS n`,
+          [t],
+        );
+        expect(canDelete, t).toBe(true);
+      }
     }, 120_000);
   });
 });
