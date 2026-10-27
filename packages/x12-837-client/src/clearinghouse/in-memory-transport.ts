@@ -15,6 +15,7 @@ import {
   CH,
   CLEARINGHOUSE_EVENT_KINDS,
   type ClaimStatus,
+  type ClaimStatusInquiry,
   type ClearinghouseContext,
   type ClearinghouseEligibilityRequest,
   type ClearinghouseEligibilityResult,
@@ -265,6 +266,7 @@ export class InMemoryClearinghouse implements ClearinghouseTransport {
   async fetchClaimStatus(
     ctx: ClearinghouseContext,
     controlNumber: string,
+    _inquiry?: ClaimStatusInquiry,
   ): Promise<X12WorkerResult<ClaimStatus>> {
     const blocked = this.outageOnly();
     if (blocked) return blocked;

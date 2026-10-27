@@ -339,3 +339,48 @@ export const TimelineViewSchema = Type.Object({
 
 export type AssembleCommercialClaimBody = Static<typeof AssembleCommercialClaimBodySchema>;
 export type RecordAuthorizationBody = Static<typeof RecordAuthorizationBodySchema>;
+
+// -- Held-acknowledgment quarantine: operator routes (issue #820). Ids, reasons, control numbers and counts only. --
+export const AckQuarantineListQuerySchema = Type.Object(
+  { providerEntityId: uuid() },
+  { additionalProperties: false },
+);
+export const AckQuarantineScopeBodySchema = Type.Object(
+  { providerEntityId: uuid() },
+  { additionalProperties: false },
+);
+export const AckQuarantineResolveParamsSchema = Type.Object(
+  { id: uuid() },
+  { additionalProperties: false },
+);
+export const AckQuarantineAbandonForeignBodySchema = Type.Object(
+  {},
+  { additionalProperties: false },
+);
+
+export const AckQuarantineListResponseSchema = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      /** malformed | scope_mismatch | vendor_mismatch | no_receipt */
+      reason: Type.String(),
+      controlNumber: Type.Union([Type.String(), Type.Null()]),
+      clearinghouseKey: Type.String(),
+      /** False for a malformed row and a pre-1279 mismatch row: nothing can be replayed. */
+      hasEvent: Type.Boolean(),
+      createdAt: Type.String(),
+    }),
+  ),
+});
+export const AckQuarantineReplayResponseSchema = Type.Object({
+  applied: Type.Integer(),
+  abandoned: Type.Integer(),
+});
+export const AckQuarantineResolveResponseSchema = Type.Object({
+  id: Type.String(),
+  /** `resolved` (closed now, event published) or `already_resolved` (idempotent no-op). */
+  outcome: lit(["resolved", "already_resolved"] as const),
+});
+export const AckQuarantineAbandonForeignResponseSchema = Type.Object({
+  abandoned: Type.Integer(),
+});

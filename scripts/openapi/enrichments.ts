@@ -902,6 +902,13 @@ import {
 import { SearchQuerySchema as MdmSearchQuerySchema } from "../../apps/backend/src/modules/40-mdm/routes/mdm-typebox";
 // M41 Billing - Commercial (#722): the claim / authorization route contracts.
 import {
+  AckQuarantineAbandonForeignBodySchema as M41AckAbandonForeignBodySchema,
+  AckQuarantineAbandonForeignResponseSchema as M41AckAbandonForeignResponseSchema,
+  AckQuarantineListQuerySchema as M41AckQuarantineListQuerySchema,
+  AckQuarantineListResponseSchema as M41AckQuarantineListResponseSchema,
+  AckQuarantineReplayResponseSchema as M41AckReplayResponseSchema,
+  AckQuarantineResolveResponseSchema as M41AckResolveResponseSchema,
+  AckQuarantineScopeBodySchema as M41AckScopeBodySchema,
   AssembleCommercialClaimBodySchema as M41AssembleBodySchema,
   AssembleCommercialClaimResponseSchema as M41AssembleResponseSchema,
   AuthorizationListQuerySchema as M41AuthorizationListQuerySchema,
@@ -2013,6 +2020,7 @@ import {
   HopeAssessmentListResponseSchema as M10HopeAssessmentListResponseSchema,
   HopeAssessmentResponseSchema as M10HopeAssessmentResponseSchema,
   HopeAssessmentReviewResponseSchema as M10HopeAssessmentReviewResponseSchema,
+  HopeAssessmentSubmissionsResponseSchema as M10HopeAssessmentSubmissionsResponseSchema,
   HopeAssessmentWorkspaceResponseSchema as M10HopeAssessmentWorkspaceResponseSchema,
   HopeComplianceResponseSchema as M10HopeComplianceResponseSchema,
   HopeRegenerateResponseSchema as M10HopeRegenerateResponseSchema,
@@ -2021,7 +2029,6 @@ import {
   HopeSfvListResponseSchema as M10HopeSfvListResponseSchema,
   HopeSfvResponseSchema as M10HopeSfvResponseSchema,
   HopeSignResponseSchema as M10HopeSignResponseSchema,
-  HopeAssessmentSubmissionsResponseSchema as M10HopeAssessmentSubmissionsResponseSchema,
   HopeSubmissionDetailResponseSchema as M10HopeSubmissionDetailResponseSchema,
   HopeSubmissionListResponseSchema as M10HopeSubmissionListResponseSchema,
   HopeSubmissionResponseSchema as M10HopeSubmissionResponseSchema,
@@ -14828,6 +14835,33 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Settle a submission that is IN DOUBT (an ambiguous send is never resent automatically). Body `{outcome, evidence?}`: `received` (needs `evidence`: clearinghouse_portal, payer_portal or vendor_support, what you relied on; the submission becomes sent and the claim moves ready to submitted; 409 COMMERCIAL_CLAIM_NOT_READY if the claim is no longer ready) or `not_received` (no evidence; the submission fails with COMMERCIAL_RECONCILED_NOT_RECEIVED and the claim may be submitted again; the re-send replays an earlier receipt if the file had in fact arrived; 409 COMMERCIAL_RECONCILE_RECEIPT_ON_FILE when the clearinghouse already accepted the file, so only received is open). 503 COMMERCIAL_DRAIN_NOT_SCHEDULED while the background sender is not scheduled. commercial_billing.submit + a FRESH step-up, never an AI actor, Idempotency-Key required, no free text. 409 unless the submission is in doubt. Writes the row audit and an m41.claim.submit_reconciled event",
     body: M41ReconcileBodySchema,
     response: M41SubmissionViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "GET /api/v1/billing/commercial/ack-quarantine": {
+    summary:
+      "The unresolved held acknowledgments of ONE provider entity (commercial_billing.read; provider scope): id, reason (malformed, scope_mismatch, vendor_mismatch, no_receipt), control number, clearinghouse key, whether a replayable event is kept, age. No patient data and no event payload; newest first, bounded to 200. Read-audited as none",
+    query: M41AckQuarantineListQuerySchema,
+    response: M41AckQuarantineListResponseSchema,
+  },
+  "POST /api/v1/billing/commercial/ack-quarantine/replay": {
+    summary:
+      "Run the held-acknowledgment replay for ONE provider entity now instead of waiting for the next pull: each unresolved no_receipt, scope_mismatch or vendor_mismatch row is re-applied if its blocking condition has cleared, otherwise it stays held (past 45 days it is asked about once, then abandoned with an m41.claim.ack_abandoned event). Idempotent. commercial_billing.submit + provider scope + a FRESH step-up, never an AI actor, Idempotency-Key required",
+    body: M41AckScopeBodySchema,
+    response: M41AckReplayResponseSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "POST /api/v1/billing/commercial/ack-quarantine/:id/resolve": {
+    summary:
+      "Close ONE unresolved quarantine row (the only exit for a `malformed` row, which keeps nothing to replay) with the resolution abandoned_operator and an m41.claim.ack_abandoned event naming the acting user. 404 for a row that is not this provider entity's; an already-closed row answers outcome already_resolved and publishes nothing. commercial_billing.submit + provider scope + a FRESH step-up, never an AI actor, Idempotency-Key required",
+    body: M41AckScopeBodySchema,
+    response: M41AckResolveResponseSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+  },
+  "POST /api/v1/billing/commercial/ack-quarantine/abandon-foreign": {
+    summary:
+      "Close, now, the organization's held rows that belong to ANOTHER clearinghouse's stream than the bound one (abandoned_foreign_vendor, one m41.claim.ack_abandoned event each naming the acting user; bounded to 200 per call). Does nothing while no clearinghouse is bound. Needs an organization-wide billing scope (403 otherwise). commercial_billing.submit + a FRESH step-up, never an AI actor, Idempotency-Key required",
+    body: M41AckAbandonForeignBodySchema,
+    response: M41AckAbandonForeignResponseSchema,
     headers: IDEMPOTENCY_KEY_HEADER,
   },
   "POST /api/v1/billing/commercial/claims/:id/submit": {

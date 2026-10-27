@@ -1,36 +1,24 @@
-// Stedi 276/277 claim-status inquiry: request builder and response parser ONLY. UNBOUND AND UNVERIFIED (issue #820).
+// Stedi 276/277 claim-status inquiry: request builder and response parser (issue #820). UNVERIFIED.
 //
 // STEDI_TRANSPORT_CONTRACT row `fetchClaimStatus` is **U**: no 276/277 call has been observed against a Stedi sandbox. Every field name,
 // the endpoint path and the category-code mapping below come from Stedi's published JSON claim-status shape as remembered, NOT from
 // an observed answer (DoseSpot rule: vendor field names are unverified until tested against a sandbox). So:
-//   - `StediTransport.fetchClaimStatus` still answers CH_NOT_WIRED and does NOT call this module; wiring it is a deliberate follow-up
-//     that needs (1) a sandbox run confirming the names here and (2) a port change, because the inquiry needs the subscriber, payer and
-//     service dates that `fetchClaimStatus(ctx, controlNumber)` cannot supply today.
+//   - `StediTransport.fetchClaimStatus` calls this module when the caller passes a `ClaimStatusInquiry` (the port now carries it) and
+//     refuses CH_INVALID_REQUEST without one. Nothing in production supplies an inquiry yet, so nothing reaches the endpoint.
 //   - the parser never answers `not_found` (a payer "not found" could drive a duplicate resubmission; contract rule) and never invents
-//     an AckEvent: `latest` is always null, so the caller learns a state and applies nothing.
+//     an AckEvent: `latest` is always null, so the caller learns a state and applies no acknowledgment (no verified ack mapping).
 //   - the subscriber block is TRANSIENT PHI: built into the request for one call, never returned, logged or placed in a reason.
 import { type X12WorkerResult, degraded } from "../types";
-import { CH, type ClaimStatus, type SubmissionState } from "./types";
+import { CH, type ClaimStatus, type ClaimStatusInquiry, type SubmissionState } from "./types";
 
 /** UNVERIFIED path (see header). */
 export const STEDI_CLAIM_STATUS_PATH = "/2024-04-01/change/medicalnetwork/claimstatus/v2";
+export const STEDI_CLAIM_STATUS_URL = `https://healthcare.us.stedi.com${STEDI_CLAIM_STATUS_PATH}`;
 
-export interface StediClaimStatusInquiry {
+export type StediClaimStatusInquiry = ClaimStatusInquiry & {
   readonly controlNumber: string;
   readonly payerId: string;
-  readonly billingProvider: { readonly organizationName: string; readonly npi: string };
-  /** TRANSIENT PHI. */
-  readonly subscriber: {
-    readonly memberId: string;
-    readonly firstName: string;
-    readonly lastName: string;
-    /** YYYY-MM-DD */
-    readonly dateOfBirth: string;
-  };
-  /** YYYY-MM-DD */
-  readonly serviceFrom: string;
-  readonly serviceTo: string;
-}
+};
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const compact = (iso: string): string => iso.replaceAll("-", "");

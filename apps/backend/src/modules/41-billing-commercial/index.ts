@@ -53,6 +53,8 @@ export {
   abandonForeignHeldEvents,
   applyAckEvent,
   heldQuarantineReport,
+  listHeldRows,
+  resolveHeldRowByOperator,
   outstanding as outstandingAckWork,
   replayHeldEvents,
 } from "./jobs/ack-worker";
@@ -87,6 +89,8 @@ export {
   registerM41AbacPredicates,
 } from "./abac-predicates";
 export { registerCommercialBillingRoutes } from "./routes/commercial-billing.routes";
+export { registerCommercialAckQuarantineRoutes } from "./routes/ack-quarantine.routes";
+export type { AckApplyDeps } from "./jobs/ack-apply";
 export type { CommercialBillingRouteDeps } from "./routes/commercial-billing.routes";
 export { buildCommercialClaimReadService } from "./services/claim-read-service";
 export type { CommercialClaimReadService } from "./services/claim-read-service";

@@ -46,8 +46,10 @@ import {
   createScheduleProbe,
   createSharedDrainReadiness,
   heldQuarantineReport,
+  listHeldRows,
   outstandingAckWork,
   replayHeldEvents,
+  resolveHeldRowByOperator,
   runAckPull,
   runSubmissionDrain,
   scheduleM41AckJobs,
@@ -2553,6 +2555,164 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         ]);
         expect(await claimState(c.claimId)).toBe("submitted"); // closed, never applied
         expect(await abandonForeignHeldEvents(ackDeps("stedi"), ORG)).toEqual({ abandoned: 0 });
+      });
+
+      it("the operator sweep stamps the acting user on every abandonment event (#820)", async () => {
+        const c = await foreignRow();
+        await abandonForeignHeldEvents(ackDeps("stedi"), ORG, USER);
+        expect(await abandonedEvents(c.controlNumber)).toEqual([
+          expect.objectContaining({ resolution: "abandoned_foreign_vendor", operatorUserId: USER }),
+        ]);
+      });
+
+      describe("operator resolution of one held row (#820)", () => {
+        async function malformedRow() {
+          const c = await sentClaim();
+          await applyAckEvent(ackDeps("stedi"), scope(), {
+            eventId: `op-malformed-${randomUUID()}`,
+            controlNumber: c.controlNumber,
+            stage: "vendor",
+            disposition: "accepted",
+            reasonCodes: [],
+          });
+          const row = await rowOf(c.controlNumber, "malformed");
+          return { c, id: row.id as string };
+        }
+
+        it("lists the unresolved rows of one provider entity without any payload, and another tenant sees none", async () => {
+          const { id } = await malformedRow();
+          const items = await listHeldRows(ackDeps("stedi"), scope());
+          const item = items.find((r) => r.id === id);
+          expect(item).toMatchObject({ reason: "malformed", hasEvent: false });
+          expect(Object.keys(item ?? {}).sort()).toEqual(
+            ["clearinghouseKey", "controlNumber", "createdAt", "hasEvent", "id", "reason"].sort(),
+          );
+          expect(
+            await listHeldRows(ackDeps("stedi"), { organizationId: ORG_B, providerEntityId }),
+          ).toEqual([]);
+        });
+
+        it("closes a malformed row once, audited with the operator, and is idempotent", async () => {
+          const { c, id } = await malformedRow();
+          expect(await resolveHeldRowByOperator(ackDeps("stedi"), scope(), id, USER)).toBe(
+            "resolved",
+          );
+          expect(await rowOf(c.controlNumber, "malformed")).toMatchObject({
+            resolution: "abandoned_operator",
+          });
+          expect(await abandonedEvents(c.controlNumber)).toEqual([
+            expect.objectContaining({
+              reason: "malformed",
+              resolution: "abandoned_operator",
+              operatorUserId: USER,
+              statusInquiry: "not_attempted",
+            }),
+          ]);
+          expect(await resolveHeldRowByOperator(ackDeps("stedi"), scope(), id, USER)).toBe(
+            "already_resolved",
+          );
+          expect(await abandonedEvents(c.controlNumber)).toHaveLength(1);
+          expect(await claimState(c.claimId)).toBe("submitted"); // closed, never applied
+        });
+
+        it("never closes a row of another tenant or another provider entity (not_found, nothing changes)", async () => {
+          const { c, id } = await malformedRow();
+          const other = { organizationId: ORG_B, providerEntityId };
+          expect(await resolveHeldRowByOperator(ackDeps("stedi"), other, id, USER)).toBe(
+            "not_found",
+          );
+          const elsewhere = { organizationId: ORG, providerEntityId: randomUUID() };
+          expect(await resolveHeldRowByOperator(ackDeps("stedi"), elsewhere, id, USER)).toBe(
+            "not_found",
+          );
+          expect((await rowOf(c.controlNumber, "malformed")).resolved_at).toBeNull();
+          expect(await abandonedEvents(c.controlNumber)).toEqual([]);
+        });
+
+        it("closes a held replayable row too (an operator settled it out of band)", async () => {
+          const { c } = await heldClaim();
+          const row = await heldOf(c);
+          expect(
+            await resolveHeldRowByOperator(ackDeps("stedi"), scope(), row.id as string, USER),
+          ).toBe("resolved");
+          expect(await heldOf(c)).toMatchObject({ resolution: "abandoned_operator" });
+          await replayHeldEvents(ackDeps("stedi"), scope()); // a resolved row is not replayed
+          expect(await abandonedEvents(c.controlNumber)).toHaveLength(1);
+        });
+      });
+
+      describe("the claim-status inquiry carries a subscriber from the inquiry port (#820)", () => {
+        const INQUIRY = {
+          billingProvider: { organizationName: "Synthetic Hospice", npi: NPI },
+          subscriber: {
+            memberId: "SYN123456",
+            firstName: "Test",
+            lastName: "Patient",
+            dateOfBirth: "1950-02-03",
+          },
+          serviceFrom: "2026-03-01",
+          serviceTo: "2026-03-31",
+        };
+        async function agedHeld() {
+          const { c } = await heldClaim();
+          await admin.query(
+            "UPDATE commercial_ack_quarantine SET created_at = now() - interval '60 days' WHERE control_number=$1",
+            [c.controlNumber],
+          );
+          await admin.query(
+            "UPDATE commercial_submission SET requested_at = now() - interval '61 days' WHERE control_number=$1",
+            [c.controlNumber],
+          );
+          return c;
+        }
+
+        it("hands the inquiry to the transport as the third argument, then abandons when nothing applies", async () => {
+          const c = await agedHeld();
+          const seen: unknown[] = [];
+          const deps: AckWorkerDeps = {
+            ...ackDeps("stedi"),
+            inquiries: { inquiryFor: async () => INQUIRY },
+            binding: {
+              vendor: "stedi",
+              transport: {
+                fetchAcknowledgments: (ctx, cursor) => transport.fetchAcknowledgments(ctx, cursor),
+                fetchClaimStatus: async (_ctx, _n, inquiry) => {
+                  seen.push(inquiry);
+                  return { ok: true, data: { controlNumber: _n, state: "received", latest: null } };
+                },
+              },
+            },
+          };
+          await replayHeldEvents(deps, scope());
+          expect(seen).toEqual([INQUIRY]);
+          expect(await abandonedEvents(c.controlNumber)).toEqual([
+            expect.objectContaining({ resolution: "abandoned_aged", statusInquiry: "no_answer" }),
+          ]);
+        });
+
+        it("a claim the port cannot describe is not asked about at all (unavailable, then abandoned)", async () => {
+          const c = await agedHeld();
+          let asked = 0;
+          const deps: AckWorkerDeps = {
+            ...ackDeps("stedi"),
+            inquiries: { inquiryFor: async () => null },
+            binding: {
+              vendor: "stedi",
+              transport: {
+                fetchAcknowledgments: (ctx, cursor) => transport.fetchAcknowledgments(ctx, cursor),
+                fetchClaimStatus: async () => {
+                  asked += 1;
+                  return { ok: false, degraded: { code: "CH_NOT_WIRED", reason: "x" } };
+                },
+              },
+            },
+          };
+          await replayHeldEvents(deps, scope());
+          expect(asked).toBe(0);
+          expect(await abandonedEvents(c.controlNumber)).toEqual([
+            expect.objectContaining({ resolution: "abandoned_aged", statusInquiry: "unavailable" }),
+          ]);
+        });
       });
     });
 
