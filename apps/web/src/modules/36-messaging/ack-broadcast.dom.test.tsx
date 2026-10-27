@@ -296,7 +296,8 @@ describe("AckBroadcast", () => {
     );
     fireEvent.click(await screen.findByRole("button", { name: /Acknowledge/ }));
     const status = await screen.findByText("Acknowledged.");
-    expect(status.getAttribute("role")).toBe("status");
+    // An <output>: role "status" is implicit, so ask the accessibility tree rather than the attribute.
+    expect(screen.getAllByRole("status")).toContain(status);
     await waitFor(() => expect(document.activeElement).toBe(status));
   });
 
