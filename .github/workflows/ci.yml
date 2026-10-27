@@ -25,7 +25,7 @@ on:
 # lockfile, build the project-reference graph, pass all six fitness gates + scaffold parity,
 # and pass the Vitest fitness-gate self-test (which proves each gate goes red on a violation).
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
