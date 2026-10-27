@@ -275,6 +275,7 @@
     "test:m37:death-recorded:live": "vitest run apps/backend/__tests__/m37-death-recorded.live.test.ts",
     "test:m25:denial-seed-consumers:live": "vitest run apps/backend/__tests__/m25-denial-seed-consumers.live.test.ts",
     "test:m25:manual-match:live": "vitest run apps/backend/__tests__/m25-manual-match.live.test.ts",
+    "test:m25:commercial-remit-matching:live": "vitest run apps/backend/__tests__/m25-commercial-remit-matching.live.test.ts",
     "test:m25:denial-version:live": "vitest run apps/backend/__tests__/m25-denial-version.live.test.ts",
     "test:m25:appeal-packet:live": "vitest run apps/backend/__tests__/m25-appeal-packet.live.test.ts",
     "test:m25:adr:live": "vitest run apps/backend/__tests__/m25-adr.live.test.ts",

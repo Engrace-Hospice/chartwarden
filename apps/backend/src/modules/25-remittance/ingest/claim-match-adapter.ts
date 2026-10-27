@@ -127,3 +127,58 @@ export function buildM24BackedClaimMatchCandidateProvider(): ClaimMatchCandidate
     },
   };
 }
+
+/** Structural view of M41's `CommercialClaimReader` (opaque `unknown` in the M1 registry). */
+interface CommercialClaimReaderView {
+  candidatesForLine(
+    orgId: string,
+    providerEntityId: string,
+    payerId: string,
+    keys: { claimControlNumber?: string },
+  ): Promise<
+    Array<{ claimId: string; claimControlNumber: string; serviceFrom: string; serviceTo: string }>
+  >;
+  patientIdForClaim(orgId: string, claimId: string): Promise<string | null>;
+}
+
+/**
+ * #725 (ADR-0100 D8) — the commercial sibling, routed to when the advice's `payerKind === "commercial"`.
+ * Payer-keyed: the advice's `payerId` is passed through and M41 returns only claims whose plan belongs to that
+ * payer, so a wrong-payer advice finds no candidate. A commercial claim carries no payer ICN and no member id
+ * here, so only CLP01 (claim control number exact) can auto-bind; everything else is manual review. Same
+ * fail-closed degrade as the Medicare/Medicaid providers; a missing `payerId` is "no candidates".
+ */
+export function buildM41BackedClaimMatchCandidateProvider(): ClaimMatchCandidateProvider {
+  return {
+    async candidatesForLine(args): Promise<readonly MatchCandidate[]> {
+      if (!args.payerId) return [];
+      try {
+        const reader = getSeam("CommercialClaimReader") as CommercialClaimReaderView;
+        const rows = await reader.candidatesForLine(
+          args.organizationId,
+          args.providerEntityId,
+          args.payerId,
+          { claimControlNumber: args.patientControlNumber },
+        );
+        return rows.map(
+          (r): MatchCandidate => ({
+            claimId: r.claimId,
+            claimControlNumber: r.claimControlNumber,
+            serviceFrom: r.serviceFrom,
+            serviceTo: r.serviceTo,
+          }),
+        );
+      } catch {
+        return [];
+      }
+    },
+    async patientIdForClaim(organizationId, claimId): Promise<string | null> {
+      try {
+        const reader = getSeam("CommercialClaimReader") as CommercialClaimReaderView;
+        return await reader.patientIdForClaim(organizationId, claimId);
+      } catch {
+        return null;
+      }
+    },
+  };
+}

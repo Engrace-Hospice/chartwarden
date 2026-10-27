@@ -764,6 +764,8 @@ jobs:
           - { name: "M41 eligibility", scripts: "test:m41:eligibility:live" }
           # M41 commercial submission (ADR-0053 D10) - the send gate, the submit transaction (queued row + event, claim stays ready), the drain through the in-memory transport (ready -> submitted only on a receipt), idempotency, RLS as chartwarden_app.
           - { name: "M41 commercial submission", scripts: "test:m41:commercial-submission:live" }
+          # M25 commercial 835 matching (#725, ADR-0100 D8) - S15 posts exactly once (double delivery), S19 wrong payer / wrong tenant / unsent claim quarantines, as chartwarden_app.
+          - { name: "M25 commercial remit matching", scripts: "test:m25:commercial-remit-matching:live" }
           # Milestone 9a-2 - the leadership medical-review report (figures only; no table, no target or benchmark).
           - { name: "M25 medical-review report", scripts: "test:m25:medical-review-report:live" }
           # F-158 (#248) — the `handlers-unbound` denial-worklist seed: m23.claim.rejected +

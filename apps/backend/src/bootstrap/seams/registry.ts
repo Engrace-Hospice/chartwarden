@@ -50,6 +50,7 @@ import {
   claimSettlementProviderDenyStub,
   claimSubmissionReaderDenyStub,
   comfortKitDispatchProviderDenyStub,
+  commercialClaimReaderDenyStub,
   complianceStatusProviderDenyStub,
   complianceWindowCountsProviderDenyStub,
   consentEvaluatorDenyStub,
@@ -570,6 +571,15 @@ export const REQUIRED_SEAMS = [
     ownerModule: 24,
     phi: true,
     denyStub: medicaidClaimMatchProviderDenyStub,
+  },
+  // M41 → M25 — the commercial sibling (#725, ADR-0100 D8): payer-keyed claim-control-number candidates
+  // (the claim's plan payer must equal the advice's payer) + claim->patient id. PHI (patient id). Fail-closed
+  // until M41 registers the real reader; M25's adapter degrades the deny-stub throw to "no candidates".
+  {
+    key: "CommercialClaimReader",
+    ownerModule: 41,
+    phi: true,
+    denyStub: commercialClaimReaderDenyStub,
   },
   // M27 → M30 — the cost-report filing posture per FY. M27's FIRST M1 publish (it was a pure consumer
   // before). CoP 418.310 makes failure to file grounds for termination, so M30's compliance indicator needs
