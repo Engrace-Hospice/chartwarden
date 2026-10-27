@@ -59,6 +59,7 @@ describe("parseX12835 clean multi-claim 835", () => {
       ],
       serviceLines: [
         {
+          serviceIdQualifier: "HC",
           procedureCode: "Q5001",
           chargeAmount: 600,
           paidAmount: 500,
@@ -68,6 +69,7 @@ describe("parseX12835 clean multi-claim 835", () => {
           remarks: [{ kind: "LQ", code: "N30" }],
         },
         {
+          serviceIdQualifier: "HC",
           procedureCode: "Q5002",
           chargeAmount: 400,
           paidAmount: 300,
@@ -87,6 +89,7 @@ describe("parseX12835 clean multi-claim 835", () => {
     const c = r.value.claims[1]!;
     expect(c.remarks).toEqual([{ kind: "MIA", code: "MA01" }]);
     expect(c.serviceLines[0]).toEqual({
+      serviceIdQualifier: "NU",
       revenueCode: "0651",
       chargeAmount: 500,
       paidAmount: 400,

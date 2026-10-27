@@ -4,7 +4,7 @@
 // (ADR-0029) and is deliberately not parsed here. No network or storage code lives in this package.
 // Imports ONLY from ./types + the ./parse-* mappers — never from ./index — to keep the no-circular rule.
 import { mapParsed277ca } from "./parse-277ca";
-import { parseX12835 } from "./parse-x12-835";
+import { parseX12835, parseX12835AllSets } from "./parse-x12-835";
 import {
   type Parsed277ca,
   type ParsedRemittanceAdvice,
@@ -64,6 +64,11 @@ export interface Parse277caRequest {
 /** The M25-owned X12 client surface: in-process 835 parsing plus the 277CA sidecar mapper. */
 export interface X12835WorkerClient {
   parse835(input: Parse835Request): Promise<X12WorkerResult<ParsedRemittanceAdvice>>;
+  /**
+   * Every ST/SE set of the file, parsed in one pass, in file order (all-or-nothing). Optional so a test double
+   * need not implement it; the receive path falls back to one `parse835` per ST02 when it is absent.
+   */
+  parse835All?(input: Parse835Request): Promise<X12WorkerResult<ParsedRemittanceAdvice[]>>;
   parse277ca(input: Parse277caRequest): Promise<X12WorkerResult<Parsed277ca>>;
 }
 
@@ -83,36 +88,40 @@ export const NO_X12_835_PORT: X12835HttpPort = {
  */
 export function createX12835Client(opts: X12835ClientOptions = {}): X12835WorkerClient {
   const port = opts.port ?? NO_X12_835_PORT;
+  const loadRaw = async (input: Parse835Request): Promise<string | X12WorkerResult<never>> => {
+    if (input.rawEdi !== undefined) return input.rawEdi;
+    if (!opts.readRaw) {
+      return degraded835(
+        "X12_835_RAW_UNAVAILABLE",
+        "raw 835 not supplied and no object reader is wired",
+        "parse835",
+        true,
+      );
+    }
+    try {
+      return await opts.readRaw(input.minioObjectKey);
+    } catch {
+      // Fixed text: a storage error message can carry bucket/endpoint detail and lands in parse_summary.
+      return degraded835(
+        "X12_835_RAW_READ",
+        "staged 835 object could not be read",
+        "parse835",
+        true,
+      );
+    }
+  };
+  const parseOpts = { allowTestFiles: opts.allowTestFiles ?? false };
   return {
     async parse835(input) {
-      let raw = input.rawEdi;
-      if (raw === undefined) {
-        if (!opts.readRaw) {
-          return degraded835(
-            "X12_835_RAW_UNAVAILABLE",
-            "raw 835 not supplied and no object reader is wired",
-            "parse835",
-            true,
-          );
-        }
-        try {
-          raw = await opts.readRaw(input.minioObjectKey);
-        } catch {
-          // Fixed text: a storage error message can carry bucket/endpoint detail and lands in parse_summary.
-          return degraded835(
-            "X12_835_RAW_READ",
-            "staged 835 object could not be read",
-            "parse835",
-            true,
-          );
-        }
-      }
-      return parseX12835(
-        raw,
-        input.payerProgram,
-        { allowTestFiles: opts.allowTestFiles ?? false },
-        input.transactionSetControlNumber,
-      );
+      const raw = await loadRaw(input);
+      if (typeof raw !== "string") return raw;
+      return parseX12835(raw, input.payerProgram, parseOpts, input.transactionSetControlNumber);
+    },
+
+    async parse835All(input) {
+      const raw = await loadRaw(input);
+      if (typeof raw !== "string") return raw;
+      return parseX12835AllSets(raw, input.payerProgram, parseOpts);
     },
 
     async parse277ca(input) {

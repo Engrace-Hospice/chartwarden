@@ -7,9 +7,14 @@
 // Current-behavior limits (deliberate; tracked as follow-ups, not silent):
 //  - one ISA and one GS/GE group per file; several ST/SE transaction sets inside that group are split, each
 //    balanced on its own, and selected by ST02 (a second ISA or GS is rejected);
-//  - SVC01 qualifier is validated only (modifiers and SVC06 are surfaced);
-//  - the production date is BPR16, falling back to DTM*405 (label not reconciled with the spec);
-//  - BPR02 = 0 does not force BPR04 = NON;
+//  - the SVC01 qualifier is validated AND kept (`serviceIdQualifier`: HC/NU/...), so a HCPCS and an
+//    revenue/other id with the same text are never confused downstream;
+//  - `productionDate` is BPR16 (check issue / EFT effective date), falling back to DTM*405 (the 835 production
+//    date). Per the 5010 835 TR3 these are different facts; BPR16 wins because it is the payment date a
+//    reconciler wants and is required by the TR3, DTM*405 is only the fallback for non-conformant files.
+//    The TR3 is not in this repo (docs/reference/cms holds only CMS manuals), so this is unverified against it;
+//  - BPR02 = 0 does not force BPR04 = NON (the repo's own zero-pay fixture is NON, but the TR3 rule that ties the
+//    two is not in the repo and real MAC zero-pay files have not been seen: accepted, not enforced);
 //  - test files (ISA15 != P) are rejected unless `allowTestFiles` is set; only GS01=HP / GS08=005010X221* pass.
 import { type CentsAdjustment, checkClaimBalance, checkPaymentBalance } from "./balance-835";
 import {
@@ -135,6 +140,7 @@ function remarksOf(seg: X12Segment): ParsedRemark[] {
 }
 
 interface LineDraft {
+  serviceIdQualifier: string;
   procedureCode?: string;
   modifiers: string[];
   submittedProcedureCode?: string;
@@ -199,6 +205,7 @@ function newLine(seg: X12Segment, compSep: string): LineDraft {
   const units = elem(seg, 5);
   const sub = elem(seg, 7);
   return {
+    serviceIdQualifier: qual,
     ...(qual === "NU" ? { revenueCode: code } : { procedureCode: code }),
     ...(rev ? { revenueCode: rev } : {}),
     modifiers: trimTrailingEmpty(mods),
@@ -229,6 +236,7 @@ function applyClaimSegment(claim: ClaimDraft, seg: X12Segment): void {
 }
 
 const toLine = (l: LineDraft): ParsedServiceLine => ({
+  serviceIdQualifier: l.serviceIdQualifier,
   ...(l.procedureCode ? { procedureCode: l.procedureCode } : {}),
   ...(l.revenueCode ? { revenueCode: l.revenueCode } : {}),
   ...(l.modifiers.length ? { modifiers: l.modifiers } : {}),
@@ -338,7 +346,11 @@ function parsePlb(seg: X12Segment): number[] {
 function partyOf(seg: X12Segment): ParsedRemittanceParty {
   const qual = elem(seg, 3);
   const id = elem(seg, 4);
-  return { name: elem(seg, 2), ...(qual ? { idQualifier: qual } : {}), ...(id ? { id } : {}) };
+  return {
+    name: elem(seg, 2),
+    ...(qual ? { idQualifier: qual } : {}),
+    ...(id ? { id } : {}),
+  };
 }
 
 /** Party-loop REF segments (payee tax id / PTAN, payer additional id); other REFs are left alone. */
@@ -414,7 +426,11 @@ function checkBalances(b: Body, total: number): void {
         paid: c.paid,
         patientResponsibility: c.patientResponsibility,
         adjustments: c.adjs,
-        lines: c.lines.map((l) => ({ charge: l.charge, paid: l.paid, adjustments: l.adjs })),
+        lines: c.lines.map((l) => ({
+          charge: l.charge,
+          paid: l.paid,
+          adjustments: l.adjs,
+        })),
       },
       i + 1,
     ),
@@ -426,21 +442,12 @@ function checkBalances(b: Body, total: number): void {
   );
 }
 
-function build(
-  raw: string,
+function buildSet(
+  doc: { readonly componentSeparator: string },
+  isa13: string,
+  chosen: TransactionSet,
   payerProgram: PayerProgram,
-  opts: ParseX12835Options,
-  transactionSetControlNumber?: string,
 ): ParsedRemittanceAdvice {
-  const doc = tokenizeX12(raw);
-  const { isa13, sets } = unwrapEnvelope(doc.segments, opts);
-  const chosen =
-    transactionSetControlNumber === undefined
-      ? sets.length === 1
-        ? sets[0]
-        : fail("the file holds several transaction sets; select one by ST02")
-      : sets.find((x) => x.st02 === transactionSetControlNumber);
-  if (!chosen) return fail("no transaction set with that ST02 in the file");
   const { st02, body } = chosen;
   const b = walkBody(body, doc.componentSeparator);
   const method = PAYMENT_METHODS[elem(b.bpr, 4)];
@@ -462,10 +469,30 @@ function build(
     payee: b.parties.PE as ParsedRemittanceParty,
     paymentMethod: method,
     totalPaymentAmount: total / 100,
-    ...(b.plb.length > 0 ? { providerAdjustmentTotal: b.plb.reduce((a, c) => a + c, 0) / 100 } : {}),
+    ...(b.plb.length > 0
+      ? { providerAdjustmentTotal: b.plb.reduce((a, c) => a + c, 0) / 100 }
+      : {}),
     productionDate: `${b.production}T00:00:00Z`,
     claims: b.claims.map(toClaim),
   };
+}
+
+function build(
+  raw: string,
+  payerProgram: PayerProgram,
+  opts: ParseX12835Options,
+  transactionSetControlNumber?: string,
+): ParsedRemittanceAdvice {
+  const doc = tokenizeX12(raw);
+  const { isa13, sets } = unwrapEnvelope(doc.segments, opts);
+  const chosen =
+    transactionSetControlNumber === undefined
+      ? sets.length === 1
+        ? sets[0]
+        : fail("the file holds several transaction sets; select one by ST02")
+      : sets.find((x) => x.st02 === transactionSetControlNumber);
+  if (!chosen) return fail("no transaction set with that ST02 in the file");
+  return buildSet(doc, isa13, chosen, payerProgram);
 }
 
 /** Parse raw 835 text. Never throws: any failure is a non-retryable degraded envelope (PHI-free reason). */
@@ -476,7 +503,32 @@ export function parseX12835(
   transactionSetControlNumber?: string,
 ): X12WorkerResult<ParsedRemittanceAdvice> {
   try {
-    return { ok: true, value: build(raw, payerProgram, opts, transactionSetControlNumber) };
+    return {
+      ok: true,
+      value: build(raw, payerProgram, opts, transactionSetControlNumber),
+    };
+  } catch (err) {
+    if (err instanceof X12ParseError) return degraded835(err.code, err.message, "parse835", false);
+    return degraded835("X12_835_PARSE_FAILED", "unexpected parser failure", "parse835", false);
+  }
+}
+
+/**
+ * Parse EVERY ST/SE set of the file in one tokenize + one envelope pass (O(size), not O(sets x size)), in file
+ * order. All-or-nothing: one bad set fails the whole file, matching how receive treats a multi-set file.
+ */
+export function parseX12835AllSets(
+  raw: string,
+  payerProgram: PayerProgram,
+  opts: ParseX12835Options = {},
+): X12WorkerResult<ParsedRemittanceAdvice[]> {
+  try {
+    const doc = tokenizeX12(raw);
+    const { isa13, sets } = unwrapEnvelope(doc.segments, opts);
+    return {
+      ok: true,
+      value: sets.map((set) => buildSet(doc, isa13, set, payerProgram)),
+    };
   } catch (err) {
     if (err instanceof X12ParseError) return degraded835(err.code, err.message, "parse835", false);
     return degraded835("X12_835_PARSE_FAILED", "unexpected parser failure", "parse835", false);
