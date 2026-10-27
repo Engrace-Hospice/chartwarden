@@ -9,7 +9,7 @@ import { Glyph, PageHeader, useApiClient } from "@chartwarden/ui";
 // lines, pricing and validation outcome. The server is the only authz point (ADR-0030): a 409
 // NON_MEDICARE_PRIMARY_PAYER (D15) / PATIENT_NOT_ELECTED, a 422 ASSEMBLY_VALIDATION_FAILED and a 503 (seams unbound,
 // fail-closed) each surface inline (role="alert"), never a toast. CSS-var tokens only; tones via billing-status.ts.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { BillingTabs } from "../../shell/billing-tabs";
@@ -263,25 +263,34 @@ function PayerPreflightNote({
   status,
   onRetry,
 }: { status: PayerPreflightStatus; onRetry: () => void }): JSX.Element {
+  const regionRef = useRef<HTMLOutputElement>(null);
   const message = PAYER_PREFLIGHT_MESSAGES[status];
   const blocking = BLOCKING_STATUSES.has(status);
   return (
     <>
-      <output aria-atomic="true" style={{ display: "block" }}>
-        {message && !blocking ? (
-          <p style={{ ...hintStyle, color: "var(--color-on-surface)" }}>
-            {message}
-            {status === "error" ? (
-              <>
-                {" "}
-                <button type="button" style={ghostButtonStyle} onClick={onRetry}>
-                  Retry payer check
-                </button>
-              </>
-            ) : null}
-          </p>
-        ) : null}
+      <output
+        ref={regionRef}
+        tabIndex={-1}
+        aria-atomic="true"
+        style={{ ...hintStyle, display: "block", outline: "none" }}
+      >
+        {message && !blocking ? message : null}
       </output>
+      {status === "error" ? (
+        <div>
+          <button
+            type="button"
+            style={ghostButtonStyle}
+            onClick={() => {
+              onRetry();
+              // The button unmounts once the retry starts; keep keyboard focus on the live region instead.
+              regionRef.current?.focus();
+            }}
+          >
+            Retry payer check
+          </button>
+        </div>
+      ) : null}
       {message && blocking ? (
         <p id="payer-preflight" role="alert" style={{ ...hintStyle, color: "var(--color-error)" }}>
           {message}

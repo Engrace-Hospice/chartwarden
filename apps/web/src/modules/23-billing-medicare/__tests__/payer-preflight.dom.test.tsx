@@ -38,7 +38,6 @@ const row = (over: Partial<PayerCoverageRow> = {}): PayerCoverageRow => ({
   id: "cov-1",
   coverageKind: "medicare_ffs",
   rank: 1,
-  current: true,
   effectiveFrom: "2026-01-01",
   effectiveTo: null,
   ...over,
@@ -91,6 +90,10 @@ describe("classifyPayerCoverage", () => {
     const a = row({ id: "a", effectiveTo: "2026-10-15" });
     const b = row({ id: "b", effectiveFrom: "2026-10-16" });
     expect(classifyPayerCoverage([a, b], "2026-10-01", "2026-10-31")).toBe("no-medicare");
+  });
+  it("abstains (idle) when two FFS rows tie at the best rank, since the server's pick is order-dependent", () => {
+    const tie = [row(), row({ id: "cov-9" })];
+    expect(classifyPayerCoverage(tie, "2026-10-01", "2026-10-31")).toBe("idle");
   });
   it("is medicare-advantage when only MA, or MA outranks FFS", () => {
     const ma = row({ id: "ma", coverageKind: "medicare_advantage" });
@@ -160,6 +163,7 @@ describe("ClaimAssemblyWizard payer preflight", () => {
     await screen.findByText(/could not be checked/i);
     expect(assemble().disabled).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: /retry payer check/i }));
+    expect(document.activeElement).toBe(liveRegion()); // focus is kept when the button unmounts
     await waitFor(() => expect(liveRegion().textContent).toMatch(/primary payer/i));
     expect(get).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole("button", { name: /retry payer check/i })).toBeNull();

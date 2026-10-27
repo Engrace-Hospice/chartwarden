@@ -2,13 +2,12 @@
 // medicarePrimaryForRange (claim-assembly-seam-adapters.ts) so billing staff learn early; the server's assemble call
 // stays AUTHORITATIVE — this is a convenience and never replaces it. Messages carry no identifiers (PHI-free).
 import { useApiClient } from "@chartwarden/ui";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export interface PayerCoverageRow {
   id: string;
   coverageKind: string;
   rank: number;
-  current: boolean;
   effectiveFrom: string;
   effectiveTo: string | null;
 }
@@ -46,15 +45,31 @@ const day = (v: string): string => v.slice(0, 10);
 const covers = (row: PayerCoverageRow, date: string): boolean =>
   day(row.effectiveFrom) <= date && (row.effectiveTo === null || day(row.effectiveTo) >= date);
 
+const inForce = (rows: readonly PayerCoverageRow[], kind: string, date: string) =>
+  rows.filter((r) => r.coverageKind === kind && covers(r, date)).sort((x, y) => x.rank - y.rank);
+
 // Like the server's activeCoverageOfKind: among rows of a kind in force on a date, the best (lowest) rank wins.
 const bestOfKind = (rows: readonly PayerCoverageRow[], kind: string, date: string) =>
-  rows.filter((r) => r.coverageKind === kind && covers(r, date)).sort((x, y) => x.rank - y.rank)[0];
+  inForce(rows, kind, date)[0];
 
+// Two in-force rows of a kind sharing the best rank (legacy overlap data): which one the server picks depends on
+// its own row order, which this list does not expose, so the client abstains rather than guess.
+const tiedAtBestRank = (rows: readonly PayerCoverageRow[], kind: string, date: string): boolean => {
+  const [first, second] = inForce(rows, kind, date);
+  return first !== undefined && second !== undefined && first.rank === second.rank;
+};
+
+// A deliberate SUBSET of the server's D15 gate (it does not model a payer change inside the window, a gap or a tie):
+// it may say "ok" where assembly is later refused, but must never block where the server would pass.
 export function classifyPayerCoverage(
   rows: readonly PayerCoverageRow[],
   serviceFrom: string,
   serviceTo: string,
 ): PayerPreflightStatus {
+  for (const date of [serviceFrom, serviceTo]) {
+    if (tiedAtBestRank(rows, "medicare_ffs", date)) return "idle";
+  }
+  if (tiedAtBestRank(rows, "medicare_advantage", serviceFrom)) return "idle";
   const ffs = bestOfKind(rows, "medicare_ffs", serviceFrom);
   const advantage = bestOfKind(rows, "medicare_advantage", serviceFrom);
   // The server needs the SAME coverage row (patient_payer.id) at both ends of the range.
@@ -77,6 +92,7 @@ export function usePayerPreflight(
   // selected option id or "", but a restored draft or a typed value must never reach the API as partial text).
   const id = UUID_RE.test(trimmed) ? trimmed : "";
   const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
   const key = `${id}#${attempt}`;
   // rows === null means the request failed.
   const [loaded, setLoaded] = useState<{ key: string; rows: PayerCoverageRow[] | null } | null>(
@@ -105,8 +121,7 @@ export function usePayerPreflight(
     };
   }, [client, id, key]);
 
-  const retry = () => setAttempt((n) => n + 1);
-  // Dates decide coverage; wait for a valid range rather than judging on the `current` flag.
+  // Dates decide coverage; wait for a valid range before judging.
   if (id === "" || serviceFrom === "" || serviceTo === "" || serviceFrom > serviceTo) {
     return { status: "idle", retry };
   }
