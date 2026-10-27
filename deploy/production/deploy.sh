@@ -167,7 +167,7 @@ assess_schema_change() {
   # shellcheck disable=SC2086 # filenames validated above, one argument each
   if docker compose --env-file .env.production -f compose.yml run --rm --no-deps migrate \
     bun run scripts/check-migration-compat.ts --classify $schema_applied; then
-    schema_verdict=expand
+    schema_verdict="expand"
   else
     schema_verdict=unsafe
   fi
