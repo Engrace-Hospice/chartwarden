@@ -1,0 +1,19 @@
+id,title,severity,category,status,confidence,primary_file
+CW-QA-0001,"Same-day payer replacement leaves two primary coverages and Medicare assembly selects the wrong payer",P1,billing,CONFIRMED_RUNTIME,high,apps/backend/src/modules/05-patient/patient-route-service-db.ts
+CW-QA-0002,"Production release and deploy bypass the repository's full CI workflow",P1,devops,CONFIRMED_STATIC,high,.github/workflows/deploy.yml
+CW-QA-0003,"Repository lint gate fails with 1,113 diagnostics",P2,quality,CONFIRMED_TEST,high,biome.json
+CW-QA-0004,"Portal bundle-size gate reports a false zero-byte pass",P2,performance,CONFIRMED_TEST,high,apps/portal/scripts/check-bundle-size.ts
+CW-QA-0005,"Web and admin production entry bundles exceed configured budgets",P2,performance,CONFIRMED_TEST,high,apps/web/package.json
+CW-QA-0006,"HOPE SFV rule rejects LPN/LVN despite current CMS guidance",P2,hope-compliance,CONFIRMED_STATIC,high,packages/hope/src/recording/discipline.ts
+CW-QA-0007,"Medicare claim wizard delays payer compatibility validation until final assembly",P2,billing-ux,CONFIRMED_STATIC,high,apps/web/src/modules/23-billing-medicare/claim-assembly-wizard.tsx
+CW-QA-0008,"Critical browser workflows and accessibility surfaces remain unverified",P2,test-coverage,BLOCKED,high,audit/e2e-coverage/E2E_COVERAGE.md
+CW-QA-0009,"Docling worker image ignores its lockfile and overrides incompatible dependency bounds",P2,supply-chain,CONFIRMED_STATIC,high,services/docling-worker/Dockerfile
+CW-QA-0010,"Docling worker unit tests are not executed by repository CI",P2,test-coverage,CONFIRMED_STATIC,high,.github/workflows/pr-image-gate.yml
+CW-QA-0011,"Production infrastructure uses mutable image tags",P2,devops,CONFIRMED_STATIC,high,deploy/production/compose.yml
+CW-QA-0012,"Single-host production services lack resource isolation",P2,reliability,CONFIRMED_STATIC,medium,deploy/production/compose.yml
+CW-QA-0013,"Repository evidence states production has no object-store backup or coordinated database/object snapshot",P1,disaster-recovery,CONFIRMED_STATIC,high,audit/restore-drill/m36-restore-drill.md
+CW-QA-0014,"Clinical free-text drafts are stored as plaintext in sessionStorage during step-up",P2,privacy,CONFIRMED_STATIC,high,apps/web/src/shell/step-up-redirect.ts
+CW-QA-0015,"HOPE live suite has order-dependent cluster-role cleanup",P3,test-reliability,CONFIRMED_TEST,high,packages/db/migrations/__tests__/m10-hope-phase-1a-spec-foundation.live.test.ts
+CW-QA-0016,"M17 on-call rotation table lacks live-test evidence",P3,test-coverage,CONFIRMED_STATIC,high,architecture/module-manifest.ts
+CW-QA-0017,"Automatic rollback can restart old code after forward-only schema changes",P1,deployment,CONFIRMED_STATIC,high,deploy/production/deploy.sh
+CW-QA-0018,"Generated and narrative readiness artifacts contradict current implementation state",P3,documentation-drift,CONFIRMED_STATIC,high,AGENTS.md
