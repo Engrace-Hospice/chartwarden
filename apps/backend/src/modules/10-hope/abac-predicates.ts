@@ -12,8 +12,9 @@ import {
 //   hope.authorDisciplineAllowed   — D-decision: only RN / NP / MD may author/sign/correct a HOPE
 //        timepoint. The actor's discipline set is assembled from session roles/attributes (never client
 //        input). A discipline NOT in the set is a structural floor — break-glass cannot grant it (§6).
-//   hope.sfvAuthorAllowed          — the CMS HOPE manual restricts the SFV (RFA-04) author further: only
-//        RN / NP may sign an SFV completion.
+//   hope.sfvAuthorAllowed          — the CMS HOPE manual limits the SFV (RFA-04) author: only
+//        RN / NP / LPN / LVN may sign an SFV completion (HOPE Guidance Manual v1.03; the hospice decides
+//        whether its LPN/LVNs are appropriate).
 //   hope.correctionAuthorAllowed   — the correction (§4.1 `/correct`) author must be the original signer
 //        OR hold the clinical-lead role (broadened scope). The original-signer fact loads through the
 //        injected {@link HopeAbacResolver} (org-scoped, RLS-backstopped); a missing/cross-tenant row
@@ -91,6 +92,9 @@ function isClinicalLead(context: AbacContext): boolean {
 export interface HopeAssessmentAbacFacts {
   readonly patientId: string;
   readonly originalSignedBy: string | null;
+  /** The record's RFA kind: lets the author-discipline predicate apply the SFV rule to an SFV's
+   * draft-edit/sign/correct routes (#850). */
+  readonly rfaKind: string;
 }
 
 /** Loads a HOPE assessment's org-scoped signer + patient facts (in-memory in the slice; Drizzle in prod
@@ -177,8 +181,16 @@ export function buildHopeAbacPredicates(
     hasOrgWideScope(context.roles) || context.providerEntityIds.includes(providerEntityId);
 
   return {
-    "hope.authorDisciplineAllowed": async (context) =>
-      hopeDisciplinesOf(context).some((d) => isHopeAuthorDisciplineAllowed(d)),
+    "hope.authorDisciplineAllowed": async (context, target) => {
+      // An SFV's (RFA-04) correction draft is edited and signed on the generic assessment routes, so a
+      // target naming an SFV row applies the SFV rule (LPN/LVN included). No target (new-timepoint
+      // routes) or any other RFA keeps the RN/NP/MD floor. Unresolvable ids fall to the strict floor.
+      const id = targetStr(target, "id") ?? targetStr(target, "assessmentId");
+      const facts = id ? await resolver.loadAssessment(context.organizationId, id) : null;
+      const allowed =
+        facts?.rfaKind === "04_sfv" ? isSfvAuthorDisciplineAllowed : isHopeAuthorDisciplineAllowed;
+      return hopeDisciplinesOf(context).some((d) => allowed(d));
+    },
     "hope.sfvAuthorAllowed": async (context) =>
       hopeDisciplinesOf(context).some((d) => isSfvAuthorDisciplineAllowed(d)),
     "hope.correctionAuthorAllowed": async (context, target) => {

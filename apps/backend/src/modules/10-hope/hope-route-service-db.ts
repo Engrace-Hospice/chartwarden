@@ -1157,17 +1157,20 @@ export function createDbHopeBackend(
           .select({
             patientId: ASSESS.patientId,
             signedByMembershipId: ASSESS.signedByMembershipId,
+            rfaKind: ASSESS.rfaKind,
           })
           .from(ASSESS)
           .where(and(eq(ASSESS.id, assessmentId), eq(ASSESS.organizationId, organizationId)))
           .limit(1)) as {
           patientId: string;
           signedByMembershipId: string | null;
+          rfaKind: string;
         }[];
         if (!r) return null; // absent / cross-tenant → deny
         return {
           patientId: r.patientId,
           originalSignedBy: r.signedByMembershipId ?? null,
+          rfaKind: r.rfaKind,
         };
       });
     },

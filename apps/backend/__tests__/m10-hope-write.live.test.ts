@@ -583,6 +583,11 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       data: SFV_DATA,
     });
     expect(completion.status).toBe("signed");
+    // #850 — the ABAC resolver sees the RFA kind of the stored row, so the SFV author rule (LPN/LVN) can
+    // govern an SFV's correction draft; a cross-tenant id resolves to nothing (fail closed).
+    const sfvFacts = await svc.loadAssessment(ORG_A, completion.id);
+    expect(sfvFacts?.rfaKind).toBe("04_sfv");
+    expect(await svc.loadAssessment(ORG_B, completion.id)).toBeNull();
     const done = await svc.getSfv(ORG_A, sfv!.id);
     expect(done.status).toBe("completed");
     expect(await eventsFor(sfv!.id)).toContain("m10.hope.sfv_completed");

@@ -3,6 +3,7 @@ export const SYSTEM_ROLE_DISPLAY_NAMES = {
   rn: "Registered Nurse (RN)",
   rn_case_manager: "RN Case Manager",
   lpn: "Licensed Practical Nurse (LPN)",
+  lvn: "Licensed Vocational Nurse (LVN)",
   md: "Physician (MD/DO)",
   hospice_physician: "Hospice Physician",
   medical_director: "Hospice Medical Director",
