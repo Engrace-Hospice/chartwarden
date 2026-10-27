@@ -4,8 +4,12 @@
 import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
+  MAX_RETAINED_RESULTS,
+  appendReportResults,
   classifyCmsResult,
   deriveBatchOutcome,
+  isSettledItemStatus,
+  manualUploadTransmittedPayload,
   resolveRejectedItem,
   terminalCorrection,
   worstOutcome,
@@ -128,6 +132,27 @@ describe("importSubmissionResult", () => {
     ).toBe("M10_SUBMISSION_RESULT_ALREADY_RECORDED");
   });
 
+  it("replaying an OLDER report (A, B, A) in a pending batch changes nothing", async () => {
+    const svc = setup();
+    const b = await svc.assembleSubmission(ORG, PE);
+    await svc.markSubmissionUploaded(ORG, "u1", b.id, {});
+    const A = {
+      reportReference: "ra",
+      results: [{ assessmentId: A1, status: "accepted", message: "from A" }],
+    };
+    const B = {
+      reportReference: "rb",
+      results: [{ assessmentId: A1, status: "accepted", message: "from B" }],
+    };
+    await svc.importSubmissionResult(ORG, "u1", b.id, A);
+    const afterB = await svc.importSubmissionResult(ORG, "u1", b.id, B);
+    const replay = await svc.importSubmissionResult(ORG, "u2", b.id, A);
+    expect(afterB.findings).toHaveLength(2);
+    expect(replay.findings).toHaveLength(2);
+    expect(replay.resultReportReference).toBe("rb");
+    expect(replay.status).toBe(afterB.status);
+  });
+
   it("rejects a report that matches no item in the batch", async () => {
     const svc = setup();
     const b = await svc.assembleSubmission(ORG, PE);
@@ -200,5 +225,75 @@ describe("correction chains", () => {
       ["B", "A"],
     ]);
     expect(terminalCorrection("A", childOf)).not.toBeNull();
+  });
+});
+
+describe("cross-report verdicts are final", () => {
+  it("a later report cannot flip a settled item (slice), later rows still add findings", async () => {
+    const svc = setup();
+    const b = await svc.assembleSubmission(ORG, PE);
+    await svc.markSubmissionUploaded(ORG, "u1", b.id, {});
+    await svc.importSubmissionResult(ORG, "u1", b.id, {
+      results: [{ assessmentId: A1, status: "rejected", code: "-9" }],
+    });
+    const out = await svc.importSubmissionResult(ORG, "u1", b.id, {
+      results: [
+        { assessmentId: A1, status: "accepted", message: "late note" },
+        { assessmentId: A2, status: "accepted" },
+      ],
+    });
+    const status = new Map(out.items.map((i) => [i.assessmentId, i.status]));
+    expect(status.get(A1)).toBe("rejected");
+    expect(status.get(A2)).toBe("accepted");
+    expect(out.status).toBe("partially_accepted");
+    expect(out.findings.map((f) => f.message)).toContain("late note");
+  });
+
+  it("classifies settled item statuses", () => {
+    expect(["accepted", "accepted_with_warnings", "rejected"].every(isSettledItemStatus)).toBe(
+      true,
+    );
+    expect(isSettledItemStatus("pending")).toBe(false);
+  });
+
+  it("appends earlier raw results and keeps the newest MAX_RETAINED_RESULTS", () => {
+    expect(appendReportResults([{ a: 1 }], [{ b: 2 }])).toEqual([{ a: 1 }, { b: 2 }]);
+    expect(appendReportResults(undefined, [{ b: 2 }])).toEqual([{ b: 2 }]);
+    const many = Array.from({ length: MAX_RETAINED_RESULTS }, (_, i) => ({ i }));
+    const out = appendReportResults(many, [{ i: -1 }]);
+    expect(out).toHaveLength(MAX_RETAINED_RESULTS);
+    expect(out.at(-1)).toEqual({ i: -1 });
+  });
+});
+
+describe("corrections and legacy batches", () => {
+  it("follows the newest correction when an original was corrected twice (slice)", async () => {
+    const A3 = "90000000-0000-4000-8000-000000000003";
+    const A4 = "90000000-0000-4000-8000-000000000004";
+    const svc = createInMemoryHopeBackend({
+      now: () => "2026-06-08T12:00:00.000Z",
+      assessments: [
+        base(A1),
+        { ...base(A3), correctsAssessmentId: A1 },
+        { ...base(A4), correctsAssessmentId: A1 },
+      ],
+    });
+    const b = await svc.assembleSubmission(ORG, PE);
+    await svc.markSubmissionUploaded(ORG, "u1", b.id, {});
+    const out = await svc.importSubmissionResult(ORG, "u1", b.id, {
+      results: [{ assessmentId: A1, status: "rejected" }],
+    });
+    expect(out.items.find((i) => i.assessmentId === A1)?.correctionAssessmentId).toBe(A4);
+  });
+
+  it("a missing package hash is a typed M10 conflict, not a plain Error", () => {
+    try {
+      manualUploadTransmittedPayload("sub-1", null, new Date());
+      expect.unreachable();
+    } catch (e) {
+      expect(e).toBeInstanceOf(ChartWardenError);
+      expect((e as ChartWardenError).code).toBe("M10_SUBMISSION_PACKAGE_HASH_MISSING");
+      expect((e as ChartWardenError).statusCode).toBe(409);
+    }
   });
 });

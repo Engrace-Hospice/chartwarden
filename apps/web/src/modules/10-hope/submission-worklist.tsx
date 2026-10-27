@@ -74,6 +74,11 @@ const FOCUS_MATCH: Record<Exclude<Focus, "">, (s: SubmissionRow) => boolean> = {
   rejected: (s) => (s.needsCorrectionCount ?? 0) > 0,
   resubmitting: (s) => (s.correctionInProgressCount ?? 0) + (s.resubmittedCount ?? 0) > 0,
 };
+const FOCUS_LABEL: Record<Exclude<Focus, "">, string> = {
+  awaiting: "Awaiting confirmation",
+  rejected: "Rejected (action needed)",
+  resubmitting: "Resubmissions in progress",
+};
 const EXPORTED_ACTION_HINT = "Upload in CMS portal, then record the result";
 
 export function SubmissionWorklist(): JSX.Element {
@@ -187,12 +192,13 @@ export function SubmissionWorklist(): JSX.Element {
   const exportLog = (): void =>
     downloadCsv("hope-submission-log.csv", submissionLogCsv(rows as LogRow[]));
 
-  const activeFilters = [
-    searchQuery.trim() !== "",
-    status !== "",
-    period !== "",
-    focus !== "",
-  ].filter(Boolean).length;
+  const activeFilterNames = [
+    searchQuery.trim() !== "" ? `search "${searchQuery.trim()}"` : "",
+    status !== "" ? `status ${stateLabel(status)}` : "",
+    period !== "" ? `period ${period}` : "",
+    focus !== "" ? `card filter ${FOCUS_LABEL[focus]}` : "",
+  ].filter(Boolean);
+  const activeFilters = activeFilterNames.length;
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
   const activePage = Math.min(page, pageCount);
   const pagedRows = rows.slice((activePage - 1) * pageSize, activePage * pageSize);
@@ -227,7 +233,7 @@ export function SubmissionWorklist(): JSX.Element {
           <KpiCard
             label="Rejected (action needed)"
             value={readStatus === "ok" && !loading ? kpis.rejectedRecords : "—"}
-            detail={`Records to correct, in ${kpis.rejectedBatches} batches`}
+            detail={`Records to correct, in ${kpis.rejectedBatches} ${kpis.rejectedBatches === 1 ? "batch" : "batches"}`}
             tone="danger"
             selected={focus === "rejected"}
             onSelect={() => toggleFocus("rejected")}
@@ -358,7 +364,7 @@ export function SubmissionWorklist(): JSX.Element {
                 </Button>
               ) : null}
               <Button size="sm" tone="secondary" onClick={exportLog} disabled={rows.length === 0}>
-                Export submission log
+                Export filtered log
               </Button>
             </div>
           </div>
@@ -393,7 +399,7 @@ export function SubmissionWorklist(): JSX.Element {
                 title={activeFilters > 0 ? "No matching submissions" : "No submissions"}
                 description={
                   activeFilters > 0
-                    ? "Try adjusting the submission filters."
+                    ? `Active filters: ${activeFilterNames.join(", ")}. Clear them or adjust the filters.`
                     : "No HOPE submission batches have been assembled."
                 }
                 action={

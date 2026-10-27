@@ -68,6 +68,7 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   if (method === "POST" && path === `/api/v1/hope/submissions/${SUB}/results`) {
     const raw = request ? await request.clone().text() : String(init?.body ?? "");
     posted.push(JSON.parse(raw) as Record<string, unknown>);
+    if (resultFailure?.status === -1) throw new TypeError("network down");
     if (resultFailure) return json(resultFailure.status, resultFailure.body);
     detail = baseDetail({
       status: "partially_accepted",
@@ -191,7 +192,7 @@ describe("submission detail items and findings", () => {
 describe("record CMS result", () => {
   async function openDialog() {
     mount(MANAGE);
-    await screen.findByText("Lovelace, Ada");
+    await screen.findAllByText("Lovelace, Ada");
     fireEvent.click(screen.getByRole("button", { name: "Record CMS result" }));
     return await screen.findByRole("dialog");
   }
@@ -201,21 +202,32 @@ describe("record CMS result", () => {
     fireEvent.change(within(dialog).getByLabelText("Report reference (optional)"), {
       target: { value: "FVR-1" },
     });
-    fireEvent.change(within(dialog).getByLabelText("Outcome for Lovelace, Ada — Admission"), {
-      target: { value: "rejected" },
-    });
-    fireEvent.change(within(dialog).getByLabelText("CMS code for Lovelace, Ada — Admission"), {
-      target: { value: "-3010" },
-    });
-    fireEvent.change(within(dialog).getByLabelText("Message for Lovelace, Ada — Admission"), {
-      target: { value: "bad item" },
-    });
-    fireEvent.change(within(dialog).getByLabelText("Outcome for Turing, Alan — Discharge"), {
+    fireEvent.change(
+      within(dialog).getByLabelText("Outcome for Lovelace, Ada — Admission, row 1"),
+      {
+        target: { value: "rejected" },
+      },
+    );
+    fireEvent.change(
+      within(dialog).getByLabelText("CMS code for Lovelace, Ada — Admission, row 1"),
+      {
+        target: { value: "-3010" },
+      },
+    );
+    fireEvent.change(
+      within(dialog).getByLabelText("Message for Lovelace, Ada — Admission, row 1"),
+      {
+        target: { value: "bad item" },
+      },
+    );
+    fireEvent.change(within(dialog).getByLabelText("Outcome for Turing, Alan — Discharge, row 2"), {
       target: { value: "accepted" },
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "Review and record" }));
     expect(posted).toHaveLength(0);
     expect(within(dialog).getByText(/changes the batch status/)).toBeTruthy();
+    expect(within(dialog).getByText("Report reference: FVR-1")).toBeTruthy();
+    expect(document.activeElement?.textContent).toBe("Record this result?");
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm and record" }));
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0]).toEqual({
@@ -236,8 +248,11 @@ describe("record CMS result", () => {
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "Import pasted report" }));
     expect(
-      (within(dialog).getByLabelText("Outcome for Turing, Alan — Discharge") as HTMLSelectElement)
-        .value,
+      (
+        within(dialog).getByLabelText(
+          "Outcome for Turing, Alan — Discharge, row 2",
+        ) as HTMLSelectElement
+      ).value,
     ).toBe("rejected");
     expect(within(dialog).getByText(/Imported 1 of 2/)).toBeTruthy();
   });
@@ -253,7 +268,7 @@ describe("record CMS result", () => {
       },
     };
     const dialog = await openDialog();
-    for (const who of ["Lovelace, Ada — Admission", "Turing, Alan — Discharge"])
+    for (const who of ["Lovelace, Ada — Admission, row 1", "Turing, Alan — Discharge, row 2"])
       fireEvent.change(within(dialog).getByLabelText(`Outcome for ${who}`), {
         target: { value: "accepted" },
       });
@@ -287,8 +302,164 @@ describe("record CMS result", () => {
     });
     fireEvent.click(within(dialog).getByRole("button", { name: "Import pasted report" }));
     expect(
-      (within(dialog).getByLabelText("Outcome for Turing, Alan — Discharge") as HTMLSelectElement)
-        .value,
+      (
+        within(dialog).getByLabelText(
+          "Outcome for Turing, Alan — Discharge, row 2",
+        ) as HTMLSelectElement
+      ).value,
     ).toBe("rejected");
+  });
+  const outcomeSelect = (dialog: HTMLElement, who: string) =>
+    within(dialog).getByLabelText(`Outcome for ${who}`);
+
+  it("closes a clean form immediately on Escape", async () => {
+    const clean = await openDialog();
+    fireEvent.keyDown(clean, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("asks before discarding dirty input on Escape", async () => {
+    const dialog = await openDialog();
+    fireEvent.change(within(dialog).getByLabelText(/Paste CMS report/), { target: { value: "x" } });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(within(dialog).getByText("Discard changes?")).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
+  it("moves focus confirm <-> discard", async () => {
+    const dialog = await openDialog();
+    for (const who of ["Lovelace, Ada — Admission, row 1", "Turing, Alan — Discharge, row 2"])
+      fireEvent.change(outcomeSelect(dialog, who), { target: { value: "accepted" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review and record" }));
+    expect(document.activeElement?.textContent).toBe("Record this result?");
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(document.activeElement?.textContent).toBe("Discard changes?");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
+    expect(document.activeElement?.textContent).toBe("Record this result?");
+  });
+
+  it("says the result may not be recorded and reloads on a network failure", async () => {
+    resultFailure = { status: -1, body: null };
+    const dialog = await openDialog();
+    for (const who of ["Lovelace, Ada — Admission, row 1", "Turing, Alan — Discharge, row 2"])
+      fireEvent.change(outcomeSelect(dialog, who), { target: { value: "accepted" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review and record" }));
+    const before = calls.filter((c) => c === `GET /api/v1/hope/submissions/${SUB}`).length;
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm and record" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "The result may not have been recorded; refresh to check.",
+    );
+    await waitFor(() =>
+      expect(calls.filter((c) => c === `GET /api/v1/hope/submissions/${SUB}`).length).toBe(
+        before + 1,
+      ),
+    );
+  });
+
+  it("confirms discard on Escape with dirty data (keep editing / discard)", async () => {
+    const dialog = await openDialog();
+    fireEvent.change(outcomeSelect(dialog, "Turing, Alan — Discharge, row 2"), {
+      target: { value: "rejected" },
+    });
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(within(dialog).getByText("Discard changes?")).toBeTruthy();
+    expect(document.activeElement?.textContent).toBe("Discard changes?");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
+    expect(
+      (outcomeSelect(dialog, "Turing, Alan — Discharge, row 2") as HTMLSelectElement).value,
+    ).toBe("rejected");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("shows and sends a pasted item code through an editable Item column", async () => {
+    const dialog = await openDialog();
+    fireEvent.change(within(dialog).getByLabelText(/Paste CMS report/), {
+      target: { value: `assessmentId,status,code,itemCode\n${A2},rejected,E5,J2051` },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Import pasted report" }));
+    const itemInput = within(dialog).getByLabelText(
+      "Item for Turing, Alan — Discharge, row 2",
+    ) as HTMLInputElement;
+    expect(itemInput.value).toBe("J2051");
+    fireEvent.change(outcomeSelect(dialog, "Lovelace, Ada — Admission, row 1"), {
+      target: { value: "accepted" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review and record" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm and record" }));
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]?.results).toContainEqual({
+      assessmentId: A2,
+      status: "rejected",
+      code: "E5",
+      itemCode: "J2051",
+    });
+  });
+
+  it("refreshes the page on a 409 and keeps the message visible", async () => {
+    resultFailure = { status: 409, body: { error: { message: "Result already recorded." } } };
+    const dialog = await openDialog();
+    for (const who of ["Lovelace, Ada — Admission, row 1", "Turing, Alan — Discharge, row 2"])
+      fireEvent.change(outcomeSelect(dialog, who), { target: { value: "accepted" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review and record" }));
+    const before = calls.filter((c) => c === `GET /api/v1/hope/submissions/${SUB}`).length;
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm and record" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toBe("Result already recorded.");
+    await waitFor(() =>
+      expect(calls.filter((c) => c === `GET /api/v1/hope/submissions/${SUB}`).length).toBe(
+        before + 1,
+      ),
+    );
+  });
+
+  it("gives identical-looking records unique accessible names", async () => {
+    detail = baseDetail({
+      items: [item(A1, P1, "01_admission", "pending"), item(A2, P1, "01_admission", "pending")],
+    });
+    const dialog = await openDialog();
+    expect(
+      within(dialog).getByLabelText("Outcome for Lovelace, Ada — Admission, row 1"),
+    ).toBeTruthy();
+    expect(
+      within(dialog).getByLabelText("Outcome for Lovelace, Ada — Admission, row 2"),
+    ).toBeTruthy();
+  });
+});
+
+describe("mark uploaded", () => {
+  it("needs a second, explicit click before writing", async () => {
+    detail = baseDetail({ status: "packaged", packageFilename: "p.zip" });
+    mount(MANAGE);
+    await screen.findByText("Lovelace, Ada");
+    fireEvent.click(screen.getByRole("button", { name: "Mark uploaded" }));
+    expect(calls.some((c) => c.endsWith("/mark-uploaded"))).toBe(false);
+    expect(document.activeElement?.textContent).toBe("Confirm: mark uploaded to CMS");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(document.activeElement?.textContent).toBe("Mark uploaded");
+    fireEvent.click(screen.getByRole("button", { name: "Mark uploaded" }));
+    fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
+    expect(document.activeElement?.textContent).toBe("Mark uploaded");
+    fireEvent.click(screen.getByRole("button", { name: "Mark uploaded" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm: mark uploaded to CMS" }));
+    await waitFor(() => expect(calls.some((c) => c.endsWith("/mark-uploaded"))).toBe(true));
+  });
+
+  it("labels a finding link with no matching item", async () => {
+    detail = baseDetail({
+      findings: [
+        {
+          id: "f9",
+          assessmentId: "cccccccc-0000-4000-8000-000000000009",
+          severity: "error",
+          code: "E",
+          itemCode: null,
+          message: "m",
+        },
+      ],
+    });
+    mount(MANAGE);
+    expect(await screen.findByRole("link", { name: "View assessment cccccccc" })).toBeTruthy();
   });
 });

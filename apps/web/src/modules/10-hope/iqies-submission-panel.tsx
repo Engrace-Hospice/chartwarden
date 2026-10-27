@@ -42,6 +42,8 @@ export function IqiesSubmissionPanel({
   if (latest === undefined) return null;
   return (
     <div
+      // biome-ignore lint/a11y/useSemanticElements: a <fieldset> is for form controls; this names an info row.
+      role="group"
       aria-label="iQIES submission"
       style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem" }}
     >

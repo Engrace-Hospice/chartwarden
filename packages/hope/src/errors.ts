@@ -54,6 +54,8 @@ export const M10_ERROR_STATUS = {
   M10_SUBMISSION_RESULT_NOT_UPLOADED: 409,
   M10_SUBMISSION_RESULT_ALREADY_RECORDED: 409,
   M10_SUBMISSION_RESULT_NO_MATCH: 422,
+  // A batch packaged before package hashes were recorded cannot be marked uploaded (no integrity hash).
+  M10_SUBMISSION_PACKAGE_HASH_MISSING: 409,
   M10_IQIES_ADAPTER_UNAVAILABLE: 503,
 } as const;
 

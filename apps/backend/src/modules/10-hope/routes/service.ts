@@ -51,6 +51,7 @@ import {
   deriveBatchOutcome,
   findingSeverity,
   isResultImportable,
+  isSettledItemStatus,
   manualUploadTransmittedPayload,
   resolveRejectedItem,
   settledBatchEvent,
@@ -517,6 +518,8 @@ interface SubmissionRecord
   resultImportedAt: string | null;
   resultReportReference: string | null;
   resultReportHash: string | null;
+  /** Every report already applied, so a replay of an older one is a no-op. */
+  seenReportHashes?: string[];
 }
 
 export interface HopeRouteSeed {
@@ -924,8 +927,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
   const correctionStanding = (assessmentId: string) => {
     const childOf = new Map<string, string>();
     for (const a of assessments.values())
-      if (a.correctsAssessmentId && !childOf.has(a.correctsAssessmentId))
-        childOf.set(a.correctsAssessmentId, a.id);
+      if (a.correctsAssessmentId) childOf.set(a.correctsAssessmentId, a.id); // last inserted = newest
     const correctionId = terminalCorrection(assessmentId, childOf);
     if (!correctionId)
       return { correctionAssessmentId: null, resolution: resolveRejectedItem(null) };
@@ -1958,7 +1960,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     async importSubmissionResult(organizationId, userId, id, args) {
       const r = findSub(organizationId, id);
       const reportHash = createHash("sha256").update(JSON.stringify(args.results)).digest("hex");
-      if (r.resultReportHash === reportHash) return viewSubDetail(r); // idempotent replay
+      if (r.resultReportHash === reportHash || r.seenReportHashes?.includes(reportHash))
+        return viewSubDetail(r); // idempotent replay (latest or an older report)
       require_(
         isResultImportable(r.status),
         r.status === "packaged" || r.status === "queued" || r.status === "ready"
@@ -1981,7 +1984,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       for (const raw of args.results) {
         const id_ = typeof raw.assessmentId === "string" ? raw.assessmentId : null;
         const status = classifyCmsResult(raw);
-        if (id_ && status !== "pending")
+        const current = r.items.find((i) => i.assessmentId === id_);
+        if (id_ && current && !isSettledItemStatus(current.status) && status !== "pending")
           worst.set(id_, worstOutcome(worst.get(id_) ?? status, status));
       }
       for (const raw of args.results) {
@@ -2015,6 +2019,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       r.acceptedCount = outcome.acceptedCount;
       r.rejectedCount = outcome.rejectedCount;
       r.resultReportHash = reportHash;
+      r.seenReportHashes = [...(r.seenReportHashes ?? []), reportHash];
       r.resultReportReference = args.reportReference ?? null;
       r.resultImportedAt = at;
       if (outcome.pendingCount === 0) {

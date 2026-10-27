@@ -18,6 +18,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";
+import { useSession } from "../../shell/session";
 import { HopeListReadState } from "./hope-read-state";
 
 interface RateCounts {
@@ -50,6 +51,7 @@ interface MetricRow {
 
 export function HqrpComplianceDashboard(): JSX.Element {
   const client = useApiClient();
+  const canReadSubmissions = useSession()?.permissions?.includes("hope.submission.read") ?? false;
   const [row, setRow] = useState<Compliance | null>(null);
   const [loading, setLoading] = useState(true);
   const focusRef = useReloadFocus<HTMLDivElement>(loading);
@@ -146,7 +148,17 @@ export function HqrpComplianceDashboard(): JSX.Element {
           <KpiCard
             label="Submission acceptance"
             value={loading || readStatus !== "ok" || !row ? "—" : pct(row.submissionAcceptanceRate)}
-            detail={<Link to="/hope/submissions">View submissions</Link>}
+            detail={
+              <>
+                Accepted batches as a share of batches with a final CMS outcome
+                {canReadSubmissions ? (
+                  <>
+                    {" · "}
+                    <Link to="/hope/submissions">View submissions</Link>
+                  </>
+                ) : null}
+              </>
+            }
             tone={toneForRate(row?.submissionAcceptanceRate)}
             accentColor={accentForRate(row?.submissionAcceptanceRate)}
           />

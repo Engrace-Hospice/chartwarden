@@ -270,6 +270,98 @@ describe.skipIf(!DB_URL)("M10 HOPE submission result — LIVE Postgres (M10L)", 
     expect(item).toMatchObject({ resolution: "resolved", correctionAssessmentId: second });
   });
 
+  it("a later report cannot flip an already-settled item, but its rows are still recorded", async () => {
+    const a1 = await seedAssessment();
+    const a2 = await seedAssessment();
+    const b = await seedBatch("submitted_pending_result", [a1, a2]);
+    await svc.importSubmissionResult(ORG_A, member, b, {
+      results: [{ assessmentId: a1, status: "rejected", code: "-9" }],
+    });
+    const out = await svc.importSubmissionResult(ORG_A, member, b, {
+      results: [
+        { assessmentId: a1, status: "accepted" },
+        { assessmentId: a2, status: "accepted" },
+      ],
+    });
+    const byAssessment = new Map(out.items.map((i) => [i.assessmentId, i.status]));
+    expect(byAssessment.get(a1)).toBe("rejected");
+    expect(byAssessment.get(a2)).toBe("accepted");
+    expect(out.status).toBe("partially_accepted");
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM hope_submission_result_event WHERE hope_submission_id=$1",
+      [b],
+    );
+    expect(rows[0].n).toBe(3);
+    const stored = (await row(b)).acceptance_report as { results: unknown[] };
+    expect(stored.results).toHaveLength(3); // earlier raw rows are appended to, not replaced
+  });
+
+  it("replaying an older report (A, B, A) does not re-append rows or overwrite import metadata", async () => {
+    const a1 = await seedAssessment();
+    const a2 = await seedAssessment();
+    const b = await seedBatch("submitted_pending_result", [a1, a2]);
+    const A = {
+      reportReference: "ra",
+      results: [{ assessmentId: a1, status: "accepted", message: "A" }],
+    };
+    const B = {
+      reportReference: "rb",
+      results: [{ assessmentId: a1, status: "accepted", message: "B" }],
+    };
+    await svc.importSubmissionResult(ORG_A, member, b, A);
+    await svc.importSubmissionResult(ORG_A, member, b, B);
+    const before = await row(b);
+    await svc.importSubmissionResult(ORG_A, member, b, A);
+    const after = await row(b);
+    expect((after.acceptance_report as { results: unknown[] }).results).toHaveLength(2);
+    expect(after.result_report_hash).toBe(before.result_report_hash);
+    expect(after.result_imported_at).toEqual(before.result_imported_at);
+    expect((after.acceptance_report as { reportReference: string }).reportReference).toBe("rb");
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM hope_submission_result_event WHERE hope_submission_id=$1",
+      [b],
+    );
+    expect(rows[0].n).toBe(2);
+  });
+
+  it("follows the NEWEST correction when an original was corrected twice", async () => {
+    const original = await seedAssessment();
+    const origBatch = await seedBatch("submitted_pending_result", [original]);
+    await svc.importSubmissionResult(ORG_A, member, origBatch, {
+      results: [{ assessmentId: original, status: "rejected", code: "-1" }],
+    });
+    await seedAssessment(original); // abandoned attempt
+    const newest = await seedAssessment(original);
+    const item = (await svc.getSubmission(ORG_A, origBatch)).items[0];
+    expect(item).toMatchObject({ correctionAssessmentId: newest });
+  });
+
+  it("list and detail views do not need the heavy report columns", async () => {
+    const a = await seedAssessment();
+    const b = await seedBatch("exported", [a]);
+    await svc.importSubmissionResult(ORG_A, member, b, {
+      reportReference: "FVR-LIGHT",
+      results: [{ assessmentId: a, status: "rejected", code: "-5" }],
+    });
+    const listed = (await svc.listSubmissions(ORG_A)).submissions.find((s) => s.id === b);
+    expect(listed).toMatchObject({ id: b, status: "rejected", needsCorrectionCount: 1 });
+    expect(listed).not.toHaveProperty("acceptanceReport");
+    const detail = await svc.getSubmission(ORG_A, b);
+    expect(detail.resultReportReference).toBe("FVR-LIGHT");
+    expect(detail.items[0]).toMatchObject({ status: "rejected", resolution: "needs_correction" });
+    const pkg = await svc.downloadSubmissionPackage(ORG_A, b);
+    expect(Buffer.from(pkg.bytes).toString()).toBe("PK-fake-zip-bytes");
+  });
+
+  it("marking a legacy batch with no package hash uploaded is a 409 envelope, not a 500", async () => {
+    const b = await seedBatch("packaged", [await seedAssessment()]);
+    await admin.query("UPDATE hope_submission SET package_sha256 = NULL WHERE id=$1", [b]);
+    expect(await errorCode(svc.markSubmissionUploaded(ORG_A, member, b, {}))).toBe(
+      "M10_SUBMISSION_PACKAGE_HASH_MISSING",
+    );
+    expect((await row(b)).status).toBe("packaged");
+  });
+
   it("is invisible to another tenant (RLS)", async () => {
     const b = await seedBatch("submitted_pending_result", [await seedAssessment()]);
     expect(await errorCode(svc.getSubmission(ORG_B, b))).not.toBeNull();
