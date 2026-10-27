@@ -15,11 +15,13 @@
  * The 350 kB budget is TASK-033's acceptance criterion (raw, uncompressed bytes — the audit's own
  * `ls -la` methodology, report 12). This is a standalone opt-in check, not wired into `arch:fitness`.
  */
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { type BundleMeasurement, measureInitialBundle } from "../../../scripts/lib/bundle-size-gate";
 
 const CHECK = process.argv.includes("--check");
 const BUDGET_BYTES = 350 * 1024;
+const BASE = ""; // Vite base "/" — built URLs are "/assets/..."
 const DIST_DIR = join(process.cwd(), "dist/app");
 const INDEX_HTML = join(DIST_DIR, "index.html");
 
@@ -28,32 +30,16 @@ if (!existsSync(INDEX_HTML)) {
   process.exit(1);
 }
 
-const html = readFileSync(INDEX_HTML, "utf8");
-
-// Every eagerly-fetched asset the entry HTML references: the module entry script plus each
-// modulepreload link Vite emits for the entry's static import graph (its vendor/shared chunks).
-const assetPaths = new Set<string>();
-for (const m of html.matchAll(/<(?:script[^>]*\ssrc|link[^>]*\shref)="([^"]+\.js)"/g)) {
-  assetPaths.add(m[1]);
-}
-
-if (assetPaths.size === 0) {
-  console.error(
-    "No <script>/<link modulepreload> assets found in index.html — nothing to measure.",
-  );
+// Every eagerly-fetched asset the entry HTML references (entry script + modulepreload links).
+// Fails closed (#848): a missing/external asset or an empty/zero-byte measurement is an error, never a pass.
+let measured: BundleMeasurement;
+try {
+  measured = measureInitialBundle(DIST_DIR, BASE);
+} catch (err) {
+  console.error(`FAIL: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 }
-
-let total = 0;
-const rows: { path: string; bytes: number }[] = [];
-for (const assetPath of assetPaths) {
-  const abs = join(DIST_DIR, assetPath.replace(/^\//, ""));
-  if (!existsSync(abs)) continue;
-  const bytes = statSync(abs).size;
-  total += bytes;
-  rows.push({ path: assetPath, bytes });
-}
-rows.sort((a, b) => b.bytes - a.bytes);
+const { rows, total } = measured;
 
 console.log(`Initial bundle (${rows.length} eagerly-fetched file(s) from ${dirname(INDEX_HTML)}):`);
 for (const r of rows) {

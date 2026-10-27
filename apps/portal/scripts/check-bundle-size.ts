@@ -16,11 +16,15 @@
  * this has real headroom, not a rubber-stamped pass. Standalone opt-in check, not wired into
  * `arch:fitness` (a full `vite build` per app is too slow for the fast gate).
  */
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { type BundleMeasurement, measureInitialBundle } from "../../../scripts/lib/bundle-size-gate";
+import { resolvePortalBase } from "../src/base-path";
 
 const CHECK = process.argv.includes("--check");
 const BUDGET_BYTES = 350 * 1024;
+// Vite base without trailing slash (#848): built HTML URLs carry it ("/portal/assets/..."), outDir paths do not.
+const BASE = resolvePortalBase(process.env.VITE_PORTAL_BASE);
 const DIST_DIR = join(process.cwd(), "dist/app");
 const INDEX_HTML = join(DIST_DIR, "index.html");
 
@@ -29,30 +33,15 @@ if (!existsSync(INDEX_HTML)) {
   process.exit(1);
 }
 
-const html = readFileSync(INDEX_HTML, "utf8");
-
-const assetPaths = new Set<string>();
-for (const m of html.matchAll(/<(?:script[^>]*\ssrc|link[^>]*\shref)="([^"]+\.js)"/g)) {
-  assetPaths.add(m[1]);
-}
-
-if (assetPaths.size === 0) {
-  console.error(
-    "No <script>/<link modulepreload> assets found in index.html — nothing to measure.",
-  );
+// Fails closed (#848): a missing/external asset or an empty/zero-byte measurement is an error, never a pass.
+let measured: BundleMeasurement;
+try {
+  measured = measureInitialBundle(DIST_DIR, BASE);
+} catch (err) {
+  console.error(`FAIL: ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);
 }
-
-let total = 0;
-const rows: { path: string; bytes: number }[] = [];
-for (const assetPath of assetPaths) {
-  const abs = join(DIST_DIR, assetPath.replace(/^\//, ""));
-  if (!existsSync(abs)) continue;
-  const bytes = statSync(abs).size;
-  total += bytes;
-  rows.push({ path: assetPath, bytes });
-}
-rows.sort((a, b) => b.bytes - a.bytes);
+const { rows, total } = measured;
 
 console.log(`Initial bundle (${rows.length} eagerly-fetched file(s) from ${dirname(INDEX_HTML)}):`);
 for (const r of rows) {
