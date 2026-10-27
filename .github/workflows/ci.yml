@@ -1702,7 +1702,15 @@ jobs:
           done
           echo "MinIO did not become ready" >&2; docker logs chartwarden-ci-minio-e2e; exit 1
       - name: Install the Chromium build this Playwright version pins
-        run: bunx playwright install --with-deps chromium
+        # The self-hosted runner has no passwordless sudo, so `--with-deps` (apt-get as root) dies with
+        # "sudo: a password is required" (run 40526156442). Install the OS libraries only where sudo works;
+        # elsewhere they must be preinstalled on the runner image (`sudo npx playwright install-deps chromium` once).
+        run: |
+          if sudo -n true 2>/dev/null; then
+            bunx playwright install --with-deps chromium
+          else
+            bunx playwright install chromium
+          fi
       - name: Migrate
         run: bun run db:migrate
       # A REAL provisioned role (carrier + BYPASSRLS), not a superuser alias — same as `outbox-boot`.
