@@ -691,11 +691,8 @@ describe("GAP-018 — hope.scope caseload / provider-entity scoping", () => {
       "x-test-org": ORG,
       "x-test-roles": "compliance_officer",
     };
-    for (const url of [
-      "/api/v1/hope/schedules",
-      "/api/v1/hope/submissions",
-      "/api/v1/hope/dashboard/compliance",
-    ]) {
+    // `/schedules` is the exception: it narrows to the caller's caseload instead (next test).
+    for (const url of ["/api/v1/hope/submissions", "/api/v1/hope/dashboard/compliance"]) {
       const denied = await app.inject({ method: "GET", url, headers: rn });
       expect(denied.statusCode, `${url} unfiltered as plain rn`).toBe(404);
       const allowed = await app.inject({ method: "GET", url, headers: compliance });
@@ -716,6 +713,49 @@ describe("GAP-018 — hope.scope caseload / provider-entity scoping", () => {
       headers: { ...rn },
     });
     expect(filtered.statusCode).toBe(404); // isInCaseload:false — the named claim is verified too
+    await app.close();
+  });
+});
+
+describe("the unfiltered HOPE schedule list narrows to the caller's caseload", () => {
+  const rn = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn" };
+  const ids = (res: { json: () => unknown }): string[] =>
+    (res.json() as { schedules: { patientId: string }[] }).schedules.map((s) => s.patientId);
+
+  it("an RN sees schedules for their caseload patients only", async () => {
+    const { app } = makeServer({ caseload: [PATIENT] });
+    const res = await app.inject({ method: "GET", url: "/api/v1/hope/schedules", headers: rn });
+    expect(res.statusCode).toBe(200);
+    expect(ids(res).length).toBeGreaterThan(0);
+    expect(new Set(ids(res))).toEqual(new Set([PATIENT]));
+    await app.close();
+  });
+
+  it("an RN with an empty caseload sees no schedules", async () => {
+    const { app } = makeServer({ caseload: [] });
+    const res = await app.inject({ method: "GET", url: "/api/v1/hope/schedules", headers: rn });
+    expect(res.statusCode).toBe(200);
+    expect(ids(res)).toEqual([]);
+    await app.close();
+  });
+
+  it("fails closed when the caseload seam is unavailable", async () => {
+    const { app } = makeServer({ caseloadFails: true });
+    const res = await app.inject({ method: "GET", url: "/api/v1/hope/schedules", headers: rn });
+    expect(res.statusCode).toBe(200);
+    expect(ids(res)).toEqual([]);
+    await app.close();
+  });
+
+  it("an org-wide role still sees every schedule regardless of caseload", async () => {
+    const { app } = makeServer({ caseload: [] });
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/hope/schedules",
+      headers: { ...rn, "x-test-roles": "compliance_officer" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(ids(res).length).toBeGreaterThan(0);
     await app.close();
   });
 });

@@ -238,8 +238,8 @@ export function buildHopeAbacPredicates(
         return peOrScopeFor(context, facts.providerEntityId);
       }
 
-      // No scoping field at all — only the optional-filter list/dashboard routes (schedules,
-      // submissions, compliance dashboard) construct an empty target, by the caller simply OMITTING
+      // No scoping field at all — only the optional-filter list/dashboard routes (submissions,
+      // compliance dashboard; the schedule list skips this gate and narrows by caseload in the handler) construct an empty target, by the caller simply OMITTING
       // the query param. An optional filter is not a scope: the services apply no PE/caseload
       // narrowing of their own when the filter is absent (RLS is org-level only), so an unfiltered
       // request is an org-wide read and only the org-wide scope roles may make one. Everyone else

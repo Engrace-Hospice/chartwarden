@@ -96,7 +96,8 @@ async function listScopeOf(
   try {
     const caseload = await lookup({ organizationId: ctx.organizationId, userId: ctx.userId });
     return [...new Set([...caseload, ...sessionIds])];
-  } catch {
+  } catch (err) {
+    request.log.warn({ err }, "HOPE caseload lookup failed — narrowing to the session patient");
     return sessionIds;
   }
 }
@@ -207,6 +208,15 @@ const SCOPE_QUERY_PATIENT = (action: string): PreHandler =>
       patientId: (request.query as { patientId?: unknown } | null)?.patientId,
     }),
   }) as PreHandler;
+// The schedule list is the one optional-filter route that narrows by caseload instead of requiring a
+// filter: with no `patientId` the ABAC is skipped and the handler applies `listScopeOf`.
+const SCOPE_LIST_PATIENT = (action: string): PreHandler => {
+  const verifyNamedPatient = SCOPE_QUERY_PATIENT(action);
+  return async (request, reply) => {
+    const named = (request.query as { patientId?: unknown } | null)?.patientId;
+    if (typeof named === "string" && named.length > 0) await verifyNamedPatient(request, reply);
+  };
+};
 const SCOPE_QUERY_PE = (action: string): PreHandler =>
   requireAbac(action, "hope.scope", {
     notFoundOnDeny: true,
@@ -255,18 +265,21 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   app.get(
     "/api/v1/hope/schedules",
     {
-      preHandler: [READ_SCHEDULE, SCOPE_QUERY_PATIENT("hope.schedule.read")],
+      preHandler: [READ_SCHEDULE, SCOPE_LIST_PATIENT("hope.schedule.read")],
       config: { auditRead: { resourceKind: "hope_schedule", list: true } },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(ScheduleListQuerySchema, request.query);
-      // No caseload narrowing here: `hope.scope` (SCOPE_QUERY_PATIENT) already admits an unfiltered list only
-      // to the org-wide scope roles, and a named `patientId` is checked against the caseload.
+      // A named `patientId` was verified against the caseload by `hope.scope`. An unfiltered list is
+      // narrowed in the query (GAP-182, as for the SFV worklist): org-wide roles see all, everyone else
+      // only their caseload, so a clinician's home can show their own overdue windows.
+      const scope = q.patientId ? null : await listScopeOf(request, caseloadPatientIds);
       return service.listSchedules(organizationId, {
         patientId: q.patientId,
         status: q.status,
         rfaKind: q.rfaKind,
+        ...(scope ? { patientIds: scope } : {}),
       });
     },
   );

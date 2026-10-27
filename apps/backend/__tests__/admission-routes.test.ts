@@ -51,6 +51,7 @@ const ORG_B = "org_b";
 const ADMISSION = "adm_seed";
 const ADMISSION_B = "adm_seed_b";
 const ADMISSION_OTHER_PATIENT = "adm_seed_other_patient";
+const WINDOW_OTHER_PATIENT = "win_seed_other_patient";
 const F2F = "f2f_seed";
 const DISCHARGE = "dis_seed";
 const WINDOW = "cw_seed";
@@ -112,6 +113,8 @@ const PERMISSION_SEED = [
   // GAP-121 — a clinician (no org-wide / unsited-admission escape) who may record a death discharge.
   { userId: "dis_rn", permissions: ["discharge.death"] },
   { userId: "co_1", permissions: ["compliance.read", "compliance.override"] },
+  // A clinician who may read the org compliance-window list (narrowed to their caseload).
+  { userId: "rn_cw", permissions: ["compliance.read"] },
   // GAP-022 — a scheduler (intake side): may schedule an F2F but is not the performer.
   { userId: "sched_1", permissions: ["f2f.schedule", "admission.read"] },
   // GAP-024 — an election drafter.
@@ -181,6 +184,14 @@ function makeServer(
         state: "open",
         admissionId: ADMISSION,
         patientId: PATIENT_A,
+      },
+      {
+        id: WINDOW_OTHER_PATIENT,
+        organizationId: ORG,
+        kind: "compliance_window",
+        state: "overdue",
+        admissionId: ADMISSION_OTHER_PATIENT,
+        patientId: PATIENT_B,
       },
       {
         id: LOCATION,
@@ -577,6 +588,54 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
       const ids = idsOf(res);
       expect(ids).toContain(ADMISSION_OTHER_PATIENT);
       expect(ids).not.toContain(ADMISSION);
+    });
+  });
+
+  describe("GET /compliance-windows narrows the org list to the caller's caseload", () => {
+    const RN_CW = { ...RN, "x-test-user": "rn_cw" };
+    const idsOf = (res: { json: () => { items: { id: string }[] } }) =>
+      res.json().items.map((i) => i.id);
+    const list = async (
+      headers: Record<string, string>,
+      caseloadPatientIds: () => Promise<string[]>,
+      url = "/api/v1/compliance-windows",
+    ) => {
+      const { app } = makeServer({ caseloadPatientIds });
+      const res = await app.inject({ method: "GET", url, headers });
+      await app.close();
+      return res;
+    };
+
+    it("returns only the caseload patient's windows, each carrying its patientId", async () => {
+      const res = await list(RN_CW, async () => [PATIENT_B]);
+      expect(res.statusCode).toBe(200);
+      expect(idsOf(res)).toEqual([WINDOW_OTHER_PATIENT]);
+      expect(res.json().items[0].patientId).toBe(PATIENT_B);
+    });
+
+    it("returns an empty list for an empty caseload and fails closed when the seam is down", async () => {
+      expect((await list(RN_CW, async () => [])).json().items).toEqual([]);
+      const down = await list(RN_CW, async () => {
+        throw new Error("seam down");
+      });
+      expect(down.statusCode).toBe(200);
+      expect(down.json().items).toEqual([]);
+    });
+
+    it("lets compliance_officer see every window without a caseload lookup", async () => {
+      const lookup = vi.fn(async () => [] as string[]);
+      const res = await list(CO, lookup);
+      expect(idsOf(res)).toEqual(expect.arrayContaining([WINDOW, WINDOW_OTHER_PATIENT]));
+      expect(lookup).not.toHaveBeenCalled();
+    });
+
+    it("still applies the state filter inside the caseload", async () => {
+      const res = await list(
+        RN_CW,
+        async () => [PATIENT_A, PATIENT_B],
+        "/api/v1/compliance-windows?state=overdue",
+      );
+      expect(idsOf(res)).toEqual([WINDOW_OTHER_PATIENT]);
     });
   });
 

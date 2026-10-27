@@ -1285,6 +1285,7 @@ export interface AdmissionRouteService {
   listComplianceWindows(
     organizationId: string,
     query: { state?: string; cursor?: string; limit?: number },
+    scope?: AdmissionReadScope,
   ): Promise<Page<ComplianceWindowRow>>;
   closeComplianceWindow(
     organizationId: string,
@@ -3250,8 +3251,10 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
         .filter((r) => r.admissionId === admissionId)
         .map(summary);
     },
-    async listComplianceWindows(organizationId, query) {
+    async listComplianceWindows(organizationId, query, scope) {
       let rows = listOfKind(organizationId, "compliance_window");
+      const ids = scope?.patientIds ?? null;
+      if (ids !== null) rows = rows.filter((r) => !!r.patientId && ids.includes(r.patientId));
       if (query.state) rows = rows.filter((r) => r.state === query.state);
       return page(rows.map(summary), query);
     },

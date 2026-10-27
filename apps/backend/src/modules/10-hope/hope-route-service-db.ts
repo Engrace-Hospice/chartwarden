@@ -890,7 +890,13 @@ export function createDbHopeBackend(
     // ── Timepoint-schedule reads (§2.2.1 window ledger) ────────────────────────────────────────────
     async listSchedules(organizationId, filter) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const rows = (await tx.select().from(SCHED)) as ScheduleRow[];
+        if (filter.patientIds?.length === 0) return { schedules: [] };
+        const rows = (await tx
+          .select()
+          .from(SCHED)
+          .where(
+            filter.patientIds ? inArray(SCHED.patientId, [...filter.patientIds]) : undefined,
+          )) as ScheduleRow[];
         const schedules = rows
           .filter(
             (r) =>
