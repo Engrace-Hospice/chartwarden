@@ -14,6 +14,7 @@ const CONTEXT = {
   providerEntityId: "p",
   usage: "test",
 } as ClearinghouseContext;
+const RENDERED_AT = new Date("2026-01-02T00:00:00Z");
 const ARGS = {
   tx: {} as never,
   deps: { parties: () => ({}) } as never,
@@ -21,8 +22,7 @@ const ARGS = {
   organizationId: "o",
   claim: { id: "claim-1", providerEntityId: "p" },
   claimControlNumber: "ABC123260101000a1b2c3",
-  interchangeNumberFor: async () => 4242,
-  now: new Date("2026-01-02T00:00:00Z"),
+  interchangeFor: async () => ({ interchangeNumber: 4242, renderedAt: RENDERED_AT }),
 };
 
 describe("renderClaimForTransport", () => {
@@ -42,6 +42,7 @@ describe("renderClaimForTransport", () => {
       context: CONTEXT,
       claimControlNumber: "ABC123260101000a1b2c3",
       interchangeControlNumber: 4242,
+      createdAt: RENDERED_AT, // the remembered render clock, never the wall clock (issue #836)
     });
   });
 
@@ -50,9 +51,9 @@ describe("renderClaimForTransport", () => {
       ok: true,
       rendered: { reveal: () => ({ x12: "ISA*00~" }) },
     });
-    const interchangeNumberFor = vi.fn(async () => 7);
+    const interchangeNumberFor = vi.fn(async () => ({ interchangeNumber: 7, renderedAt: RENDERED_AT }));
 
-    await renderClaimForTransport({ ...ARGS, interchangeNumberFor });
+    await renderClaimForTransport({ ...ARGS, interchangeFor: interchangeNumberFor });
 
     expect(interchangeNumberFor).toHaveBeenCalledExactlyOnceWith(CONTEXT);
     expect(loadAndRender837i.mock.calls[0]?.[1]).toMatchObject({ interchangeControlNumber: 7 });

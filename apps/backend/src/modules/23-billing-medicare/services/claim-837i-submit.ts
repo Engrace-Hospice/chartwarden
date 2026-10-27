@@ -35,13 +35,16 @@ export async function renderClaimForTransport(args: {
   readonly claim: { readonly id: string; readonly providerEntityId: string };
   readonly claimControlNumber: string;
   /**
-   * The ISA13 for this submission. The caller (the worker) owns the key it is remembered under, so a redelivered job
-   * renders the identical interchange; the number is never derived here.
+   * The ISA13 and render clock for this submission. The caller (the worker) owns the key they are remembered under, so a
+   * redelivered job renders a byte-identical interchange (ISA09/ISA10, GS and BHT date/time included); neither is derived
+   * here and the wall clock is never read.
    */
-  readonly interchangeNumberFor: (context: ClearinghouseContext) => Promise<number>;
-  readonly now: Date;
+  readonly interchangeFor: (
+    context: ClearinghouseContext,
+  ) => Promise<{ readonly interchangeNumber: number; readonly renderedAt: Date }>;
 }): Promise<RenderedClaim> {
   const context = await args.contextFor(args.organizationId, args.claim.providerEntityId);
+  const { interchangeNumber, renderedAt } = await args.interchangeFor(context);
   const loaded = await loadAndRender837i(
     {
       ...args.deps,
@@ -51,8 +54,8 @@ export async function renderClaimForTransport(args: {
     {
       claimId: args.claim.id,
       context,
-      interchangeControlNumber: await args.interchangeNumberFor(context),
-      createdAt: args.now,
+      interchangeControlNumber: interchangeNumber,
+      createdAt: renderedAt,
       claimControlNumber: args.claimControlNumber,
     },
   );

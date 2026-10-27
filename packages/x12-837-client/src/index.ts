@@ -324,6 +324,7 @@ export type {
   ReserveResult,
   SubmissionAttempt,
   SubmissionAttemptStore,
+  InterchangeMemo,
 } from "./clearinghouse/attempt-store";
 export {
   ATTEMPT_STORE_CONTRACT,

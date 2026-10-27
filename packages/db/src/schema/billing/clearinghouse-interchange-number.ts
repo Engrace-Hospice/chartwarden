@@ -15,6 +15,8 @@ export const clearinghouseInterchangeNumber = pgTable(
     idempotencyKey: text("idempotency_key").notNull(),
     usage: text("usage").notNull(),
     interchangeNumber: bigint("interchange_number", { mode: "number" }).notNull(),
+    // Migration 1282 (issue #836): when the interchange was first rendered; a redelivery renders with this clock.
+    renderedAt: timestamp("rendered_at", { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
