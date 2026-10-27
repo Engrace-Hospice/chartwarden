@@ -177,6 +177,9 @@ services:
       # Billing credential KEK (M24 trading-partner + M23 MAC-portal secrets), 32 bytes base64, from your .env. Unset =>
       # saving a MAC/trading-partner credential answers 503 (fail closed). Generate: openssl rand -base64 32.
       M24_CREDENTIAL_ENCRYPTION_KEY: ${M24_CREDENTIAL_ENCRYPTION_KEY:-}
+      # Medicaid (M24) Oregon launch-gateway capability gate. Outside production an unset value is OFF, and then the
+      # billing demo seed's Oregon claim submit is refused with MEDICAID_STATE_NO_ELECTRONIC_GATEWAY. Capability gate only.
+      M24_LAUNCH_GATEWAY_ENABLED: ${M24_LAUNCH_GATEWAY_ENABLED:-true}
       # Optional transactional email (M36 Postmark): unset = unbound, dev logs links via the console transport.
       POSTMARK_SERVER_TOKEN: ${POSTMARK_SERVER_TOKEN:-}
       POSTMARK_FROM_ADDRESS: ${POSTMARK_FROM_ADDRESS:-}
