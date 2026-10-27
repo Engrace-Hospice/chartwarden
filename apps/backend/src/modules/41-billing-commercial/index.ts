@@ -45,10 +45,13 @@ export {
 } from "./jobs/ack-worker";
 export { transitionForAck } from "./domain/ack-transition";
 export {
+  abandonForeignHeldEvents,
   applyAckEvent,
+  heldQuarantineReport,
   outstanding as outstandingAckWork,
   replayHeldEvents,
 } from "./jobs/ack-worker";
+export type { HeldQuarantineReport } from "./jobs/ack-held-replay";
 export {
   ALWAYS_READY,
   type DrainReadiness,

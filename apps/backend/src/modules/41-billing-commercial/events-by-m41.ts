@@ -160,6 +160,8 @@ export const M41_OUTBOX_EVENTS: ModuleEventContribution = [
         Type.Literal("abandoned_vendor_mismatch"),
         Type.Literal("abandoned_aged"),
         Type.Literal("abandoned_invalid"),
+        Type.Literal("abandoned_no_event"),
+        Type.Literal("abandoned_foreign_vendor"),
       ]),
       statusInquiry: Type.Union([
         Type.Literal("not_attempted"),

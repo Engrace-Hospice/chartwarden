@@ -42,7 +42,7 @@ import {
   inOrg,
   nowOf,
 } from "./ack-apply";
-import { entitiesWithHeldEvents, replayHeldEvents } from "./ack-held-replay";
+import { replayHeldEvents, sweepHeldEvents } from "./ack-held-replay";
 import { M41_CRON_QUEUES, M41_JOB_SCHEDULES } from "./queues";
 
 // the apply core lives in ack-apply.ts and the held-event replay in ack-held-replay.ts; this file keeps the public surface
@@ -57,7 +57,11 @@ export {
   type ApplyResult,
   type QuarantineReason,
 } from "./ack-apply";
-export { replayHeldEvents } from "./ack-held-replay";
+export {
+  abandonForeignHeldEvents,
+  heldQuarantineReport,
+  replayHeldEvents,
+} from "./ack-held-replay";
 
 /** Most pages one provider entity's stream may read per tick; the cursor is persisted per page, so the rest waits for the next tick. */
 export const MAX_ACK_PAGES_PER_TICK = 50;
@@ -254,11 +258,7 @@ export async function pullOrgAcks(
   // with no transport call, so a dead held event is abandoned instead of waiting forever.
   try {
     const live = new Set(work.map((w) => w.providerEntityId));
-    for (const providerEntityId of await entitiesWithHeldEvents(deps, organizationId)) {
-      if (!live.has(providerEntityId)) {
-        await replayHeldEvents(deps, { organizationId, providerEntityId });
-      }
-    }
+    await sweepHeldEvents(deps, organizationId, live);
   } catch (err) {
     failures.push(
       `org ${organizationId} held-event sweep: ${err instanceof Error ? err.message : "failed"}`,
@@ -292,6 +292,8 @@ export async function runAckPull(deps: AckWorkerDeps): Promise<AckPullResult> {
   for (const { organizationId } of await deps.activeOrgs.listActiveOrgs()) {
     if (deps.binding.vendor === null) {
       try {
+        // unbound: no transport is needed to close out aged / foreign-stream / event-less held rows, so they still leave audited
+        await sweepHeldEvents(deps, organizationId, new Set());
         const waiting = await outstanding(deps, organizationId);
         if (waiting.length > 0) {
           failures.push(

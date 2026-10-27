@@ -33,6 +33,7 @@ import {
   type CommercialClaimSeams,
   M41_CRON_QUEUES,
   M41_OUTBOX_EVENTS,
+  abandonForeignHeldEvents,
   applyAckEvent,
   buildCommercial837iRenderer,
   buildCommercialAuthorizationService,
@@ -44,6 +45,7 @@ import {
   createDrizzleAckCursorStore,
   createScheduleProbe,
   createSharedDrainReadiness,
+  heldQuarantineReport,
   outstandingAckWork,
   replayHeldEvents,
   runAckPull,
@@ -2411,6 +2413,99 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         const second = await replayHeldEvents(ackDeps("stedi"), scope());
         expect(second.applied).toBe(0);
         expect(await eventCount(c.claimId, "m41.claim.accepted")).toBe(1);
+      });
+
+      /** A vendor_mismatch row held from another vendor's stream (what a binding switch leaves behind). */
+      async function foreignRow() {
+        const c = await sentClaim();
+        await applyAckEvent(ackDeps("another_vendor"), scope(), {
+          eventId: `foreign-${randomUUID()}`,
+          controlNumber: c.controlNumber,
+          stage: "payer",
+          disposition: "accepted",
+          reasonCodes: [],
+          occurredAt: new Date().toISOString(),
+        });
+        return c;
+      }
+
+      it("closes a pre-1279 mismatch row (no stored event) explicitly and audited, instead of skipping it forever (#820)", async () => {
+        const c = await foreignRow();
+        await admin.query(
+          "UPDATE commercial_ack_quarantine SET event = NULL WHERE control_number=$1 AND reason='vendor_mismatch'",
+          [c.controlNumber],
+        );
+        await replayHeldEvents(ackDeps("stedi"), scope());
+        expect(await rowOf(c.controlNumber, "vendor_mismatch")).toMatchObject({
+          resolution: "abandoned_no_event",
+        });
+        expect(await abandonedEvents(c.controlNumber)).toEqual([
+          expect.objectContaining({
+            reason: "vendor_mismatch",
+            resolution: "abandoned_no_event",
+            claimId: c.claimId,
+          }),
+        ]);
+        await replayHeldEvents(ackDeps("stedi"), scope()); // idempotent: not abandoned twice
+        expect(await abandonedEvents(c.controlNumber)).toHaveLength(1);
+        expect(await claimState(c.claimId)).toBe("submitted");
+        expect(await ackRows(c.claimId)).toEqual([]);
+      });
+
+      it("sweeps an aged foreign row on an UNBOUND tick too (no vendor needed), audited (#820)", async () => {
+        const c = await foreignRow();
+        await admin.query(
+          "UPDATE commercial_ack_quarantine SET created_at = now() - interval '60 days' WHERE control_number=$1",
+          [c.controlNumber],
+        );
+        await admin.query(
+          "UPDATE commercial_submission SET requested_at = now() - interval '61 days' WHERE control_number=$1",
+          [c.controlNumber],
+        );
+        await failure(runAckPull(ackDeps(null))); // may fail on other tests' waiting work; the sweep still ran
+        expect(await rowOf(c.controlNumber, "vendor_mismatch")).toMatchObject({
+          resolution: "abandoned_aged",
+        });
+        expect(await abandonedEvents(c.controlNumber)).toHaveLength(1);
+      });
+
+      it("reports stranded rows and lets an operator close foreign ones, org-scoped and audited (#820)", async () => {
+        const c = await foreignRow();
+        const before = await heldQuarantineReport(ackDeps("stedi"), ORG);
+        expect(before.strandedForeign).toBeGreaterThanOrEqual(1);
+        expect(before.bound).toBe(true);
+        // counts only: no ids, no payload
+        expect(Object.keys(before).sort()).toEqual(
+          [
+            "bound",
+            "held",
+            "noEvent",
+            "oldestHeldAt",
+            "ownStream",
+            "reviewOnlyMalformed",
+            "strandedForeign",
+          ].sort(),
+        );
+        // another tenant sees and closes nothing of ours
+        expect((await heldQuarantineReport(ackDeps("stedi"), ORG_B)).held).toBe(0);
+        expect(await abandonForeignHeldEvents(ackDeps("stedi"), ORG_B)).toEqual({ abandoned: 0 });
+        // unbound closes nothing (may be a config blip)
+        expect(await abandonForeignHeldEvents(ackDeps(null), ORG)).toEqual({ abandoned: 0 });
+        expect((await rowOf(c.controlNumber, "vendor_mismatch")).resolved_at).toBeNull();
+        const out = await abandonForeignHeldEvents(ackDeps("stedi"), ORG);
+        expect(out.abandoned).toBeGreaterThanOrEqual(1);
+        expect(await rowOf(c.controlNumber, "vendor_mismatch")).toMatchObject({
+          resolution: "abandoned_foreign_vendor",
+        });
+        expect(await abandonedEvents(c.controlNumber)).toEqual([
+          expect.objectContaining({
+            reason: "vendor_mismatch",
+            resolution: "abandoned_foreign_vendor",
+            claimId: c.claimId,
+          }),
+        ]);
+        expect(await claimState(c.claimId)).toBe("submitted"); // closed, never applied
+        expect(await abandonForeignHeldEvents(ackDeps("stedi"), ORG)).toEqual({ abandoned: 0 });
       });
     });
 
