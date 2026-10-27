@@ -7,8 +7,13 @@
 // routes those to M1's `secret_encrypted`/`backup_codes_encrypted` columns.
 //
 // SECURITY: it must cover EVERY twoFactor read/write path — a missed one would store/return plaintext.
-// The covered paths are create/update/updateMany (write) + findOne/findMany (read); delete/deleteMany/
-// count/consumeOne carry no secret payload. The live lane asserts ciphertext-at-rest (ADR-0034 §4).
+// The covered paths are create/update/updateMany/incrementOne (write) + findOne/findMany (read); delete/
+// deleteMany/count/consumeOne carry no secret payload. The live lane asserts ciphertext-at-rest (ADR-0034 §4).
+//
+// incrementOne matters since better-auth 1.7: /two-factor/verify-backup-code redeems a code with a
+// compare-and-swap, `where backupCodes = <what findOne returned>` + `set backupCodes = <new list>`. That
+// where-value is the opened plaintext, but the column holds ciphertext (a fresh seal never equals it — random
+// IV), so the swap is made against the STORED ciphertext after checking it opens to the plaintext sent.
 import { isSealed, open, seal } from "./two-factor-crypto";
 
 const MODEL = "twoFactor";
@@ -29,6 +34,13 @@ export interface EncryptableAdapter {
     update: Record<string, unknown>;
     [k: string]: unknown;
   }): Promise<number>;
+  /** Better Auth ≥ 1.7's atomic compare-and-swap; absent on an adapter that predates it. */
+  incrementOne?(data: {
+    model: string;
+    where: { field: string; value: unknown; [k: string]: unknown }[];
+    set?: Record<string, unknown>;
+    [k: string]: unknown;
+  }): Promise<Record<string, unknown> | null>;
   findOne(data: { model: string; [k: string]: unknown }): Promise<Record<string, unknown> | null>;
   findMany(data: { model: string; [k: string]: unknown }): Promise<Record<string, unknown>[]>;
   [k: string]: unknown;
@@ -80,6 +92,38 @@ export function withTwoFactorEncryption<A extends EncryptableAdapter>(
     async updateMany(data) {
       if (data.model !== MODEL) return inner.updateMany(data);
       return inner.updateMany({ ...data, update: encryptFields(data.update, key()) });
+    },
+    async incrementOne(data) {
+      const run = inner.incrementOne;
+      if (!run) throw new Error("withTwoFactorEncryption: the inner adapter has no incrementOne");
+      if (data.model !== MODEL) return run.call(inner, data);
+      const isSecretField = (field: string): boolean =>
+        (FIELDS as readonly string[]).includes(field);
+      const plainWhere = data.where.filter((w) => !isSecretField(w.field));
+      const secretWhere = data.where.filter((w) => isSecretField(w.field));
+      let where = data.where;
+      if (secretWhere.length > 0) {
+        const stored = await inner.findOne({ model: MODEL, where: plainWhere });
+        if (!stored) return null;
+        // Compare in plaintext, but swap against the stored ciphertext so the update stays atomic.
+        where = [...plainWhere];
+        for (const w of secretWhere) {
+          const cell = stored[w.field];
+          if (typeof cell === "string" && isSealed(cell)) {
+            if (open(cell, key()) !== w.value) return null;
+            where.push({ ...w, value: cell });
+          } else {
+            if (cell !== w.value) return null;
+            where.push(w);
+          }
+        }
+      }
+      const r = await run.call(inner, {
+        ...data,
+        where,
+        ...(data.set ? { set: encryptFields(data.set, key()) } : {}),
+      });
+      return decryptFields(r, key());
     },
     async findOne(data) {
       const r = await inner.findOne(data);
