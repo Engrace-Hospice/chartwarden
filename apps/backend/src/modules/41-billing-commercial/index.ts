@@ -9,6 +9,11 @@ export type {
   CommercialAuthorizationService,
   RecordAuthorizationInput,
 } from "./services/authorization-service";
+export {
+  type CommercialClaimReader,
+  buildCommercialClaimReader,
+  registerM41PublishedSeams,
+} from "./services/remittance-match-seam";
 export { buildCommercialClaimAssemblyService, resolveCoverages } from "./services/claim-assembly";
 export type {
   AssembledCommercialClaim,
@@ -45,10 +50,13 @@ export {
 } from "./jobs/ack-worker";
 export { transitionForAck } from "./domain/ack-transition";
 export {
+  abandonForeignHeldEvents,
   applyAckEvent,
+  heldQuarantineReport,
   outstanding as outstandingAckWork,
   replayHeldEvents,
 } from "./jobs/ack-worker";
+export type { HeldQuarantineReport } from "./jobs/ack-held-replay";
 export {
   ALWAYS_READY,
   type DrainReadiness,

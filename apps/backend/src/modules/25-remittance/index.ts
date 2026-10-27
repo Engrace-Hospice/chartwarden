@@ -158,6 +158,7 @@ export {
 export {
   buildM23BackedClaimMatchCandidateProvider,
   buildM24BackedClaimMatchCandidateProvider,
+  buildM41BackedClaimMatchCandidateProvider,
 } from "./ingest/claim-match-adapter";
 export {
   type M25EdiReceivedConsumerBinding,

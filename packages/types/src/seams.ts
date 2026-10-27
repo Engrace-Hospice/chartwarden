@@ -77,8 +77,8 @@ import type {
   IpuTenantPostureReader,
   IpuVisitorReader,
 } from "./inpatient";
-import type { EscalationRouter } from "./messaging-escalation";
 import type { MessagingResponseAnalyticsReader } from "./messaging-analytics";
+import type { EscalationRouter } from "./messaging-escalation";
 import type { ChartPromotionSourceReader } from "./messaging-promotion";
 import type {
   HospitalizationRiskProvider,
@@ -375,6 +375,7 @@ export type SeamName =
   | "ClaimLineReader" // M23 — per-LOC billed claim-line day rollup for a window (M30 HCI claims-derived indicators)
   | "ClaimSubmissionReader" // M23 — accepted-submission match candidates by payer/patient control number + claim->patient id, for M25 835-to-claim auto-match (D3) and PR-ledger patient resolution (WX-PR-012)
   | "MedicaidClaimMatchProvider" // M24 — Medicaid claim-control-number match candidates + claim->patient id, for M25 835-to-claim auto-match routed by payerKind (F-172, #248 m24 group)
+  | "CommercialClaimReader" // M41 — payer-keyed commercial claim-control-number match candidates + claim->patient id, for M25 835-to-claim auto-match of payerKind commercial (#725, ADR-0100 D8)
   | "CostReportFilingStatusReader" // M27 — cost-report filing posture per FY (M30 CoP 418.310 failure-to-file indicator)
   // M30 (HQRP & Quality) §4.3 — the five READ-ONLY seams M30 publishes. Before these, M30 was reachable
   // cross-module ONLY through its §4.10 outbox events, with no read path at all. GAP-066: registered and
@@ -1175,6 +1176,7 @@ export interface SeamContracts {
   // `medicaidClaimIds(orgId, claimIds)` (which of up to 200 ids are this org's Medicaid claims, one query) so M25's
   // denial worklist can badge the payer of a denial that has no remittance without an N+1.
   MedicaidClaimMatchProvider: unknown;
+  CommercialClaimReader: unknown;
   CostReportFilingStatusReader: unknown;
   // M30's five §4.3 seams — the SAME opaque rich-seam pattern: the interfaces live in @chartwarden/quality
   // (this leaf may not import it — `leaves-stay-leaves`), so the registry holds each instance as

@@ -17,6 +17,8 @@ export const COMMERCIAL_PATHS = {
   enrollments: "/commercial/billing/enrollments",
   eligibility: "/commercial/billing/eligibility",
   claim: (id: string): string => `/commercial/billing/claims/${id}`,
+  sendGate: (id: string): string => `/commercial/billing/claims/${id}/send-gate`,
+  timeline: (id: string): string => `/commercial/billing/claims/${id}/timeline`,
 } as const;
 
 /** The work-queue payer-kind filter: the other payer on the claim (coordination of benefits). */
