@@ -3,8 +3,14 @@
 // cases. Runs for every test file (node-env tests never call `render()`, so `cleanup()` is a no-op
 // there) — one setup file is simpler than splitting into per-environment projects.
 import { cleanup, configure } from "@testing-library/react";
+import axe from "axe-core";
 import { afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
+
+// axe's color-contrast rule measures text through a canvas, which jsdom does not implement: every run logged
+// "Not implemented: HTMLCanvasElement.prototype.getContext" and the rule could only ever report "incomplete".
+// Disabling it here changes no verdict (it never produced a violation under jsdom) and silences every suite at once.
+axe.configure({ rules: [{ id: "color-contrast", enabled: false }] });
 
 // jsdom doesn't implement Element.scrollTo (every real browser does) — apps/web/src/shell/layout.tsx
 // calls `mainRef.current?.scrollTo(0, 0)` on route change (the live-browser-audit scroll-reset fix),
