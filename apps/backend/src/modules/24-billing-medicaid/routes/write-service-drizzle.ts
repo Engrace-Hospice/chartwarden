@@ -112,6 +112,11 @@ export interface CoverageResolverPort {
     organizationId: string;
     patientId: string;
     onDate: string;
+    /**
+     * #845 — when given, the SAME Medicaid coverage row must be the top-ranked Medicaid coverage on every day of
+     * `onDate..throughDate` (M5's range-wide resolver), not merely in force on `onDate`; otherwise null.
+     */
+    throughDate?: string;
   }): Promise<{ id: string; payerId: string; subscriberId: string } | null>;
 }
 
@@ -383,11 +388,12 @@ export function buildDrizzleM24WriteService(
         organizationId: actor.organizationId,
         patientId: input.patientId,
         onDate: input.serviceFrom,
+        throughDate: input.serviceTo,
       });
       if (!resolved) {
         throw new ConflictError(
           "MEDICAID_COVERAGE_NOT_IN_FORCE",
-          "this patient holds no Medicaid coverage in force on the claim's first service date",
+          "this patient holds no single Medicaid coverage in force on every day of the claim's service window (split the claim where the coverage changes)",
         );
       }
       return withOrgContext(db, actor, async (tx) => {

@@ -523,7 +523,33 @@ export interface PatientCoverageReader {
     /** ISO yyyy-mm-dd — the coverage must be in force on this date. */
     onDate: string;
   }): Promise<PatientCoverage | null>;
+  /**
+   * The range-wide payer resolver (#845): the ONE coverage that is the highest-ranked coverage in force on
+   * EVERY day of the inclusive window `from..to`, considering every coverage kind (or only `coverageKind`
+   * when given). Anything else is reported with the first date it fails on, so a billing gate can refuse
+   * instead of guessing from the window's endpoints.
+   */
+  coverageForRange(input: {
+    organizationId: string;
+    patientId: string;
+    /** ISO yyyy-mm-dd, inclusive. */
+    from: string;
+    /** ISO yyyy-mm-dd, inclusive; never before `from`. */
+    to: string;
+    /** Restrict to one kind (e.g. `medicaid`); omitted, every kind competes for the top rank. */
+    coverageKind?: string;
+  }): Promise<CoverageForRange>;
 }
+
+/**
+ * {@link PatientCoverageReader.coverageForRange}'s answer. `uniform`: the same coverage row is the top-ranked one
+ * on every day. `none`: some day has no coverage at all. `changes`: the top-ranked coverage on `onDate` differs
+ * from the one on `from`. `ambiguous`: two coverages share the top rank on `onDate` (the database forbids this
+ * since migration 1291; the variant stays so a legacy row can never be silently picked).
+ */
+export type CoverageForRange =
+  | { readonly status: "uniform"; readonly coverage: PatientCoverage }
+  | { readonly status: "none" | "changes" | "ambiguous"; readonly onDate: string };
 
 // ── MbiUnlockReader seam (M5-published, M23-ONLY consumer — the HETS 270 build) ─────────────────────
 

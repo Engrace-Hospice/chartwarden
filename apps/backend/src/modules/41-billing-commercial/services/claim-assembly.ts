@@ -25,6 +25,7 @@ import {
   type CommercialHospiceLevelOfCare,
   type CommercialSecondaryPayerKind,
   ConflictError,
+  type CoverageForRange,
   type PatientCoverage,
 } from "@chartwarden/types";
 import { and, eq, gte, isNull, lte, ne, or, sql } from "drizzle-orm";
@@ -93,32 +94,33 @@ function refusalFor(kind: string | null): string {
 }
 
 /**
- * The coverage that is primary across the WHOLE window and, if any, the Medicare / Medicaid coverage behind it. A primary
- * that changes inside the window cannot be billed as one claim.
+ * The coverage that is primary across the WHOLE window and, if any, the Medicare / Medicaid coverage behind it. The primary
+ * comes from M5's range-wide, cross-kind resolver (#845), so a payer that takes over strictly INSIDE the window (or ties
+ * the primary on a transition day) is caught, not only one that differs at the window's endpoints. A primary that changes
+ * inside the window cannot be billed as one claim.
  */
 export function resolveCoverages(
   coverages: readonly PatientCoverage[],
+  primaryForRange: CoverageForRange,
   range: { from: string; to: string },
 ): { primary: PatientCoverage | null; secondary: PatientCoverage | null } {
-  const atStart = [...coverages]
-    .filter((c) => inForce(c, range.from))
-    .sort((a, b) => a.rank - b.rank);
-  const primary = atStart[0] ?? null;
-  if (primary === null) return { primary: null, secondary: null };
-  if (!inForce(primary, range.to)) {
+  // No coverage on the first day: nothing to bill. Coverage that lapses later is a change inside the window.
+  if (primaryForRange.status === "none" && primaryForRange.onDate === range.from) {
+    return { primary: null, secondary: null };
+  }
+  if (primaryForRange.status !== "uniform") {
     throw new ChartWardenError(
       "COVERAGE_CHANGES_IN_WINDOW",
-      "The primary coverage changes inside the service window. Split the claim at the change and bill each part to its own payer.",
+      `The primary coverage changes inside the service window (on ${primaryForRange.onDate}). Split the claim at the change and bill each part to its own payer.`,
       409,
     );
   }
+  const primary = primaryForRange.coverage;
   const secondary =
-    atStart.find(
-      (c) =>
-        c.rank > primary.rank &&
-        inForce(c, range.to) &&
-        SECONDARY_KIND[c.coverageKind] !== undefined,
-    ) ?? null;
+    [...coverages]
+      .filter((c) => inForce(c, range.from) && inForce(c, range.to))
+      .sort((a, b) => a.rank - b.rank)
+      .find((c) => c.rank > primary.rank && SECONDARY_KIND[c.coverageKind] !== undefined) ?? null;
   return { primary, secondary };
 }
 
@@ -162,11 +164,11 @@ export function buildCommercialClaimAssemblyService(
       );
 
       // 1. The commercial-primary gate (the mirror of M23's D15 Medicare-primary gate).
-      const coverages = await seams.coverage.coveragesForPatient({
-        organizationId: orgId,
-        patientId,
-      });
-      const { primary, secondary } = resolveCoverages(coverages, range);
+      const [coverages, primaryForRange] = await Promise.all([
+        seams.coverage.coveragesForPatient({ organizationId: orgId, patientId }),
+        seams.coverage.coverageForRange({ organizationId: orgId, patientId, ...range }),
+      ]);
+      const { primary, secondary } = resolveCoverages(coverages, primaryForRange, range);
       if (primary === null || primary.coverageKind !== "commercial") {
         throw new ChartWardenError(
           COMMERCIAL_ERROR_CODES.nonCommercialPrimary,

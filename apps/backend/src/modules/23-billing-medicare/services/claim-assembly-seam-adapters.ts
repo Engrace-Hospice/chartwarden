@@ -17,7 +17,7 @@ import {
 } from "@chartwarden/billing";
 import type { LevelOfCare, NpiStatus, PhysicianResolution } from "@chartwarden/billing";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, type PatientCoverageReader } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";
 import { hospiceRateTableEffectiveForOrg } from "../routes/rate-table-service";
 import { visitChargeVersionsForOrg } from "../routes/visit-charge-service";
@@ -52,63 +52,61 @@ type BillingDb = repositories.BillingDb;
  * would be a real compile edge `arch:boundaries` refuses, so this resolves through the untyped M1-registry
  * `getSeam` + a local cast, the exact `cap-projection-adapter.ts` (M26) no-edge pattern (ADR-0005).
  */
-interface M5CoverageSeam {
-  activeCoverageOfKind(input: {
-    organizationId: string;
-    patientId: string;
-    coverageKind: string;
-    onDate: string;
-  }): Promise<{ id: string; rank: number; coverageKind: string } | null>;
-}
+type M5CoverageSeam = Pick<PatientCoverageReader, "activeCoverageOfKind" | "coverageForRange">;
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // 1. patientPayer (M5) — real, over the registered PatientCoverageReader seam.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
- * M23's Medicare-primary gate (D15) needs "is Medicare FFS primary across the WHOLE window", while the M5
- * seam only answers "is a coverage of this kind in force ON one date" (`activeCoverageOfKind`). Checked
- * at BOTH range endpoints against the SAME coverage row (by `id`) rather than either endpoint alone: a
- * coverage that is medicare_ffs + rank 1 at `range.from` but has been superseded (a different row, a new
- * COB rank) by `range.to` is correctly NOT primary for the whole window. This does not see a rank change
- * strictly INSIDE the interior of the range — a real, stated limitation, not a silent one: M5 publishes no
- * range-shaped coverage query today, and adding one is exactly the kind of owning-module work the other
- * deferred seams below need too.
+ * M23's Medicare-primary gate (D15): Medicare FFS must be the unambiguous rank-1 payer on EVERY day of the window,
+ * against every coverage kind. #845 — this asks M5's range-wide, cross-kind resolver (`coverageForRange`) rather than
+ * sampling `medicare_ffs` at the two endpoints, which missed a payer switch inside the window and never looked at a
+ * commercial row that shared the transition day. Anything short of one rank-1 medicare_ffs row on every day (a
+ * change inside the window, a gap, a tie) is not Medicare-primary, so assembly refuses before anything is written.
  */
 export function buildM23PatientPayerAdapter(
-  resolve: () => M5CoverageSeam = () => getSeam("PatientCoverageReader") as M5CoverageSeam,
+  resolve: () => M5CoverageSeam = () => getSeam("PatientCoverageReader"),
 ): PatientPayerReader {
   return {
     async medicarePrimaryForRange(orgId, patientId, range) {
       const reader = resolve();
-      const at = (coverageKind: string, onDate: string) =>
-        reader.activeCoverageOfKind({ organizationId: orgId, patientId, coverageKind, onDate });
-      const [atStart, atEnd] = await Promise.all([
-        at("medicare_ffs", range.from),
-        at("medicare_ffs", range.to),
-      ]);
-      const ffs = atStart && atEnd && atStart.id === atEnd.id ? atStart : null;
+      const primary = await reader.coverageForRange({
+        organizationId: orgId,
+        patientId,
+        from: range.from,
+        to: range.to,
+      });
+      if (
+        primary.status === "uniform" &&
+        primary.coverage.coverageKind === "medicare_ffs" &&
+        primary.coverage.rank === 1
+      ) {
+        return { patientPayerId: primary.coverage.id, medicarePrimary: true };
+      }
       // #772 - a Medicare Advantage enrollee's hospice claim is billed to the MAC as an Original Medicare claim, but the
       // claim stamps the coverage row's id and the MBI is read from that row, so a plan member id must never stand in for
-      // it. The decision: the patient needs a medicare_ffs row (with the MBI) ranked 1 for the hospice benefit; an MA row
-      // that outranks it, or a missing FFS row, is reported as such so the refusal can say how to record the coverage.
-      const advantage =
-        ffs === null || ffs.rank !== 1 ? await at("medicare_advantage", range.from) : null;
-      if (!ffs) {
-        return advantage
-          ? {
-              patientPayerId: advantage.id,
-              medicarePrimary: false,
-              medicareAdvantageEnrollee: true,
-            }
-          : null;
+      // it. An MA row that outranks the FFS row (or stands in for a missing one) is reported as such so the refusal can
+      // say how to record the coverage.
+      const at = (coverageKind: string) =>
+        reader.activeCoverageOfKind({
+          organizationId: orgId,
+          patientId,
+          coverageKind,
+          onDate: range.from,
+        });
+      const [ffs, advantage] = await Promise.all([at("medicare_ffs"), at("medicare_advantage")]);
+      if (advantage !== null && (ffs === null || advantage.rank < ffs.rank)) {
+        return {
+          patientPayerId: advantage.id,
+          medicarePrimary: false,
+          medicareAdvantageEnrollee: true,
+        };
       }
-      const advantageEnrollee = advantage !== null && advantage.rank < ffs.rank;
-      const resolution: MedicarePrimaryResolution = {
-        patientPayerId: ffs.id,
-        medicarePrimary: ffs.rank === 1,
-        ...(advantageEnrollee ? { medicareAdvantageEnrollee: true } : {}),
-      };
+      const resolution: MedicarePrimaryResolution | null =
+        primary.status === "uniform"
+          ? { patientPayerId: primary.coverage.id, medicarePrimary: false }
+          : null;
       return resolution;
     },
   };

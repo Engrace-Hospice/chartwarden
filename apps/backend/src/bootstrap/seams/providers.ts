@@ -234,6 +234,9 @@ export const patientCoverageReaderDenyStub: PatientCoverageReader = {
   activeCoverageOfKind() {
     throw new NotImplementedError("PatientCoverageReader");
   },
+  coverageForRange() {
+    throw new NotImplementedError("PatientCoverageReader");
+  },
 };
 
 /**

@@ -86,6 +86,7 @@ import type {
   MessagingAiPort,
   OrgId,
   PatientAddressReader,
+  PatientCoverageReader,
   PatientId,
   PatientReader,
   ScaleType,
@@ -4326,13 +4327,27 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       organizationId: string;
       patientId: string;
       onDate: string;
+      throughDate?: string;
     }) {
-      const found = await getPatientCoverageReader().activeCoverageOfKind({
-        organizationId: q.organizationId,
-        patientId: q.patientId,
-        coverageKind: "medicaid",
-        onDate: q.onDate,
-      });
+      const reader = getPatientCoverageReader();
+      // #845 — a claim window asks the range-wide resolver: one Medicaid row on top on EVERY day, else nothing.
+      const found =
+        q.throughDate === undefined
+          ? await reader.activeCoverageOfKind({
+              organizationId: q.organizationId,
+              patientId: q.patientId,
+              coverageKind: "medicaid",
+              onDate: q.onDate,
+            })
+          : await reader
+              .coverageForRange({
+                organizationId: q.organizationId,
+                patientId: q.patientId,
+                from: q.onDate,
+                to: q.throughDate,
+                coverageKind: "medicaid",
+              })
+              .then((r) => (r.status === "uniform" ? r.coverage : null));
       return found
         ? {
             id: found.id,
@@ -6142,6 +6157,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               coverage: {
                 coveragesForPatient: (q: { organizationId: string; patientId: string }) =>
                   getSeam("PatientCoverageReader").coveragesForPatient(q),
+                coverageForRange: (q: Parameters<PatientCoverageReader["coverageForRange"]>[0]) =>
+                  getSeam("PatientCoverageReader").coverageForRange(q),
               },
               admission: m23Seams.admission,
               electionPeriods: m23Seams.electionPeriods,
