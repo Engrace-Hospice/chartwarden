@@ -251,11 +251,13 @@ describe("GET /messaging/channels/:id/role-send/resolution", () => {
     expect(routerCalls).toBe(0);
   });
 
-  it("flag off is a 404 BEFORE the 403 (no key) and the 422 (malformed query), and before the 401 is not leaked either", async () => {
+  it("flag off is a 404 BEFORE the 403 (no key) and the 422 (malformed query or channel id), but a signed-out caller still gets the 401", async () => {
     enabled = false;
     const app = makeServer();
     expect((await get(app, "no-role-key")).statusCode).toBe(404);
     expect((await get(app, "nurse", "?role=admin&patient_id=nope")).statusCode).toBe(404);
+    expect((await get(app, "nurse", QS, "not-a-uuid")).statusCode).toBe(404);
+    expect((await get(app, null)).statusCode).toBe(401);
     expect(routerCalls).toBe(0);
   });
 
@@ -336,11 +338,14 @@ describe("POST /messaging/channels/:id/role-send", () => {
     expect(sends).toEqual([]);
   });
 
-  it("flag off is a 404 BEFORE the 403 (no key) and the 422 (malformed body)", async () => {
+  it("flag off is a 404 BEFORE the 403 (no key), the 422 (malformed body or channel id) and the missing Idempotency-Key, but a signed-out caller still gets the 401", async () => {
     enabled = false;
     const app = makeServer();
     expect((await post(app, "no-role-key")).statusCode).toBe(404);
     expect((await post(app, "nurse", { role: "admin" })).statusCode).toBe(404);
+    expect((await post(app, "nurse", {}, { key: null })).statusCode).toBe(404);
+    expect((await post(app, "nurse", {}, { channel: "not-a-uuid" })).statusCode).toBe(404);
+    expect((await post(app, null)).statusCode).toBe(401);
     expect(routerCalls).toBe(0);
     expect(sends).toEqual([]);
   });

@@ -19,10 +19,16 @@
   width: 1.125rem;
   height: 1.125rem;
   margin: 0;
-  border: 2px solid var(--color-outline);
+  /* on-surface-variant, not outline: outline (#94a3b8) is ~2.6:1 on the light surface, under the 3:1 WCAG 1.4.11 asks of a control. */
+  border: 2px solid var(--color-on-surface-variant);
   border-radius: 50%;
   background: transparent;
   accent-color: var(--color-primary);
+}
+
+.wx-urgent-form fieldset input[type="radio"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .wx-urgent-form fieldset input[type="radio"]::before {

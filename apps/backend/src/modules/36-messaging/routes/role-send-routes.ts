@@ -85,6 +85,8 @@ export function registerRoleSendRoutes(
   const urgentSend = requirePermission(URGENT_SEND_PERMISSION) as PreHandler;
   const roleSend = requirePermission(ROLE_SEND_PERMISSION) as PreHandler;
   // FIRST preHandler: flag off is the same 404 as the service's, ahead of params, permissions and validation.
+  // Trade-off: a signed-in caller without the keys now sees 404 (flag off) vs 403 (flag on), so the caller's OWN tenant's flag is
+  // observable; never another tenant's (the read is keyed by the session's org).
   const flagOn: PreHandler = async (request) => {
     const orgId = request.context?.organizationId;
     if (!orgId) throw new UnauthorizedError(); // no session: 401 whatever the flag says (nothing to leak)
