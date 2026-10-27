@@ -1,11 +1,17 @@
 // apps/backend/__tests__/hope-submission-result.test.ts — recording the CMS result of a manual iQIES
 // upload: guards, per-item outcome, derived batch status, findings, idempotency, rejected-item resolution,
 // reverse lookup. Runs the in-memory slice (the DB backend shares hope-submission-result.ts).
+import { createHash } from "node:crypto";
 import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
+  MAX_RETAINED_RESULTS,
+  appendReportResults,
   classifyCmsResult,
   deriveBatchOutcome,
+  isSettledItemStatus,
+  manualUploadTransmittedPayload,
+  reportHashes,
   resolveRejectedItem,
   terminalCorrection,
   worstOutcome,
@@ -128,6 +134,41 @@ describe("importSubmissionResult", () => {
     ).toBe("M10_SUBMISSION_RESULT_ALREADY_RECORDED");
   });
 
+  it("replaying an OLDER report (A, B, A) in a pending batch changes nothing", async () => {
+    const svc = setup();
+    const b = await svc.assembleSubmission(ORG, PE);
+    await svc.markSubmissionUploaded(ORG, "u1", b.id, {});
+    const A = {
+      reportReference: "ra",
+      results: [{ assessmentId: A1, status: "accepted", message: "from A" }],
+    };
+    const B = {
+      reportReference: "rb",
+      results: [{ assessmentId: A1, status: "accepted", message: "from B" }],
+    };
+    await svc.importSubmissionResult(ORG, "u1", b.id, A);
+    const afterB = await svc.importSubmissionResult(ORG, "u1", b.id, B);
+    const replay = await svc.importSubmissionResult(ORG, "u2", b.id, A);
+    expect(afterB.findings).toHaveLength(2);
+    expect(replay.findings).toHaveLength(2);
+    expect(replay.resultReportReference).toBe("rb");
+    expect(replay.status).toBe(afterB.status);
+  });
+
+  it("replaying a report whose keys arrive in another order is still a no-op", async () => {
+    const svc = setup();
+    const b = await svc.assembleSubmission(ORG, PE);
+    await svc.markSubmissionUploaded(ORG, "u1", b.id, {});
+    const first = await svc.importSubmissionResult(ORG, "u1", b.id, {
+      results: [{ assessmentId: A1, status: "accepted", message: "m" }],
+    });
+    const replay = await svc.importSubmissionResult(ORG, "u2", b.id, {
+      results: [{ message: "m", status: "accepted", assessmentId: A1 }],
+    });
+    expect(first.findings).toHaveLength(1);
+    expect(replay.findings).toHaveLength(1);
+  });
+
   it("rejects a report that matches no item in the batch", async () => {
     const svc = setup();
     const b = await svc.assembleSubmission(ORG, PE);
@@ -200,5 +241,100 @@ describe("correction chains", () => {
       ["B", "A"],
     ]);
     expect(terminalCorrection("A", childOf)).not.toBeNull();
+  });
+});
+
+describe("cross-report verdicts are final", () => {
+  it("a later report cannot flip a settled item (slice), later rows still add findings", async () => {
+    const svc = setup();
+    const b = await svc.assembleSubmission(ORG, PE);
+    await svc.markSubmissionUploaded(ORG, "u1", b.id, {});
+    await svc.importSubmissionResult(ORG, "u1", b.id, {
+      results: [{ assessmentId: A1, status: "rejected", code: "-9" }],
+    });
+    const out = await svc.importSubmissionResult(ORG, "u1", b.id, {
+      results: [
+        { assessmentId: A1, status: "accepted", message: "late note" },
+        { assessmentId: A2, status: "accepted" },
+      ],
+    });
+    const status = new Map(out.items.map((i) => [i.assessmentId, i.status]));
+    expect(status.get(A1)).toBe("rejected");
+    expect(status.get(A2)).toBe("accepted");
+    expect(out.status).toBe("partially_accepted");
+    expect(out.findings.map((f) => f.message)).toContain("late note");
+  });
+
+  it("classifies settled item statuses", () => {
+    expect(["accepted", "accepted_with_warnings", "rejected"].every(isSettledItemStatus)).toBe(
+      true,
+    );
+    expect(isSettledItemStatus("pending")).toBe(false);
+  });
+
+  it("hashes a report by content: key order is ignored, content is not, the legacy digest is kept", () => {
+    const report = [{ assessmentId: A1, status: "accepted", message: "m" }];
+    const reordered = [{ message: "m", status: "accepted", assessmentId: A1 }];
+    expect(reportHashes(reordered).canonical).toBe(reportHashes(report).canonical);
+    expect(reportHashes([{ ...report[0], message: "other" }]).canonical).not.toBe(
+      reportHashes(report).canonical,
+    );
+    // What batches recorded before the canonical form stored: a replay of those must still be recognised.
+    const legacy = createHash("sha256").update(JSON.stringify(report)).digest("hex");
+    expect(reportHashes(report).legacy).toBe(legacy);
+    expect(reportHashes(reordered).legacy).not.toBe(legacy);
+  });
+
+  it("appends earlier raw results and keeps the newest MAX_RETAINED_RESULTS", () => {
+    expect(appendReportResults([{ a: 1 }], [{ b: 2 }])).toEqual([{ a: 1 }, { b: 2 }]);
+    expect(appendReportResults(undefined, [{ b: 2 }])).toEqual([{ b: 2 }]);
+    const many = Array.from({ length: MAX_RETAINED_RESULTS }, (_, i) => ({ i }));
+    const out = appendReportResults(many, [{ i: -1 }]);
+    expect(out).toHaveLength(MAX_RETAINED_RESULTS);
+    expect(out.at(-1)).toEqual({ i: -1 });
+  });
+});
+
+describe("corrections and legacy batches", () => {
+  it("follows the newest correction when an original was corrected twice (slice)", async () => {
+    const A3 = "90000000-0000-4000-8000-000000000003";
+    const A4 = "90000000-0000-4000-8000-000000000004";
+    const svc = createInMemoryHopeBackend({
+      now: () => "2026-06-08T12:00:00.000Z",
+      assessments: [
+        base(A1),
+        { ...base(A3), correctsAssessmentId: A1 },
+        { ...base(A4), correctsAssessmentId: A1 },
+      ],
+    });
+    const b = await svc.assembleSubmission(ORG, PE);
+    await svc.markSubmissionUploaded(ORG, "u1", b.id, {});
+    const out = await svc.importSubmissionResult(ORG, "u1", b.id, {
+      results: [{ assessmentId: A1, status: "rejected" }],
+    });
+    expect(out.items.find((i) => i.assessmentId === A1)?.correctionAssessmentId).toBe(A4);
+  });
+
+  it("marking a batch with no package hash uploaded fails typed and leaves the batch untouched", async () => {
+    const SUB = "22222222-2222-4222-8222-222222222222";
+    const svc = createInMemoryHopeBackend({
+      now: () => "2026-06-08T12:00:00.000Z",
+      submissions: [{ id: SUB, organizationId: ORG, providerEntityId: PE, status: "packaged" }],
+    });
+    expect(await code(svc.markSubmissionUploaded(ORG, "u1", SUB, {}))).toBe(
+      "M10_SUBMISSION_PACKAGE_HASH_MISSING",
+    );
+    expect((await svc.getSubmission(ORG, SUB)).status).toBe("packaged");
+  });
+
+  it("a missing package hash is a typed M10 conflict, not a plain Error", () => {
+    try {
+      manualUploadTransmittedPayload("sub-1", null, new Date());
+      expect.unreachable();
+    } catch (e) {
+      expect(e).toBeInstanceOf(ChartWardenError);
+      expect((e as ChartWardenError).code).toBe("M10_SUBMISSION_PACKAGE_HASH_MISSING");
+      expect((e as ChartWardenError).statusCode).toBe(409);
+    }
   });
 });

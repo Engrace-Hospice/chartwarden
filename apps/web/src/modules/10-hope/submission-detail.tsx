@@ -1,4 +1,5 @@
 import {
+  Button,
   DetailPageLayout,
   EmptyState,
   LoadingSpinner,
@@ -14,7 +15,7 @@ import {
 // submission lifecycle is read-only here; the inline Correct/Retry write actions fill in as their write
 // surfaces harden. Reads GET /api/v1/hope/submissions/:id via the typed client; the server enforces every
 // scope incl. PE scope (ADR-0030 — no authz on the frontend). Leaves only (@chartwarden/ui).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import { NameLabel, patientNameOf } from "../../shell/name-display";
@@ -26,6 +27,8 @@ import { RecordCmsResultModal } from "./record-cms-result-modal";
 const MANAGE_PERMISSION = "hope.submission.manage";
 /** Statuses where the CMS result may still be recorded (the server enforces the same set). */
 const RESULT_RECORDABLE = new Set(["exported", "in_flight", "submitted_pending_result"]);
+/** A CMS verdict on an item is final (the server ignores later rows for it), so the dialog never asks for one. */
+const SETTLED_ITEM_STATUS = new Set(["accepted", "accepted_with_warnings", "rejected"]);
 
 const ITEM_TONE: Record<string, StatusTone> = {
   accepted: "success",
@@ -97,6 +100,17 @@ export function SubmissionDetail(): JSX.Element {
   // Action failures (download / mark uploaded / refresh) are shown inline: they must not replace the loaded page.
   const [actionError, setActionError] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
+  // Marking uploaded is irreversible: the first click only asks, the second one writes.
+  const [confirmingUpload, setConfirmingUpload] = useState(false);
+  const confirmUploadRef = useRef<HTMLSpanElement>(null);
+  const markUploadedRef = useRef<HTMLButtonElement>(null);
+  const hadUploadConfirm = useRef(false);
+  // Focus follows the step: Confirm on entry, "Mark uploaded" when the step is cancelled or dismissed.
+  useEffect(() => {
+    if (confirmingUpload) confirmUploadRef.current?.querySelector("button")?.focus();
+    else if (hadUploadConfirm.current) markUploadedRef.current?.focus();
+    hadUploadConfirm.current = confirmingUpload;
+  }, [confirmingUpload]);
   const toast = useOptionalToast();
   const canManage = useSession()?.permissions?.includes(MANAGE_PERMISSION) ?? false;
   const items = row?.items ?? [];
@@ -115,6 +129,9 @@ export function SubmissionDetail(): JSX.Element {
     `${i.patientId ? (patientNames[i.patientId]?.name ?? "Patient") : "Patient"} — ${
       i.rfaKind ? rfaLabel(i.rfaKind) : "Assessment"
     }`;
+  // Labels repeat (same patient + RFA): the 1-based row number keeps link names unique.
+  const rowNumber = new Map(items.map((i, idx) => [i.assessmentId, idx + 1]));
+  const itemAria = (i: ItemRow): string => `${itemLabel(i)}, row ${rowNumber.get(i.assessmentId)}`;
 
   useEffect(() => {
     let active = true;
@@ -178,7 +195,8 @@ export function SubmissionDetail(): JSX.Element {
   };
 
   const markUploaded = async (): Promise<void> => {
-    if (!id) return;
+    if (!id || busy) return;
+    setConfirmingUpload(false);
     setBusy(true);
     setActionError(null);
     try {
@@ -221,19 +239,46 @@ export function SubmissionDetail(): JSX.Element {
                   </button>
                 ) : null}
                 {canManage && RESULT_RECORDABLE.has(row.status) ? (
-                  <button type="button" style={button} onClick={() => setRecording(true)}>
+                  <button
+                    type="button"
+                    style={button}
+                    onClick={() => setRecording(true)}
+                    disabled={busy}
+                  >
                     Record CMS result
                   </button>
                 ) : null}
                 {canManage && (row.status === "packaged" || row.status === "exported") ? (
-                  <button
-                    type="button"
-                    style={button}
-                    onClick={() => void markUploaded()}
-                    disabled={busy}
-                  >
-                    Mark uploaded
-                  </button>
+                  confirmingUpload ? (
+                    <span
+                      ref={confirmUploadRef}
+                      style={{ display: "contents" }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape" && !busy) setConfirmingUpload(false);
+                      }}
+                    >
+                      <Button tone="primary" onClick={() => void markUploaded()} disabled={busy}>
+                        Confirm: mark uploaded to CMS
+                      </Button>
+                      <Button
+                        tone="tertiary"
+                        onClick={() => setConfirmingUpload(false)}
+                        disabled={busy}
+                      >
+                        Cancel
+                      </Button>
+                    </span>
+                  ) : (
+                    <button
+                      ref={markUploadedRef}
+                      type="button"
+                      style={button}
+                      onClick={() => setConfirmingUpload(true)}
+                      disabled={busy}
+                    >
+                      Mark uploaded
+                    </button>
+                  )
                 ) : null}
               </div>
             ) : undefined
@@ -358,7 +403,7 @@ export function SubmissionDetail(): JSX.Element {
                       <td>
                         <Link
                           to={`/hope/assessments/${i.assessmentId}`}
-                          aria-label={`View assessment, ${itemLabel(i)}`}
+                          aria-label={`View assessment, ${itemAria(i)}`}
                         >
                           View assessment
                         </Link>
@@ -383,14 +428,14 @@ export function SubmissionDetail(): JSX.Element {
                         {i.correctionAssessmentId ? (
                           <Link
                             to={`/hope/assessments/${i.correctionAssessmentId}`}
-                            aria-label={`Open correction, ${itemLabel(i)}`}
+                            aria-label={`Open correction, ${itemAria(i)}`}
                           >
                             Open correction
                           </Link>
                         ) : i.resolution === "needs_correction" ? (
                           <Link
                             to={`/hope/assessments/${i.assessmentId}`}
-                            aria-label={`Correct this assessment, ${itemLabel(i)}`}
+                            aria-label={`Correct this assessment, ${itemAria(i)}`}
                           >
                             Correct this assessment
                           </Link>
@@ -434,7 +479,14 @@ export function SubmissionDetail(): JSX.Element {
                         </td>
                         <td>
                           {f.assessmentId ? (
-                            <Link to={`/hope/assessments/${f.assessmentId}`}>
+                            <Link
+                              to={`/hope/assessments/${f.assessmentId}`}
+                              aria-label={
+                                item
+                                  ? `View assessment, ${itemAria(item)}`
+                                  : `View assessment ${f.assessmentId.slice(0, 8)}`
+                              }
+                            >
                               {item ? itemLabel(item) : "View assessment"}
                             </Link>
                           ) : (
@@ -457,8 +509,11 @@ export function SubmissionDetail(): JSX.Element {
         <RecordCmsResultModal
           open={recording}
           submissionId={row.id}
-          items={items.map((i) => ({ assessmentId: i.assessmentId, label: itemLabel(i) }))}
+          items={items
+            .filter((i) => !SETTLED_ITEM_STATUS.has(i.status))
+            .map((i) => ({ assessmentId: i.assessmentId, label: itemLabel(i) }))}
           onClose={() => setRecording(false)}
+          onConflict={() => void reload()}
           onDone={() => {
             toast?.show("CMS result recorded.", { tone: "success" });
             void reload();

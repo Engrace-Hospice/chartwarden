@@ -66,6 +66,9 @@ const HEADER = [
   "iQIES reference",
 ];
 
+/** Excel needs a BOM to read the file as UTF-8. */
+const UTF8_BOM = "\uFEFF";
+
 export function submissionLogCsv(rows: readonly LogRow[]): string {
   const lines = rows.map((r) =>
     [
@@ -83,7 +86,7 @@ export function submissionLogCsv(rows: readonly LogRow[]): string {
       .map(csvCell)
       .join(","),
   );
-  return `${[HEADER.map(csvCell).join(","), ...lines].join("\r\n")}\r\n`;
+  return `${UTF8_BOM}${[HEADER.map(csvCell).join(","), ...lines].join("\r\n")}\r\n`;
 }
 
 export function downloadCsv(filename: string, csv: string): void {

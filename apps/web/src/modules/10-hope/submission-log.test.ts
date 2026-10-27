@@ -19,6 +19,7 @@ describe("submission log", () => {
     const csv = submissionLogCsv([
       { ...base, id: "b1", status: "exported", iqiesSubmissionReference: "=HYPERLINK(1)" },
     ]);
+    expect(csv.startsWith("\uFEFFBatch ID")).toBe(true);
     const [header, line] = csv.split("\r\n");
     expect(header).toContain("Batch ID");
     expect(line).toBe("b1,2026-Q3,exported,1,0,0,,,,'=HYPERLINK(1)");
