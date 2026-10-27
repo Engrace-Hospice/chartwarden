@@ -109,6 +109,12 @@ Incidents are classified at declaration and may be reclassified as conditions ch
 > What IS exercised: `bun run backup:restore-drill` (`scripts/db/backup-restore-drill.ts`), which
 > proves the backup/restore mechanics against a disposable local cluster.
 >
+> **Built for the real single-host topology (#857, 2026-10-27): §4.8.** pgBackRest with WAL archiving (PITR) to a
+> local and an off-site encrypted repository, an SSE-C encrypted, object-locked off-site object mirror, a coordinated
+> DB/object snapshot marker, an isolated restore script and a restored-schema verifier (RLS smoke included), proven
+> end to end by `bun run backup:coordinated-drill`. It is shipped as an opt-in compose overlay and is **not enabled
+> on the VPS until the operator steps in §4.8.7 are done**; until then the production RPO is still undefined.
+>
 > Every RTO/RPO figure, failover procedure and host name below is therefore a **target**, not a
 > commitment, and the `ssh chartwarden-app-01`-style commands name hosts that do not exist. The
 > procedures are still worth keeping — they are the plan — but do not read them as operable today.
@@ -355,6 +361,169 @@ Each backup type has a verification procedure run on schedule:
 | Proxmox VM backup    | Monthly                      | Random VM restored to alternate Proxmox node; boots cleanly               |
 | Off-site restore     | Quarterly                    | Full PG restore from off-site repo to sandbox; full procedure timed       |
 | Secret decryption    | Quarterly                    | Verify off-site age keys still decrypt SOPS-encrypted secrets             |
+
+### 4.8 Implemented Backup for the Single-Host Stack (#857)
+
+§4.1-§4.7 describe the multi-VM target. What the repository actually ships for the Docker Compose host in
+`deploy/production/` is below. It reuses this section's choices (pgBackRest, AES-256 repository encryption, an
+off-site S3-compatible target) and drops what has no host to run on (repo2 backup VM, PBS, MinIO site replication).
+
+#### 4.8.1 Components
+
+| Piece | File | Role |
+| --- | --- | --- |
+| Backup image | `deploy/production/backup/Dockerfile` | `pgvector/pgvector:pg18` (digest-pinned, the image compose.yml runs) + pgBackRest + `mc` |
+| Overlay | `deploy/production/compose.backup.yml` | `postgres` with `archive_mode=on`; the `backup` sidecar (`cw-backup.sh schedule`); the `minio-backup-provision` one-shot (read-only MinIO account) |
+| Job | `deploy/production/backup/cw-backup.sh` | `snapshot`, `schedule`, `healthcheck`, `marker`, `restore-db`, `restore-objects` |
+| Restore | `deploy/production/backup/restore.sh` | restores a snapshot into NEW containers on a NEW network, ports on 127.0.0.1, `archive_mode=off` |
+| Verifier | `scripts/backup/verify-restore.ts` (`bun run backup:verify-restore`) | the §8.2 checks, including the restored-schema RLS smoke |
+| Drill | `scripts/backup/coordinated-drill.ts` (`bun run backup:coordinated-drill`) | backup -> destroy -> restore -> verify on private containers; writes `audit/restore-drill/<date>-coordinated-backup-drill.{md,json}` |
+
+**Why pgBackRest (not WAL-G, not `pg_dump`).** This document already specifies it (§4.1); it gives client-side
+AES-256 repository encryption, page checksums verified on backup, full/differential/incremental sets with retention
+and WAL expiry handled together, multi-repository archiving (local fast-restore copy + off-site copy from one
+`archive_command`), `check` (proves WAL reaches every repository), and native `--type=lsn|time` recovery. A logical
+`pg_dump` loop has no PITR, carries no roles, and its restore time grows with every index.
+
+#### 4.8.2 What a snapshot is
+
+`cw-backup.sh snapshot` (every `BACKUP_SNAPSHOT_INTERVAL_S`, default 15 min; plus a daily base backup):
+
+1. optional pgBackRest base backup to repo1 (local volume) and repo2 (off-site S3, path `/pgbackrest`);
+2. capture `pg_current_wal_lsn()`, the schema fingerprint (`backup/schema-fingerprint.sql`) and the migrations ledger
+   in one read-only transaction;
+3. `pgbackrest check`: forces a WAL switch and waits until the segment holding that LSN is in every repository;
+4. list every MinIO object (sha256 + content type per object, cached across runs by bucket/key/etag/size);
+5. `mc mirror` each bucket to `objects/<bucket>/` off-site (never `--remove`: the off-site copy is the history),
+   SSE-C encrypted, then confirm every listed object is there with the same size;
+6. upload `snapshots/<id>/manifest.ndjson.gz`, then `snapshots/<id>/marker.json` LAST (the commit point).
+
+**Coordination rule.** The app writes an object before it commits the row that references it, and the listing starts
+after the LSN is captured, so every row committed at or before the marker's LSN has its object in that snapshot's
+manifest. Restoring the database to exactly that LSN and the store to exactly that manifest gives a consistent pair;
+objects newer than the LSN are harmless orphans. Known edge: an object destroyed (D12 shred) in the seconds between the
+LSN capture and the listing is absent from the manifest while its row is not yet marked destroyed; the verifier
+reports it as `not-in-snapshot`.
+
+#### 4.8.3 Schedule, retention, RPO/RTO targets
+
+| Item | Default | Variable |
+| --- | --- | --- |
+| WAL archiving | continuous, `archive_timeout=60` | compose.backup.yml |
+| Coordinated snapshot | every 15 min | `BACKUP_SNAPSHOT_INTERVAL_S` |
+| Base backup | daily from `BACKUP_DB_BACKUP_HOUR_UTC` (2), full on `BACKUP_FULL_BACKUP_WEEKDAY` (7 = Sunday), else differential | |
+| Local repo retention | 2 full sets (+ their WAL) | `BACKUP_PG_RETENTION_FULL_LOCAL` |
+| Off-site repo retention | 13 full sets, about 90 days | `BACKUP_PG_RETENTION_FULL_OFFSITE` |
+| Off-site Object Lock | default retention COMPLIANCE, >= 100 days (covers the 13-week pgBackRest window); every snapshot refuses a shorter or non-COMPLIANCE default and records the mode in its marker | `BACKUP_OFFSITE_MIN_LOCK_DAYS` |
+| Off-site lifecycle | noncurrent versions and delete markers expire after 120 days (always LONGER than the lock); incomplete multipart uploads aborted after 7 days | target configuration |
+| Stale alert | no successful snapshot for 45 min | `BACKUP_MAX_AGE_S` |
+| WAL health alert | `archive_command` failing, or `pg_wal` above 8 GiB, checked every snapshot tick | `BACKUP_PG_WAL_ALERT_BYTES` |
+
+Targets (§3): coordinated RPO = snapshot interval (15 min, the Tier 2 target); database-only RPO = last archived WAL
+segment (about 60 s, inside the Tier 1 5 min target) via a manual `--type=time` restore; RTO target 1 h (Tier 1).
+Measured so far only at synthetic scale (`audit/restore-drill/2026-10-27-coordinated-backup-drill.md`: 7.0 s restore of 6 objects and 50k rows);
+production figures come from the first witnessed drill.
+
+#### 4.8.4 Configuration: environment (`.env.production`) and secret files (`./secrets/`)
+
+Secrets are Docker secrets: files in `<deploy dir>/secrets/` (mode 0400, owner uid 999 = the image's `postgres`),
+mounted at `/run/secrets/` and read through `<NAME>_FILE`; `cw-backup.sh` reads them into shell variables only. Only
+key ids and settings are environment variables. (`<NAME>` env values still work, for restores run by hand.)
+
+| Setting | Where | Meaning |
+| --- | --- | --- |
+| `BACKUP_OFFSITE_S3_ENDPOINT` | env | `https://host[:port]` of the off-site S3-compatible target (`http://` is refused) |
+| `BACKUP_OFFSITE_S3_BUCKET`, `BACKUP_OFFSITE_S3_REGION` | env | the bucket: Object Lock in **COMPLIANCE** mode + versioning, set at creation |
+| `BACKUP_OFFSITE_WAL_ACCESS_KEY` + `secrets/backup_offsite_wal_secret_key` | env + file | the WAL key, the ONLY off-site key inside the `postgres` container (policy `backup/offsite-policies/wal-archive.json`) |
+| `BACKUP_OFFSITE_S3_ACCESS_KEY` + `secrets/backup_offsite_secret_key` | env + file | the backup key, sidecar only (policy `backup/offsite-policies/backup.json`) |
+| `BACKUP_OFFSITE_S3_URI_STYLE` | env | `path` (default) or `host` |
+| `secrets/backup_pg_local_cipher_pass`, `secrets/backup_pg_offsite_cipher_pass` | file | pgBackRest repo1 / repo2 AES-256 passphrases, >= 32 chars, different |
+| `secrets/backup_object_sse_c_key` | file | base64 of 32 random bytes: the SSE-C key for every off-site object, manifest and marker (sidecar only) |
+| `BACKUP_SOURCE_MINIO_ACCESS_KEY` + `secrets/backup_source_minio_secret_key` | env + file | the read-only MinIO account `minio-backup-provision` creates |
+| `OPS_ALERT_WEBHOOK_URL` | env | **mandatory, https only** (the sidecar refuses to start without it; curl `--proto =https`): POSTs `backup.snapshot_failed` / `backup.snapshot_timeout` / `backup.stale` / `backup.wal_archive_failing` / `backup.pg_wal_large` |
+| `BACKUP_OFFSITE_MIN_LOCK_DAYS`, `BACKUP_PG_WAL_ALERT_BYTES` | env | 100 days / 8 GiB defaults (above) |
+| `BACKUP_HEARTBEAT_URL` | env | optional dead-man's switch pinged after each successful snapshot (alerts when the host itself is gone) |
+
+#### 4.8.5 Key management
+
+The three backup secrets (`BACKUP_PG_LOCAL_CIPHER_PASS`, `BACKUP_PG_OFFSITE_CIPHER_PASS`, `BACKUP_OBJECT_SSE_C_KEY`)
+are held on the host in `.env.production` (the backup must encrypt) and ALSO escrowed offline (password manager plus a
+sealed copy, §4.6). Losing them loses every backup: the off-site provider never holds any of them (client-side
+pgBackRest encryption; SSE-C). Restores additionally need `MESSAGING_ENCRYPTION_KEY` and `M34_TENANT_KEK` from the same
+escrow, or restored message bodies cannot be decrypted. Rotation: a new pgBackRest passphrase needs a new stanza (old
+backups stay readable with the old passphrase until they expire); a new SSE-C key applies to new copies only, so keep
+the old key until its last object expires.
+
+**Three off-site keys, least privilege.** A leaked key must not be able to remove history:
+
+| Key | Holder | Can | Cannot |
+| --- | --- | --- | --- |
+| WAL (`offsite-policies/wal-archive.json`) | `postgres` container (`archive_command`) | list/get/put under `pgbackrest/archive/`, including OVERWRITING an existing key there (residual risk, below) | delete anything, write outside `pgbackrest/archive/` |
+| backup (`offsite-policies/backup.json`) | `backup` sidecar | put, get, list; delete CURRENT versions under `pgbackrest/backup/` and `pgbackrest/archive/` only (pgBackRest expire; on a versioned bucket a delete only adds a marker) | delete under `objects/` or `snapshots/`, delete a version, change retention, bypass the lock, change bucket policy |
+| restore (`offsite-policies/restore.json`) | `restore.sh` (operator) | list and read, including old versions | write or delete |
+
+COMPLIANCE-mode Object Lock is what makes this hold: no key, not even the provider account root, can delete a locked
+version before its retention ends, so pgBackRest's `expire` and a stolen backup key only ever add delete markers; the
+data versions age out through a lifecycle rule after the lock. Restoring from before a delete marker uses
+pgBackRest's `--repo-target-time` (versioned S3 repositories). The WAL key still holds the off-site cipher passphrase
+(pgBackRest encrypts WAL client-side), so it can read WAL it is allowed to fetch; it cannot read base backups.
+`backup:coordinated-drill` proves each "cannot" against the real policy files.
+
+**Retention arithmetic.** The default retention N must be at least the pgBackRest retention window (13 weekly fulls =
+91 days, so N = 100), and the lifecycle rule that expires noncurrent versions and delete markers must be LONGER than N
+(120 days), or the lifecycle would try to remove versions the lock still protects. Storage cost: every version written
+in the last 120 days.
+
+**Residual risk: WAL overwrite.** S3 `PutObject` cannot be limited to new keys unless the client sends conditional
+writes (`If-None-Match`), which pgBackRest does not; a bucket-policy deny on writes without it would stop archiving.
+So the WAL key can overwrite `archive.info` or an archived segment. Mitigations: the COMPLIANCE lock keeps every prior
+version (the drill overwrites a probe key and checks the first version is retained), pgBackRest checksums every
+segment (a substituted segment fails `archive-get` / `verify`), and a restore can read the repository as of a time
+before the tampering with `RESTORE_REPO_TARGET_TIME` (`--repo-target-time`).
+
+**Removing delete markers (owner/root only).** A compromised backup key can hide current pgBackRest files behind
+delete markers; it cannot destroy them. Recovery: (1) restore with `RESTORE_REPO_TARGET_TIME=<before the incident>`
+(no change to the bucket needed); or (2) with the bucket OWNER credentials, list markers
+(`mc ls --versions --recursive <alias>/<bucket>/pgbackrest/`) and delete each marker by its version id
+(`mc rm --version-id <marker-id> <alias>/<bucket>/<key>`); deleting a marker is allowed under COMPLIANCE because the
+marker holds no data. Rotate the backup key first. Record the action in the incident log.
+
+**Accepted, documented risks.** The SSE-C key is on `mc`'s command line inside the backup container (`mc` has no env
+or file form for it); the WAL key's container holds the same off-site cipher passphrase as the sidecar (pgBackRest
+needs it to encrypt WAL; it gives no access to base backups without the backup or restore key); the alert webhook URL
+is on `curl`'s command line inside the container. All three are visible only to a process already inside that
+container, never in logs or `docker inspect`.
+
+#### 4.8.6 Restore procedure (isolated; never onto the running stack)
+
+```bash
+cd /opt/chartwarden
+docker compose --env-file .env.production -f compose.yml -f compose.backup.yml build postgres # image chartwarden-backup:local
+# restore.env: endpoint/bucket + the READ-ONLY restore key id + *_FILE paths; restore-secrets/: escrowed key files
+BACKUP_ENV_FILE=/root/restore.env BACKUP_SECRETS_DIR=/root/restore-secrets ./backup/restore.sh latest   # or a snapshot id
+docker run --rm --network host --env-file ./restore-<id>/restore.env -v "$PWD/restore-<id>:$PWD/restore-<id>:ro" \
+  "$CHARTWARDEN_IMAGE" bun run backup:verify-restore                   # exit 0 = every check passed
+./backup/restore.sh destroy <id>
+```
+
+The verifier checks: promotion at the marker LSN with `archive_mode=off`; migrations ledger equals the marker and has
+no unknown or drifted file; schema fingerprint equals the marker; as the real NOBYPASSRLS `chartwarden_app` login,
+over every tenant table, no tenant context reads nothing and tenant A reads none of tenant B's rows (and the reverse);
+every live row that references an object (registry in `scripts/lib/backup/object-refs.ts`, a ratchet over every
+column that looks like one) has it, retrievable through the app's own S3 adapter, sha256 equal to the snapshot and to
+the row; M4 audit seals link and every sealed month recomputes. For a real recovery (not a drill), promote the
+verified restore by pointing a fresh stack at the restored volume and MinIO data, then re-take a full backup.
+
+#### 4.8.7 What is operational, not code (tracked in the #857 follow-up issue)
+
+1. Provision the off-site bucket: Object Lock + versioning at creation, default retention COMPLIANCE >= 100 days,
+   lifecycle: noncurrent versions and delete markers after 120 days, incomplete multipart uploads after 7 days. Create
+   its three scoped keys (§4.8.5); generate and escrow the encryption keys; write `./secrets/`; set the mandatory
+   https `OPS_ALERT_WEBHOOK_URL`. Mirror the backup image's base and `mc` digests into a registry you control.
+2. Set the §4.8.4 variables, build the image, run `minio-backup-provision`, `up -d postgres backup`.
+3. First witnessed restore of production data with `restore.sh` + the verifier; record it under `audit/restore-drill/`.
+4. Recurring cadence: monthly isolated restore + verify (§8.2), quarterly full off-site restore timed against the RTO
+   target, and `bun run backup:coordinated-drill` on every change to `deploy/production/backup/`.
 
 ---
 
@@ -790,13 +959,13 @@ sudo -u postgres pgbackrest --config=/etc/pgbackrest/pgbackrest.conf --stanza=ch
 psql -d wardenx -c "SELECT COUNT(*) FROM organization;"  # Expect: nonzero
 psql -d wardenx -c "SELECT COUNT(*) FROM audit_event WHERE created_at > NOW() - INTERVAL '1 day';"  # Expect: matches production
 
-# 5. Run an RLS smoke test against the restored schema — NOT YET IMPLEMENTED (tracked gap; TASK-040G
-#    built the restore-drill mechanics above, not a ChartWarden-schema-aware RLS smoke test). Until this
-#    exists, step 5 is a manual re-run of a subset of packages/db/migrations/__tests__/
-#    rls-isolation.live.test.ts's assertions against the restored instance.
+# 5. Run the restored-schema checks, RLS smoke included — IMPLEMENTED (#857): on the single-host stack,
+#    deploy/production/backup/restore.sh + `bun run backup:verify-restore` (scripts/backup/verify-restore.ts):
+#    as the NOBYPASSRLS chartwarden_app login, over EVERY tenant table, no-context reads nothing and tenant A
+#    reads none of tenant B's rows; plus ledger, schema fingerprint, object/row and audit-seal checks (§4.8.6).
 
 # 6. Compare data checksums for sample tables
-# 7. Document drill results in docs/dr-drills/<date>.md   (NOTE: this directory does not exist — create it with the first drill)
+# 7. Document drill results in audit/restore-drill/<date>-<name>.md (the synthetic drill writes its own record there)
 # 8. Destroy sandbox; certificate that destruction occurred
 ```
 

@@ -214,7 +214,7 @@ export function renderMarkdown(report: DrillReport): string {
     "",
     `Run ${report.runId} at ${report.startedAt}. Fault injected: ${report.fault}.`,
     "",
-    "## Backup method (what production really does)",
+    "## Backup method used by this drill",
     ...Object.entries(report.backupMethod).map(([k, v]) => `- **${k}**: ${v}`),
     "",
     "## Measured RTO (demo scale)",
