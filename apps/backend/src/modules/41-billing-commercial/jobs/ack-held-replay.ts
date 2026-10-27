@@ -14,7 +14,7 @@
 // event in the same transaction as the stamp (plus the row's own write audit and a warn-level log, ids only): it may be the only proof
 // a file arrived. Relay ticks are not requests: everything here takes an explicit organization and runs under `inOrg`.
 import { schema } from "@chartwarden/db";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { validateAckEvent } from "../domain/ack-event";
 import type { CommercialTx } from "../services/types";
 import {
@@ -41,7 +41,9 @@ type HeldResolution =
   | "abandoned_scope_mismatch"
   | "abandoned_vendor_mismatch"
   | "abandoned_aged"
-  | "abandoned_invalid";
+  | "abandoned_invalid"
+  | "abandoned_no_event"
+  | "abandoned_foreign_vendor";
 
 /** What the claim-status inquiry made of an aged row: not tried, no answer or not wired, or it produced an applied acknowledgment. */
 type InquiryOutcome = "not_attempted" | "unavailable" | "no_answer" | "applied";
@@ -62,8 +64,9 @@ interface SubmissionRef {
 }
 
 /**
- * Rows a pass looks at: no_receipt always, the other replayable reasons only when their event was kept (older rows have none), AND
- * either produced by the CURRENT binding's own stream (`clearinghouse_key`) or aged past the window. A row held from vendor X's
+ * Rows a pass looks at: no_receipt always, the other replayable reasons always too, AND either produced by the CURRENT binding's own
+ * stream (`clearinghouse_key`), aged past the window, or carrying no event at all (a mismatch row written before migration 1279:
+ * nothing can ever be re-applied, so it is closed out loud whatever the binding, see `abandoned_no_event`). A row held from vendor X's
  * stream is never REPLAYED under a binding for vendor Y (the vendor check compares the submission with the binding, so after a
  * vendor switch it would pass and record X's answer against Y's submission), but it must still LEAVE the queue: once aged, it is
  * abandoned out loud whatever the binding (also unbound), with no status inquiry on a stream we no longer hold.
@@ -74,11 +77,12 @@ const replayable = (
   cutoff: Date,
 ) =>
   and(
-    or(vendor === null ? undefined : eq(Q.clearinghouseKey, vendor), lt(Q.createdAt, cutoff)),
     or(
-      eq(Q.reason, "no_receipt"),
-      and(inArray(Q.reason, ["scope_mismatch", "vendor_mismatch"]), isNotNull(Q.event)),
+      vendor === null ? undefined : eq(Q.clearinghouseKey, vendor),
+      lt(Q.createdAt, cutoff),
+      isNull(Q.event),
     ),
+    inArray(Q.reason, ["no_receipt", "scope_mismatch", "vendor_mismatch"]),
   );
 
 /** The newest submission of this provider entity with that control number, if any. */
@@ -207,6 +211,11 @@ async function replayRow(
   const own = row.clearinghouseKey === deps.binding.vendor;
   const submission = await submissionOf(deps, scope, row.controlNumber);
   const claimId = submission?.claimId ?? null;
+  // a pre-1279 mismatch row kept no event: there is nothing to re-apply, ever. Close it explicitly (and audited), do not skip it forever.
+  if (row.event === null && row.reason !== "no_receipt") {
+    await abandonOutright(deps, scope, row, "abandoned_no_event", claimId, "not_attempted");
+    return "abandoned";
+  }
   // an answer held at time T can only belong to a submission requested before T: control numbers cycle, so a NEWER submission that
   // happens to reuse the number must never inherit an old held answer (and must not be asked about either)
   if (submission && submission.requestedAt.getTime() > row.createdAt.getTime()) {
@@ -345,4 +354,131 @@ export async function entitiesWithHeldEvents(
       .limit(HELD_ENTITY_LIMIT),
   );
   return rows.map((r) => r.providerEntityId);
+}
+
+/** Held rows of one organization by what is wrong with them. Counts only (no ids, no payload): safe for ops logs. */
+export interface HeldQuarantineReport {
+  /** Whether a clearinghouse is bound; with none, every held row is unbound and only ages out (or is closed by the no-event rule). */
+  readonly bound: boolean;
+  readonly held: number;
+  /** Held from the current binding's own stream. */
+  readonly ownStream: number;
+  /** Held from another vendor's stream, or while unbound: never replayed, only aged out or swept by {@link abandonForeignHeldEvents}. */
+  readonly strandedForeign: number;
+  /** Pre-1279 mismatch rows with no stored event (closed by the next sweep). */
+  readonly noEvent: number;
+  /** Unresolved `malformed` rows: review-only, no replay exists. */
+  readonly reviewOnlyMalformed: number;
+  readonly oldestHeldAt: Date | null;
+}
+
+export async function heldQuarantineReport(
+  deps: AckWorkerDeps,
+  organizationId: string,
+): Promise<HeldQuarantineReport> {
+  const Q = schema.commercialAckQuarantine;
+  const vendor = deps.binding.vendor;
+  const replayableReason = inArray(Q.reason, ["no_receipt", "scope_mismatch", "vendor_mismatch"]);
+  const n = (expr: ReturnType<typeof sql>) => sql<number>`count(*) filter (where ${expr})::int`;
+  const own = vendor === null ? sql`false` : sql`${Q.clearinghouseKey} = ${vendor}`;
+  const [r] = await inOrg(deps, organizationId, (tx) =>
+    tx
+      .select({
+        held: n(sql`${replayableReason}`),
+        ownStream: n(sql`${replayableReason} and ${own}`),
+        strandedForeign: n(sql`${replayableReason} and not (${own})`),
+        noEvent: n(sql`${replayableReason} and ${Q.reason} <> 'no_receipt' and ${Q.event} is null`),
+        reviewOnlyMalformed: n(sql`${Q.reason} = 'malformed'`),
+        oldestHeldAt: sql<Date | null>`min(${Q.createdAt}) filter (where ${replayableReason})`,
+      })
+      .from(Q)
+      .where(and(eq(Q.organizationId, organizationId), isNull(Q.resolvedAt))),
+  );
+  return {
+    bound: vendor !== null,
+    held: r?.held ?? 0,
+    ownStream: r?.ownStream ?? 0,
+    strandedForeign: r?.strandedForeign ?? 0,
+    noEvent: r?.noEvent ?? 0,
+    reviewOnlyMalformed: r?.reviewOnlyMalformed ?? 0,
+    oldestHeldAt: r?.oldestHeldAt ? new Date(r.oldestHeldAt) : null,
+  };
+}
+
+/**
+ * Operator call: close out, now and audited, the held rows of ONE organization that belong to another clearinghouse's stream than the
+ * current binding (resolution `abandoned_foreign_vendor`, an `m41.claim.ack_abandoned` event each), without waiting out the 45 days.
+ * It needs a bound vendor: while unbound every row is only "not served right now", which may be a config blip, so nothing is closed
+ * here (the age sweep still runs). Never touches another organization (RLS plus the explicit organization filter); idempotent.
+ * ponytail: bounded per call (HELD_ENTITY_LIMIT rows); call again for more.
+ */
+export async function abandonForeignHeldEvents(
+  deps: AckWorkerDeps,
+  organizationId: string,
+): Promise<{ readonly abandoned: number }> {
+  const vendor = deps.binding.vendor;
+  if (vendor === null) return { abandoned: 0 };
+  const Q = schema.commercialAckQuarantine;
+  const rows = await inOrg(deps, organizationId, (tx) =>
+    tx
+      .select({
+        id: Q.id,
+        eventId: Q.eventId,
+        controlNumber: Q.controlNumber,
+        reason: Q.reason,
+        clearinghouseKey: Q.clearinghouseKey,
+        event: Q.event,
+        createdAt: Q.createdAt,
+        providerEntityId: Q.providerEntityId,
+      })
+      .from(Q)
+      .where(
+        and(
+          eq(Q.organizationId, organizationId),
+          inArray(Q.reason, ["no_receipt", "scope_mismatch", "vendor_mismatch"]),
+          sql`${Q.clearinghouseKey} <> ${vendor}`,
+          isNull(Q.resolvedAt),
+        ),
+      )
+      .orderBy(asc(Q.createdAt))
+      .limit(HELD_ENTITY_LIMIT),
+  );
+  for (const { providerEntityId, ...row } of rows) {
+    const scope: Scope = { organizationId, providerEntityId };
+    const submission = await submissionOf(deps, scope, row.controlNumber);
+    await abandonOutright(
+      deps,
+      scope,
+      row,
+      "abandoned_foreign_vendor",
+      submission?.claimId ?? null,
+      "not_attempted",
+    );
+  }
+  return { abandoned: rows.length };
+}
+
+/**
+ * The org's held-row sweep of one pull: provider entities that hold events but have no live work are replayed (no transport call,
+ * so aged, foreign and event-less rows leave audited, bound or not), and the stranded counts are logged (ids-free) so ops can see them.
+ * Throws on a database fault; the caller turns that into a failure label.
+ */
+export async function sweepHeldEvents(
+  deps: AckWorkerDeps,
+  organizationId: string,
+  liveProviderEntityIds: ReadonlySet<string>,
+): Promise<void> {
+  for (const providerEntityId of await entitiesWithHeldEvents(deps, organizationId)) {
+    if (!liveProviderEntityIds.has(providerEntityId)) {
+      await replayHeldEvents(deps, { organizationId, providerEntityId });
+    }
+  }
+  const report = await heldQuarantineReport(deps, organizationId);
+  if (report.strandedForeign > 0 || report.noEvent > 0) {
+    deps.log?.({
+      event: "ack.held_stranded",
+      code: report.bound ? "bound" : "unbound",
+      count: report.strandedForeign + report.noEvent,
+    });
+  }
 }

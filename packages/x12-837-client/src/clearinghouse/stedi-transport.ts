@@ -601,6 +601,8 @@ export class StediTransport implements ClearinghouseTransport {
     _ctx: ClearinghouseContext,
     _controlNumber: string,
   ): Promise<X12WorkerResult<ClaimStatus>> {
+    // Deliberately unbound (#820): stedi-claim-status.ts holds an UNVERIFIED builder/parser, but the 276/277 contract is not
+    // sandbox-verified and the port cannot carry the subscriber/payer/dates the inquiry needs. Stays CH_NOT_WIRED.
     return notImplemented("claim status");
   }
 
