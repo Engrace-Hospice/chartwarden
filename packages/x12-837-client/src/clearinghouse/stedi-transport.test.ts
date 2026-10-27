@@ -708,12 +708,75 @@ describe("StediTransport not-yet-implemented methods", () => {
       await transport.checkEligibility(CTX, { mbi: "1EG4-TE5-MK73", serviceDate: "2026-10-01" }),
       await transport.fetchAcknowledgments(CTX, null),
       await transport.fetchRemittances(CTX, null),
-      await transport.fetchClaimStatus(CTX, "CCN-1"),
       await transport.verifyAndParseEvent({ headers: {}, rawBody: "{}" }),
     ];
     for (const r of results) expect(code(r)).toBe(CH.NOT_WIRED);
     expect(calls).toHaveLength(0);
     expect(transport.vendor).toBe("stedi");
+  });
+});
+
+describe("StediTransport.fetchClaimStatus (UNVERIFIED vendor shape, #820)", () => {
+  const INQUIRY = {
+    billingProvider: { organizationName: "Synthetic Hospice", npi: "1234567893" },
+    subscriber: {
+      memberId: "SYN123456",
+      firstName: "Test",
+      lastName: "Patient",
+      dateOfBirth: "1950-02-03",
+    },
+    serviceFrom: "2026-03-01",
+    serviceTo: "2026-03-31",
+  };
+  const answer = (code: string) => ({
+    claims: [{ claimStatus: { statusInformation: [{ healthCareClaimStatusCategoryCode: code }] } }],
+  });
+
+  it("refuses without an inquiry and sends nothing", async () => {
+    const { calls, transport } = harness();
+    expect(code(await transport.fetchClaimStatus(CTX, "CCN-1"))).toBe(CH.INVALID_REQUEST);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("refuses an inquiry for another billing NPI than the context", async () => {
+    const { calls, transport } = harness();
+    const r = await transport.fetchClaimStatus(
+      { ...CTX, billingNpi: "1999999992" },
+      "CCN-1",
+      INQUIRY,
+    );
+    expect(code(r)).toBe(CH.INVALID_REQUEST);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("posts the 276 body with the payer from the context and returns the parsed state, never leaking the subscriber", async () => {
+    const { calls, transport } = harness(() => Response.json(answer("F1")));
+    const r = await transport.fetchClaimStatus(CTX, "000000042", INQUIRY);
+    expect(r).toEqual({
+      ok: true,
+      data: { controlNumber: "000000042", state: "payer_accepted", latest: null },
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toContain("/claimstatus/");
+    const body = JSON.parse(String(calls[0]?.init.body));
+    expect(body.tradingPartnerServiceId).toBe("12M41");
+    expect(JSON.stringify(r)).not.toContain("SYN123456");
+  });
+
+  it("maps a vendor 5xx to a retryable CH_UNAVAILABLE and a network failure to CH_UNAVAILABLE", async () => {
+    const down = harness(() => new Response("{}", { status: 503 }));
+    expect(code(await down.transport.fetchClaimStatus(CTX, "CCN-1", INQUIRY))).toBe(CH.UNAVAILABLE);
+    const dead = harness(() => {
+      throw new Error("boom");
+    });
+    expect(code(await dead.transport.fetchClaimStatus(CTX, "CCN-1", INQUIRY))).toBe(CH.UNAVAILABLE);
+  });
+
+  it("never reports not_found when the payer cannot locate the claim", async () => {
+    const { transport } = harness(() => Response.json(answer("A4")));
+    const r = await transport.fetchClaimStatus(CTX, "CCN-1", INQUIRY);
+    expect(r.ok).toBe(false);
+    expect(code(r)).toBe(CH.UNAVAILABLE);
   });
 });
 

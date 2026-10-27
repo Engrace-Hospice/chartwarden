@@ -14,6 +14,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 // retake    compare-and-set of `reserved_at`, so exactly one retry takes over an abandoned reservation.
 import {
   type AttemptUsage,
+  type InterchangeMemo,
   PlatformControlNumberTaken,
   type SubmissionAttempt,
   type SubmissionAttemptStore,
@@ -156,9 +157,9 @@ export function createDrizzleAttemptStore(db: DbClient): SubmissionAttemptStore 
 
     allocateInterchangeNumber(organizationId, scope, idempotencyKey, usage) {
       return inOrg(organizationId, async (tx) => {
-        const known = async (): Promise<number | undefined> => {
+        const known = async (): Promise<InterchangeMemo | undefined> => {
           const [row] = await tx
-            .select({ n: I.interchangeNumber, usage: I.usage })
+            .select({ n: I.interchangeNumber, usage: I.usage, renderedAt: I.renderedAt })
             .from(I)
             .where(
               and(
@@ -171,10 +172,10 @@ export function createDrizzleAttemptStore(db: DbClient): SubmissionAttemptStore 
           // A key remembered under the other usage would mix the test and production number spaces.
           if (row && row.usage !== usage)
             throw new Error("clearinghouse interchange number was allocated under a different usage");
-          return row?.n;
+          return row && { number: String(row.n).padStart(9, "0"), renderedAt: row.renderedAt };
         };
         const existing = await known();
-        if (existing !== undefined) return String(existing).padStart(9, "0");
+        if (existing) return existing;
         // Draw first, then try to bind it: a concurrent caller on the same key can win the insert, so this number is
         // dropped (a gap in the sequence is legal, a reused number is not) and the winner's is read back.
         const drawn = Number(await nextControlNumber(tx, usage));
@@ -182,11 +183,12 @@ export function createDrizzleAttemptStore(db: DbClient): SubmissionAttemptStore 
           .insert(I)
           .values({ organizationId, scope, idempotencyKey, usage, interchangeNumber: drawn })
           .onConflictDoNothing()
-          .returning({ n: I.interchangeNumber });
-        const n = inserted?.n ?? (await known());
-        if (n === undefined)
-          throw new Error("clearinghouse interchange number allocation returned nothing");
-        return String(n).padStart(9, "0");
+          .returning({ n: I.interchangeNumber, renderedAt: I.renderedAt });
+        const memo =
+          (inserted && { number: String(inserted.n).padStart(9, "0"), renderedAt: inserted.renderedAt }) ??
+          (await known());
+        if (!memo) throw new Error("clearinghouse interchange number allocation returned nothing");
+        return memo;
       });
     },
 

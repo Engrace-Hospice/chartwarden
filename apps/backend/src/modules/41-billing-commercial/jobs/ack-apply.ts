@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
-import type { ClearinghouseTransport } from "@chartwarden/x12-837-client";
+import type { ClaimStatusInquiry, ClearinghouseTransport } from "@chartwarden/x12-837-client";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { type ValidAckEvent, validateAckEvent } from "../domain/ack-event";
 import { transitionForAck } from "../domain/ack-transition";
@@ -40,6 +40,14 @@ export interface AckWorkerDeps {
   readonly contexts: CommercialContextPort;
   readonly cursors: AckCursorStore;
   readonly outbox: CommercialOutboxPort;
+  /**
+   * Where the transient 276 subscriber block comes from (M5's coverage seam in production). When ABSENT the transport is asked with
+   * no inquiry (a transport that needs one refuses, so the inquiry reads "unavailable"); when present and it answers null, the claim
+   * cannot be asked about. Never persisted or logged.
+   */
+  readonly inquiries?: {
+    inquiryFor(scope: Scope, claimId: string): Promise<ClaimStatusInquiry | null>;
+  };
   readonly activeOrgs: {
     listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
   };
@@ -56,6 +64,12 @@ export interface AckWorkerDeps {
   }) => void;
 }
 
+/** What the apply and the held-row replay need (the pull's cursor store and org enumerator are not): the operator routes build this. */
+export type AckApplyDeps = Pick<
+  AckWorkerDeps,
+  "db" | "binding" | "contexts" | "outbox" | "now" | "log" | "inquiries"
+>;
+
 /** Why an event was stored. `unmatched` is deliberately NOT here: those are counted, not stored. */
 export type QuarantineReason = "malformed" | "scope_mismatch" | "vendor_mismatch" | "no_receipt";
 export type ApplyResult = "applied" | "duplicate" | "unmatched" | "quarantined";
@@ -69,12 +83,12 @@ export interface ApplyOutcome {
 }
 
 export const inOrg = <T>(
-  deps: AckWorkerDeps,
+  deps: AckApplyDeps,
   organizationId: string,
   fn: (tx: CommercialTx) => Promise<T>,
 ): Promise<T> => withOrgContext(deps.db, systemOrgContext(organizationId), fn);
 
-export const nowOf = (deps: AckWorkerDeps): Date => (deps.now ?? (() => new Date()))();
+export const nowOf = (deps: AckApplyDeps): Date => (deps.now ?? (() => new Date()))();
 
 /** A stable id for an event whose own id is unusable: a digest of what the vendor sent (never stored itself). */
 function derivedEventId(raw: unknown): string {
@@ -101,7 +115,7 @@ export const isReplayableReason = (reason: QuarantineReason): boolean =>
 
 /** Store an event that was not applied. Idempotent on (organization, clearinghouse, event id). */
 async function quarantine(
-  deps: AckWorkerDeps,
+  deps: AckApplyDeps,
   tx: CommercialTx,
   scope: Scope,
   event: { readonly eventId: string; readonly controlNumber: string | null },
@@ -138,7 +152,7 @@ const MATCHABLE = ["sent", "in_doubt", "queued"] as const;
 
 /** Apply one VALIDATED event inside the caller's org transaction. */
 export async function applyValidEvent(
-  deps: AckWorkerDeps,
+  deps: AckApplyDeps,
   tx: CommercialTx,
   scope: Scope,
   event: ValidAckEvent,
@@ -305,7 +319,7 @@ export async function applyValidEvent(
  * event id changes nothing.
  */
 export async function applyAckEvent(
-  deps: AckWorkerDeps,
+  deps: AckApplyDeps,
   scope: Scope,
   raw: unknown,
 ): Promise<ApplyOutcome> {

@@ -159,11 +159,22 @@ describe("createSharedDrainReadiness (the API process of a split deployment)", (
     await expect(readiness.drainScheduled()).resolves.toBe(true);
   });
 
-  it("this process' own registration short-circuits the probe", async () => {
-    const h = harness([false]);
+  it("this process' own registration does NOT override a probe that finds no live consumer (#824)", async () => {
+    const h = harness([false, true]);
     h.local.markScheduled();
+    await expect(h.readiness.drainScheduled()).resolves.toBe(false);
+    expect(h.probe).toHaveBeenCalled();
+    h.advance(5_001);
+    await expect(h.readiness.drainScheduled()).resolves.toBe(true); // a worker came back
+  });
+
+  it("a worker that dies after readiness was cached positive is noticed once the cache window lapses", async () => {
+    const h = harness([true, false]);
     await expect(h.readiness.drainScheduled()).resolves.toBe(true);
-    expect(h.probe).not.toHaveBeenCalled();
+    h.advance(19_999);
+    await expect(h.readiness.drainScheduled()).resolves.toBe(true);
+    h.advance(2);
+    await expect(h.readiness.drainScheduled()).resolves.toBe(false);
   });
 });
 
@@ -172,7 +183,11 @@ describe("createScheduleProbe", () => {
     [M41_CRON_QUEUES.submissionDrain]: [M41_JOB_SCHEDULES.submissionDrain],
     [M41_CRON_QUEUES.ackPull]: [M41_JOB_SCHEDULES.ackPull],
   };
-  const probeOf = (present: Record<string, string[]>, fail = false) =>
+  const probeOf = (
+    present: Record<string, string[]>,
+    fail = false,
+    workers: Record<string, number> = {},
+  ) =>
     createScheduleProbe({
       connection: {},
       makeQueue: (name) => ({
@@ -180,10 +195,18 @@ describe("createScheduleProbe", () => {
           if (fail) throw new Error("valkey down");
           return (present[name] ?? []).map((pattern) => ({ pattern }));
         },
+        getWorkers: async () => ((workers[name] ?? 1) > 0 ? [{}] : []),
         close: async () => undefined,
         disconnect: async () => undefined,
       }),
     });
+
+  it("is false when a schedule exists but no worker consumes that queue (#824)", async () => {
+    const none = { [M41_CRON_QUEUES.submissionDrain]: 0 };
+    await expect(probeOf(both, false, none)()).resolves.toBe(false);
+    await expect(probeOf(both, false, { [M41_CRON_QUEUES.ackPull]: 0 })()).resolves.toBe(false);
+    await expect(probeOf(both, false, {})()).resolves.toBe(true);
+  });
 
   it("is true only when BOTH repeatable schedules exist with the expected patterns", async () => {
     await expect(probeOf(both)()).resolves.toBe(true);
@@ -211,6 +234,7 @@ describe("createScheduleProbe", () => {
           made.push(q);
           return {
             getRepeatableJobs: () => new Promise<never>(() => undefined), // never settles
+            getWorkers: () => new Promise<never>(() => undefined),
             close: async () => {
               q.closed = true;
             },
@@ -255,6 +279,7 @@ describe("createScheduleProbe", () => {
             live.add(id);
             return {
               getRepeatableJobs: () => new Promise<never>(() => undefined),
+              getWorkers: () => new Promise<never>(() => undefined),
               close: () => new Promise<void>(() => undefined), // hangs forever, as BullMQ's does against a dead store
               disconnect: async () => {
                 live.delete(id); // only the forced disconnect really frees the socket
@@ -289,6 +314,7 @@ describe("createScheduleProbe", () => {
                 new Promise((resolve) => {
                   release = () => resolve([{ pattern: M41_JOB_SCHEDULES.submissionDrain }]);
                 }),
+              getWorkers: async () => [{}],
               close: async () => undefined,
               disconnect: async () => undefined,
             };

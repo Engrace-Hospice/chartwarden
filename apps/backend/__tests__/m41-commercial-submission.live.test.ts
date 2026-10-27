@@ -18,11 +18,11 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import net from "node:net";
 import { join } from "node:path";
-import { createDbClient } from "@chartwarden/db";
-import { withOrgContext } from "@chartwarden/tenancy";
+import { createDbClient, schema } from "@chartwarden/db";
+import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { InMemoryClearinghouse } from "@chartwarden/x12-837-client/testing";
-import { type ConnectionOptions, Queue } from "bullmq";
-import { sql } from "drizzle-orm";
+import { type ConnectionOptions, Queue, Worker } from "bullmq";
+import { eq, sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
@@ -46,8 +46,10 @@ import {
   createScheduleProbe,
   createSharedDrainReadiness,
   heldQuarantineReport,
+  listHeldRows,
   outstandingAckWork,
   replayHeldEvents,
+  resolveHeldRowByOperator,
   runAckPull,
   runSubmissionDrain,
   scheduleM41AckJobs,
@@ -57,6 +59,10 @@ import type {
   AckWorkerDeps,
   SubmissionWorkerDeps,
 } from "../src/modules/41-billing-commercial/index";
+import {
+  QUARANTINE_RETENTION_DAYS,
+  runQuarantinePrune,
+} from "../src/modules/41-billing-commercial/jobs/quarantine-prune";
 import { bindPayloadAndMarkCallStarted } from "../src/modules/41-billing-commercial/jobs/submission-worker";
 import {
   LIVE_APP_ROLE_PASSWORD,
@@ -2554,6 +2560,164 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
         expect(await claimState(c.claimId)).toBe("submitted"); // closed, never applied
         expect(await abandonForeignHeldEvents(ackDeps("stedi"), ORG)).toEqual({ abandoned: 0 });
       });
+
+      it("the operator sweep stamps the acting user on every abandonment event (#820)", async () => {
+        const c = await foreignRow();
+        await abandonForeignHeldEvents(ackDeps("stedi"), ORG, USER);
+        expect(await abandonedEvents(c.controlNumber)).toEqual([
+          expect.objectContaining({ resolution: "abandoned_foreign_vendor", operatorUserId: USER }),
+        ]);
+      });
+
+      describe("operator resolution of one held row (#820)", () => {
+        async function malformedRow() {
+          const c = await sentClaim();
+          await applyAckEvent(ackDeps("stedi"), scope(), {
+            eventId: `op-malformed-${randomUUID()}`,
+            controlNumber: c.controlNumber,
+            stage: "vendor",
+            disposition: "accepted",
+            reasonCodes: [],
+          });
+          const row = await rowOf(c.controlNumber, "malformed");
+          return { c, id: row.id as string };
+        }
+
+        it("lists the unresolved rows of one provider entity without any payload, and another tenant sees none", async () => {
+          const { id } = await malformedRow();
+          const items = await listHeldRows(ackDeps("stedi"), scope());
+          const item = items.find((r) => r.id === id);
+          expect(item).toMatchObject({ reason: "malformed", hasEvent: false });
+          expect(Object.keys(item ?? {}).sort()).toEqual(
+            ["clearinghouseKey", "controlNumber", "createdAt", "hasEvent", "id", "reason"].sort(),
+          );
+          expect(
+            await listHeldRows(ackDeps("stedi"), { organizationId: ORG_B, providerEntityId }),
+          ).toEqual([]);
+        });
+
+        it("closes a malformed row once, audited with the operator, and is idempotent", async () => {
+          const { c, id } = await malformedRow();
+          expect(await resolveHeldRowByOperator(ackDeps("stedi"), scope(), id, USER)).toBe(
+            "resolved",
+          );
+          expect(await rowOf(c.controlNumber, "malformed")).toMatchObject({
+            resolution: "abandoned_operator",
+          });
+          expect(await abandonedEvents(c.controlNumber)).toEqual([
+            expect.objectContaining({
+              reason: "malformed",
+              resolution: "abandoned_operator",
+              operatorUserId: USER,
+              statusInquiry: "not_attempted",
+            }),
+          ]);
+          expect(await resolveHeldRowByOperator(ackDeps("stedi"), scope(), id, USER)).toBe(
+            "already_resolved",
+          );
+          expect(await abandonedEvents(c.controlNumber)).toHaveLength(1);
+          expect(await claimState(c.claimId)).toBe("submitted"); // closed, never applied
+        });
+
+        it("never closes a row of another tenant or another provider entity (not_found, nothing changes)", async () => {
+          const { c, id } = await malformedRow();
+          const other = { organizationId: ORG_B, providerEntityId };
+          expect(await resolveHeldRowByOperator(ackDeps("stedi"), other, id, USER)).toBe(
+            "not_found",
+          );
+          const elsewhere = { organizationId: ORG, providerEntityId: randomUUID() };
+          expect(await resolveHeldRowByOperator(ackDeps("stedi"), elsewhere, id, USER)).toBe(
+            "not_found",
+          );
+          expect((await rowOf(c.controlNumber, "malformed")).resolved_at).toBeNull();
+          expect(await abandonedEvents(c.controlNumber)).toEqual([]);
+        });
+
+        it("closes a held replayable row too (an operator settled it out of band)", async () => {
+          const { c } = await heldClaim();
+          const row = await heldOf(c);
+          expect(
+            await resolveHeldRowByOperator(ackDeps("stedi"), scope(), row.id as string, USER),
+          ).toBe("resolved");
+          expect(await heldOf(c)).toMatchObject({ resolution: "abandoned_operator" });
+          await replayHeldEvents(ackDeps("stedi"), scope()); // a resolved row is not replayed
+          expect(await abandonedEvents(c.controlNumber)).toHaveLength(1);
+        });
+      });
+
+      describe("the claim-status inquiry carries a subscriber from the inquiry port (#820)", () => {
+        const INQUIRY = {
+          billingProvider: { organizationName: "Synthetic Hospice", npi: NPI },
+          subscriber: {
+            memberId: "SYN123456",
+            firstName: "Test",
+            lastName: "Patient",
+            dateOfBirth: "1950-02-03",
+          },
+          serviceFrom: "2026-03-01",
+          serviceTo: "2026-03-31",
+        };
+        async function agedHeld() {
+          const { c } = await heldClaim();
+          await admin.query(
+            "UPDATE commercial_ack_quarantine SET created_at = now() - interval '60 days' WHERE control_number=$1",
+            [c.controlNumber],
+          );
+          await admin.query(
+            "UPDATE commercial_submission SET requested_at = now() - interval '61 days' WHERE control_number=$1",
+            [c.controlNumber],
+          );
+          return c;
+        }
+
+        it("hands the inquiry to the transport as the third argument, then abandons when nothing applies", async () => {
+          const c = await agedHeld();
+          const seen: unknown[] = [];
+          const deps: AckWorkerDeps = {
+            ...ackDeps("stedi"),
+            inquiries: { inquiryFor: async () => INQUIRY },
+            binding: {
+              vendor: "stedi",
+              transport: {
+                fetchAcknowledgments: (ctx, cursor) => transport.fetchAcknowledgments(ctx, cursor),
+                fetchClaimStatus: async (_ctx, _n, inquiry) => {
+                  seen.push(inquiry);
+                  return { ok: true, data: { controlNumber: _n, state: "received", latest: null } };
+                },
+              },
+            },
+          };
+          await replayHeldEvents(deps, scope());
+          expect(seen).toEqual([INQUIRY]);
+          expect(await abandonedEvents(c.controlNumber)).toEqual([
+            expect.objectContaining({ resolution: "abandoned_aged", statusInquiry: "no_answer" }),
+          ]);
+        });
+
+        it("a claim the port cannot describe is not asked about at all (unavailable, then abandoned)", async () => {
+          const c = await agedHeld();
+          let asked = 0;
+          const deps: AckWorkerDeps = {
+            ...ackDeps("stedi"),
+            inquiries: { inquiryFor: async () => null },
+            binding: {
+              vendor: "stedi",
+              transport: {
+                fetchAcknowledgments: (ctx, cursor) => transport.fetchAcknowledgments(ctx, cursor),
+                fetchClaimStatus: async () => {
+                  asked += 1;
+                  return { ok: false, degraded: { code: "CH_NOT_WIRED", reason: "x" } };
+                },
+              },
+            },
+          };
+          await replayHeldEvents(deps, scope());
+          expect(asked).toBe(0);
+          expect(await abandonedEvents(c.controlNumber)).toEqual([
+            expect.objectContaining({ resolution: "abandoned_aged", statusInquiry: "unavailable" }),
+          ]);
+        });
+      });
     });
 
     it("the database refuses every illegal claim state jump, and allows only the legal paths", async () => {
@@ -2597,6 +2761,62 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       const c = await sentClaim();
       await expect(runAckPull(ackDeps(null))).rejects.toThrow(/CH_NOT_WIRED/);
       expect(await claimState(c.claimId)).toBe("submitted");
+    });
+  });
+
+  // #824: the weekly retention prune deletes only RESOLVED rows past the horizon, in the caller's tenant, and the database refuses
+  // the app role an unresolved delete.
+  describe("quarantine retention prune (#824)", () => {
+    const insertRow = async (eventId: string, resolvedDaysAgo: number | null) => {
+      if (resolvedDaysAgo === null) {
+        await admin.query(
+          `INSERT INTO commercial_ack_quarantine (organization_id, provider_entity_id, clearinghouse_key, event_id, reason)
+           VALUES ($1,$2,'stedi',$3,'malformed')`,
+          [ORG, providerEntityId, eventId],
+        );
+        return;
+      }
+      await admin.query(
+        `INSERT INTO commercial_ack_quarantine (organization_id, provider_entity_id, clearinghouse_key, event_id, reason, resolved_at, resolution)
+         VALUES ($1,$2,'stedi',$3,'malformed', now() - make_interval(days => $4::int), 'abandoned_invalid')`,
+        [ORG, providerEntityId, eventId, resolvedDaysAgo],
+      );
+    };
+    const remaining = async () =>
+      (
+        await admin.query(
+          "SELECT event_id FROM commercial_ack_quarantine WHERE event_id LIKE 'prune-%' ORDER BY event_id",
+        )
+      ).rows.map((r) => r.event_id as string);
+
+    it("deletes resolved rows older than the horizon and keeps young resolved and unresolved ones", async () => {
+      await insertRow("prune-old", QUARANTINE_RETENTION_DAYS + 5);
+      await insertRow("prune-young", QUARANTINE_RETENTION_DAYS - 5);
+      await insertRow("prune-open", null);
+      // another tenant's context never reaches this org's rows, even far in the future
+      await runQuarantinePrune({
+        db: handle.db,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_B }] },
+        now: () => new Date(Date.now() + 10 * 365 * 86_400_000),
+      });
+      expect(await remaining()).toEqual(["prune-old", "prune-open", "prune-young"]);
+      const deleted = await runQuarantinePrune({
+        db: handle.db,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG }] },
+      });
+      expect(deleted).toBe(1);
+      expect(await remaining()).toEqual(["prune-open", "prune-young"]);
+    });
+
+    it("the database refuses the app role an unresolved delete", async () => {
+      await expect(
+        withOrgContext(handle.db, systemOrgContext(ORG), (tx) =>
+          tx
+            .delete(schema.commercialAckQuarantine)
+            .where(eq(schema.commercialAckQuarantine.eventId, "prune-open")),
+        ),
+      ).rejects.toThrow();
+      expect(await remaining()).toContain("prune-open");
     });
   });
 
@@ -2657,11 +2877,33 @@ describe.skipIf(!DB_URL)("M41 commercial submission - LIVE Postgres", () => {
       const drainQueues = await scheduleM41Jobs(connection);
       const ackQueues = await scheduleM41AckJobs(connection);
       open.push(...drainQueues, ...ackQueues);
+      // #824: schedules alone are not enough: with no consumer connected the API still refuses (a dead worker must not look ready)
+      const noConsumer = await failure(api.submit(actor, c1.claimId, `key-${randomUUID()}`));
+      expect(noConsumer?.code).toBe("COMMERCIAL_DRAIN_NOT_SCHEDULED");
+      expect(await submissionCount(c1.claimId)).toBe(0);
+      const workers = [M41_CRON_QUEUES.submissionDrain, M41_CRON_QUEUES.ackPull].map(
+        (name) => new Worker(name, async () => undefined, { connection }),
+      );
+      open.push(...workers);
+      await Promise.all(workers.map((w) => w.waitUntilReady()));
       const served = await api.submit(actor, c1.claimId, `key-${randomUUID()}`);
       expect(served.status).toBe("queued");
       expect((await api.sendGate(actor, c1.claimId)).reasons.map((r) => r.code)).not.toContain(
         "COMMERCIAL_DRAIN_NOT_SCHEDULED",
       );
+
+      // a worker dies (schedules still present): not ready again, then ready when it returns
+      const c3 = await readyClaim();
+      await workers[0]?.close();
+      const dead = await failure(api.submit(actor, c3.claimId, `key-${randomUUID()}`));
+      expect(dead?.code).toBe("COMMERCIAL_DRAIN_NOT_SCHEDULED");
+      expect(await submissionCount(c3.claimId)).toBe(0);
+      const back = new Worker(M41_CRON_QUEUES.submissionDrain, async () => undefined, {
+        connection,
+      });
+      open.push(back);
+      await back.waitUntilReady();
+      expect((await api.submit(actor, c3.claimId, `key-${randomUUID()}`)).status).toBe("queued");
 
       // one of the two schedules disappears: not ready again
       const c2 = await readyClaim();

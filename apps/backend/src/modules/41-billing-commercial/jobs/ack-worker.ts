@@ -60,7 +60,9 @@ export {
 export {
   abandonForeignHeldEvents,
   heldQuarantineReport,
+  listHeldRows,
   replayHeldEvents,
+  resolveHeldRowByOperator,
 } from "./ack-held-replay";
 
 /** Most pages one provider entity's stream may read per tick; the cursor is persisted per page, so the rest waits for the next tick. */

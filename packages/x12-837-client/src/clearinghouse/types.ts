@@ -236,6 +236,22 @@ export type SubmissionState =
   | "payer_partial"
   | "payer_rejected";
 
+/**
+ * What a 276 claim-status inquiry needs beyond the control number (issue #820). The payer is `ctx.payerId`. The subscriber block is
+ * TRANSIENT PHI: built into the request for one call, never returned, logged, stored or placed in a reason. Dates are YYYY-MM-DD.
+ */
+export interface ClaimStatusInquiry {
+  readonly billingProvider: { readonly organizationName: string; readonly npi: string };
+  readonly subscriber: {
+    readonly memberId: string;
+    readonly firstName: string;
+    readonly lastName: string;
+    readonly dateOfBirth: string;
+  };
+  readonly serviceFrom: string;
+  readonly serviceTo: string;
+}
+
 export interface ClaimStatus {
   readonly controlNumber: string;
   readonly state: SubmissionState;
@@ -344,10 +360,14 @@ export interface ClearinghouseTransport {
     cursor: string | null,
   ): Promise<X12WorkerResult<Page<RemittanceFile>>>;
 
-  /** Status inquiry for a stuck submission (stage 15). */
+  /**
+   * Status inquiry for a stuck submission (stage 15). A transport that needs more than the control number (Stedi 276) reads it from
+   * `inquiry` and refuses CH_INVALID_REQUEST without one; one that cannot inquire at all answers CH_NOT_WIRED whatever is passed.
+   */
   fetchClaimStatus(
     ctx: ClearinghouseContext,
     controlNumber: string,
+    inquiry?: ClaimStatusInquiry,
   ): Promise<X12WorkerResult<ClaimStatus>>;
 
   /** Verify the vendor's signature and reduce a push to a reference (stage 16). Idempotent on `eventId`. */

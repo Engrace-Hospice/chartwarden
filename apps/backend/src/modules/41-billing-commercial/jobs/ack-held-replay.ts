@@ -19,7 +19,7 @@ import { validateAckEvent } from "../domain/ack-event";
 import type { CommercialTx } from "../services/types";
 import {
   ACK_POLL_MAX_AGE_DAYS,
-  type AckWorkerDeps,
+  type AckApplyDeps,
   DAY_MS,
   type QuarantineReason,
   type Scope,
@@ -43,7 +43,8 @@ type HeldResolution =
   | "abandoned_aged"
   | "abandoned_invalid"
   | "abandoned_no_event"
-  | "abandoned_foreign_vendor";
+  | "abandoned_foreign_vendor"
+  | "abandoned_operator";
 
 /** What the claim-status inquiry made of an aged row: not tried, no answer or not wired, or it produced an applied acknowledgment. */
 type InquiryOutcome = "not_attempted" | "unavailable" | "no_answer" | "applied";
@@ -87,7 +88,7 @@ const replayable = (
 
 /** The newest submission of this provider entity with that control number, if any. */
 const submissionOf = (
-  deps: AckWorkerDeps,
+  deps: AckApplyDeps,
   scope: Scope,
   controlNumber: string | null,
 ): Promise<SubmissionRef | null> =>
@@ -119,7 +120,7 @@ const submissionOf = (
  * duplicate collapses and a mismatch is refused). Never throws: an unwired or failing transport is `unavailable`.
  */
 async function inquireStatus(
-  deps: AckWorkerDeps,
+  deps: AckApplyDeps,
   scope: Scope,
   row: HeldRow,
   submission: SubmissionRef,
@@ -132,7 +133,12 @@ async function inquireStatus(
       submission.payerId,
     );
     if (ctx === null) return "unavailable";
-    const status = await deps.binding.transport.fetchClaimStatus(ctx, row.controlNumber);
+    // the 276 needs a subscriber and service dates: read from the inquiry port for this one call (never stored or logged)
+    const inquiry = deps.inquiries
+      ? await deps.inquiries.inquiryFor(scope, submission.claimId)
+      : undefined;
+    if (inquiry === null) return "unavailable";
+    const status = await deps.binding.transport.fetchClaimStatus(ctx, row.controlNumber, inquiry);
     if (!status.ok) return "unavailable";
     const latest = status.data.latest;
     // only an answer about THIS control number counts, and only one that really applied now (a duplicate applied nothing)
@@ -150,13 +156,14 @@ async function inquireStatus(
 
 /** Stamp a held row and, for an abandonment, publish the explicit event in the SAME transaction. */
 async function settle(
-  deps: AckWorkerDeps,
+  deps: AckApplyDeps,
   tx: CommercialTx,
   scope: Scope,
   row: HeldRow,
   resolution: HeldResolution,
   claimId: string | null,
   statusInquiry: InquiryOutcome,
+  operatorUserId?: string,
 ): Promise<void> {
   const Q = schema.commercialAckQuarantine;
   // guarded: two overlapping ticks stamp (and publish) once; the loser changes nothing
@@ -178,6 +185,7 @@ async function settle(
       reason: row.reason,
       resolution,
       statusInquiry,
+      ...(operatorUserId ? { operatorUserId } : {}),
     },
   });
   deps.log?.({
@@ -190,20 +198,21 @@ async function settle(
 }
 
 const abandonOutright = (
-  deps: AckWorkerDeps,
+  deps: AckApplyDeps,
   scope: Scope,
   row: HeldRow,
   resolution: HeldResolution,
   claimId: string | null,
   statusInquiry: InquiryOutcome,
+  operatorUserId?: string,
 ) =>
   inOrg(deps, scope.organizationId, (tx) =>
-    settle(deps, tx, scope, row, resolution, claimId, statusInquiry),
+    settle(deps, tx, scope, row, resolution, claimId, statusInquiry, operatorUserId),
   );
 
 /** One row, one pass. Returns how it left (or `held` when it stays). */
 async function replayRow(
-  deps: AckWorkerDeps,
+  deps: AckApplyDeps,
   scope: Scope,
   row: HeldRow,
   cutoff: number,
@@ -290,7 +299,7 @@ async function replayRow(
  * transaction and stamped `resolved_at` there. A row that cannot apply yet stays held; one that never can is abandoned out loud.
  */
 export async function replayHeldEvents(
-  deps: AckWorkerDeps,
+  deps: AckApplyDeps,
   scope: Scope,
 ): Promise<{ readonly applied: number; readonly abandoned: number }> {
   const Q = schema.commercialAckQuarantine;
@@ -333,7 +342,7 @@ export async function replayHeldEvents(
 
 /** Provider entities of the org that still hold unresolved replayable events (so dead ones get swept even with no live work). */
 export async function entitiesWithHeldEvents(
-  deps: AckWorkerDeps,
+  deps: AckApplyDeps,
   organizationId: string,
 ): Promise<string[]> {
   const Q = schema.commercialAckQuarantine;
@@ -373,7 +382,7 @@ export interface HeldQuarantineReport {
 }
 
 export async function heldQuarantineReport(
-  deps: AckWorkerDeps,
+  deps: AckApplyDeps,
   organizationId: string,
 ): Promise<HeldQuarantineReport> {
   const Q = schema.commercialAckQuarantine;
@@ -413,8 +422,9 @@ export async function heldQuarantineReport(
  * ponytail: bounded per call (HELD_ENTITY_LIMIT rows); call again for more.
  */
 export async function abandonForeignHeldEvents(
-  deps: AckWorkerDeps,
+  deps: AckApplyDeps,
   organizationId: string,
+  operatorUserId?: string,
 ): Promise<{ readonly abandoned: number }> {
   const vendor = deps.binding.vendor;
   if (vendor === null) return { abandoned: 0 };
@@ -453,9 +463,102 @@ export async function abandonForeignHeldEvents(
       "abandoned_foreign_vendor",
       submission?.claimId ?? null,
       "not_attempted",
+      operatorUserId,
     );
   }
   return { abandoned: rows.length };
+}
+
+export type OperatorResolveOutcome = "resolved" | "already_resolved" | "not_found";
+
+/**
+ * Operator call: close ONE unresolved quarantine row of the organization, whatever its reason (this is the only exit for a `malformed`
+ * row, which keeps nothing to replay, and for a held row an operator has settled out of band). Resolution `abandoned_operator`, one
+ * audited `m41.claim.ack_abandoned` event naming the operator. Org-scoped (RLS plus the explicit filters, including the provider
+ * entity the route authorised); idempotent: a row already resolved answers `already_resolved` and publishes nothing.
+ */
+export async function resolveHeldRowByOperator(
+  deps: AckApplyDeps,
+  scope: Scope,
+  rowId: string,
+  operatorUserId: string,
+): Promise<OperatorResolveOutcome> {
+  const Q = schema.commercialAckQuarantine;
+  const [row] = await inOrg(deps, scope.organizationId, (tx) =>
+    tx
+      .select({
+        id: Q.id,
+        eventId: Q.eventId,
+        controlNumber: Q.controlNumber,
+        reason: Q.reason,
+        clearinghouseKey: Q.clearinghouseKey,
+        event: Q.event,
+        createdAt: Q.createdAt,
+        resolvedAt: Q.resolvedAt,
+      })
+      .from(Q)
+      .where(
+        and(
+          eq(Q.id, rowId),
+          eq(Q.organizationId, scope.organizationId),
+          eq(Q.providerEntityId, scope.providerEntityId),
+        ),
+      )
+      .limit(1),
+  );
+  if (!row) return "not_found";
+  if (row.resolvedAt !== null) return "already_resolved";
+  const { resolvedAt: _resolvedAt, ...held } = row;
+  const submission = await submissionOf(deps, scope, held.controlNumber);
+  await abandonOutright(
+    deps,
+    scope,
+    held,
+    "abandoned_operator",
+    submission?.claimId ?? null,
+    "not_attempted",
+    operatorUserId,
+  );
+  return "resolved";
+}
+
+/** The unresolved rows of one provider entity, newest first, bounded. Ids, reason, control number and age only (no event payload). */
+export interface HeldRowView {
+  readonly id: string;
+  readonly reason: string;
+  readonly controlNumber: string | null;
+  readonly clearinghouseKey: string;
+  readonly hasEvent: boolean;
+  readonly createdAt: Date;
+}
+const HELD_LIST_LIMIT = 200;
+export async function listHeldRows(
+  deps: AckApplyDeps,
+  scope: Scope,
+): Promise<readonly HeldRowView[]> {
+  const Q = schema.commercialAckQuarantine;
+  const rows = await inOrg(deps, scope.organizationId, (tx) =>
+    tx
+      .select({
+        id: Q.id,
+        reason: Q.reason,
+        controlNumber: Q.controlNumber,
+        clearinghouseKey: Q.clearinghouseKey,
+        hasEvent: sql<boolean>`${Q.event} is not null`,
+        createdAt: Q.createdAt,
+      })
+      .from(Q)
+      .where(
+        and(
+          eq(Q.organizationId, scope.organizationId),
+          eq(Q.providerEntityId, scope.providerEntityId),
+          isNull(Q.resolvedAt),
+        ),
+      )
+      .orderBy(desc(Q.createdAt))
+      .limit(HELD_LIST_LIMIT),
+  );
+  return rows;
 }
 
 /**
@@ -464,7 +567,7 @@ export async function abandonForeignHeldEvents(
  * Throws on a database fault; the caller turns that into a failure label.
  */
 export async function sweepHeldEvents(
-  deps: AckWorkerDeps,
+  deps: AckApplyDeps,
   organizationId: string,
   liveProviderEntityIds: ReadonlySet<string>,
 ): Promise<void> {

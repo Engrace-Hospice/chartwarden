@@ -276,6 +276,13 @@ describe("DirectMacTransport", () => {
       t.validateOnly(ctx, submission("x")),
       t.fetchRemittances(ctx, null),
       t.fetchClaimStatus(ctx, "1"),
+      // even with a full inquiry: the MAC portal has no 276 channel and the repo has no 277 status parser
+      t.fetchClaimStatus(ctx, "1", {
+        billingProvider: { organizationName: "X", npi: "1234567893" },
+        subscriber: { memberId: "m", firstName: "a", lastName: "b", dateOfBirth: "1950-01-01" },
+        serviceFrom: "2026-01-01",
+        serviceTo: "2026-01-31",
+      }),
       t.verifyAndParseEvent({ headers: {}, rawBody: "{}" }),
     ]);
     for (const r of results)

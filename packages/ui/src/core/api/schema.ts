@@ -5517,6 +5517,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/commercial/ack-quarantine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The unresolved held acknowledgments of ONE provider entity (commercial_billing.read; provider scope): id, reason (malformed, scope_mismatch, vendor_mismatch, no_receipt), control number, clearinghouse key, whether a replayable event is kept, age. No patient data and no event payload; newest first, bounded to 200. Read-audited as none */
+        get: operations["getApiV1BillingCommercialAckquarantine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/ack-quarantine/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close ONE unresolved quarantine row (the only exit for a `malformed` row, which keeps nothing to replay) with the resolution abandoned_operator and an m41.claim.ack_abandoned event naming the acting user. 404 for a row that is not this provider entity's; an already-closed row answers outcome already_resolved and publishes nothing. commercial_billing.submit + provider scope + a FRESH step-up, never an AI actor, Idempotency-Key required */
+        post: operations["postApiV1BillingCommercialAckquarantineByIdResolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/ack-quarantine/abandon-foreign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close, now, the organization's held rows that belong to ANOTHER clearinghouse's stream than the bound one (abandoned_foreign_vendor, one m41.claim.ack_abandoned event each naming the acting user; bounded to 200 per call). Does nothing while no clearinghouse is bound. Needs an organization-wide billing scope (403 otherwise). commercial_billing.submit + a FRESH step-up, never an AI actor, Idempotency-Key required */
+        post: operations["postApiV1BillingCommercialAckquarantineAbandonforeign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/ack-quarantine/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run the held-acknowledgment replay for ONE provider entity now instead of waiting for the next pull: each unresolved no_receipt, scope_mismatch or vendor_mismatch row is re-applied if its blocking condition has cleared, otherwise it stays held (past 45 days it is asked about once, then abandoned with an m41.claim.ack_abandoned event). Idempotent. commercial_billing.submit + provider scope + a FRESH step-up, never an AI actor, Idempotency-Key required */
+        post: operations["postApiV1BillingCommercialAckquarantineReplay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/commercial/authorizations": {
         parameters: {
             query?: never;
@@ -44206,6 +44274,142 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1BillingCommercialAckquarantine: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            reason: string;
+                            controlNumber: string | null;
+                            clearinghouseKey: string;
+                            hasEvent: boolean;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialAckquarantineByIdResolve: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        outcome: "resolved" | "already_resolved";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialAckquarantineAbandonforeign: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        abandoned: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialAckquarantineReplay: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        applied: number;
+                        abandoned: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1BillingCommercialAuthorizations: {
         parameters: {
             query: {
@@ -44340,7 +44544,7 @@ export interface operations {
         parameters: {
             query: {
                 providerEntityId: string;
-                state?: "draft" | "ready" | "submitted" | "ack_pending" | "accepted" | "rejected" | "void";
+                state?: "draft" | "ready" | "submitted" | "ack_pending" | "accepted" | "rejected" | "paid" | "partially_paid" | "denied" | "void";
                 payerKind?: "commercial_only" | "medicare_secondary" | "medicaid_secondary";
                 patientId?: string;
                 limit?: number;

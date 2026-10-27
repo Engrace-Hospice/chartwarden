@@ -72,6 +72,12 @@ export interface ReserveResult {
   readonly reserved: boolean;
 }
 
+/** What one submission's interchange was first rendered with: its ISA13 (9 digits) and the render clock. */
+export interface InterchangeMemo {
+  readonly number: string;
+  readonly renderedAt: Date;
+}
+
 export interface SubmissionAttemptStore {
   /**
    * Atomic insert-if-absent of a `reserved` row on (scope, idempotencyKey) AND (scope, controlNumber), among live
@@ -94,16 +100,16 @@ export interface SubmissionAttemptStore {
    * The interchange control number (ISA13) for one submission: 9 digits, platform-unique like
    * {@link allocateControlNumber}, and REMEMBERED under (tenant, scope, idempotency key). A job redelivered after the
    * vendor took the file (before its own transaction committed) renders the identical ISA13. The interchange date and
-   * time (ISA09/ISA10) still follow the render clock, so a raw-X12 vendor can see a changed payload under the same key
-   * (issue #836). The memo is durable and independent of the
-   * caller's transaction. A new submission (a new control number, so a new key) gets a new number.
+   * time (ISA09/ISA10, GS04/GS05, BHT04/BHT05) are remembered too (`renderedAt`, the clock of the first allocation), so a
+   * redelivery renders a byte-identical interchange and a raw-X12 vendor sees the same payload hash. The memo is durable
+   * and independent of the caller's transaction. A new submission (a new control number, so a new key) gets a new number.
    */
   allocateInterchangeNumber(
     organizationId: string,
     scope: string,
     idempotencyKey: string,
     usage: AttemptUsage,
-  ): Promise<string>;
+  ): Promise<InterchangeMemo>;
   /**
    * reserved -> sent, recording the vendor's id. Idempotent: a row that is already sent is returned unchanged.
    * Null when no such row exists.
@@ -149,7 +155,7 @@ export interface SubmissionAttemptStore {
 export class InMemoryAttemptStore implements SubmissionAttemptStore {
   private readonly rows: SubmissionAttempt[] = [];
   private readonly counters: Record<AttemptUsage, number> = { test: 0, production: 0 };
-  private readonly interchangeNumbers = new Map<string, { number: string; usage: AttemptUsage }>();
+  private readonly interchangeNumbers = new Map<string, { number: string; usage: AttemptUsage; renderedAt: Date }>();
 
   private live(organizationId: string, scope: string): SubmissionAttempt[] {
     return this.rows.filter(
@@ -194,16 +200,16 @@ export class InMemoryAttemptStore implements SubmissionAttemptStore {
     scope: string,
     idempotencyKey: string,
     usage: AttemptUsage,
-  ): Promise<string> {
+  ): Promise<InterchangeMemo> {
     const memo = JSON.stringify([organizationId, scope, idempotencyKey]);
     try {
       const prior = this.interchangeNumbers.get(memo);
       if (prior && prior.usage !== usage) {
         throw new Error("clearinghouse interchange number was allocated under a different usage");
       }
-      const known = prior?.number ?? this.nextNumber(usage);
-      this.interchangeNumbers.set(memo, { number: known, usage });
-      return Promise.resolve(known);
+      const known = prior ?? { number: this.nextNumber(usage), usage, renderedAt: new Date() };
+      this.interchangeNumbers.set(memo, known);
+      return Promise.resolve({ number: known.number, renderedAt: known.renderedAt });
     } catch (e) {
       return Promise.reject(e);
     }

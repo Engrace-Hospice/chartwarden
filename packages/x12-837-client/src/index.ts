@@ -183,6 +183,7 @@ export type {
   AckStage,
   ClaimAdjustment,
   ClaimStatus,
+  ClaimStatusInquiry,
   ClearinghouseContext,
   ClearinghouseCommercialEligibilityRequest,
   ClearinghouseEligibilityRequest,
@@ -324,6 +325,7 @@ export type {
   ReserveResult,
   SubmissionAttempt,
   SubmissionAttemptStore,
+  InterchangeMemo,
 } from "./clearinghouse/attempt-store";
 export {
   ATTEMPT_STORE_CONTRACT,

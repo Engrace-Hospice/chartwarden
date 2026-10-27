@@ -134,9 +134,15 @@ interface CommercialClaimReaderView {
     orgId: string,
     providerEntityId: string,
     payerId: string,
-    keys: { claimControlNumber?: string },
+    keys: { claimControlNumber?: string; payerIcn?: string },
   ): Promise<
-    Array<{ claimId: string; claimControlNumber: string; serviceFrom: string; serviceTo: string }>
+    Array<{
+      claimId: string;
+      claimControlNumber: string;
+      payerIcn?: string | null;
+      serviceFrom: string;
+      serviceTo: string;
+    }>
   >;
   patientIdForClaim(orgId: string, claimId: string): Promise<string | null>;
 }
@@ -144,8 +150,9 @@ interface CommercialClaimReaderView {
 /**
  * #725 (ADR-0100 D8) — the commercial sibling, routed to when the advice's `payerKind === "commercial"`.
  * Payer-keyed: the advice's `payerId` is passed through and M41 returns only claims whose plan belongs to that
- * payer, so a wrong-payer advice finds no candidate. A commercial claim carries no payer ICN and no member id
- * here, so only CLP01 (claim control number exact) can auto-bind; everything else is manual review. Same
+ * payer, so a wrong-payer advice finds no candidate. A commercial claim carries no member id here, so CLP01
+ * (claim control number exact) or CLP07 (payer ICN, stored by M41 from an earlier posted line, #835) can auto-bind;
+ * everything else (member id, heuristic) is manual review. Same
  * fail-closed degrade as the Medicare/Medicaid providers; a missing `payerId` is "no candidates".
  */
 export function buildM41BackedClaimMatchCandidateProvider(): ClaimMatchCandidateProvider {
@@ -158,12 +165,13 @@ export function buildM41BackedClaimMatchCandidateProvider(): ClaimMatchCandidate
           args.organizationId,
           args.providerEntityId,
           args.payerId,
-          { claimControlNumber: args.patientControlNumber },
+          { claimControlNumber: args.patientControlNumber, payerIcn: args.payerIcn },
         );
         return rows.map(
           (r): MatchCandidate => ({
             claimId: r.claimId,
             claimControlNumber: r.claimControlNumber,
+            payerIcn: r.payerIcn ?? undefined,
             serviceFrom: r.serviceFrom,
             serviceTo: r.serviceTo,
           }),

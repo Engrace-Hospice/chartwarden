@@ -1083,7 +1083,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         const deps: M23WorkerDeps = {
           ...r.deps(),
           renderClaim: async (args) => {
-            numbers.push(await args.interchangeNumberFor(CTX));
+            numbers.push((await args.interchangeFor(CTX)).interchangeNumber);
             return { x12: X12_CLAIM };
           },
         };
@@ -1117,6 +1117,43 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         expect(second.numbers[0]).not.toBe(numbers[0]);
       });
 
+      it("a redelivery renders the SAME ISA09/ISA10 clock from the memo, so a raw-X12 vendor sees one payload, not a conflict (#836)", async () => {
+        const r = rig();
+        const renders: { x12: string; at: number }[] = [];
+        // Stamps the interchange from the clock the worker hands it, as the real writer does with `createdAt`.
+        const stamped = (wallClock: () => Date): M23WorkerDeps => ({
+          ...r.deps(),
+          renderClaim: async (args) => {
+            const { interchangeNumber, renderedAt } = await args.interchangeFor(CTX);
+            const wall = wallClock(); // a render that read the wall clock would differ between the two runs
+            expect(wall.getTime()).not.toBe(renderedAt.getTime());
+            const stamp = renderedAt.toISOString();
+            const x12 = `${X12_CLAIM}|ISA13=${interchangeNumber}|ISA09/10=${stamp}`;
+            renders.push({ x12, at: renderedAt.getTime() });
+            return { x12 };
+          },
+        });
+        const c = await seed("d7d7d7d7-d7d7-d7d7-d7d7-d7d7d7d7d7d7");
+        await expect(
+          runThenKill(stamped(() => new Date("2031-01-01T00:00:00Z")), c.job),
+        ).rejects.toThrow(KILLED);
+        await runInOrg((tx) =>
+          runClaimSubmit(tx, stamped(() => new Date("2032-06-01T12:34:00Z")), c.job),
+        );
+
+        expect(renders).toHaveLength(2);
+        expect(renders[1]?.x12).toBe(renders[0]?.x12);
+        expect((await submissionRow(c.submissionId)).outcome).toBe("submitted");
+        expect(r.uploads).toEqual([c.ccn]); // replayed, not re-filed or conflicted
+        const [row] = (
+          await admin.query(
+            "SELECT rendered_at FROM clearinghouse_interchange_number WHERE idempotency_key = $1",
+            [`m23.claim.${c.ccn}`],
+          )
+        ).rows;
+        expect(new Date(row.rendered_at).getTime()).toBe(renders[0]?.at);
+      });
+
       it("without a bound attempt store the attempt fails as failed_worker and sends nothing", async () => {
         const r = rig();
         const c = await seed("c6c6c6c6-c6c6-c6c6-c6c6-c6c6c6c6c6c6");
@@ -1128,7 +1165,7 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
             contexts: full.transport.contexts,
           },
           renderClaim: async (args) => {
-            await args.interchangeNumberFor(CTX);
+            await args.interchangeFor(CTX);
             return { x12: X12_CLAIM };
           },
         };

@@ -25,6 +25,7 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m25-835-ingestion.live.test.ts
  * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set CHARTWARDEN_TEST_NO_PGVECTOR=1.)
  */
+import { randomBytes } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { repositories } from "@chartwarden/billing";
@@ -40,7 +41,9 @@ import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
 import { InMemoryClearinghouse } from "@chartwarden/x12-837-client/testing";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildFoundationSiteReader } from "../src/bootstrap/foundation-site-reader";
 import { registerSeam } from "../src/bootstrap/index";
+import { createTaxIdCipher } from "../src/modules/02-identity/tax-id-cipher";
 import { buildM23ClaimSubmissionReader } from "../src/modules/23-billing-medicare/cost-report-seams";
 import type { MatchCandidate } from "../src/modules/25-remittance/domain/match";
 import {
@@ -51,6 +54,7 @@ import {
   MAX_REFUSALS_PER_REMITTANCE,
   pullRemittances,
 } from "../src/modules/25-remittance/ingest/clearinghouse-pull";
+import { parsePayeeTinPolicy } from "../src/modules/25-remittance/ingest/payee-tin-policy";
 import { buildDrizzleRemittanceCursorStore } from "../src/modules/25-remittance/ingest/pull-cursor-store";
 import type {
   ClaimMatchCandidateProvider,
@@ -1063,6 +1067,161 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     });
   });
 
+  describe("payee TIN through M1's reader + M2's tax-id cipher (#671)", () => {
+    const TENANT_NPI = "1234567893";
+    const TIN = "123456789";
+    const key = randomBytes(32);
+    const cipher = createTaxIdCipher({
+      dekForOrg: async () => ({ version: "1", key }),
+      dekForOrgVersion: async () => ({ version: "1", key }),
+    });
+    const ids: { a?: string; b?: string } = {};
+
+    /** The composition root's lookup (index.ts `m25PayeeTinDeps.payeeTin`), over the real app-role db. */
+    const payeeTin = (organizationId: string, providerEntityId: string) =>
+      withOrgContext(handle.db, { organizationId, userId: "" }, async (tx) => {
+        const facts = await buildFoundationSiteReader().providerEntityBillingFacts(
+          tx,
+          organizationId,
+          providerEntityId,
+        );
+        if (!facts) return null;
+        return cipher.decrypt({ organizationId, providerEntityId, sealed: facts.taxIdSealed });
+      });
+
+    async function seedProvider(org: string, npi: string, ccn: string, tin: string) {
+      const id = (
+        await admin.query(
+          `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+             VALUES ($1,$2,'Synth Hospice',$3,'x','12-31') RETURNING id`,
+          [org, ccn, npi],
+        )
+      ).rows[0].id as string;
+      const sealed = await cipher.encrypt({
+        organizationId: org,
+        providerEntityId: id,
+        plaintext: tin,
+      });
+      await admin.query("UPDATE provider_entity SET tax_id_encrypted=$1 WHERE id=$2", [sealed, id]);
+      return id;
+    }
+
+    /** A balanced one-set 835 whose payee is identified only by tax id (N103=FI). */
+    function fiOnlyEdi(isa13: string, st02: string, payeeTin: string): string {
+      const body = [
+        "BPR*I*500.00*C*ACH*CCP*01*999999992*DA*123456789*1512345678**01*999988880*DA*98765*20260615",
+        `TRN*1*EFT-${isa13}*1512345678`,
+        "N1*PR*SYNTHETIC MAC",
+        `N1*PE*SYNTH HOSPICE*FI*${payeeTin}`,
+        `CLP*PCN-${isa13}*1*500.00*500.00*0.00*MC*ICN-${isa13}`,
+        "SVC*HC:T1005*500.00*500.00",
+      ];
+      return `${buildRawEdi(isa13, st02)}${body.map((x) => `${x}~`).join("")}SE*${body.length + 2}*${st02}~GE*1*1~IEA*1*${isa13.padStart(9, "0")}~`;
+    }
+
+    beforeAll(async () => {
+      ids.a = await seedProvider(ORG_A, TENANT_NPI, "H67101", TIN);
+      ids.b = await seedProvider(ORG_B, "1999999984", "H67102", "987654321");
+    });
+
+    const receive = (
+      org: string,
+      pe: string,
+      raw: string,
+      policy: Record<string, string[]>,
+      payerKind: "medicare" | "medicaid" = "medicaid",
+    ) =>
+      buildDrizzleM25IngestService(handle.db, {
+        client: createX12835Client({ readRaw: async () => raw }),
+        payeeNpi: async () => TENANT_NPI,
+        payeeTin,
+        payeeTinPolicy: parsePayeeTinPolicy(JSON.stringify(policy)),
+      }).receiveAdvice(
+        { organizationId: org },
+        {
+          providerEntityId: pe,
+          payerId: PAYER,
+          payerKind,
+          minioObjectKey: `minio/${raw.length}.835`,
+          fileSha256: sha256Hex(raw),
+          rawEdi: raw,
+        },
+      );
+    const adviceCount = async (isa: string) =>
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM remittance_advice WHERE interchange_control_number=$1",
+          [isa],
+        )
+      ).rows[0].n as number;
+
+    it("a policy-allowed tax-id-only payee with the sealed TIN is queued", async () => {
+      const raw = fiOnlyEdi("000000801", "0801", "12-3456789");
+      const r = await receive(ORG_A, ids.a as string, raw, { [ORG_A]: ["medicaid"] });
+      expect(r.outcome).toBe("queued");
+    });
+
+    it("the same file is refused by default and on a program the policy does not cover", async () => {
+      const raw = fiOnlyEdi("000000802", "0802", TIN);
+      expect((await receive(ORG_A, ids.a as string, raw, {})).outcome).toBe("malformed");
+      expect(
+        (await receive(ORG_A, ids.a as string, raw, { [ORG_A]: ["medicaid"] }, "medicare")).outcome,
+      ).toBe("malformed");
+      expect(await adviceCount("000000802")).toBe(0);
+    });
+
+    it("a wrong TIN is refused and nothing is stored", async () => {
+      const raw = fiOnlyEdi("000000803", "0803", "987654321");
+      const r = await receive(ORG_A, ids.a as string, raw, { [ORG_A]: ["medicaid"] });
+      expect(r.outcome).toBe("malformed");
+      expect(await adviceCount("000000803")).toBe(0);
+    });
+
+    it("cross-tenant: org A's policy and TIN never open org B's provider entity, and vice versa", async () => {
+      expect(await payeeTin(ORG_A, ids.b as string)).toBeNull();
+      expect(await payeeTin(ORG_B, ids.a as string)).toBeNull();
+      const raw = fiOnlyEdi("000000804", "0804", TIN);
+      // Org B holds PE b (TIN 987654321): org A's TIN on the file must not match it.
+      const r = await receive(ORG_B, ids.b as string, raw, { [ORG_B]: ["medicaid"] });
+      expect(r.outcome).toBe("malformed");
+      // Org A's policy does not extend to org B.
+      const rawB = fiOnlyEdi("000000805", "0805", "987654321");
+      const denied = await receive(ORG_B, ids.b as string, rawB, { [ORG_A]: ["medicaid"] });
+      expect(denied.outcome).toBe("malformed");
+      expect(await adviceCount("000000804")).toBe(0);
+    });
+
+    it("an unopenable sealed TIN (wrong tenant AAD) fails closed", async () => {
+      const foreign = await cipher.encrypt({
+        organizationId: ORG_B,
+        providerEntityId: ids.b as string,
+        plaintext: TIN,
+      });
+      await admin.query("UPDATE provider_entity SET tax_id_encrypted=$1 WHERE id=$2", [
+        foreign,
+        ids.a,
+      ]);
+      try {
+        const raw = fiOnlyEdi("000000806", "0806", TIN);
+        const r = await receive(ORG_A, ids.a as string, raw, { [ORG_A]: ["medicaid"] });
+        expect(r).toMatchObject({
+          outcome: "malformed",
+          reason: expect.stringContaining("could not be read"),
+        });
+      } finally {
+        const sealed = await cipher.encrypt({
+          organizationId: ORG_A,
+          providerEntityId: ids.a as string,
+          plaintext: TIN,
+        });
+        await admin.query("UPDATE provider_entity SET tax_id_encrypted=$1 WHERE id=$2", [
+          sealed,
+          ids.a,
+        ]);
+      }
+    });
+  });
+
   describe("postAdvice reaction to a degraded parse (retryable vs not)", () => {
     const receiveInput = (objectKey: string, raw: string, sha: string): ReceiveAdviceInput => ({
       providerEntityId: PE_A,
@@ -1630,7 +1789,9 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       const sha = row.rows[0].file_sha256 as string;
       expect(await cursors.isQuarantined(key, "ERA-Q-3", sha)).toBe(true);
       expect(await cursors.isQuarantined(key, "ERA-Q-3", "1".repeat(64))).toBe(false); // changed content is a new file
-      expect(await cursors.isQuarantined({ ...key, organizationId: ORG_B }, "ERA-Q-3", sha)).toBe(false);
+      expect(await cursors.isQuarantined({ ...key, organizationId: ORG_B }, "ERA-Q-3", sha)).toBe(
+        false,
+      );
       // still reported (skipped) when the vendor re-offers it on a later tick
       await cursors.set(key, "2");
       const again = await pullRemittances(deps, ORG_A);

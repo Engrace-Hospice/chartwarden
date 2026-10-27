@@ -48,11 +48,26 @@ export {
   runAckPull,
   scheduleM41AckJobs,
 } from "./jobs/ack-worker";
+export {
+  type QuarantinePruneDeps,
+  registerM41QuarantinePruneWorker,
+  runQuarantinePrune,
+  scheduleM41QuarantinePrune,
+} from "./jobs/quarantine-prune";
 export { transitionForAck } from "./domain/ack-transition";
+export { transitionForRemittance } from "./domain/remittance-transition";
+export {
+  type M41RemittanceConsumerDeps,
+  type M41RemittanceOutboxPort,
+  type M41RemittanceSkipReason,
+  buildM41RemittanceConsumer,
+} from "./outbox-consumers/m25-remittance";
 export {
   abandonForeignHeldEvents,
   applyAckEvent,
   heldQuarantineReport,
+  listHeldRows,
+  resolveHeldRowByOperator,
   outstanding as outstandingAckWork,
   replayHeldEvents,
 } from "./jobs/ack-worker";
@@ -87,6 +102,8 @@ export {
   registerM41AbacPredicates,
 } from "./abac-predicates";
 export { registerCommercialBillingRoutes } from "./routes/commercial-billing.routes";
+export { registerCommercialAckQuarantineRoutes } from "./routes/ack-quarantine.routes";
+export type { AckApplyDeps } from "./jobs/ack-apply";
 export type { CommercialBillingRouteDeps } from "./routes/commercial-billing.routes";
 export { buildCommercialClaimReadService } from "./services/claim-read-service";
 export type { CommercialClaimReadService } from "./services/claim-read-service";

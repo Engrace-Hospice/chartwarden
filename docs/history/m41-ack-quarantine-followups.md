@@ -16,17 +16,57 @@ what could be closed without a vendor sandbox.
     `malformed`, oldest). The pull logs `ack.held_stranded` with the count (no ids) so ops can see it.
   - `abandonForeignHeldEvents(deps, orgId)` is the explicit operator call: it closes, now, the org's rows belonging to another vendor's stream
     than the current binding (`abandoned_foreign_vendor`, one audited event each). It does nothing while unbound (that may be a config
-    blip; the 45-day age sweep still applies). Org-scoped through `inOrg` plus an explicit filter; idempotent; bounded per call. There is
-    deliberately no HTTP route yet: exported for an operator script or a later admin route (it needs `requirePermission` + `requireStepUp`). Until it is called, foreign rows leave through the audited 45-day age sweep, so `abandoned_foreign_vendor` occurs only on an explicit call.
+    blip; the 45-day age sweep still applies). Org-scoped through `inOrg` plus an explicit filter; idempotent; bounded per call. It has an authenticated route since round 3 (below). Until it is called, foreign rows leave through the audited 45-day age sweep, so `abandoned_foreign_vendor` occurs only on an explicit call.
 - **Stedi 276/277.** `packages/x12-837-client/src/clearinghouse/stedi-claim-status.ts` holds a request builder and response parser with
   fixture-style tests. It is **unbound and unverified**.
 
-## Still blocked (why #820 stays open, narrowed)
+## Round 3 (migration **1285**, port change)
 
-1. **Stedi 276/277 is not sandbox-verified** (STEDI_TRANSPORT_CONTRACT row `fetchClaimStatus` is U). The endpoint path, field names and the
-   277 category-code mapping in `stedi-claim-status.ts` come from the published shape as remembered, not from an observed answer. Until a
-   sandbox run confirms them, `StediTransport.fetchClaimStatus` keeps answering stable `CH_NOT_WIRED` (never `not_found`).
-2. **The port cannot carry the inquiry.** A 276 needs subscriber, payer and service dates; `fetchClaimStatus(ctx, controlNumber)` supplies
-   none. Wiring needs a port change (a context-supplied inquiry source) as well as the sandbox run. The parser never returns `not_found` and
-   always returns `latest: null`, so even when wired it reports a state and applies no acknowledgment until a verified ack mapping exists.
-3. The direct-MAC transport is untouched (still `CH_NOT_WIRED`).
+### Per-reason resolution path (the answer to "a replay path for reasons other than no_receipt")
+
+| reason | automatic | operator |
+|---|---|---|
+| `no_receipt` | replayed every pull once the submission is settled; past 45 days asked about (claim status) then abandoned | `replay` now; `resolve` |
+| `scope_mismatch` | re-checked under the SAME scope each pull; applies only if the situation changed, never re-routed to the other provider entity; else aged out | `replay`; `resolve` |
+| `vendor_mismatch` | same, under the SAME vendor stream; a foreign or unbound row is only aged out | `replay`; `abandon-foreign` (closes the rows of another vendor's stream now); `resolve` |
+| `malformed` | none exists: nothing valid was kept (a body that failed validation is deliberately never stored) | `resolve` is the only exit (`abandoned_operator`) |
+
+### Operator routes (`routes/ack-quarantine.routes.ts`, all under `/api/v1/billing/commercial/ack-quarantine`)
+
+`GET ?providerEntityId` (read + provider scope; ids, reason, control number, age, `hasEvent`; no payload), `POST /replay`, `POST /:id/resolve`,
+`POST /abandon-foreign` (org-wide, so it needs an organization-wide billing scope, else 403). Mutations: `commercial_billing.submit`, provider
+scope (404 outside it), a FRESH step-up, no AI actor, `Idempotency-Key`. Handlers use the org-explicit `inOrg` seams. Each closure is the row's
+write audit plus one `m41.claim.ack_abandoned` event carrying `operatorUserId`; a row already resolved answers `already_resolved` and publishes nothing.
+`abandonForeignHeldEvents` now has its authenticated route and an optional operator id.
+
+### Claim status on the port (vendor-UNVERIFIED)
+
+- `fetchClaimStatus(ctx, controlNumber, inquiry?)`: `ClaimStatusInquiry` carries billing provider, TRANSIENT subscriber (never returned or logged) and
+  service dates; the payer is `ctx.payerId`. `AckWorkerDeps.inquiries` is the source of that block (M5 coverage seam in production); **it is not wired in
+  `apps/backend/src/index.ts`**, so production still passes none, and Stedi (which refuses without one) reads "unavailable". A port answering null means
+  the claim cannot be asked about and no transport call is made.
+- Stedi: the request builder and parser from round 2 are now called by `StediTransport.fetchClaimStatus` (POST, platform key, no redirect, 30 s timeout; an NPI
+  that differs from the context is refused; 4xx/5xx map through the existing failure table). Tested against injected `fetch` fixtures only. **Nothing here is
+  sandbox-verified:** endpoint path, request/response field names and the 277 category-code mapping are as remembered, and `usage: test` is not known to select
+  vendor test mode on this endpoint.
+- direct-MAC: stays `CH_NOT_WIRED` (no 276 channel at the MAC portal; the repo's only parsers are 999 and 277CA). Contract-tested to refuse even with a full inquiry.
+
+## Still blocked / impossible without Stedi sandbox access
+
+1. Confirming the 276/277 endpoint path, field names and category-code mapping (`STEDI_TRANSPORT_CONTRACT` row `fetchClaimStatus` stays **U**); whether the test key
+   reaches vendor test mode there; how a payer "not found" is actually returned.
+2. A verified mapping from a 277 to an `AckEvent`: `latest` is always null, so an inquiry reports state but cannot apply an acknowledgment.
+3. Production wiring of `inquiries` (subscriber from M5's coverage seam, service dates from the claim) is deliberately left unwired until (1) is done; wiring it
+   earlier would send subscriber PHI to an unverified endpoint.
+4. Stedi `fetchAcknowledgments` itself is still `CH_NOT_WIRED`, so under a Stedi binding no held answer is produced by the pull today; the replay and routes are proven
+   against the in-memory transport.
+5. A `malformed` row cannot be replayed by design (it stores no body).
+
+## #824: worker liveness in readiness, and retention
+
+- Readiness (`createScheduleProbe`) now also requires a connected consumer per queue (BullMQ `getWorkers`, a CLIENT LIST by queue name);
+  a schedule with no worker is not ready, and this process' own "scheduled" flag no longer overrides the probe. It proves a worker is
+  connected, not that it makes progress (a wedged-but-connected worker still counts).
+- Retention is in-repo, not a VPS cron: `m41.quarantine-prune` (Sundays 03:17) deletes RESOLVED `commercial_ack_quarantine` rows 180 days
+  after `resolved_at`, per active org, bounded per tick. Migration 1286 grants the app role DELETE and refuses an unresolved delete.
+- Not pruned: `clearinghouse_interchange_number` (M23 memo; app role has no DELETE, and the memo must outlive any redelivery window). Revisit with its owner.

@@ -65,6 +65,15 @@ everything recorded here is the operator's word, and it is audited.
 - The screen shows no Medicare number (MBI) and accepts none: notes are capped and MBI-shaped text is refused;
   identity comes from the patient chart under its existing reveal controls
 - The NOE/NOTR window watch queues an item for a notice nearing its window, once per notice
+- **Provider send (ADR-0103, off unless a DDE provider is configured):** an extra "Send via provider" action and,
+  for an item sent that way, "Check provider". Each row carries a badge (Via provider, Keyed by hand, Mode not
+  recorded, Not sent) and the detail panel says whether the result is **Verified by the DDE provider** or **Attested
+  by the operator**. Refusals (not configured, not provisioned, unavailable, rejected) are plain language and always
+  leave manual keying available. A send whose response was lost is **in doubt**: sending again, checking, reopening
+  and cancelling are blocked until the operator verifies in DDE and records it by hand
+- A read-only provider status strip is shown to platform administrators only; it carries no credential
+- The drawer shows the hospice section of the latest Medicare eligibility check read-only; when the eligibility
+  adapter gives only a Part A active/inactive answer the card says so
 
 ## NOTR Manager
 

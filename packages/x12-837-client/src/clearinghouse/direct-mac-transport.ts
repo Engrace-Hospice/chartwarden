@@ -22,6 +22,7 @@ import {
   type AckEvent,
   CH,
   type ClaimStatus,
+  type ClaimStatusInquiry,
   type ClearinghouseContext,
   type ClearinghouseEligibilityRequest,
   type ClearinghouseEligibilityResult,
@@ -442,7 +443,9 @@ export class DirectMacTransport implements ClearinghouseTransport {
   fetchClaimStatus(
     _ctx: ClearinghouseContext,
     _controlNumber: string,
+    _inquiry?: ClaimStatusInquiry,
   ): Promise<X12WorkerResult<ClaimStatus>> {
+    // No inquiry exists on this path: the MAC portal has no 276 channel and this repo has no 277 (status) parser, only 999/277CA.
     return notImplemented("claim status");
   }
 

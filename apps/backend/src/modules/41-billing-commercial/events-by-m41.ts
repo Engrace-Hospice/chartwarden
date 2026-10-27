@@ -141,6 +141,23 @@ export const M41_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m41.claim.adjudicated",
+    moduleOwner: "m41",
+    description:
+      "A posted 835 line moved the claim to paid, partially_paid or denied (the M41 consumer of m25.remittance.claim_paid / claim_partial_paid / claim_denied). Ids and the outcome only; the money lives in M25.",
+    payloadSchema: Type.Object({
+      claimId: id,
+      remittanceAdviceId: id,
+      outcome: Type.Union([
+        Type.Literal("paid"),
+        Type.Literal("partially_paid"),
+        Type.Literal("denied"),
+      ]),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m41.claim.ack_abandoned",
     moduleOwner: "m41",
     description:
@@ -153,8 +170,10 @@ export const M41_OUTBOX_EVENTS: ModuleEventContribution = [
         Type.Literal("no_receipt"),
         Type.Literal("scope_mismatch"),
         Type.Literal("vendor_mismatch"),
+        Type.Literal("malformed"),
       ]),
       resolution: Type.Union([
+        Type.Literal("abandoned_operator"),
         Type.Literal("abandoned_no_submission"),
         Type.Literal("abandoned_scope_mismatch"),
         Type.Literal("abandoned_vendor_mismatch"),
@@ -169,6 +188,8 @@ export const M41_OUTBOX_EVENTS: ModuleEventContribution = [
         Type.Literal("no_answer"),
         Type.Literal("applied"),
       ]),
+      /** Present only for an operator-driven closure (`abandoned_operator`, `abandoned_foreign_vendor` via the route). */
+      operatorUserId: Type.Optional(id),
     }),
     declaredConsumers: [],
     isOutboxOnly: true,

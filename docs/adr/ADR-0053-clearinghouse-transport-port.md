@@ -200,9 +200,12 @@ receive-side yet, so there is no Stedi mapping to change.
 `SubmissionAttemptStore.allocateInterchangeNumber(org, scope, key, usage)` now returns a 9-digit number drawn from the
 same platform-wide per-usage sequences as `allocateControlNumber` and memoizes it per (tenant, scope, idempotency key)
 in `clearinghouse_interchange_number` (migration 1281). The memo commits on the store's own org-scoped connection, so a
-job that dies after the vendor took the file and is redelivered renders the identical ISA13 (ISA09/ISA10 still follow the
-render clock, so a raw-X12 vendor can see a changed payload under the same key: issue #836); a new attempt (new control
-number, new key) gets a new one. A key remembered under one usage refuses the other. With no attempt store bound, the
+job that dies after the vendor took the file and is redelivered renders the identical ISA13. The memo also carries the
+render clock (`rendered_at`, migration 1282, issue #836; existing rows took their `created_at`), which the worker passes
+to the writer as `createdAt`, so ISA09/ISA10, GS04/GS05 and BHT04/BHT05 are byte-identical on a redelivery and a raw-X12
+vendor (direct MAC, in-memory) sees the same payload hash instead of a payload conflict. The Stedi JSON carries no
+interchange or render timestamp (only service dates), so it was never affected. A new attempt (new control number, new
+key) gets a new number and clock. A key remembered under one usage refuses the other. With no attempt store bound, the
 claim attempt fails as `failed_worker`; there is no derived fallback. A number drawn for an attempt that then fails on
 loader gaps is spent (harmless in a 10^9 space).
 
@@ -222,3 +225,7 @@ check; they stay unverified (Q14, Q30) until a Stedi account is provisioned. M41
 2. Whether the Stedi account can submit claims at all in the sandbox (`ACCOUNT_NOT_PROVISIONED`) — Q14.
 3. Where the shared breaker/`DegradedError` kit lives once four packages stop carrying their own copies (plan A4).
 4. Second vendor go/no-go: conditional on G1-G5 in the 2026-10-24 amendment (#718, #719).
+
+## Amendment 2026-10-27 (#820): the claim-status inquiry carries its inputs
+
+`fetchClaimStatus(ctx, controlNumber, inquiry?)` now takes an optional `ClaimStatusInquiry` (billing provider, TRANSIENT subscriber block, service dates; the payer is `ctx.payerId`). A transport that needs more than the control number reads it from there and refuses `CH_INVALID_REQUEST` without one; a transport that cannot inquire answers `CH_NOT_WIRED` whatever is passed. Stedi now implements the call (276/277 JSON, `stedi-claim-status.ts`) and is **vendor-unverified**: endpoint path, field names and the category-code mapping are not sandbox-observed (contract row stays U). The direct-MAC transport stays `CH_NOT_WIRED`: the MAC portal has no 276 channel and the repo has no 277 (status) parser, only 999/277CA. Neither transport ever answers `not_found` for a payer "cannot locate", and the parser returns `latest: null`, so a status inquiry reports a state and applies no acknowledgment.

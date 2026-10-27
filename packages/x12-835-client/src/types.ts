@@ -48,6 +48,8 @@ export interface ParsedRemark {
 
 /** One SVC service-line sub-segment within a CLP. */
 export interface ParsedServiceLine {
+  /** SVC01-1 — the product/service id qualifier (HC = HCPCS, NU = revenue code, ...), as the payer sent it. Optional so hand-built lines still type. */
+  serviceIdQualifier?: string;
   /** SVC01 composite — the HCPCS / procedure code. */
   procedureCode?: string;
   /** SVC01 composite — the UB-04 revenue code, when the line is revenue-coded. */
@@ -196,5 +198,14 @@ export function degraded835<T>(
   operation: DegradedError["operation"],
   retryable: boolean,
 ): X12WorkerResult<T> {
-  return { ok: false, degraded: { code, reason, integration: operation === "parse835" ? "x12-835-parser" : "x12-worker", operation, retryable } };
+  return {
+    ok: false,
+    degraded: {
+      code,
+      reason,
+      integration: operation === "parse835" ? "x12-835-parser" : "x12-worker",
+      operation,
+      retryable,
+    },
+  };
 }

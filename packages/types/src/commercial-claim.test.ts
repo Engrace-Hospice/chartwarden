@@ -23,6 +23,12 @@ const SUBMISSION_MIGRATION = readFileSync(
   "utf8",
 );
 
+/** 1283 widens the claim state sets once more, with the adjudication states (#835): it is the migration the mirror must equal. */
+const ADJUDICATION_MIGRATION = readFileSync(
+  join(__dirname, "../../db/migrations/1283_m41_commercial_claim_adjudication_state.sql"),
+  "utf8",
+);
+
 /** The values of `"column" ... IN ('a','b',...)` for each occurrence of the column in the migration, as sorted unique lists. */
 function checkLists(column: string, source: string = MIGRATION): string[][] {
   const out: string[][] = [];
@@ -37,7 +43,7 @@ describe("M41 claim code-side mirrors", () => {
     const sorted = (xs: readonly string[]) => [...xs].sort();
     for (const list of checkLists("state")) expect(list).toEqual(["draft", "ready", "void"]);
     for (const column of ["state", "from_state", "to_state"]) {
-      const lists = checkLists(column, SUBMISSION_MIGRATION);
+      const lists = checkLists(column, ADJUDICATION_MIGRATION);
       expect(lists.length).toBeGreaterThan(0);
       for (const list of lists) expect(list).toEqual(sorted(COMMERCIAL_CLAIM_STATE_VALUES));
     }

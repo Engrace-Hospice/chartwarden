@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 // @chartwarden/x12-837-client — the Stedi ClearinghouseTransport, SUBMIT SIDE (ADR-0053; contract:
 // docs/audits/clearinghouse-integration/STEDI_TRANSPORT_CONTRACT_20261011.md).
 //
-// Implemented: submitClaim and submitNotice. Everything else answers CH_NOT_WIRED (fail closed) until its contract
+// Implemented: submitClaim and submitNotice, and fetchClaimStatus (276/277, vendor-UNVERIFIED, needs an inquiry; #820). Everything else answers CH_NOT_WIRED (fail closed) until its contract
 // rows are verified: validateOnly must never call a submission endpoint, acks/835/status/events need the receive-side
 // PR, eligibility the later one.
 //
@@ -24,12 +24,18 @@ import {
   type SubmissionAttempt,
   type SubmissionAttemptStore,
 } from "./attempt-store";
+import {
+  STEDI_CLAIM_STATUS_URL,
+  buildClaimStatusRequest,
+  parseClaimStatusResponse,
+} from "./stedi-claim-status";
 import { checkStediEdits } from "./stedi-edit-rules";
 import { identityOf, scopeKey } from "./submission-identity";
 import {
   type AckEvent,
   CH,
   type ClaimStatus,
+  type ClaimStatusInquiry,
   type ClearinghouseContext,
   type ClearinghouseEligibilityRequest,
   type ClearinghouseEligibilityResult,
@@ -597,13 +603,35 @@ export class StediTransport implements ClearinghouseTransport {
     return notImplemented("remittances");
   }
 
-  fetchClaimStatus(
-    _ctx: ClearinghouseContext,
-    _controlNumber: string,
+  async fetchClaimStatus(
+    ctx: ClearinghouseContext,
+    controlNumber: string,
+    inquiry?: ClaimStatusInquiry,
   ): Promise<X12WorkerResult<ClaimStatus>> {
-    // Deliberately unbound (#820): stedi-claim-status.ts holds an UNVERIFIED builder/parser, but the 276/277 contract is not
-    // sandbox-verified and the port cannot carry the subscriber/payer/dates the inquiry needs. Stays CH_NOT_WIRED.
-    return notImplemented("claim status");
+    // UNVERIFIED against a sandbox (contract row U, see stedi-claim-status.ts). Never answers `not_found`.
+    if (!inquiry) {
+      return refuse("claim status: an inquiry (subscriber, provider, service dates) is required");
+    }
+    if (ctx.billingNpi !== undefined && inquiry.billingProvider.npi !== ctx.billingNpi) {
+      return refuse("the billing provider NPI does not match the context");
+    }
+    const built = buildClaimStatusRequest({ ...inquiry, controlNumber, payerId: ctx.payerId });
+    if (!built.ok) return { ok: false, degraded: built.degraded };
+    let res: Response;
+    try {
+      res = await this.fetchImpl(STEDI_CLAIM_STATUS_URL, {
+        method: "POST",
+        headers: { Authorization: this.apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify(built.data),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        redirect: "error",
+      });
+    } catch {
+      return degraded(CH.UNAVAILABLE, "Stedi could not be reached");
+    }
+    const parsed = await readJson(res);
+    if (!res.ok) return failure(res.status, parsed);
+    return parseClaimStatusResponse(controlNumber, parsed);
   }
 
   verifyAndParseEvent(_webhook: RawWebhook): Promise<X12WorkerResult<ClearinghouseEvent>> {
