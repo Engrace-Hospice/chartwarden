@@ -2,7 +2,7 @@
 --
 -- The submit and retry workers render the interchange BEFORE the transport reserves its attempt row, so the number has to
 -- be fixed first and has to survive a redelivery: a job that dies after the vendor took the file (before its own
--- transaction commits) is delivered again, and it must render the identical interchange, or the transport sees a
+-- transaction commits) is delivered again, and it must render the identical ISA13, or the transport sees a
 -- different payload under the same idempotency key. The number comes from the platform-wide per-usage sequence that
 -- already backs `allocateControlNumber` (9 digits, never reused, no CYCLE), so two submissions never share one; this
 -- table only remembers which submission drew which. It replaces a 32-bit hash of the claim control number, which

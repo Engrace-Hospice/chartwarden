@@ -1,5 +1,5 @@
 // @chartwarden/db - M23 / ADR-0053 D4 (migration 1281): the interchange control number (ISA13) one submission was
-// rendered with, remembered under its idempotency key so a redelivered job renders the identical interchange. The number
+// rendered with, remembered under its idempotency key so a redelivered job renders the identical ISA13. The number
 // itself is drawn from the platform-wide per-usage sequence. Ours, not PHI. `usage` is text + CHECK.
 import { bigint, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";

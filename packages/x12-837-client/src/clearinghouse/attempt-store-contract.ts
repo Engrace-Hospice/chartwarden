@@ -335,7 +335,7 @@ export const ATTEMPT_STORE_CONTRACT: readonly AttemptStoreContractCase[] = [
   {
     id: "AS-13",
     title:
-      "allocateInterchangeNumber remembers one 9-digit platform-unique number per (tenant, scope, key), so a redelivered job renders the same interchange",
+      "allocateInterchangeNumber remembers one 9-digit platform-unique number per (tenant, scope, key), so a redelivered job renders the same ISA13",
     async run(make, ids) {
       const store = await make();
       const scope = `scope-${ids.orgA}`;

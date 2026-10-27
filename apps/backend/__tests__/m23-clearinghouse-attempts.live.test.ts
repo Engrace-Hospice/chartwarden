@@ -23,6 +23,7 @@ import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDrizzleAttemptStore } from "../src/modules/23-billing-medicare/clearinghouse-attempt-store";
+import { createDrizzleBillingEraseStore } from "../src/modules/23-billing-medicare/erasers/billing-eraser";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -87,7 +88,7 @@ describe.skipIf(!DB_URL)("M23 durable clearinghouse attempt store — LIVE Postg
   });
 
   beforeEach(async () => {
-    await admin.query("TRUNCATE clearinghouse_submission_attempt");
+    await admin.query("TRUNCATE clearinghouse_submission_attempt, clearinghouse_interchange_number");
   });
 
   afterAll(async () => {
@@ -198,6 +199,36 @@ describe.skipIf(!DB_URL)("M23 durable clearinghouse attempt store — LIVE Postg
     } finally {
       await admin.query("ROLLBACK");
     }
+  });
+
+  it("the real billing eraser deletes one org's interchange-number memos and only that org's (RESTRICT FK would otherwise block org erasure)", async () => {
+    const store = createDrizzleAttemptStore(handle.db);
+    await store.allocateInterchangeNumber(IDS.orgA, `scope-${IDS.orgA}`, "idem-1", "test");
+    await store.allocateInterchangeNumber(IDS.orgB, `scope-${IDS.orgB}`, "idem-1", "test");
+    await admin.query("ALTER ROLE chartwarden_destruction LOGIN PASSWORD 'destroy-live'");
+    const url = new URL(DB_URL as string);
+    url.username = "chartwarden_destruction";
+    url.password = "destroy-live";
+    const destruction = createDbClient({ connectionString: url.toString() });
+    try {
+      // The M4 destruction driver sets app.org_id before it calls the eraser; the destruction policy keys on it.
+      await withOrgContext(destruction.db, { organizationId: IDS.orgA, userId: "" }, async (tx) => {
+        await createDrizzleBillingEraseStore(
+          tx as unknown as typeof destruction.db,
+        ).eraseOrgBillingConfig({ organizationId: IDS.orgA });
+      });
+    } finally {
+      await destruction.close();
+    }
+    const left = async (org: string) =>
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM clearinghouse_interchange_number WHERE organization_id=$1",
+          [org],
+        )
+      ).rows[0].n;
+    expect(await left(IDS.orgA)).toBe(0);
+    expect(await left(IDS.orgB)).toBe(1);
   });
 
   it("records who resolved an attempt in the audit trail", async () => {

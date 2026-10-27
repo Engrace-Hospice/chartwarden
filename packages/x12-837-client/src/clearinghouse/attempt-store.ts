@@ -93,8 +93,9 @@ export interface SubmissionAttemptStore {
   /**
    * The interchange control number (ISA13) for one submission: 9 digits, platform-unique like
    * {@link allocateControlNumber}, and REMEMBERED under (tenant, scope, idempotency key). A job redelivered after the
-   * vendor took the file (before its own transaction committed) renders the identical interchange, so the transport
-   * replays it instead of seeing a different payload under the same key. The memo is durable and independent of the
+   * vendor took the file (before its own transaction committed) renders the identical ISA13. The interchange date and
+   * time (ISA09/ISA10) still follow the render clock, so a raw-X12 vendor can see a changed payload under the same key
+   * (issue #836). The memo is durable and independent of the
    * caller's transaction. A new submission (a new control number, so a new key) gets a new number.
    */
   allocateInterchangeNumber(
