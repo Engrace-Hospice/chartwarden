@@ -1,7 +1,9 @@
 // e2e/specs/ipu.spec.ts — critical workflow: move an inpatient admission into a bed (F-080, #91).
 //
 // #91's fifth acceptance criterion asks for one E2E spec per module driving the primary write path.
-// M37's is the §2.2 admission lifecycle: `pending -> bed_pending -> bed_assigned -> active`. An IPU
+// M37's is the §2.2 admission lifecycle as far as a browser can drive it: `pending -> bed_pending ->
+// bed_assigned`. The last step, to `active`, is M6's level-of-care-period acknowledgement (GAP-106), not
+// an RN action, so the spec ends at the read-only "Awaiting M6 LCP acknowledgement" status. An IPU
 // admission that cannot move is an admission that never happened — the bed is not reserved, the census
 // does not count the patient, and M23 generates no per-diem line for the stay.
 //
@@ -36,13 +38,13 @@
 // verify routes are mounted (F-029), but the factor they require can never be enrolled: the web app
 // ships a passkey-enrolment screen and NO TOTP-enrolment surface, and no seeded persona has either.
 // So the criterion is attested in the seed, by the physician, at admission — which is where CoP 418.108
-// puts it anyway ("documented at admission with hospice MD attestation") — and `confirm` here acts on
-// an admission whose criterion already exists, exactly as a real one would. The same gate is what keeps
-// M8 encounter signing and M14 IDG adjourn out of this suite.
+// puts it anyway ("documented at admission with hospice MD attestation") — so the criterion already
+// exists when M6's acknowledgement later activates the admission, exactly as a real one would. The
+// same gate is what keeps M8 encounter signing and M14 IDG adjourn out of this suite.
 //
 // THIS SPEC CONSUMES ITS SEED, like `orders.spec.ts` and `evv.spec.ts`: it moves the one seeded GIP
-// admission to `bed_assigned`, so a second run finds no `pending` row and fails at the first assertion rather
-// than passing vacuously. CI reseeds before the suite; locally re-run `bun run db:seed:scenario-remaining`
+// admission to `bed_assigned`, so a second run finds no `pending` row and fails at the first assertion
+// rather than passing vacuously. CI reseeds before the suite; locally re-run `bun run db:seed:scenario-remaining`
 // between runs. It is not made self-supplying because opening an IPU admission needs an M6 level-of-care
 // period in `assigning`, which is a whole admission lifecycle upstream of this screen.
 //

@@ -63,6 +63,7 @@ async function waitForTransitionsToSettle(page: Page): Promise<void> {
     await Promise.all(
       document
         .getAnimations()
+        // A null `effect` gives `undefined !== Infinity`, so it is still awaited — and resolves normally.
         .filter(
           (animation) => animation.effect?.getTiming().iterations !== Number.POSITIVE_INFINITY,
         )
