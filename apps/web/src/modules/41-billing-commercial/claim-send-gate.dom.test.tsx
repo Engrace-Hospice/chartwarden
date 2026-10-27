@@ -52,6 +52,13 @@ describe("CommercialClaimSendGate", () => {
     expect(screen.queryByRole("list", { name: "Reasons the claim cannot be sent" })).toBeNull();
   });
 
+  it("never shows a bare empty list when a blocked claim comes back with no reasons", async () => {
+    mount({ [GATE]: () => ({ body: gate({ reasons: [] }) }) });
+    expect(await screen.findByText(/no reason was returned/)).toBeTruthy();
+    expect(screen.queryByRole("list", { name: "Reasons the claim cannot be sent" })).toBeNull();
+    expect(screen.queryByText("Ready to send")).toBeNull();
+  });
+
   it("shows a retryable error, never an empty pass", async () => {
     let n = 0;
     mount({ [GATE]: () => (++n === 1 ? { status: 500, body: {} } : { body: gate() }) });

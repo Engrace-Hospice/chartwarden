@@ -89,7 +89,7 @@ export function CommercialClaimTimeline(): JSX.Element {
                 <caption className="wx-sr-only">Claim history</caption>
                 <thead>
                   <tr>
-                    <th scope="col">When</th>
+                    <th scope="col">When (UTC)</th>
                     <th scope="col">Event</th>
                     <th scope="col">What happened</th>
                     <th scope="col">Status</th>

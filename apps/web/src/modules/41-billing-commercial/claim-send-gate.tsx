@@ -44,6 +44,10 @@ export function CommercialClaimSendGate(): JSX.Element {
             <InlineAlert tone="success">
               No reason blocks this claim. Sending needs the submit permission and a fresh step-up.
             </InlineAlert>
+          ) : gate.reasons.length === 0 ? (
+            <InlineAlert tone="warning">
+              The claim cannot be sent, but no reason was returned. Reload to try again.
+            </InlineAlert>
           ) : (
             <ul className="wx-checklist" aria-label="Reasons the claim cannot be sent">
               {gate.reasons.map((r) => (

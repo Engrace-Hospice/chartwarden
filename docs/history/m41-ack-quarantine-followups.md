@@ -17,7 +17,7 @@ what could be closed without a vendor sandbox.
   - `abandonForeignHeldEvents(deps, orgId)` is the explicit operator call: it closes, now, the org's rows belonging to another vendor's stream
     than the current binding (`abandoned_foreign_vendor`, one audited event each). It does nothing while unbound (that may be a config
     blip; the 45-day age sweep still applies). Org-scoped through `inOrg` plus an explicit filter; idempotent; bounded per call. There is
-    deliberately no HTTP route yet: exported for an operator script or a later admin route.
+    deliberately no HTTP route yet: exported for an operator script or a later admin route (it needs `requirePermission` + `requireStepUp`). Until it is called, foreign rows leave through the audited 45-day age sweep, so `abandoned_foreign_vendor` occurs only on an explicit call.
 - **Stedi 276/277.** `packages/x12-837-client/src/clearinghouse/stedi-claim-status.ts` holds a request builder and response parser with
   fixture-style tests. It is **unbound and unverified**.
 
