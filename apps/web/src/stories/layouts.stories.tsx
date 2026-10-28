@@ -35,7 +35,7 @@ export const WorkQueue: StoryObj = {
   render: () => (
     <Frame>
       <WorkQueueLayout
-        header={<PageHeader title="Cosignature Queue" breadcrumb="Clinical · Encounters" />}
+        header={<PageHeader title="Cosignature Queue" />}
         kpis={
           <KpiStrip>
             <KpiCard label="Awaiting cosign" value="18" />

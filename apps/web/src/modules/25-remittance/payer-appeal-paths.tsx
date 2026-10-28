@@ -432,7 +432,7 @@ export function PayerAppealPaths(): JSX.Element {
 
   return (
     <>
-      <PageHeader title="Payer Appeal Paths" breadcrumb="Revenue Cycle — Payer Appeal Paths">
+      <PageHeader title="Payer Appeal Paths">
         <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
           The appeal levels for each commercial or Medicare Advantage payer, as your contract or the
           payer's notice states them. Nothing is built in. This is not legal advice.

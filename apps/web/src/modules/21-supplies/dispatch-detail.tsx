@@ -141,7 +141,6 @@ export function ComfortKitDispatchDetail(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Comfort kit {dispatch.kitSerialNumber}</span>}
-        breadcrumb="Supplies — comfort-kit dispatch"
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             <Link to={`/supplies/requests/${dispatch.supplyRequestId}`} style={ghostButtonStyle}>

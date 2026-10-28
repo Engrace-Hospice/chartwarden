@@ -166,7 +166,6 @@ export function IncidentNewScreen(): JSX.Element {
       header={
         <PageHeader
           title="Report a Safety Incident"
-          breadcrumb="Field safety / Incidents"
           actions={
             <Link to="/safety/incidents" style={linkButtonStyle}>
               Back to ledger

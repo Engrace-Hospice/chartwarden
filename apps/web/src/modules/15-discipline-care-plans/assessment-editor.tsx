@@ -235,7 +235,6 @@ export function AssessmentEditor(): JSX.Element {
             {creating ? "Capture assessment" : assessmentKindLabel(assessment?.kind)}
           </span>
         }
-        breadcrumb="Clinical — discipline assessment"
         actions={
           <Link to={`/patients/${patientId}/discipline-plans/msw-plan`} style={ghostButtonStyle}>
             Back to plan

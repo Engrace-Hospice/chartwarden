@@ -115,7 +115,7 @@ export function PortalAdmin(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Portal access" breadcrumb="Admin / Patient and family portal">
+        <PageHeader title="Portal access">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review family and caregiver portal accounts. Suspending an account stops its portal
             access at once; reinstating restores it.

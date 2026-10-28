@@ -172,7 +172,6 @@ export function EscalationInboxScreen(): JSX.Element {
         header={
           <PageHeader
             title="Escalation inbox"
-            breadcrumb="On-call / Escalations"
             actions={
               <Link to="/triage" style={linkButtonStyle}>
                 Triage queue

@@ -161,10 +161,7 @@ export function MedicaidRuleConfig(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader
-          title="Validation Rules"
-          breadcrumb="Billing — Medicaid · per-tenant rule overlay"
-        >
+        <PageHeader title="Validation Rules">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review the active validation floor, tenant overrides, regulatory locks, and audited
             toggles.

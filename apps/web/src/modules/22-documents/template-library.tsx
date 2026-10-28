@@ -85,7 +85,6 @@ export function TemplateLibrary(): JSX.Element {
       header={
         <PageHeader
           title="Form Templates"
-          breadcrumb="Admin / Forms"
           actions={
             <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
               Refresh

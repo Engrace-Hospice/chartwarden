@@ -1,14 +1,16 @@
 import {
   Button,
   EmptyState,
+  Glyph,
+  KpiCard,
   LoadingSpinner,
   Modal,
-  PageHeader,
   StatusPill,
+  formatDateOnly,
   humanizeIdentifier,
   useApiClient,
 } from "@chartwarden/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
 import { MembershipLookupField } from "../../shell/entity-lookups";
@@ -56,6 +58,8 @@ export function ClinicianCredentials(): JSX.Element {
   const [rows, setRows] = useState<Credential[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [revoke, setRevoke] = useState<Credential | null>(null);
@@ -65,248 +69,314 @@ export function ClinicianCredentials(): JSX.Element {
   const [issuingBody, setIssuingBody] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  const loadRequest = useRef(0);
   useEffect(() => {
     const membership = params.get("membership");
     if (membership) setMembershipId(membership);
   }, [params]);
   const load = useCallback(async () => {
+    const request = ++loadRequest.current;
     if (!membershipId) {
       setRows([]);
+      setError(null);
+      setLoading(false);
       return;
     }
     setLoading(true);
     setError(null);
-    const res = await api(client).GET("/api/v1/memberships/{membershipId}/credentials", {
-      params: { path: { membershipId } },
-    });
-    setLoading(false);
-    if (res.error) {
-      setError("Credentials could not be loaded.");
-      return;
+    try {
+      const res = await api(client).GET("/api/v1/memberships/{membershipId}/credentials", {
+        params: { path: { membershipId } },
+      });
+      if (request !== loadRequest.current) return;
+      if (res.error) {
+        setError("Credentials could not be loaded.");
+        return;
+      }
+      setRows((res.data ?? []) as Credential[]);
+    } catch {
+      if (request === loadRequest.current) setError("Credentials could not be loaded.");
+    } finally {
+      if (request === loadRequest.current) setLoading(false);
     }
-    setRows((res.data ?? []) as Credential[]);
   }, [client, membershipId]);
   useEffect(() => {
     void load();
   }, [load]);
   const save = async () => {
     if (expiresAt && expiresAt < effectiveAt) {
-      setError("Expiration date must be on or after the effective date.");
+      setFormError("Expiration date must be on or after the effective date.");
       return;
     }
+    setFormError(null);
     setBusy(true);
-    const res = await api(client).POST("/api/v1/memberships/{membershipId}/credentials", {
-      params: { path: { membershipId } },
-      body: {
-        credentialType: type,
-        effectiveAt,
-        ...(expiresAt ? { expiresAt } : {}),
-        ...(issuingBody.trim() ? { issuingBody: issuingBody.trim() } : {}),
-      },
-    });
-    setBusy(false);
-    if (res.error) {
-      setError("Credential could not be added. Review the details and try again.");
-      return;
+    try {
+      const res = await api(client).POST("/api/v1/memberships/{membershipId}/credentials", {
+        params: { path: { membershipId } },
+        body: {
+          credentialType: type,
+          effectiveAt,
+          ...(expiresAt ? { expiresAt } : {}),
+          ...(issuingBody.trim() ? { issuingBody: issuingBody.trim() } : {}),
+        },
+      });
+      if (res.error) {
+        setFormError("Credential could not be added. Review the details and try again.");
+        return;
+      }
+      setAddOpen(false);
+      setNotice("Credential added.");
+      await load();
+    } catch {
+      setFormError("Credential could not be added. Review the details and try again.");
+    } finally {
+      setBusy(false);
     }
-    setAddOpen(false);
-    setNotice("Credential added.");
-    await load();
   };
   const confirmRevoke = async () => {
     if (!revoke || reason.trim().length < 3) return;
+    setRevokeError(null);
     setBusy(true);
-    const res = await api(client).DELETE(
-      "/api/v1/memberships/{membershipId}/credentials/{credentialId}",
-      {
-        params: { path: { membershipId, credentialId: revoke.id } },
-        body: { reason: reason.trim() },
-      },
-    );
-    setBusy(false);
-    if (res.error) {
-      setError("Credential could not be revoked. Please try again.");
-      return;
+    try {
+      const res = await api(client).DELETE(
+        "/api/v1/memberships/{membershipId}/credentials/{credentialId}",
+        {
+          params: { path: { membershipId, credentialId: revoke.id } },
+          body: { reason: reason.trim() },
+        },
+      );
+      if (res.error) {
+        setRevokeError("Credential could not be revoked. Please try again.");
+        return;
+      }
+      setRevoke(null);
+      setNotice("Credential revoked.");
+      await load();
+    } catch {
+      setRevokeError("Credential could not be revoked. Please try again.");
+    } finally {
+      setBusy(false);
     }
-    setRevoke(null);
-    setNotice("Credential revoked.");
-    await load();
   };
+  const activeRows = rows.filter((row) => row.status === "active" && !row.revokedAt);
+  const today = new Date().toISOString().slice(0, 10);
+  const withinThirtyDays = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+  const expiringSoon = activeRows.filter(
+    (row) => row.expiresAt && row.expiresAt >= today && row.expiresAt <= withinThirtyDays,
+  ).length;
+  const revokedCount = rows.filter((row) => row.revokedAt).length;
   return (
-    <div style={{ maxWidth: "72rem", margin: "0 auto", padding: "1.5rem" }}>
-      <PageHeader title="Clinician Credentials" breadcrumb="Scheduling">
-        <p
-          style={{
-            margin: "0.25rem 0",
-            color: "var(--color-on-surface-variant)",
-          }}
-        >
-          Manage clinical licenses and certifications used when scheduling visits.
-        </p>
-      </PageHeader>
-      <div style={{ maxWidth: "32rem", margin: "1.25rem 0" }}>
-        <MembershipLookupField
-          label="Clinician"
-          value={membershipId}
-          valueLabel={memberLabel}
-          onChange={(id, option) => {
-            setMembershipId(id);
-            setMemberLabel(option?.searchLabel ?? "");
-            setNotice(null);
-          }}
-        />
-      </div>
+    <div className="wx-work-page wx-credential-page">
+      <header className="wx-page-head">
+        <div>
+          <h1>Clinician credentials</h1>
+          <p>Review licenses and certifications used to verify scheduling eligibility.</p>
+        </div>
+      </header>
+
+      <section className="wx-form-section" aria-label="Choose a clinician">
+        <div className="wx-form-section-head">
+          <span className="wx-form-section-icon" aria-hidden>
+            <Glyph name="users" size={20} />
+          </span>
+          <div>
+            <h2>Choose a clinician</h2>
+            <p>Search by name or email to view the current credential record.</p>
+          </div>
+        </div>
+        <div style={{ maxWidth: "32rem" }}>
+          <MembershipLookupField
+            label="Clinician"
+            value={membershipId}
+            valueLabel={memberLabel}
+            onChange={(id, option) => {
+              setMembershipId(id);
+              setMemberLabel(option?.searchLabel ?? "");
+              setNotice(null);
+              setError(null);
+            }}
+          />
+        </div>
+      </section>
+
       {notice ? (
-        <output
-          style={{
-            color: "var(--color-success)",
-            display: "block",
-            marginBottom: "1rem",
-          }}
-        >
+        <output className="wx-work-notice">
+          <Glyph name="check-circle" size={18} />
           {notice}
         </output>
       ) : null}
       {error ? (
-        <p role="alert" style={{ color: "var(--color-error)" }}>
-          {error}
-        </p>
+        <div className="wx-form-alert" role="alert">
+          <Glyph name="alert-circle" size={18} />
+          <p>{error}</p>
+          {membershipId ? (
+            <Button tone="secondary" size="sm" onClick={() => void load()}>
+              Try again
+            </Button>
+          ) : null}
+        </div>
       ) : null}
+
       {!membershipId ? (
-        <EmptyState
-          title="Select a clinician"
-          description="Choose a staff member to view their clinical credentials."
-        />
+        <div className="wx-list-state">
+          <EmptyState
+            title="Select a clinician"
+            description="Choose a staff member to view their clinical credentials."
+          />
+        </div>
       ) : loading ? (
         <LoadingSpinner />
-      ) : (
-        <section
-          style={{
-            border: "1px solid var(--color-outline-variant)",
-            borderRadius: "0.75rem",
-            padding: "1.25rem",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: "1rem",
-              alignItems: "center",
-            }}
-          >
-            <div>
-              <h2 style={{ margin: 0 }}>Clinical credentials</h2>
-              <p
-                style={{
-                  margin: ".3rem 0",
-                  color: "var(--color-on-surface-variant)",
-                }}
-              >
-                {memberLabel || "Selected clinician"}
-              </p>
-            </div>
-            {canGrant ? (
-              <Button
-                onClick={() => {
-                  setError(null);
-                  setAddOpen(true);
-                }}
-              >
-                Add credential
-              </Button>
-            ) : null}
-          </div>
-          {rows.length === 0 ? (
-            <EmptyState
-              title="No credentials recorded"
-              description="This clinician cannot be scheduled for credentialed visits until an active credential is recorded."
+      ) : error ? null : (
+        <>
+          <div className="wx-work-summary" aria-label="Credential overview">
+            <KpiCard
+              icon="check-circle"
+              tone="success"
+              label="Active"
+              value={activeRows.length}
+              detail="Current credentials"
             />
-          ) : (
-            <div style={{ display: "grid", gap: ".75rem", marginTop: "1rem" }}>
-              {rows.map((row) => (
-                <article
-                  key={row.id}
-                  style={{
-                    padding: "1rem",
-                    border: "1px solid var(--color-outline-variant)",
-                    borderRadius: ".5rem",
+            <KpiCard
+              icon="clock"
+              tone="warning"
+              label="Expiring soon"
+              value={expiringSoon}
+              detail="Within 30 days"
+            />
+            <KpiCard
+              icon="x-circle"
+              label="Revoked"
+              value={revokedCount}
+              detail="Historical records"
+            />
+          </div>
+          <section className="wx-form-section" aria-labelledby="credential-list-heading">
+            <div className="wx-work-panel-head">
+              <div className="wx-form-section-head" style={{ marginBottom: 0 }}>
+                <span className="wx-form-section-icon" aria-hidden>
+                  <Glyph name="file-check" size={20} />
+                </span>
+                <div>
+                  <h2 id="credential-list-heading">Credential record</h2>
+                  <p>
+                    {memberLabel || "Selected clinician"} · {rows.length} recorded
+                  </p>
+                </div>
+              </div>
+              {canGrant ? (
+                <Button
+                  onClick={() => {
+                    setFormError(null);
+                    setAddOpen(true);
                   }}
                 >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: "1rem",
-                    }}
-                  >
-                    <div>
-                      <strong>{label(row.credentialType)}</strong>
-                      <p
-                        style={{
-                          margin: ".35rem 0",
-                          color: "var(--color-on-surface-variant)",
-                        }}
-                      >
-                        {row.issuingBody || "Issuing authority not recorded"}
-                      </p>
-                      <small>
-                        Effective {row.effectiveAt}
-                        {row.expiresAt
-                          ? ` · Expires ${row.expiresAt}`
-                          : " · No expiration recorded"}
-                      </small>
-                      {row.revokedReason ? (
-                        <small style={{ display: "block" }}>
-                          Revocation reason: {row.revokedReason}
-                        </small>
-                      ) : null}
-                    </div>
-                    <div
-                      style={{
-                        display: "grid",
-                        justifyItems: "end",
-                        gap: ".5rem",
-                      }}
-                    >
-                      <StatusPill
-                        label={row.revokedAt ? "Revoked" : humanizeIdentifier(row.status)}
-                        tone={row.status === "active" && !row.revokedAt ? "success" : "neutral"}
-                      />
-                      {canRevoke && !row.revokedAt ? (
-                        <Button
-                          size="sm"
-                          tone="danger"
-                          onClick={() => {
-                            setReason("");
-                            setRevoke(row);
-                          }}
-                        >
-                          Revoke credential
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
-                </article>
-              ))}
+                  <Glyph name="plus" size={16} />
+                  Add credential
+                </Button>
+              ) : null}
             </div>
-          )}
-        </section>
+            {rows.length === 0 ? (
+              <div className="wx-list-state" style={{ marginTop: "1.25rem" }}>
+                <EmptyState
+                  title="No credentials recorded"
+                  description="Add a current credential before assigning visits that require one."
+                />
+              </div>
+            ) : (
+              <div className="wx-list-table-wrap" style={{ marginTop: "1.25rem" }}>
+                <table className="wx-list-table wx-list-table-static wx-credential-table">
+                  <caption className="wx-sr-only">
+                    Clinical credentials for {memberLabel || "selected clinician"}
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Credential</th>
+                      <th scope="col">Effective</th>
+                      <th scope="col">Expires</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">
+                        <span className="wx-sr-only">Actions</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => (
+                      <tr key={row.id}>
+                        <td>
+                          <strong className="wx-row-title">{label(row.credentialType)}</strong>
+                          <span className="wx-row-sub">
+                            {row.issuingBody || "Issuing authority not recorded"}
+                          </span>
+                          {row.revokedReason ? (
+                            <span className="wx-row-sub">Reason: {row.revokedReason}</span>
+                          ) : null}
+                        </td>
+                        <td className="wx-nums">{formatDateOnly(row.effectiveAt)}</td>
+                        <td className="wx-nums">
+                          {row.expiresAt ? formatDateOnly(row.expiresAt) : "No expiration"}
+                        </td>
+                        <td>
+                          <StatusPill
+                            label={row.revokedAt ? "Revoked" : humanizeIdentifier(row.status)}
+                            tone={row.status === "active" && !row.revokedAt ? "success" : "neutral"}
+                          />
+                        </td>
+                        <td className="wx-cell-end">
+                          {canRevoke && !row.revokedAt ? (
+                            <Button
+                              size="sm"
+                              tone="tertiary"
+                              onClick={() => {
+                                setReason("");
+                                setRevokeError(null);
+                                setRevoke(row);
+                              }}
+                            >
+                              Revoke
+                            </Button>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </>
       )}
+
       <Modal
         open={addOpen}
         onClose={busy ? undefined : () => setAddOpen(false)}
         ariaLabel="Add clinical credential"
         width="30rem"
       >
-        <div style={{ padding: "1.25rem", display: "grid", gap: ".85rem" }}>
-          <h2 style={{ margin: 0 }}>Add clinical credential</h2>
-          <label>
-            Credential type *
+        <div className="wx-modal-body">
+          <div className="wx-form-section-head" style={{ marginBottom: 0 }}>
+            <span className="wx-form-section-icon" aria-hidden>
+              <Glyph name="file-check" size={20} />
+            </span>
+            <div>
+              <h2>Add clinical credential</h2>
+              <p>Dates and issuing authority are saved to the clinician's record.</p>
+            </div>
+          </div>
+          {formError ? (
+            <div className="wx-form-alert" role="alert">
+              <Glyph name="alert-circle" size={18} />
+              <p>{formError}</p>
+            </div>
+          ) : null}
+          <div className="wx-form-field">
+            <label htmlFor="credential-type">Credential type</label>
             <select
+              id="credential-type"
               value={type}
-              onChange={(e) => setType(e.target.value)}
-              style={{ display: "block", width: "100%" }}
+              onChange={(event) => {
+                setType(event.target.value);
+                setFormError(null);
+              }}
             >
               {Object.entries(TYPES).map(([value, text]) => (
                 <option key={value} value={value}>
@@ -314,79 +384,100 @@ export function ClinicianCredentials(): JSX.Element {
                 </option>
               ))}
             </select>
-          </label>
-          <label>
-            Issuing authority
+          </div>
+          <div className="wx-form-field">
+            <label htmlFor="credential-issuer">Issuing authority</label>
             <input
+              id="credential-issuer"
               value={issuingBody}
-              onChange={(e) => setIssuingBody(e.target.value)}
-              style={{ display: "block", width: "100%" }}
+              onChange={(event) => {
+                setIssuingBody(event.target.value);
+                setFormError(null);
+              }}
+              placeholder="State board or certifying organization"
             />
-          </label>
-          <label>
-            Effective date *
-            <input
-              type="date"
-              value={effectiveAt}
-              onChange={(e) => setEffectiveAt(e.target.value)}
-              style={{ display: "block", width: "100%" }}
-            />
-          </label>
-          <label>
-            Expiration date
-            <input
-              type="date"
-              min={effectiveAt}
-              value={expiresAt}
-              onChange={(e) => setExpiresAt(e.target.value)}
-              style={{ display: "block", width: "100%" }}
-            />
-          </label>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: ".5rem",
-            }}
-          >
+          </div>
+          <div className="wx-form-grid">
+            <div className="wx-form-field">
+              <label htmlFor="credential-effective">Effective date</label>
+              <input
+                id="credential-effective"
+                type="date"
+                value={effectiveAt}
+                onChange={(event) => {
+                  setEffectiveAt(event.target.value);
+                  setFormError(null);
+                }}
+                required
+              />
+            </div>
+            <div className="wx-form-field">
+              <label htmlFor="credential-expires">Expiration date</label>
+              <input
+                id="credential-expires"
+                type="date"
+                min={effectiveAt}
+                value={expiresAt}
+                onChange={(event) => {
+                  setExpiresAt(event.target.value);
+                  setFormError(null);
+                }}
+                aria-invalid={Boolean(expiresAt && expiresAt < effectiveAt)}
+              />
+              <span className="wx-form-hint">Leave blank if the credential does not expire.</span>
+            </div>
+          </div>
+          <div className="wx-modal-actions">
             <Button tone="tertiary" onClick={() => setAddOpen(false)} disabled={busy}>
               Cancel
             </Button>
             <Button disabled={busy || !effectiveAt} onClick={() => void save()}>
+              <Glyph name="plus" size={16} />
               {busy ? "Saving…" : "Add credential"}
             </Button>
           </div>
         </div>
       </Modal>
+
       <Modal
         open={revoke !== null}
         onClose={busy ? undefined : () => setRevoke(null)}
         ariaLabel="Revoke clinical credential"
         width="30rem"
       >
-        <div style={{ padding: "1.25rem", display: "grid", gap: ".85rem" }}>
-          <h2 style={{ margin: 0 }}>Revoke this clinical credential?</h2>
-          <p style={{ margin: 0 }}>
-            This clinician will no longer be considered clinically credentialed under this license.
-            This may prevent future visit assignments that require it.
-          </p>
-          <label>
-            Reason *
+        <div className="wx-modal-body">
+          <div className="wx-form-section-head" style={{ marginBottom: 0 }}>
+            <span className="wx-form-section-icon" aria-hidden>
+              <Glyph name="alert-circle" size={20} />
+            </span>
+            <div>
+              <h2>Revoke credential?</h2>
+              <p>This clinician may no longer qualify for visits requiring this credential.</p>
+            </div>
+          </div>
+          {revokeError ? (
+            <div className="wx-form-alert" role="alert">
+              <Glyph name="alert-circle" size={18} />
+              <p>{revokeError}</p>
+            </div>
+          ) : null}
+          <div className="wx-form-field">
+            <label htmlFor="credential-revoke-reason">Reason for revocation</label>
             <textarea
+              id="credential-revoke-reason"
               value={reason}
-              onChange={(e) => setReason(e.target.value)}
+              onChange={(event) => {
+                setReason(event.target.value);
+                setRevokeError(null);
+              }}
               minLength={3}
               rows={3}
-              style={{ display: "block", width: "100%" }}
+              placeholder="Document why this credential is being revoked"
+              aria-invalid={reason.length > 0 && reason.trim().length < 3}
             />
-          </label>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: ".5rem",
-            }}
-          >
+            <span className="wx-form-hint">At least 3 characters are required.</span>
+          </div>
+          <div className="wx-modal-actions">
             <Button tone="tertiary" onClick={() => setRevoke(null)} disabled={busy}>
               Cancel
             </Button>

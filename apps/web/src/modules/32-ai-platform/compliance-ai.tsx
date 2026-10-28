@@ -166,7 +166,7 @@ export function ComplianceAiView(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="AI compliance" breadcrumb="Compliance / AI">
+        <PageHeader title="AI compliance">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review masked AI invocation disclosures, tenant opt-ins, and hallucination reports.
           </div>

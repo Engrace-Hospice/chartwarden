@@ -108,7 +108,7 @@ export function CapEvents(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-          <PageHeader title="Threshold Events" breadcrumb="Revenue Cycle — cap band transitions">
+          <PageHeader title="Threshold Events">
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Review cap band transitions that need acknowledgement and follow-up.
             </div>

@@ -160,7 +160,6 @@ export function BereavementIntakeQueue(): JSX.Element {
         header={
           <PageHeader
             title="Bereavement intake"
-            breadcrumb="Bereavement / Eligible"
             actions={
               <Link to="/bereavement/supervisor" style={ghostButtonStyle}>
                 Program rollups

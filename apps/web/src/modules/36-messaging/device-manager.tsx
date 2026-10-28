@@ -57,7 +57,7 @@ export function DeviceManager({
 
   return (
     <>
-      <PageHeader title={DEVICES_TITLE} breadcrumb={DEVICES_BREADCRUMB}>
+      <PageHeader title={DEVICES_TITLE}>
         <p className="wx-device-detail">{DEVICES_NOTICE}</p>
       </PageHeader>
       <section className="wx-devices" aria-labelledby={`${confirmId}-heading`}>

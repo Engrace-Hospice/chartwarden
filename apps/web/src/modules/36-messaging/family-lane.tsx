@@ -51,7 +51,7 @@ export function FamilyLane(): JSX.Element {
 
   return (
     <>
-      <PageHeader title={ft("family.lane.title")} breadcrumb={ft("family.lane.breadcrumb")}>
+      <PageHeader title={ft("family.lane.title")}>
         <p className="wx-export-detail">{ft("family.lane.intro")}</p>
         {canManage ? (
           <div className="wx-export-actions">

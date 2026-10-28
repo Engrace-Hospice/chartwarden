@@ -116,6 +116,20 @@ function bodyFor(method: string, path: string): unknown {
   if (path === "/api/v1/documents") return { items: [documentRow], nextCursor: null };
   if (path.endsWith("/versions")) return { items: [versionRow], nextCursor: null };
   if (path.startsWith("/api/v1/documents/")) return documentRow;
+  if (path === "/api/v1/patients")
+    return {
+      items: [
+        {
+          id: PATIENT,
+          mrn: "MRN-1",
+          lastName: "Vance",
+          firstName: "Ada",
+          dob: "1948-03-02",
+          status: "active",
+        },
+      ],
+      nextCursor: null,
+    };
   if (path.startsWith("/api/v1/patients/"))
     return {
       mrn: "MRN-1",
@@ -243,6 +257,34 @@ afterEach(() => {
 });
 
 describe("#91 — the staff app can upload a document", () => {
+  it("selects a patient before upload and files the document in that patient's context", async () => {
+    mount("/documents", "/documents", <DocumentExplorer />);
+    fireEvent.click(screen.getByRole("button", { name: "Upload to a Patient" }));
+    const chooser = screen.getByRole("dialog", { name: "Choose a patient for document upload" });
+    const continueButton = within(chooser).getByRole("button", { name: "Continue to upload" });
+    expect((continueButton as HTMLButtonElement).disabled).toBe(true);
+    expect(writes()).toEqual([]);
+
+    fireEvent.change(within(chooser).getByRole("combobox", { name: /Patient/ }), {
+      target: { value: "Ada" },
+    });
+    fireEvent.click(await within(chooser).findByRole("option", { name: /Vance, Ada/ }));
+    expect((continueButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(continueButton);
+
+    const upload = screen.getByRole("dialog", { name: "Upload a document" });
+    expect(within(upload).getByText(/Patient: Vance, Ada/)).toBeTruthy();
+    choose(pdf());
+    fireEvent.click(within(upload).getByRole("button", { name: "Upload" }));
+    await waitFor(() =>
+      expect(writes()).toContain(`POST /api/v1/document-uploads/${UPLOAD}/complete`),
+    );
+    expect((bodies[0] as Record<string, unknown>).patientId).toBe(PATIENT);
+    expect(
+      (await screen.findByRole("link", { name: "View patient documents" })).getAttribute("href"),
+    ).toBe(`/patients/${PATIENT}/documents`);
+  });
+
   it("Upload document runs the full verified ceremony: reserve → store → commit", async () => {
     mount("/documents", "/documents", <DocumentExplorer />);
     await waitFor(() =>

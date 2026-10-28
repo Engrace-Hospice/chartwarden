@@ -123,7 +123,6 @@ export function ClinicianAiPreferences(): JSX.Element {
       header={
         <PageHeader
           title="AI assistance preferences"
-          breadcrumb="My profile / AI"
           actions={
             <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
               Refresh

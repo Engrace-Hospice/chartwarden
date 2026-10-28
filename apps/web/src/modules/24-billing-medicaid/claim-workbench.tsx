@@ -229,7 +229,6 @@ export function MedicaidClaimWorkbench(): JSX.Element {
       header={
         <PageHeader
           title="Medicaid Claims"
-          breadcrumb="Billing / Medicaid / Claim workbench"
           actions={
             <>
               <a href="/medicaid/billing/ar-dashboard" style={linkButtonStyle}>

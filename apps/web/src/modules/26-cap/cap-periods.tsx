@@ -106,7 +106,7 @@ export function CapPeriods(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-          <PageHeader title="Cap Periods" breadcrumb="Revenue Cycle — cap-year lifecycle">
+          <PageHeader title="Cap Periods">
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Review current and historical cap periods, methodology state, grace windows, and caps.
             </div>

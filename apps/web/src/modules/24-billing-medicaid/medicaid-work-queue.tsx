@@ -142,7 +142,6 @@ export function MedicaidWorkQueue(): JSX.Element {
       header={
         <PageHeader
           title="Medicaid Work Queue"
-          breadcrumb="Billing — Medicaid"
           actions={
             <Link to="/medicaid/billing/claims/new" style={ghostLinkStyle}>
               Assemble claim

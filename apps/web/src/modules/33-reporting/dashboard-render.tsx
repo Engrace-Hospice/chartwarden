@@ -100,12 +100,6 @@ export function DashboardRender(): JSX.Element {
       header={
         <PageHeader
           title={detail.displayName}
-          breadcrumb={
-            <>
-              <span className="wx-data-md">{detail.dashboardId}</span> ·{" "}
-              {statusLabel(detail.shareScope)}
-            </>
-          }
           actions={
             <StatusPill
               label={detail.authorship === "system" ? "System" : "Tenant"}

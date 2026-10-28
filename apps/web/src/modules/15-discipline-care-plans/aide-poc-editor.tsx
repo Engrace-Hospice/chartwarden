@@ -235,7 +235,6 @@ export function AidePocEditor(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Aide Plan of Care — editor</span>}
-        breadcrumb="Clinical — 42 CFR §418.76(b) aide task list"
         actions={
           <Link to={`/patients/${patientId}/discipline-plans/aide-poc`} style={ghostButtonStyle}>
             Back to plan

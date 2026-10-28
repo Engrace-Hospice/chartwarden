@@ -144,7 +144,6 @@ export function TriageQueueScreen(): JSX.Element {
       header={
         <PageHeader
           title="Triage queue"
-          breadcrumb="On-call / Active board"
           actions={
             <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
               <Link to="/triage/intake" style={primaryLinkStyle}>

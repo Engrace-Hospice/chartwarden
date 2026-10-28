@@ -79,7 +79,7 @@ export function SchedulingRecurring(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Recurring Policies" breadcrumb="Scheduling">
+        <PageHeader title="Recurring Policies">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Active recurring-visit policies{patient ? ` for patient ${patient.slice(0, 8)}` : ""}.
           </div>

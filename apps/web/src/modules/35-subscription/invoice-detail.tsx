@@ -89,7 +89,6 @@ export function InvoiceDetail(): JSX.Element {
       header={
         <PageHeader
           title={`Invoice ${invoice.invoiceNumber ?? invoice.id.slice(0, 8)}`}
-          breadcrumb="Billing / Invoices"
           actions={
             <div style={{ display: "flex", gap: "0.75rem" }}>
               <a

@@ -144,7 +144,7 @@ export function TelehealthRoom(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Telehealth visits" breadcrumb="Care / Telehealth">
+        <PageHeader title="Telehealth visits">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Join a scheduled video visit with a patient or family member, or end one that has
             finished.

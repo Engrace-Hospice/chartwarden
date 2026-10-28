@@ -59,7 +59,7 @@ export function SchedulingDay(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-          <PageHeader title="Day View" breadcrumb="Scheduling">
+          <PageHeader title="Day View">
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Scheduled visits for {date}
               {membership ? `, scoped to clinician ${membership.slice(0, 8)}` : ""}.

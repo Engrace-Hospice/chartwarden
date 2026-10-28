@@ -159,7 +159,6 @@ export function TriageMetricsScreen(): JSX.Element {
       header={
         <PageHeader
           title="On-call metrics"
-          breadcrumb="On-call triage / Program health"
           actions={
             <Link to="/triage/shifts" style={linkButtonStyle}>
               Roster

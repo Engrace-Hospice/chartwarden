@@ -3,6 +3,7 @@ import { activeEntryKey } from "./primary-nav";
 
 export const MODULE_NAVIGATION_KEYS = [
   "admissions",
+  "assessments",
   "care-plans",
   "orders",
   "medications",
@@ -36,7 +37,7 @@ const LABEL_OVERRIDES: Readonly<Record<string, string>> = {
   "/medicaid/billing/trading-partner-credentials": "Trading Partner Credentials",
 };
 
-/** Admissions is the one intentionally curated module navigation; visibility still comes from the sidebar. */
+/** Curated module rows keep the working destinations in a stable order. Visibility comes from the sidebar. */
 const ADMISSIONS_ITEMS: readonly { path: string; label: string }[] = [
   { path: "/admissions", label: "All Admissions" },
   { path: "/admissions/new", label: "New Admission" },
@@ -44,6 +45,17 @@ const ADMISSIONS_ITEMS: readonly { path: string; label: string }[] = [
   { path: "/referrals/new", label: "New Referral" },
   { path: "/admissions/readmit", label: "Readmit" },
   { path: "/admissions/discharges", label: "Discharge/Transfer" },
+];
+
+const ASSESSMENTS_ITEMS: readonly { path: string; label: string }[] = [
+  { path: "/hope", label: "HOPE Timepoints" },
+  { path: "/work/cosignatures", label: "Cosignatures" },
+  { path: "/work/drafts", label: "My Drafts" },
+  { path: "/admin/scales/licenses", label: "Scale Licenses" },
+  { path: "/admin/scales/policies", label: "Scale Policies" },
+  { path: "/hope/sfv", label: "SFV Worklist" },
+  { path: "/hope/submissions", label: "HOPE Submissions" },
+  { path: "/hope/compliance", label: "HQRP Compliance" },
 ];
 
 function entryFor(sections: NavSection[], key: string): NavEntry | undefined {
@@ -60,9 +72,10 @@ function moduleKeyForPath(sections: NavSection[], pathname: string): ModuleNavig
 }
 
 function itemsForEntry(entry: NavEntry, key: ModuleNavigationKey): ModuleNavigationItem[] {
-  if (key === "admissions") {
+  if (key === "admissions" || key === "assessments") {
     const visibleByPath = new Map(entry.screens.map((screen) => [screen.path, screen]));
-    return ADMISSIONS_ITEMS.flatMap(({ path, label }) => {
+    const items = key === "admissions" ? ADMISSIONS_ITEMS : ASSESSMENTS_ITEMS;
+    return items.flatMap(({ path, label }) => {
       const screen = visibleByPath.get(path);
       return screen ? [{ ...screen, label }] : [];
     });

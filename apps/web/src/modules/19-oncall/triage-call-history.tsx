@@ -92,7 +92,6 @@ export function TriageCallHistoryScreen(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Call history {shortId(call.id)}</span>}
-        breadcrumb="On-call triage · read-only"
         actions={
           <Link to={`/triage/calls/${call.id}`} style={ghostButtonStyle}>
             Open the panel

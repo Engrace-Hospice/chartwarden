@@ -185,7 +185,6 @@ export function MedicaidRbArrangementDetail(): JSX.Element {
       header={
         <PageHeader
           title={arrangement.nfFacilityNameSnapshot || "R&B Arrangement"}
-          breadcrumb="Billing — Medicaid · nursing-facility pass-through"
           actions={
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
               <StatusPill

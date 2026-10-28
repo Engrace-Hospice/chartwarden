@@ -126,7 +126,7 @@ export function MyDrafts(): JSX.Element {
     <WorkQueueLayout
       fullPageScroll
       header={
-        <PageHeader title="My drafts" breadcrumb="Clinical Work — encounter authoring">
+        <PageHeader title="My drafts">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Resume open encounter documentation, with late-entry risk and administrative override
             cues surfaced before signing.

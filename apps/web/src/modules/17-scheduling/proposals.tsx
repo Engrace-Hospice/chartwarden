@@ -87,7 +87,7 @@ export function SchedulingProposals(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Proposal Inbox" breadcrumb="Scheduling">
+        <PageHeader title="Proposal Inbox">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Pending visit proposals awaiting publish
             {patient ? ` for patient ${patient.slice(0, 8)}` : ""}.

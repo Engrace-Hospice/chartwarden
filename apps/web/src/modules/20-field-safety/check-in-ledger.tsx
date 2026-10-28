@@ -135,7 +135,6 @@ export function CheckInLedgerScreen(): JSX.Element {
       header={
         <PageHeader
           title="Check-in Status"
-          breadcrumb="Field safety"
           actions={
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
               <Link to="/safety" style={linkButtonStyle}>

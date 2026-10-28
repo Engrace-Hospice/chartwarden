@@ -136,7 +136,6 @@ export function BereavementRiskView(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Bereavement risk</span>}
-        breadcrumb={`Bereavement — plan ${shortId(planId)}`}
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             <button type="button" style={primaryButtonStyle} onClick={() => setRecomputeOpen(true)}>

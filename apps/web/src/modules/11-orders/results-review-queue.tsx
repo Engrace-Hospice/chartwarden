@@ -100,7 +100,7 @@ export function ResultsReviewQueue(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-          <PageHeader title="Lab Results - Pending Review" breadcrumb="Clinical / Orders">
+          <PageHeader title="Lab Results - Pending Review">
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Triage lab orders with attached results that still need clinician review.
             </div>

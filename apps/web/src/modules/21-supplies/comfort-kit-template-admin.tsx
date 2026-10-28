@@ -242,7 +242,6 @@ export function ComfortKitTemplateAdmin(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Comfort-kit templates</span>}
-        breadcrumb="Supplies — the D3 platform floor and its tenant overlays"
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             <button type="button" style={primaryButtonStyle} onClick={startCreate}>

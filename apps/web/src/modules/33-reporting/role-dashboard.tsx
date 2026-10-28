@@ -93,18 +93,7 @@ export function RoleDashboard(): JSX.Element {
   const tiles = detail.tiles;
 
   return (
-    <DetailPageLayout
-      header={
-        <PageHeader
-          title={detail.displayName}
-          breadcrumb={
-            <>
-              Role dashboard · <span className="wx-data-md">{detail.dashboardId}</span>
-            </>
-          }
-        />
-      }
-    >
+    <DetailPageLayout header={<PageHeader title={detail.displayName} />}>
       {tiles.length === 0 ? (
         <EmptyState
           title="No KPIs"

@@ -87,7 +87,6 @@ export function MedicaidSubmissionsTimeline(): JSX.Element {
       header={
         <PageHeader
           title="Submissions"
-          breadcrumb="Billing — Medicaid · transmission attempts"
           actions={
             <a href={`/medicaid/billing/claims/${claimId}`} style={linkStyle}>
               ← Back to claim

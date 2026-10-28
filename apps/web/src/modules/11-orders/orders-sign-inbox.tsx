@@ -98,7 +98,7 @@ export function OrdersSignInbox(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-          <PageHeader title="Orders Awaiting Signature" breadcrumb="Clinical / Orders">
+          <PageHeader title="Orders Awaiting Signature">
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Review unsigned orders by urgency, order type, and patient context.
             </div>

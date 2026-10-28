@@ -103,7 +103,6 @@ export function PaymentMethods(): JSX.Element {
         header={
           <PageHeader
             title="Payment methods"
-            breadcrumb="Billing"
             actions={
               // Card entry needs the Stripe Payment Element to mint a payment-method id, and the
               // outbound Stripe integration is not wired yet: there is no Stripe SDK dependency, and

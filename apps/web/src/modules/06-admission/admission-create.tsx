@@ -185,7 +185,6 @@ export function AdmissionCreate(): JSX.Element {
       header={
         <PageHeader
           title="New admission"
-          breadcrumb="Admissions / Direct intake"
           actions={
             <Link to="/admissions" style={backLinkStyle}>
               <Glyph name="arrow-right" size={14} style={{ transform: "rotate(180deg)" }} />

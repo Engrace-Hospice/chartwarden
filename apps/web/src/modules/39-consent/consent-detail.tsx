@@ -322,7 +322,6 @@ export function ConsentDetail(): JSX.Element {
     <PatientWorkspaceLayout banner={banner}>
       <PageHeader
         title={humanize(record.typeKey)}
-        breadcrumb="Consents"
         actions={
           <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
             <StatusPill

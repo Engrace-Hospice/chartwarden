@@ -20,6 +20,35 @@
 /* GAP-207 — the shared `wx-*` list chrome (KPI strip, DataTable card, WorkQueue slots, list table). */
 @import "../../../packages/ui/src/web/styles/list-chrome.css";
 
+.wx-portal-main .wx-route-breadcrumbs {
+  padding: var(--space-5) clamp(var(--space-5), 4vw, var(--space-9)) 0;
+  color: var(--color-on-surface-variant);
+  font-size: 0.8125rem;
+}
+.wx-portal-main .wx-route-breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wx-portal-main .wx-route-breadcrumbs li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.wx-portal-main .wx-route-breadcrumbs a {
+  color: inherit;
+  text-decoration: none;
+}
+.wx-portal-main .wx-route-breadcrumbs a:hover {
+  text-decoration: underline;
+}
+.wx-portal-main .wx-route-breadcrumb-separator {
+  opacity: 0.65;
+}
+
 :root {
   /* Clinical-blue token contract. apps/web's @theme block remains the canonical value source;
      arch:design-tokens enforces parity for this local runtime copy. */

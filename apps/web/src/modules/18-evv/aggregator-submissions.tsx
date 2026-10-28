@@ -157,7 +157,6 @@ export function EvvAggregatorSubmissions(): JSX.Element {
         header={
           <PageHeader
             title="Aggregator Submissions"
-            breadcrumb="Admin / EVV"
             actions={
               <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
                 Refresh

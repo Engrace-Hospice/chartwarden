@@ -146,7 +146,7 @@ export function CosignatureQueue(): JSX.Element {
     <WorkQueueLayout
       fullPageScroll
       header={
-        <PageHeader title="Cosignatures" breadcrumb="Clinical Work — encounter cosignatures">
+        <PageHeader title="Cosignatures">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Prioritize encounters awaiting cosignature by discipline, status, and the 48-hour hard
             cap.

@@ -94,7 +94,7 @@ export function IpuCensus(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="IPU census" breadcrumb="IPU / Daily snapshot">
+        <PageHeader title="IPU census">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review the daily GIP/IRC census, bed-day totals, room turnover, and restraint activity.
           </div>

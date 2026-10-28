@@ -199,7 +199,6 @@ export function BereavementCounselorDashboard(): JSX.Element {
       header={
         <PageHeader
           title="My bereavement caseload"
-          breadcrumb="Bereavement / Counselor"
           actions={
             <Link to="/bereavement/eligible" style={ghostButtonStyle}>
               Intake queue

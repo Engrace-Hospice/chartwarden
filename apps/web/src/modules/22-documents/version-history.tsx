@@ -113,7 +113,7 @@ export function VersionHistory(): JSX.Element {
   return (
     <DetailPageLayout
       header={
-        <PageHeader title={doc?.title ?? "Document"} breadcrumb={<>Documents / Version history</>}>
+        <PageHeader title={doc?.title ?? "Document"}>
           {doc ? (
             <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
               <Button size="sm" onClick={() => setUploading(true)}>

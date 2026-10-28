@@ -133,7 +133,7 @@ export function ClaimAssemblyWizard(): JSX.Element {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem", padding: "1rem 1.5rem" }}>
-      <PageHeader title="Assemble Claim" breadcrumb="Billing / Medicare / New claim">
+      <PageHeader title="Assemble Claim">
         <BillingTabs />
       </PageHeader>
       <form

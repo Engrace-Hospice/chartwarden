@@ -159,7 +159,6 @@ export function PaperReentryWorklistScreen(): JSX.Element {
         header={
           <PageHeader
             title="Paper re-entry"
-            breadcrumb="On-call triage / Business continuity"
             actions={
               <Link to="/triage" style={linkButtonStyle}>
                 Triage queue

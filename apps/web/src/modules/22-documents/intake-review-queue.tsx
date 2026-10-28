@@ -143,9 +143,6 @@ export function IntakeReviewQueue(): JSX.Element {
     <div className="wx-reports">
       <header className="wx-page-head">
         <div>
-          <nav aria-label="Breadcrumb" className="wx-row-sub">
-            <Link to="/referrals">Referrals</Link> / Intake review
-          </nav>
           <h1 style={{ fontSize: "1.875rem" }}>Intake review</h1>
           <p>
             Referral documents read by WardenLens. Check every extracted field against the page

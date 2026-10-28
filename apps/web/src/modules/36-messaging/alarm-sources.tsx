@@ -64,7 +64,7 @@ export function AlarmSources(): JSX.Element {
   const { view, reload, refreshFailed } = useAlarmSources();
   return (
     <>
-      <PageHeader title={W.TITLE} breadcrumb={W.BREADCRUMB}>
+      <PageHeader title={W.TITLE}>
         <p className="wx-export-detail">{W.INTRO}</p>
         <p className="wx-export-detail">
           <strong>{W.NOT_A_NURSE_CALL}</strong>

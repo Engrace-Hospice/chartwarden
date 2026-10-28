@@ -76,12 +76,6 @@ export function IntakeBatchDetail(): JSX.Element {
       header={
         <PageHeader
           title="Intake batch"
-          breadcrumb={
-            <>
-              <Link to="/referrals">Referrals</Link> / <Link to="/intake">Intake review</Link> /
-              Batch detail
-            </>
-          }
           actions={
             batchId ? (
               <Link to={`/intake/${batchId}/review`} className="wx-btn-primary">

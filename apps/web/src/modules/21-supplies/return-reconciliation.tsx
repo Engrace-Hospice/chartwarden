@@ -268,7 +268,6 @@ export function ComfortKitReturnReconciliation(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Comfort-kit return {shortId(ret.returnId)}</span>}
-        breadcrumb="Supplies — return reconciliation (DEA 21 CFR §1304 / §1317)"
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             <Link to={`/supplies/dispatches/${ret.dispatchId}`} style={ghostButtonStyle}>

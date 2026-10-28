@@ -160,7 +160,6 @@ export function MyCheckInsScreen(): JSX.Element {
       header={
         <PageHeader
           title="My Check-ins"
-          breadcrumb="Field safety"
           actions={
             <div style={actionGroupStyle}>
               <Link to="/me/safety" style={linkButtonStyle}>

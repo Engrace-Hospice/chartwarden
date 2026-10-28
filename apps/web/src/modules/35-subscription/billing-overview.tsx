@@ -80,7 +80,7 @@ export function BillingOverview(): JSX.Element {
   return (
     <DetailPageLayout
       header={
-        <PageHeader title="Billing" breadcrumb="Subscription overview">
+        <PageHeader title="Billing">
           <div style={headerDescriptionStyle}>
             Review the current subscription, renewal window, payment method, and related billing
             workspaces.

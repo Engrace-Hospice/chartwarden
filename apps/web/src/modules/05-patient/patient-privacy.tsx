@@ -200,12 +200,6 @@ export function PatientPrivacy(): JSX.Element {
       header={
         <PageHeader
           title="Privacy restrictions"
-          breadcrumb={
-            <>
-              <Link to="/compliance/privacy">Privacy restrictions</Link> /{" "}
-              <Link to={`/patients/${view.patient.id}`}>{view.patient.displayName}</Link>
-            </>
-          }
           actions={
             <Button loading={resyncing} onClick={() => void resync()}>
               Re-sync from consents

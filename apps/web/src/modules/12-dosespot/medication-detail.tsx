@@ -223,16 +223,6 @@ export function MedicationDetail(): JSX.Element {
       banner={
         <PageHeader
           title="Medication order"
-          breadcrumb={
-            row ? (
-              <button
-                type="button"
-                onClick={() => navigate(`/patients/${row.patientId}/medications${location.search}`)}
-              >
-                ← Medications
-              </button>
-            ) : undefined
-          }
           actions={
             row ? (
               <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>

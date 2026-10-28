@@ -1,4 +1,4 @@
-import { EmptyState, Glyph, Panel } from "@chartwarden/ui";
+import { EmptyState, Glyph, KpiCard, Panel } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — "Readmit" (`/admissions/readmit`, nav: Admissions, right after Discharge /
 // transfer). The patients who can come back: live discharges, revocations and transfers out of the last 90 days
 // (deaths never), whose patient has no later admission — the discharge worklist's `recently_discharged` bucket, drawn
@@ -9,6 +9,7 @@ import { EmptyState, Glyph, Panel } from "@chartwarden/ui";
 // MRN because a former patient's chart is usually off the caller's caseload — which is also why the name is not a
 // chart link here. The page is gated on `admission.create` (screens.ts); the server enforces it on the readmission.
 import { type JSX, useState } from "react";
+import { Link } from "react-router-dom";
 import { useSession } from "../../shell/session";
 import {
   ListState,
@@ -34,13 +35,38 @@ export function ReadmitList(): JSX.Element {
       <div className="wx-with-rail-main">
         <header className="wx-page-head">
           <div>
-            <h1 style={{ fontSize: "1.875rem" }}>Readmit</h1>
+            <h1>Readmit</h1>
             <p>
               Bring a patient back on service after a live discharge, a revocation or a transfer
               out.
             </p>
           </div>
+          <Link to="/admissions/new" className="wx-btn-secondary">
+            <Glyph name="plus" size={16} /> New admission
+          </Link>
         </header>
+
+        <div className="wx-work-summary" aria-label="Readmission overview">
+          <KpiCard
+            icon="rotate-ccw"
+            label="Loaded candidates"
+            value={recent.error || recent.loading ? "—" : recent.items.length}
+            detail="Recently ended stays"
+            tone="info"
+          />
+          <KpiCard
+            icon="search"
+            label="Matching search"
+            value={recent.error || recent.loading ? "—" : rows.length}
+            detail={search.trim() ? "Current search" : "All loaded candidates"}
+          />
+          <KpiCard
+            icon="calendar"
+            label="Lookback window"
+            value={`${RECENTLY_DISCHARGED_DAYS} days`}
+            detail="Live endings only"
+          />
+        </div>
 
         <Panel
           title="Patients who can be readmitted"
@@ -59,6 +85,14 @@ export function ReadmitList(): JSX.Element {
                 aria-label="Search patients who can be readmitted"
               />
             </label>
+            <span className="wx-work-count" aria-live="polite">
+              {recent.loading ? "Loading…" : `${rows.length} shown`}
+            </span>
+            {search ? (
+              <button type="button" className="wx-btn-secondary" onClick={() => setSearch("")}>
+                Clear search
+              </button>
+            ) : null}
           </div>
           <ListState
             list={recent}

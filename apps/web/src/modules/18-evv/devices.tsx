@@ -130,10 +130,7 @@ export function EvvDeviceRoster({
       ) : null}
       <WorkQueueLayout
         header={
-          <PageHeader
-            title={title.replace("—", "-")}
-            breadcrumb={isMine ? "Field / EVV" : "Admin / EVV"}
-          >
+          <PageHeader title={title.replace("—", "-")}>
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               {isMine
                 ? "Review your registered EVV devices and approval status."

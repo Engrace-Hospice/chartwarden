@@ -127,7 +127,6 @@ export function EvvGeofencePolicy(): JSX.Element {
         header={
           <PageHeader
             title="Geofence Policy"
-            breadcrumb="Admin / EVV"
             actions={
               <div style={{ display: "flex", gap: "0.5rem" }}>
                 <Button

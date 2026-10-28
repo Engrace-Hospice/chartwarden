@@ -114,7 +114,6 @@ export function SequestrationPolicy(): JSX.Element {
       header={
         <PageHeader
           title="Sequestration Policy"
-          breadcrumb="Billing / Medicare / Payment-reduction timeline"
           actions={
             <a href="/billing" style={linkButtonStyle}>
               AR dashboard

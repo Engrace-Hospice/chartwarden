@@ -105,7 +105,7 @@ export function MortalityReview(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Mortality Reviews" breadcrumb="Compliance / Quality">
+        <PageHeader title="Mortality Reviews">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Every hospice death is reviewed across clinical, satisfaction and compliance within 30
             days.

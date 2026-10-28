@@ -159,14 +159,6 @@ export function MedicaidSurveyorReadView(): JSX.Element {
       header={
         <PageHeader
           title="Claim (read-only)"
-          breadcrumb={
-            <>
-              Survey · Medicaid billing ·{" "}
-              <span style={{ fontFamily: "var(--font-mono)" }}>
-                {claim.medicaidClaimControlNumber}
-              </span>
-            </>
-          }
           actions={
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <Glyph name="eye" size={16} label="read-only" />

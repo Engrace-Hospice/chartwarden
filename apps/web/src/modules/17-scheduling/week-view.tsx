@@ -57,7 +57,7 @@ export function SchedulingWeek(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-          <PageHeader title="Week View" breadcrumb="Scheduling">
+          <PageHeader title="Week View">
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Scheduled visits from {weekStart}
               {membership ? `, scoped to clinician ${membership.slice(0, 8)}` : ""}.

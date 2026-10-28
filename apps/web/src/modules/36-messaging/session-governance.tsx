@@ -131,7 +131,7 @@ function GovernanceBody({
 
   return (
     <>
-      <PageHeader title={GOVERNANCE_TITLE} breadcrumb={GOVERNANCE_BREADCRUMB}>
+      <PageHeader title={GOVERNANCE_TITLE}>
         <p className="wx-device-detail">{GOVERNANCE_NOTICE}</p>
       </PageHeader>
       <section className="wx-devices" aria-label={GOVERNANCE_TITLE}>

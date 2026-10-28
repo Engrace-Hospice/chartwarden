@@ -120,7 +120,6 @@ export function AiRoutingOverrides(): JSX.Element {
         header={
           <PageHeader
             title="AI routing overrides"
-            breadcrumb="Organization / AI"
             actions={
               <div style={{ display: "flex", gap: "0.5rem" }}>
                 <Button

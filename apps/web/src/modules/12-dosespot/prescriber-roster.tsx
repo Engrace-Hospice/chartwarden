@@ -78,7 +78,7 @@ export function PrescriberRoster(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="DoseSpot Prescriber Roster" breadcrumb="Admin / Medications">
+        <PageHeader title="DoseSpot Prescriber Roster">
           <div
             style={{
               color: "var(--color-on-surface-variant)",

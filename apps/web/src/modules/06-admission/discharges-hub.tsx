@@ -1,4 +1,4 @@
-import { EmptyState, Glyph, Panel, StatusPill } from "@chartwarden/ui";
+import { EmptyState, Glyph, KpiCard, Panel, StatusPill } from "@chartwarden/ui";
 // apps/web/src/modules/06-admission — "Discharge / transfer" hub (`/admissions/discharges`, nav: Admissions, right
 // below New admission). The one place to start or finish an end-of-episode workflow, drawn in the 2026-09-25 redesign
 // idiom (page head, flat panels with list tables, a right context rail):
@@ -77,13 +77,39 @@ export function DischargesHub(): JSX.Element {
       <div className="wx-with-rail-main">
         <header className="wx-page-head">
           <div>
-            <h1 style={{ fontSize: "1.875rem" }}>Discharge / transfer</h1>
+            <h1>Discharge / transfer</h1>
             <p>
               End a hospice stay — live discharge, revocation, transfer out or death — and finish
               the records billing still needs.
             </p>
           </div>
+          <Link to="/admissions" className="wx-btn-secondary">
+            <Glyph name="chevron-left" size={16} /> All admissions
+          </Link>
         </header>
+
+        <div className="wx-work-summary" aria-label="Discharge work overview">
+          <KpiCard
+            icon="user"
+            label="Ready to review"
+            value={ready.error || ready.loading ? "—" : ready.items.length}
+            detail="Loaded admissions"
+            tone="info"
+          />
+          <KpiCard
+            icon="alert-circle"
+            label="Details needed"
+            value={needs.error || needs.loading ? "—" : needs.items.length}
+            detail="Loaded ended stays"
+            tone="warning"
+          />
+          <KpiCard
+            icon="rotate-ccw"
+            label="Recently ended"
+            value={recent.error || recent.loading ? "—" : recent.items.length}
+            detail="Loaded live discharges"
+          />
+        </div>
 
         <Panel
           title="Ready for discharge"
@@ -102,6 +128,14 @@ export function DischargesHub(): JSX.Element {
                 aria-label="Search admissions ready for discharge"
               />
             </label>
+            <span className="wx-work-count" aria-live="polite">
+              {ready.loading ? "Loading…" : `${readyRows.length} shown`}
+            </span>
+            {search ? (
+              <button type="button" className="wx-btn-secondary" onClick={() => setSearch("")}>
+                Clear search
+              </button>
+            ) : null}
           </div>
           <ListState
             list={ready}
@@ -117,7 +151,7 @@ export function DischargesHub(): JSX.Element {
               </div>
             ) : (
               <div className="wx-list-table-wrap">
-                <table className="wx-list-table">
+                <table className="wx-list-table wx-list-table-static">
                   <caption className="wx-sr-only">Admissions ready for discharge</caption>
                   <thead>
                     <tr>
@@ -186,7 +220,7 @@ export function DischargesHub(): JSX.Element {
             emptyText="Every ended stay has the details its final claim needs."
           >
             <div className="wx-list-table-wrap">
-              <table className="wx-list-table">
+              <table className="wx-list-table wx-list-table-static">
                 <caption className="wx-sr-only">Ended stays missing discharge details</caption>
                 <thead>
                   <tr>
@@ -243,7 +277,7 @@ export function DischargesHub(): JSX.Element {
               emptyText="Reviews opened from a NOMNC record appear here."
             >
               <div className="wx-list-table-wrap">
-                <table className="wx-list-table">
+                <table className="wx-list-table wx-list-table-static">
                   <caption className="wx-sr-only">Admissions with an open QIO review</caption>
                   <thead>
                     <tr>
@@ -294,7 +328,7 @@ export function DischargesHub(): JSX.Element {
               emptyText="Records waiting for an appeal-request deadline appear here."
             >
               <div className="wx-list-table-wrap">
-                <table className="wx-list-table">
+                <table className="wx-list-table wx-list-table-static">
                   <caption className="wx-sr-only">NOMNC records with no deadline typed</caption>
                   <thead>
                     <tr>
@@ -362,7 +396,7 @@ export function DischargesHub(): JSX.Element {
               emptyText="For-cause discharges filed by the team appear here for your cosign."
             >
               <div className="wx-list-table-wrap">
-                <table className="wx-list-table">
+                <table className="wx-list-table wx-list-table-static">
                   <caption className="wx-sr-only">For-cause discharges awaiting cosign</caption>
                   <thead>
                     <tr>
