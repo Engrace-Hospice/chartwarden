@@ -122,6 +122,36 @@ jobs:
       - name: Lint
         run: bun run lint
 
+  # CW-SEC-01 / CW-CM-02 (compliance/controls.yaml): no credential and no non-synthetic SSN/MBI reaches
+  # main. The same two scanners run in .githooks/pre-commit (opt-in per clone via setup:hooks); this is
+  # the copy a developer cannot skip — once deploy.yml's `verify` job is re-enabled (see CW-CM-01).
+  # Pinned binary + checksum verified against the release's own checksums file.
+  secret-and-phi-scan:
+    runs-on: [self-hosted, Linux, X64, hostinger]
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      # No `bun install`: the scanner uses only Bun built-ins, and an empty node_modules keeps
+      # gitleaks from scanning third-party test keys.
+      - name: PHI-shaped identifier + credential scan (harness:phi-scan)
+        run: bun run harness:phi-scan --all
+      - name: Install gitleaks (pinned)
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/gitleaks" && mkdir -p "$dir"
+          curl -sSL -o "$dir/gl.tgz" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $dir/gl.tgz" | sha256sum -c -
+          tar -xzf "$dir/gl.tgz" -C "$dir" gitleaks
+          echo "$dir" >> "$GITHUB_PATH"
+      - name: Secret scan of the tree (gitleaks)
+        run: gitleaks dir . --config .gitleaks.toml --redact --no-banner
+
   rls-live:
     name: RLS isolation — ${{ matrix.suite.name }} (live Postgres)
     runs-on: [self-hosted, Linux, X64, hostinger]

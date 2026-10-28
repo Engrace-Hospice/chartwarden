@@ -10,4 +10,6 @@ declare namespace Bun {
   function sleepSync(ms: number): void;
   /** Writes `data` to `path`, creating it if needed. Used by the DR drill's config generation. */
   function write(path: string, data: string | Uint8Array): Promise<number>;
+  /** Bun's built-in YAML parser (Bun >= 1.2.21). Used by `arch:compliance` to read compliance/controls.yaml. */
+  const YAML: { parse(text: string): unknown };
 }
