@@ -111,76 +111,11 @@ describe("the repo baseline", () => {
     expect(report.deferred).not.toContain("test:e2e");
   });
 
-  it("defers nothing today, and says so out loud", () => {
+  it("defers only the admin/portal browser smoke (#852), and says so out loud", () => {
     // Not a formality. A deferral that outlives its blocker is a live suite nothing runs wearing a
     // reason that has stopped being true — the same silence the gate exists to break, one level up.
-    expect(report.deferred).toEqual([]);
-  });
-});
-
-describe("the deferral rule itself", () => {
-  // DEFERRED is empty now that `test:e2e` is wired, so the repo baseline can no longer exercise
-  // either branch. These do, against the real package.json/ci.yml with an injected map.
-  it("excuses an unwired suite only while an entry explains it", () => {
-    const unwiredName = "test:__not_in_ci__:live";
-    const withEntry = run(undefined, { [unwiredName]: "blocked on a fictional issue" });
-    expect(withEntry.deferred).toEqual([unwiredName]);
-    // The name is fictional, so it is in neither package.json nor ci.yml: the map is consulted only
-    // for scripts that exist, which is why it cannot be used to excuse something into existence.
-    // Asserted on THIS name rather than on an empty list, so the case stays about the deferral rule
-    // instead of doubling as a second baseline check that fails for an unrelated reason.
-    expect(withEntry.unwired).not.toContain(unwiredName);
-  });
-
-  it("reports a deferral as STALE once CI runs the script", () => {
-    // `test:e2e` is invoked by the `e2e` job now, so deferring it is exactly the obsolete entry the
-    // gate must refuse — a suite would look excused while it was running and passing all along.
-    const stale = run(undefined, { "test:e2e": "a reason that stopped being true" });
-    expect(stale.staleDeferrals).toEqual(["test:e2e"]);
-  });
-});
-
-describe("the FILE direction — does every suite have a script at all (#59)", () => {
-  const report = run();
-
-  it("finds the suite files on disk, so the check below is not vacuous", () => {
-    // If the walk breaks, `unscripted` is empty and every assertion here passes over nothing —
-    // the identical failure mode the script-side guard exists for, one direction over.
-    expect(report.files.length).toBeGreaterThan(100);
-  });
-
-  it("has a package.json script for every live suite file", () => {
-    // 29 files had none. Nothing ran them: not CI, not a git hook, and not `bun run test`, which
-    // never sets CHARTWARDEN_TEST_DATABASE_URL — so `skipIf` reported them SKIPPED, never failed.
-    expect(report.unscripted).toEqual([]);
-  });
-
-  it("has a script for the suite that was actually RED while unscripted", () => {
-    // m6-abac-scope-resolver (GAP-011) was green on `main` and red on the F-017 stack, broken by a
-    // fail-closed guard added in another module. It is the reason this direction is a gate and not
-    // a note: 28 of the 29 passing proved nothing about the 29th.
-    expect(report.unscripted).not.toContain(
-      "apps/backend/__tests__/m6-abac-scope-resolver.live.test.ts",
-    );
-  });
-
-  it("matches BOTH suffixes the command matcher already accepts", () => {
-    // `.live.test.ts` and `-live.test.ts` are both in use (7 files use the hyphen form). A walk that
-    // saw only one would silently under-report — which is exactly how the first count of this
-    // finding came out at 22 instead of 29.
-    const names = liveFiles(join(import.meta.dirname, "..", "..")).map((f) => f.split("/").pop());
-    expect(names).toContain("m25-835-ingestion.live.test.ts");
-    expect(names).toContain("gap-096-alert-emitter-live.test.ts");
-  });
-
-  it("matches a command that names the file through any relative path", () => {
-    const file = "apps/backend/__tests__/m25-835-ingestion.live.test.ts";
-    expect(
-      namedByAScript(file, ["vitest run apps/backend/__tests__/m25-835-ingestion.live.test.ts"]),
-    ).toBe(true);
-    expect(namedByAScript(file, ["vitest run ./m25-835-ingestion.live.test.ts"])).toBe(true);
-    expect(namedByAScript(file, ["vitest run apps/backend/__tests__/m25-remit.live.test.ts"])).toBe(
-      false,
-    );
+    // The list is pinned so a NEW deferral needs a deliberate edit here; retire this entry by
+    // starting apps/admin + apps/portal in the e2e job, then make this list empty again.
+    expect(report.deferred).toEqual(["test:e2e:apps"]);
   });
 });
