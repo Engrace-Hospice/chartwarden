@@ -339,7 +339,7 @@
       "adapter": true,
       "liveInfra": {
         "tables": 9,
-        "covered": 8
+        "covered": 9
       }
     },
     {
