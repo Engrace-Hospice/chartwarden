@@ -74,6 +74,12 @@ jobs:
           command -v uv >/dev/null || python3 -m pip install --user "uv==0.9.10"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      # #853 - the worker's own pytest, from the locked env. No `docling` extra: the tests inject the converter and
+      # never import Docling/torch, so this stays light (the full graph is built and checked by pr-image-gate).
+      - name: docling-worker pytest (locked env, no model extras)
+        working-directory: services/docling-worker
+        run: uv run --frozen --no-dev --extra test pytest -q
+
       - name: Architecture fitness gates (arch:fitness)
         # docs/plans/** is read-only to AUTOMATED runs (ADR-0030 / check-plan-integrity).
         # A human-authored PR that intentionally adds or edits a plan opts in by applying the

@@ -163,6 +163,20 @@ def test_parse_of_a_truncated_pdf_is_a_422(client):
         "/parse", json={"job_id": "j1", "source_url": "http://x"}, headers={"Authorization": f"Bearer {TOKEN}"}
     )
     assert res.status_code == 422 and res.json()["detail"] == "docling_parse_failed"
+    assert "truncated xref" not in res.text
+
+
+def test_parse_route_returns_413_for_an_oversized_source(client, monkeypatch):
+    from fastapi import HTTPException
+
+    def too_big(url):
+        raise HTTPException(status_code=413, detail="source exceeds the size limit")
+
+    monkeypatch.setattr(main, "_download", too_big)
+    res = client.post(
+        "/parse", json={"job_id": "j1", "source_url": "http://x"}, headers={"Authorization": f"Bearer {TOKEN}"}
+    )
+    assert res.status_code == 413
 
 
 def test_pillow_is_at_the_patched_major():

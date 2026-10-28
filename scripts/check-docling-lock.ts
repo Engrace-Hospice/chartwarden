@@ -23,7 +23,9 @@ function fail(message: string): never {
 }
 
 if (!existsSync(join(WORKER_DIR, "uv.lock"))) {
-  fail("services/docling-worker/uv.lock is missing (it must be committed; see services/docling-worker/README.md).");
+  fail(
+    "services/docling-worker/uv.lock is missing (it must be committed; see services/docling-worker/README.md).",
+  );
 }
 
 const run = spawnSync("uv", ["lock", "--check"], { cwd: WORKER_DIR, encoding: "utf8" });
@@ -32,7 +34,9 @@ if (run.error) {
 }
 if (run.status !== 0) {
   process.stderr.write(run.stderr);
-  fail("uv.lock is stale vs pyproject.toml. Run `uv lock` in services/docling-worker and commit the result.");
+  fail(
+    "uv.lock is stale vs pyproject.toml. Run `uv lock` in services/docling-worker and commit the result.",
+  );
 }
 
 console.log("arch:docling-lock OK: services/docling-worker/uv.lock satisfies pyproject.toml");

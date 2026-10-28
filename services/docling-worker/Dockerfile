@@ -18,8 +18,9 @@ WORKDIR /srv
 # fails the build instead of silently re-resolving. The lock is CPU-only (torch/torchvision come from the PyTorch
 # CPU index, see [tool.uv.sources]) and floors pillow at 13 (see pyproject.toml), so there is no
 # `--no-deps` step. Update procedure and cadence: README.md.
+# uv 0.9.10 (verified: `uv --version` on this digest); keep the ci.yml pin in step.
 COPY --from=ghcr.io/astral-sh/uv@sha256:29bd45092ea8902c0bbb7f0a338f0494a382b1f4b18355df5be270ade679ff1d /uv /usr/local/bin/uv
-ENV UV_PROJECT_ENVIRONMENT=/opt/venv UV_LINK_MODE=copy UV_COMPILE_BYTECODE=0 PATH=/opt/venv/bin:$PATH
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv UV_LINK_MODE=copy UV_COMPILE_BYTECODE=0 UV_PYTHON_DOWNLOADS=never PATH=/opt/venv/bin:$PATH
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project --extra docling \
  && uv pip check --python /opt/venv/bin/python

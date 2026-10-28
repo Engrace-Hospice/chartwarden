@@ -19,6 +19,10 @@ Security floors (pillow >= 13, certifi, filelock, setuptools, wheel, jaraco.cont
 `[tool.uv] override-dependencies = ["pillow>=13.0.0,<14"]` with a comment naming the advisory, and remove it when
 upstream lifts the cap.
 
+CI (`ci.yml`, same job as `arch:docling-lock`) runs `uv run --frozen --no-dev --extra test pytest` from the lock. It
+omits the `docling` extra (multi-GB torch): the tests inject the converter and never import Docling. The full graph is
+built and `uv pip check`ed by the image build in `pr-image-gate`.
+
 ## Updating (cadence: monthly, and on any Trivy finding in the release or `pr-image-gate` scan)
 
 ```sh
