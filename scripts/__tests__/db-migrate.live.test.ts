@@ -22,25 +22,12 @@ import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { MIGRATIONS_DIR, applyMigrations, ensureLedger } from "../db/migrate";
+import { dropLiveRoles } from "../../apps/backend/__tests__/_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 
 // Every CREATE ROLE across the migration corpus (`grep -rh "CREATE ROLE" packages/db/migrations`),
 // so resetSchema() can drop them all before each fresh-database assertion below.
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-  "chartwarden_destruction",
-  "mdm_canonical_writer",
-  "billing_platform_loader",
-  "cap_platform_loader",
-  "consent_catalog_writer",
-  "tenant_platform_writer",
-  "terminology_loader",
-  "report_writer",
-];
 
 describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", () => {
   let db: Client;
@@ -48,12 +35,7 @@ describe.skipIf(!DB_URL)("scripts/db/migrate.ts — LIVE Postgres (OPS-016)", ()
   async function resetSchema() {
     await db.query("DROP SCHEMA IF EXISTS public CASCADE");
     await db.query("CREATE SCHEMA public");
-    for (const r of ROLES) {
-      await db.query(
-        `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${r}') THEN ` +
-          `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
-      );
-    }
+    await dropLiveRoles(db);
   }
 
   beforeAll(async () => {
