@@ -68,6 +68,12 @@ jobs:
       # arch:fitness chained 7 things; it now chains 17, so for ten of them the log said less had been
       # checked than actually was — and a CI log understating its own coverage is read by whoever is
       # deciding whether a change is safe to ship. Naming the script instead cannot go stale.
+      # #853 - `arch:docling-lock` runs `uv lock --check` (offline when the lock agrees with pyproject.toml).
+      - name: Install uv (for arch:docling-lock)
+        run: |
+          command -v uv >/dev/null || python3 -m pip install --user "uv==0.9.10"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Architecture fitness gates (arch:fitness)
         # docs/plans/** is read-only to AUTOMATED runs (ADR-0030 / check-plan-integrity).
         # A human-authored PR that intentionally adds or edits a plan opts in by applying the

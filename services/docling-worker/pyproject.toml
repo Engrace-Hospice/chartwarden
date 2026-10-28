@@ -10,13 +10,39 @@ dependencies = [
   "pydantic>=2.9",
   # F-237 — /render (page images for the review overlay and stage-5 crops). Docling depends on both too.
   "pypdfium2>=4.30",
-  "pillow>=10.4",
+  # Floor 13: every pillow 12.x carries fixable HIGH/CRITICAL image-parsing CVEs (fixed only in 13.0.0) on a path that
+  # parses patient documents (#527). docling >= 2.143 no longer caps pillow<13, so no resolver override is needed;
+  # if a future docling re-caps it, uv lock fails loudly - add [tool.uv] override-dependencies then (README).
+  "pillow>=13.0.0,<14",
+  # Security floors (Trivy fixed versions), recorded in uv.lock. jaraco.context is vendored by setuptools;
+  # filelock arrives via torch / huggingface-hub (CVE-2026-112940, fixed in 4.2.1).
+  "setuptools>=78.1.1",
+  "wheel>=0.46.2",
+  "jaraco.context>=6.1.0",
+  "certifi>=2026.10.19",
+  "filelock>=4.2.1",
 ]
 
 [project.optional-dependencies]
 # Docling (and torch) only in the image; the unit tests never import it.
-docling = ["docling>=2.133,<3"]
+docling = ["docling>=2.133,<3", "easyocr", "torch", "torchvision"]
 test = ["pytest>=8", "httpx>=0.28"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.uv]
+# The image is Linux; resolve for it only so the lock stays CPU-only and reviewable.
+environments = [
+  "sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "sys_platform == 'linux' and platform_machine == 'aarch64'",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

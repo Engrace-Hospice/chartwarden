@@ -1,7 +1,7 @@
 # ChartWarden docling-worker — DocLens stage 2 (parse). CPU-only.
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:12316debbfb86890f6b2d825820612741ba527ad5a44e3902759141d572bfe8f
 
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     HF_HOME=/opt/models/hf DOCLING_ARTIFACTS_PATH=/opt/models/docling
 
 # libcurl4t64 is named so the layer is rebuilt against the current security repo: tesseract pulls it in, and a
@@ -14,19 +14,15 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /srv
-COPY pyproject.toml ./
-# CPU torch wheels first, so Docling does not pull the multi-gigabyte CUDA build. Keep the packaging
-# tools present in the runtime image above Trivy's fixed versions. filelock arrives transitively (torch,
-# huggingface-hub) at 3.32.3 (CVE-2026-112940; fixed in 4.2.1), so it is lifted here with the rest.
-# pillow 13 is forced with --no-deps: docling-core / docling-ibm-models / docling-parse still declare pillow<13, but
-# every pillow 12.x carries fixable HIGH/CRITICAL image-parsing CVEs (fixed only in 13.0.0) in a path that parses
-# patient documents. Drop the override once those packages lift the cap. (uv.lock is not used by this build and
-# still records pillow 12.3.0; do not treat it as the shipped version.)
-RUN pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision \
- && pip install ".[docling]" easyocr \
- && pip install --upgrade "jaraco.context>=6.1.0" "setuptools>=78.1.1" "wheel>=0.46.2" \
-    "certifi>=2026.10.19" "filelock>=4.2.1" \
- && pip install --upgrade --no-deps "pillow>=13.0.0,<14"
+# #853 — the Python graph is exactly uv.lock (hashes verified by uv), installed with `--frozen` so a stale lock
+# fails the build instead of silently re-resolving. The lock is CPU-only (torch/torchvision come from the PyTorch
+# CPU index, see [tool.uv.sources]) and floors pillow at 13 (see pyproject.toml), so there is no
+# `--no-deps` step. Update procedure and cadence: README.md.
+COPY --from=ghcr.io/astral-sh/uv@sha256:29bd45092ea8902c0bbb7f0a338f0494a382b1f4b18355df5be270ade679ff1d /uv /usr/local/bin/uv
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv UV_LINK_MODE=copy UV_COMPILE_BYTECODE=0 PATH=/opt/venv/bin:$PATH
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project --extra docling \
+ && uv pip check --python /opt/venv/bin/python
 
 # Bake the layout / table / OCR models into the image: a worker must not download models from the
 # internet at request time (and must not need egress at all in production).

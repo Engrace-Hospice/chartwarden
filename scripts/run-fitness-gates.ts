@@ -33,6 +33,8 @@ export const GATES = [
   // with the other "is the repo in a shape worth checking at all" gates rather than beside the build
   // ones: a suppression that expired last month is a fact about the repo, not about this build.
   "arch:vuln-allowlist",
+  // #853 - services/docling-worker/uv.lock satisfies pyproject.toml (the image installs the lock with `--frozen`).
+  "arch:docling-lock",
   "arch:parity",
   // Before `arch:boundaries`: that gate resolves import boundaries THROUGH the .cjs mirror, so a mirror
   // that disagrees with the manifest makes its verdict meaningless. Better to say the mirror is wrong
