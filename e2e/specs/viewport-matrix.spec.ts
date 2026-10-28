@@ -25,6 +25,8 @@ test.describe("Viewport matrix — layout smoke (#852)", () => {
     for (const path of ["/", "/patients", `/patients/${patientId}`]) {
       await page.goto(path);
       await expect(page.locator("#root > *").first()).toBeVisible();
+      // Capped: polling pages never go idle. Without it the scan can land on the loading skeleton.
+      await page.waitForLoadState("networkidle", { timeout: 6_000 }).catch(() => {});
       await expectNoAxeViolations(page);
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,

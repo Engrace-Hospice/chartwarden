@@ -632,6 +632,7 @@
     "test:m39:consent-lifecycle:live": "vitest run apps/backend/__tests__/m39-consent-lifecycle.live.test.ts",
     "test:db:client:live": "vitest run packages/db/__tests__/client.live.test.ts",
     "test:e2e": "playwright test --config=e2e/playwright.config.ts --project=chromium",
+    "test:e2e:new": "playwright test --config=e2e/playwright.config.ts --project=chromium --grep \"#852\"",
     "test:e2e:viewports": "playwright test --config=e2e/playwright.config.ts --project=viewport-320 --project=viewport-375 --project=viewport-768 --project=viewport-1024 --project=viewport-1440 --project=viewport-1920",
     "test:e2e:apps": "playwright test --config=e2e/playwright.config.ts --project=admin-console --project=portal",
     "test:e2e:ui": "playwright test --config=e2e/playwright.config.ts --ui",

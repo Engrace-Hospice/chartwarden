@@ -49,9 +49,17 @@ function expectDenied(account: () => DemoAccount, cases: readonly Case[]): void 
       const forbiddenCount = watchForbidden(page);
       await visit(page, route);
       await expect
-        .poll(() => forbiddenCount() > 0 || new URL(page.url()).pathname !== route, {
-          message: `${route}: expected an API 403 or a redirect away for a role lacking ${permission}`,
-        })
+        // ponytail: any /api/ 403 counts, not just the route's own endpoint (unknown per screen without a
+        // live stack); tighten to the screen's primary read once it has been observed. A bounce to
+        // /login (dropped session) is NOT a denial.
+        .poll(
+          () =>
+            forbiddenCount() > 0 ||
+            !["/login", route].some((p) => new URL(page.url()).pathname.startsWith(p)),
+          {
+            message: `${route}: expected an API 403 or a redirect away for a role lacking ${permission}`,
+          },
+        )
         .toBe(true);
     });
   }
@@ -70,15 +78,15 @@ function expectAllowed(account: () => DemoAccount, cases: readonly Case[]): void
   }
 }
 
-test.describe("Authorization matrix — Clinician (clinical permissions only)", () => {
+test.describe("Authorization matrix (#852) — Clinician (clinical permissions only)", () => {
   expectDenied(CLINICIAN_ACCOUNT, [BILLING_QUEUE, RATE_TABLES, AGENCY_SETUP, AUDIT_LOG, STAFF]);
 });
 
-test.describe("Authorization matrix — Compliance Auditor (compliance permissions only)", () => {
+test.describe("Authorization matrix (#852) — Compliance Auditor (compliance permissions only)", () => {
   expectDenied(AUDITOR_ACCOUNT, [BILLING_QUEUE, AGENCY_SETUP]);
   expectAllowed(AUDITOR_ACCOUNT, [AUDIT_LOG]);
 });
 
-test.describe("Authorization matrix — Administrator (full catalog)", () => {
+test.describe("Authorization matrix (#852) — Administrator (full catalog)", () => {
   expectAllowed(ADMIN_ACCOUNT, [BILLING_QUEUE, RATE_TABLES, AGENCY_SETUP, AUDIT_LOG, STAFF]);
 });
