@@ -1,4 +1,4 @@
-import { createApiClient, initTheme } from "@chartwarden/ui";
+import { ErrorBoundary, createApiClient, initTheme } from "@chartwarden/ui";
 // ChartWarden type trio — SELF-HOSTED (DESIGN.md §3). No third-party CDN: external font requests would
 // leak client IPs on a PHI app. Variable faces for the display/UI axes; static weights for the mono
 // identifier face (no variable build exists). Family names: "Manrope Variable" / "Inter Variable" /
@@ -127,9 +127,11 @@ createRoot(rootEl).render(
       registry={registry}
       client={client}
       chromeOverlay={
-        <Suspense fallback={null}>
-          <ScreenLock />
-        </Suspense>
+        <ErrorBoundary fallback={null}>
+          <Suspense fallback={null}>
+            <ScreenLock />
+          </Suspense>
+        </ErrorBoundary>
       }
       chromeGuard={CredentialStateGuard}
     />
