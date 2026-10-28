@@ -16,8 +16,8 @@ export function ScreenLockUnavailable(): JSX.Element {
         zIndex: 2147483647,
         display: "grid",
         placeItems: "center",
-        background: "rgb(0 0 0 / 0.85)",
-        color: "#fff",
+        background: "var(--color-surface)",
+        color: "var(--color-on-surface)",
         padding: "1rem",
         textAlign: "center",
       }}
