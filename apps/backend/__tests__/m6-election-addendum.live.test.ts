@@ -352,6 +352,11 @@ describe.skipIf(!DB_URL)(
         "m7.problem.added",
       );
       expect(again.outcome).toBe("draft_refreshed");
+      // ...and a refresh that adds nothing writes nothing: bumping the version would 409 a reader's next
+      // PATCH/furnish (the COP27 seed's "changed since it was read" failure).
+      const ov3 = await addendum.overview(ORG_A, admissionId);
+      expect(ov3?.current?.version).toBe(ov2?.current?.version);
+      expect(ov3?.current?.updatedAt).toBe(ov2?.current?.updatedAt);
     });
 
     it("bug 5: a late coverage event opens no version 2 when the furnished version already reflects it", async () => {

@@ -10,6 +10,8 @@ export {
   ADDENDUM_WINDOW_KINDS,
   type AddendumPrefill,
   type AddendumWindowKind,
+  applyPrefill,
+  draftContentChanged,
   exemptionReasonForDischarge,
   mergeSourceItems,
   openInitialAddendumInTx,

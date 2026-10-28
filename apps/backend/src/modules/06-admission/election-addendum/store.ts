@@ -1,6 +1,7 @@
 // apps/backend/src/modules/06-admission/election-addendum/store.ts — the in-transaction primitives behind the
 // FY2027 election statement addendum (42 CFR 418.24(c)/(d)). Every function takes the CALLER's org-context tx
 // so it composes into activation / discharge / consumer transactions; nothing here opens a transaction.
+import { isDeepStrictEqual } from "node:util";
 import { type DbClient, organizationTimezone, schema } from "@chartwarden/db";
 import type {
   AddendumDiagnosisLine,
@@ -572,7 +573,32 @@ export async function createUpdateVersionInTx(
   return { id: row.id, versionNumber: row.versionNumber, dueAt: due?.dueAt ?? null };
 }
 
-/** Refresh a DRAFT's source-backed content from a prefill (identity blanks, diagnoses, items). */
+/** JSON round trip: drops `undefined` keys, and `isDeepStrictEqual` ignores key order (JSONB reorders keys). */
+const plain = (v: unknown): unknown => JSON.parse(JSON.stringify(v ?? null));
+
+/** True when applying a prefill would change the draft's stored content (pure). */
+export function draftContentChanged(
+  row: Parameters<typeof applyPrefill>[0],
+  next: ReturnType<typeof applyPrefill>,
+): boolean {
+  return !isDeepStrictEqual(
+    plain({
+      patientName: row.patientName,
+      medicalRecordNumber: row.medicalRecordNumber,
+      terminalDiagnosis: row.terminalDiagnosis,
+      relatedDiagnoses: row.relatedDiagnoses,
+      items: row.items,
+      noNonCoveredItems: row.noNonCoveredItems,
+    }),
+    plain(next),
+  );
+}
+
+/**
+ * Refresh a DRAFT's source-backed content from a prefill (identity blanks, diagnoses, items). A refresh that
+ * changes nothing (a redelivered or already-reflected plan-of-care event) writes nothing: bumping `version`
+ * would make a concurrent reader's `ifVersion` stale and 409 their next PATCH/furnish for no reason.
+ */
 export async function refreshDraftInTx(
   tx: DbClient,
   draft: AddendumRow,
@@ -581,6 +607,7 @@ export async function refreshDraftInTx(
 ): Promise<void> {
   if (draft.status !== "draft") return;
   const content = applyPrefill(draft, prefill);
+  if (!draftContentChanged(draft, content)) return;
   await tx
     .update(EA)
     .set({ ...content, updatedAt: at, version: sql`${EA.version} + 1` })

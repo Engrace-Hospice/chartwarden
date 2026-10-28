@@ -6,8 +6,10 @@ import { describe, expect, it } from "vitest";
 import {
   ELECTION_ADDENDUM_MANDATORY_FROM,
   addendumRequiredForElection,
+  applyPrefill,
   composeNonCoveredItemsReaders,
   daysUntilDue,
+  draftContentChanged,
   initialAddendumDue,
   mergeSourceItems,
   sourceItemsDiffer,
@@ -246,6 +248,64 @@ describe("source item merging", () => {
       { listForAdmission: async () => [snap("p1"), { ...snap("m1"), source: "medication" }] },
     ]);
     expect((await reader.listForAdmission("o", "a")).map((i) => i.sourceId)).toEqual(["p1", "m1"]);
+  });
+});
+
+describe("draft refresh is a no-op when the sources add nothing", () => {
+  const row = {
+    patientName: "Pat Demo",
+    medicalRecordNumber: "MRN-1",
+    terminalDiagnosis: [{ icd10Code: "C34.90", description: "Lung cancer" }],
+    relatedDiagnoses: [],
+    items: [
+      {
+        category: "condition" as const,
+        description: "Condition p1",
+        reasonNotCovered: "Unrelated",
+        source: "problem" as const,
+        sourceId: "p1",
+        sourceReason: "Unrelated",
+      },
+    ],
+    noNonCoveredItems: false,
+  };
+  const prefill = {
+    patientName: null,
+    medicalRecordNumber: null,
+    terminalDiagnosis: null,
+    relatedDiagnoses: null,
+    items: [snap("p1")],
+  };
+
+  it("reports no change for a redelivered event (so the row's version is not bumped)", () => {
+    expect(draftContentChanged(row, applyPrefill(row, prefill))).toBe(false);
+  });
+
+  it("is insensitive to JSON key order in the stored diagnosis lines", () => {
+    const reordered = {
+      ...row,
+      terminalDiagnosis: [{ description: "Lung cancer", icd10Code: "C34.90" }],
+    };
+    const p = {
+      ...prefill,
+      terminalDiagnosis: [{ icd10Code: "C34.90", description: "Lung cancer" }],
+    };
+    expect(draftContentChanged(reordered, applyPrefill(reordered, p))).toBe(false);
+  });
+
+  it("reports a change when a new determination is appended", () => {
+    const p = { ...prefill, items: [snap("p1"), snap("p2")] };
+    expect(draftContentChanged(row, applyPrefill(row, p))).toBe(true);
+  });
+
+  it("reports a change when a determination is withdrawn", () => {
+    expect(draftContentChanged(row, applyPrefill(row, { ...prefill, items: [] }))).toBe(true);
+  });
+
+  it("reports a change when an identity blank is filled", () => {
+    const blank = { ...row, patientName: null };
+    const p = { ...prefill, patientName: "Pat Demo" };
+    expect(draftContentChanged(blank, applyPrefill(blank, p))).toBe(true);
   });
 });
 
