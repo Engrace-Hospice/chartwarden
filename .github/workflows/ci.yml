@@ -100,6 +100,20 @@ jobs:
       - name: Lint
         run: bun run lint
 
+  # #854 / CW-QA-0010: the docling-worker is Python and outside the Bun test orchestration, so its pytest
+  # suite (unit + golden corpus + malformed-input + timeout cases) ran nowhere. `deploy.yml` calls this
+  # whole workflow before `release`, so the docling image cannot ship without it. Locked test extra only:
+  # Docling/torch are image-only and the tests inject the converter.
+  docling-pytest:
+    name: Docling worker pytest
+    runs-on: [self-hosted, Linux, X64, hostinger]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v6
+      - name: pytest (locked test extra)
+        working-directory: services/docling-worker
+        run: uv run --locked --extra test pytest -q
+
   rls-live:
     name: RLS isolation — ${{ matrix.suite.name }} (live Postgres)
     runs-on: [self-hosted, Linux, X64, hostinger]

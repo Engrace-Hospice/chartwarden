@@ -46,10 +46,22 @@ jobs:
           cp .env.production.example .env.production
           docker compose --env-file .env.production -f compose.yml config -q
 
+  # #854: behaviour gate before the image is built or scanned (same job as ci.yml's `docling-pytest`).
+  docling-pytest:
+    name: Docling worker pytest
+    runs-on: [self-hosted, Linux, X64, hostinger]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v6
+      - name: pytest (locked test extra)
+        working-directory: services/docling-worker
+        run: uv run --locked --extra test pytest -q
+
   docling-scan:
     name: Docling image CVE scan
+    needs: docling-pytest
     runs-on: [self-hosted, Linux, X64, hostinger]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.docling-pytest.result == 'success' }}
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4

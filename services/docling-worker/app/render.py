@@ -83,7 +83,10 @@ def render_page(
         # and stage-5 crops request several pages at once, and concurrent renders segfaulted the worker
         # (exit 139, F-238 E2E). Docling's own lock, so a render also never races a /parse.
         with _pdfium_lock():
-            pdf = pdfium.PdfDocument(data)
+            try:
+                pdf = pdfium.PdfDocument(data)
+            except pdfium.PdfiumError as exc:  # corrupt / truncated PDF: a 422, never a 500
+                raise RenderError("unreadable PDF") from exc
             try:
                 if page > len(pdf):
                     raise RenderError("no such page")
