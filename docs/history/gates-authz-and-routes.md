@@ -432,3 +432,16 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   encounter screen calls with a human session, so "the M8 caller asserts scope" asserted nothing — is
   `caseload_or_scope` over its query `patientId`. M10 `GET /hope/schedules` was already scoped by
   `hope.scope` (an unfiltered list is org-wide-roles only).
+
+## Step-up drafts are memory-only (#858, CW-QA-0014)
+
+The addendum editor (and every other `apps/web` step-up caller) used to stash the typed form as JSON in
+`sessionStorage` under `wx.step-up-draft:*` so it survived the `/step-up` round trip. Clinical free text there is
+plaintext and script-readable (XSS, tab restore). The redirect is a react-router `navigate` inside one document, so
+module memory survives it: `apps/web/src/shell/step-up-redirect.ts` now keeps drafts in a process-memory `Map`
+(org|user|action|record scoped, 15 min TTL, consumed on take, cleared by `clearAllDrafts` on sign-out/screen lock and
+by `discardStepUpDrafts` on cancel/abandon). Only the non-PHI return marker (`wx.step-up-returned`: a path and a
+timestamp) remains in `sessionStorage`. Accepted trade-off: a hard reload or a new tab during step-up loses the draft
+(the user retypes). A server-side one-time-token draft was rejected as disproportionate (new PHI-at-rest table, RLS,
+KEK, audit, TTL sweeper) for a same-document redirect. `apps/admin`'s `step-up-draft.ts` stores platform data only,
+never PHI, and is unchanged. Guard: `apps/web/src/shell/step-up-draft-no-web-storage.dom.test.tsx`.

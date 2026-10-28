@@ -1,6 +1,3 @@
-// M36 WP 5.8 (ADR-0087, PROPOSED) - break-glass on the web against a mocked network boundary: the request entry (key + live flag), the dialog (validation,
-// the exact body, error mapping that never says why, step-up with a stashed draft, offline), the persistent read-only conversation with its banner
-// (End now, expiry, no write control), and the compliance review (queue, detail, complete, a concern needs a note, still-active, own grant). Plus axe.
 import type {
   BreakGlassGrantDto,
   BreakGlassReviewDetailDto,
@@ -13,6 +10,10 @@ import axe from "axe-core";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
+// M36 WP 5.8 (ADR-0087, PROPOSED) - break-glass on the web against a mocked network boundary: the request entry (key + live flag), the dialog (validation,
+// the exact body, error mapping that never says why, step-up with a stashed draft, offline), the persistent read-only conversation with its banner
+// (End now, expiry, no write control), and the compliance review (queue, detail, complete, a concern needs a note, still-active, own grant). Plus axe.
+import { stepUpDraftKeys } from "../../shell/step-up-redirect";
 import { BreakGlassPane } from "./break-glass-conversation";
 import { BreakGlassRequest } from "./break-glass-request";
 import { BreakGlassReview } from "./break-glass-review";
@@ -284,7 +285,7 @@ describe("Request entry", () => {
     );
     expect(text.textContent).not.toMatch(/\d/);
     expect(screen.getByTestId("where").textContent).not.toContain("/step-up");
-    expect(window.sessionStorage.length).toBe(0);
+    expect(stepUpDraftKeys().length).toBe(0);
   });
 
   it("a stale step-up stashes the draft, goes to the step-up page, and coming back reopens the dialog filled", async () => {
@@ -297,9 +298,9 @@ describe("Request entry", () => {
     const a = await fillRequest();
     await a.user.click(within(a.dialog).getByRole("button", { name: "Open access" }));
     await waitFor(() => expect(screen.getByTestId("where").textContent).toContain("/step-up"));
-    // The justification is in the scoped session stash only: never in a URL or localStorage.
+    // The justification is in the scoped in-memory stash only: never in a URL or localStorage.
     expect(JSON.stringify(Object.entries(window.localStorage))).not.toContain("Covering");
-    expect(window.sessionStorage.length).toBeGreaterThan(0);
+    expect(stepUpDraftKeys().length).toBeGreaterThan(0);
     first.unmount();
     // Back from the step-up page for this path.
     const { markStepUpReturn } = await import("../../shell/step-up-redirect");

@@ -1,11 +1,11 @@
 // apps/web/src/shell — the one place a screen turns a server "your session is not fresh enough" refusal
-// into the `/step-up?returnTo=` route (02-identity/step-up.tsx), plus a small sessionStorage stash so what
-// the user had typed survives the round trip. Only a 403 carrying `STEP_UP_REQUIRED` qualifies: any other
+// into the `/step-up?returnTo=` route (02-identity/step-up.tsx), plus a small IN-MEMORY stash so what
+// the user had typed survives the round trip (#858: a draft can carry clinical free text, so it is never put in
+// Web Storage; the /step-up redirect is a react-router navigation, so module memory survives it. A hard reload
+// loses the draft, which is the intended fail-safe). Only a 403 carrying `STEP_UP_REQUIRED` qualifies: any other
 // 403 is a permanent "not allowed", and redirecting it into a ceremony would be a loop with no exit.
 // The refusal test and the path are the shared kit's (also used by apps/admin), so both apps agree.
 import { isStepUpRequired, stepUpPath } from "@chartwarden/ui";
-
-const DRAFT_PREFIX = "wx.step-up-draft:";
 
 /** `/step-up?returnTo=<path>` when `error` is the step-up refusal, else null. */
 export function stepUpRedirectFor(error: unknown, returnTo: string): string | null {
@@ -37,69 +37,44 @@ export function stepUpDraftKey(
   return [owner.organizationId, owner.userId, action, resourceId].join(SCOPE_SEP);
 }
 
+const drafts = new Map<string, DraftEnvelope>();
+
 function readEnvelope(storageKey: string): DraftEnvelope | null {
-  const raw = window.sessionStorage.getItem(storageKey);
-  if (raw === null) return null;
-  const parsed = JSON.parse(raw) as DraftEnvelope;
-  if (typeof parsed?.at !== "number" || Date.now() - parsed.at > DRAFT_TTL_MS) {
-    window.sessionStorage.removeItem(storageKey);
+  const env = drafts.get(storageKey);
+  if (env === undefined) return null;
+  if (Date.now() - env.at > DRAFT_TTL_MS) {
+    drafts.delete(storageKey);
     return null;
   }
-  return parsed;
+  return env;
 }
 
 /** Drop expired drafts and any scoped draft that belongs to a different org/user than `key`'s. */
 function sweep(key: string): void {
   const scope = key.split(SCOPE_SEP).slice(0, 2).join(SCOPE_SEP) + SCOPE_SEP;
   const scoped = key.includes(SCOPE_SEP);
-  const stale: string[] = [];
-  for (let i = 0; i < window.sessionStorage.length; i += 1) {
-    const k = window.sessionStorage.key(i);
-    if (!k?.startsWith(DRAFT_PREFIX)) continue;
-    const rest = k.slice(DRAFT_PREFIX.length);
-    const foreign = scoped && rest.includes(SCOPE_SEP) && !rest.startsWith(scope);
-    let expired = false;
-    try {
-      expired = readEnvelope(k) === null;
-    } catch {
-      expired = true;
-    }
-    if (foreign || expired) stale.push(k);
+  for (const k of [...drafts.keys()]) {
+    const foreign = scoped && k.includes(SCOPE_SEP) && !k.startsWith(scope);
+    if (foreign || readEnvelope(k) === null) drafts.delete(k);
   }
-  for (const k of stale) window.sessionStorage.removeItem(k);
 }
 
-/** Keep `value` (JSON-serialisable) for the return from step-up. Storage failures are non-fatal: the user
- *  merely retypes. Never stash a token or secret — only what the form already holds. */
+/** Keep `value` for the return from step-up, in process memory only (never Web Storage). */
 export function stashStepUpDraft(key: string | null, value: unknown): void {
   if (key === null) return;
-  try {
-    const envelope: DraftEnvelope = { at: Date.now(), value };
-    window.sessionStorage.setItem(DRAFT_PREFIX + key, JSON.stringify(envelope));
-  } catch {
-    // Private mode / blocked storage: the draft is a convenience, never state of record.
-  }
+  drafts.set(key, { at: Date.now(), value });
 }
 
 /** Read WITHOUT clearing (a render-safe read: StrictMode double-invokes initialisers). Null when absent,
- *  expired, foreign or unreadable. Clear it with `clearStepUpDraft` on submit/cancel. */
+ *  expired or foreign. Clear it with `clearStepUpDraft` on submit/cancel. */
 export function peekStepUpDraft<T>(key: string | null): T | null {
   if (key === null) return null;
-  try {
-    sweep(key);
-    return (readEnvelope(DRAFT_PREFIX + key)?.value as T | undefined) ?? null;
-  } catch {
-    return null;
-  }
+  sweep(key);
+  return (readEnvelope(key)?.value as T | undefined) ?? null;
 }
 
 export function clearStepUpDraft(key: string | null): void {
-  if (key === null) return;
-  try {
-    window.sessionStorage.removeItem(DRAFT_PREFIX + key);
-  } catch {
-    // Non-fatal.
-  }
+  if (key !== null) drafts.delete(key);
 }
 
 /** The resource id of this user's pending draft for `action`, so a list screen can reopen its modal after
@@ -107,19 +82,18 @@ export function clearStepUpDraft(key: string | null): void {
 export function findStepUpDraftResourceId(owner: StepUpDraftOwner, action: string): string | null {
   const prefix = stepUpDraftKey(owner, action, "");
   if (prefix === null) return null;
-  try {
-    for (let i = 0; i < window.sessionStorage.length; i += 1) {
-      const k = window.sessionStorage.key(i);
-      if (!k?.startsWith(DRAFT_PREFIX + prefix)) continue;
-      if (readEnvelope(k) !== null) return k.slice(DRAFT_PREFIX.length + prefix.length);
-    }
-  } catch {
-    // Non-fatal.
+  for (const k of drafts.keys()) {
+    if (k.startsWith(prefix) && readEnvelope(k) !== null) return k.slice(prefix.length);
   }
   return null;
 }
 
-/** Read and clear a stashed draft; null when absent or unreadable. */
+/** The scope keys (never values) of the live drafts: for tests and diagnostics. */
+export function stepUpDraftKeys(): string[] {
+  return [...drafts.keys()].filter((k) => readEnvelope(k) !== null);
+}
+
+/** Read and clear a stashed draft; null when absent or expired. */
 export function takeStepUpDraft<T>(key: string): T | null {
   const value = peekStepUpDraft<T>(key);
   clearStepUpDraft(key);
@@ -171,17 +145,8 @@ export function discardStepUpDrafts(owner: StepUpDraftOwner, action: string): vo
   }
 }
 
-/** Forget every stashed step-up draft and the return marker (sign-out, screen lock): a draft can carry free text and must not outlive the session. */
+/** Forget every stashed step-up draft and the return marker (sign-out, screen lock). */
 export function clearAllStepUpDrafts(): void {
-  try {
-    const mine: string[] = [];
-    for (let i = 0; i < window.sessionStorage.length; i += 1) {
-      const k = window.sessionStorage.key(i);
-      if (k?.startsWith(DRAFT_PREFIX)) mine.push(k);
-    }
-    for (const k of mine) window.sessionStorage.removeItem(k);
-  } catch {
-    // Non-fatal.
-  }
+  drafts.clear();
   clearStepUpReturn();
 }

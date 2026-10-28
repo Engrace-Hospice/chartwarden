@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { markStepUpReturn } from "../../shell/step-up-redirect";
+import { markStepUpReturn, peekStepUpDraft, stepUpDraftKeys } from "../../shell/step-up-redirect";
 import type { EnrollmentView } from "./commercial-model";
 import {
   type Call,
@@ -313,8 +313,7 @@ describe("EnrollmentForm (edit)", () => {
 
 describe("EnrollmentForm step-up", () => {
   const stepUpRefusal = { status: 403, body: { error: { code: "STEP_UP_REQUIRED" } } };
-  const draftKeys = (): string[] =>
-    Object.keys(window.sessionStorage).filter((k) => k.startsWith("wx.step-up-draft:"));
+  const draftKeys = (): string[] => stepUpDraftKeys();
 
   it("saves the draft (no key, no secret) and redirects to /step-up on a stale session", async () => {
     mount(() => stepUpRefusal, []);
@@ -325,9 +324,7 @@ describe("EnrollmentForm step-up", () => {
     );
     const [key] = draftKeys();
     expect(key).toContain("commercial.enrollment.create");
-    const stored = JSON.parse(window.sessionStorage.getItem(key ?? "") ?? "{}") as {
-      value: Record<string, string>;
-    };
+    const stored = { value: peekStepUpDraft<Record<string, string>>(key ?? "") ?? {} };
     expect(stored.value).toMatchObject({ key: "stedi", evidence: "DOC-9", payerId: PAYER_ID });
     expect(JSON.stringify(stored)).not.toMatch(/idempotency|token/i);
   });
