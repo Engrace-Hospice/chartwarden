@@ -461,6 +461,7 @@
     "arch:abac-predicates": "bun run scripts/check-abac-predicates.ts",
     "arch:abac-composed": "bun run scripts/check-abac-composed.ts",
     "arch:live-suites": "bun run scripts/check-live-suite-coverage.ts",
+    "arch:release-gate": "bun run scripts/check-release-gate.ts",
     "arch:queue-names": "bun run scripts/check-queue-names.ts",
     "arch:outbox-bindings": "bun run scripts/check-outbox-bindings.ts",
     "outbox:deferrals:update": "bun run scripts/check-outbox-bindings.ts --update",

@@ -1,6 +1,10 @@
 // M25 payer seam against the REAL M40 provider (in-memory store seeded with the platform payer seed). The 12a-1 live suites
 // inject their own PayerSeam, so they never read M40's actual canonical shape (displayName, kind); this test does.
-import { createInMemoryMdmStore, createMdmEntityProvider, toPayerCanonicalSeed } from "@chartwarden/mdm";
+import {
+  createInMemoryMdmStore,
+  createMdmEntityProvider,
+  toPayerCanonicalSeed,
+} from "@chartwarden/mdm";
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import { buildSeamPayerSeam } from "../src/modules/25-remittance/routes/payer-seam";

@@ -106,7 +106,9 @@ describe("GET /api/v1/messaging/channels/:id/afterhours-triage rate limit", () =
 
   it("serves when the limiter lets the request through", async () => {
     let seen = 0;
-    const app = makeServer(async () => void (seen += 1), okService());
+    const app = makeServer(async () => {
+      seen += 1;
+    }, okService());
     expect((await get(app, "nurse")).statusCode).toBe(200);
     expect(seen).toBe(1);
     await app.close();
@@ -124,7 +126,7 @@ describe("afterHoursTriageRateLimit wiring", () => {
 
   it("mountMessagingRoutes forwards it to registerMessagingRoutes, which hands it to the route", () => {
     expect(read("../src/modules/36-messaging/index.ts")).toMatch(
-      /opts\.afterHoursTriageRateLimit \? \{ afterHoursTriageRateLimit: opts\.afterHoursTriageRateLimit \}/,
+      /opts\.afterHoursTriageRateLimit\s*\?\s*\{ afterHoursTriageRateLimit: opts\.afterHoursTriageRateLimit \}/,
     );
     expect(read("../src/modules/36-messaging/routes/messaging-routes.ts")).toMatch(
       /afterHoursLines, rateLimit: deps\.afterHoursTriageRateLimit/,

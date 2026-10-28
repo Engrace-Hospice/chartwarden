@@ -69,7 +69,9 @@ function build(over: Over = {}) {
       : {
           afterHours: {
             enabled:
-              typeof over.afterHours === "function" ? over.afterHours : async () => over.afterHours === true,
+              typeof over.afterHours === "function"
+                ? over.afterHours
+                : async () => over.afterHours === true,
           },
         }),
     urgent,

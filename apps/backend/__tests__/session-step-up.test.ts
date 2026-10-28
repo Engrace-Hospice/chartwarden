@@ -258,7 +258,12 @@ describe("M2-T05 step-up route", () => {
     });
   });
   describe("ADR-0049 D6: the tenant host is the WebAuthn origin in subdomain mode", () => {
-    const ASSERTION = { credentialId: "c", authenticatorData: "a", clientDataJSON: "d", signature: "s" };
+    const ASSERTION = {
+      credentialId: "c",
+      authenticatorData: "a",
+      clientDataJSON: "d",
+      signature: "s",
+    };
 
     async function verifyOnHost(hostOrgHeader: string | undefined) {
       const seen: Array<string | undefined> = [];
@@ -296,7 +301,11 @@ describe("M2-T05 step-up route", () => {
         method: "POST",
         url: "/api/v1/sessions/step-up",
         headers,
-        payload: { challengeId: initiate.json().challengeId, factor: "webauthn", assertion: ASSERTION },
+        payload: {
+          challengeId: initiate.json().challengeId,
+          factor: "webauthn",
+          assertion: ASSERTION,
+        },
       });
       await app.close();
       return seen;

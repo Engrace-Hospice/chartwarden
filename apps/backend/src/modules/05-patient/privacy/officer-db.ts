@@ -1,3 +1,5 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 // apps/backend/src/modules/05-patient/privacy/officer-db.ts — the Drizzle Privacy Officer service behind
 // `GET /patients/:id/privacy`, `POST /patients/:id/privacy-flags/resync` and
 // `GET /privacy/restricted-patients` (M5 §4.2 / §5.1; the pure decisions live in `./officer.ts`).
@@ -10,8 +12,6 @@
 // shared with the quarterly `patient.snapshot_rebuild` job (§4.5, `../jobs/snapshot-rebuild.ts`), which runs
 // it org-explicitly as the system and writes only drifted rows.
 import type { Static } from "@sinclair/typebox";
-import { type DbClient, schema } from "@chartwarden/db";
-import { withOrgContext } from "@chartwarden/tenancy";
 import { type SQL, and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import type { M5OutboxPort } from "../deceased-db";
 import type {

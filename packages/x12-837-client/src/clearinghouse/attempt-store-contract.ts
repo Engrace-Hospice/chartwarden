@@ -346,7 +346,8 @@ export const ATTEMPT_STORE_CONTRACT: readonly AttemptStoreContractCase[] = [
         (await store.allocateInterchangeNumber(ids.orgA, scope, "idem-1", "test")).number === first,
         "the same key gets the same number again",
       );
-      const second = (await store.allocateInterchangeNumber(ids.orgA, scope, "idem-2", "test")).number;
+      const second = (await store.allocateInterchangeNumber(ids.orgA, scope, "idem-2", "test"))
+        .number;
       assert(second !== first, "another key gets another number");
       assert(
         (await store.allocateInterchangeNumber(ids.orgB, scope, "idem-1", "test")).number !== first,

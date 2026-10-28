@@ -168,7 +168,9 @@ describe("supervisor reassign (G-2)", () => {
     }
     // the offboarding-only reason is never offered to a supervisor, but history still has wording for it
     expect(
-      within(dialog).queryByRole("radio", { name: REASSIGN_REASON_TEXT.assignee_left_organisation }),
+      within(dialog).queryByRole("radio", {
+        name: REASSIGN_REASON_TEXT.assignee_left_organisation,
+      }),
     ).toBeNull();
     expect(REASSIGN_REASON_TEXT.assignee_left_organisation).toBe(
       "The assigned person has left the organisation",
@@ -196,8 +198,8 @@ describe("supervisor reassign (G-2)", () => {
 
   it("says nobody can take it when there are no colleagues", async () => {
     const { POST } = mount({ candidates: () => candidatesOk([]) });
-    const dialog =
-      (fireEvent.click(await restrictedRowButton()), await screen.findByRole("dialog"));
+    fireEvent.click(await restrictedRowButton());
+    const dialog = await screen.findByRole("dialog");
     expect(await screen.findByText(REASSIGN_EMPTY_TEXT)).toBeTruthy();
     // Even with a reason chosen, there is nobody to send it to: Confirm stays inert and no "choose a colleague" prompt shows.
     fireEvent.click(within(dialog).getByRole("radio", { name: REASSIGN_REASON_TEXT.workload }));

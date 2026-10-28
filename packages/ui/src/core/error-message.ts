@@ -11,7 +11,8 @@ const WITHHELD_CODE = /FORBIDDEN|DENIED|SCOPE|STEP_UP|UNAUTHORI[SZ]ED|SESSION|NO
  * scope, step-up, session and not-found refusals return `null` so the caller's friendly copy wins over raw policy text.
  */
 export function envelopeErrorMessage(error: unknown): string | null {
-  const envelope = (error as { error?: { code?: unknown; message?: unknown } } | null | undefined)?.error;
+  const envelope = (error as { error?: { code?: unknown; message?: unknown } } | null | undefined)
+    ?.error;
   if (!envelope || typeof envelope.message !== "string" || envelope.message === "") return null;
   if (typeof envelope.code === "string" && WITHHELD_CODE.test(envelope.code)) return null;
   return envelope.message;

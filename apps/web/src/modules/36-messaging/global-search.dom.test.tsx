@@ -1,10 +1,10 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 /**
  * WP 2.7b in the web client: org-wide search. Every state (loading, empty, refine, capped, 503, 429, 403, 422, offline),
  * plain-text rendering, "Load more", abort-on-change, the query never reaching a URL or storage, and the keyboard walk.
  * The API mock is strict: any call other than the search route fails the test, and nothing may reject unhandled.
  */
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GlobalSearch } from "./global-search";

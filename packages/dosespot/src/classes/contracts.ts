@@ -1,6 +1,6 @@
+import type { MedClass } from "@chartwarden/types";
 import { type TSchema, Type } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { MedClass } from "@chartwarden/types";
 
 const dea = Type.Union([
   Type.Literal("II"),

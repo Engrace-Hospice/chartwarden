@@ -1,4 +1,3 @@
-import type { Meta, StoryObj } from "@storybook/react-vite";
 // Storybook (R0.5) — The Guardrail System (DESIGN.md §7). Guards, gates, blockers, ceremonies,
 // and regulatory clocks in one legible language. The ChartWarden-defining surface.
 import {
@@ -9,6 +8,7 @@ import {
   GateStepper,
   GuardChip,
 } from "@chartwarden/ui";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 import { type JSX, useState } from "react";
 
 const meta: Meta = { title: "Lantern/Guardrail" };

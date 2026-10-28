@@ -85,10 +85,7 @@ export function AcceptTenantInvitation(): JSX.Element {
 
   if (phase === "accepted") {
     return (
-      <CenteredCardLayout
-        brand={<BrandLockup />}
-        footer={<a href="/login">Back to sign in</a>}
-      >
+      <CenteredCardLayout brand={<BrandLockup />} footer={<a href="/login">Back to sign in</a>}>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <h1 style={{ margin: 0, fontSize: "1.1rem" }}>
             {resetSent ? "Check your email" : "Invitation accepted"}

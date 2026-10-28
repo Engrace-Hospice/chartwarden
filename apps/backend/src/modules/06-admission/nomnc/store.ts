@@ -7,8 +7,8 @@ import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import {
   type AcknowledgementKind,
   type DeadlineKind,
-  type DecisionOutcome,
   type DeadlineStatus,
+  type DecisionOutcome,
   type NoticeStatus,
   type RecipientKind,
   type RequestedByKind,
@@ -89,7 +89,10 @@ export async function loadActiveNotice(
   return row ?? null;
 }
 
-export async function loadReviewOfNotice(tx: DbClient, noticeId: string): Promise<ReviewRow | null> {
+export async function loadReviewOfNotice(
+  tx: DbClient,
+  noticeId: string,
+): Promise<ReviewRow | null> {
   const [row] = await tx.select().from(R).where(eq(R.nomncNoticeId, noticeId)).limit(1);
   return row ?? null;
 }
@@ -113,10 +116,20 @@ export async function listDeadlinesOf(
 ): Promise<DeadlineRow[]> {
   const rows: DeadlineRow[] = [];
   if (noticeIds.length > 0) {
-    rows.push(...(await tx.select().from(D).where(inArray(D.nomncNoticeId, [...noticeIds]))));
+    rows.push(
+      ...(await tx
+        .select()
+        .from(D)
+        .where(inArray(D.nomncNoticeId, [...noticeIds]))),
+    );
   }
   if (reviewIds.length > 0) {
-    rows.push(...(await tx.select().from(D).where(inArray(D.expeditedReviewId, [...reviewIds]))));
+    rows.push(
+      ...(await tx
+        .select()
+        .from(D)
+        .where(inArray(D.expeditedReviewId, [...reviewIds]))),
+    );
   }
   return rows.sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
 }

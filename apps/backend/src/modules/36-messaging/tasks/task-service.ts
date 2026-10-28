@@ -18,6 +18,7 @@ import {
 } from "@chartwarden/messaging";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
+  ChartWardenError,
   ForbiddenError,
   NotFoundError,
   type TaskAction,
@@ -27,7 +28,6 @@ import {
   type TaskEventType,
   type TaskSourceKind,
   type TaskStatus,
-  ChartWardenError,
 } from "@chartwarden/types";
 import type { HintOutboxPort } from "../message-hint-events";
 import { publishTaskEvent } from "./task-events";
@@ -118,7 +118,11 @@ function mapStoreError(err: unknown): never {
 function parseReason(reason: string | null | undefined): TaskCloseReason | null {
   if (reason === undefined || reason === null) return null;
   if (!(TASK_CLOSE_REASONS as readonly string[]).includes(reason)) {
-    throw new ChartWardenError("TASK_CLOSE_REASON_INVALID", "closing reason is not recognised", 422);
+    throw new ChartWardenError(
+      "TASK_CLOSE_REASON_INVALID",
+      "closing reason is not recognised",
+      422,
+    );
   }
   return reason as TaskCloseReason;
 }
@@ -290,7 +294,11 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     async convert(actor, a) {
       const dueAt = a.dueAt ?? null;
       if (validateDue(dueAt, clock()) !== null) {
-        throw new ChartWardenError("TASK_DUE_INVALID", "due date is outside the allowed window", 422);
+        throw new ChartWardenError(
+          "TASK_DUE_INVALID",
+          "due date is outside the allowed window",
+          422,
+        );
       }
       if (!(await canView(actor.orgId, actor.userId, a.channelId))) throw notFound();
       const msg = await deps.messageLookup(actor.orgId, a.channelId, a.messageId);

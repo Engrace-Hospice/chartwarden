@@ -11,7 +11,7 @@
 import type { DbClient } from "@chartwarden/db";
 import { schema } from "@chartwarden/db";
 import { withOrgContext, withOrgContextFromRequest, withUserContext } from "@chartwarden/tenancy";
-import { ChartWardenError, type AdminMembershipReader } from "@chartwarden/types";
+import { type AdminMembershipReader, ChartWardenError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import type {
   AccountStatus,
@@ -324,7 +324,8 @@ export function createDbMembershipRepository(
       );
       adminLockOrgTails.set(organizationId, tail);
       void tail.then(() => {
-        if (adminLockOrgTails.get(organizationId) === tail) adminLockOrgTails.delete(organizationId);
+        if (adminLockOrgTails.get(organizationId) === tail)
+          adminLockOrgTails.delete(organizationId);
       });
       return run;
     },

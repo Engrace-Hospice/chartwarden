@@ -1,21 +1,15 @@
-import {
-  Button,
-  CenteredCardLayout,
-  Glyph,
-  InlineAlert,
-  useApiClient,
-} from "@chartwarden/ui";
+import { Button, CenteredCardLayout, Glyph, InlineAlert, useApiClient } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { signOut } from "../auth-http";
 import { patientIdOf, validateNext } from "../session-guard";
-import { humanize } from "./portal-format";
 import {
   PortalOnboardingBrand,
   PortalOnboardingHeading,
   PortalOnboardingHelp,
 } from "./onboarding-ui";
+import { humanize } from "./portal-format";
 
 interface AccountChoice {
   portalAccountId: string;
@@ -60,6 +54,7 @@ export function PortalSignedIn(): JSX.Element {
   const bindRef = useRef<((id: string) => void) | null>(null);
 
   useEffect(() => {
+    void attempt;
     const version = ++generation.current;
     const current = () => version === generation.current;
     setPhase({ kind: "working" });
@@ -97,14 +92,12 @@ export function PortalSignedIn(): JSX.Element {
         if (!current()) return;
         if ("error" in res) {
           const code =
-            (res.error as { error?: { code?: string } } | undefined)?.error
-              ?.code ?? null;
+            (res.error as { error?: { code?: string } } | undefined)?.error?.code ?? null;
           if (res.response?.status === 401) navigate("/", { replace: true });
           else if (res.response?.status === 429)
             setPhase({
               kind: "failed",
-              message:
-                "Too many attempts. Please wait a few minutes and try again.",
+              message: "Too many attempts. Please wait a few minutes and try again.",
             });
           else if (res.response?.status === 403 || res.response?.status === 404)
             setPhase({ kind: "blocked", message: blockedMessage(code) });
@@ -114,9 +107,7 @@ export function PortalSignedIn(): JSX.Element {
               message: "We couldn't open your account. Please try again.",
             });
         } else {
-          const returnTo = validateNext(
-            new URLSearchParams(window.location.search).get("next"),
-          );
+          const returnTo = validateNext(new URLSearchParams(window.location.search).get("next"));
           const reachable = returnTo ? await canReturnTo(returnTo) : false;
           if (!current()) return;
           if (returnTo && reachable) navigate(returnTo, { replace: true });
@@ -156,15 +147,13 @@ export function PortalSignedIn(): JSX.Element {
         }
         const items = (res.data?.items ?? []) as AccountChoice[];
         const eligible = items.filter((item) => item.blockedReason === null);
-        if (!items.length)
-          setPhase({ kind: "blocked", message: blockedMessage(null) });
+        if (!items.length) setPhase({ kind: "blocked", message: blockedMessage(null) });
         else if (!eligible.length)
           setPhase({
             kind: "blocked",
             message: blockedMessage(items[0]?.blockedReason ?? null),
           });
-        else if (eligible.length === 1)
-          await bind(eligible[0]!.portalAccountId);
+        else if (eligible.length === 1) await bind(eligible[0]!.portalAccountId);
         else setPhase({ kind: "choose", choices: eligible });
       } catch {
         if (current())
@@ -191,17 +180,12 @@ export function PortalSignedIn(): JSX.Element {
   }
 
   return (
-    <CenteredCardLayout
-      brand={<PortalOnboardingBrand />}
-      footer={<PortalOnboardingHelp />}
-    >
+    <CenteredCardLayout brand={<PortalOnboardingBrand />} footer={<PortalOnboardingHelp />}>
       <div className="wx-portal-onboarding wx-portal-onboarding--accounts">
         {phase.kind === "working" ? (
+          // biome-ignore lint/a11y/useSemanticElements: <output> allows phrasing content only; this status holds flow content.
           <div role="status" className="wx-portal-onboarding__busy">
-            <span
-              className="wx-portal-onboarding__busy-icon"
-              aria-hidden="true"
-            >
+            <span className="wx-portal-onboarding__busy-icon" aria-hidden="true">
               <Glyph name="shield-check" size={26} />
             </span>
             <PortalOnboardingHeading
@@ -217,10 +201,7 @@ export function PortalSignedIn(): JSX.Element {
               title="Choose your care team"
               description="Select the hospice organization whose portal you'd like to open."
             />
-            <div
-              className="wx-portal-account-choices"
-              aria-label="Available portal accounts"
-            >
+            <div className="wx-portal-account-choices" aria-label="Available portal accounts">
               {phase.choices.map((choice) => (
                 <button
                   key={choice.portalAccountId}
@@ -229,16 +210,11 @@ export function PortalSignedIn(): JSX.Element {
                   disabled={busyId !== null}
                   onClick={() => bindRef.current?.(choice.portalAccountId)}
                 >
-                  <span
-                    className="wx-portal-account-choice__icon"
-                    aria-hidden="true"
-                  >
+                  <span className="wx-portal-account-choice__icon" aria-hidden="true">
                     <Glyph name="heart" size={22} />
                   </span>
                   <span className="wx-portal-account-choice__content">
-                    <strong>
-                      {choice.organizationName || "Your hospice team"}
-                    </strong>
+                    <strong>{choice.organizationName || "Your hospice team"}</strong>
                     <small>Access as {humanize(choice.relationship)}</small>
                   </span>
                   <span aria-hidden="true">
@@ -257,9 +233,7 @@ export function PortalSignedIn(): JSX.Element {
             />
             <InlineAlert tone="error">{phase.message}</InlineAlert>
             {phase.kind === "failed" ? (
-              <Button onClick={() => setAttempt((n) => n + 1)}>
-                Try again
-              </Button>
+              <Button onClick={() => setAttempt((n) => n + 1)}>Try again</Button>
             ) : null}
             <Button tone="secondary" onClick={() => void leave()}>
               Back to sign in

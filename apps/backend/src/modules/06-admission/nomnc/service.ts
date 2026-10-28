@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 // apps/backend/src/modules/06-admission/nomnc/service.ts — milestone 10a: NOMNC delivery records, BFCC-QIO expedited
 // reviews and typed deadlines. RECORD-KEEPING ONLY: it stores what staff typed (local date AND time as printed on the
 // notice or told by the QIO, plus a source note), derives status on read, publishes outbox facts in the same
@@ -5,17 +6,8 @@
 // review or deadline of another admission reads as absent.
 import { type DbClient, organizationTimezone } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import type { AdmissionEvidenceDocumentValidator } from "../admission-evidence-service";
-import type {
-  AddDeadlineInput,
-  OpenReviewInput,
-  PatchDeadlineInput,
-  PatchNoticeInput,
-  PatchReviewInput,
-  RecordNoticeInput,
-} from "./types";
 import { ResourceNotFoundError } from "../routes/service";
 import { mapUniqueViolation } from "../unique-violation";
 import {
@@ -34,8 +26,8 @@ import {
   NOTICE_DEADLINE_KINDS,
   NomncRuleError,
   type Prompt,
-  type RecipientKind,
   REVIEW_DEADLINE_KINDS,
+  type RecipientKind,
   type RequestedByKind,
   planReviewDecision,
   promptsFor,
@@ -66,6 +58,14 @@ import {
   noticeView,
   reviewView,
 } from "./store";
+import type {
+  AddDeadlineInput,
+  OpenReviewInput,
+  PatchDeadlineInput,
+  PatchNoticeInput,
+  PatchReviewInput,
+  RecordNoticeInput,
+} from "./types";
 
 export interface NomncOutboxPort {
   publish(
@@ -226,7 +226,10 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
 
   const requireActive = (notice: NoticeRow): void => {
     if (notice.status !== "active") {
-      throw new NomncRuleError("NOTICE_NOT_ACTIVE", `NOMNC record ${notice.id} is ${notice.status}`);
+      throw new NomncRuleError(
+        "NOTICE_NOT_ACTIVE",
+        `NOMNC record ${notice.id} is ${notice.status}`,
+      );
     }
   };
 
@@ -266,7 +269,11 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
           review ? [review.id] : [],
         );
         const deadlines = deadlineRows.map((d) =>
-          deadlineView(d, at, d.nomncNoticeId ? active?.id === d.nomncNoticeId : review?.state === "open"),
+          deadlineView(
+            d,
+            at,
+            d.nomncNoticeId ? active?.id === d.nomncNoticeId : review?.state === "open",
+          ),
         );
         const prompts = promptsFor({
           notice: active
@@ -305,7 +312,12 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
         const at = now();
         const delivered = moment(input.delivered, zone);
         const sourceNote = requireSourceNote(input.sourceNote);
-        await verifyDocument(organizationId, { admissionId, patientId: facts.patientId }, input.documentId, input.documentVersionId);
+        await verifyDocument(
+          organizationId,
+          { admissionId, patientId: facts.patientId },
+          input.documentId,
+          input.documentVersionId,
+        );
         const rep = blankToNull(input.representativeName);
         const ackNote = blankToNull(input.acknowledgementNote);
         validateNoticeFacts({
@@ -534,8 +546,18 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
           input.decision !== undefined;
         // A decided / withdrawn review is frozen except for its document links (the DB guard repeats this).
         if (touchesFacts) requireOpen(row);
-        await verifyDocument(organizationId, row, input.dencDocumentId, input.dencDocumentVersionId);
-        await verifyDocument(organizationId, row, input.decisionDocumentId, input.decisionDocumentVersionId);
+        await verifyDocument(
+          organizationId,
+          row,
+          input.dencDocumentId,
+          input.dencDocumentVersionId,
+        );
+        await verifyDocument(
+          organizationId,
+          row,
+          input.decisionDocumentId,
+          input.decisionDocumentVersionId,
+        );
         const zone = await zoneOf(tx, organizationId);
         const set: Partial<typeof R.$inferInsert> = {};
         if (input.qioReference !== undefined) set.qioReference = blankToNull(input.qioReference);
@@ -544,7 +566,9 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
         }
         if (input.dencDocumentId !== undefined) {
           set.dencDocumentId = input.dencDocumentId;
-          set.dencDocumentVersionId = input.dencDocumentId ? (input.dencDocumentVersionId ?? null) : null;
+          set.dencDocumentVersionId = input.dencDocumentId
+            ? (input.dencDocumentVersionId ?? null)
+            : null;
         }
         if (input.recordsSent !== undefined) {
           set.recordsSentAt = moment(input.recordsSent, zone).instant;
@@ -655,12 +679,22 @@ export function createNomncService(deps: NomncServiceDeps): NomncService {
         // The parent is locked and must still be live: a deadline of a superseded / withdrawn notice or a decided /
         // withdrawn review is closed history and can be neither edited nor marked met.
         const live = row.nomncNoticeId
-          ? (await noticeOf(tx, admissionId, row.nomncNoticeId, { forUpdate: true })).status === "active"
-          : (await reviewOf(tx, admissionId, row.expeditedReviewId as string, { forUpdate: true })).state === "open";
+          ? (await noticeOf(tx, admissionId, row.nomncNoticeId, { forUpdate: true })).status ===
+            "active"
+          : (await reviewOf(tx, admissionId, row.expeditedReviewId as string, { forUpdate: true }))
+              .state === "open";
         if (!live) {
-          throw new NomncRuleError("DEADLINE_CLOSED", "this deadline belongs to a closed record and cannot change");
+          throw new NomncRuleError(
+            "DEADLINE_CLOSED",
+            "this deadline belongs to a closed record and cannot change",
+          );
         }
-        await verifyDocument(organizationId, row, input.noticeDocumentId, input.noticeDocumentVersionId);
+        await verifyDocument(
+          organizationId,
+          row,
+          input.noticeDocumentId,
+          input.noticeDocumentVersionId,
+        );
         const at = now();
         const set: Partial<typeof D.$inferInsert> = {};
         if (input.label !== undefined && row.kind === "other") {

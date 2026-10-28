@@ -1,3 +1,4 @@
+import type { ModuleAlertContribution } from "@chartwarden/types";
 // apps/backend/src/modules/18-evv/alerts-by-m18.ts — Module 18's M36 alert-payload contribution (M18-T07,
 // spec §4.9). The typed alert payloads M18 OWNS under the `m18.` prefix, registered onto M36's Foundation
 // alert-payload registry at M18 boot (NO import edge into M36 — M36 is foundation-tier and never imports M18;
@@ -12,7 +13,6 @@
 // payload TYPES mirror the `EvvAlertPayload` discriminated union in @chartwarden/types (§4.9). The platform-floor
 // severity/cadence may be TIGHTENED by a tenant, never loosened (D11).
 import { Type } from "@sinclair/typebox";
-import type { ModuleAlertContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

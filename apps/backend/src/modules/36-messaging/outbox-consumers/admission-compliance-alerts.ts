@@ -126,7 +126,9 @@ function planExpedited(p: Record<string, unknown>, name: string): AdmissionCompl
   if (name === "m6.expedited_deadline.approaching") {
     const hours = p.boundaryHours;
     if (typeof hours !== "number") {
-      throw new Error(`${M36_ADMISSION_COMPLIANCE_ALERT_CONSUMER}: ${name} payload has no boundaryHours`);
+      throw new Error(
+        `${M36_ADMISSION_COMPLIANCE_ALERT_CONSUMER}: ${name} payload has no boundaryHours`,
+      );
     }
     return twoAudiences(name, `${deadlineId}:${hours}`, {
       ...base,

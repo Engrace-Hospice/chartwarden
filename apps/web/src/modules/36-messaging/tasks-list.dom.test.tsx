@@ -1,8 +1,8 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 3.4: "My tasks". Actions come only from the server's allowed_actions; a needs-owner badge is words plus a glyph;
 // a closed answer replaces the row; the tenant flag off and the empty/error states say so plainly.
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { TasksList } from "./tasks-list";

@@ -5,10 +5,13 @@ import { describe, expect, it } from "vitest";
 import { KeyRings } from "../src/modules/34-saas-platform/key-rings";
 
 async function notFound(): Promise<Response> {
-  return new Response(JSON.stringify({ error: { code: "NOT_FOUND", message: "none", correlationId: "c" } }), {
-    status: 404,
-    headers: { "content-type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({ error: { code: "NOT_FOUND", message: "none", correlationId: "c" } }),
+    {
+      status: 404,
+      headers: { "content-type": "application/json" },
+    },
+  );
 }
 
 describe("Key rings — tenant with no ring (#596)", () => {

@@ -21,7 +21,10 @@ vi.mock("../auth-client", () => ({
   },
 }));
 
-import { getGlobalResponseSignal, setGlobalResponseSignal } from "../../../shell/global-response-signal";
+import {
+  getGlobalResponseSignal,
+  setGlobalResponseSignal,
+} from "../../../shell/global-response-signal";
 import { ScreenLock } from "../screen-lock";
 
 const post = vi.fn();
@@ -74,7 +77,9 @@ describe("ScreenLock unlock (#589)", () => {
     });
     await lockAndSubmit();
 
-    expect(post).toHaveBeenCalledWith("/api/v1/auth/unlock", { body: { password: "ValidPassword#123" } });
+    expect(post).toHaveBeenCalledWith("/api/v1/auth/unlock", {
+      body: { password: "ValidPassword#123" },
+    });
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(signInEmail).not.toHaveBeenCalled();
     expect(signInUsername).not.toHaveBeenCalled();
@@ -96,7 +101,9 @@ describe("ScreenLock unlock (#589)", () => {
     await lockAndSubmit();
 
     expect(screen.getByText(/without a password/i)).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Unlock" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Unlock" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
     expect(screen.getByRole("button", { name: /sign out instead/i })).toBeTruthy();
   });
 
@@ -118,7 +125,11 @@ describe("ScreenLock unlock (#589)", () => {
 
   it("stays locked when a gateway answers an error with an EMPTY body (openapi-fetch gives error === '')", async () => {
     // A falsy `error` must not read as success: the verdict is the HTTP status, not the truthiness of the body.
-    post.mockResolvedValue({ data: undefined, error: "", response: new Response(null, { status: 502 }) });
+    post.mockResolvedValue({
+      data: undefined,
+      error: "",
+      response: new Response(null, { status: 502 }),
+    });
     await lockAndSubmit();
 
     expect(screen.getByRole("alertdialog", { name: "Screen locked" })).toBeTruthy();
@@ -126,7 +137,11 @@ describe("ScreenLock unlock (#589)", () => {
   });
 
   it("a bodiless/odd 401 (proxy hiccup on a live session) does not sign the user out or wipe drafts", async () => {
-    post.mockResolvedValue({ data: undefined, error: "", response: new Response(null, { status: 401 }) });
+    post.mockResolvedValue({
+      data: undefined,
+      error: "",
+      response: new Response(null, { status: 401 }),
+    });
     await lockAndSubmit();
 
     expect(getGlobalResponseSignal()).toBeNull();

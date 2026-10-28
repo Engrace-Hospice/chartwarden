@@ -1,8 +1,8 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 3.5: the handoff expiry control. Tighten-only (platform maximum shown, range enforced before sending), hidden
 // when the policy cannot be read, with save and reset to the platform default.
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { HandoffPolicySection } from "./handoff-policy-section";
 

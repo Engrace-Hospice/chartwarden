@@ -271,7 +271,10 @@ export function createInMemoryTerminologyStore(seed: InMemoryTerminologySeed = {
 
     async codeSystemMeta(system) {
       return (
-        seed.codeSystemMeta?.[system] ?? { url: `urn:chartwarden:codesystem:${system}`, version: "0" }
+        seed.codeSystemMeta?.[system] ?? {
+          url: `urn:chartwarden:codesystem:${system}`,
+          version: "0",
+        }
       );
     },
 

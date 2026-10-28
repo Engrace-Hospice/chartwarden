@@ -10,7 +10,7 @@
 // correlationId is read off request.context (applyRequestContext) so a client can quote it
 // to support and ops can stitch the request across logs/audit/outbox.
 import { classifyDatabaseError } from "@chartwarden/db";
-import { ConflictError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, ConflictError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 
 const DOCS_BASE = "https://docs.chartwarden.app/errors";

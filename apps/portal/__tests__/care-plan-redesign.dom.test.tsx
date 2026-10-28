@@ -1,5 +1,5 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createApiClient } from "@chartwarden/ui";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { PortalApp } from "../src/app";
 
@@ -37,9 +37,10 @@ function json(data: unknown, status = 200): Response {
 }
 
 type Handler = (path: string) => Response | Promise<Response>;
-function renderCarePlan(handler: Handler = (path) => path === "/api/v1/portal/care-plan/summary"
-  ? json(careSummary)
-  : json({}, 404)) {
+function renderCarePlan(
+  handler: Handler = (path) =>
+    path === "/api/v1/portal/care-plan/summary" ? json(careSummary) : json({}, 404),
+) {
   window.history.pushState({}, "", `/portal/p/${PATIENT}/care-plan`);
   const requests: string[] = [];
   const client = createApiClient({
@@ -75,7 +76,9 @@ describe("patient care-plan redesign", () => {
     expect(screen.getByText("Talk about changing needs")).toBeTruthy();
     expect(screen.getByText("Symptoms and comfort")).toBeTruthy();
     expect(screen.getByText("Caregiver questions")).toBeTruthy();
-    expect(screen.getByText("No additional details have been shared for this care area.")).toBeTruthy();
+    expect(
+      screen.getByText("No additional details have been shared for this care area."),
+    ).toBeTruthy();
     expect(screen.getByText(/This is a read-only summary/)).toBeTruthy();
     expect(screen.queryByText(/100% complete|goals achieved|care plan approved/i)).toBeNull();
     expect(screen.queryByRole("button", { name: /edit|sign|complete goal/i })).toBeNull();
@@ -89,9 +92,11 @@ describe("patient care-plan redesign", () => {
   });
 
   it("explains redacted content without revealing or guessing its subject", async () => {
-    renderCarePlan((path) => path === "/api/v1/portal/care-plan/summary"
-      ? json({ ...careSummary, redacted: true })
-      : json({}, 404));
+    renderCarePlan((path) =>
+      path === "/api/v1/portal/care-plan/summary"
+        ? json({ ...careSummary, redacted: true })
+        : json({}, 404),
+    );
     const notice = await screen.findByRole("note", { name: "Care plan privacy notice" });
     expect(within(notice).getByText("Some details are not shown here")).toBeTruthy();
     expect(within(notice).getByText(/available to your account/)).toBeTruthy();
@@ -99,15 +104,23 @@ describe("patient care-plan redesign", () => {
   });
 
   it("distinguishes an empty shared summary from a fully redacted view", async () => {
-    const { unmount } = renderCarePlan((path) => path === "/api/v1/portal/care-plan/summary"
-      ? json({ problems: [], redacted: false })
-      : json({}, 404));
-    expect(await screen.findByRole("heading", { name: "No care-plan items shared yet" })).toBeTruthy();
+    const { unmount } = renderCarePlan((path) =>
+      path === "/api/v1/portal/care-plan/summary"
+        ? json({ problems: [], redacted: false })
+        : json({}, 404),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "No care-plan items shared yet" }),
+    ).toBeTruthy();
     unmount();
-    renderCarePlan((path) => path === "/api/v1/portal/care-plan/summary"
-      ? json({ problems: [], redacted: true })
-      : json({}, 404));
-    expect(await screen.findByRole("heading", { name: "No care-plan details available to show" })).toBeTruthy();
+    renderCarePlan((path) =>
+      path === "/api/v1/portal/care-plan/summary"
+        ? json({ problems: [], redacted: true })
+        : json({}, 404),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "No care-plan details available to show" }),
+    ).toBeTruthy();
     expect(screen.getByRole("note", { name: "Care plan privacy notice" })).toBeTruthy();
   });
 
@@ -129,26 +142,40 @@ describe("patient care-plan redesign", () => {
   });
 
   it("does not disclose care-plan data when the portal API denies access", async () => {
-    renderCarePlan((path) => path === "/api/v1/portal/care-plan/summary"
-      ? json({ error: { code: "FORBIDDEN" } }, 403)
-      : json({}, 404));
+    renderCarePlan((path) =>
+      path === "/api/v1/portal/care-plan/summary"
+        ? json({ error: { code: "FORBIDDEN" } }, 403)
+        : json({}, 404),
+    );
     expect(await screen.findByRole("heading", { name: "Care plan unavailable" })).toBeTruthy();
     expect(screen.getByText("This information is not available on your account.")).toBeTruthy();
     expect(screen.queryByRole("list", { name: "Care areas" })).toBeNull();
   });
 
   it("does not interpret invalid server DTOs as an empty care plan", async () => {
-    renderCarePlan((path) => path === "/api/v1/portal/care-plan/summary"
-      ? json({ wrongProperty: [] })
-      : json({}, 404));
+    renderCarePlan((path) =>
+      path === "/api/v1/portal/care-plan/summary" ? json({ wrongProperty: [] }) : json({}, 404),
+    );
     expect(await screen.findByRole("heading", { name: "Care plan unavailable" })).toBeTruthy();
     expect(screen.queryByText("No care-plan items shared yet")).toBeNull();
   });
 
   it("escapes patient-visible text rather than interpreting it as HTML", async () => {
-    renderCarePlan((path) => path === "/api/v1/portal/care-plan/summary"
-      ? json({ problems: [{ problemId: "p", label: "<script>alert(1)</script>", goals: ["<b>Text</b>"], focus: [] }], redacted: false })
-      : json({}, 404));
+    renderCarePlan((path) =>
+      path === "/api/v1/portal/care-plan/summary"
+        ? json({
+            problems: [
+              {
+                problemId: "p",
+                label: "<script>alert(1)</script>",
+                goals: ["<b>Text</b>"],
+                focus: [],
+              },
+            ],
+            redacted: false,
+          })
+        : json({}, 404),
+    );
     expect(await screen.findByRole("heading", { name: "<script>alert(1)</script>" })).toBeTruthy();
     expect(screen.getByText("<b>Text</b>")).toBeTruthy();
     expect(document.querySelector(".wx-care-plan-area script")).toBeNull();
@@ -161,15 +188,30 @@ describe("patient care-plan redesign", () => {
     renderCarePlan((path) => {
       if (path !== "/api/v1/portal/care-plan/summary") return json({}, 404);
       count += 1;
-      if (count === 1) return new Promise<Response>((resolve) => { resolveOld = resolve; });
-      return json({ problems: [{ problemId: "new", label: "New patient goal area", goals: ["New goal"], focus: [] }], redacted: false });
+      if (count === 1)
+        return new Promise<Response>((resolve) => {
+          resolveOld = resolve;
+        });
+      return json({
+        problems: [
+          { problemId: "new", label: "New patient goal area", goals: ["New goal"], focus: [] },
+        ],
+        redacted: false,
+      });
     });
     await waitFor(() => expect(count).toBe(1));
     window.history.pushState({}, "", `/portal/p/${OTHER_PATIENT}/care-plan`);
     window.dispatchEvent(new PopStateEvent("popstate"));
     expect(await screen.findByRole("heading", { name: "New patient goal area" })).toBeTruthy();
     await act(async () => {
-      resolveOld?.(json({ problems: [{ problemId: "old", label: "Old patient PHI", goals: ["Old goal"], focus: [] }], redacted: true }));
+      resolveOld?.(
+        json({
+          problems: [
+            { problemId: "old", label: "Old patient PHI", goals: ["Old goal"], focus: [] },
+          ],
+          redacted: true,
+        }),
+      );
     });
     expect(screen.queryByText("Old patient PHI")).toBeNull();
     expect(screen.queryByText("Old goal")).toBeNull();

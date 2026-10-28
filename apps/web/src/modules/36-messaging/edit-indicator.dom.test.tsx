@@ -1,8 +1,8 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 1.3 - the "Edited" indicator on a message bubble (jsdom). Plain text, never colour alone, not a button;
 // it sits outside the body renderer so it applies to every body kind, own and others' messages, channel and thread.
 // Opening a revision list is Phase 5 (docs/messaging-hub/06-ux-design.md), tied to messaging.history.read.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";

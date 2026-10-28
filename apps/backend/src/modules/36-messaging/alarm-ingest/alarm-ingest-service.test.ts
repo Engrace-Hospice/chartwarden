@@ -2,8 +2,11 @@ import { createHash } from "node:crypto";
 import type { AlarmMappingInput } from "@chartwarden/types";
 import { describe, expect, it, vi } from "vitest";
 import { alarmKeyId, signAlarmRequest } from "./alarm-ingest-core";
+import {
+  fakeAlarmCipher as cipher,
+  makeFakeAlarmIngestStore as makeStore,
+} from "./alarm-ingest-fake-store";
 import { createAlarmIngestService } from "./alarm-ingest-service";
-import { fakeAlarmCipher as cipher, makeFakeAlarmIngestStore as makeStore } from "./alarm-ingest-fake-store";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const OTHER_ORG = "99999999-9999-4999-8999-999999999999";
@@ -20,8 +23,7 @@ const MAPPINGS: AlarmMappingInput[] = [
 async function setup(opts: { emit?: ReturnType<typeof vi.fn> } = {}) {
   let flag = true;
   const { store, events } = makeStore();
-  const emit =
-    opts.emit ?? vi.fn(async () => ({ alertId: "alert-1", resolvedRecipientCount: 2 }));
+  const emit = opts.emit ?? vi.fn(async () => ({ alertId: "alert-1", resolvedRecipientCount: 2 }));
   const warn = vi.fn();
   const svc = createAlarmIngestService({
     store,
@@ -34,7 +36,13 @@ async function setup(opts: { emit?: ReturnType<typeof vi.fn> } = {}) {
   const created = await svc.create(ACTOR, { name: "Ward 2 bed sensors", mappings: MAPPINGS });
   const send = (
     body: unknown,
-    over: { secret?: string; keyId?: string; timestamp?: string; signature?: unknown; ip?: string } = {},
+    over: {
+      secret?: string;
+      keyId?: string;
+      timestamp?: string;
+      signature?: unknown;
+      ip?: string;
+    } = {},
   ) => {
     const rawBody = typeof body === "string" ? body : JSON.stringify(body);
     const keyId = over.keyId ?? created.keyId;
@@ -50,7 +58,17 @@ async function setup(opts: { emit?: ReturnType<typeof vi.fn> } = {}) {
       ip: over.ip ?? "203.0.113.5",
     });
   };
-  return { svc, created, send, emit, events, warn, setFlag: (on: boolean) => void (flag = on) };
+  return {
+    svc,
+    created,
+    send,
+    emit,
+    events,
+    warn,
+    setFlag: (on: boolean) => {
+      flag = on;
+    },
+  };
 }
 
 const refusal = { name: "UnauthorizedError", message: "Alarm request refused" };
@@ -160,14 +178,25 @@ describe("alarm ingest: inbound authentication (one refusal for everything)", ()
   it("a body that is not a string is refused before anything is read", async () => {
     const { svc, created } = await setup();
     await expect(
-      svc.ingest({ keyId: created.keyId, timestamp: TS, signature: "v1=" + "0".repeat(64), rawBody: undefined, ip: "x" }),
+      svc.ingest({
+        keyId: created.keyId,
+        timestamp: TS,
+        signature: `v1=${"0".repeat(64)}`,
+        rawBody: undefined,
+        ip: "x",
+      }),
     ).rejects.toMatchObject(refusal);
   });
 
   it("the signature binds the body: a tampered body with the old signature is refused", async () => {
     const { created, send } = await setup();
     const rawBody = JSON.stringify({ eventId: "a1", alarmKind: "call" });
-    const signature = signAlarmRequest({ secret: created.secret, keyId: created.keyId, timestamp: TS, rawBody });
+    const signature = signAlarmRequest({
+      secret: created.secret,
+      keyId: created.keyId,
+      timestamp: TS,
+      rawBody,
+    });
     const tampered = JSON.stringify({ eventId: "a1", alarmKind: "bed_exit" });
     await expect(send(tampered, { signature })).rejects.toMatchObject(refusal);
   });
@@ -180,7 +209,8 @@ describe("alarm ingest: budgets", () => {
     const svc = createAlarmIngestService({
       store: m.store,
       cipher,
-      alerts: () => ({ emit: vi.fn(async () => ({ alertId: "a", resolvedRecipientCount: 1 })) }) as never,
+      alerts: () =>
+        ({ emit: vi.fn(async () => ({ alertId: "a", resolvedRecipientCount: 1 })) }) as never,
       flags: { forOrg: async () => ({ "messaging.alarm_ingest": true }) },
       now: () => NOW,
       ipLimiter: { consume: async (k) => ({ allowed: k !== "blocked-ip" }) },
@@ -188,9 +218,20 @@ describe("alarm ingest: budgets", () => {
     });
     const created = await svc.create(ACTOR, { name: "n", mappings: MAPPINGS });
     const rawBody = JSON.stringify({ eventId: "a1", alarmKind: "call" });
-    const signed = signAlarmRequest({ secret: created.secret, keyId: created.keyId, timestamp: TS, rawBody });
+    const signed = signAlarmRequest({
+      secret: created.secret,
+      keyId: created.keyId,
+      timestamp: TS,
+      rawBody,
+    });
     await expect(
-      svc.ingest({ keyId: created.keyId, timestamp: TS, signature: signed, rawBody, ip: "blocked-ip" }),
+      svc.ingest({
+        keyId: created.keyId,
+        timestamp: TS,
+        signature: signed,
+        rawBody,
+        ip: "blocked-ip",
+      }),
     ).rejects.toMatchObject({ statusCode: 429 });
     expect(load).not.toHaveBeenCalled();
     await expect(
@@ -198,7 +239,13 @@ describe("alarm ingest: budgets", () => {
     ).rejects.toMatchObject({ statusCode: 429 });
     // a forged signature never reaches the per-source budget (it cannot be used to exhaust a real sender's budget)
     await expect(
-      svc.ingest({ keyId: created.keyId, timestamp: TS, signature: `v1=${"1".repeat(64)}`, rawBody, ip: "ok-ip" }),
+      svc.ingest({
+        keyId: created.keyId,
+        timestamp: TS,
+        signature: `v1=${"1".repeat(64)}`,
+        rawBody,
+        ip: "ok-ip",
+      }),
     ).rejects.toMatchObject({ statusCode: 401 });
   });
 });
@@ -275,7 +322,9 @@ describe("alarm ingest: an alarm becomes an ordinary alert, capped and idempoten
   it("the same event id with a different body is a 409, never a second alert", async () => {
     const { send, emit } = await setup();
     await send({ eventId: "dup", alarmKind: "call" });
-    await expect(send({ eventId: "dup", alarmKind: "call", severity: "warn" })).rejects.toMatchObject({
+    await expect(
+      send({ eventId: "dup", alarmKind: "call", severity: "warn" }),
+    ).rejects.toMatchObject({
       statusCode: 409,
     });
     expect(emit).toHaveBeenCalledTimes(1);
@@ -287,7 +336,9 @@ describe("alarm ingest: an alarm becomes an ordinary alert, capped and idempoten
       statusCode: 422,
       code: "ALARM_KIND_UNMAPPED",
     });
-    await expect(send({ eventId: "u1", alarmKind: "smoke" })).rejects.toMatchObject({ statusCode: 422 });
+    await expect(send({ eventId: "u1", alarmKind: "smoke" })).rejects.toMatchObject({
+      statusCode: 422,
+    });
     expect(emit).not.toHaveBeenCalled();
     expect(events[0]?.status).toBe("unmapped");
     expect(warn).toHaveBeenCalledWith("m36.alarm_ingest.unmapped", expect.any(Object));
@@ -330,7 +381,10 @@ describe("alarm ingest: an alarm becomes an ordinary alert, capped and idempoten
       if (failSettle) throw new Error("db blip");
       return settle(...args);
     };
-    const emit = vi.fn(async (_org: string, _input: { correlationId: string }) => ({ alertId: "alert-1", resolvedRecipientCount: 1 }));
+    const emit = vi.fn(async (_org: string, _input: { correlationId: string }) => ({
+      alertId: "alert-1",
+      resolvedRecipientCount: 1,
+    }));
     const svc = createAlarmIngestService({
       store,
       cipher,
@@ -344,10 +398,18 @@ describe("alarm ingest: an alarm becomes an ordinary alert, capped and idempoten
       keyId: created.keyId,
       timestamp: TS,
       rawBody,
-      signature: signAlarmRequest({ secret: created.secret, keyId: created.keyId, timestamp: TS, rawBody }),
+      signature: signAlarmRequest({
+        secret: created.secret,
+        keyId: created.keyId,
+        timestamp: TS,
+        rawBody,
+      }),
       ip: "x",
     };
-    await expect(svc.ingest(req)).rejects.toMatchObject({ statusCode: 503, code: "ALARM_NOT_ALERTED" });
+    await expect(svc.ingest(req)).rejects.toMatchObject({
+      statusCode: 503,
+      code: "ALARM_NOT_ALERTED",
+    });
     failSettle = false;
     await expect(svc.ingest(req)).resolves.toMatchObject({ outcome: "alerted" });
     expect(emit.mock.calls[0]![1].correlationId).toBe(emit.mock.calls[1]![1].correlationId);

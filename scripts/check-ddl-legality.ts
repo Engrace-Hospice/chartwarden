@@ -23,8 +23,8 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { findPartitionKeyViolations, stripCommentsForScan } from "./ddl-source-scan";
 import { MODULES } from "../architecture/module-manifest";
+import { findPartitionKeyViolations, stripCommentsForScan } from "./ddl-source-scan";
 
 const REPO_ROOT = process.cwd();
 const SCAN_DIRS = ["packages/db", ...MODULES.flatMap((m) => m.codePaths)];

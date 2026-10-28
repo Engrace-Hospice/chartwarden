@@ -1,7 +1,14 @@
 // M36 WP 6.6 (ADR-0096, PROPOSED) - the secrets of an external partner share: the one-time invite token, the partner's session token and the
 // 8-digit second-factor code. Only hashes are stored. Tokens are 256-bit random (sha256 is enough: no brute force is possible); the code is
 // low-entropy, so it is scrypt-hashed with a per-share salt AND its attempts are capped in the database (5, never reset).
-import { createHash, createHmac, randomBytes, randomInt, scryptSync, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  randomInt,
+  scryptSync,
+  timingSafeEqual,
+} from "node:crypto";
 import { EXTERNAL_PARTNER_NOTIFICATION_TEXT } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

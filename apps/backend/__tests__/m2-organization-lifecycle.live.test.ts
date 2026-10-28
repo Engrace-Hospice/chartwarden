@@ -63,542 +63,549 @@ const ORG_B = "22222222-2222-4222-8222-2222f2050102";
 const USER = "33333333-3333-4333-8333-3333f2050103";
 const ACTOR_MEMBERSHIP = "44444444-4444-4444-8444-4444f2050104";
 
-describe.skipIf(!DB_URL)("M2 organization-lifecycle — LIVE Postgres, real chartwarden_app role", () => {
-  let admin: Client;
-  let handle: ReturnType<typeof createDbClient>;
+describe.skipIf(!DB_URL)(
+  "M2 organization-lifecycle — LIVE Postgres, real chartwarden_app role",
+  () => {
+    let admin: Client;
+    let handle: ReturnType<typeof createDbClient>;
 
-  async function applyMigrations() {
-    const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR)
-      .filter((x) => x.endsWith(".sql"))
-      .sort()) {
-      let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
-      if (stripVector)
-        sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
-      await admin.query(sql);
-    }
-  }
-
-  beforeAll(async () => {
-    admin = new Client({ connectionString: DB_URL });
-    await admin.connect();
-    await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
-    await admin.query("CREATE SCHEMA public");
-    for (const r of ROLES) {
-      await admin.query(
-        `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${r}') THEN ` +
-          `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
-      );
-    }
-    await applyMigrations();
-    await admin.query(
-      `INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES
-         ($1,'f11d19-a','Alpha Hospice LLC','Alpha Hospice','active'),
-         ($2,'f11d19-b','Beta Hospice LLC','Beta Hospice','active')`,
-      [ORG_A, ORG_B],
-    );
-    await admin.query(
-      `INSERT INTO "user" (id,email,name) VALUES ($1,'f11d19@example.test','F11D19 User')`,
-      [USER],
-    );
-    await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
-    handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
-  }, 240_000);
-
-  afterAll(async () => {
-    await handle?.close();
-    await admin?.end();
-  });
-
-  function writer() {
-    const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M2_OUTBOX_EVENTS]));
-    const rawPublisher: OrganizationLifecycleOutboxPort = {
-      publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m2" }),
-    };
-    return createDrizzleOrganizationLifecycleWriter(handle.db, rawPublisher);
-  }
-
-  it("suspend: writes status, revokes bound sessions, lands the outbox row, audits the transition", async () => {
-    const boundSessionId = "sess-org-a-bound-1";
-    await admin.query(
-      `INSERT INTO "session" (id,user_id,active_organization_id,token,expires_at) VALUES ($1,$2,$3,$4, now() + interval '1 day')`,
-      [boundSessionId, USER, ORG_A, `tok-${boundSessionId}`],
-    );
-
-    const result = await writer().transition(ORG_A, "suspend", {
-      reason: "non-payment 60d",
-      actorUserId: USER,
-      actorMembershipId: ACTOR_MEMBERSHIP,
-    });
-    expect(result).toMatchObject({ status: "suspended", sessionsRevoked: 1 });
-
-    const org = await admin.query("SELECT status FROM organization WHERE id = $1", [ORG_A]);
-    expect(org.rows[0].status).toBe("suspended");
-
-    const sessions = await admin.query('SELECT id FROM "session" WHERE id = $1', [boundSessionId]);
-    expect(sessions.rows).toHaveLength(0);
-
-    const outbox = await admin.query(
-      "SELECT event_type, payload FROM outbox_event WHERE aggregate_id = $1 AND event_type = 'm2.organization.suspended'",
-      [ORG_A],
-    );
-    expect(outbox.rows).toHaveLength(1);
-    expect(outbox.rows[0].payload).toMatchObject({
-      organizationId: ORG_A,
-      reason: "non-payment 60d",
-      actorMembershipId: ACTOR_MEMBERSHIP,
-    });
-
-    const audit = await admin.query(
-      "SELECT event_type, before, after FROM audit_event WHERE resource_id = $1 AND event_type = 'm2.organization.suspended'",
-      [ORG_A],
-    );
-    expect(audit.rows).toHaveLength(1);
-    expect(audit.rows[0].before).toMatchObject({ status: "active" });
-    expect(audit.rows[0].after).toMatchObject({ status: "suspended", sessionsRevoked: 1 });
-  });
-
-  it("an illegal transition (suspend again, from suspended) is refused and changes nothing", async () => {
-    await expect(
-      writer().transition(ORG_A, "suspend", {
-        reason: "n/a",
-        actorUserId: USER,
-        actorMembershipId: ACTOR_MEMBERSHIP,
-      }),
-    ).rejects.toThrow(/cannot 'suspend' from 'suspended'|ILLEGAL_ORGANIZATION_TRANSITION/);
-
-    const org = await admin.query("SELECT status FROM organization WHERE id = $1", [ORG_A]);
-    expect(org.rows[0].status).toBe("suspended"); // unchanged
-  });
-
-  it("activate: reactivates a suspended org and publishes m2.organization.activated", async () => {
-    const result = await writer().transition(ORG_A, "activate", {
-      reason: "cause resolved",
-      actorUserId: USER,
-      actorMembershipId: ACTOR_MEMBERSHIP,
-    });
-    expect(result.status).toBe("active");
-
-    const outbox = await admin.query(
-      "SELECT id FROM outbox_event WHERE aggregate_id = $1 AND event_type = 'm2.organization.activated'",
-      [ORG_A],
-    );
-    expect(outbox.rows).toHaveLength(1);
-  });
-
-  it("close: terminal, revokes sessions, publishes m2.organization.closed; org B is untouched", async () => {
-    await admin.query(
-      `INSERT INTO "session" (id,user_id,active_organization_id,token,expires_at) VALUES ($1,$2,$3,$4, now() + interval '1 day')`,
-      ["sess-org-a-bound-2", USER, ORG_A, "tok-sess-org-a-bound-2"],
-    );
-    await admin.query(
-      `INSERT INTO "session" (id,user_id,active_organization_id,token,expires_at) VALUES ($1,$2,$3,$4, now() + interval '1 day')`,
-      ["sess-org-b-bound-1", USER, ORG_B, "tok-sess-org-b-bound-1"],
-    );
-
-    const result = await writer().transition(ORG_A, "close", {
-      reason: "customer offboarded",
-      actorUserId: USER,
-      actorMembershipId: ACTOR_MEMBERSHIP,
-    });
-    expect(result).toMatchObject({ status: "closed", sessionsRevoked: 1 });
-
-    const orgBSession = await admin.query('SELECT id FROM "session" WHERE id = $1', [
-      "sess-org-b-bound-1",
-    ]);
-    expect(orgBSession.rows).toHaveLength(1); // untouched
-
-    await expect(
-      writer().transition(ORG_A, "suspend", {
-        reason: "n/a",
-        actorUserId: USER,
-        actorMembershipId: ACTOR_MEMBERSHIP,
-      }),
-    ).rejects.toThrow(); // closed is terminal
-  });
-
-  it("getStatus (the select-organization enforcement reader) reads the real status, org-scoped", async () => {
-    const reader = writer();
-    expect(await reader.getStatus(ORG_A)).toBe("closed");
-    expect(await reader.getStatus(ORG_B)).toBe("active");
-    expect(await reader.getStatus("00000000-0000-4000-8000-000000000000")).toBeNull();
-  });
-
-  // §4.7 `user.deactivate` "platform_ops (any)" — POST /api/v1/platform/users/:id/deactivate, driven
-  // through the route with the REAL directory / session writer / org-scoped audit + outbox, and the REAL
-  // RBAC store + actor-enrichment reader, all as `chartwarden_app`. Only session authentication (a header
-  // shim naming the user + bound org) and the step-up ceremony are stood in for.
-  describe("platform user deactivate (§4.7 platform_ops any)", () => {
-    const ORG_OPS = "55555555-5555-4555-8555-5555f2050105";
-    const OPERATOR = "66666666-6666-4666-8666-6666f2050106";
-    const SPOOFER = "77777777-7777-4777-8777-7777f2050107";
-    const TARGET = "88888888-8888-4888-8888-8888f2050108";
-
-    async function bindRole(input: {
-      roleOrg: string | null;
-      key: string;
-      category: string;
-      membershipId: string;
-      membershipOrg: string;
-    }): Promise<void> {
-      const role = await admin.query<{ id: string }>(
-        `INSERT INTO role (organization_id,key,name,category) VALUES ($1,$2,$2,$3) RETURNING id`,
-        [input.roleOrg, input.key, input.category],
-      );
-      const roleId = role.rows[0]?.id;
-      await admin.query(
-        `INSERT INTO role_permission (organization_id,role_id,permission_key) VALUES ($1,$2,'user.deactivate')`,
-        [input.roleOrg, roleId],
-      );
-      await admin.query(
-        `INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)`,
-        [input.membershipOrg, input.membershipId, roleId],
-      );
+    async function applyMigrations() {
+      const stripVector = !!process.env.CHARTWARDEN_TEST_NO_PGVECTOR;
+      for (const f of readdirSync(MIGRATIONS_DIR)
+        .filter((x) => x.endsWith(".sql"))
+        .sort()) {
+        let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
+        if (stripVector)
+          sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "vector".*$/m, "-- (vector stripped)");
+        await admin.query(sql);
+      }
     }
 
     beforeAll(async () => {
-      await admin.query(
-        `INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES
-           ($1,'f11d19-ops','Platform Ops LLC','Platform Ops','active')`,
-        [ORG_OPS],
-      );
-      await admin.query(
-        `INSERT INTO "user" (id,email,name) VALUES
-           ($1,'operator@f11d19.test','Op Erator'),($2,'spoofer@f11d19.test','Spoo Fer'),
-           ($3,'target@f11d19.test','Tar Get')`,
-        [OPERATOR, SPOOFER, TARGET],
-      );
-      const m = await admin.query<{ id: string; user_id: string; organization_id: string }>(
-        `INSERT INTO membership (user_id,organization_id,status) VALUES
-           ($1,$4,'active'),($2,$5,'active'),($3,$5,'active'),($3,$4,'active')
-         RETURNING id,user_id,organization_id`,
-        [OPERATOR, SPOOFER, TARGET, ORG_OPS, ORG_B],
-      );
-      const membershipOf = (user: string, org: string) =>
-        m.rows.find((r) => r.user_id === user && r.organization_id === org)?.id as string;
-      await admin.query(
-        `INSERT INTO permission (key,resource,action,category) VALUES ('user.deactivate','user','deactivate','admin')
-         ON CONFLICT (key) DO NOTHING`,
-      );
-      // The operator: a PLATFORM-OWNED platform_ops row (organization_id NULL), as scripts/db/platform-role.ts grants it.
-      await bindRole({
-        roleOrg: null,
-        key: "platform_ops",
-        category: "platform_staff",
-        membershipId: membershipOf(OPERATOR, ORG_OPS),
-        membershipOrg: ORG_OPS,
-      });
-      // The spoofer is ORG_B's org_admin and so legitimately holds `user.deactivate` there — RBAC passes and
-      // the platform-role ABAC predicate is what must refuse.
-      await bindRole({
-        roleOrg: ORG_B,
-        key: "org_admin",
-        category: "admin_executive",
-        membershipId: membershipOf(SPOOFER, ORG_B),
-        membershipOrg: ORG_B,
-      });
-      // ...plus a TENANT-owned `platform_ops` row in ORG_B. Migration 0318's CHECK refuses writing one
-      // now, so it is staged the way a pre-0318 legacy row exists: with the constraint briefly lifted.
-      const reserved = await admin.query<{ name: string; def: string }>(
-        `SELECT conname AS name, pg_get_constraintdef(oid) AS def FROM pg_constraint
-          WHERE conrelid = 'role'::regclass AND contype = 'c' AND conname LIKE 'role_platform%'`,
-      );
-      for (const c of reserved.rows)
-        await admin.query(`ALTER TABLE role DROP CONSTRAINT ${c.name}`);
-      await bindRole({
-        roleOrg: ORG_B,
-        key: "platform_ops",
-        category: "admin_executive",
-        membershipId: membershipOf(SPOOFER, ORG_B),
-        membershipOrg: ORG_B,
-      });
-      // Restored verbatim (pg_get_constraintdef keeps NOT VALID), so later suites see the real backstop.
-      for (const c of reserved.rows)
-        await admin.query(`ALTER TABLE role ADD CONSTRAINT ${c.name} ${c.def}`);
-      for (const [id, org] of [
-        ["sess-target-b", ORG_B],
-        ["sess-target-ops", ORG_OPS],
-      ]) {
+      admin = new Client({ connectionString: DB_URL });
+      await admin.connect();
+      await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
+      await admin.query("CREATE SCHEMA public");
+      for (const r of ROLES) {
         await admin.query(
-          `INSERT INTO "session" (id,user_id,active_organization_id,token,expires_at) VALUES ($1,$2,$3,$4, now() + interval '1 day')`,
-          [id, TARGET, org, `tok-${id}`],
+          `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${r}') THEN ` +
+            `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
         );
       }
+      await applyMigrations();
+      await admin.query(
+        `INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES
+         ($1,'f11d19-a','Alpha Hospice LLC','Alpha Hospice','active'),
+         ($2,'f11d19-b','Beta Hospice LLC','Beta Hospice','active')`,
+        [ORG_A, ORG_B],
+      );
+      await admin.query(
+        `INSERT INTO "user" (id,email,name) VALUES ($1,'f11d19@example.test','F11D19 User')`,
+        [USER],
+      );
+      await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
+    }, 240_000);
+
+    afterAll(async () => {
+      await handle?.close();
+      await admin?.end();
     });
 
-    afterAll(() => {
-      resetAuthorizationContract();
-      resetRbacEngine();
-    });
-
-    function server() {
-      resetAuthorizationContract();
-      resetRbacEngine();
-      registerDbEffectivePermissionResolver(handle.db);
-      const registry = createPredicateRegistry();
-      registry.register("user_lifecycle_platform_ops", userLifecyclePlatformOpsPredicate);
-      registry.register("step_up_recent", async () => true); // the ceremony is not under test here
-      registerAbacRegistry(registry);
-      const enrichment = createDbActorEnrichmentReader(handle.db);
-      const app = buildServer({
-        authenticate: async (request: FastifyRequest) => {
-          const user = request.headers["x-test-user"];
-          const org = request.headers["x-test-org"];
-          if (typeof user !== "string" || typeof org !== "string") return;
-          request.context.userId = user;
-          request.context.organizationId = org;
-          request.context.roles = [...((await enrichment.read({ orgId: org }, user))?.roles ?? [])];
-        },
-        security: { rateLimitEnabled: false },
-      });
+    function writer() {
       const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M2_OUTBOX_EVENTS]));
-      registerPlatformUserRoutes(app, {
-        actors: createContextActorResolver(),
-        users: createDbUserDirectory(handle.db),
-        sessions: createDbSessionWriter(handle.db),
-        audit: createOrgScopedAuditExecutor(handle.db),
-        outbox: createOrgScopedIdentityOutbox(handle.db, {
-          publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m2" }),
-        }),
-      });
-      return app;
+      const rawPublisher: OrganizationLifecycleOutboxPort = {
+        publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m2" }),
+      };
+      return createDrizzleOrganizationLifecycleWriter(handle.db, rawPublisher);
     }
 
-    const deactivate = (app: ReturnType<typeof server>, actor: string, actorOrg: string) =>
-      app.inject({
-        method: "POST",
-        url: `/api/v1/platform/users/${TARGET}/deactivate`,
-        headers: { "x-test-user": actor, "x-test-org": actorOrg },
-        payload: { reason: "platform offboard — compromised credential" },
-      });
+    it("suspend: writes status, revokes bound sessions, lands the outbox row, audits the transition", async () => {
+      const boundSessionId = "sess-org-a-bound-1";
+      await admin.query(
+        `INSERT INTO "session" (id,user_id,active_organization_id,token,expires_at) VALUES ($1,$2,$3,$4, now() + interval '1 day')`,
+        [boundSessionId, USER, ORG_A, `tok-${boundSessionId}`],
+      );
 
-    async function targetStatus(): Promise<string | undefined> {
-      const r = await admin.query<{ status: string }>(`SELECT status FROM "user" WHERE id=$1`, [
-        TARGET,
+      const result = await writer().transition(ORG_A, "suspend", {
+        reason: "non-payment 60d",
+        actorUserId: USER,
+        actorMembershipId: ACTOR_MEMBERSHIP,
+      });
+      expect(result).toMatchObject({ status: "suspended", sessionsRevoked: 1 });
+
+      const org = await admin.query("SELECT status FROM organization WHERE id = $1", [ORG_A]);
+      expect(org.rows[0].status).toBe("suspended");
+
+      const sessions = await admin.query('SELECT id FROM "session" WHERE id = $1', [
+        boundSessionId,
       ]);
-      return r.rows[0]?.status;
-    }
+      expect(sessions.rows).toHaveLength(0);
 
-    it("a tenant org_admin with a tenant-owned platform_ops (legacy spoof row) → 403 at the ABAC gate, nothing touched", async () => {
-      const app = server();
-      const res = await deactivate(app, SPOOFER, ORG_B);
-      expect(res.statusCode).toBe(403);
-      expect(res.json().error.message).toContain("user_lifecycle_platform_ops");
-      expect(await targetStatus()).toBe("active");
-      const s = await admin.query(`SELECT id FROM "session" WHERE user_id=$1`, [TARGET]);
-      expect(s.rows).toHaveLength(2);
-      await app.close();
-    });
-
-    it("a platform-owned platform_ops deactivates a member of TWO orgs: status, memberships, sessions, audit, outbox", async () => {
-      const app = server();
-      const res = await deactivate(app, OPERATOR, ORG_OPS);
-      expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({
-        deactivated: true,
-        alreadyDeactivated: false,
-        sessionsRevoked: 2,
-        membershipsRevoked: 2,
-      });
-      expect(await targetStatus()).toBe("deactivated");
-      // §2.2.1 "All memberships revoked" — in BOTH orgs, written as chartwarden_app (RLS re-pointed per org);
-      // the operator's own membership in ORG_OPS is untouched.
-      const ms = await admin.query<{ organization_id: string; status: string }>(
-        `SELECT organization_id, status FROM membership WHERE user_id=$1 ORDER BY organization_id`,
-        [TARGET],
-      );
-      expect(ms.rows.map((r) => r.status)).toEqual(["revoked", "revoked"]);
-      const op = await admin.query<{ status: string }>(
-        `SELECT status FROM membership WHERE user_id=$1`,
-        [OPERATOR],
-      );
-      expect(op.rows.map((r) => r.status)).toEqual(["active"]);
-      const s = await admin.query(`SELECT id FROM "session" WHERE user_id=$1`, [TARGET]);
-      expect(s.rows).toHaveLength(0);
-
-      const audit = await admin.query(
-        `SELECT organization_id, context FROM audit_event WHERE resource_id=$1 AND event_type='m2.user.deactivated'`,
-        [TARGET],
-      );
-      expect(audit.rows).toHaveLength(1);
-      expect(audit.rows[0].organization_id).toBe(ORG_OPS);
-      expect(audit.rows[0].context).toMatchObject({
-        scope: "platform",
-        memberOrganizationIds: [ORG_B, ORG_OPS].sort(),
-      });
-      expect(audit.rows[0].context.revokedMembershipIds).toHaveLength(2);
       const outbox = await admin.query(
-        `SELECT organization_id, payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m2.user.deactivated'`,
-        [TARGET],
+        "SELECT event_type, payload FROM outbox_event WHERE aggregate_id = $1 AND event_type = 'm2.organization.suspended'",
+        [ORG_A],
       );
       expect(outbox.rows).toHaveLength(1);
-      expect(outbox.rows[0].payload).toMatchObject({ userId: TARGET, scope: "platform" });
-      await app.close();
-    });
-
-    it("a repeat call is idempotent: 200 alreadyDeactivated, no second audit row or event", async () => {
-      const app = server();
-      const res = await deactivate(app, OPERATOR, ORG_OPS);
-      expect(res.statusCode).toBe(200);
-      expect(res.json()).toMatchObject({
-        alreadyDeactivated: true,
-        sessionsRevoked: 0,
-        membershipsRevoked: 0,
+      expect(outbox.rows[0].payload).toMatchObject({
+        organizationId: ORG_A,
+        reason: "non-payment 60d",
+        actorMembershipId: ACTOR_MEMBERSHIP,
       });
+
       const audit = await admin.query(
-        `SELECT id FROM audit_event WHERE resource_id=$1 AND event_type='m2.user.deactivated'`,
-        [TARGET],
+        "SELECT event_type, before, after FROM audit_event WHERE resource_id = $1 AND event_type = 'm2.organization.suspended'",
+        [ORG_A],
       );
       expect(audit.rows).toHaveLength(1);
-      await app.close();
+      expect(audit.rows[0].before).toMatchObject({ status: "active" });
+      expect(audit.rows[0].after).toMatchObject({ status: "suspended", sessionsRevoked: 1 });
     });
 
-    it("the tenant path (deactivateFromOrg) revokes the sole membership too, as chartwarden_app", async () => {
-      const SOLE = "99999999-9999-4999-8999-9999f2050109";
-      await admin.query(
-        `INSERT INTO "user" (id,email,name) VALUES ($1,'sole@f11d19.test','So Le')`,
-        [SOLE],
-      );
-      await admin.query(
-        `INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active')`,
-        [SOLE, ORG_A],
-      );
-      const outcome = await createDbUserDirectory(handle.db).deactivateFromOrg({
-        userId: SOLE,
-        organizationId: ORG_A,
-        reason: "left the agency",
+    it("an illegal transition (suspend again, from suspended) is refused and changes nothing", async () => {
+      await expect(
+        writer().transition(ORG_A, "suspend", {
+          reason: "n/a",
+          actorUserId: USER,
+          actorMembershipId: ACTOR_MEMBERSHIP,
+        }),
+      ).rejects.toThrow(/cannot 'suspend' from 'suspended'|ILLEGAL_ORGANIZATION_TRANSITION/);
+
+      const org = await admin.query("SELECT status FROM organization WHERE id = $1", [ORG_A]);
+      expect(org.rows[0].status).toBe("suspended"); // unchanged
+    });
+
+    it("activate: reactivates a suspended org and publishes m2.organization.activated", async () => {
+      const result = await writer().transition(ORG_A, "activate", {
+        reason: "cause resolved",
+        actorUserId: USER,
+        actorMembershipId: ACTOR_MEMBERSHIP,
       });
-      expect(outcome).toBe("deactivated");
-      const u = await admin.query<{ status: string }>(`SELECT status FROM "user" WHERE id=$1`, [
-        SOLE,
+      expect(result.status).toBe("active");
+
+      const outbox = await admin.query(
+        "SELECT id FROM outbox_event WHERE aggregate_id = $1 AND event_type = 'm2.organization.activated'",
+        [ORG_A],
+      );
+      expect(outbox.rows).toHaveLength(1);
+    });
+
+    it("close: terminal, revokes sessions, publishes m2.organization.closed; org B is untouched", async () => {
+      await admin.query(
+        `INSERT INTO "session" (id,user_id,active_organization_id,token,expires_at) VALUES ($1,$2,$3,$4, now() + interval '1 day')`,
+        ["sess-org-a-bound-2", USER, ORG_A, "tok-sess-org-a-bound-2"],
+      );
+      await admin.query(
+        `INSERT INTO "session" (id,user_id,active_organization_id,token,expires_at) VALUES ($1,$2,$3,$4, now() + interval '1 day')`,
+        ["sess-org-b-bound-1", USER, ORG_B, "tok-sess-org-b-bound-1"],
+      );
+
+      const result = await writer().transition(ORG_A, "close", {
+        reason: "customer offboarded",
+        actorUserId: USER,
+        actorMembershipId: ACTOR_MEMBERSHIP,
+      });
+      expect(result).toMatchObject({ status: "closed", sessionsRevoked: 1 });
+
+      const orgBSession = await admin.query('SELECT id FROM "session" WHERE id = $1', [
+        "sess-org-b-bound-1",
       ]);
-      expect(u.rows[0]?.status).toBe("deactivated");
-      const m = await admin.query<{ status: string }>(
-        `SELECT status FROM membership WHERE user_id=$1`,
-        [SOLE],
-      );
-      expect(m.rows.map((r) => r.status)).toEqual(["revoked"]);
+      expect(orgBSession.rows).toHaveLength(1); // untouched
+
+      await expect(
+        writer().transition(ORG_A, "suspend", {
+          reason: "n/a",
+          actorUserId: USER,
+          actorMembershipId: ACTOR_MEMBERSHIP,
+        }),
+      ).rejects.toThrow(); // closed is terminal
     });
 
-    it("an unknown user → 404", async () => {
-      const app = server();
-      const res = await app.inject({
-        method: "POST",
-        url: "/api/v1/platform/users/99999999-9999-4999-8999-9999f20501ff/deactivate",
-        headers: { "x-test-user": OPERATOR, "x-test-org": ORG_OPS },
-        payload: { reason: "nobody" },
+    it("getStatus (the select-organization enforcement reader) reads the real status, org-scoped", async () => {
+      const reader = writer();
+      expect(await reader.getStatus(ORG_A)).toBe("closed");
+      expect(await reader.getStatus(ORG_B)).toBe("active");
+      expect(await reader.getStatus("00000000-0000-4000-8000-000000000000")).toBeNull();
+    });
+
+    // §4.7 `user.deactivate` "platform_ops (any)" — POST /api/v1/platform/users/:id/deactivate, driven
+    // through the route with the REAL directory / session writer / org-scoped audit + outbox, and the REAL
+    // RBAC store + actor-enrichment reader, all as `chartwarden_app`. Only session authentication (a header
+    // shim naming the user + bound org) and the step-up ceremony are stood in for.
+    describe("platform user deactivate (§4.7 platform_ops any)", () => {
+      const ORG_OPS = "55555555-5555-4555-8555-5555f2050105";
+      const OPERATOR = "66666666-6666-4666-8666-6666f2050106";
+      const SPOOFER = "77777777-7777-4777-8777-7777f2050107";
+      const TARGET = "88888888-8888-4888-8888-8888f2050108";
+
+      async function bindRole(input: {
+        roleOrg: string | null;
+        key: string;
+        category: string;
+        membershipId: string;
+        membershipOrg: string;
+      }): Promise<void> {
+        const role = await admin.query<{ id: string }>(
+          `INSERT INTO role (organization_id,key,name,category) VALUES ($1,$2,$2,$3) RETURNING id`,
+          [input.roleOrg, input.key, input.category],
+        );
+        const roleId = role.rows[0]?.id;
+        await admin.query(
+          `INSERT INTO role_permission (organization_id,role_id,permission_key) VALUES ($1,$2,'user.deactivate')`,
+          [input.roleOrg, roleId],
+        );
+        await admin.query(
+          `INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)`,
+          [input.membershipOrg, input.membershipId, roleId],
+        );
+      }
+
+      beforeAll(async () => {
+        await admin.query(
+          `INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES
+           ($1,'f11d19-ops','Platform Ops LLC','Platform Ops','active')`,
+          [ORG_OPS],
+        );
+        await admin.query(
+          `INSERT INTO "user" (id,email,name) VALUES
+           ($1,'operator@f11d19.test','Op Erator'),($2,'spoofer@f11d19.test','Spoo Fer'),
+           ($3,'target@f11d19.test','Tar Get')`,
+          [OPERATOR, SPOOFER, TARGET],
+        );
+        const m = await admin.query<{ id: string; user_id: string; organization_id: string }>(
+          `INSERT INTO membership (user_id,organization_id,status) VALUES
+           ($1,$4,'active'),($2,$5,'active'),($3,$5,'active'),($3,$4,'active')
+         RETURNING id,user_id,organization_id`,
+          [OPERATOR, SPOOFER, TARGET, ORG_OPS, ORG_B],
+        );
+        const membershipOf = (user: string, org: string) =>
+          m.rows.find((r) => r.user_id === user && r.organization_id === org)?.id as string;
+        await admin.query(
+          `INSERT INTO permission (key,resource,action,category) VALUES ('user.deactivate','user','deactivate','admin')
+         ON CONFLICT (key) DO NOTHING`,
+        );
+        // The operator: a PLATFORM-OWNED platform_ops row (organization_id NULL), as scripts/db/platform-role.ts grants it.
+        await bindRole({
+          roleOrg: null,
+          key: "platform_ops",
+          category: "platform_staff",
+          membershipId: membershipOf(OPERATOR, ORG_OPS),
+          membershipOrg: ORG_OPS,
+        });
+        // The spoofer is ORG_B's org_admin and so legitimately holds `user.deactivate` there — RBAC passes and
+        // the platform-role ABAC predicate is what must refuse.
+        await bindRole({
+          roleOrg: ORG_B,
+          key: "org_admin",
+          category: "admin_executive",
+          membershipId: membershipOf(SPOOFER, ORG_B),
+          membershipOrg: ORG_B,
+        });
+        // ...plus a TENANT-owned `platform_ops` row in ORG_B. Migration 0318's CHECK refuses writing one
+        // now, so it is staged the way a pre-0318 legacy row exists: with the constraint briefly lifted.
+        const reserved = await admin.query<{ name: string; def: string }>(
+          `SELECT conname AS name, pg_get_constraintdef(oid) AS def FROM pg_constraint
+          WHERE conrelid = 'role'::regclass AND contype = 'c' AND conname LIKE 'role_platform%'`,
+        );
+        for (const c of reserved.rows)
+          await admin.query(`ALTER TABLE role DROP CONSTRAINT ${c.name}`);
+        await bindRole({
+          roleOrg: ORG_B,
+          key: "platform_ops",
+          category: "admin_executive",
+          membershipId: membershipOf(SPOOFER, ORG_B),
+          membershipOrg: ORG_B,
+        });
+        // Restored verbatim (pg_get_constraintdef keeps NOT VALID), so later suites see the real backstop.
+        for (const c of reserved.rows)
+          await admin.query(`ALTER TABLE role ADD CONSTRAINT ${c.name} ${c.def}`);
+        for (const [id, org] of [
+          ["sess-target-b", ORG_B],
+          ["sess-target-ops", ORG_OPS],
+        ]) {
+          await admin.query(
+            `INSERT INTO "session" (id,user_id,active_organization_id,token,expires_at) VALUES ($1,$2,$3,$4, now() + interval '1 day')`,
+            [id, TARGET, org, `tok-${id}`],
+          );
+        }
       });
-      expect(res.statusCode).toBe(404);
-      await app.close();
+
+      afterAll(() => {
+        resetAuthorizationContract();
+        resetRbacEngine();
+      });
+
+      function server() {
+        resetAuthorizationContract();
+        resetRbacEngine();
+        registerDbEffectivePermissionResolver(handle.db);
+        const registry = createPredicateRegistry();
+        registry.register("user_lifecycle_platform_ops", userLifecyclePlatformOpsPredicate);
+        registry.register("step_up_recent", async () => true); // the ceremony is not under test here
+        registerAbacRegistry(registry);
+        const enrichment = createDbActorEnrichmentReader(handle.db);
+        const app = buildServer({
+          authenticate: async (request: FastifyRequest) => {
+            const user = request.headers["x-test-user"];
+            const org = request.headers["x-test-org"];
+            if (typeof user !== "string" || typeof org !== "string") return;
+            request.context.userId = user;
+            request.context.organizationId = org;
+            request.context.roles = [
+              ...((await enrichment.read({ orgId: org }, user))?.roles ?? []),
+            ];
+          },
+          security: { rateLimitEnabled: false },
+        });
+        const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M2_OUTBOX_EVENTS]));
+        registerPlatformUserRoutes(app, {
+          actors: createContextActorResolver(),
+          users: createDbUserDirectory(handle.db),
+          sessions: createDbSessionWriter(handle.db),
+          audit: createOrgScopedAuditExecutor(handle.db),
+          outbox: createOrgScopedIdentityOutbox(handle.db, {
+            publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m2" }),
+          }),
+        });
+        return app;
+      }
+
+      const deactivate = (app: ReturnType<typeof server>, actor: string, actorOrg: string) =>
+        app.inject({
+          method: "POST",
+          url: `/api/v1/platform/users/${TARGET}/deactivate`,
+          headers: { "x-test-user": actor, "x-test-org": actorOrg },
+          payload: { reason: "platform offboard — compromised credential" },
+        });
+
+      async function targetStatus(): Promise<string | undefined> {
+        const r = await admin.query<{ status: string }>(`SELECT status FROM "user" WHERE id=$1`, [
+          TARGET,
+        ]);
+        return r.rows[0]?.status;
+      }
+
+      it("a tenant org_admin with a tenant-owned platform_ops (legacy spoof row) → 403 at the ABAC gate, nothing touched", async () => {
+        const app = server();
+        const res = await deactivate(app, SPOOFER, ORG_B);
+        expect(res.statusCode).toBe(403);
+        expect(res.json().error.message).toContain("user_lifecycle_platform_ops");
+        expect(await targetStatus()).toBe("active");
+        const s = await admin.query(`SELECT id FROM "session" WHERE user_id=$1`, [TARGET]);
+        expect(s.rows).toHaveLength(2);
+        await app.close();
+      });
+
+      it("a platform-owned platform_ops deactivates a member of TWO orgs: status, memberships, sessions, audit, outbox", async () => {
+        const app = server();
+        const res = await deactivate(app, OPERATOR, ORG_OPS);
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({
+          deactivated: true,
+          alreadyDeactivated: false,
+          sessionsRevoked: 2,
+          membershipsRevoked: 2,
+        });
+        expect(await targetStatus()).toBe("deactivated");
+        // §2.2.1 "All memberships revoked" — in BOTH orgs, written as chartwarden_app (RLS re-pointed per org);
+        // the operator's own membership in ORG_OPS is untouched.
+        const ms = await admin.query<{ organization_id: string; status: string }>(
+          `SELECT organization_id, status FROM membership WHERE user_id=$1 ORDER BY organization_id`,
+          [TARGET],
+        );
+        expect(ms.rows.map((r) => r.status)).toEqual(["revoked", "revoked"]);
+        const op = await admin.query<{ status: string }>(
+          `SELECT status FROM membership WHERE user_id=$1`,
+          [OPERATOR],
+        );
+        expect(op.rows.map((r) => r.status)).toEqual(["active"]);
+        const s = await admin.query(`SELECT id FROM "session" WHERE user_id=$1`, [TARGET]);
+        expect(s.rows).toHaveLength(0);
+
+        const audit = await admin.query(
+          `SELECT organization_id, context FROM audit_event WHERE resource_id=$1 AND event_type='m2.user.deactivated'`,
+          [TARGET],
+        );
+        expect(audit.rows).toHaveLength(1);
+        expect(audit.rows[0].organization_id).toBe(ORG_OPS);
+        expect(audit.rows[0].context).toMatchObject({
+          scope: "platform",
+          memberOrganizationIds: [ORG_B, ORG_OPS].sort(),
+        });
+        expect(audit.rows[0].context.revokedMembershipIds).toHaveLength(2);
+        const outbox = await admin.query(
+          `SELECT organization_id, payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m2.user.deactivated'`,
+          [TARGET],
+        );
+        expect(outbox.rows).toHaveLength(1);
+        expect(outbox.rows[0].payload).toMatchObject({ userId: TARGET, scope: "platform" });
+        await app.close();
+      });
+
+      it("a repeat call is idempotent: 200 alreadyDeactivated, no second audit row or event", async () => {
+        const app = server();
+        const res = await deactivate(app, OPERATOR, ORG_OPS);
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toMatchObject({
+          alreadyDeactivated: true,
+          sessionsRevoked: 0,
+          membershipsRevoked: 0,
+        });
+        const audit = await admin.query(
+          `SELECT id FROM audit_event WHERE resource_id=$1 AND event_type='m2.user.deactivated'`,
+          [TARGET],
+        );
+        expect(audit.rows).toHaveLength(1);
+        await app.close();
+      });
+
+      it("the tenant path (deactivateFromOrg) revokes the sole membership too, as chartwarden_app", async () => {
+        const SOLE = "99999999-9999-4999-8999-9999f2050109";
+        await admin.query(
+          `INSERT INTO "user" (id,email,name) VALUES ($1,'sole@f11d19.test','So Le')`,
+          [SOLE],
+        );
+        await admin.query(
+          `INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active')`,
+          [SOLE, ORG_A],
+        );
+        const outcome = await createDbUserDirectory(handle.db).deactivateFromOrg({
+          userId: SOLE,
+          organizationId: ORG_A,
+          reason: "left the agency",
+        });
+        expect(outcome).toBe("deactivated");
+        const u = await admin.query<{ status: string }>(`SELECT status FROM "user" WHERE id=$1`, [
+          SOLE,
+        ]);
+        expect(u.rows[0]?.status).toBe("deactivated");
+        const m = await admin.query<{ status: string }>(
+          `SELECT status FROM membership WHERE user_id=$1`,
+          [SOLE],
+        );
+        expect(m.rows.map((r) => r.status)).toEqual(["revoked"]);
+      });
+
+      it("an unknown user → 404", async () => {
+        const app = server();
+        const res = await app.inject({
+          method: "POST",
+          url: "/api/v1/platform/users/99999999-9999-4999-8999-9999f20501ff/deactivate",
+          headers: { "x-test-user": OPERATOR, "x-test-org": ORG_OPS },
+          payload: { reason: "nobody" },
+        });
+        expect(res.statusCode).toBe(404);
+        await app.close();
+      });
     });
-  });
 
-  describe("invitation accept, pre-org (migration 0324 m2_find_invitation_by_token)", () => {
-    const INVITER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaf2050110";
-    const TOKEN = "f11d19-invite-token-0001";
-    const hash = (t: string) => createHash("sha256").update(t).digest("hex");
+    describe("invitation accept, pre-org (migration 0324 m2_find_invitation_by_token)", () => {
+      const INVITER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaf2050110";
+      const TOKEN = "f11d19-invite-token-0001";
+      const hash = (t: string) => createHash("sha256").update(t).digest("hex");
 
-    beforeAll(async () => {
-      await admin.query(
-        `INSERT INTO "user" (id,email,name) VALUES ($1,'inviter@f11d19.test','In Viter')`,
-        [INVITER],
-      );
-      await admin.query(
-        `INSERT INTO organization_invitation
+      beforeAll(async () => {
+        await admin.query(
+          `INSERT INTO "user" (id,email,name) VALUES ($1,'inviter@f11d19.test','In Viter')`,
+          [INVITER],
+        );
+        await admin.query(
+          `INSERT INTO organization_invitation
            (organization_id,email,token_hash,status,proposed_role_keys,inviter_id,expires_at)
          VALUES ($1,'invitee@f11d19.test',$2,'pending','["clinician"]'::jsonb,$3, now() + interval '1 day')`,
-        [ORG_B, hash(TOKEN), INVITER],
-      );
-    });
-
-    it("the bare table read the old store did FAILS for chartwarden_app with no org bound (why 0324 exists)", async () => {
-      await expect(
-        handle.db.execute(
-          sql`SELECT id FROM organization_invitation WHERE token_hash = ${hash(TOKEN)}`,
-        ),
-      ).rejects.toThrow();
-    });
-
-    it("peek resolves the invitation with no org context, as chartwarden_app, and does not consume it", async () => {
-      const store = createDbInvitationStore(handle.db);
-      const detail = await store.peek(TOKEN);
-      expect(detail).toMatchObject({
-        organizationId: ORG_B,
-        organizationName: "Beta Hospice",
-        email: "invitee@f11d19.test",
-        proposedRoleKeys: ["clinician"],
-        inviterId: INVITER,
+          [ORG_B, hash(TOKEN), INVITER],
+        );
       });
-      const again = await store.peek(TOKEN);
-      expect(again.email).toBe("invitee@f11d19.test");
-    });
 
-    it("an unknown token reads exactly like an expired one (no existence oracle)", async () => {
-      const store = createDbInvitationStore(handle.db);
-      await expect(store.peek("no-such-token")).rejects.toMatchObject({ kind: "expired" });
-    });
-
-    it("a pre-org audit write (acceptor has no org bound) lands under the row's own org, and a foreign-org row still fails closed", async () => {
-      const { runWithRequestContext } = await import("@chartwarden/tenancy");
-      const executor = createOrgScopedAuditExecutor(handle.db);
-      const ctx = (organizationId: string | null) => ({
-        organizationId,
-        userId: INVITER,
-        actorKind: "user" as const,
-        correlationId: "corr-pre-org",
-        requestId: "req-pre-org",
+      it("the bare table read the old store did FAILS for chartwarden_app with no org bound (why 0324 exists)", async () => {
+        await expect(
+          handle.db.execute(
+            sql`SELECT id FROM organization_invitation WHERE token_hash = ${hash(TOKEN)}`,
+          ),
+        ).rejects.toThrow();
       });
-      const MEMBERSHIP = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbf2050111";
-      const unbound = { organizationId: "", userId: INVITER } as never;
-      await runWithRequestContext(unbound, () =>
-        auditMembershipAccepted(executor, ctx(ORG_B), {
-          membershipId: MEMBERSHIP,
+
+      it("peek resolves the invitation with no org context, as chartwarden_app, and does not consume it", async () => {
+        const store = createDbInvitationStore(handle.db);
+        const detail = await store.peek(TOKEN);
+        expect(detail).toMatchObject({
           organizationId: ORG_B,
-          userId: INVITER,
-        }),
-      );
-      const row = await admin.query<{ organization_id: string }>(
-        `SELECT organization_id FROM audit_event WHERE resource_id=$1 AND event_type='m2.membership.accepted'`,
-        [MEMBERSHIP],
-      );
-      expect(row.rows.map((r) => r.organization_id)).toEqual([ORG_B]);
+          organizationName: "Beta Hospice",
+          email: "invitee@f11d19.test",
+          proposedRoleKeys: ["clinician"],
+          inviterId: INVITER,
+        });
+        const again = await store.peek(TOKEN);
+        expect(again.email).toBe("invitee@f11d19.test");
+      });
 
-      // A request that IS bound to ORG_A may not write an ORG_B audit row: RLS still refuses it.
-      const boundA = { organizationId: ORG_A, userId: INVITER } as never;
-      await expect(
-        runWithRequestContext(boundA, () =>
+      it("an unknown token reads exactly like an expired one (no existence oracle)", async () => {
+        const store = createDbInvitationStore(handle.db);
+        await expect(store.peek("no-such-token")).rejects.toMatchObject({ kind: "expired" });
+      });
+
+      it("a pre-org audit write (acceptor has no org bound) lands under the row's own org, and a foreign-org row still fails closed", async () => {
+        const { runWithRequestContext } = await import("@chartwarden/tenancy");
+        const executor = createOrgScopedAuditExecutor(handle.db);
+        const ctx = (organizationId: string | null) => ({
+          organizationId,
+          userId: INVITER,
+          actorKind: "user" as const,
+          correlationId: "corr-pre-org",
+          requestId: "req-pre-org",
+        });
+        const MEMBERSHIP = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbf2050111";
+        const unbound = { organizationId: "", userId: INVITER } as never;
+        await runWithRequestContext(unbound, () =>
           auditMembershipAccepted(executor, ctx(ORG_B), {
-            membershipId: "cccccccc-cccc-4ccc-8ccc-ccccf2050112",
+            membershipId: MEMBERSHIP,
             organizationId: ORG_B,
             userId: INVITER,
           }),
-        ),
-      ).rejects.toThrow();
-    });
+        );
+        const row = await admin.query<{ organization_id: string }>(
+          `SELECT organization_id FROM audit_event WHERE resource_id=$1 AND event_type='m2.membership.accepted'`,
+          [MEMBERSHIP],
+        );
+        expect(row.rows.map((r) => r.organization_id)).toEqual([ORG_B]);
 
-    it("markEmailVerified flips email_verified for the account, as chartwarden_app, and only that account", async () => {
-      const reader = createDbUserIdentityReader(handle.db);
-      const flag = async (id: string) =>
-        (await admin.query(`SELECT email_verified FROM "user" WHERE id=$1`, [id])).rows[0]
-          .email_verified as boolean;
-      expect(await flag(INVITER)).toBe(false);
-      await reader.markEmailVerified(USER);
-      expect(await flag(USER)).toBe(true);
-      expect(await flag(INVITER)).toBe(false);
-      await reader.markEmailVerified("not-a-uuid"); // refused quietly, no query
-    });
+        // A request that IS bound to ORG_A may not write an ORG_B audit row: RLS still refuses it.
+        const boundA = { organizationId: ORG_A, userId: INVITER } as never;
+        await expect(
+          runWithRequestContext(boundA, () =>
+            auditMembershipAccepted(executor, ctx(ORG_B), {
+              membershipId: "cccccccc-cccc-4ccc-8ccc-ccccf2050112",
+              organizationId: ORG_B,
+              userId: INVITER,
+            }),
+          ),
+        ).rejects.toThrow();
+      });
 
-    it("consume claims it exactly once: a concurrent second accept is told 'used'", async () => {
-      const store = createDbInvitationStore(handle.db);
-      const results = await Promise.allSettled([store.consume(TOKEN), store.consume(TOKEN)]);
-      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-      const lost = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
-      expect(lost.reason).toMatchObject({ kind: "used" });
-      const row = await admin.query<{ status: string }>(
-        `SELECT status FROM organization_invitation WHERE token_hash=$1`,
-        [hash(TOKEN)],
-      );
-      expect(row.rows[0]?.status).toBe("accepted");
+      it("markEmailVerified flips email_verified for the account, as chartwarden_app, and only that account", async () => {
+        const reader = createDbUserIdentityReader(handle.db);
+        const flag = async (id: string) =>
+          (await admin.query(`SELECT email_verified FROM "user" WHERE id=$1`, [id])).rows[0]
+            .email_verified as boolean;
+        expect(await flag(INVITER)).toBe(false);
+        await reader.markEmailVerified(USER);
+        expect(await flag(USER)).toBe(true);
+        expect(await flag(INVITER)).toBe(false);
+        await reader.markEmailVerified("not-a-uuid"); // refused quietly, no query
+      });
+
+      it("consume claims it exactly once: a concurrent second accept is told 'used'", async () => {
+        const store = createDbInvitationStore(handle.db);
+        const results = await Promise.allSettled([store.consume(TOKEN), store.consume(TOKEN)]);
+        expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+        const lost = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+        expect(lost.reason).toMatchObject({ kind: "used" });
+        const row = await admin.query<{ status: string }>(
+          `SELECT status FROM organization_invitation WHERE token_hash=$1`,
+          [hash(TOKEN)],
+        );
+        expect(row.rows[0]?.status).toBe("accepted");
+      });
     });
-  });
-});
+  },
+);

@@ -416,7 +416,13 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       const body = parse(CorrectTimepointSchema, request.body);
-      await assertCorrectionAttribution(service, request, organizationId, id, body.authorDiscipline);
+      await assertCorrectionAttribution(
+        service,
+        request,
+        organizationId,
+        id,
+        body.authorDiscipline,
+      );
       const res = await service.correctTimepoint(organizationId, userId, id, {
         correctionReason: body.correctionReason,
         ifVersion: body.ifVersion,

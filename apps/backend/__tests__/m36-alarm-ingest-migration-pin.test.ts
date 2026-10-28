@@ -55,9 +55,9 @@ describe("migration 1250 alarm ingest", () => {
       expect(sql).toContain(`GRANT SELECT, DELETE ON "${t}" TO chartwarden_destruction`);
     }
     expect(sql).not.toMatch(/GRANT [^;]*DELETE[^;]*TO chartwarden_app/);
-    expect(sql).toContain("CREATE TRIGGER \"trg_audit_alarm_source\"");
-    expect(sql).toContain("CREATE TRIGGER \"alarm_source_mapping_audit\"");
-    expect(sql).toContain("CREATE TRIGGER \"alarm_ingest_event_audit\"");
+    expect(sql).toContain('CREATE TRIGGER "trg_audit_alarm_source"');
+    expect(sql).toContain('CREATE TRIGGER "alarm_source_mapping_audit"');
+    expect(sql).toContain('CREATE TRIGGER "alarm_ingest_event_audit"');
   });
 
   it("the child tables hang off the source by a composite (organization, id) key", () => {
@@ -89,7 +89,9 @@ describe("migration 1250 alarm ingest", () => {
 
   it("the guards: one-way disable, rotation bumps the generation by one on an enabled source, an event settles once forward", () => {
     expect(sql).toContain("a disabled source cannot change; create a new source");
-    expect(sql).toContain("a rotation bumps the generation by one, by a person, on an enabled source");
+    expect(sql).toContain(
+      "a rotation bumps the generation by one, by a person, on an enabled source",
+    );
     expect(sql).toContain("the generation changes only with the secret");
     expect(sql).toContain("received settles once");
     expect(sql).toContain("an event is born received or unmapped");
@@ -97,7 +99,10 @@ describe("migration 1250 alarm ingest", () => {
     expect(sql).toContain("NEW.rotated_at := now()");
     // The guards read no session variable (check-tenancy would refuse a policy-shaped use; none is needed).
     const from = sql.indexOf("CREATE OR REPLACE FUNCTION alarm_source_guard");
-    const guards = sql.slice(from, sql.indexOf('ALTER TABLE "alarm_source" ENABLE ROW LEVEL SECURITY'));
+    const guards = sql.slice(
+      from,
+      sql.indexOf('ALTER TABLE "alarm_source" ENABLE ROW LEVEL SECURITY'),
+    );
     expect(guards.length).toBeGreaterThan(500);
     expect(guards).not.toContain("current_setting");
   });
@@ -113,7 +118,9 @@ describe("migration 1250 alarm ingest", () => {
       sql.indexOf('CREATE TABLE "alarm_ingest_event"'),
       sql.indexOf('CREATE UNIQUE INDEX "alarm_ingest_event_one_per_id"'),
     );
-    const textColumns = [...table.matchAll(/"(\w+)" text(?: NOT NULL| DEFAULT|,)/g)].map((m) => m[1]);
+    const textColumns = [...table.matchAll(/"(\w+)" text(?: NOT NULL| DEFAULT|,)/g)].map(
+      (m) => m[1],
+    );
     expect(textColumns.sort()).toEqual(
       [
         "alarm_kind",

@@ -41,7 +41,18 @@
    control's own :focus-visible ring wins. It also loses to any bare `outline: none` on a control, so a rule that removes the
    outline must draw its own indicator (e.g. .wx-mention-menu button in composer.css). */
 :where(.wx-messaging-page, .wx-modal-scrim)
-  :where(a[href], button, input, select, textarea, summary, [role="button"], [role="tab"], [role="menuitem"], [tabindex="0"]):focus-visible {
+  :where(
+    a[href],
+    button,
+    input,
+    select,
+    textarea,
+    summary,
+    [role="button"],
+    [role="tab"],
+    [role="menuitem"],
+    [tabindex="0"]
+  ):focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }

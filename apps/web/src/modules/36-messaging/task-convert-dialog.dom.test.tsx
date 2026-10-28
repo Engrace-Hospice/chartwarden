@@ -1,8 +1,8 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 3.4: the "Convert to task" dialog. Assignee is required, due is optional, the server's 422/409/404 land next to
 // the field they describe, and the dialog follows the shared modal contract (labelled, Escape closes, Ctrl/Cmd+Enter submits).
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { TaskConvertDialog } from "./task-convert-dialog";
 import { TASK_NOTICE } from "./task-wording";

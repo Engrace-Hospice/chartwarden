@@ -21,13 +21,13 @@ import {
 } from "@chartwarden/intake-extraction";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
+  ChartWardenError,
   DOCLENS_M5_WRITEBACK_FIELDS,
   DegradedError,
   type IntakeSudResolvedPayload,
   M22_INTAKE_SUD_CONFIRMED_EVENT,
   M22_INTAKE_SUD_REJECTED_EVENT,
   NotFoundError,
-  ChartWardenError,
 } from "@chartwarden/types";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { deriveTenantBucket } from "../lifecycle/storage";
@@ -901,7 +901,11 @@ export function createReviewWorkspaceService(deps: ReviewWorkspaceDeps): ReviewW
           .where(and(eq(ER.intakeUploadBatchId, batchId), eq(ER.status, "complete")))
           .limit(1);
         if (completed) {
-          throw new ChartWardenError("BATCH_CLOSED", "this batch's review is already complete", 409);
+          throw new ChartWardenError(
+            "BATCH_CLOSED",
+            "this batch's review is already complete",
+            409,
+          );
         }
         const referralId = to.referralId ?? b.referralId;
         if (patientId === b.patientId && referralId === b.referralId) {

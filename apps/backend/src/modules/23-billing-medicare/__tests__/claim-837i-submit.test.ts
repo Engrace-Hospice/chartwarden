@@ -51,7 +51,10 @@ describe("renderClaimForTransport", () => {
       ok: true,
       rendered: { reveal: () => ({ x12: "ISA*00~" }) },
     });
-    const interchangeNumberFor = vi.fn(async () => ({ interchangeNumber: 7, renderedAt: RENDERED_AT }));
+    const interchangeNumberFor = vi.fn(async () => ({
+      interchangeNumber: 7,
+      renderedAt: RENDERED_AT,
+    }));
 
     await renderClaimForTransport({ ...ARGS, interchangeFor: interchangeNumberFor });
 

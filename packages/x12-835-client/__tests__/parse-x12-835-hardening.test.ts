@@ -26,7 +26,7 @@ describe("whitespace and terminator tolerance", () => {
   it("tolerates CRLF, blanks between segments and a leading BOM", () => {
     expect(parse(ok.replace(/~/g, "~\r\n"))).toEqual(parse(ok));
     expect(parse(ok.replace(/~/g, "~ \n  "))).toEqual(parse(ok));
-    expect(parse("﻿" + ok)).toEqual(parse(ok));
+    expect(parse(`\uFEFF${ok}`)).toEqual(parse(ok));
   });
 
   it("fails closed when a bare-LF-terminated file is CRLF-converted (ISA[105] becomes CR)", () => {
@@ -248,7 +248,11 @@ describe("CAS and amount bounds (#625)", () => {
 describe("party loops, modifier slots and the amount ceiling (#625)", () => {
   it("keeps modifier positions and refuses more than four", () => {
     const line = (svc01: string) =>
-      wrap835(CLEAN_BODY.map((s) => (s.startsWith("SVC*HC:Q5001") ? `SVC*${svc01}*600.00*500.00**1**1` : s)));
+      wrap835(
+        CLEAN_BODY.map((s) =>
+          s.startsWith("SVC*HC:Q5001") ? `SVC*${svc01}*600.00*500.00**1**1` : s,
+        ),
+      );
     const r = parse(line("HC:Q5001::RT"));
     expect(r.ok && r.value.claims[0]?.serviceLines[0]?.modifiers).toEqual(["", "RT"]);
     expectDegraded(line("HC:Q5001:A:B:C:D:E"), "X12_835_PARSE_FAILED", "more than 4 modifiers");
@@ -256,7 +260,11 @@ describe("party loops, modifier slots and the amount ceiling (#625)", () => {
 
   it("refuses a repeated payer or payee loop instead of letting the last win", () => {
     const at = CLEAN_BODY.findIndex((s) => s.startsWith("N1*PE"));
-    const dup = [...CLEAN_BODY.slice(0, at + 1), "N1*PE*OTHER*XX*1888888888", ...CLEAN_BODY.slice(at + 1)];
+    const dup = [
+      ...CLEAN_BODY.slice(0, at + 1),
+      "N1*PE*OTHER*XX*1888888888",
+      ...CLEAN_BODY.slice(at + 1),
+    ];
     expectDegraded(wrap835(dup), "X12_835_PARSE_FAILED", "more than one N1 PE loop");
   });
 
@@ -271,7 +279,11 @@ describe("party loops, modifier slots and the amount ceiling (#625)", () => {
     const max = parse(wrap835(replaceSeg(CLEAN_BODY, "BPR*", bpr("9999999999.99"))));
     expect(max.ok || (!max.ok && !max.degraded.reason.includes("out of range"))).toBe(true);
     expectDegraded(
-      wrap835(CLEAN_BODY.map((s) => (s.startsWith("PLB") ? "PLB*1512345678*20261231*WO:REF1*-10000000000.00" : s))),
+      wrap835(
+        CLEAN_BODY.map((s) =>
+          s.startsWith("PLB") ? "PLB*1512345678*20261231*WO:REF1*-10000000000.00" : s,
+        ),
+      ),
       "X12_835_PARSE_FAILED",
       "out of range",
     );

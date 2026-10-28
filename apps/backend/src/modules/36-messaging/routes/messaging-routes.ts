@@ -45,12 +45,13 @@ import type { ExternalShareIndicatorDto } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { rejectIfUnderLegalHold } from "../governance/under-hold";
 import { createRoleSendService } from "../oncall-directory/role-send-service";
+import { resolveRichWrite } from "../rich-body-codec";
+import { type AckBroadcastRouteDeps, registerAckBroadcastRoutes } from "./ack-broadcast-routes";
+import { type AckRouteDeps, DISABLED_ACK, registerAckRoutes } from "./ack-routes";
 import {
   DISABLED_AFTERHOURS_TRIAGE,
   registerAfterHoursTriageRoutes,
 } from "./afterhours-triage-routes";
-import { resolveRichWrite } from "../rich-body-codec";
-import { type AckRouteDeps, DISABLED_ACK, registerAckRoutes } from "./ack-routes";
 import { type AiRouteDeps, DISABLED_AI, registerAiRoutes } from "./ai-routes";
 import { announcementSendGuard, registerAnnouncementRoutes } from "./announcement-routes";
 import {
@@ -70,6 +71,7 @@ import {
   type IdgDiscussionRouteDeps,
   registerIdgDiscussionRoutes,
 } from "./idg-discussion-routes";
+import { DISABLED_INBOX, type InboxRouteDeps, registerInboxRoutes } from "./inbox-routes";
 import {
   DISABLED_MEDICATION_QUESTIONS,
   type MedicationQuestionRouteDeps,
@@ -124,8 +126,6 @@ import {
   type SnoozeReminderRouteDeps,
   registerSnoozeReminderRoutes,
 } from "./snooze-reminder-routes";
-import { type AckBroadcastRouteDeps, registerAckBroadcastRoutes } from "./ack-broadcast-routes";
-import { DISABLED_INBOX, type InboxRouteDeps, registerInboxRoutes } from "./inbox-routes";
 import { DISABLED_TASKS, type TaskRouteDeps, registerTaskRoutes } from "./task-routes";
 import {
   DISABLED_UNACKNOWLEDGED,

@@ -82,9 +82,7 @@ export const PORTAL_NAVIGATION: readonly PortalNavItem[] = [
   },
 ] as const;
 
-const manifestById = new Map(
-  PORTAL_SCREEN_MANIFEST.map((screen) => [screen.id, screen]),
-);
+const manifestById = new Map(PORTAL_SCREEN_MANIFEST.map((screen) => [screen.id, screen]));
 
 export function portalNavPath(id: string, patientId: string): string {
   const screen = manifestById.get(id);
@@ -97,8 +95,7 @@ export function portalNavTitle(pathname: string): string {
   const item = [...PORTAL_NAVIGATION]
     .sort(
       (a, b) =>
-        (manifestById.get(b.id)?.path.length ?? 0) -
-        (manifestById.get(a.id)?.path.length ?? 0),
+        (manifestById.get(b.id)?.path.length ?? 0) - (manifestById.get(a.id)?.path.length ?? 0),
     )
     .find(({ id }) => {
       const screen = manifestById.get(id);

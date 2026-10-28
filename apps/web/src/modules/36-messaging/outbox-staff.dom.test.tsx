@@ -1,9 +1,9 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 /**
  * The offline outbox through the REAL StaffMessaging tree (production keys: the thread is `key`ed per channel and
  * unmounts on every switch). The queue must live above it.
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";

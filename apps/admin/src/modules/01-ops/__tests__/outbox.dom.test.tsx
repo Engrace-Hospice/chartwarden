@@ -1,7 +1,7 @@
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 // Outbox: the list + right-drawer screen keeps its selection in `?event=`, so the old detail route must redirect there,
 // a link must open the drawer, a row must be operable from the keyboard, and Escape must close the drawer and give focus back.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";

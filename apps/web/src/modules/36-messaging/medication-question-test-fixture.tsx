@@ -1,6 +1,6 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // Shared by the WP 3.10 medication-question tests: an options answer, a client double and a mount helper.
 import { render } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";

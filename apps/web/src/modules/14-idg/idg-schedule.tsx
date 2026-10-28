@@ -112,6 +112,7 @@ export function IdgSchedule(): JSX.Element {
 
   // The org's sites, for the location picker and to name the location column.
   useEffect(() => {
+    void locationsRetry;
     let active = true;
     setLocationsError(false);
     void client
@@ -143,9 +144,8 @@ export function IdgSchedule(): JSX.Element {
   // No `?location=` → open the actor's own site when they have one, else the first, rather than a
   // permanently empty screen (the first by name is often not where the actor works).
   const ownLocationIds = session?.locationIds;
-  const firstLocationId = (
-    locations?.find((l) => ownLocationIds?.includes(l.id)) ?? locations?.[0]
-  )?.id;
+  const firstLocationId = (locations?.find((l) => ownLocationIds?.includes(l.id)) ?? locations?.[0])
+    ?.id;
   useEffect(() => {
     if (!location && firstLocationId) {
       setParams({ location: firstLocationId }, { replace: true });
@@ -168,7 +168,11 @@ export function IdgSchedule(): JSX.Element {
     if (locations === null || !locations.some((item) => item.id === location)) return;
     setLoading(true);
     setError(null);
-    const { data, error: err, response } = await client.GET("/api/v1/idg/schedule", {
+    const {
+      data,
+      error: err,
+      response,
+    } = await client.GET("/api/v1/idg/schedule", {
       params: { query: { location, from: range.from, to: range.to } },
     });
     if (err) {
@@ -272,11 +276,13 @@ export function IdgSchedule(): JSX.Element {
         <IdgPageHead
           title="IDG Schedule"
           subtitle="Review upcoming interdisciplinary group meetings for the selected location."
-          actions={canSchedule ? (
-            <button type="button" className="wx-btn-primary" onClick={() => setScheduling(true)}>
-              <Glyph name="plus" size={16} /> Schedule Meeting
-            </button>
-          ) : undefined}
+          actions={
+            canSchedule ? (
+              <button type="button" className="wx-btn-primary" onClick={() => setScheduling(true)}>
+                <Glyph name="plus" size={16} /> Schedule Meeting
+              </button>
+            ) : undefined
+          }
         />
 
         <IdgSubtabs current="schedule" />
@@ -359,7 +365,9 @@ export function IdgSchedule(): JSX.Element {
         {error ? (
           <div className="wx-list-state">
             <ErrorState
-              title={error.kind === "forbidden" ? "Location unavailable" : "IDG schedule unavailable"}
+              title={
+                error.kind === "forbidden" ? "Location unavailable" : "IDG schedule unavailable"
+              }
               description={error.message}
               onRetry={() => void load()}
               action={<Link to="/idg/schedule">Back to schedule</Link>}
@@ -414,7 +422,11 @@ export function IdgSchedule(): JSX.Element {
                   <tr
                     key={m.id}
                     className="wx-data-row-interactive"
-                    {...interactiveRowProps(() => navigate(`/idg/meetings/${m.id}?location=${location}`), false, true)}
+                    {...interactiveRowProps(
+                      () => navigate(`/idg/meetings/${m.id}?location=${location}`),
+                      false,
+                      true,
+                    )}
                   >
                     <td>
                       <Link
@@ -467,7 +479,11 @@ export function IdgSchedule(): JSX.Element {
         <Panel
           title="Next IDG meeting"
           icon="calendar-check"
-          action={kpis.next ? <Link to={`/idg/meetings/${kpis.next.id}?location=${location}`}>Open</Link> : undefined}
+          action={
+            kpis.next ? (
+              <Link to={`/idg/meetings/${kpis.next.id}?location=${location}`}>Open</Link>
+            ) : undefined
+          }
         >
           {kpis.next ? (
             <dl className="wx-kv" style={{ gridTemplateColumns: "5.5rem minmax(0, 1fr)" }}>
@@ -498,14 +514,16 @@ export function IdgSchedule(): JSX.Element {
 
         <Panel title="Quick actions" icon="zap">
           <div style={{ display: "grid", gap: "0.5rem" }}>
-            {canSchedule ? <button
-              type="button"
-              className="wx-btn-secondary"
-              style={{ justifyContent: "flex-start" }}
-              onClick={() => setScheduling(true)}
-            >
-              <Glyph name="plus" size={16} /> Schedule a meeting
-            </button> : null}
+            {canSchedule ? (
+              <button
+                type="button"
+                className="wx-btn-secondary"
+                style={{ justifyContent: "flex-start" }}
+                onClick={() => setScheduling(true)}
+              >
+                <Glyph name="plus" size={16} /> Schedule a meeting
+              </button>
+            ) : null}
             <Link
               to="/idg/action-items"
               className="wx-btn-secondary"

@@ -1,8 +1,8 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 3.8: the Review tab list. Buttons come only from allowed_actions; a restricted row shows no patient and no
 // actions; a decision re-reads the list and focus lands on the persistent status line; Esc returns focus to the trigger.
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { ReviewQueueList } from "./review-queue-list";
 import { RESTRICTED_FIXTURE, REVIEW_FIXTURE } from "./review-test-fixture";

@@ -1,9 +1,9 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 /**
  * WP 2.7b wiring in StaffMessaging: a hit opens its conversation at the message, focus moves to the thread, and the
  * anchor ends when the user leaves that conversation (no jump back to it later); choosing the same hit again re-jumps.
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";

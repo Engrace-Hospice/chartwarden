@@ -72,6 +72,8 @@ export const GATES = [
   "arch:context-attributes",
   "arch:route-reachability",
   "arch:live-suites",
+  // #846 - deploy.yml: `release` needs the full ci.yml and `deploy` needs `release` (a commented-out `verify` shipped untested for a month).
+  "arch:release-gate",
   // Two modules declaring one BullMQ queue name share a Redis queue and steal each other's jobs (M23/M27 `validation-run`).
   "arch:queue-names",
   "arch:outbox-bindings",

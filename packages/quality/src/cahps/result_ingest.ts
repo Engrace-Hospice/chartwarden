@@ -84,7 +84,11 @@ export function applyMinimumCellSuppression(
   minimumCellSize: number,
 ): MinCellSuppressionResult {
   if (!Number.isInteger(minimumCellSize) || minimumCellSize < 1) {
-    throw new ChartWardenError("VALIDATION_FAILED", "minimumCellSize must be a positive integer", 422);
+    throw new ChartWardenError(
+      "VALIDATION_FAILED",
+      "minimumCellSize must be a positive integer",
+      422,
+    );
   }
 
   const inputs: CahpsResultSummaryInput[] = [];

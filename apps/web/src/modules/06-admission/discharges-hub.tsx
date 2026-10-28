@@ -17,7 +17,6 @@ import { fmtDate } from "../../shell/patient-context";
 import { useSession } from "../../shell/session";
 import { ADMISSION_TONE, stateLabel } from "./admission-status";
 import { REASONS } from "./discharge-workflow-model";
-import { formatInZone } from "./nomnc-format";
 import {
   ListState,
   PatientCell,
@@ -33,6 +32,7 @@ import {
   matchesPatient,
   patientName,
 } from "./discharges-hub-model";
+import { formatInZone } from "./nomnc-format";
 
 export function DischargesHub(): JSX.Element {
   const session = useSession();
@@ -56,7 +56,16 @@ export function DischargesHub(): JSX.Element {
       ...recent.items,
       ...(can.nomnc ? [...qio.items, ...noDeadline.items] : []),
     ],
-    [ready.items, needs.items, cosign.items, can.cosign, recent.items, can.nomnc, qio.items, noDeadline.items],
+    [
+      ready.items,
+      needs.items,
+      cosign.items,
+      can.cosign,
+      recent.items,
+      can.nomnc,
+      qio.items,
+      noDeadline.items,
+    ],
   );
   const patients = usePatients(onScreen);
   const readyRows = ready.items.filter((r) =>

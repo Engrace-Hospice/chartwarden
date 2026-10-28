@@ -3,7 +3,12 @@
 //
 // Each of the seven seams declares `linkSummary(organizationId, id)` by extending `ClinicalLinkSource`, which has no
 // write member, so this module can read a source and nothing else.
-import { type GuardHandler, composeGuards, requireAbac, requirePermission } from "@chartwarden/auth";
+import {
+  type GuardHandler,
+  composeGuards,
+  requireAbac,
+  requirePermission,
+} from "@chartwarden/auth";
 import type { AbacTarget } from "@chartwarden/auth";
 import type { ClinicalLinkKind, ClinicalLinkSource } from "@chartwarden/types";
 import { getSeam } from "../../../bootstrap/index";

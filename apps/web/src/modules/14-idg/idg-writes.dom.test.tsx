@@ -1,3 +1,4 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — #91: the IDG meeting must be conductable, not just readable.
 //
 // Before this change `apps/web/src/modules/14-idg` issued ZERO mutations — 2071 lines across seven
@@ -13,7 +14,6 @@
 // validates in the domain: getting `kind` or the nesting wrong comes back 422 in production and would
 // pass a shallow "did we POST" check.
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -247,12 +247,7 @@ const mountLive = () =>
   mount(`/idg/meetings/${MEETING}/live`, <LiveMeeting />, "/idg/meetings/:id/live");
 const mountDetail = () => mount(`/idg/meetings/${MEETING}`, <MeetingDetail />, "/idg/meetings/:id");
 const mountMinutes = (session: typeof SESSION = SESSION) =>
-  mount(
-    `/idg/meetings/${MEETING}/minutes`,
-    <Minutes />,
-    "/idg/meetings/:id/minutes",
-    session,
-  );
+  mount(`/idg/meetings/${MEETING}/minutes`, <Minutes />, "/idg/meetings/:id/minutes", session);
 
 const writes = () => calls.filter((c) => !c.startsWith("GET "));
 
@@ -496,9 +491,9 @@ describe("#91 — adjournment is the commit point, and its refusal is legible", 
     fireEvent.click(screen.getByRole("button", { name: "Finalize & Adjourn" }));
     fireEvent.click(await screen.findByLabelText(/I understand that this finalizes/i));
     fireEvent.click(
-      (await waitFor(() =>
-        screen.getAllByRole("button", { name: "Finalize & Adjourn" }),
-      )).at(-1) as HTMLElement,
+      (await waitFor(() => screen.getAllByRole("button", { name: "Finalize & Adjourn" }))).at(
+        -1,
+      ) as HTMLElement,
     );
     await waitFor(() => expect(writes()).toContain(`POST /api/v1/idg/meetings/${MEETING}/adjourn`));
   });
@@ -517,9 +512,9 @@ describe("#91 — adjournment is the commit point, and its refusal is legible", 
     fireEvent.click(screen.getByRole("button", { name: "Finalize & Adjourn" }));
     fireEvent.click(await screen.findByLabelText(/I understand that this finalizes/i));
     fireEvent.click(
-      (await waitFor(() =>
-        screen.getAllByRole("button", { name: "Finalize & Adjourn" }),
-      )).at(-1) as HTMLElement,
+      (await waitFor(() => screen.getAllByRole("button", { name: "Finalize & Adjourn" }))).at(
+        -1,
+      ) as HTMLElement,
     );
     expect((await screen.findByRole("alert")).textContent).toMatch(/re-authentication/i);
     expect(screen.getByRole("button", { name: "Re-authenticate" })).toBeTruthy();
@@ -527,10 +522,38 @@ describe("#91 — adjournment is the commit point, and its refusal is legible", 
 
   it("requires explicit confirmation and presents reliable finalization facts", async () => {
     roster = [
-      { id: "a", meetingId: MEETING, membershipId: "m1", discipline: "hospice_physician", status: "present", checkedInAt: "2026-08-27T09:00:00.000Z" },
-      { id: "b", meetingId: MEETING, membershipId: "m2", discipline: "rn_case_manager", status: "present", checkedInAt: "2026-08-27T09:00:00.000Z" },
-      { id: "c", meetingId: MEETING, membershipId: "m3", discipline: "msw", status: "present", checkedInAt: "2026-08-27T09:00:00.000Z" },
-      { id: "d", meetingId: MEETING, membershipId: "m4", discipline: "chaplain", status: "present", checkedInAt: "2026-08-27T09:00:00.000Z" },
+      {
+        id: "a",
+        meetingId: MEETING,
+        membershipId: "m1",
+        discipline: "hospice_physician",
+        status: "present",
+        checkedInAt: "2026-08-27T09:00:00.000Z",
+      },
+      {
+        id: "b",
+        meetingId: MEETING,
+        membershipId: "m2",
+        discipline: "rn_case_manager",
+        status: "present",
+        checkedInAt: "2026-08-27T09:00:00.000Z",
+      },
+      {
+        id: "c",
+        meetingId: MEETING,
+        membershipId: "m3",
+        discipline: "msw",
+        status: "present",
+        checkedInAt: "2026-08-27T09:00:00.000Z",
+      },
+      {
+        id: "d",
+        meetingId: MEETING,
+        membershipId: "m4",
+        discipline: "chaplain",
+        status: "present",
+        checkedInAt: "2026-08-27T09:00:00.000Z",
+      },
     ];
     mountLive();
     fireEvent.click(await screen.findByRole("button", { name: "Finalize & Adjourn" }));
@@ -818,7 +841,9 @@ describe("packets_building — the background build is polled", () => {
       release = r;
     });
     fireEvent.click(screen.getByRole("button", { name: "Retry build" }));
-    await waitFor(() => expect(writes()).toContain(`POST /api/v1/idg/meetings/${MEETING}/packets/build`));
+    await waitFor(() =>
+      expect(writes()).toContain(`POST /api/v1/idg/meetings/${MEETING}/packets/build`),
+    );
     meetingStatus = "packets_ready";
     meetingReadGate = null;
     await tick(LIVE_REFRESH_INTERVAL_MS + 100);

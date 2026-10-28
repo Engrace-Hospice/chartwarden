@@ -1,8 +1,8 @@
+import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
 // WP 3.2: the link picker inside the real thread composer. `#` swaps itself for the picker, the chosen record is sent as a
 // clinicalLink node (ids only), and a conversation without a patient scope, or a tenant with the flag off, gets no picker.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";

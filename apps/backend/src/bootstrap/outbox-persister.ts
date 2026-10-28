@@ -100,7 +100,10 @@ export function buildTxOutboxPublisher(
 ): OutboxPublishPort {
   return {
     async publish(tx, input) {
-      if (input.eventId !== undefined && (input.organizationId === null || !UUID_RE.test(input.eventId))) {
+      if (
+        input.eventId !== undefined &&
+        (input.organizationId === null || !UUID_RE.test(input.eventId))
+      ) {
         throw new Error("outbox publish: eventId must be a uuid and needs an organization");
       }
       await publishOutboxEvent(

@@ -1,10 +1,10 @@
+import { ApiClientProvider, ToastProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 // @vitest-environment jsdom
 // A tenant in `provisioning` used to stay stale in the list until a manual reload, and its overview said nothing
 // about the job. The list refreshes itself while any tenant is provisioning, and the overview shows the
 // provisioning card (job state + retry) for a provisioning tenant only.
 import { act, render, screen } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TenantInventory } from "./tenant-inventory";
@@ -90,9 +90,7 @@ describe("tenant overview provisioning card", () => {
     window.history.pushState({}, "", "/tenants/cedar-ridge");
     render(
       <MemoryRouter initialEntries={["/tenants/cedar-ridge"]}>
-        <ApiClientProvider
-          client={{ GET, POST: vi.fn() } as unknown as ApiClient}
-        >
+        <ApiClientProvider client={{ GET, POST: vi.fn() } as unknown as ApiClient}>
           <ToastProvider>
             <Routes>
               <Route path="/tenants/:orgSlug" element={<TenantOverview />} />

@@ -7,13 +7,18 @@ import type {
   AckEvent,
   ClearinghouseBinding,
   ClearinghouseContext,
-  SubmissionAttempt,
   StediClaimJson,
+  SubmissionAttempt,
   SubmissionAttemptStore,
   SubmissionKind,
   SubmissionPayload,
 } from "@chartwarden/x12-837-client";
-import { CH, compareStediClaimJsonToX12, routeAckEvent, scopeKey } from "@chartwarden/x12-837-client";
+import {
+  CH,
+  compareStediClaimJsonToX12,
+  routeAckEvent,
+  scopeKey,
+} from "@chartwarden/x12-837-client";
 import {
   type CredentialAlertPort,
   type CredentialGuardDeps,
@@ -105,7 +110,11 @@ export type TransportUpload = (input: {
 function payloadFor(
   vendor: string | null,
   kind: SubmissionKind,
-  input: { readonly kind: TransportUploadKind; readonly x12: string; readonly stediJson?: StediClaimJson },
+  input: {
+    readonly kind: TransportUploadKind;
+    readonly x12: string;
+    readonly stediJson?: StediClaimJson;
+  },
 ): SubmissionPayload {
   if (vendor !== "stedi" || kind !== "claim" || !input.stediJson) {
     return { format: "x12", x12: input.x12 };

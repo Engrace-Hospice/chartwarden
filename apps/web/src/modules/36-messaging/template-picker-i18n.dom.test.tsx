@@ -56,7 +56,11 @@ describe("TemplatePicker in Spanish", () => {
     fireEvent.click(screen.getByRole("button", { name: /Respuestas guardadas/ }));
     expect(screen.getByRole("dialog", { name: "Respuestas guardadas" })).toBeTruthy();
     const options = screen.getAllByRole("option");
-    expect(within(options[0] as HTMLElement).getByText("EN").getAttribute("lang")).toBe("en");
+    expect(
+      within(options[0] as HTMLElement)
+        .getByText("EN")
+        .getAttribute("lang"),
+    ).toBe("en");
     expect(within(options[1] as HTMLElement).queryByText("EN")).toBeNull();
     fireEvent.click(options[0] as HTMLElement);
     expect(onInsert).toHaveBeenCalledWith("Thanks, message received.");

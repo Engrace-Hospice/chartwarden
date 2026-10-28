@@ -1,11 +1,11 @@
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 // @vitest-environment jsdom
 // A freshly invited org_admin has no passkey, and the server refuses `select-organization` (403
 // MFA_ENROLMENT_REQUIRED) until one is registered. The screen used to answer "Contact your administrator" and the
 // only passkey screen sat behind the pre-org guard, so the admin could neither bind an org nor register a passkey.
 // The refusal now says what is required and links to a pre-org passkey registration page.
 import { fireEvent, render, screen } from "@testing-library/react";
-import { ApiClientProvider } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { rememberPendingNotificationLink } from "../../../shell/pending-deep-link";
 import { OrganizationSelect } from "../organization-select";

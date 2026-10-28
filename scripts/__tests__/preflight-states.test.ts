@@ -10,7 +10,10 @@ import { afterAll, describe, expect, it } from "vitest";
 // read-only and fail-closed (exit 67); a green test here means a deploy cannot start on a half-copied volume set or a
 // database name that disagrees with the cluster.
 
-const PREFLIGHT = resolve(dirname(fileURLToPath(import.meta.url)), "../../deploy/production/preflight.sh");
+const PREFLIGHT = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../deploy/production/preflight.sh",
+);
 const scratch = mkdtempSync(join(tmpdir(), "preflight-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
@@ -63,7 +66,12 @@ const SMOKE = [
   "CHARTWARDEN_SMOKE_APP_URL=https://wardenx.chartwarden.cloud",
   "CHARTWARDEN_SMOKE_API_URL=https://be082026.wardenx.chartwarden.cloud",
 ];
-const LEGACY_VOLUMES = ["wardenx_postgres-data", "wardenx_valkey-data", "wardenx_minio-data", "wardenx_clamav-data"];
+const LEGACY_VOLUMES = [
+  "wardenx_postgres-data",
+  "wardenx_valkey-data",
+  "wardenx_minio-data",
+  "wardenx_clamav-data",
+];
 const NEW_VOLUMES = LEGACY_VOLUMES.map((v) => v.replace("wardenx_", "chartwarden_"));
 
 describe("preflight.sh across the infra-rename windows", () => {
@@ -97,7 +105,11 @@ describe("preflight.sh across the infra-rename windows", () => {
 
   it("accepts the end state: prefix line removed (default), db renamed, old volumes kept for rollback", () => {
     const r = run({
-      env: ["CHARTWARDEN_DB_NAME=chartwarden", "CHARTWARDEN_SMOKE_APP_URL=https://app.chartwarden.cloud", "CHARTWARDEN_SMOKE_API_URL=https://api.chartwarden.cloud"],
+      env: [
+        "CHARTWARDEN_DB_NAME=chartwarden",
+        "CHARTWARDEN_SMOKE_APP_URL=https://app.chartwarden.cloud",
+        "CHARTWARDEN_SMOKE_API_URL=https://api.chartwarden.cloud",
+      ],
       volumes: [...LEGACY_VOLUMES, ...NEW_VOLUMES],
       pgProjects: ["chartwarden"],
       runningPg: true,
@@ -168,7 +180,11 @@ describe("preflight.sh across the infra-rename windows", () => {
   });
 
   it("refuses an existing stack without both smoke host keys", () => {
-    const r = run({ env: ["CHARTWARDEN_DB_NAME=chartwarden"], volumes: NEW_VOLUMES, pgProjects: ["chartwarden"] });
+    const r = run({
+      env: ["CHARTWARDEN_DB_NAME=chartwarden"],
+      volumes: NEW_VOLUMES,
+      pgProjects: ["chartwarden"],
+    });
     expect(r.code).toBe(67);
     expect(r.out).toContain("CHARTWARDEN_SMOKE_APP_URL");
   });

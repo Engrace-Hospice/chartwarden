@@ -1,3 +1,5 @@
+import { SBAR_SECTION_KEYS, type SbarSections } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 /**
  * WP 2.5 server drafts in the web client: restore on open, debounced autosave, discard on empty, thread-root scoping,
  * and the cross-device merge prompt (keep mine / use theirs / combine) with keyboard focus.
@@ -11,8 +13,6 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { SBAR_SECTION_KEYS, type SbarSections } from "@chartwarden/types";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";

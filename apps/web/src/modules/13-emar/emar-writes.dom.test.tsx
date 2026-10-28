@@ -1,3 +1,4 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/13-emar — F-031: the M13 write controls must not be inert.
 //
 // The regression this pins is not "a button is missing". It is the shape the 2026-08-25 audit found twelve
@@ -15,7 +16,6 @@
 // which is the exact failure being fixed. (Same reasoning, and the same helper shape, as
 // modules/35-subscription/payment-method-actions.dom.test.tsx.)
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";

@@ -1,3 +1,4 @@
+import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
 // M36 WP 3.3: the SBAR form inside the real thread composer: offered only when the flag is on and the channel allows it,
 // accessible roles and keyboard, the emergency-path note always shown, urgency default per channel kind, server field
 // errors mapped to sections, and the text kept when the form is cancelled.
@@ -12,7 +13,6 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider, FeatureFlagProvider } from "@chartwarden/ui";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";

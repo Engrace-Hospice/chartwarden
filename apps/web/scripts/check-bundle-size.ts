@@ -17,7 +17,10 @@
  */
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { type BundleMeasurement, measureInitialBundle } from "../../../scripts/lib/bundle-size-gate";
+import {
+  type BundleMeasurement,
+  measureInitialBundle,
+} from "../../../scripts/lib/bundle-size-gate";
 
 const CHECK = process.argv.includes("--check");
 const BUDGET_BYTES = 350 * 1024;

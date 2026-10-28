@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/06-admission/events-by-m6.ts — Module 6's outbox-event contributions
 // (M6-T10, spec §4.4). The full `m6.*` taxonomy keyed on M6's own tables, under the `m6.` namespace
 // (M01 D8 / M03 D9). check-fitness-gaps.ts scans this file for naming (`mN.<resource>.<verb>`),
@@ -19,7 +20,6 @@
 // them with `source='m29_proposal_accept'` — modelled as an OPTIONAL payload field so route-emitted and
 // applier-emitted events share one schema and existing consumers keep working unmodified.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 /** The four CMS levels of care (mirrors `level_of_care`; §3.2). */
 const levelOfCare = Type.Union([

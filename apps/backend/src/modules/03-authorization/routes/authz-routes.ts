@@ -22,8 +22,8 @@
 // actor still sees 403 (never 422) and an authorized actor still sees 404 for an absent object.
 import type { AuditContext } from "@chartwarden/audit";
 import {
-  allPermissionMirrorRows,
   ORG_WIDE_SCOPE_ROLES,
+  allPermissionMirrorRows,
   isSystemLocked,
   isTenantRoleReserved,
   requirePermission,
@@ -31,11 +31,11 @@ import {
   validateRoleGrant,
 } from "@chartwarden/auth";
 import {
+  ChartWardenError,
   ForbiddenError,
   type HttpRequestContext,
   UnauthorizedError,
   ValidationError,
-  ChartWardenError,
 } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {

@@ -1,3 +1,14 @@
+import {
+  M22_EXTRACTION_COMMIT_COMPLETED_EVENT,
+  M22_EXTRACTION_COMMIT_REQUESTED_EVENT,
+  M22_EXTRACTION_DIAGNOSIS_COMMIT_REQUESTED_EVENT,
+  M22_INTAKE_SUD_CONFIRMED_EVENT,
+  M22_INTAKE_SUD_DETECTED_EVENT,
+  M22_INTAKE_SUD_REJECTED_EVENT,
+  M22_INTAKE_SUD_RELINKED_EVENT,
+  M22_INTAKE_SUD_WITHDRAWN_EVENT,
+  type ModuleEventContribution,
+} from "@chartwarden/types";
 // apps/backend/src/modules/22-documents/events-by-m22.ts — Module 22's outbox-event contribution: the
 // DOWNSTREAM half of the §7.2 W2 render handshake.
 //
@@ -23,17 +34,6 @@
 // — a permanent backlog that reads as an outage. Each belongs here on the commit that binds its handler;
 // M33 joined on GAP-051's.
 import { Type } from "@sinclair/typebox";
-import {
-  M22_EXTRACTION_COMMIT_COMPLETED_EVENT,
-  M22_EXTRACTION_COMMIT_REQUESTED_EVENT,
-  M22_EXTRACTION_DIAGNOSIS_COMMIT_REQUESTED_EVENT,
-  M22_INTAKE_SUD_CONFIRMED_EVENT,
-  M22_INTAKE_SUD_DETECTED_EVENT,
-  M22_INTAKE_SUD_REJECTED_EVENT,
-  M22_INTAKE_SUD_RELINKED_EVENT,
-  M22_INTAKE_SUD_WITHDRAWN_EVENT,
-  type ModuleEventContribution,
-} from "@chartwarden/types";
 import { M22_CLINICAL_WRITEBACK_EVENTS } from "./events-by-m22-clinical";
 
 const Id = Type.String({ minLength: 1 });

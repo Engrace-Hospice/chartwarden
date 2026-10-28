@@ -1,7 +1,7 @@
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 // usePatientChartData loads the org staff roster only to label care-team rows. That read needs
 // `member.manage`, so a clinician without it must not fire it (it 403s on every chart tab).
 import { render, waitFor } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { describe, expect, it } from "vitest";
 import { type Session, SessionProvider } from "../../shell/session";
 import { usePatientChartData } from "./patient-overview";

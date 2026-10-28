@@ -15,7 +15,12 @@
 //   m37.gip_criteria.attester_eligible — the actor is a hospice MD with an active M40 ExternalPhysician.
 //   m37.ipu.staff_member               — the actor has an active IPU staff assignment on the unit (or is a
 //                                        unit/medical director with org-wide access).
-import { type AbacContext, type AbacTarget, abacRegistry, registerPredicate } from "@chartwarden/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  abacRegistry,
+  registerPredicate,
+} from "@chartwarden/auth";
 import { hasGipAttesterRole } from "../routes/ipu-trust-gates";
 
 /** The §4.7 predicate names M37 OWNS. `inOrg` (M3) is excluded — re-used, never re-registered. */

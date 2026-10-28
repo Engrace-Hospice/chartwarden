@@ -22,7 +22,7 @@ import { requirePermission } from "@chartwarden/auth";
 // `withOrgContext` so RLS on `app.org_id` is the backstop. Org binding is always server-side: the
 // actor's org/user come from `request.context`, never the body.
 import type { CodeSystemId, ExpansionMember, TerminologyProvider } from "@chartwarden/terminology";
-import { UnauthorizedError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   ATTRIBUTION_HEADER,

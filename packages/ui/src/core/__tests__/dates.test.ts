@@ -135,7 +135,9 @@ describe("datetime-local helpers — non-UTC timezone (#595)", () => {
 
   it("shows a server instant in the viewer's zone (and stays stable across edits)", () => {
     expect(isoToLocalInput("2026-10-23T02:15:00.000Z")).toBe("2026-10-22T19:15");
-    expect(localInputToIso(isoToLocalInput("2026-10-23T02:15:00.000Z"))).toBe("2026-10-23T02:15:00.000Z");
+    expect(localInputToIso(isoToLocalInput("2026-10-23T02:15:00.000Z"))).toBe(
+      "2026-10-23T02:15:00.000Z",
+    );
   });
 
   it("pads single digits and honours the winter offset", () => {

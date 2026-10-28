@@ -10,7 +10,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AckBroadcast } from "./ack-broadcast";
 import { BROADCAST_OFF_TITLE, MINE_EMPTY_TITLE } from "./ack-broadcast-wording";
 
-const counts = { audience: 5, acknowledged: 2, pending: 2, opened: 1, notOpened: 1, ineligible: 1, outsideAudience: 1 };
+const counts = {
+  audience: 5,
+  acknowledged: 2,
+  pending: 2,
+  opened: 1,
+  notOpened: 1,
+  ineligible: 1,
+  outsideAudience: 1,
+};
 const summary: AckBroadcastSummary = {
   messageId: "m1",
   channelId: "c1",
@@ -26,19 +34,42 @@ const detail = (over: Partial<AckBroadcastDetail> = {}): AckBroadcastDetail => (
   offset: 0,
   hasMore: false,
   people: [
-    { userId: "u1", displayName: "Alice Opened", state: "opened", openedAt: "2026-10-23T11:00:00.000Z", acknowledgedAt: null },
-    { userId: "u2", displayName: "Bob Unopened", state: "not_opened", openedAt: null, acknowledgedAt: null },
+    {
+      userId: "u1",
+      displayName: "Alice Opened",
+      state: "opened",
+      openedAt: "2026-10-23T11:00:00.000Z",
+      acknowledgedAt: null,
+    },
+    {
+      userId: "u2",
+      displayName: "Bob Unopened",
+      state: "not_opened",
+      openedAt: null,
+      acknowledgedAt: null,
+    },
   ],
   ...over,
 });
 
 type Reply = { data?: unknown; error?: unknown; response?: { status: number } };
 function mount(routes: Record<string, () => Reply>, post?: () => Reply) {
-  const GET = vi.fn(async (path: string) => routes[path]?.() ?? { error: {}, response: { status: 500 } });
-  const POST = vi.fn(async () => post?.() ?? { data: { messageId: "m1", acknowledgedAt: "2026-10-23T12:00:00.000Z", already: false } });
+  const GET = vi.fn(
+    async (path: string) => routes[path]?.() ?? { error: {}, response: { status: 500 } },
+  );
+  const POST = vi.fn(
+    async () =>
+      post?.() ?? {
+        data: { messageId: "m1", acknowledgedAt: "2026-10-23T12:00:00.000Z", already: false },
+      },
+  );
   const view = render(
     <MemoryRouter>
-      <ApiClientProvider client={{ GET, POST, PUT: vi.fn(), PATCH: vi.fn(), DELETE: vi.fn() } as unknown as ApiClient}>
+      <ApiClientProvider
+        client={
+          { GET, POST, PUT: vi.fn(), PATCH: vi.fn(), DELETE: vi.fn() } as unknown as ApiClient
+        }
+      >
         <main>
           <AckBroadcast />
         </main>
@@ -61,12 +92,25 @@ describe("AckBroadcast", () => {
     let acked = false;
     const { POST } = mount(
       {
-        [MINE]: () => ({ data: { items: [{ messageId: "m1", channelId: "c1", createdAt: summary.createdAt, acknowledgedAt: acked ? "2026-10-23T12:00:00.000Z" : null }] } }),
+        [MINE]: () => ({
+          data: {
+            items: [
+              {
+                messageId: "m1",
+                channelId: "c1",
+                createdAt: summary.createdAt,
+                acknowledgedAt: acked ? "2026-10-23T12:00:00.000Z" : null,
+              },
+            ],
+          },
+        }),
         [LIST]: () => ({ error: {}, response: { status: 403 } }),
       },
       () => {
         acked = true;
-        return { data: { messageId: "m1", acknowledgedAt: "2026-10-23T12:00:00.000Z", already: false } };
+        return {
+          data: { messageId: "m1", acknowledgedAt: "2026-10-23T12:00:00.000Z", already: false },
+        };
       },
     );
     const link = await screen.findByRole("link", { name: /Open announcement/ });
@@ -74,10 +118,9 @@ describe("AckBroadcast", () => {
     expect(POST).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /Acknowledge/ }));
     await waitFor(() => expect(POST).toHaveBeenCalledTimes(1));
-    expect(POST).toHaveBeenCalledWith(
-      "/api/v1/messaging/announcements/{messageId}/ack",
-      { params: { path: { messageId: "m1" } } },
-    );
+    expect(POST).toHaveBeenCalledWith("/api/v1/messaging/announcements/{messageId}/ack", {
+      params: { path: { messageId: "m1" } },
+    });
     expect(await screen.findByText(/Acknowledged .*2026|Acknowledged \w/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Acknowledge/ })).toBeNull();
     // a non-supervisor never sees the oversight section
@@ -85,20 +128,27 @@ describe("AckBroadcast", () => {
   });
 
   it("says the feature is off, never an empty list", async () => {
-    mount({ [MINE]: () => ({ error: {}, response: { status: 404 } }), [LIST]: () => ({ error: {}, response: { status: 404 } }) });
+    mount({
+      [MINE]: () => ({ error: {}, response: { status: 404 } }),
+      [LIST]: () => ({ error: {}, response: { status: 404 } }),
+    });
     expect(await screen.findByText(BROADCAST_OFF_TITLE)).toBeTruthy();
     expect(screen.queryByText(MINE_EMPTY_TITLE)).toBeNull();
   });
 
   it("says nothing is waiting only when the read succeeded", async () => {
-    mount({ [MINE]: () => ({ data: { items: [] } }), [LIST]: () => ({ error: {}, response: { status: 403 } }) });
+    mount({
+      [MINE]: () => ({ data: { items: [] } }),
+      [LIST]: () => ({ error: {}, response: { status: 403 } }),
+    });
     expect(await screen.findByText(MINE_EMPTY_TITLE)).toBeTruthy();
   });
 
   it("shows an error with retry that reads again", async () => {
     let calls = 0;
     const { GET } = mount({
-      [MINE]: () => (++calls === 1 ? { error: {}, response: { status: 500 } } : { data: { items: [] } }),
+      [MINE]: () =>
+        ++calls === 1 ? { error: {}, response: { status: 500 } } : { data: { items: [] } },
       [LIST]: () => ({ error: {}, response: { status: 403 } }),
     });
     fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
@@ -114,14 +164,22 @@ describe("AckBroadcast", () => {
     });
     expect(await screen.findByText("Alice Opened")).toBeTruthy();
     expect(screen.getByText("Bob Unopened")).toBeTruthy();
-    expect(screen.getByText(/2 of 5 acknowledged\. 2 still to acknowledge \(1 not opened\)\. 1 no longer active\./)).toBeTruthy();
+    expect(
+      screen.getByText(
+        /2 of 5 acknowledged\. 2 still to acknowledge \(1 not opened\)\. 1 no longer active\./,
+      ),
+    ).toBeTruthy();
     expect(screen.getByText(/1 person joined after this was sent/)).toBeTruthy();
     expect(screen.getByText("Opened, not acknowledged")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "No longer active" }));
     await waitFor(() =>
       expect(GET).toHaveBeenCalledWith(
         DETAIL,
-        expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ filter: "ineligible", offset: 0 }) }) }),
+        expect.objectContaining({
+          params: expect.objectContaining({
+            query: expect.objectContaining({ filter: "ineligible", offset: 0 }),
+          }),
+        }),
       ),
     );
   });
@@ -134,7 +192,20 @@ describe("AckBroadcast", () => {
       [DETAIL]: () =>
         page++ === 0
           ? { data: detail({ hasMore: true }) }
-          : { data: detail({ offset: 2, people: [{ userId: "u3", displayName: "Cara Third", state: "not_opened", openedAt: null, acknowledgedAt: null }] }) },
+          : {
+              data: detail({
+                offset: 2,
+                people: [
+                  {
+                    userId: "u3",
+                    displayName: "Cara Third",
+                    state: "not_opened",
+                    openedAt: null,
+                    acknowledgedAt: null,
+                  },
+                ],
+              }),
+            },
     });
     fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
     expect(await screen.findByText("Cara Third")).toBeTruthy();
@@ -151,7 +222,8 @@ describe("AckBroadcast", () => {
     const { GET } = mount({
       [MINE]: () => ({ data: { items: [] } }),
       [LIST]: () => ({ data: { broadcasts: [summary] } }),
-      [DETAIL]: () => (page++ === 0 ? { data: detail({ hasMore: true }) } : (held as unknown as Reply)),
+      [DETAIL]: () =>
+        page++ === 0 ? { data: detail({ hasMore: true }) } : (held as unknown as Reply),
     });
     const button = await screen.findByRole("button", { name: "Show more" });
     fireEvent.click(button);
@@ -171,11 +243,26 @@ describe("AckBroadcast", () => {
         page += 1;
         if (page === 1) return { data: detail({ hasMore: true }) };
         if (page === 2) return { error: {}, response: { status: 500 } };
-        return { data: detail({ offset: 2, people: [{ userId: "u3", displayName: "Cara Third", state: "not_opened", openedAt: null, acknowledgedAt: null }] }) };
+        return {
+          data: detail({
+            offset: 2,
+            people: [
+              {
+                userId: "u3",
+                displayName: "Cara Third",
+                state: "not_opened",
+                openedAt: null,
+                acknowledgedAt: null,
+              },
+            ],
+          }),
+        };
       },
     });
     fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
-    expect(await screen.findByText(/could not be loaded\. The ones already shown are kept/)).toBeTruthy();
+    expect(
+      await screen.findByText(/could not be loaded\. The ones already shown are kept/),
+    ).toBeTruthy();
     expect(screen.getByText("Alice Opened")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("Cara Third")).toBeTruthy();
@@ -186,31 +273,54 @@ describe("AckBroadcast", () => {
     let acked = false;
     mount(
       {
-        [MINE]: () => ({ data: { items: [{ messageId: "m1", channelId: "c1", createdAt: summary.createdAt, acknowledgedAt: acked ? "2026-10-23T12:00:00.000Z" : null }] } }),
+        [MINE]: () => ({
+          data: {
+            items: [
+              {
+                messageId: "m1",
+                channelId: "c1",
+                createdAt: summary.createdAt,
+                acknowledgedAt: acked ? "2026-10-23T12:00:00.000Z" : null,
+              },
+            ],
+          },
+        }),
         [LIST]: () => ({ error: {}, response: { status: 403 } }),
       },
       () => {
         acked = true;
-        return { data: { messageId: "m1", acknowledgedAt: "2026-10-23T12:00:00.000Z", already: false } };
+        return {
+          data: { messageId: "m1", acknowledgedAt: "2026-10-23T12:00:00.000Z", already: false },
+        };
       },
     );
     fireEvent.click(await screen.findByRole("button", { name: /Acknowledge/ }));
     const status = await screen.findByText("Acknowledged.");
-    expect(status.getAttribute("role")).toBe("status");
+    // An <output>: role "status" is implicit, so ask the accessibility tree rather than the attribute.
+    expect(screen.getAllByRole("status")).toContain(status);
     await waitFor(() => expect(document.activeElement).toBe(status));
   });
 
   it("keeps the list and says the refresh failed when the reload after an acknowledgment fails", async () => {
     let calls = 0;
-    mount(
-      {
-        [MINE]: () =>
-          ++calls === 1
-            ? { data: { items: [{ messageId: "m1", channelId: "c1", createdAt: summary.createdAt, acknowledgedAt: null }] } }
-            : { error: {}, response: { status: 500 } },
-        [LIST]: () => ({ error: {}, response: { status: 403 } }),
-      },
-    );
+    mount({
+      [MINE]: () =>
+        ++calls === 1
+          ? {
+              data: {
+                items: [
+                  {
+                    messageId: "m1",
+                    channelId: "c1",
+                    createdAt: summary.createdAt,
+                    acknowledgedAt: null,
+                  },
+                ],
+              },
+            }
+          : { error: {}, response: { status: 500 } },
+      [LIST]: () => ({ error: {}, response: { status: 403 } }),
+    });
     fireEvent.click(await screen.findByRole("button", { name: /Acknowledge/ }));
     expect(await screen.findByText(/could not be refreshed/)).toBeTruthy();
     expect(screen.getByRole("link", { name: /Open announcement/ })).toBeTruthy();
@@ -224,7 +334,18 @@ describe("AckBroadcast", () => {
 
   it("has no axe violations with both sections shown", async () => {
     const { container } = mount({
-      [MINE]: () => ({ data: { items: [{ messageId: "m1", channelId: "c1", createdAt: summary.createdAt, acknowledgedAt: null }] } }),
+      [MINE]: () => ({
+        data: {
+          items: [
+            {
+              messageId: "m1",
+              channelId: "c1",
+              createdAt: summary.createdAt,
+              acknowledgedAt: null,
+            },
+          ],
+        },
+      }),
       [LIST]: () => ({ data: { broadcasts: [summary] } }),
       [DETAIL]: () => ({ data: detail() }),
     });
@@ -241,10 +362,31 @@ const WITHDRAWN_AT = "2026-10-23T13:00:00.000Z";
 
 describe("AckBroadcast: deadline and withdrawal (ADR-0097 D13-D14)", () => {
   it("shows the deadline to the recipient while waiting, and marks past-deadline and withdrawn broadcasts on the author's list", async () => {
-    const past: AckBroadcastSummary = { ...summary, deadlineAt: "2026-10-23T09:00:00.000Z", pastDeadline: true };
-    const gone: AckBroadcastSummary = { ...summary, messageId: "m2", withdrawnAt: WITHDRAWN_AT, deadlineAt: "2026-10-23T09:00:00.000Z" };
+    const past: AckBroadcastSummary = {
+      ...summary,
+      deadlineAt: "2026-10-23T09:00:00.000Z",
+      pastDeadline: true,
+    };
+    const gone: AckBroadcastSummary = {
+      ...summary,
+      messageId: "m2",
+      withdrawnAt: WITHDRAWN_AT,
+      deadlineAt: "2026-10-23T09:00:00.000Z",
+    };
     mount({
-      [MINE]: () => ({ data: { items: [{ messageId: "m1", channelId: "c1", createdAt: summary.createdAt, acknowledgedAt: null, deadlineAt: "2026-10-30T09:00:00.000Z" }] } }),
+      [MINE]: () => ({
+        data: {
+          items: [
+            {
+              messageId: "m1",
+              channelId: "c1",
+              createdAt: summary.createdAt,
+              acknowledgedAt: null,
+              deadlineAt: "2026-10-30T09:00:00.000Z",
+            },
+          ],
+        },
+      }),
       [LIST]: () => ({ data: { broadcasts: [past, gone] } }),
       [DETAIL]: () => ({ data: detail() }),
     });
@@ -273,7 +415,9 @@ describe("AckBroadcast: deadline and withdrawal (ADR-0097 D13-D14)", () => {
     const { POST } = mount(
       {
         [MINE]: () => ({ data: { items: [] } }),
-        [LIST]: () => ({ data: { broadcasts: [withdrawn ? { ...summary, withdrawnAt: WITHDRAWN_AT } : summary] } }),
+        [LIST]: () => ({
+          data: { broadcasts: [withdrawn ? { ...summary, withdrawnAt: WITHDRAWN_AT } : summary] },
+        }),
         [DETAIL]: () => ({ data: detail() }),
       },
       () => held as unknown as Reply,
@@ -285,7 +429,9 @@ describe("AckBroadcast: deadline and withdrawal (ADR-0097 D13-D14)", () => {
     expect(screen.queryByRole("alertdialog")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Withdraw requirement" }));
-    const confirm = within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Withdraw" });
+    const confirm = within(await screen.findByRole("alertdialog")).getByRole("button", {
+      name: "Withdraw",
+    });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
     expect(POST).toHaveBeenCalledTimes(1);
@@ -312,16 +458,22 @@ describe("AckBroadcast: deadline and withdrawal (ADR-0097 D13-D14)", () => {
       () => ({ error: {}, response: { status: 500 } }),
     );
     fireEvent.click(await screen.findByRole("button", { name: "Withdraw requirement" }));
-    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Withdraw" }));
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Withdraw" }),
+    );
     expect(await screen.findByText(/could not be withdrawn\. Nothing changed/)).toBeTruthy();
     const dialog = screen.getByRole("alertdialog");
-    expect((within(dialog).getByRole("button", { name: "Withdraw" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(
+      (within(dialog).getByRole("button", { name: "Withdraw" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 
   it("the open confirmation has no axe violations", async () => {
     const { container } = mount({
       [MINE]: () => ({ data: { items: [] } }),
-      [LIST]: () => ({ data: { broadcasts: [{ ...summary, deadlineAt: "2026-10-30T09:00:00.000Z" }] } }),
+      [LIST]: () => ({
+        data: { broadcasts: [{ ...summary, deadlineAt: "2026-10-30T09:00:00.000Z" }] },
+      }),
       [DETAIL]: () => ({ data: detail() }),
     });
     fireEvent.click(await screen.findByRole("button", { name: "Withdraw requirement" }));

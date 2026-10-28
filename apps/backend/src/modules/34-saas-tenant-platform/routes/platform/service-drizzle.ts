@@ -56,7 +56,7 @@ import {
   transitionTenant,
 } from "@chartwarden/saas-tenant-platform";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import {
   type InvitationDeliveryPort,
@@ -64,12 +64,12 @@ import {
   canInviteFirstAdmin,
   mintInvitationToken,
 } from "../../invitation-token";
-import type { ProvisionJobPort } from "../../jobs/provision-job-port";
 import type { AutoActivationResult } from "../../jobs/platform-sweeps-worker";
+import type { ProvisionJobPort } from "../../jobs/provision-job-port";
 import { evaluateActivationGuards, pickGoverningBaa } from "./activation-guards";
+import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf, paginate } from "./concurrency";
 import { partitionEffects } from "./effect-ledger";
 import { evaluateDestructionGuards, retentionEndsAtFrom } from "./offboarding-guards";
-import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf, paginate } from "./concurrency";
 import type {
   BaaRecordView,
   CloseSupportSessionArgs,
@@ -550,9 +550,15 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           });
         } catch (err) {
           // 23505 = the slug is, or once was, another organization's (never reused); 23514 = the DB's own slug rule.
-          const code = (err as { code?: string; cause?: { code?: string } }).code ?? (err as { cause?: { code?: string } }).cause?.code;
+          const code =
+            (err as { code?: string; cause?: { code?: string } }).code ??
+            (err as { cause?: { code?: string } }).cause?.code;
           if (args.slug !== undefined && (code === "23505" || code === "23514")) {
-            throw new ChartWardenError("TENANT_SLUG_UNAVAILABLE", "that slug is taken or was used by another organization (an earlier failed provisioning attempt can also hold it)", 409);
+            throw new ChartWardenError(
+              "TENANT_SLUG_UNAVAILABLE",
+              "that slug is taken or was used by another organization (an earlier failed provisioning attempt can also hold it)",
+              409,
+            );
           }
           throw err;
         }
@@ -687,7 +693,11 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
         const { account } = await loadByOrgSlug(tx, orgSlug);
         const keyRing = await new TenantKeyRingRepository(tx).findByTenantAccountId(account.id);
         if (!keyRing || keyRing.destroyedAt || !keyRing.currentDekKekWrappedCiphertext) {
-          throw new ChartWardenError("TENANT_KEY_UNAVAILABLE", "tenant key ring is unavailable", 409);
+          throw new ChartWardenError(
+            "TENANT_KEY_UNAVAILABLE",
+            "tenant key ring is unavailable",
+            409,
+          );
         }
         const current = /^v(\d+)$/.exec(keyRing.currentDekVersion)?.[1];
         if (!current) throw new Error("malformed tenant DEK version");

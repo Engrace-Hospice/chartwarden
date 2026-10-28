@@ -82,7 +82,10 @@ export function ReasonStep({
         </p>
       ) : null}
       {admissionId ? (
-        <NomncPromptStrip admissionId={admissionId} {...(reason ? { dischargeReason: reason } : {})} />
+        <NomncPromptStrip
+          admissionId={admissionId}
+          {...(reason ? { dischargeReason: reason } : {})}
+        />
       ) : null}
       {reason === "moved_out_of_service_area" ? (
         <MovedGuidance

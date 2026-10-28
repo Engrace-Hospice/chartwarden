@@ -17,7 +17,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { AfterHoursTriageLine, useAfterHoursLines } from "./afterhours-triage-line";
 import { AckReassignDialog } from "./ack-reassign-dialog";
 import { REASSIGN_LABEL, reassignName } from "./ack-reassign-wording";
 import {
@@ -40,6 +39,7 @@ import {
   takeName,
   waitingFor,
 } from "./ack-wording";
+import { AfterHoursTriageLine, useAfterHoursLines } from "./afterhours-triage-line";
 import { type AckAction, type AckListStatus, useAckRequests } from "./use-ack-requests";
 import "./ack.css";
 

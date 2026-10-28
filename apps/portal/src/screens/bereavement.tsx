@@ -29,9 +29,7 @@ function parseItems<T>(value: unknown, fields: readonly string[]): T[] | null {
     items.some((item) => {
       if (!item || typeof item !== "object" || Array.isArray(item)) return true;
       const entry = item as Record<string, unknown>;
-      return fields.some(
-        (field) => entry[field] != null && typeof entry[field] !== "string",
-      );
+      return fields.some((field) => entry[field] != null && typeof entry[field] !== "string");
     })
   )
     return null;
@@ -43,9 +41,7 @@ function safeResourceUrl(value: string | undefined): string | null {
   if (!value) return null;
   try {
     const url = new URL(value);
-    return url.protocol === "https:" && !url.username && !url.password
-      ? url.href
-      : null;
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : null;
   } catch {
     return null;
   }
@@ -53,11 +49,11 @@ function safeResourceUrl(value: string | undefined): string | null {
 
 function SectionLoading({ label }: { label: string }): JSX.Element {
   return (
-    <div className="wx-bereavement-skeleton" role="status" aria-label={label}>
+    <output className="wx-bereavement-skeleton" aria-label={label}>
       <span />
       <span />
       <span />
-    </div>
+    </output>
   );
 }
 function SectionError({
@@ -84,12 +80,7 @@ function SectionError({
 /** Key the complete screen by selected patient; never reuse grief-support content across records. */
 export function PortalBereavement(): JSX.Element {
   const { patientId } = usePortalPatient();
-  return (
-    <BereavementForPatient
-      key={patientId ?? "no-patient"}
-      patientId={patientId}
-    />
-  );
+  return <BereavementForPatient key={patientId ?? "no-patient"} patientId={patientId} />;
 }
 
 function BereavementForPatient({
@@ -123,6 +114,7 @@ function BereavementForPatient({
   }, []);
 
   useEffect(() => {
+    void programAttempt;
     let active = true;
     setProgram({ status: "loading", items: [] });
     if (!patientId)
@@ -131,10 +123,7 @@ function BereavementForPatient({
       };
     void (async () => {
       try {
-        const response = await client.GET(
-          "/api/v1/portal/bereavement/program",
-          {},
-        );
+        const response = await client.GET("/api/v1/portal/bereavement/program", {});
         if (!active) return;
         if ("error" in response) {
           setProgram({
@@ -144,10 +133,7 @@ function BereavementForPatient({
           });
           return;
         }
-        const items = parseItems<ProgramItem>(response.data, [
-          "label",
-          "detail",
-        ]);
+        const items = parseItems<ProgramItem>(response.data, ["label", "detail"]);
         setProgram(
           items
             ? { status: "ready", items }
@@ -168,6 +154,7 @@ function BereavementForPatient({
   }, [client, patientId, programAttempt]);
 
   useEffect(() => {
+    void resourcesAttempt;
     let active = true;
     setResources({ status: "loading", items: [] });
     if (!patientId)
@@ -176,10 +163,7 @@ function BereavementForPatient({
       };
     void (async () => {
       try {
-        const response = await client.GET(
-          "/api/v1/portal/bereavement/resources",
-          {},
-        );
+        const response = await client.GET("/api/v1/portal/bereavement/resources", {});
         if (!active) return;
         if ("error" in response) {
           setResources({
@@ -189,12 +173,7 @@ function BereavementForPatient({
           });
           return;
         }
-        const items = parseItems<Resource>(response.data, [
-          "title",
-          "summary",
-          "kind",
-          "url",
-        ]);
+        const items = parseItems<Resource>(response.data, ["title", "summary", "kind", "url"]);
         setResources(
           items
             ? { status: "ready", items }
@@ -227,10 +206,7 @@ function BereavementForPatient({
     setOptingOut(true);
     setOptOutError(null);
     try {
-      const response = await client.POST(
-        "/api/v1/portal/bereavement/opt-out",
-        {},
-      );
+      const response = await client.POST("/api/v1/portal/bereavement/opt-out", {});
       if (!mounted.current) return;
       if ("error" in response) {
         setOptOutError(readError(response.response?.status));
@@ -263,25 +239,19 @@ function BereavementForPatient({
           <span className="wx-bereavement-eyebrow">Care and support</span>
           <h2>Support, at your own pace</h2>
           <p>
-            Everyone experiences grief differently. You can explore information
-            shared by your hospice team whenever you feel ready.
+            Everyone experiences grief differently. You can explore information shared by your
+            hospice team whenever you feel ready.
           </p>
         </div>
       </div>
       {!patientId ? (
         <div className="wx-bereavement-panel wx-bereavement-section-state">
-          <p>
-            Choose a patient to see the support information available to your
-            account.
-          </p>
+          <p>Choose a patient to see the support information available to your account.</p>
         </div>
       ) : (
         <div className="wx-bereavement-layout">
           <div className="wx-bereavement-main">
-            <section
-              className="wx-bereavement-panel"
-              aria-labelledby="bereavement-program-heading"
-            >
+            <section className="wx-bereavement-panel" aria-labelledby="bereavement-program-heading">
               <div className="wx-bereavement-panel__heading">
                 <span className="wx-bereavement-panel__icon" aria-hidden="true">
                   <Glyph name="heart" size={21} />
@@ -302,10 +272,7 @@ function BereavementForPatient({
                 <ul className="wx-bereavement-program">
                   {program.items.map((item, index) => (
                     <li key={`${item.label ?? "program"}-${index}`}>
-                      <span
-                        className="wx-bereavement-program__mark"
-                        aria-hidden="true"
-                      >
+                      <span className="wx-bereavement-program__mark" aria-hidden="true">
                         <Glyph name="check-circle" size={18} />
                       </span>
                       <div>
@@ -320,8 +287,8 @@ function BereavementForPatient({
                   <Glyph name="heart" size={24} aria-hidden="true" />
                   <strong>No program details shared yet</strong>
                   <p>
-                    When the hospice team shares program information for your
-                    account, it will appear here.
+                    When the hospice team shares program information for your account, it will
+                    appear here.
                   </p>
                 </div>
               )}
@@ -352,15 +319,11 @@ function BereavementForPatient({
                     const url = safeResourceUrl(item.url);
                     const title = item.title?.trim() || "Support resource";
                     return (
-                      <li
-                        key={`${title}-${index}`}
-                        className="wx-bereavement-resource"
-                      >
+                      // biome-ignore lint/suspicious/noArrayIndexKey: resources carry no id and titles may repeat; read-only list
+                      <li key={`${title}-${index}`} className="wx-bereavement-resource">
                         <div className="wx-bereavement-resource__body">
                           {item.kind ? (
-                            <span className="wx-bereavement-eyebrow">
-                              {humanize(item.kind)}
-                            </span>
+                            <span className="wx-bereavement-eyebrow">{humanize(item.kind)}</span>
                           ) : null}
                           <h3>{title}</h3>
                           {item.summary?.trim() ? <p>{item.summary}</p> : null}
@@ -373,12 +336,7 @@ function BereavementForPatient({
                             rel="noopener noreferrer"
                             aria-label={`Open ${title} in a new tab`}
                           >
-                            Open resource{" "}
-                            <Glyph
-                              name="arrow-right"
-                              size={16}
-                              aria-hidden="true"
-                            />
+                            Open resource <Glyph name="arrow-right" size={16} aria-hidden="true" />
                           </a>
                         ) : null}
                       </li>
@@ -406,25 +364,25 @@ function BereavementForPatient({
               <p>Loading your support access…</p>
             ) : program.status === "error" ? (
               <p>
-                Outreach preferences are unavailable until your support access
-                can be confirmed.
+                Outreach preferences are unavailable until your support access can be confirmed.
               </p>
             ) : optedOut ? (
+              // biome-ignore lint/a11y/useSemanticElements: <output> allows phrasing content only; this status holds flow content.
               <div className="wx-bereavement-opted-out" role="status">
                 <Glyph name="check-circle" size={20} aria-hidden="true" />
                 <div>
                   <strong>Preference submitted</strong>
                   <p>
-                    You have opted out of bereavement outreach. Contact your
-                    hospice team if you would like to discuss future support.
+                    You have opted out of bereavement outreach. Contact your hospice team if you
+                    would like to discuss future support.
                   </p>
                 </div>
               </div>
             ) : confirmOptOut ? (
               <div className="wx-bereavement-confirm">
                 <p>
-                  Please confirm that you do not want to receive future
-                  bereavement outreach from your hospice team.
+                  Please confirm that you do not want to receive future bereavement outreach from
+                  your hospice team.
                 </p>
                 <div className="wx-bereavement-confirm__actions">
                   <Button
@@ -450,8 +408,8 @@ function BereavementForPatient({
             ) : (
               <>
                 <p>
-                  You can choose not to receive bereavement outreach. This will
-                  not change information already made available here.
+                  You can choose not to receive bereavement outreach. This will not change
+                  information already made available here.
                 </p>
                 <Button
                   tone="secondary"
@@ -470,8 +428,8 @@ function BereavementForPatient({
               </div>
             ) : null}
             <p className="wx-bereavement-preferences__note">
-              If you have questions or need help, contact your hospice team
-              through your usual contact method.
+              If you have questions or need help, contact your hospice team through your usual
+              contact method.
             </p>
           </aside>
         </div>

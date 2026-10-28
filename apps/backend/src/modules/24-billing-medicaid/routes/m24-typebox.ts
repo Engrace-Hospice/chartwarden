@@ -1,3 +1,4 @@
+import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/24-billing-medicaid/routes/m24-typebox.ts — M24 (§4.2) request/response schemas.
 //
 // TypeBox request bodies, list queries, and response DTOs for the §4.1 Billing — Medicaid routes (claims,
@@ -17,7 +18,6 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@chartwarden/types";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {

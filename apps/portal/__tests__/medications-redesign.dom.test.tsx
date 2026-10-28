@@ -1,12 +1,5 @@
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
 import { createApiClient } from "@chartwarden/ui";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PortalApp } from "../src/app";
 
@@ -37,11 +30,7 @@ const json = (data: unknown, status = 200): Response =>
     headers: { "content-type": "application/json" },
   });
 
-type Handler = (
-  url: URL,
-  method: string,
-  request: Request,
-) => Response | Promise<Response>;
+type Handler = (url: URL, method: string, request: Request) => Response | Promise<Response>;
 function clientFor(handler: Handler) {
   return createApiClient({
     baseUrl: "http://localhost",
@@ -70,10 +59,8 @@ function clientFor(handler: Handler) {
   });
 }
 const defaultHandler: Handler = (url) => {
-  if (url.pathname === "/api/v1/portal/medications/active")
-    return json(medications);
-  if (url.pathname === "/api/v1/portal/administrations/recent")
-    return json({ items: [] });
+  if (url.pathname === "/api/v1/portal/medications/active") return json(medications);
+  if (url.pathname === "/api/v1/portal/administrations/recent") return json({ items: [] });
   return json({ error: { code: "UNAVAILABLE" } }, 404);
 };
 
@@ -82,26 +69,21 @@ function openDialog() {
   return screen.getByRole("dialog", { name: "Record a dose given" });
 }
 function fillReport(dialog: HTMLElement) {
-  fireEvent.change(
-    within(dialog).getByRole("combobox", { name: "Medication" }),
-    { target: { value: ORDER } },
-  );
-  fireEvent.change(
-    within(dialog).getByRole("spinbutton", { name: "Amount actually given" }),
-    { target: { value: "5" } },
-  );
-  fireEvent.change(
-    within(dialog).getByRole("textbox", { name: "Unit actually given" }),
-    { target: { value: "mg" } },
-  );
-  fireEvent.change(
-    within(dialog).getByRole("textbox", { name: "Route used" }),
-    { target: { value: "oral" } },
-  );
-  fireEvent.change(
-    within(dialog).getByRole("textbox", { name: "Caregiver attestation" }),
-    { target: { value: "I personally witnessed this dose being given." } },
-  );
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "Medication" }), {
+    target: { value: ORDER },
+  });
+  fireEvent.change(within(dialog).getByRole("spinbutton", { name: "Amount actually given" }), {
+    target: { value: "5" },
+  });
+  fireEvent.change(within(dialog).getByRole("textbox", { name: "Unit actually given" }), {
+    target: { value: "mg" },
+  });
+  fireEvent.change(within(dialog).getByRole("textbox", { name: "Route used" }), {
+    target: { value: "oral" },
+  });
+  fireEvent.change(within(dialog).getByRole("textbox", { name: "Caregiver attestation" }), {
+    target: { value: "I personally witnessed this dose being given." },
+  });
 }
 
 describe("portal medications redesign", () => {
@@ -112,12 +94,8 @@ describe("portal medications redesign", () => {
 
   it("displays medication cards, PRN distinction and a separate history empty state", async () => {
     render(<PortalApp client={clientFor(defaultHandler)} />);
-    expect(
-      await screen.findByRole("heading", { name: "Sample medication" }),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("heading", { name: "As-needed medication" }),
-    ).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Sample medication" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "As-needed medication" })).toBeTruthy();
     expect(screen.getByText("As needed (PRN)")).toBeTruthy();
     expect(screen.getByText("Every morning")).toBeTruthy();
     expect(screen.getByText("No recent administrations to show.")).toBeTruthy();
@@ -144,9 +122,7 @@ describe("portal medications redesign", () => {
       }),
     ).toBeTruthy();
     expect(screen.getByText("No recent administrations to show.")).toBeTruthy();
-    expect(
-      screen.queryByRole("button", { name: "Record a dose given" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Record a dose given" })).toBeNull();
   });
 
   it("preserves medications on history failure and retries only history", async () => {
@@ -181,15 +157,11 @@ describe("portal medications redesign", () => {
         name: "Recent administrations unavailable",
       }),
     ).toBeTruthy();
-    expect(
-      screen.getByRole("heading", { name: "Sample medication" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Sample medication" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() =>
       expect(
-        within(
-          screen.getByRole("list", { name: "Recent administrations" }),
-        ).getByText("5 mg"),
+        within(screen.getByRole("list", { name: "Recent administrations" })).getByText("5 mg"),
       ).toBeTruthy(),
     );
     expect(historyCalls).toBe(2);
@@ -200,8 +172,7 @@ describe("portal medications redesign", () => {
     render(
       <PortalApp
         client={clientFor((url) => {
-          if (url.pathname.endsWith("/medications/active"))
-            return json({ error: {} }, 500);
+          if (url.pathname.endsWith("/medications/active")) return json({ error: {} }, 500);
           if (url.pathname.endsWith("/administrations/recent"))
             return json({
               items: [
@@ -215,9 +186,7 @@ describe("portal medications redesign", () => {
         })}
       />,
     );
-    expect(
-      await screen.findByRole("heading", { name: "Medications unavailable" }),
-    ).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Medications unavailable" })).toBeTruthy();
     expect(screen.getByText("Record B")).toBeTruthy();
   });
 
@@ -259,20 +228,14 @@ describe("portal medications redesign", () => {
     fireEvent.change(within(dialog).getByLabelText("Date and time given"), {
       target: { value: "2026-01-08T11:00" },
     });
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Review administration" }),
-    );
-    expect(
-      within(dialog).getByText("Check these details before recording"),
-    ).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review administration" }));
+    expect(within(dialog).getByText("Check these details before recording")).toBeTruthy();
     expect(posts).toBe(0);
     const confirmButton = within(dialog).getByRole("button", {
       name: "Confirm and record",
     });
     expect((confirmButton as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(
-      within(dialog).getByRole("checkbox", { name: /I confirm/ }),
-    );
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /I confirm/ }));
     fireEvent.click(confirmButton);
     expect(
       await within(dialog).findByRole("heading", {
@@ -305,9 +268,7 @@ describe("portal medications redesign", () => {
     fireEvent.change(within(dialog).getByLabelText("Date and time given"), {
       target: { value: "2026-01-08T11:00" },
     });
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Review administration" }),
-    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review administration" }));
     fireEvent.click(within(dialog).getByRole("checkbox"));
     const button = within(dialog).getByRole("button", {
       name: "Confirm and record",
@@ -318,15 +279,11 @@ describe("portal medications redesign", () => {
     const payload = JSON.parse(await (sent[0] as Promise<string>));
     expect(payload.medicationOrderId).toBe(ORDER);
     expect(payload.administeredAmount).toBe(5);
-    expect(new Date(payload.administeredAt).getTime()).toBe(
-      new Date("2026-01-08T11:00").getTime(),
-    );
+    expect(new Date(payload.administeredAt).getTime()).toBe(new Date("2026-01-08T11:00").getTime());
     await act(async () => {
       finish(json({ status: "recorded" }));
     });
-    expect(
-      await within(dialog).findByText("Administration recorded"),
-    ).toBeTruthy();
+    expect(await within(dialog).findByText("Administration recorded")).toBeTruthy();
   });
 
   it("explains access denial and preserves the report for editing", async () => {
@@ -342,19 +299,11 @@ describe("portal medications redesign", () => {
     await screen.findByRole("heading", { name: "Sample medication" });
     const dialog = openDialog();
     fillReport(dialog);
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Review administration" }),
-    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Review administration" }));
     fireEvent.click(within(dialog).getByRole("checkbox"));
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Confirm and record" }),
-    );
-    expect((await within(dialog).findByRole("alert")).textContent).toContain(
-      "isn't authorized",
-    );
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Edit details" }),
-    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm and record" }));
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("isn't authorized");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Edit details" }));
     expect(
       (
         within(dialog).getByRole("textbox", {
@@ -385,8 +334,7 @@ describe("portal medications redesign", () => {
               ],
             });
           }
-          if (url.pathname.endsWith("/administrations/recent"))
-            return json({ items: [] });
+          if (url.pathname.endsWith("/administrations/recent")) return json({ items: [] });
           return json({}, 404);
         })}
       />,
@@ -396,15 +344,11 @@ describe("portal medications redesign", () => {
       window.history.pushState({}, "", `/portal/p/${OTHER_PATIENT}/medications`);
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
-    expect(
-      await screen.findByRole("heading", { name: "Current patient medicine" }),
-    ).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Current patient medicine" })).toBeTruthy();
     await act(async () =>
       resolveFirst(
         json({
-          items: [
-            { medicationOrderId: ORDER, drugName: "Previous patient medicine" },
-          ],
+          items: [{ medicationOrderId: ORDER, drugName: "Previous patient medicine" }],
         }),
       ),
     );

@@ -29,7 +29,7 @@ import {
   TenantExportRepository,
 } from "@chartwarden/saas-tenant-platform";
 import { getRequestContext, withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, type OrgId, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import { paginate } from "./concurrency";
 import { tenantMayCompleteStep } from "./onboarding-completion-guard";
@@ -164,7 +164,11 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
           organizationId,
         );
         if (!tenantAccount) {
-          throw new ChartWardenError("TENANT_ACCOUNT_NOT_FOUND", "no tenant_account for this org", 500);
+          throw new ChartWardenError(
+            "TENANT_ACCOUNT_NOT_FOUND",
+            "no tenant_account for this org",
+            500,
+          );
         }
         const jobInput: DsarExportJobInput = {
           jobId: row.id,

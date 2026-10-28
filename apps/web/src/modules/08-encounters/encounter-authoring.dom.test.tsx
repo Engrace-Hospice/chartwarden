@@ -1,3 +1,4 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/08-encounters — #91: the visit note must be authorable, not just signable.
 //
 // M8's sign / acknowledge / cosign-sign / supervisor-release ceremonies were already built. The write
@@ -11,7 +12,6 @@
 // server validates section-by-section and code-by-code: a composer that sent a section the template does
 // not have would be rejected in production and would pass a shallow "did we PATCH" check.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

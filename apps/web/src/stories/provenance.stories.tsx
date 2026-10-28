@@ -1,7 +1,7 @@
-import type { Meta, StoryObj } from "@storybook/react-vite";
 // Storybook (R0.5) — Provenance & AI Governance Layer (DESIGN.md §9). AI suggestions are marked,
 // cited, and require a human action; system-derived content is a quiet factual chip.
 import { AiSuggestionCard, DerivedBadge } from "@chartwarden/ui";
+import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { JSX } from "react";
 
 const meta: Meta = { title: "Lantern/Provenance" };

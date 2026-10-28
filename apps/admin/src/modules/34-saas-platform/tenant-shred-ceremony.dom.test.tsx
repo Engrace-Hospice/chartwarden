@@ -1,3 +1,4 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/admin/src/modules/34-saas-platform — #29: the cryptographic shred must actually shred, and
 // must never claim it did when it didn't.
 //
@@ -13,9 +14,8 @@
 // These cases assert the two properties that matter: no request may ever carry an invalid
 // certificate id, and a refusal must remain visible to the operator.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TenantOverview } from "./tenant-overview";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

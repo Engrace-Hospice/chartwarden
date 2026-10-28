@@ -1,9 +1,9 @@
+import { M6_EVENT_NAMES } from "@chartwarden/types";
 // apps/backend/__tests__/admission-outbox-jobs.test.ts — M6-T10 (§4.4 outbox contract + §4.3 jobs).
 // Locks the full `m6.*` event catalog (naming/ownership/consumers, the same invariants arch:gaps
 // enforces) against the §4.4 name list, and the two pure compliance-window scans (recompute +
 // window-alert) for status promotion + idempotency.
 import { Value } from "@sinclair/typebox/value";
-import { M6_EVENT_NAMES } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   CLOSING_SOON_LEAD_MS,

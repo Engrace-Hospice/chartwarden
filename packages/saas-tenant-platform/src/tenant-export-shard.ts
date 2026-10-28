@@ -140,7 +140,9 @@ export function createTenantExportShardForM34(store: M34ExportShardStore): Tenan
           id: typeof job.id === "string" ? job.id : undefined,
           intent: "order" as const,
           code: {
-            coding: [{ system: "https://chartwarden.com/dsar", code: "data-subject-access-request" }],
+            coding: [
+              { system: "https://chartwarden.com/dsar", code: "data-subject-access-request" },
+            ],
           },
           for: { reference: `Patient/${patientId}` },
           authoredOn: job.requestedAt ?? null,

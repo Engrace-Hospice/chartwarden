@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/02-identity/events-by-m2.ts — M2's transactional-outbox event catalog
 // contribution.
 //
@@ -30,7 +31,6 @@
 // no UPDATE anywhere in the codebase before this; see that file's header for the transition graph and the
 // auth-time enforcement this closes (a suspended/closed org can no longer bind a fresh session either).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 const orgId = Type.String({ minLength: 1 });
 const nonEmptyString = Type.String({ minLength: 1 });

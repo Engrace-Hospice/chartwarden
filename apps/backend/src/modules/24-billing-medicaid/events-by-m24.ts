@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/24-billing-medicaid/events-by-m24.ts — Module 24's outbox-event contributions
 // (spec §4.11). The `m24.*` taxonomy under the `m24.` namespace (M01 D8 / M03 D9 / M04 D9).
 // check-fitness-gaps.ts scans this file for naming (`mN.<resource>.<verb>`), ownership (moduleOwner='m24'),
@@ -9,7 +10,6 @@
 // only. The pure payload schemas are declared inline (the medicaid-adapters pure package owns no event-payload
 // module); they bind to declared consumers + the module-owner tag here.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 const Id = Type.String({ minLength: 1 });
 const OrgId = Type.String({ minLength: 1 });

@@ -29,7 +29,11 @@
 //   3. `acknowledged` AND `resolving` ARE QUIET. A human answered; the ladder's job is done and re-paging
 //      them would train responders to ignore the channel. The chain re-arms only if the alert is escalated
 //      manually (`escalateSos(reasonCode: 'manual')`), which is a supervisor's deliberate act.
-import type { IsoInstant, SafetyPolicyEffectiveDto, SafetySosLifecycleState } from "@chartwarden/types";
+import type {
+  IsoInstant,
+  SafetyPolicyEffectiveDto,
+  SafetySosLifecycleState,
+} from "@chartwarden/types";
 import type { SafetySideEffect } from "./effects";
 import {
   type SafetySosAlertFacts,

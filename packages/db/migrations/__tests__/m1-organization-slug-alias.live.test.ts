@@ -14,7 +14,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = ["chartwarden_app", "chartwarden_admin", "chartwarden_readonly", "chartwarden_audit_writer"];
+const ROLES = [
+  "chartwarden_app",
+  "chartwarden_admin",
+  "chartwarden_readonly",
+  "chartwarden_audit_writer",
+];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const UNIQUE_VIOLATION = "23505";
@@ -25,12 +30,19 @@ describe.skipIf(!DB_URL)("migration 1144 — slug rules and aliases — LIVE Pos
   let db: Client;
 
   const insertOrg = (id: string, slug: string) =>
-    db.query("INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,'L','D')", [id, slug]);
-  const rename = (id: string, slug: string) => db.query("UPDATE organization SET slug=$2 WHERE id=$1", [id, slug]);
+    db.query("INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,'L','D')", [
+      id,
+      slug,
+    ]);
+  const rename = (id: string, slug: string) =>
+    db.query("UPDATE organization SET slug=$2 WHERE id=$1", [id, slug]);
   const aliasesOf = async (id: string) =>
-    (await db.query("SELECT alias FROM organization_slug_alias WHERE organization_id=$1 ORDER BY alias", [id])).rows.map(
-      (r) => r.alias as string,
-    );
+    (
+      await db.query(
+        "SELECT alias FROM organization_slug_alias WHERE organization_id=$1 ORDER BY alias",
+        [id],
+      )
+    ).rows.map((r) => r.alias as string);
   const errorCode = async (run: () => Promise<unknown>) => {
     try {
       await run();
@@ -77,20 +89,39 @@ describe.skipIf(!DB_URL)("migration 1144 — slug rules and aliases — LIVE Pos
 
   // Every isolation assertion below would pass vacuously on a BYPASSRLS role.
   it("chartwarden_app is NOBYPASSRLS", async () => {
-    const { rows } = await db.query("SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'");
+    const { rows } = await db.query(
+      "SELECT rolbypassrls FROM pg_roles WHERE rolname = 'chartwarden_app'",
+    );
     expect(rows[0].rolbypassrls).toBe(false);
   });
 
-  it.each(["www", "admin", "api", "portal", "storage", "app", "status", "docs", "mail", "Upper", "ab", "-lead", "trail-", "snake_case", "xn--bcher-kva"])(
-    "refuses the slug %s",
-    async (slug) => {
-      expect(await errorCode(() => insertOrg("33333333-3333-3333-3333-333333333333", slug))).toBe(CHECK_VIOLATION);
-    },
-  );
+  it.each([
+    "www",
+    "admin",
+    "api",
+    "portal",
+    "storage",
+    "app",
+    "status",
+    "docs",
+    "mail",
+    "Upper",
+    "ab",
+    "-lead",
+    "trail-",
+    "snake_case",
+    "xn--bcher-kva",
+  ])("refuses the slug %s", async (slug) => {
+    expect(await errorCode(() => insertOrg("33333333-3333-3333-3333-333333333333", slug))).toBe(
+      CHECK_VIOLATION,
+    );
+  });
 
   it("refuses a rename to an invalid slug and leaves the row unchanged", async () => {
     expect(await errorCode(() => rename(ORG_A, "www"))).toBe(CHECK_VIOLATION);
-    expect((await db.query("SELECT slug FROM organization WHERE id=$1", [ORG_A])).rows[0].slug).toBe("sunrise");
+    expect(
+      (await db.query("SELECT slug FROM organization WHERE id=$1", [ORG_A])).rows[0].slug,
+    ).toBe("sunrise");
   });
 
   it("still lets a legacy non-conforming slug be suspended (rules bind only a new or changed slug)", async () => {
@@ -102,7 +133,9 @@ describe.skipIf(!DB_URL)("migration 1144 — slug rules and aliases — LIVE Pos
       await db.query("ALTER TABLE organization ENABLE TRIGGER organization_slug_guard");
     }
     await db.query("UPDATE organization SET status = 'suspended' WHERE id = $1", [legacy]);
-    expect((await db.query("SELECT status FROM organization WHERE id=$1", [legacy])).rows[0].status).toBe("suspended");
+    expect(
+      (await db.query("SELECT status FROM organization WHERE id=$1", [legacy])).rows[0].status,
+    ).toBe("suspended");
     expect(await errorCode(() => rename(legacy, "Still_Bad"))).toBe(CHECK_VIOLATION);
   });
 
@@ -113,7 +146,9 @@ describe.skipIf(!DB_URL)("migration 1144 — slug rules and aliases — LIVE Pos
 
   it("never lets another organization take an alias", async () => {
     expect(await errorCode(() => rename(ORG_B, "sunrise"))).toBe(UNIQUE_VIOLATION);
-    expect(await errorCode(() => insertOrg("44444444-4444-4444-4444-444444444444", "sunrise"))).toBe(UNIQUE_VIOLATION);
+    expect(
+      await errorCode(() => insertOrg("44444444-4444-4444-4444-444444444444", "sunrise")),
+    ).toBe(UNIQUE_VIOLATION);
   });
 
   it("lets the holder return to its own earlier slug, which then stops being an alias", async () => {
@@ -125,7 +160,12 @@ describe.skipIf(!DB_URL)("migration 1144 — slug rules and aliases — LIVE Pos
 
   it("refuses an alias that equals a live organization slug", async () => {
     expect(
-      await errorCode(() => db.query("INSERT INTO organization_slug_alias (organization_id, alias) VALUES ($1,'eagle')", [ORG_A])),
+      await errorCode(() =>
+        db.query(
+          "INSERT INTO organization_slug_alias (organization_id, alias) VALUES ($1,'eagle')",
+          [ORG_A],
+        ),
+      ),
     ).toBe(UNIQUE_VIOLATION);
   });
 
@@ -136,9 +176,15 @@ describe.skipIf(!DB_URL)("migration 1144 — slug rules and aliases — LIVE Pos
   });
 
   it("shows a tenant its own aliases and nobody else's", async () => {
-    const own = await asApp(ORG_A, async () => (await db.query("SELECT alias FROM organization_slug_alias")).rows);
+    const own = await asApp(
+      ORG_A,
+      async () => (await db.query("SELECT alias FROM organization_slug_alias")).rows,
+    );
     expect(own.map((r) => r.alias)).toEqual(["sunrise"]);
-    const other = await asApp(ORG_B, async () => (await db.query("SELECT alias FROM organization_slug_alias")).rows);
+    const other = await asApp(
+      ORG_B,
+      async () => (await db.query("SELECT alias FROM organization_slug_alias")).rows,
+    );
     expect(other).toEqual([]);
   });
 
@@ -191,9 +237,15 @@ describe.skipIf(!DB_URL)("migration 1144 — slug rules and aliases — LIVE Pos
     const USER_1 = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
     const USER_2 = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
     const publicAsApp = (label: string) =>
-      asApp("", async () => (await db.query("SELECT * FROM resolve_tenant_public($1)", [label])).rows);
+      asApp(
+        "",
+        async () => (await db.query("SELECT * FROM resolve_tenant_public($1)", [label])).rows,
+      );
     const linksAsApp = (email: string) =>
-      asApp("", async () => (await db.query("SELECT * FROM tenant_links_for_email($1)", [email])).rows);
+      asApp(
+        "",
+        async () => (await db.query("SELECT * FROM tenant_links_for_email($1)", [email])).rows,
+      );
 
     beforeAll(async () => {
       for (const [id, slug, name, status] of [
@@ -201,32 +253,51 @@ describe.skipIf(!DB_URL)("migration 1144 — slug rules and aliases — LIVE Pos
         [ORG_D, "dawn", "Dawn Hospice", "created"],
         [ORG_E, "stopped", "Stopped Hospice", "suspended"],
       ]) {
-        await db.query("INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,$2,'L',$3,$4)", [id, slug, name, status]);
+        await db.query(
+          "INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,$2,'L',$3,$4)",
+          [id, slug, name, status],
+        );
       }
-      await db.query("INSERT INTO \"user\" (id,email) VALUES ($1,'Nurse@Example.test'),($2,'pending@example.test')", [USER_1, USER_2]);
+      await db.query(
+        "INSERT INTO \"user\" (id,email) VALUES ($1,'Nurse@Example.test'),($2,'pending@example.test')",
+        [USER_1, USER_2],
+      );
       for (const [user, org, status] of [
         [USER_1, ORG_C, "active"],
         [USER_1, ORG_D, "active"], // org not active yet
         [USER_1, ORG_E, "active"], // org suspended
         [USER_2, ORG_C, "pending"], // membership not active
       ]) {
-        await db.query("INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,$3)", [user, org, status]);
+        await db.query(
+          "INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,$3)",
+          [user, org, status],
+        );
       }
       await rename(ORG_C, "beacon-care"); // `beacon` becomes a retired alias
     });
 
     it("resolve_tenant_public: name only for an active or created organization, via slug or alias", async () => {
-      expect(await publicAsApp("beacon-care")).toEqual([{ status: "active", display_name: "Beacon Care" }]);
-      expect(await publicAsApp("beacon")).toEqual([{ status: "active", display_name: "Beacon Care" }]);
-      expect(await publicAsApp("dawn")).toEqual([{ status: "created", display_name: "Dawn Hospice" }]);
+      expect(await publicAsApp("beacon-care")).toEqual([
+        { status: "active", display_name: "Beacon Care" },
+      ]);
+      expect(await publicAsApp("beacon")).toEqual([
+        { status: "active", display_name: "Beacon Care" },
+      ]);
+      expect(await publicAsApp("dawn")).toEqual([
+        { status: "created", display_name: "Dawn Hospice" },
+      ]);
       expect(await publicAsApp("stopped")).toEqual([{ status: "suspended", display_name: null }]);
       expect(await publicAsApp("nobody")).toEqual([]);
       expect(await publicAsApp("%")).toEqual([]);
     });
 
     it("tenant_links_for_email: only ACTIVE memberships in ACTIVE organizations, matched case-insensitively", async () => {
-      expect(await linksAsApp("nurse@example.test")).toEqual([{ slug: "beacon-care", display_name: "Beacon Care" }]);
-      expect(await linksAsApp("NURSE@EXAMPLE.TEST")).toEqual([{ slug: "beacon-care", display_name: "Beacon Care" }]);
+      expect(await linksAsApp("nurse@example.test")).toEqual([
+        { slug: "beacon-care", display_name: "Beacon Care" },
+      ]);
+      expect(await linksAsApp("NURSE@EXAMPLE.TEST")).toEqual([
+        { slug: "beacon-care", display_name: "Beacon Care" },
+      ]);
       expect(await linksAsApp("pending@example.test")).toEqual([]);
       expect(await linksAsApp("unknown@example.test")).toEqual([]);
       expect(await linksAsApp("%")).toEqual([]);
@@ -252,15 +323,26 @@ describe.skipIf(!DB_URL)("migration 1144 — slug rules and aliases — LIVE Pos
     const revoked = "f5f5f5f5-f5f5-4f5f-8f5f-f5f5f5f5f5f5";
     const stranger = "f6f6f6f6-f6f6-4f6f-8f6f-f6f6f6f6f6f6";
     const belongs = (email: string, label: string) =>
-      asApp("", async () => (await db.query("SELECT email_belongs_to_tenant($1,$2) AS ok", [email, label])).rows[0].ok as boolean);
+      asApp(
+        "",
+        async () =>
+          (await db.query("SELECT email_belongs_to_tenant($1,$2) AS ok", [email, label])).rows[0]
+            .ok as boolean,
+      );
 
     beforeAll(async () => {
-      await db.query("INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,'harbor','L','Harbor','active'),($2,'quiet','L','Quiet','suspended')", [ORG_P, ORG_Q]);
+      await db.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,'harbor','L','Harbor','active'),($2,'quiet','L','Quiet','suspended')",
+        [ORG_P, ORG_Q],
+      );
       await db.query(
         "INSERT INTO \"user\" (id,email) VALUES ($1,'staff@x.test'),($2,'Patient@X.test'),($3,'revoked@x.test'),($4,'stranger@x.test')",
         [staff, patient, revoked, stranger],
       );
-      await db.query("INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active')", [staff, ORG_P]);
+      await db.query(
+        "INSERT INTO membership (user_id,organization_id,status) VALUES ($1,$2,'active')",
+        [staff, ORG_P],
+      );
       for (const [user, org, status, revokedAt] of [
         [patient, ORG_P, "active", null],
         [patient, ORG_Q, "active", null],

@@ -3,7 +3,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { JSX, KeyboardEvent, RefObject, UIEvent } from "react";
 import { AckRequestsProvider } from "./ack-request-card";
 import { AiSummaryPanel } from "./ai-summary-panel";
-import { useAiAssist, useAiEnabled } from "./use-ai-assist";
 import { sendBlockedReason } from "./attachment-utils";
 import { catchUpIfNeeded } from "./catch-up";
 import { applyTextEdit, detectMac, insertText } from "./composer-format";
@@ -38,6 +37,7 @@ import { isSbarBody } from "./sbar-utils";
 import { PatientContextAside, ThreadHeader } from "./thread-header";
 import { ThreadNotices } from "./thread-notices";
 import { ThreadPanel } from "./thread-panel";
+import { useAiAssist, useAiEnabled } from "./use-ai-assist";
 import { useAnnouncementTools } from "./use-announcement-tools";
 import { useAttachmentUploads } from "./use-attachment-upload";
 import { useAutoGrowTextarea } from "./use-auto-grow-textarea";

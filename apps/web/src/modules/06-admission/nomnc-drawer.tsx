@@ -15,8 +15,15 @@ import {
   useDrawerA11y,
 } from "@chartwarden/ui";
 import { useEffect, useId, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
 import type { FormEvent, JSX } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  clearStepUpDraft,
+  peekStepUpDraft,
+  stashStepUpDraft,
+  stepUpDraftKey,
+} from "../../shell/step-up-redirect";
+import { useStepUpOwner } from "../../shell/use-step-up-return";
 import {
   type DeadlineKind,
   type DeadlineView,
@@ -26,13 +33,6 @@ import {
   isConflict,
   isStepUp,
 } from "./nomnc-api";
-import {
-  clearStepUpDraft,
-  peekStepUpDraft,
-  stashStepUpDraft,
-  stepUpDraftKey,
-} from "../../shell/step-up-redirect";
-import { useStepUpOwner } from "../../shell/use-step-up-return";
 import {
   ACK_LABEL,
   DEADLINE_KIND_LABEL,
@@ -82,7 +82,8 @@ export const NOMNC_DRAFT_ACTIONS: readonly string[] = Object.values(NOMNC_STEP_U
 
 /** `[action, target id]` when this form is a step-up write, else null. */
 export function stepUpTargetOf(mode: NomncDrawerMode): readonly [string, string] | null {
-  if (mode.kind === "withdraw_notice") return [NOMNC_STEP_UP_ACTIONS.withdraw_notice, mode.notice.id];
+  if (mode.kind === "withdraw_notice")
+    return [NOMNC_STEP_UP_ACTIONS.withdraw_notice, mode.notice.id];
   if (mode.kind === "decision") return [NOMNC_STEP_UP_ACTIONS.decision, mode.review.id];
   return null;
 }
@@ -409,8 +410,8 @@ export function NomncDrawer({
           form: (
             <>
               <p className="wx-row-sub">
-                Record what was done. Nothing is sent from here: a person delivers the DENC and sends
-                the records.
+                Record what was done. Nothing is sent from here: a person delivers the DENC and
+                sends the records.
               </p>
               <MomentFields
                 legend="DENC delivered"
@@ -555,8 +556,8 @@ export function NomncDrawer({
           form: (
             <>
               <p className="wx-row-sub">
-                Currently {mode.deadline.dueLocal.replace("T", " ")} ({mode.deadline.zone}). Enter the
-                new date and time, and where they came from.
+                Currently {mode.deadline.dueLocal.replace("T", " ")} ({mode.deadline.zone}). Enter
+                the new date and time, and where they came from.
               </p>
               <MomentFields
                 legend="New due time"
@@ -589,7 +590,9 @@ export function NomncDrawer({
       if (isStepUp(err) && draftKey) {
         // not fresh enough: keep what was typed, verify, and come back to this very form
         stashStepUpDraft(draftKey, f);
-        navigate(`/step-up?returnTo=${encodeURIComponent(`${location.pathname}${location.search}`)}`);
+        navigate(
+          `/step-up?returnTo=${encodeURIComponent(`${location.pathname}${location.search}`)}`,
+        );
         return;
       }
       if (isConflict(err)) {

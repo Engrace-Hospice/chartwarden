@@ -1,7 +1,7 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — packet snapshot content: cover, discipline tabs, change sections, honest empty /
 // not-captured wording, the 42 CFR Part 2 banner, `content: null`, and the live centre panel's fetch discipline.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";

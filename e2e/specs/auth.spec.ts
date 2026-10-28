@@ -24,7 +24,9 @@ test.describe("Authentication", () => {
     await page.getByLabel("Username or Email").fill(account.email);
     await page.getByLabel("Password", { exact: true }).fill("definitely-the-wrong-password");
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByRole("alert").filter({ hasText: "Invalid username/email or password." })).toBeVisible();
+    await expect(
+      page.getByRole("alert").filter({ hasText: "Invalid username/email or password." }),
+    ).toBeVisible();
     await expect(page).toHaveURL(/\/login$/);
   });
 

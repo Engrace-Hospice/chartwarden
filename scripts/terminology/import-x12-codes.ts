@@ -30,7 +30,8 @@ const SOURCES: readonly Source[] = [
   { system: "carc", url: "https://x12.org/codes/claim-adjustment-reason-codes" },
   { system: "rarc", url: "https://x12.org/codes/remittance-advice-remark-codes" },
 ];
-const USER_AGENT = "ChartWarden-terminology-importer/1.0 (+operator-initiated; one request per list)";
+const USER_AGENT =
+  "ChartWarden-terminology-importer/1.0 (+operator-initiated; one request per list)";
 const FETCH_TIMEOUT_MS = 60_000;
 const UPDATED_DATE = /code-list-updated-date">\s*([^<\s][^<]*?)\s*</;
 

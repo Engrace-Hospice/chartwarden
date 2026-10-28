@@ -119,7 +119,10 @@ afterEach(() => {
 describe("POST /alarm-ingest/events (no session)", () => {
   it("a correctly signed alarm is a 202, uncached, with no session at all", async () => {
     const { app, service } = makeServer();
-    const cred = await service.create({ organizationId: ORG, userId: "officer" }, { name: "n", mappings: MAPPINGS });
+    const cred = await service.create(
+      { organizationId: ORG, userId: "officer" },
+      { name: "n", mappings: MAPPINGS },
+    );
     const res = await signedPost(app, cred, '{"eventId":"e1","alarmKind":"bed_exit"}');
     expect(res.statusCode).toBe(202);
     expect(res.headers["cache-control"]).toBe("no-store");
@@ -132,9 +135,16 @@ describe("POST /alarm-ingest/events (no session)", () => {
 
   it("the exact bytes are signed: whitespace changes the HMAC", async () => {
     const { app, service } = makeServer();
-    const cred = await service.create({ organizationId: ORG, userId: "officer" }, { name: "n", mappings: MAPPINGS });
+    const cred = await service.create(
+      { organizationId: ORG, userId: "officer" },
+      { name: "n", mappings: MAPPINGS },
+    );
     const timestamp = nowTs();
-    const signed = signAlarmRequest({ ...cred, timestamp, rawBody: '{"eventId":"e1","alarmKind":"bed_exit"}' });
+    const signed = signAlarmRequest({
+      ...cred,
+      timestamp,
+      rawBody: '{"eventId":"e1","alarmKind":"bed_exit"}',
+    });
     const res = await app.inject({
       method: "POST",
       url: INGEST,
@@ -151,7 +161,10 @@ describe("POST /alarm-ingest/events (no session)", () => {
 
   it("every pre-signature failure is the SAME byte-identical 401", async () => {
     const { app, service } = makeServer();
-    const cred = await service.create({ organizationId: ORG, userId: "officer" }, { name: "n", mappings: MAPPINGS });
+    const cred = await service.create(
+      { organizationId: ORG, userId: "officer" },
+      { name: "n", mappings: MAPPINGS },
+    );
     const body = '{"eventId":"e1","alarmKind":"bed_exit"}';
     const strip = (b: string) => b.replace(/"(requestId|correlationId)":"[^"]*"/g, "");
     const responses = [
@@ -159,7 +172,12 @@ describe("POST /alarm-ingest/events (no session)", () => {
       await signedPost(app, cred, body, { timestamp: String(Number(nowTs()) - 4000) }),
       await signedPost(app, cred, body, { headers: { "x-wx-key-id": "nope" } }),
       await signedPost(app, cred, body, { headers: { "x-wx-signature": "v1=00" } }),
-      await app.inject({ method: "POST", url: INGEST, headers: { "content-type": "application/json" }, payload: body }),
+      await app.inject({
+        method: "POST",
+        url: INGEST,
+        headers: { "content-type": "application/json" },
+        payload: body,
+      }),
     ];
     for (const r of responses) expect(r.statusCode).toBe(401);
     expect(new Set(responses.map((r) => strip(r.body))).size).toBe(1);
@@ -167,7 +185,10 @@ describe("POST /alarm-ingest/events (no session)", () => {
 
   it("a flag-off tenant gets the same 401, never a hint that the feature exists", async () => {
     const { app, service } = makeServer();
-    const cred = await service.create({ organizationId: ORG, userId: "officer" }, { name: "n", mappings: MAPPINGS });
+    const cred = await service.create(
+      { organizationId: ORG, userId: "officer" },
+      { name: "n", mappings: MAPPINGS },
+    );
     flagOn = false;
     const res = await signedPost(app, cred, '{"eventId":"e1","alarmKind":"bed_exit"}');
     expect(res.statusCode).toBe(401);
@@ -176,7 +197,10 @@ describe("POST /alarm-ingest/events (no session)", () => {
 
   it("a body over the cap is refused before the handler", async () => {
     const { app, service } = makeServer();
-    const cred = await service.create({ organizationId: ORG, userId: "officer" }, { name: "n", mappings: MAPPINGS });
+    const cred = await service.create(
+      { organizationId: ORG, userId: "officer" },
+      { name: "n", mappings: MAPPINGS },
+    );
     const big = JSON.stringify({ eventId: "e1", alarmKind: "bed_exit", pad: "x".repeat(2000) });
     const tooBig = await signedPost(app, cred, big);
     expect(tooBig.statusCode).toBe(413);
@@ -185,7 +209,10 @@ describe("POST /alarm-ingest/events (no session)", () => {
 
   it("a stolen staff session cookie header proves nothing: only the HMAC counts", async () => {
     const { app, service } = makeServer();
-    const cred = await service.create({ organizationId: ORG, userId: "officer" }, { name: "n", mappings: MAPPINGS });
+    const cred = await service.create(
+      { organizationId: ORG, userId: "officer" },
+      { name: "n", mappings: MAPPINGS },
+    );
     const res = await app.inject({
       method: "POST",
       url: INGEST,
@@ -200,13 +227,22 @@ describe("POST /alarm-ingest/events (no session)", () => {
     const { app } = makeServer({ inboundRoute: false });
     const gone = await app.inject({ method: "POST", url: INGEST, payload: "{}" });
     expect(gone.statusCode).toBe(404);
-    const list = await app.inject({ method: "GET", url: SOURCES, headers: { "x-test-user": "officer" } });
+    const list = await app.inject({
+      method: "GET",
+      url: SOURCES,
+      headers: { "x-test-user": "officer" },
+    });
     expect(list.statusCode).toBe(200);
   });
 });
 
 describe("staff routes", () => {
-  const post = (app: ReturnType<typeof makeServer>["app"], user: string | null, url: string, opts: { fresh?: boolean; payload?: unknown } = {}) =>
+  const post = (
+    app: ReturnType<typeof makeServer>["app"],
+    user: string | null,
+    url: string,
+    opts: { fresh?: boolean; payload?: unknown } = {},
+  ) =>
     app.inject({
       method: "POST",
       url,
@@ -228,7 +264,12 @@ describe("staff routes", () => {
     ] as const) {
       const anon = await app.inject({ method, url });
       expect(anon.statusCode, `${method} ${url}`).toBe(401);
-      const nurse = await app.inject({ method, url, headers: { "x-test-user": "nurse", "x-fresh": "1" }, ...(method === "POST" ? { payload: body } : {}) });
+      const nurse = await app.inject({
+        method,
+        url,
+        headers: { "x-test-user": "nurse", "x-fresh": "1" },
+        ...(method === "POST" ? { payload: body } : {}),
+      });
       expect(nurse.statusCode, `${method} ${url}`).toBe(403);
     }
   });
@@ -240,7 +281,11 @@ describe("staff routes", () => {
     expect(res.headers["cache-control"]).toBe("no-store");
     expect(res.json().secret).toMatch(/^wxas_/);
     expect(stepUpAsked).toEqual(["messaging.alarm_ingest.manage"]);
-    const list = await app.inject({ method: "GET", url: SOURCES, headers: { "x-test-user": "officer" } });
+    const list = await app.inject({
+      method: "GET",
+      url: SOURCES,
+      headers: { "x-test-user": "officer" },
+    });
     expect(list.statusCode).toBe(200);
     expect(list.body).not.toContain(res.json().secret);
     expect(list.json().sources).toHaveLength(1);
@@ -255,7 +300,10 @@ describe("staff routes", () => {
     expect((await post(app, "officer", SOURCES, { payload: body })).statusCode).toBe(404);
     expect((await post(app, "officer", `${SOURCES}/${id}/rotate-secret`)).statusCode).toBe(404);
     expect(stepUpAsked).toEqual([]);
-    expect((await app.inject({ method: "GET", url: SOURCES, headers: { "x-test-user": "officer" } })).statusCode).toBe(200);
+    expect(
+      (await app.inject({ method: "GET", url: SOURCES, headers: { "x-test-user": "officer" } }))
+        .statusCode,
+    ).toBe(200);
     const off = await post(app, "officer", `${SOURCES}/${id}/disable`);
     expect(off.statusCode).toBe(200);
     expect(off.json().enabled).toBe(false);
@@ -266,7 +314,10 @@ describe("staff routes", () => {
     const made = await post(app, "officer", SOURCES, { payload: body });
     const id = made.json().id as string;
     for (const url of [SOURCES, `${SOURCES}/${id}/rotate-secret`, `${SOURCES}/${id}/disable`]) {
-      const res = await post(app, "officer", url, { fresh: false, payload: url === SOURCES ? body : {} });
+      const res = await post(app, "officer", url, {
+        fresh: false,
+        payload: url === SOURCES ? body : {},
+      });
       expect(res.statusCode, url).toBe(403);
       expect(code(res), url).toBe("STEP_UP_REQUIRED");
     }
@@ -274,7 +325,9 @@ describe("staff routes", () => {
 
   it("a malformed id is a 4xx before the service, and a mapping that is not a catalog type is 422", async () => {
     const { app } = makeServer();
-    expect((await post(app, "officer", `${SOURCES}/not-a-uuid/disable`)).statusCode).toBeGreaterThanOrEqual(400);
+    expect(
+      (await post(app, "officer", `${SOURCES}/not-a-uuid/disable`)).statusCode,
+    ).toBeGreaterThanOrEqual(400);
     const bad = await post(app, "officer", SOURCES, {
       payload: { name: "x", mappings: [{ ...MAPPINGS[0], alertType: "m36.ack.requested" }] },
     });

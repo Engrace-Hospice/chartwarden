@@ -136,7 +136,9 @@ export interface MembershipRoleStore {
    */
   reachOf?(
     membershipId: string,
-  ): Promise<import("@chartwarden/auth").MembershipReach> | import("@chartwarden/auth").MembershipReach;
+  ):
+    | Promise<import("@chartwarden/auth").MembershipReach>
+    | import("@chartwarden/auth").MembershipReach;
 }
 
 // --- Break-glass -------------------------------------------------------------------------

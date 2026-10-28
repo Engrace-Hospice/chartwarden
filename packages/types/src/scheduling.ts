@@ -19,10 +19,10 @@
 // package surface stays unambiguous under `export *` — re-exporting would be a TS2308 collision) ───────
 import type { AdmissionId, OrgId, PatientId } from "./admission";
 import type { IsoInstant, LocationId, MembershipId } from "./care-plan";
+import type { ClinicalLinkSource } from "./clinical-link";
 // `EvvBracketState` (`evv_present` | `evv_missing_documented`) is owned by `encounter.ts` (M8) and reused as
 // the §1.1 / D3 EVV-bracket flag on a visit — imported for internal use here, not re-exported (TS2308).
 import type { EvvBracketState, VisitId } from "./encounter";
-import type { ClinicalLinkSource } from "./clinical-link";
 
 /** A calendar date in ISO `YYYY-MM-DD` form (org-tz service date). M17-owned alias; no other leaf exports it. */
 export type IsoDate = string;

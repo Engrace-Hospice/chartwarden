@@ -110,7 +110,6 @@ import {
   setPlatformStaffFailureSink,
 } from "./bootstrap/bind-platform-staff";
 import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
-import { hasPlatformPool } from "./bootstrap/platform-pool-guard";
 import { buildF2fClinicianRoleReader } from "./bootstrap/f2f-clinician-roles";
 import {
   createDrizzleFeatureFlagAdmin,
@@ -206,6 +205,7 @@ import {
   wireOutboxCatalog,
 } from "./bootstrap/outbox-persister";
 import { buildPlatformOpsNoticeSink } from "./bootstrap/platform-ops-notices";
+import { hasPlatformPool } from "./bootstrap/platform-pool-guard";
 import { createDbIdempotencyStore } from "./bootstrap/plugins/idempotency-store-db";
 import {
   createBudgetedRateLimiter,
@@ -246,8 +246,8 @@ import {
   createDbSessionProofReader,
   createDbSessionStepUpWriter,
 } from "./modules/02-identity/step-up-adapters-db";
-import { parsePayeeTinPolicy } from "./modules/25-remittance/ingest/payee-tin-policy";
 import { buildSeamMedicarePayerPort } from "./modules/25-remittance/ingest/medicare-payer-port";
+import { parsePayeeTinPolicy } from "./modules/25-remittance/ingest/payee-tin-policy";
 import { buildDrizzleRemittanceCursorStore } from "./modules/25-remittance/ingest/pull-cursor-store";
 import { partnerAccessAvailability } from "./modules/36-messaging/external-share/external-share-proxy";
 import { familyAccessAvailability } from "./modules/36-messaging/family/family-access-gate";
@@ -1111,9 +1111,9 @@ import {
   buildDrizzleEligibilityWatchdogStore,
   buildDrizzleM24ReadService,
   buildDrizzleM24WriteService,
-  buildM24MedicaidCoverageResolver,
   buildDrizzleRbDaySweepStore,
   buildDrizzleStateChannelCredentialResolver,
+  buildM24MedicaidCoverageResolver,
   buildM24MedicarePrimaryAckConsumer,
   buildM24RbDayConsumers,
   buildM24RemittanceConsumer,
@@ -1766,17 +1766,17 @@ import {
 // authorization routes over the SAME clinical reader seams M23 binds (ADR-0100 D2).
 import {
   type CommercialOutboxPort,
+  type M41RemittanceOutboxPort,
   M41_OUTBOX_EVENTS,
   buildCommercialAuthorizationService,
   buildCommercialClaimAssemblyService,
   buildCommercialClaimLifecycleService,
   buildCommercialClaimReadService,
+  buildM41RemittanceConsumer,
   registerCommercialAckQuarantineRoutes,
   registerCommercialBillingRoutes,
   registerM41AbacPredicates,
   registerM41PublishedSeams,
-  buildM41RemittanceConsumer,
-  type M41RemittanceOutboxPort,
 } from "./modules/41-billing-commercial/index";
 import {
   M41_PLATFORM_JOB_ID,
@@ -6226,7 +6226,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?",
               ),
             payeeNpi: m25PayeeNpi,
- ...m25PayeeTinDeps,
+            ...m25PayeeTinDeps,
             outbox: m25OutboxPublisher,
             terminology: m25Terminology,
             claims: {
@@ -8865,7 +8865,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               ),
             ),
             payeeNpi: m25PayeeNpi,
- ...m25PayeeTinDeps,
+            ...m25PayeeTinDeps,
             outbox: m25OutboxPublisher,
           }),
         }
@@ -12793,7 +12793,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   "M25 835 post degraded (retryable); staged raw 835 missing or no object store configured?",
                 ),
               payeeNpi: m25PayeeNpi,
- ...m25PayeeTinDeps,
+              ...m25PayeeTinDeps,
               outbox: m25OutboxPublisher,
               claims: {
                 medicare: buildM23BackedClaimMatchCandidateProvider(),

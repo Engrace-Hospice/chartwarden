@@ -468,7 +468,8 @@ export function registerPortalWriteRoutes(app: FastifyInstance, deps: PortalRout
         patientId,
         actor.userId,
       );
-      if (!channel) throw new ChartWardenError("MESSAGING_UNAVAILABLE", "messaging is unavailable", 503);
+      if (!channel)
+        throw new ChartWardenError("MESSAGING_UNAVAILABLE", "messaging is unavailable", 503);
       const sent = await provider.sendMessage(actor.organizationId, {
         channelId: channel.channelId,
         authorUserId: actor.userId,

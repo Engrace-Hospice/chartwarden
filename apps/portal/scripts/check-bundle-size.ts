@@ -18,7 +18,10 @@
  */
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { type BundleMeasurement, measureInitialBundle } from "../../../scripts/lib/bundle-size-gate";
+import {
+  type BundleMeasurement,
+  measureInitialBundle,
+} from "../../../scripts/lib/bundle-size-gate";
 import { resolvePortalBase } from "../src/base-path";
 
 const CHECK = process.argv.includes("--check");

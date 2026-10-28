@@ -85,7 +85,9 @@ export function registerAlarmIngestRoutes(app: FastifyInstance, deps: AlarmInges
     },
     async (request, reply) => {
       const body = parse(CreateAlarmSourceBodySchema, request.body);
-      return noStore(reply).code(201).send(await service.create(staffOf(request), body));
+      return noStore(reply)
+        .code(201)
+        .send(await service.create(staffOf(request), body));
     },
   );
 

@@ -14,8 +14,6 @@
 // response is scheduled so a hit and a miss take the same time, and both routes 404 unless TENANT_BASE_DOMAIN is set.
 // The tenant is read off `request.hostname` (the socket Host, or X-Forwarded-Host only from a trusted proxy) - never a header.
 import { createHash } from "node:crypto";
-import { type Static, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 import {
   ChartWardenError,
   NotFoundError,
@@ -24,6 +22,8 @@ import {
   classifyTenantHost,
   tenantOriginForSlug,
 } from "@chartwarden/types";
+import { type Static, Type } from "@sinclair/typebox";
+import { Value } from "@sinclair/typebox/value";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
 const MAX_EMAIL_LENGTH = 254;
@@ -51,7 +51,9 @@ export interface TenantLink {
   readonly displayName: string;
 }
 export interface PublicTenantLimiter {
-  consume(key: string): Promise<{ allowed: boolean; retryAfterSeconds?: number; storeError?: true }>;
+  consume(
+    key: string,
+  ): Promise<{ allowed: boolean; retryAfterSeconds?: number; storeError?: true }>;
 }
 export interface PublicTenantEmailTransport {
   send(message: { to: string; subject: string; text: string }): Promise<unknown>;
@@ -78,8 +80,11 @@ const sha256Hex = (value: string): string => createHash("sha256").update(value).
 function parseBody(raw: unknown): Static<typeof FindMyOrganizationRequestSchema> {
   const body = raw ?? {};
   const invalid = (message: string) =>
-    new ValidationError("request validation failed", [{ field: "email", code: "INVALID", message }]);
-  if (!Value.Check(FindMyOrganizationRequestSchema, body)) throw invalid("a well-formed email is required");
+    new ValidationError("request validation failed", [
+      { field: "email", code: "INVALID", message },
+    ]);
+  if (!Value.Check(FindMyOrganizationRequestSchema, body))
+    throw invalid("a well-formed email is required");
   const email = (body as { email: string }).email.trim();
   if (!EMAIL_PATTERN.test(email)) throw invalid("a well-formed email is required");
   return { email };
@@ -120,7 +125,10 @@ export function buildFindMyOrganizationEmail(
   };
 }
 
-export function registerPublicTenantRoutes(app: FastifyInstance, deps: PublicTenantRouteDeps): void {
+export function registerPublicTenantRoutes(
+  app: FastifyInstance,
+  deps: PublicTenantRouteDeps,
+): void {
   const defer =
     deps.defer ??
     ((work) => {
@@ -130,10 +138,19 @@ export function registerPublicTenantRoutes(app: FastifyInstance, deps: PublicTen
   app.get("/api/v1/public/tenant", async (request, reply) => {
     const host = deps.baseDomain ? classifyTenantHost(request.hostname, deps.baseDomain) : null;
     if (host?.kind !== "tenant") {
-      throw new ChartWardenError("TENANT_HOST_UNKNOWN", "no organization is served at this address", 404);
+      throw new ChartWardenError(
+        "TENANT_HOST_UNKNOWN",
+        "no organization is served at this address",
+        404,
+      );
     }
     const row = await deps.resolvePublic(host.label);
-    if (!row) throw new ChartWardenError("TENANT_HOST_UNKNOWN", "no organization is served at this address", 404);
+    if (!row)
+      throw new ChartWardenError(
+        "TENANT_HOST_UNKNOWN",
+        "no organization is served at this address",
+        404,
+      );
     reply.header("Cache-Control", "no-store");
     return {
       status: row.status,
@@ -150,11 +167,14 @@ export function registerPublicTenantRoutes(app: FastifyInstance, deps: PublicTen
     // A limiter store outage (fail-closed limiter) is not the caller's fault: skip the send, answer the same 202.
     const budgetUnavailable = ip.storeError === true;
     if (!ip.allowed && !budgetUnavailable) {
-      if (ip.retryAfterSeconds !== undefined) reply.header("Retry-After", String(ip.retryAfterSeconds));
+      if (ip.retryAfterSeconds !== undefined)
+        reply.header("Retry-After", String(ip.retryAfterSeconds));
       throw new RateLimitedError("too many requests from this address");
     }
     // The per-address budget never changes the answer: over budget the send is skipped, the reply is the same 202.
-    const emailBudget = budgetUnavailable ? { allowed: false } : await deps.emailLimiter.consume(sha256Hex(email.toLowerCase()));
+    const emailBudget = budgetUnavailable
+      ? { allowed: false }
+      : await deps.emailLimiter.consume(sha256Hex(email.toLowerCase()));
 
     if (emailBudget.allowed && deps.emailTransport) {
       const transport = deps.emailTransport;
@@ -166,6 +186,8 @@ export function registerPublicTenantRoutes(app: FastifyInstance, deps: PublicTen
       });
     }
     reply.header("Cache-Control", "no-store");
-    return reply.code(202).send({ status: "sent" } satisfies Static<typeof FindMyOrganizationResponseSchema>);
+    return reply
+      .code(202)
+      .send({ status: "sent" } satisfies Static<typeof FindMyOrganizationResponseSchema>);
   });
 }

@@ -1,19 +1,5 @@
-import {
-  Button,
-  Glyph,
-  Modal,
-  SelectField,
-  StatusPill,
-  useApiClient,
-} from "@chartwarden/ui";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { Button, Glyph, Modal, SelectField, StatusPill, useApiClient } from "@chartwarden/ui";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, JSX } from "react";
 import { usePortalPatient } from "../patient-context";
 import { formatPortalVisitDate, humanize, readError } from "./portal-format";
@@ -34,13 +20,7 @@ type UploadPurpose =
 type LibraryState =
   | { patientId: string | null; status: "loading" | "error"; items: [] }
   | { patientId: string | null; status: "ready"; items: PortalDoc[] };
-type UploadStage =
-  | "idle"
-  | "preparing"
-  | "transferring"
-  | "submitting"
-  | "complete"
-  | "error";
+type UploadStage = "idle" | "preparing" | "transferring" | "submitting" | "complete" | "error";
 
 const MAX_UPLOAD_BYTES = 52_428_800;
 const ALLOWED_MIME = new Set([
@@ -78,10 +58,7 @@ const sharedDate = (value?: string): string =>
 
 function DocumentsSkeleton(): JSX.Element {
   return (
-    <output
-      className="wx-documents-skeleton"
-      aria-label="Loading shared documents"
-    >
+    <output className="wx-documents-skeleton" aria-label="Loading shared documents">
       <span />
       <span />
       <span />
@@ -95,10 +72,7 @@ function DocumentsEmptyState({
   onUpload: () => void;
 }): JSX.Element {
   return (
-    <section
-      className="wx-documents-empty"
-      aria-labelledby="documents-empty-title"
-    >
+    <section className="wx-documents-empty" aria-labelledby="documents-empty-title">
       <span className="wx-documents-empty__icon" aria-hidden="true">
         <Glyph name="folder" size={28} />
       </span>
@@ -132,8 +106,7 @@ function UploadDocumentDialog({
   const [stage, setStage] = useState<UploadStage>("idle");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [resumeUploadId, setResumeUploadId] = useState<string | null>(null);
-  const busy =
-    stage === "preparing" || stage === "transferring" || stage === "submitting";
+  const busy = stage === "preparing" || stage === "transferring" || stage === "submitting";
 
   useLayoutEffect(() => {
     patientRef.current = patientId;
@@ -173,22 +146,16 @@ function UploadDocumentDialog({
     setFileError(null);
   };
 
-  const complete = async (
-    uploadId: string,
-    requestPatient: string | null,
-  ): Promise<void> => {
+  const complete = async (uploadId: string, requestPatient: string | null): Promise<void> => {
     setStage("submitting");
-    const done = await client.POST(
-      "/api/v1/portal/documents/upload-complete/{uploadId}",
-      { params: { path: { uploadId } } },
-    );
+    const done = await client.POST("/api/v1/portal/documents/upload-complete/{uploadId}", {
+      params: { path: { uploadId } },
+    });
     if (patientRef.current !== requestPatient) return;
     if (done.error) {
       setResumeUploadId(uploadId);
       setStage("error");
-      setFeedback(
-        "The file was sent, but could not be submitted for processing. Try again.",
-      );
+      setFeedback("The file was sent, but could not be submitted for processing. Try again.");
       return;
     }
     setResumeUploadId(null);
@@ -219,21 +186,16 @@ function UploadDocumentDialog({
       }
       const uploadId = init.data.uploadId;
       setStage("transferring");
-      const put = await client.PUT(
-        "/api/v1/portal/documents/uploads/{uploadId}/content",
-        {
-          params: { path: { uploadId } },
-          body: file as never,
-          bodySerializer: (body: unknown) => body as BodyInit,
-          headers: { "content-type": file.type },
-        } as never,
-      );
+      const put = await client.PUT("/api/v1/portal/documents/uploads/{uploadId}/content", {
+        params: { path: { uploadId } },
+        body: file as never,
+        bodySerializer: (body: unknown) => body as BodyInit,
+        headers: { "content-type": file.type },
+      } as never);
       if (patientRef.current !== requestPatient) return;
       if (put.error) {
         setStage("error");
-        setFeedback(
-          "The file could not be sent. Check your connection and try again.",
-        );
+        setFeedback("The file could not be sent. Check your connection and try again.");
         return;
       }
       await complete(uploadId, requestPatient);
@@ -252,10 +214,7 @@ function UploadDocumentDialog({
       ariaLabel="Send a document"
       width="36rem"
     >
-      <form
-        className="wx-document-upload"
-        onSubmit={(event) => void submit(event)}
-      >
+      <form className="wx-document-upload" onSubmit={(event) => void submit(event)}>
         <header>
           <span aria-hidden="true">
             <Glyph name="upload" size={22} />
@@ -327,13 +286,13 @@ function UploadDocumentDialog({
           </div>
         ) : null}
         {busy ? (
-          <p className="wx-document-upload__stage" role="status">
+          <output className="wx-document-upload__stage">
             {stage === "preparing"
               ? "Preparing secure upload…"
               : stage === "transferring"
                 ? "Sending file securely…"
                 : "Submitting for processing…"}
-          </p>
+          </output>
         ) : null}
         <footer>
           <Button tone="secondary" onClick={onClose} disabled={busy}>
@@ -352,12 +311,7 @@ function UploadDocumentDialog({
 
 export function PortalDocumentList(): JSX.Element {
   const { patientId } = usePortalPatient();
-  return (
-    <DocumentsForPatient
-      key={patientId ?? "no-patient"}
-      patientId={patientId}
-    />
-  );
+  return <DocumentsForPatient key={patientId ?? "no-patient"} patientId={patientId} />;
 }
 
 function DocumentsForPatient({
@@ -410,9 +364,7 @@ function DocumentsForPatient({
           setLibrary({
             patientId: requestedPatient,
             status: "ready",
-            items: sortDocuments(
-              (response.data?.items ?? []) as unknown as PortalDoc[],
-            ),
+            items: sortDocuments((response.data?.items ?? []) as unknown as PortalDoc[]),
           });
       } catch {
         if (active)
@@ -429,9 +381,7 @@ function DocumentsForPatient({
   }, [attempt, client, patientId]);
 
   const visible: LibraryState =
-    library.patientId === patientId
-      ? library
-      : { patientId, status: "loading", items: [] };
+    library.patientId === patientId ? library : { patientId, status: "loading", items: [] };
   const countLabel = useMemo(
     () =>
       visible.status === "ready"
@@ -451,10 +401,9 @@ function DocumentsForPatient({
     setDownloadBusy(documentId);
     setDownloadError(null);
     try {
-      const response = await client.GET(
-        "/api/v1/portal/documents/{documentId}/download-url",
-        { params: { path: { documentId } } },
-      );
+      const response = await client.GET("/api/v1/portal/documents/{documentId}/download-url", {
+        params: { path: { documentId } },
+      });
       // A pending request must not open the previous patient's signed URL after
       // their page was unmounted (including a rapid patient switch).
       if (!mounted.current) {
@@ -464,22 +413,15 @@ function DocumentsForPatient({
       const url = response.data?.url;
       if ("error" in response || !url || !/^https?:\/\//i.test(url)) {
         popup?.close();
-        setDownloadError(
-          "This document could not be opened securely. Please try again.",
-        );
+        setDownloadError("This document could not be opened securely. Please try again.");
         return;
       }
       if (popup) popup.location.replace(url);
-      else
-        setDownloadError(
-          "Your browser blocked the new window. Allow pop-ups, then try again.",
-        );
+      else setDownloadError("Your browser blocked the new window. Allow pop-ups, then try again.");
     } catch {
       popup?.close();
       if (mounted.current)
-        setDownloadError(
-          "This document could not be opened securely. Please try again.",
-        );
+        setDownloadError("This document could not be opened securely. Please try again.");
     } finally {
       if (popup) pendingPopups.current.delete(popup);
       if (mounted.current) setDownloadBusy(null);
@@ -497,10 +439,7 @@ function DocumentsForPatient({
         </Button>
       }
     >
-      <section
-        className="wx-documents-library"
-        aria-labelledby="shared-documents-title"
-      >
+      <section className="wx-documents-library" aria-labelledby="shared-documents-title">
         <header className="wx-documents-library__header">
           <div>
             <h2 id="shared-documents-title">Shared with you</h2>
@@ -547,10 +486,7 @@ function DocumentsForPatient({
                     <h3>{title}</h3>
                     <div className="wx-document-row__meta">
                       {document.documentType ? (
-                        <StatusPill
-                          tone="neutral"
-                          label={humanize(document.documentType)}
-                        />
+                        <StatusPill tone="neutral" label={humanize(document.documentType)} />
                       ) : (
                         <span>Document type unavailable</span>
                       )}
@@ -564,8 +500,7 @@ function DocumentsForPatient({
                     aria-label={`Download ${title}`}
                     onClick={() => void download(document.documentId)}
                   >
-                    <Glyph name="download" size={17} aria-hidden="true" />{" "}
-                    Download
+                    <Glyph name="download" size={17} aria-hidden="true" /> Download
                   </Button>
                 </li>
               );
@@ -577,10 +512,7 @@ function DocumentsForPatient({
         <Glyph name="shield-check" size={22} aria-hidden="true" />
         <div>
           <strong>Secure document access</strong>
-          <p>
-            Download links are created only when you request them and expire
-            automatically.
-          </p>
+          <p>Download links are created only when you request them and expire automatically.</p>
         </div>
       </aside>
       <UploadDocumentDialog

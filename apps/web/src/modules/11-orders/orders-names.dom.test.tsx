@@ -1,8 +1,8 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // Finding 9 — order screens name people instead of showing uuid prefixes: the sign inbox shows the patient's
 // name; order detail shows the ordering physician's name (M40 resolve seam) and a humanized drafter discipline.
 // Unresolvable ids fall back to "Name unavailable", never an id.
 import { render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";

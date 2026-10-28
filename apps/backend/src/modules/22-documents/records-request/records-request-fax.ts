@@ -13,7 +13,7 @@
 // This file holds the vocabulary, the store contract, the in-memory store (route tests) and the
 // orchestration; production binds the Drizzle store (./records-request-fax-db.ts) under RLS.
 import { randomUUID } from "node:crypto";
-import { DegradedError, NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, DegradedError, NotFoundError } from "@chartwarden/types";
 import type { OutboundFaxTransport } from "../fax/outbound-fax";
 import type { RenderedCoverSheet } from "./cover-sheet";
 import type { RecordsRequestActor, RecordsRequestView } from "./records-request-service";

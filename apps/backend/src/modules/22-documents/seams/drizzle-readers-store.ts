@@ -20,8 +20,8 @@ import { withOrgContext, withOrgContextFromRequest } from "@chartwarden/tenancy"
 import { DegradedError } from "@chartwarden/types";
 import type { DocumentDigest, IntakeMetrics, ProvenanceRecord } from "@chartwarden/types";
 import { and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
-import type { DocumentReaderStore, PortalAccessLogPort } from "./readers-store";
 import type { StaffMintAccessLogPort } from "../routes/signed-url-service";
+import type { DocumentReaderStore, PortalAccessLogPort } from "./readers-store";
 import type { ObjectStorePort } from "./store";
 
 const DOC = schema.documents;

@@ -36,6 +36,7 @@ export function AppLanding(): JSX.Element {
   return (
     <CenteredCardLayout brand={<BrandLockup />}>
       {sent ? (
+        // biome-ignore lint/a11y/useSemanticElements: <output> allows phrasing content only; this status holds flow content.
         <div role="status" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <h1 ref={confirmationHeading} tabIndex={-1} style={{ margin: 0, fontSize: "1.1rem" }}>
             Check your email
@@ -45,7 +46,10 @@ export function AppLanding(): JSX.Element {
           </p>
         </div>
       ) : (
-        <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <form
+          onSubmit={submit}
+          style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
+        >
           <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Find your organization</h1>
           <p style={{ ...MUTED, fontSize: "0.85rem" }}>
             Enter your work email and we’ll send you the sign-in address of your organization.

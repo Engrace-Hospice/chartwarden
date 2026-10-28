@@ -1,3 +1,4 @@
+import { M8_EVENT_NAMES } from "@chartwarden/types";
 // apps/backend/__tests__/encounter-outbox.test.ts — M8-T11 (§4.4 outbox contract + the M17 visit-
 // publication consumer (live) + the M18 EVV-bracket forward seam deny-stub). Locks the full `m8.*`
 // event catalog (naming/ownership/consumers + the locked `m8.encounter.signed` payload — the same
@@ -5,7 +6,6 @@
 // decision core (idempotent skip, active-service guard, the seed happy path), and asserts the
 // `EvvBracketResolver` forward seam is registered fail-closed (denies until M18 lands in Wave F).
 import { Value } from "@sinclair/typebox/value";
-import { M8_EVENT_NAMES } from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, getSeam, validateSeams } from "../src/bootstrap/index";
 import {

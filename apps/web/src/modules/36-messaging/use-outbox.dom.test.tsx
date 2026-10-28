@@ -1,9 +1,9 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 /**
  * useOutbox on its own (the thread-level behaviour is in outbox.dom.test.tsx): late replies, the answered-status
  * rules, the request timeout, an unexpected throw, the beforeunload guard and the per-channel drain.
  */
 import { act, renderHook } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { type ReactNode, useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SendBody } from "./message-send-body";

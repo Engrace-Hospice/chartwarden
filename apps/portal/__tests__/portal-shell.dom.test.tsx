@@ -1,7 +1,7 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 // @chartwarden/portal — authenticated shell contract. The sign-in flow remains chromeless, while every
 // patient route keeps the short navigation, explicit patient context, and urgent-help guidance.
 import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { JSX } from "react";
 import { describe, expect, it } from "vitest";
 import { PortalApp } from "../src/app";

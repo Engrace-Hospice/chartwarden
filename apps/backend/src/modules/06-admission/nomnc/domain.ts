@@ -119,7 +119,10 @@ const conflict = (code: NomncRefusalCode, message: string) => new NomncRuleError
 export function requireSourceNote(note: string | null | undefined): string {
   const trimmed = note?.trim() ?? "";
   if (trimmed === "") {
-    throw new NomncRuleError("SOURCE_NOTE_REQUIRED", "a source note is required (where the date came from)");
+    throw new NomncRuleError(
+      "SOURCE_NOTE_REQUIRED",
+      "a source note is required (where the date came from)",
+    );
   }
   return trimmed;
 }
@@ -158,19 +161,31 @@ export function validateNoticeFacts(input: NoticeFactsInput): void {
     throw new NomncRuleError("DELIVERED_IN_FUTURE", "delivery cannot be recorded in the future");
   }
   if (input.recipientKind === "representative" && !input.representativeName?.trim()) {
-    throw new NomncRuleError("REPRESENTATIVE_NAME_REQUIRED", "name the representative who received the notice");
+    throw new NomncRuleError(
+      "REPRESENTATIVE_NAME_REQUIRED",
+      "name the representative who received the notice",
+    );
   }
   const kind = input.acknowledgementKind;
   if ((kind === "refused" || kind === "other") && !input.acknowledgementNote?.trim()) {
-    throw new NomncRuleError("ACK_NOTE_REQUIRED", `a note is required when the acknowledgement is "${kind}"`);
+    throw new NomncRuleError(
+      "ACK_NOTE_REQUIRED",
+      `a note is required when the acknowledgement is "${kind}"`,
+    );
   }
 }
 
-export function requireOtherLabel(kind: DeadlineKind, label: string | null | undefined): string | null {
+export function requireOtherLabel(
+  kind: DeadlineKind,
+  label: string | null | undefined,
+): string | null {
   if (kind !== "other") return null;
   const trimmed = label?.trim() ?? "";
   if (trimmed === "") {
-    throw new NomncRuleError("OTHER_LABEL_REQUIRED", 'a label is required for a deadline of kind "other"');
+    throw new NomncRuleError(
+      "OTHER_LABEL_REQUIRED",
+      'a label is required for a deadline of kind "other"',
+    );
   }
   return trimmed;
 }
@@ -189,14 +204,20 @@ export type ReviewEvent =
 /** `open -> decided`, `open -> withdrawn`; nothing leaves `decided` / `withdrawn`. */
 export function planReviewDecision(state: ReviewState, event: ReviewEvent): ReviewState {
   if (state !== "open") {
-    throw conflict("REVIEW_NOT_OPEN", `the review is ${state}; only an open review can change state`);
+    throw conflict(
+      "REVIEW_NOT_OPEN",
+      `the review is ${state}; only an open review can change state`,
+    );
   }
   if (event.kind === "withdraw") return "withdrawn";
   if (!event.receivedAt) {
     throw new NomncRuleError("DATE_REQUIRED", "record when the decision was received");
   }
   if (event.outcome === "other" && !event.note?.trim()) {
-    throw new NomncRuleError("DECISION_NOTE_REQUIRED", 'a note is required when the outcome is "other"');
+    throw new NomncRuleError(
+      "DECISION_NOTE_REQUIRED",
+      'a note is required when the outcome is "other"',
+    );
   }
   return "decided";
 }
@@ -286,7 +307,10 @@ export interface PromptInput {
     readonly state: ReviewState;
     readonly decisionOutcome: DecisionOutcome | null;
   } | null;
-  readonly deadlines: readonly { readonly subject: "notice" | "review"; readonly kind: DeadlineKind }[];
+  readonly deadlines: readonly {
+    readonly subject: "notice" | "review";
+    readonly kind: DeadlineKind;
+  }[];
   readonly dischargeReason?: string | undefined;
 }
 
@@ -321,9 +345,21 @@ export function promptsFor(input: PromptInput): Prompt[] {
   if (review?.state === "open") {
     out.push({ code: "REVIEW_OPEN", severity: "warn", message: "QIO review open." });
     const missing: [DeadlineKind, PromptCode, string][] = [
-      ["denc_delivery", "NO_DENC_DEADLINE", "No DENC deadline recorded: enter it from the QIO's call."],
-      ["records_to_qio", "NO_RECORDS_DEADLINE", "No records deadline recorded: enter it from the QIO's call."],
-      ["qio_decision", "NO_DECISION_DEADLINE", "No decision deadline recorded: enter it from the QIO's call."],
+      [
+        "denc_delivery",
+        "NO_DENC_DEADLINE",
+        "No DENC deadline recorded: enter it from the QIO's call.",
+      ],
+      [
+        "records_to_qio",
+        "NO_RECORDS_DEADLINE",
+        "No records deadline recorded: enter it from the QIO's call.",
+      ],
+      [
+        "qio_decision",
+        "NO_DECISION_DEADLINE",
+        "No decision deadline recorded: enter it from the QIO's call.",
+      ],
     ];
     for (const [kind, code, message] of missing) {
       if (!has("review", kind)) out.push({ code, severity: "warn", message });

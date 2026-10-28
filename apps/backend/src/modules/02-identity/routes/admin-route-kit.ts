@@ -3,7 +3,7 @@
 // the `m2.*` outbox publish. Kept beside the routes (not in identity-routes.ts, which keeps its own private
 // copies) so the new files stay small and the two cannot be confused.
 import type { AuditContext, AuditExecutor } from "@chartwarden/audit";
-import { UnauthorizedError, ValidationError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import type { Actor, ActorResolver, IdentityOutboxPort } from "../identity-ports";
 
@@ -52,7 +52,8 @@ export function publishM2(
   return deps.outbox?.publish(input) ?? Promise.resolve();
 }
 
-export const notFound = (what: string) => new ChartWardenError("NOT_FOUND", `${what} not found`, 404);
+export const notFound = (what: string) =>
+  new ChartWardenError("NOT_FOUND", `${what} not found`, 404);
 
 export function invalid(field: string, message: string): never {
   throw new ValidationError(message, [{ field, code: "INVALID", message }]);

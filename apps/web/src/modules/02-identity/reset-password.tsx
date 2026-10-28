@@ -26,10 +26,7 @@ export function ResetPassword(): JSX.Element {
   // No usable token (link expired/invalid, or arrived with an error) — dead-end with a path back.
   if (!token || linkError) {
     return (
-      <CenteredCardLayout
-        brand={<BrandLockup />}
-        footer={<a href="/forgot">Request a new link</a>}
-      >
+      <CenteredCardLayout brand={<BrandLockup />} footer={<a href="/forgot">Request a new link</a>}>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Reset link invalid</h1>
           <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.9rem" }}>
@@ -68,10 +65,7 @@ export function ResetPassword(): JSX.Element {
   }
 
   return (
-    <CenteredCardLayout
-      brand={<BrandLockup />}
-      footer={<a href="/login">Back to sign in</a>}
-    >
+    <CenteredCardLayout brand={<BrandLockup />} footer={<a href="/login">Back to sign in</a>}>
       <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Set a new password</h1>
         <label

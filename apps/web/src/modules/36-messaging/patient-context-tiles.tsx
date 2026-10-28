@@ -46,7 +46,9 @@ function TileCard<T>({
           <small>{asOfLabel(tile.as_of)}</small>
         </>
       ) : (
-        <p role="status">Temporarily unavailable. Open the chart for the current value.</p>
+        <output style={{ display: "block" }}>
+          Temporarily unavailable. Open the chart for the current value.
+        </output>
       )}
       {tile.link.startsWith("/") ? <Link to={tile.link}>{linkLabel}</Link> : null}
     </section>
@@ -75,7 +77,8 @@ export function PatientContextTiles({ patientId }: { patientId: string }): JSX.E
     };
   }, [client, patientId]);
 
-  if (state.kind === "loading") return <p role="status">Loading patient context…</p>;
+  if (state.kind === "loading")
+    return <output style={{ display: "block" }}>Loading patient context…</output>;
   if (state.kind === "error") return <p role="alert">Patient context could not be loaded.</p>;
   const { tiles } = state.ctx;
   if (Object.keys(tiles).length === 0) return <p>No additional context available.</p>;
@@ -94,7 +97,6 @@ export function PatientContextTiles({ patientId }: { patientId: string }): JSX.E
           ) : (
             <ul>
               {d.entries.map((a, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: entries carry no id and are never reordered client-side
                 <li key={`${i}-${a.allergen}`}>
                   {a.allergen}
                   {a.severity && a.severity !== "unknown" ? ` (${a.severity})` : ""}

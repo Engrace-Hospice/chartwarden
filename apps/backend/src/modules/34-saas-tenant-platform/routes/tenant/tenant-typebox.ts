@@ -1,3 +1,4 @@
+import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/tenant/tenant-typebox.ts — M34 (§4.2).
 //
 // TypeBox request/response schemas for the TENANT-scoped route surface (§4.1 "Tenant-scoped routes"):
@@ -11,7 +12,6 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { ValidationError } from "@chartwarden/types";
 import type {
   BaaRecordView as ServiceBaaRecordView,
   DownloadUrlView as ServiceDownloadUrlView,

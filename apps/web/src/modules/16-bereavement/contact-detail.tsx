@@ -12,7 +12,14 @@
 // all live here as modals over the row `version` this screen read, so each carries an honest `If-Match`.
 // `flag_complicated_grief` deliberately does NOT: it ends the program for this survivor and belongs with
 // the screening instrument that justifies it (§5.1 #13).
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  t,
+  useApiClient,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";

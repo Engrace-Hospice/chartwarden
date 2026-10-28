@@ -27,7 +27,10 @@ describe("wallTimeToOrgInstant", () => {
       ok: false,
       code: "TIME_REQUIRED",
     });
-    expect(wallTimeToOrgInstant("2026-07-15", "", LA)).toEqual({ ok: false, code: "TIME_REQUIRED" });
+    expect(wallTimeToOrgInstant("2026-07-15", "", LA)).toEqual({
+      ok: false,
+      code: "TIME_REQUIRED",
+    });
   });
 
   it("refuses a missing or malformed date and a malformed time", () => {

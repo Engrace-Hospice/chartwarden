@@ -1,3 +1,5 @@
+import { XSS_CORPUS } from "@chartwarden/types";
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 Phase 2 gate (docs/messaging-hub/03-phases-0-to-3.md, "XSS corpus"): every checked-in corpus payload
 // (`XSS_CORPUS`, packages/types/src/messaging-xss-corpus.ts) is fed to the places the staff web app renders
 // server-supplied text, and the rendered DOM must stay inert: no element built from the payload, no on* attribute,
@@ -11,8 +13,6 @@
 // platform reply panel, the announcement tools. A markdown-kind body is sent as hostile TEXT only: it is shown as plain
 // text, so no markdown rendering is claimed for it.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { XSS_CORPUS } from "@chartwarden/types";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AlertInboxProvider } from "../../shell/alert-inbox";

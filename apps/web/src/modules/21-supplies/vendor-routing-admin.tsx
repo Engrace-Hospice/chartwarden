@@ -15,7 +15,14 @@
 //     `routingRuleResolved` trace on each supply request is the real answer, and it is rendered there.
 //   • "Delete" RETIRES. `is_active = false`, `effective_to = now`; the row survives because every historical
 //     `routing_rule_resolved_jsonb` names its id. The verb stays DELETE because §4.1's table says so.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  t,
+  useApiClient,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link } from "react-router-dom";

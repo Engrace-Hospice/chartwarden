@@ -1,5 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
 import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationThread } from "./conversation-thread";

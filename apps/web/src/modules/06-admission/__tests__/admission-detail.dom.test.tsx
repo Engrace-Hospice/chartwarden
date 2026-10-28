@@ -1,7 +1,7 @@
-// @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ApiClientProvider } from "@chartwarden/ui";
 import type { ApiClient } from "@chartwarden/ui";
+// @vitest-environment jsdom
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";

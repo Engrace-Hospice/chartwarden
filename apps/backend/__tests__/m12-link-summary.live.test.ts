@@ -13,8 +13,8 @@ import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createMedicationOrderProvider } from "../src/modules/12-dosespot/seams/providers";
 import { createDrizzleDoseSpotSeamStore } from "../src/modules/12-dosespot/seams/drizzle-store";
+import { createMedicationOrderProvider } from "../src/modules/12-dosespot/seams/providers";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;

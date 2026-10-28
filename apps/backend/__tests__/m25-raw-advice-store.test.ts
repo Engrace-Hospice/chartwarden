@@ -67,7 +67,9 @@ function fakeS3() {
     calls,
     objects,
     lifecycle: () => lifecycle,
-    dropBucket: () => (bucketExists = false),
+    dropBucket: () => {
+      bucketExists = false;
+    },
   };
 }
 
@@ -82,7 +84,7 @@ describe("M25 raw advice store", () => {
     if (!store) throw new Error("unreachable");
     await store.put(ORG, "advice-1", "ISA*raw");
     await store.put(ORG, "advice-2", "ISA*other");
-    expect(s3.calls.filter((c) => c.startsWith("PUT /" + BUCKET + "/m25-835/"))).toHaveLength(2);
+    expect(s3.calls.filter((c) => c.startsWith(`PUT /${BUCKET}/m25-835/`))).toHaveLength(2);
     expect(s3.calls.filter((c) => c === `PUT /${BUCKET}`)).toHaveLength(1); // ensured once, memoized
     expect(await store.get(ORG, "advice-1")).toBe("ISA*raw");
     expect(await store.get(ORG, "missing")).toBeNull();

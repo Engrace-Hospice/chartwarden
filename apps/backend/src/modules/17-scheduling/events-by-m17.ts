@@ -1,3 +1,4 @@
+import type { ModuleEventContribution, ModuleToken } from "@chartwarden/types";
 // apps/backend/src/modules/17-scheduling/events-by-m17.ts — Module 17's outbox-event contributions
 // (M17-T08, spec §4.11). The full `m17.*` taxonomy keyed on M17's own `visit` / `recurring_visit` /
 // `time_off` / `route_segment` lifecycle, under the `m17.` namespace (M01 D8 outbox_event_catalog /
@@ -24,7 +25,6 @@
 // `(eventId, consumerName)` per the M1 outbox-consumer pattern.
 import { Type } from "@sinclair/typebox";
 import type { TSchema } from "@sinclair/typebox";
-import type { ModuleEventContribution, ModuleToken } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const isoInstant = Type.String({ minLength: 1 });

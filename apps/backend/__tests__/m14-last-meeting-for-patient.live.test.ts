@@ -16,8 +16,8 @@ import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createIdgScheduleProvider } from "../src/modules/14-idg/seams/providers";
 import { createDrizzleIdgSeamStore } from "../src/modules/14-idg/seams/drizzle-store";
+import { createIdgScheduleProvider } from "../src/modules/14-idg/seams/providers";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;

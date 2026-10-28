@@ -2,7 +2,7 @@
 // ADR-0051 pattern). A row is "held" while its legal_hold.status = 'active'; releasing the hold is the one existing M4 UPDATE. No FK
 // on legal_hold_id (M4 owns that table; the seam is the plain uuid). The message FK cascades, but a BEFORE DELETE trigger on `message`
 // refuses a held row first. Ids and an instant only: no text, no patient column. Names match the migration (pinned by a test).
-import { index, foreignKey, pgTable, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { foreignKey, index, pgTable, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { messages } from "./messages";
 

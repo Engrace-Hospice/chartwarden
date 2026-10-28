@@ -1,8 +1,8 @@
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 // F-238 — "Send by fax" on a referral's records requests: prefilled number, the send call, the recorded
 // status (sent / failed + retry), the server's refusal shown in place, and no action on a closed request.
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { ApiClientProvider } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { ReferralRecordsRequests } from "../referral-records-requests";
 

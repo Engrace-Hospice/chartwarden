@@ -1,10 +1,10 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 /**
  * WP 2.4 in the web client: reaction chips and the picker (keyboard, copy, live region, failure), Pin/Unpin, the
  * pinned-messages bar, the archived (read only) state, and the rule that nothing here is, or looks like, an
  * acknowledgement.
  */
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationThread } from "./conversation-thread";

@@ -14,9 +14,7 @@ export const AlarmEventBodySchema = Type.Object(
     /** The sender's alarm code, mapped by the tenant to a catalog alert type. */
     alarmKind: Type.String({ pattern: ALARM_KIND_PATTERN }),
     /** What the sender thinks the severity is. Capped at the mapping's ceiling; never raises it. */
-    severity: Type.Optional(
-      Type.Union(ALARM_REQUESTED_SEVERITIES.map((s) => Type.Literal(s))),
-    ),
+    severity: Type.Optional(Type.Union(ALARM_REQUESTED_SEVERITIES.map((s) => Type.Literal(s)))),
     /** When the device raised it. Optional; refused when far from the server clock. */
     occurredAt: Type.Optional(
       Type.String({

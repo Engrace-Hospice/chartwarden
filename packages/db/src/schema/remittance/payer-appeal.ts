@@ -3,7 +3,17 @@
 // payer_appeal_case is one row per level of that path, separate from the Medicare appeal_case chain (its tier enum and
 // NOT NULL Medicare deadline are Medicare rules). Closed sets are text + CHECK mirrored in domain/payer-appeal-path.ts and
 // domain/payer-appeal.ts; no pgEnum. payer_id is a logical M40 id (M25 does not depend on M40). Free text is audit-scrubbed.
-import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  date,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { denialCase } from "./denial";
 

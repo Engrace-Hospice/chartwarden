@@ -178,7 +178,10 @@ export function createDbPatientIntakeResolver(db: DbClient): PatientIntakeResolv
         db,
         { organizationId: input.organizationId, userId: input.userId },
         (tx) =>
-          ensureAdmittingAssignment(tx, { ...input, reason: "Started the admission from a referral" }),
+          ensureAdmittingAssignment(tx, {
+            ...input,
+            reason: "Started the admission from a referral",
+          }),
       );
     },
 

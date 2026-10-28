@@ -9,7 +9,7 @@
 // history, M9 trend, M10 HOPE, M11 orders, M21 supplies, M40 grief) resolve their seam through a LOCAL
 // structural shape with an OPTIONAL method, so a missing arm yields the empty lay view rather than a type
 // error or a leak (D17). No route reads a raw clinical field.
-import { DegradedError, NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, DegradedError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import { toPreferencesView } from "../provisioning/preferences";
@@ -382,7 +382,8 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
           patientId,
           actor.userId,
         );
-        if (!channel) throw new ChartWardenError("MESSAGING_UNAVAILABLE", "messaging is unavailable", 503);
+        if (!channel)
+          throw new ChartWardenError("MESSAGING_UNAVAILABLE", "messaging is unavailable", 503);
         return { channelId: channel.channelId, lastReadPointer: null };
       } catch {
         return { channelId: "", lastReadPointer: null };
@@ -408,7 +409,8 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
         patientId,
         actor.userId,
       );
-      if (!channel) throw new ChartWardenError("MESSAGING_UNAVAILABLE", "messaging is unavailable", 503);
+      if (!channel)
+        throw new ChartWardenError("MESSAGING_UNAVAILABLE", "messaging is unavailable", 503);
       const page = await provider.listMessages(actor.organizationId, {
         channelId: channel.channelId,
         userId: actor.userId,

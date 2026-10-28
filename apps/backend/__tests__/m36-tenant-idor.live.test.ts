@@ -62,6 +62,7 @@ import { createOpenRequestLookup } from "../src/modules/36-messaging/ack-request
 import { createDbRoleReplayLookup } from "../src/modules/36-messaging/ack-requests/role-replay-lookup";
 import { createDbUnacknowledgedReader } from "../src/modules/36-messaging/ack-requests/unacknowledged-reader-db";
 import { createUnacknowledgedService } from "../src/modules/36-messaging/ack-requests/unacknowledged-service";
+import { buildAiDeps } from "../src/modules/36-messaging/ai/binding";
 import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import type { AttachmentStoragePort } from "../src/modules/36-messaging/attachments/attachment-ports";
 import { createBuiltinScanner } from "../src/modules/36-messaging/attachments/attachment-scanners";
@@ -73,7 +74,6 @@ import { createDbDraftService } from "../src/modules/36-messaging/drafts/draft-s
 import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/events-by-m36";
 import { buildHandoffDeps } from "../src/modules/36-messaging/handoffs/deps";
 import { buildIdgDiscussionDeps } from "../src/modules/36-messaging/idg/deps";
-import { buildAiDeps } from "../src/modules/36-messaging/ai/binding";
 import { buildSmartInboxService } from "../src/modules/36-messaging/inbox/binding";
 import {
   buildMedicationQuestionDeps,
@@ -1259,18 +1259,37 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       const before = await fingerprint();
       for (const attacker of [bUser, outsider]) {
         for (const id of [dmA, locA, careTeamA]) {
-          await expectNoOracle("POST /api/v1/messaging/channels/:id/summaries", attacker, { id }, {});
-          await expectNoOracle("POST /api/v1/messaging/channels/:id/draft-replies", attacker, { id }, {});
+          await expectNoOracle(
+            "POST /api/v1/messaging/channels/:id/summaries",
+            attacker,
+            { id },
+            {},
+          );
+          await expectNoOracle(
+            "POST /api/v1/messaging/channels/:id/draft-replies",
+            attacker,
+            { id },
+            {},
+          );
           await expectNoOracle(
             "POST /api/v1/messaging/channels/:id/ai-outcomes",
             attacker,
             { id },
-            { invocation_id: randomUUID(), invoked_at: new Date().toISOString(), outcome: "accepted" },
+            {
+              invocation_id: randomUUID(),
+              invoked_at: new Date().toISOString(),
+              outcome: "accepted",
+            },
           );
         }
       }
       // non-vacuous: a real member passes every guard and the service refuses a non-care-team channel (422, generic) before any model could be reached
-      const member = await call("POST /api/v1/messaging/channels/:id/summaries", u2, { id: dmA }, {});
+      const member = await call(
+        "POST /api/v1/messaging/channels/:id/summaries",
+        u2,
+        { id: dmA },
+        {},
+      );
       expect(member.statusCode, member.body).toBe(422);
       expect((await call("GET /api/v1/messaging/ai/status", u2)).json()).toEqual({ enabled: true });
       expect(await fingerprint()).toEqual(before);

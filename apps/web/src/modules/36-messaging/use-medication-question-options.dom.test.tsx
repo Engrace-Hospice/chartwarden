@@ -1,6 +1,6 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 3.10: the options read fails closed and ignores a late answer for a channel the person has left.
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { optionsAnswer } from "./medication-question-test-fixture";

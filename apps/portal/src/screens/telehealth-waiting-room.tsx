@@ -1,10 +1,4 @@
-import {
-  Button,
-  Glyph,
-  InlineAlert,
-  StatusPill,
-  useApiClient,
-} from "@chartwarden/ui";
+import { Button, Glyph, InlineAlert, StatusPill, useApiClient } from "@chartwarden/ui";
 // @chartwarden/portal — §5.1 Telehealth waiting room (`/p/:patientId/visits/:visitId/telehealth`). Pre-visit
 // checklist (consent reaffirm, audio test), then "Join" calls POST /portal/telehealth/visits/:id/join, which
 // the backend telehealth adapter (M31-T05) answers with a short-lived vendor token + join URL. Two-party
@@ -34,10 +28,7 @@ export function TelehealthWaitingRoom(): JSX.Element {
   // Switching to another visit, even within the same patient, must drop the old
   // vendor ticket, consent and asynchronous join state before rendering.
   return (
-    <WaitingRoomForVisit
-      key={`${patientId ?? "none"}:${visitId ?? "none"}`}
-      visitId={visitId}
-    />
+    <WaitingRoomForVisit key={`${patientId ?? "none"}:${visitId ?? "none"}`} visitId={visitId} />
   );
 }
 
@@ -57,12 +48,9 @@ function WaitingRoomForVisit({ visitId }: { visitId?: string }): JSX.Element {
     setJoining(true);
     setError(null);
     try {
-      const res = await client.POST(
-        "/api/v1/portal/telehealth/visits/{visitId}/join",
-        {
-          params: { path: { visitId } },
-        },
-      );
+      const res = await client.POST("/api/v1/portal/telehealth/visits/{visitId}/join", {
+        params: { path: { visitId } },
+      });
       if ("error" in res) {
         setError(readError(res.response?.status));
       } else {
@@ -74,9 +62,7 @@ function WaitingRoomForVisit({ visitId }: { visitId?: string }): JSX.Element {
           );
       }
     } catch {
-      setError(
-        "We couldn't connect to the video visit. Check your connection and try again.",
-      );
+      setError("We couldn't connect to the video visit. Check your connection and try again.");
     } finally {
       joinInFlight.current = false;
       setJoining(false);
@@ -88,12 +74,9 @@ function WaitingRoomForVisit({ visitId }: { visitId?: string }): JSX.Element {
     leaveInFlight.current = true;
     setError(null);
     try {
-      const res = await client.POST(
-        "/api/v1/portal/telehealth/visits/{visitId}/leave",
-        {
-          params: { path: { visitId } },
-        },
-      );
+      const res = await client.POST("/api/v1/portal/telehealth/visits/{visitId}/leave", {
+        params: { path: { visitId } },
+      });
       if ("error" in res) setError(readError(res.response?.status));
       else setTicket(null);
     } catch {
@@ -135,8 +118,8 @@ function WaitingRoomForVisit({ visitId }: { visitId?: string }): JSX.Element {
               />
             ) : (
               <InlineAlert tone="error">
-                The video room could not be opened. Leave and try joining again,
-                or call your care team.
+                The video room could not be opened. Leave and try joining again, or call your care
+                team.
               </InlineAlert>
             )}
             {ticket.audioOnlyFallbackActive ? (
@@ -181,17 +164,13 @@ function WaitingRoomForVisit({ visitId }: { visitId?: string }): JSX.Element {
               onChange={(e) => setConsented(e.target.checked)}
             />
             <span>
-              I understand this visit may be recorded with consent, and I agree
-              to take part in a telehealth visit for my loved one.
+              I understand this visit may be recorded with consent, and I agree to take part in a
+              telehealth visit for my loved one.
             </span>
           </label>
           {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
           <div className="wx-portal-actions">
-            <Button
-              loading={joining}
-              disabled={!consented || joining}
-              onClick={() => void join()}
-            >
+            <Button loading={joining} disabled={!consented || joining} onClick={() => void join()}>
               {joining ? "Connecting…" : "Join visit"}
             </Button>
           </div>

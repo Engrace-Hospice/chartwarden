@@ -49,7 +49,7 @@ import {
   writeDrilldownAudit,
 } from "@chartwarden/reporting";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, desc, eq } from "drizzle-orm";
 import type { M33WriteActor } from "./actor";
 import { type ReportScopeResolverPort, narrowScope } from "./read-service-drizzle";

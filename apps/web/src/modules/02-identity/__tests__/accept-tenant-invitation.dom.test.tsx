@@ -1,11 +1,11 @@
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 // @vitest-environment jsdom
 // M34 first-admin invitation (`tenant_invitation`) — the page the provisioning email links to. It is NOT the M2
 // org-invitation page: that one peeks `organization_invitation`, so a tenant token reads "invalid or expired" there.
 // This page redeems the token at POST /api/v1/public/tenant-invitations/:token/accept (which creates the user +
 // first org_admin membership) and then sends the standard password-reset email so the admin can set a password.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

@@ -73,7 +73,8 @@ export function RecordedDeadlines(props: RecordedDeadlinesProps): JSX.Element {
       {props.deadlines.length === 0 && !props.noneStatedAt ? <NoDueDateAlert /> : null}
       {props.deadlines.length === 0 && props.noneStatedAt ? (
         <Hint>
-          The request letter states no due date (attested {new Date(props.noneStatedAt).toLocaleString()}
+          The request letter states no due date (attested{" "}
+          {new Date(props.noneStatedAt).toLocaleString()}
           ).
         </Hint>
       ) : null}

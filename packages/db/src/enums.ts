@@ -321,7 +321,11 @@ export const channelMemberRole = pgEnum("channel_member_role", [
 export const channelMemberSource = pgEnum("channel_member_source", ["auto", "manual"]);
 
 // `message_author_kind` — a message authored by a user vs the system (§3.4).
-export const messageAuthorKind = pgEnum("message_author_kind", ["user", "system", "family_contact"]);
+export const messageAuthorKind = pgEnum("message_author_kind", [
+  "user",
+  "system",
+  "family_contact",
+]);
 
 // `message_body_kind` — body rendering hint (§3.4).
 export const messageBodyKind = pgEnum("message_body_kind", ["plain", "markdown", "system", "rich"]);

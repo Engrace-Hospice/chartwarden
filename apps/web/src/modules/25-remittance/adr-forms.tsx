@@ -136,9 +136,9 @@ export function MacRulesModal({ onClose }: { readonly onClose: () => void }): JS
     }
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: load once when the dialog mounts; `reload` is re-created every render
   useEffect(() => {
     void reload();
-    // biome-ignore lint/correctness/useExhaustiveDependencies: load once on open
   }, []);
 
   const responseDays = Number(days);

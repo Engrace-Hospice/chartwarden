@@ -1,4 +1,11 @@
-import { Button, Modal, SelectField, TextAreaField, TextField, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  Modal,
+  SelectField,
+  TextAreaField,
+  TextField,
+  useApiClient,
+} from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — the §2.2/§2.7/D8/§7.8 write ceremonies that are not the decision
 // recorder (#91): attendance check-in, agenda add, action-item assignment, the meeting lifecycle
 // transitions, and the §7.8 minutes amendment request.
@@ -16,6 +23,7 @@ import { Button, Modal, SelectField, TextAreaField, TextField, useApiClient } fr
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { CareTeamStaffLookupField } from "../../shell/entity-lookups";
 import {
   type ActionItemView,
   type AgendaItemView,
@@ -34,7 +42,6 @@ import {
   rescheduleMeeting,
   submitAmendment,
 } from "./idg-api";
-import { CareTeamStaffLookupField } from "../../shell/entity-lookups";
 import { attendanceDisciplineLabel } from "./idg-disciplines";
 import "./idg-lifecycle.css";
 
@@ -695,7 +702,7 @@ export function LifecycleModal({
               Re-authenticate
             </Button>
           ) : null}
-          {(status === 409 || (status === 412 && errorCode !== "STEP_UP_REQUIRED")) ? (
+          {status === 409 || (status === 412 && errorCode !== "STEP_UP_REQUIRED") ? (
             <Button tone="secondary" onClick={() => navigate(0)} disabled={busy}>
               Refresh meeting
             </Button>

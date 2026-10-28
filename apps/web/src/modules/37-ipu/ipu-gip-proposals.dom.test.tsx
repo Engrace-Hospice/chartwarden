@@ -1,3 +1,4 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/37-ipu — F-219 (#248): the intake worklist lists the M19 GIP PROPOSALS.
 //
 // Asserted on the recorded `fetch` calls: the section must read `GET /api/v1/ipu-intake/gip-proposals`
@@ -5,7 +6,6 @@
 // patient or show the clinical criteria, render nothing when there are none, and say so — not go silently
 // empty — when the read fails.
 import { render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";

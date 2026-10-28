@@ -1,7 +1,7 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 4.1: an urgent message carries a text badge with an icon (never colour alone); routine messages and tombstones
 // carry none; the badge says nothing about delivery.
 import { render, screen } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import axe from "axe-core";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";

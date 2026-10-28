@@ -39,7 +39,9 @@ describe("Require acknowledgment", () => {
   it("says the likelier cause on a 404 (flag off or not the author)", async () => {
     open(() => ({ error: {}, response: { status: 404 } }));
     fireEvent.click(await screen.findByRole("button", { name: "Require acknowledgment" }));
-    expect(await screen.findByText(/only the author of this announcement can require acknowledgment/)).toBeTruthy();
+    expect(
+      await screen.findByText(/only the author of this announcement can require acknowledgment/),
+    ).toBeTruthy();
   });
 
   it("says to try again on a server or network failure, not that only the author can do this", async () => {
@@ -75,19 +77,24 @@ describe("Require acknowledgment", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(screen.queryByText(/Acknowledgment is now required/)).toBeNull();
-    expect((screen.getByRole("button", { name: "Require acknowledgment" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(
+      (screen.getByRole("button", { name: "Require acknowledgment" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
   });
 
   it("posts an empty body without a deadline, and the deadline (as an ISO instant) when one is chosen; it says nothing is sent", async () => {
     const POST = open(() => ({ data: { created: true } }));
     expect(await screen.findByText(/Nobody is reminded and nothing else happens/)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("Deadline (optional)"), { target: { value: "2099-01-01T09:30" } });
+    fireEvent.change(screen.getByLabelText("Deadline (optional)"), {
+      target: { value: "2099-01-01T09:30" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Require acknowledgment" }));
     await waitFor(() => expect(POST).toHaveBeenCalledTimes(1));
-    expect(POST).toHaveBeenCalledWith(
-      "/api/v1/messaging/announcements/{messageId}/ack-broadcast",
-      { params: { path: { messageId: "m1" } }, body: { deadlineAt: new Date("2099-01-01T09:30").toISOString() } },
-    );
+    expect(POST).toHaveBeenCalledWith("/api/v1/messaging/announcements/{messageId}/ack-broadcast", {
+      params: { path: { messageId: "m1" } },
+      body: { deadlineAt: new Date("2099-01-01T09:30").toISOString() },
+    });
   });
 
   it("posts {} when no deadline is set", async () => {
@@ -99,10 +106,15 @@ describe("Require acknowledgment", () => {
 
   it("a 422 says the deadline range and leaves the button available to try again", async () => {
     open(() => ({ error: {}, response: { status: 422 } }));
-    fireEvent.change(await screen.findByLabelText("Deadline (optional)"), { target: { value: "2099-01-01T09:30" } });
+    fireEvent.change(await screen.findByLabelText("Deadline (optional)"), {
+      target: { value: "2099-01-01T09:30" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Require acknowledgment" }));
     expect(await screen.findByText(/between 5 minutes and 90 days/)).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Require acknowledgment" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(
+      (screen.getByRole("button", { name: "Require acknowledgment" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
   });
 
   it("does not post anything until clicked", async () => {

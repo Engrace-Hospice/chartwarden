@@ -1,3 +1,4 @@
+import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/16-bereavement — #32: a detail drawer must be reachable without a mouse.
 //
 // All three of these screens open their drawer from `<tr onClick={...}>` with no `tabIndex` and no
@@ -12,7 +13,6 @@
 // would satisfy an attribute check while Enter still did nothing. What a keyboard user needs is the
 // panel, so that is what is asserted.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { BereavementCounselorDashboard } from "./counselor-dashboard";

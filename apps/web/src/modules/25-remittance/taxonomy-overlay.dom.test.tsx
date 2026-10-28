@@ -1,9 +1,9 @@
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 // The denial-taxonomy lookup takes its CARC from the shared code picker. A CARC catalog that has not been
 // loaded (CARC/RARC are admin uploads) must not block the lookup: the code is kept as entered and the
 // taxonomy route (its own floor) remains the authority.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ApiClientProvider } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { TaxonomyOverlay } from "./taxonomy-overlay";

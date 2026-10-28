@@ -12,6 +12,7 @@ import {
   urgentRecipientInvalid,
 } from "@chartwarden/messaging";
 import {
+  ChartWardenError,
   NotFoundError,
   type RichBody,
   URGENT_CANDIDATE_CAP,
@@ -19,7 +20,6 @@ import {
   type UrgentMessageOptions,
   type UrgentMessageResponse,
   type UrgentRecipient,
-  ChartWardenError,
 } from "@chartwarden/types";
 import { linkNotAvailable } from "../clinical-link/clinical-link-service";
 import type { HintOutboxPort } from "../message-hint-events";
@@ -100,7 +100,7 @@ export interface UrgentServiceDeps {
         readonly assigneeUserId: string;
         readonly addressedRole?: string | undefined;
       },
-    ) => Promise<{ readonly requestId: string } | void>;
+    ) => Promise<{ readonly requestId: string } | undefined>;
   };
   /**
    * ADR-0082 (flag `messaging.afterhours_triage`, absent = off): writes the after-hours request event and its link row in the send

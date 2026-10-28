@@ -17,11 +17,7 @@ function deathDate(value: string): string {
   const m = Number(value.slice(5, 7));
   const d = Number(value.slice(8, 10));
   const parsed = new Date(Date.UTC(y, m - 1, d));
-  if (
-    parsed.getUTCFullYear() !== y ||
-    parsed.getUTCMonth() !== m - 1 ||
-    parsed.getUTCDate() !== d
-  )
+  if (parsed.getUTCFullYear() !== y || parsed.getUTCMonth() !== m - 1 || parsed.getUTCDate() !== d)
     return "Date unavailable";
   return new Intl.DateTimeFormat("en-US", {
     month: "long",
@@ -95,13 +91,10 @@ export function PortalFuneralCase(): JSX.Element {
         </span>
         <h1>Funeral home access</h1>
         {status === "loading" ? (
-          <p role="status">Checking your secure access…</p>
+          <output style={{ display: "block" }}>Checking your secure access…</output>
         ) : status === "ready" && caseInfo ? (
           <>
-            <p>
-              Use the limited details below to confirm that you have the correct
-              case.
-            </p>
+            <p>Use the limited details below to confirm that you have the correct case.</p>
             <dl className="wx-funeral-case__details">
               <div>
                 <dt>Full legal name</dt>
@@ -114,24 +107,18 @@ export function PortalFuneralCase(): JSX.Element {
             </dl>
             <p className="wx-funeral-case__notice">
               <Glyph name="lock" size={18} aria-hidden="true" />
-              Only these details are provided through this restricted link. No
-              other medical record information is available here.
+              Only these details are provided through this restricted link. No other medical record
+              information is available here.
             </p>
-            <Button
-              loading={finishing}
-              disabled={finishing}
-              onClick={() => void finish()}
-            >
+            <Button loading={finishing} disabled={finishing} onClick={() => void finish()}>
               Finish and close access
             </Button>
           </>
         ) : (
+          // biome-ignore lint/a11y/useSemanticElements: <output> allows phrasing content only; this status holds flow content.
           <div role="status" className="wx-funeral-case__ended">
             <strong>This access is no longer available.</strong>
-            <p>
-              If you still need access, ask the hospice care team for a new
-              secure link.
-            </p>
+            <p>If you still need access, ask the hospice care team for a new secure link.</p>
           </div>
         )}
       </div>

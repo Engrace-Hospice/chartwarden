@@ -35,7 +35,16 @@ describe("alarm ingest core", () => {
   });
 
   it("a malformed signature never matches (and never throws)", () => {
-    for (const bad of [undefined, "", "v1=", "v1=zz", "v2=" + "0".repeat(64), "0".repeat(64), 5, null]) {
+    for (const bad of [
+      undefined,
+      "",
+      "v1=",
+      "v1=zz",
+      `v2=${"0".repeat(64)}`,
+      "0".repeat(64),
+      5,
+      null,
+    ]) {
       expect(alarmSignatureMatches(input(), bad)).toBe(false);
     }
   });
@@ -53,7 +62,15 @@ describe("alarm ingest core", () => {
     expect(inAlarmReplayWindow("1789999700", now)).toBe(true);
     expect(inAlarmReplayWindow("1789999699", now)).toBe(false);
     expect(inAlarmReplayWindow("1790000301", now)).toBe(false);
-    for (const bad of [undefined, "", "1790000000.5", "-1790000000", "2026-10-23T00:00:00Z", "1790000000000", " 1790000000"]) {
+    for (const bad of [
+      undefined,
+      "",
+      "1790000000.5",
+      "-1790000000",
+      "2026-10-23T00:00:00Z",
+      "1790000000000",
+      " 1790000000",
+    ]) {
       expect(inAlarmReplayWindow(bad, now)).toBe(false);
     }
   });

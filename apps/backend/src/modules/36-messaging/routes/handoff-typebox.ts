@@ -1,7 +1,3 @@
-// apps/backend/src/modules/36-messaging/routes/handoff-typebox.ts - WP 3.5 clinical-handoff schemas (request + OpenAPI response).
-// Ids are canonical uuids. Counts and the policy minutes are transport-checked loosely here on purpose: the service owns the
-// typed 422 codes (HANDOFF_ITEMS_REQUIRED, HANDOFF_TOO_MANY_ITEMS, HANDOFF_POLICY_INVALID) so the client sees a stable code.
-import { type TSchema, Type } from "@sinclair/typebox";
 import {
   HANDOFF_ACTIONS,
   HANDOFF_CLOSE_REASONS,
@@ -9,6 +5,10 @@ import {
   HANDOFF_ITEM_STATES,
   HANDOFF_STATES,
 } from "@chartwarden/types";
+// apps/backend/src/modules/36-messaging/routes/handoff-typebox.ts - WP 3.5 clinical-handoff schemas (request + OpenAPI response).
+// Ids are canonical uuids. Counts and the policy minutes are transport-checked loosely here on purpose: the service owns the
+// typed 422 codes (HANDOFF_ITEMS_REQUIRED, HANDOFF_TOO_MANY_ITEMS, HANDOFF_POLICY_INVALID) so the client sees a stable code.
+import { type TSchema, Type } from "@sinclair/typebox";
 import { UUID_PATTERN } from "./messaging-typebox";
 
 const Uuid = Type.String({ pattern: UUID_PATTERN });

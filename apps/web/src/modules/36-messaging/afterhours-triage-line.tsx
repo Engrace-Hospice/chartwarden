@@ -2,10 +2,10 @@
 // message that asked for it: a closed sentence from the server, with an icon AND words (never colour alone). "Triage call not confirmed" is a
 // visible state, not an error. The line carries no triage content. A flag-off tenant, a failed read or a message with no request shows nothing.
 import {
+  AFTERHOURS_TRIAGE_LINE_TEXT,
   type AckRequestDto,
   type AfterHoursTriageLineDto,
   type AfterHoursTriageLineState,
-  AFTERHOURS_TRIAGE_LINE_TEXT,
 } from "@chartwarden/types";
 import { BACKGROUND_REQUEST_HEADERS, Glyph, useApiClient } from "@chartwarden/ui";
 import { type JSX, useEffect, useState } from "react";
@@ -77,7 +77,8 @@ export function useAfterHoursLines(
 export function AfterHoursTriageLine({ line }: { line: AfterHoursTriageLineDto }): JSX.Element {
   return (
     <p className="wx-afterhours-line" data-afterhours-line={line.state}>
-      <Glyph name={ICONS[line.state]} size={14} /> <span>{AFTERHOURS_TRIAGE_LINE_TEXT[line.state]}</span>
+      <Glyph name={ICONS[line.state]} size={14} />{" "}
+      <span>{AFTERHOURS_TRIAGE_LINE_TEXT[line.state]}</span>
     </p>
   );
 }

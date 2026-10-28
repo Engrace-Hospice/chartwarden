@@ -363,7 +363,9 @@ describe.skipIf(!DB_URL)("M25 audit requests (milestone 7a-1) - LIVE Postgres", 
       expect(
         (await fx.refused(audit().moveAuditRequest(A(), id, "in_review", await v())))?.code,
       ).toBe("AUDIT_PACKET_EMPTY");
-      expect((await fx.refused(audit().moveAuditRequest(A(), id, "in_review", 1)))?.code).toBeTruthy();
+      expect(
+        (await fx.refused(audit().moveAuditRequest(A(), id, "in_review", 1)))?.code,
+      ).toBeTruthy();
       await audit().moveAuditRequest(A(), id, "withdrawn", await v());
       const row = (
         await fx.admin.query(

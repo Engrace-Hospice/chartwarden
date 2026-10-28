@@ -1,4 +1,10 @@
-import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@chartwarden/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  WorkQueueLayout,
+  useApiClient,
+} from "@chartwarden/ui";
 // apps/web/src/modules/17-scheduling — Day View (M17 §5.1, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Work Queue". The scheduler's per-clinician day grid: one row per visit for the
 // selected service date with its lifecycle chip + scheduled window. The drag-drop reschedule / publish-all

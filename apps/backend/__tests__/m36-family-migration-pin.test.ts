@@ -44,8 +44,8 @@ describe("migration 1233 enum values", () => {
     );
     expect(enumSql.match(/ADD VALUE/g)?.length).toBe(2);
     expect(flat(read("packages/db/src/enums.ts"))).toContain('"family", // subject = patient_id');
-    expect(flat(read("packages/db/src/enums.ts"))).toContain(
-      '["user", "system", "family_contact"]',
+    expect(flat(read("packages/db/src/enums.ts"))).toMatch(
+      /\[\s*"user",\s*"system",\s*"family_contact",?\s*\]/,
     );
     expect(flat(read("packages/messaging/src/interfaces/kinds.ts"))).toContain('| "family"');
   });

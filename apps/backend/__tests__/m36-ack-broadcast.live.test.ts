@@ -21,8 +21,8 @@ import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { createDbIdempotencyStore } from "../src/bootstrap/plugins/idempotency-store-db";
-import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import { createAckBroadcastService } from "../src/modules/36-messaging/ack-broadcast/ack-broadcast-service";
+import { createDbAnnouncementService } from "../src/modules/36-messaging/announcement-service-db";
 import { registerMessagingRoutes } from "../src/modules/36-messaging/routes/messaging-routes";
 import { type LiveKit, as, bootLiveKit, headerAuth } from "./_m36-handoff-live-kit";
 
@@ -49,7 +49,13 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 acknowledge-required broadcast - LIVE Postg
   let messageId: string;
 
   const url = (id: string, tail: string) => `/api/v1/messaging/announcements/${id}/${tail}`;
-  const call = (method: "GET" | "POST", path: string, user: string | null, org = ORG_A, payload?: unknown) =>
+  const call = (
+    method: "GET" | "POST",
+    path: string,
+    user: string | null,
+    org = ORG_A,
+    payload?: unknown,
+  ) =>
     app.inject({
       method,
       url: path,
@@ -118,11 +124,18 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 acknowledge-required broadcast - LIVE Postg
     try {
       const create = await call("POST", url(messageId, "ack-broadcast"), author);
       const malformed = await call("POST", url("not-a-uuid", "ack-broadcast"), author);
-      const badQuery = await call("GET", `${url(messageId, "ack-broadcast")}?limit=-9&filter=zz`, supervisor);
+      const badQuery = await call(
+        "GET",
+        `${url(messageId, "ack-broadcast")}?limit=-9&filter=zz`,
+        supervisor,
+      );
       const mine = await call("GET", "/api/v1/messaging/ack-broadcasts/mine", alice);
       const ack = await call("POST", url(messageId, "ack"), alice);
       for (const res of [create, malformed, badQuery, mine, ack]) expect(res.statusCode).toBe(404);
-      const shape = (r: { json(): { error: Record<string, unknown> } }) => ({ ...r.json().error, correlationId: 0 });
+      const shape = (r: { json(): { error: Record<string, unknown> } }) => ({
+        ...r.json().error,
+        correlationId: 0,
+      });
       expect(shape(malformed)).toEqual(shape(create));
       expect(await kit.count(`SELECT count(*)::int AS n FROM message_ack_broadcast`)).toBe(0);
       delete flags[FLAG];
@@ -151,7 +164,13 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 acknowledge-required broadcast - LIVE Postg
     const first = await call("POST", url(messageId, "ack-broadcast"), author);
     expect(first.statusCode).toBe(201);
     // author, supervisor, alice, bob, carol, noKeys are in org A: 5 recipients (everyone but the author)
-    expect(first.json().counts).toMatchObject({ audience: 5, acknowledged: 0, pending: 5, ineligible: 0, outsideAudience: 0 });
+    expect(first.json().counts).toMatchObject({
+      audience: 5,
+      acknowledged: 0,
+      pending: 5,
+      ineligible: 0,
+      outsideAudience: 0,
+    });
     dave = await kit.seedUser("dave", ORG_A, READ_KEYS); // joins AFTER publish
     const again = await call("POST", url(messageId, "ack-broadcast"), author);
     expect(again.statusCode).toBe(200);
@@ -190,7 +209,10 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 acknowledge-required broadcast - LIVE Postg
     expect(first.statusCode).toBe(200);
     expect(first.json().already).toBe(false);
     const second = await call("POST", url(messageId, "ack"), alice);
-    expect(second.json()).toMatchObject({ already: true, acknowledgedAt: first.json().acknowledgedAt });
+    expect(second.json()).toMatchObject({
+      already: true,
+      acknowledgedAt: first.json().acknowledgedAt,
+    });
     // the body's userId was ignored: bob did not acknowledge
     expect(
       await kit.count(
@@ -212,7 +234,10 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 acknowledge-required broadcast - LIVE Postg
     );
     const mine = (await call("GET", "/api/v1/messaging/ack-broadcasts/mine", alice)).json();
     expect(mine.items[0]).toMatchObject({ messageId, acknowledgedAt: first.json().acknowledgedAt });
-    expect((await call("GET", "/api/v1/messaging/ack-broadcasts/mine", bob)).json().items[0].acknowledgedAt).toBeNull();
+    expect(
+      (await call("GET", "/api/v1/messaging/ack-broadcasts/mine", bob)).json().items[0]
+        .acknowledgedAt,
+    ).toBeNull();
   });
 
   it("the author and a non-audience member cannot acknowledge (the uniform 404); the database refuses a forged write", async () => {
@@ -225,23 +250,39 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 acknowledge-required broadcast - LIVE Postg
     const asUser = async (user: string, sqlText: string) => {
       await app1.query("BEGIN");
       try {
-        await app1.query(`SELECT set_config('app.org_id', $1, true), set_config('app.user_id', $2, true)`, [ORG_A, user]);
+        await app1.query(
+          `SELECT set_config('app.org_id', $1, true), set_config('app.user_id', $2, true)`,
+          [ORG_A, user],
+        );
         return await app1.query(sqlText);
       } finally {
         await app1.query("ROLLBACK");
       }
     };
     await expect(
-      asUser(bob, `UPDATE message_ack_broadcast_recipient SET acknowledged_at = now() WHERE user_id = '${carol}'`),
+      asUser(
+        bob,
+        `UPDATE message_ack_broadcast_recipient SET acknowledged_at = now() WHERE user_id = '${carol}'`,
+      ),
     ).rejects.toThrow(/message_ack_broadcast_recipient_self/);
     await expect(
-      asUser(alice, `UPDATE message_ack_broadcast_recipient SET acknowledged_at = NULL WHERE user_id = '${alice}'`),
+      asUser(
+        alice,
+        `UPDATE message_ack_broadcast_recipient SET acknowledged_at = NULL WHERE user_id = '${alice}'`,
+      ),
     ).rejects.toThrow(/once/);
     await expect(
-      asUser(alice, `UPDATE message_ack_broadcast_recipient SET acknowledged_at = now() WHERE user_id = '${alice}'`),
+      asUser(
+        alice,
+        `UPDATE message_ack_broadcast_recipient SET acknowledged_at = now() WHERE user_id = '${alice}'`,
+      ),
     ).rejects.toThrow(/once/);
-    await expect(asUser(alice, `DELETE FROM message_ack_broadcast_recipient`)).rejects.toThrow(/permission denied/);
-    await expect(asUser(alice, `UPDATE message_ack_broadcast SET created_by = '${alice}'`)).rejects.toThrow(/permission denied/);
+    await expect(asUser(alice, `DELETE FROM message_ack_broadcast_recipient`)).rejects.toThrow(
+      /permission denied/,
+    );
+    await expect(
+      asUser(alice, `UPDATE message_ack_broadcast SET created_by = '${alice}'`),
+    ).rejects.toThrow(/permission denied/);
     await expect(
       asUser(
         alice,
@@ -261,8 +302,16 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 acknowledge-required broadcast - LIVE Postg
   it("an offboarded recipient is listed as ineligible, never as a silent non-reader; a later joiner is outside the audience", async () => {
     await kit.admin.query(`UPDATE membership SET status='suspended' WHERE user_id=$1`, [carol]);
     const body = await detail(messageId, "?filter=all");
-    expect(body.people.find((p: { userId: string }) => p.userId === carol).state).toBe("ineligible");
-    expect(body.counts).toMatchObject({ ineligible: 1, pending: 3, acknowledged: 1, audience: 5, outsideAudience: 1 });
+    expect(body.people.find((p: { userId: string }) => p.userId === carol).state).toBe(
+      "ineligible",
+    );
+    expect(body.counts).toMatchObject({
+      ineligible: 1,
+      pending: 3,
+      acknowledged: 1,
+      audience: 5,
+      outsideAudience: 1,
+    });
     const pending = await detail(messageId, "?filter=pending");
     expect(pending.people.map((p: { userId: string }) => p.userId)).not.toContain(carol);
     const ineligible = await detail(messageId, "?filter=ineligible");
@@ -283,13 +332,17 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 acknowledge-required broadcast - LIVE Postg
 
   it("tenancy: org B sees nothing of org A's broadcast, by id or by list", async () => {
     expect((await call("GET", url(messageId, "ack-broadcast"), userB, ORG_B)).statusCode).toBe(404);
-    expect((await call("GET", "/api/v1/messaging/ack-broadcasts", userB, ORG_B)).json().broadcasts).toEqual([]);
+    expect(
+      (await call("GET", "/api/v1/messaging/ack-broadcasts", userB, ORG_B)).json().broadcasts,
+    ).toEqual([]);
     const list = (await call("GET", "/api/v1/messaging/ack-broadcasts", author)).json();
     expect(list.broadcasts).toHaveLength(1);
     // RLS as chartwarden_app: with org B's GUC, org A's rows are invisible.
     await kit.appConn.query("BEGIN");
     await kit.appConn.query(`SELECT set_config('app.org_id', $1, true)`, [ORG_B]);
-    const seen = await kit.appConn.query(`SELECT (SELECT count(*) FROM message_ack_broadcast)::int AS a, (SELECT count(*) FROM message_ack_broadcast_recipient)::int AS b`);
+    const seen = await kit.appConn.query(
+      `SELECT (SELECT count(*) FROM message_ack_broadcast)::int AS a, (SELECT count(*) FROM message_ack_broadcast_recipient)::int AS b`,
+    );
     await kit.appConn.query("ROLLBACK");
     expect(seen.rows[0]).toEqual({ a: 0, b: 0 });
   });
@@ -299,9 +352,14 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 acknowledge-required broadcast - LIVE Postg
     const unknown = await call("GET", url(randomUUID(), "ack-broadcast"), supervisor);
     expect(stranger.statusCode).toBe(404);
     expect(unknown.statusCode).toBe(404);
-    const shape = (r: { json(): { error: Record<string, unknown> } }) => ({ ...r.json().error, correlationId: 0 });
+    const shape = (r: { json(): { error: Record<string, unknown> } }) => ({
+      ...r.json().error,
+      correlationId: 0,
+    });
     expect(shape(stranger)).toEqual(shape(unknown));
-    expect((await call("GET", "/api/v1/messaging/ack-broadcasts", supervisor)).json().broadcasts).toEqual([]);
+    expect(
+      (await call("GET", "/api/v1/messaging/ack-broadcasts", supervisor)).json().broadcasts,
+    ).toEqual([]);
   });
 
   it("list counts for several broadcasts are exact and per broadcast (one aggregate)", async () => {
@@ -310,7 +368,12 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 acknowledge-required broadcast - LIVE Postg
     expect((await call("POST", url(second, "ack"), bob)).statusCode).toBe(200);
     const list = (await call("GET", "/api/v1/messaging/ack-broadcasts", author)).json().broadcasts;
     const by = (id: string) => list.find((b: { messageId: string }) => b.messageId === id).counts;
-    expect(by(second)).toMatchObject({ audience: 5, acknowledged: 1, pending: 4, outsideAudience: 0 });
+    expect(by(second)).toMatchObject({
+      audience: 5,
+      acknowledged: 1,
+      pending: 4,
+      outsideAudience: 0,
+    });
     const first = await detail(messageId);
     expect(by(messageId)).toEqual(first.counts);
   });
@@ -320,7 +383,9 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 acknowledge-required broadcast - LIVE Postg
     expect((await call("POST", url(gone, "ack-broadcast"), author)).statusCode).toBe(201);
     const before = (await call("GET", "/api/v1/messaging/ack-broadcasts/mine", bob)).json().items;
     expect(before.map((i: { messageId: string }) => i.messageId)).toContain(gone);
-    await kit.admin.query(`UPDATE message SET status='deleted', deleted_at = now() WHERE id = $1`, [gone]);
+    await kit.admin.query(`UPDATE message SET status='deleted', deleted_at = now() WHERE id = $1`, [
+      gone,
+    ]);
     const after = (await call("GET", "/api/v1/messaging/ack-broadcasts/mine", bob)).json().items;
     expect(after.map((i: { messageId: string }) => i.messageId)).not.toContain(gone);
     expect((await call("POST", url(gone, "ack"), bob)).statusCode).toBe(404);
@@ -356,14 +421,25 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 withdraw and deadline - LIVE Postgres", () 
       ...(payload !== undefined ? { payload: payload as Record<string, unknown> } : {}),
     });
   const announcement = async (by: string): Promise<string> =>
-    (await kit.service.sendMessage(ORG_A, { channelId: channel, authorUserId: by, body: "Policy change" })).messageId;
+    (
+      await kit.service.sendMessage(ORG_A, {
+        channelId: channel,
+        authorUserId: by,
+        body: "Policy change",
+      })
+    ).messageId;
   const inHours = (h: number) => new Date(Date.now() + h * 3_600_000).toISOString();
   const listed = async (id: string) =>
-    (await call("GET", "/api/v1/messaging/ack-broadcasts", author)).json().broadcasts.find((b: { messageId: string }) => b.messageId === id);
+    (await call("GET", "/api/v1/messaging/ack-broadcasts", author))
+      .json()
+      .broadcasts.find((b: { messageId: string }) => b.messageId === id);
   const asUser = async (user: string, sqlText: string) => {
     await kit.appConn.query("BEGIN");
     try {
-      await kit.appConn.query(`SELECT set_config('app.org_id', $1, true), set_config('app.user_id', $2, true)`, [ORG_A, user]);
+      await kit.appConn.query(
+        `SELECT set_config('app.org_id', $1, true), set_config('app.user_id', $2, true)`,
+        [ORG_A, user],
+      );
       return await kit.appConn.query(sqlText);
     } finally {
       await kit.appConn.query("ROLLBACK");
@@ -395,7 +471,12 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 withdraw and deadline - LIVE Postgres", () 
       announcements: createDbAnnouncementService(kit.handle.db),
       tasks,
       handoffs,
-      ackBroadcast: { service: createAckBroadcastService({ db: kit.handle.db, flags: { forOrg: async () => flags } }) },
+      ackBroadcast: {
+        service: createAckBroadcastService({
+          db: kit.handle.db,
+          flags: { forOrg: async () => flags },
+        }),
+      },
     });
     await app.ready();
   }, 240_000);
@@ -412,15 +493,24 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 withdraw and deadline - LIVE Postgres", () 
       expect(bad.statusCode).toBe(422);
       expect(bad.json().error.code).toBe("ACK_BROADCAST_DEADLINE_INVALID");
     }
-    expect((await call("POST", url(id, "ack-broadcast"), author, { deadlineAt: inHours(24), extra: 1 })).statusCode).toBe(422);
-    expect(await kit.count(`SELECT count(*)::int AS n FROM message_ack_broadcast WHERE message_id=$1`, [id])).toBe(0);
+    expect(
+      (await call("POST", url(id, "ack-broadcast"), author, { deadlineAt: inHours(24), extra: 1 }))
+        .statusCode,
+    ).toBe(422);
+    expect(
+      await kit.count(`SELECT count(*)::int AS n FROM message_ack_broadcast WHERE message_id=$1`, [
+        id,
+      ]),
+    ).toBe(0);
     const deadlineAt = inHours(24);
     const ok = await call("POST", url(id, "ack-broadcast"), author, { deadlineAt });
     expect(ok.statusCode).toBe(201);
     expect(ok.json()).toMatchObject({ withdrawnAt: null, pastDeadline: false });
     expect(new Date(ok.json().deadlineAt).getTime()).toBe(new Date(deadlineAt).getTime());
     const mine = (await call("GET", "/api/v1/messaging/ack-broadcasts/mine", alice)).json().items;
-    expect(mine.find((i: { messageId: string }) => i.messageId === id).deadlineAt).toBe(ok.json().deadlineAt);
+    expect(mine.find((i: { messageId: string }) => i.messageId === id).deadlineAt).toBe(
+      ok.json().deadlineAt,
+    );
     // A repeat never edits the broadcast: the deadline stands.
     const again = await call("POST", url(id, "ack-broadcast"), author, { deadlineAt: inHours(48) });
     expect(again.json()).toMatchObject({ created: false, deadlineAt: ok.json().deadlineAt });
@@ -428,15 +518,25 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 withdraw and deadline - LIVE Postgres", () 
 
   it("past the deadline is a marker on the author's list only; late acknowledgments are still taken and clear it", async () => {
     const id = await announcement(author);
-    expect((await call("POST", url(id, "ack-broadcast"), author, { deadlineAt: inHours(1) })).statusCode).toBe(201);
-    await kit.admin.query(`ALTER TABLE message_ack_broadcast DISABLE TRIGGER trg_message_ack_broadcast_guard`);
+    expect(
+      (await call("POST", url(id, "ack-broadcast"), author, { deadlineAt: inHours(1) })).statusCode,
+    ).toBe(201);
+    await kit.admin.query(
+      `ALTER TABLE message_ack_broadcast DISABLE TRIGGER trg_message_ack_broadcast_guard`,
+    );
     try {
-      await kit.admin.query(`UPDATE message_ack_broadcast SET deadline_at = created_at + interval '1 millisecond' WHERE message_id=$1`, [id]);
+      await kit.admin.query(
+        `UPDATE message_ack_broadcast SET deadline_at = created_at + interval '1 millisecond' WHERE message_id=$1`,
+        [id],
+      );
     } finally {
-      await kit.admin.query(`ALTER TABLE message_ack_broadcast ENABLE TRIGGER trg_message_ack_broadcast_guard`);
+      await kit.admin.query(
+        `ALTER TABLE message_ack_broadcast ENABLE TRIGGER trg_message_ack_broadcast_guard`,
+      );
     }
     expect((await listed(id)).pastDeadline).toBe(true);
-    for (const u of [alice, bob, other]) expect((await call("POST", url(id, "ack"), u)).statusCode).toBe(200);
+    for (const u of [alice, bob, other])
+      expect((await call("POST", url(id, "ack"), u)).statusCode).toBe(200);
     expect((await listed(id)).pastDeadline).toBe(false);
   });
 
@@ -452,7 +552,9 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 withdraw and deadline - LIVE Postgres", () 
     expect([stranger.statusCode, unknown.statusCode]).toEqual([404, 404]);
     flags[FLAG] = false;
     try {
-      expect((await call("POST", url("not-a-uuid", "ack-broadcast/withdraw"), author)).statusCode).toBe(404);
+      expect(
+        (await call("POST", url("not-a-uuid", "ack-broadcast/withdraw"), author)).statusCode,
+      ).toBe(404);
     } finally {
       flags[FLAG] = true;
     }
@@ -499,16 +601,33 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 withdraw and deadline - LIVE Postgres", () 
     const id = await announcement(author);
     expect((await call("POST", url(id, "ack-broadcast"), author)).statusCode).toBe(201);
     const bc = `message_id = '${id}'`;
-    await expect(asUser(other, `UPDATE message_ack_broadcast SET withdrawn_at = now() WHERE ${bc}`)).rejects.toThrow(/withdraw_actor/);
-    await expect(asUser(author, `UPDATE message_ack_broadcast SET deadline_at = now() + interval '1 day' WHERE ${bc}`)).rejects.toThrow(/permission denied/);
-    await expect(asUser(author, `UPDATE message_ack_broadcast SET withdrawn_at = NULL WHERE ${bc}`)).rejects.toThrow(/withdraw_once/);
-    await expect(asUser(author, `DELETE FROM message_ack_broadcast WHERE ${bc}`)).rejects.toThrow(/permission denied/);
+    await expect(
+      asUser(other, `UPDATE message_ack_broadcast SET withdrawn_at = now() WHERE ${bc}`),
+    ).rejects.toThrow(/withdraw_actor/);
+    await expect(
+      asUser(
+        author,
+        `UPDATE message_ack_broadcast SET deadline_at = now() + interval '1 day' WHERE ${bc}`,
+      ),
+    ).rejects.toThrow(/permission denied/);
+    await expect(
+      asUser(author, `UPDATE message_ack_broadcast SET withdrawn_at = NULL WHERE ${bc}`),
+    ).rejects.toThrow(/withdraw_once/);
+    await expect(asUser(author, `DELETE FROM message_ack_broadcast WHERE ${bc}`)).rejects.toThrow(
+      /permission denied/,
+    );
     const fresh = await announcement(author);
     await expect(
-      asUser(author, `INSERT INTO message_ack_broadcast (organization_id, message_id, channel_id, created_by, deadline_at) VALUES ('${ORG_A}','${fresh}','${channel}','${author}', now() - interval '1 hour')`),
+      asUser(
+        author,
+        `INSERT INTO message_ack_broadcast (organization_id, message_id, channel_id, created_by, deadline_at) VALUES ('${ORG_A}','${fresh}','${channel}','${author}', now() - interval '1 hour')`,
+      ),
     ).rejects.toThrow(/deadline/);
     await expect(
-      asUser(author, `INSERT INTO message_ack_broadcast (organization_id, message_id, channel_id, created_by, withdrawn_at) VALUES ('${ORG_A}','${fresh}','${channel}','${author}', now())`),
+      asUser(
+        author,
+        `INSERT INTO message_ack_broadcast (organization_id, message_id, channel_id, created_by, withdrawn_at) VALUES ('${ORG_A}','${fresh}','${channel}','${author}', now())`,
+      ),
     ).rejects.toThrow(/born_open/);
     expect((await call("POST", url(id, "ack-broadcast/withdraw"), author)).statusCode).toBe(200);
     await expect(
@@ -518,7 +637,9 @@ describe.skipIf(!DB_URL)("M36 WP 6.8 withdraw and deadline - LIVE Postgres", () 
           WHERE user_id = '${alice}' AND broadcast_id = (SELECT id FROM message_ack_broadcast WHERE ${bc})`,
       ),
     ).rejects.toThrow(/recipient_withdrawn/);
-    await expect(asUser(author, `UPDATE message_ack_broadcast SET withdrawn_at = now() WHERE ${bc}`)).rejects.toThrow(/withdraw_once/);
+    await expect(
+      asUser(author, `UPDATE message_ack_broadcast SET withdrawn_at = now() WHERE ${bc}`),
+    ).rejects.toThrow(/withdraw_once/);
   });
 
   it("the audit trail of a withdrawal carries ids and instants only", async () => {

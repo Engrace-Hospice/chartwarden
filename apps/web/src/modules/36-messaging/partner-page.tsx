@@ -49,8 +49,7 @@ type EndReason = "neutral" | "idle";
 
 const NEUTRAL =
   "This link is not available. It may have ended, been replaced, or never worked. If you were expecting access, ask the person who sent it to you.";
-const IDLE =
-  `This session ended after ${EXTERNAL_SESSION_IDLE_MINUTES} minutes of inactivity and the messages were cleared from this page. Ask the person who sent you the link for a new one.`;
+const IDLE = `This session ended after ${EXTERNAL_SESSION_IDLE_MINUTES} minutes of inactivity and the messages were cleared from this page. Ask the person who sent you the link for a new one.`;
 const IDLE_WARNING = `This session ends in ${IDLE_WARN_MINUTES} minutes unless you press a key or tap.`;
 
 interface Held {
@@ -231,7 +230,8 @@ export function PartnerPage(): JSX.Element {
       }
     };
     // Capture: a scroll inside an element does not bubble to the window.
-    for (const e of INPUT_EVENTS) window.addEventListener(e, mark, { passive: true, capture: true });
+    for (const e of INPUT_EVENTS)
+      window.addEventListener(e, mark, { passive: true, capture: true });
     return () => {
       for (const e of INPUT_EVENTS) window.removeEventListener(e, mark, { capture: true });
     };
@@ -312,12 +312,12 @@ export function PartnerPage(): JSX.Element {
   }
 
   const expiry = new Date(expiresAt);
-  const accessEndsText = Number.isNaN(expiry.getTime()) ? "your access ends" : expiry.toLocaleString();
+  const accessEndsText = Number.isNaN(expiry.getTime())
+    ? "your access ends"
+    : expiry.toLocaleString();
   // Always mounted while a session is held, so a screen reader announces the text when it appears.
   const idleNotice = (
-    <div role="status" style={mutedStyle}>
-      {idleWarning ? IDLE_WARNING : ""}
-    </div>
+    <output style={{ ...mutedStyle, display: "block" }}>{idleWarning ? IDLE_WARNING : ""}</output>
   );
 
   if (phase === "reading") {

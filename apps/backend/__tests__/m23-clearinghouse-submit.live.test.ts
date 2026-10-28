@@ -1135,10 +1135,17 @@ describe.skipIf(!DB_URL)("M23 workers over the clearinghouse transport - LIVE Po
         });
         const c = await seed("d7d7d7d7-d7d7-d7d7-d7d7-d7d7d7d7d7d7");
         await expect(
-          runThenKill(stamped(() => new Date("2031-01-01T00:00:00Z")), c.job),
+          runThenKill(
+            stamped(() => new Date("2031-01-01T00:00:00Z")),
+            c.job,
+          ),
         ).rejects.toThrow(KILLED);
         await runInOrg((tx) =>
-          runClaimSubmit(tx, stamped(() => new Date("2032-06-01T12:34:00Z")), c.job),
+          runClaimSubmit(
+            tx,
+            stamped(() => new Date("2032-06-01T12:34:00Z")),
+            c.job,
+          ),
         );
 
         expect(renders).toHaveLength(2);

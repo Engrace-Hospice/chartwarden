@@ -1,7 +1,7 @@
+import type { ApiClient } from "@chartwarden/ui";
 // F-238 — "Upload fax" on Intake review: a fax that names no referral is uploaded, queued as an UNFILED
 // intake batch (no referralId, no patient) and DocLens starts reading it.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { ApiClient } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { IntakeUploadDialog } from "./intake-upload-dialog";
 

@@ -387,7 +387,15 @@ describe("PartnerPage", () => {
     );
   }
   const only = (body: string) => ({
-    messages: [{ messageId: body, authorName: "Dana Reyes", body, createdAt: "2026-10-23T10:05:00.000Z", edited: false }],
+    messages: [
+      {
+        messageId: body,
+        authorName: "Dana Reyes",
+        body,
+        createdAt: "2026-10-23T10:05:00.000Z",
+        edited: false,
+      },
+    ],
     nextCursor: null,
   });
 
@@ -422,7 +430,11 @@ describe("PartnerPage", () => {
       release = r;
     });
     const never = new Promise<void>(() => undefined);
-    planReads([{ body: MESSAGES }, { hold: gate, body: MESSAGES }, { hold: never, body: MESSAGES }]);
+    planReads([
+      { body: MESSAGES },
+      { hold: gate, body: MESSAGES },
+      { hold: never, body: MESSAGES },
+    ]);
     mount();
     await openAndVerify(user);
     await act(async () => {

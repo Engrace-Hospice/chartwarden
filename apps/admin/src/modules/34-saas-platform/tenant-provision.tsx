@@ -72,26 +72,11 @@ function stashDraft(draft: Draft): void {
 
 /** Per-field messages for the New tenant form; empty when it can be submitted (#597, F-042). */
 export function tenantProvisionErrors(
-  form: Pick<
-    Draft,
-    "legalName" | "billingEmail" | "breachEmail" | "adminEmail" | "adminName"
-  > &
+  form: Pick<Draft, "legalName" | "billingEmail" | "breachEmail" | "adminEmail" | "adminName"> &
     Partial<Pick<Draft, "slug">>,
-): FieldErrors<
-  | "legalName"
-  | "slug"
-  | "billingEmail"
-  | "breachEmail"
-  | "adminEmail"
-  | "adminName"
-> {
+): FieldErrors<"legalName" | "slug" | "billingEmail" | "breachEmail" | "adminEmail" | "adminName"> {
   const errors: FieldErrors<
-    | "legalName"
-    | "slug"
-    | "billingEmail"
-    | "breachEmail"
-    | "adminEmail"
-    | "adminName"
+    "legalName" | "slug" | "billingEmail" | "breachEmail" | "adminEmail" | "adminName"
   > = {};
   const slug = (form.slug ?? "").trim();
   if (slug !== "") {
@@ -107,38 +92,23 @@ export function tenantProvisionErrors(
       : EMAIL_SHAPE.test(value.trim())
         ? undefined
         : "Enter a valid email address, e.g. name@example.com.";
-  errors.billingEmail = email(
-    form.billingEmail,
-    "Enter the billing contact email.",
-  );
-  errors.breachEmail = email(
-    form.breachEmail,
-    "Enter the breach notification email.",
-  );
+  errors.billingEmail = email(form.billingEmail, "Enter the billing contact email.");
+  errors.breachEmail = email(form.breachEmail, "Enter the breach notification email.");
   errors.adminEmail = email(form.adminEmail, "Enter the first admin's email.");
-  if (form.adminName.trim() === "")
-    errors.adminName = "Enter the first admin's full name.";
-  return Object.fromEntries(
-    Object.entries(errors).filter(([, v]) => v !== undefined),
-  );
+  if (form.adminName.trim() === "") errors.adminName = "Enter the first admin's full name.";
+  return Object.fromEntries(Object.entries(errors).filter(([, v]) => v !== undefined));
 }
 
 type Outcome = { ok: true } | { ok: false; message: string; stepUp: boolean };
 
 /** The server's own message from the error envelope, when it carries one. */
 function serverMessage(err: unknown): string | null {
-  const message = (err as { error?: { message?: unknown } } | null)?.error
-    ?.message;
-  return typeof message === "string" && message.trim().length > 0
-    ? message
-    : null;
+  const message = (err as { error?: { message?: unknown } } | null)?.error?.message;
+  return typeof message === "string" && message.trim().length > 0 ? message : null;
 }
 
 /** Refusal codes that name the Subdomain field: shown on it, not in the general alert. */
-const SLUG_REFUSAL_CODES: readonly string[] = [
-  "INVALID_TENANT_SLUG",
-  "TENANT_SLUG_UNAVAILABLE",
-];
+const SLUG_REFUSAL_CODES: readonly string[] = ["INVALID_TENANT_SLUG", "TENANT_SLUG_UNAVAILABLE"];
 function isSlugRefusal(err: unknown): boolean {
   const code = (err as { error?: { code?: unknown } } | null)?.error?.code;
   return typeof code === "string" && SLUG_REFUSAL_CODES.includes(code);
@@ -211,20 +181,15 @@ export function TenantProvisionDrawer({
       setOutcome({
         ok: false,
         stepUp: false,
-        message:
-          "Could not reach the server. Nothing was requested; try again.",
+        message: "Could not reach the server. Nothing was requested; try again.",
       });
       return;
     }
     setBusy(false);
     if (error) {
       if (isSlugRefusal(error)) {
-        setSlugRefusal(
-          serverMessage(error) ?? "That subdomain cannot be used.",
-        );
-        requestAnimationFrame(() =>
-          document.getElementById("prov-slug")?.focus(),
-        );
+        setSlugRefusal(serverMessage(error) ?? "That subdomain cannot be used.");
+        requestAnimationFrame(() => document.getElementById("prov-slug")?.focus());
         return;
       }
       const stepUp = isStepUpRequired(error);
@@ -259,11 +224,7 @@ export function TenantProvisionDrawer({
           <Glyph name="close" size={16} />
         </Button>
       </header>
-      <form
-        className="wx-drawer-body"
-        onSubmit={(e) => void submit(e)}
-        noValidate
-      >
+      <form className="wx-drawer-body" onSubmit={(e) => void submit(e)} noValidate>
         <section className="wx-drawer-card">
           <TextField
             id="prov-legal-name"

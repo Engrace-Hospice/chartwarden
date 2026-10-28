@@ -37,7 +37,9 @@ function pairs(raw: string | undefined): Map<string, string> {
 async function main(): Promise<void> {
   const url = process.env.DATABASE_ADMIN_URL;
   if (!url)
-    throw new Error("DATABASE_ADMIN_URL must be set (ai_model_backend is chartwarden_admin-written)");
+    throw new Error(
+      "DATABASE_ADMIN_URL must be set (ai_model_backend is chartwarden_admin-written)",
+    );
   const config = aiBackendConfigFromEnv(process.env);
   const db = new Client({ connectionString: url });
   await db.connect();

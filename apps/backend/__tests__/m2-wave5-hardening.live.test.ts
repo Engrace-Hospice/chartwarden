@@ -18,7 +18,10 @@ import { createDbClient } from "@chartwarden/db";
 import { runWithRequestContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { InvitationStore, MembershipRepository } from "../src/modules/02-identity/identity-ports";
+import type {
+  InvitationStore,
+  MembershipRepository,
+} from "../src/modules/02-identity/identity-ports";
 import { createDbInvitationStore } from "../src/modules/02-identity/identity-stores-db";
 import { createDbMembershipRepository } from "../src/modules/02-identity/membership-repository";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
@@ -64,7 +67,9 @@ describe.skipIf(!DB_URL)("M2 wave-5 hardening — LIVE Postgres", () => {
          ($1,'w5-a','Alpha LLC','Alpha','active'),($2,'w5-b','Beta LLC','Beta','active')`,
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email,name) VALUES ($1,'w5@test.test','W Five')`, [USER]);
+    await admin.query(`INSERT INTO "user" (id,email,name) VALUES ($1,'w5@test.test','W Five')`, [
+      USER,
+    ]);
     await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     invitations = createDbInvitationStore(handle.db);
@@ -126,7 +131,10 @@ describe.skipIf(!DB_URL)("M2 wave-5 hardening — LIVE Postgres", () => {
     let releaseA: () => void = () => undefined;
     const heldA = memberships.withAdminLock(
       ORG_A,
-      () => new Promise<void>((resolve) => (releaseA = resolve)),
+      () =>
+        new Promise<void>((resolve) => {
+          releaseA = resolve;
+        }),
     );
     await new Promise((r) => setTimeout(r, 50));
     await expect(memberships.withAdminLock(ORG_B, async () => "b-ran")).resolves.toBe("b-ran");
@@ -161,7 +169,12 @@ describe.skipIf(!DB_URL)("M2 wave-5 hardening — LIVE Postgres", () => {
     const held = Array.from({ length: 6 }, (_, i) =>
       memberships.withAdminLock(
         ORG_A,
-        i === 0 ? () => new Promise<void>((resolve) => (releaseA = resolve)) : async () => undefined,
+        i === 0
+          ? () =>
+              new Promise<void>((resolve) => {
+                releaseA = resolve;
+              })
+          : async () => undefined,
       ),
     );
     await new Promise((r) => setTimeout(r, 50));

@@ -24,9 +24,14 @@ describe("deploy/production/.env.tenant.example", () => {
     const base = assignments(read("deploy/production/.env.production.example"));
     const merged = { ...base, ...assignments(read("deploy/production/.env.tenant.example")) };
     const filled = Object.fromEntries(
-      Object.entries(merged).map(([k, v]) => [k, v.replace(/REPLACE_WITH_[A-Z0-9_]+/g, (tok) =>
-          tok === "REPLACE_WITH_BASE64_32_BYTES" ? randomBytes(32).toString("base64") : randomBytes(32).toString("hex"),
-        )]),
+      Object.entries(merged).map(([k, v]) => [
+        k,
+        v.replace(/REPLACE_WITH_[A-Z0-9_]+/g, (tok) =>
+          tok === "REPLACE_WITH_BASE64_32_BYTES"
+            ? randomBytes(32).toString("base64")
+            : randomBytes(32).toString("hex"),
+        ),
+      ]),
     );
     const problems = collectEnvProblems({
       NODE_ENV: "production",
@@ -57,7 +62,9 @@ describe("deploy/production/nginx/chartwarden-tenant.conf", () => {
   });
 
   it("overwrites X-Forwarded-Host with $host in every proxied location, never passing the client's", () => {
-    const proxied = [...conf.matchAll(/location [^{]+\{([^}]*)\}/g)].map((m) => m[1] ?? "").filter((b) => b.includes("proxy_pass"));
+    const proxied = [...conf.matchAll(/location [^{]+\{([^}]*)\}/g)]
+      .map((m) => m[1] ?? "")
+      .filter((b) => b.includes("proxy_pass"));
     expect(proxied.length).toBeGreaterThanOrEqual(2);
     for (const body of proxied) expect(body).toContain("proxy_set_header X-Forwarded-Host $host;");
     expect(conf).not.toContain("$http_x_forwarded_host");
@@ -73,7 +80,9 @@ describe("web tier serves the portal under /portal/", () => {
   const nginx = read("deploy/production/web-nginx.conf");
 
   it("falls back to the portal's own index, never the staff one", () => {
-    expect(nginx).toMatch(/location \/portal\/ \{[^}]*try_files \$uri \$uri\/ \/portal\/index\.html;/);
+    expect(nginx).toMatch(
+      /location \/portal\/ \{[^}]*try_files \$uri \$uri\/ \/portal\/index\.html;/,
+    );
   });
 
   it("the image builds the portal and copies it to /portal", () => {

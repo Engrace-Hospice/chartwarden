@@ -1,4 +1,10 @@
-import { EmptyState, LoadingSpinner, PageHeader, WorkQueueLayout, useApiClient } from "@chartwarden/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  WorkQueueLayout,
+  useApiClient,
+} from "@chartwarden/ui";
 // apps/web/src/modules/17-scheduling — Week View (M17 §5.1, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Work Queue". The week-view per-clinician: visits across the week from
 // `?weekStart=` (defaults to today), grouped by service date. Recurring-visit + PTO bar overlays fill in as

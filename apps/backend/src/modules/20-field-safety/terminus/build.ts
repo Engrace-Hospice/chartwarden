@@ -64,7 +64,10 @@ export function buildM20TerminusDeps(input: BuildTerminusDepsInput): TerminusDep
   const pagerUrl = env.CHARTWARDEN_OPS_PAGE_WEBHOOK_URL?.trim();
   if (pagerUrl) {
     try {
-      pager = createWebhookOpsPager({ url: pagerUrl, token: env.CHARTWARDEN_OPS_PAGE_WEBHOOK_TOKEN });
+      pager = createWebhookOpsPager({
+        url: pagerUrl,
+        token: env.CHARTWARDEN_OPS_PAGE_WEBHOOK_TOKEN,
+      });
     } catch {
       log(
         "[m20:terminus] CRITICAL: CHARTWARDEN_OPS_PAGE_WEBHOOK_URL is set but invalid (must be https://). " +

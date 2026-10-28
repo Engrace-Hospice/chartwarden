@@ -40,7 +40,9 @@ import "./smart-inbox.css";
 // The conversation route takes ?channelId= (ADR-0075). target_id is the owning row's id (a request, task or handoff), not a message id,
 // so only the channel the row already carries is used; a handoff row has none and opens Messaging.
 const openPath = (item: SmartInboxItemDto): string =>
-  item.channel_id ? `/messaging?${new URLSearchParams({ channelId: item.channel_id })}` : "/messaging";
+  item.channel_id
+    ? `/messaging?${new URLSearchParams({ channelId: item.channel_id })}`
+    : "/messaging";
 
 function Problem({
   text,

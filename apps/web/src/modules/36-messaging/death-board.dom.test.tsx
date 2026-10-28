@@ -172,7 +172,9 @@ describe("DeathBoard screen", () => {
     await user.click(await screen.findByRole("button", { name: "Reassign" }));
     const dialog = await screen.findByRole("dialog");
     const scrim = () =>
-      screen.getAllByRole("button", { name: "Close" }).find((b) => b.tabIndex === -1) as HTMLElement;
+      screen
+        .getAllByRole("button", { name: "Close" })
+        .find((b) => b.tabIndex === -1) as HTMLElement;
     await pickColleague(user, dialog);
     await user.click(scrim());
     expect(screen.queryByRole("dialog")).not.toBeNull();

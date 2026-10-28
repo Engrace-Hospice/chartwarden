@@ -80,7 +80,10 @@ export function createDbAfterHoursLinkStore(db: DbClient): AfterHoursLinkStore {
         const rows = await (rawTx as unknown as Tx)
           .select({ messageId: LINK.messageId, outcome: LINK.outcome })
           .from(LINK)
-          .innerJoin(MSG, and(eq(MSG.organizationId, LINK.organizationId), eq(MSG.id, LINK.messageId)))
+          .innerJoin(
+            MSG,
+            and(eq(MSG.organizationId, LINK.organizationId), eq(MSG.id, LINK.messageId)),
+          )
           .where(
             and(
               eq(LINK.organizationId, orgId),

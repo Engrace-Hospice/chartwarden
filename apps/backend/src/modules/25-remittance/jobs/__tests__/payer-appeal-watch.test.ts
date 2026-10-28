@@ -10,7 +10,9 @@ describe("runPayerAppealDeadlineWatch", () => {
   it("alerts at the boundary the deadline is within, ids and a day count only", async () => {
     const r = await runPayerAppealDeadlineWatch(
       {
-        draftsWithComputedDeadline: async () => [{ id: "c1", deadlineAt: "2026-03-17T04:00:00Z", lastAlertedBoundary: null }],
+        draftsWithComputedDeadline: async () => [
+          { id: "c1", deadlineAt: "2026-03-17T04:00:00Z", lastAlertedBoundary: null },
+        ],
       },
       now,
     );
@@ -30,7 +32,9 @@ describe("runPayerAppealDeadlineWatch", () => {
     const first = await runPayerAppealDeadlineWatch(row(null), now);
     expect(first.marks).toEqual([{ id: "c1", boundary: 7 }]);
     expect((await runPayerAppealDeadlineWatch(row(7), now)).alerts).toEqual([]);
-    expect((await runPayerAppealDeadlineWatch(row(14), now)).marks).toEqual([{ id: "c1", boundary: 7 }]);
+    expect((await runPayerAppealDeadlineWatch(row(14), now)).marks).toEqual([
+      { id: "c1", boundary: 7 },
+    ]);
   });
   it("does not alert a far or a past deadline", async () => {
     const r = await runPayerAppealDeadlineWatch(

@@ -11,7 +11,7 @@ import {
   type SessionTimeoutEnforcer,
   sessionClassRequiresMfa,
 } from "@chartwarden/auth";
-import { type OrgScope, type SessionContextResolver, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, type OrgScope, type SessionContextResolver } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { stepUpFreshFor } from "../step-up";
 

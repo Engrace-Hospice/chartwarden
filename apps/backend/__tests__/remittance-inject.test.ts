@@ -1,3 +1,13 @@
+import {
+  createInMemoryEffectivePermissionStore,
+  createPredicateRegistry,
+  registerAbacRegistry,
+  registerEffectivePermissionResolver,
+  resetAbacRegistry,
+  resetAuthorizationContract,
+  resetRbacEngine,
+} from "@chartwarden/auth";
+import { NotFoundError } from "@chartwarden/types";
 // apps/backend/__tests__/remittance-inject.test.ts — M25 (Remittance & Denials) HTTP-layer smoke suite
 // (TASK-050A / TEST-001).
 //
@@ -34,16 +44,6 @@
 // actually validates — a 401 with no session, a 403 with no grant, a 422 on a malformed body, and one
 // legitimately-authorized 2xx call per route.
 import { FormatRegistry } from "@sinclair/typebox";
-import {
-  createInMemoryEffectivePermissionStore,
-  createPredicateRegistry,
-  registerAbacRegistry,
-  registerEffectivePermissionResolver,
-  resetAbacRegistry,
-  resetAuthorizationContract,
-  resetRbacEngine,
-} from "@chartwarden/auth";
-import { NotFoundError } from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 
 // DEVIATION (documented, not fixed here — out of scope, module source is off-limits for this file):

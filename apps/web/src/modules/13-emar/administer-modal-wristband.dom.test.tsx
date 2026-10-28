@@ -1,3 +1,5 @@
+import { formatWristbandPayload } from "@chartwarden/types";
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // GAP-020 -- the bedside wristband field of the administer modal.
 //
 // What this pins is the contract between the form and the server, not the barcode maths (that is the codec's
@@ -5,8 +7,6 @@
 // misread / checksum-damaged code is stopped HERE as "rescan" without a request (so a bad read never looks like
 // a wrong-patient event), and a server refusal that names a wristband reason is shown with the next step.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { formatWristbandPayload } from "@chartwarden/types";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";

@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
-import { Value } from "@sinclair/typebox/value";
 import type { DbClient } from "@chartwarden/db";
 import { DegradedError, ValidationError } from "@chartwarden/types";
+import { Value } from "@sinclair/typebox/value";
 import { describe, expect, it } from "vitest";
 import { createPsrFileStore } from "../psr/psr-file-store";
 import { CapPsrImportViewDto } from "../routes/m26-typebox";

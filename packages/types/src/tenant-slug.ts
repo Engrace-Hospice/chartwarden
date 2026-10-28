@@ -48,7 +48,8 @@ export function classifyTenantHost(host: string, baseDomain: string): TenantHost
   if (!name.endsWith(suffix)) return { kind: "outside" };
   const label = name.slice(0, -suffix.length);
   if (RESERVED_TENANT_SLUGS.includes(label)) return { kind: "reserved" };
-  if (label.includes(".") || label.startsWith("xn--") || !TENANT_SLUG_PATTERN.test(label)) return { kind: "invalid" };
+  if (label.includes(".") || label.startsWith("xn--") || !TENANT_SLUG_PATTERN.test(label))
+    return { kind: "invalid" };
   return { kind: "tenant", label };
 }
 

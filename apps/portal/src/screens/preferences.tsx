@@ -19,8 +19,7 @@ function channelLabel(channel: string): string {
   return CHANNEL_LABEL[channel] ?? "Other notification channel";
 }
 function hour(value: number): string {
-  if (!Number.isInteger(value) || value < 0 || value > 23)
-    return "time not available";
+  if (!Number.isInteger(value) || value < 0 || value > 23) return "time not available";
   const period = value < 12 ? "AM" : "PM";
   return `${value % 12 || 12}:00 ${period}`;
 }
@@ -37,21 +36,18 @@ export function PortalNotificationPreferences(): JSX.Element {
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    void attempt;
     let active = true;
     setState({ id: patientId, prefs: null, loading: true, error: null });
     void (async () => {
       try {
-        const res = await client.GET(
-          "/api/v1/portal/notification-preferences",
-          {},
-        );
+        const res = await client.GET("/api/v1/portal/notification-preferences", {});
         if (!active) return;
         setState({
           id: patientId,
           prefs: "error" in res ? null : ((res.data as Prefs) ?? null),
           loading: false,
-          error:
-            "error" in res ? readError(res.response?.status) : null,
+          error: "error" in res ? readError(res.response?.status) : null,
         });
       } catch {
         if (active)
@@ -100,15 +96,12 @@ export function PortalNotificationPreferences(): JSX.Element {
           <div>
             <h2>Notification settings</h2>
             <p>
-              These settings are shown for reference. To request a change,
-              contact your hospice care team.
+              These settings are shown for reference. To request a change, contact your hospice care
+              team.
             </p>
           </div>
         </div>
-        <section
-          className="wx-portal-settings-panel"
-          aria-labelledby="channel-settings-heading"
-        >
+        <section className="wx-portal-settings-panel" aria-labelledby="channel-settings-heading">
           <div className="wx-portal-settings-panel__heading">
             <div>
               <h2 id="channel-settings-heading">Available channels</h2>
@@ -143,25 +136,18 @@ export function PortalNotificationPreferences(): JSX.Element {
           )}
         </section>
         {prefs?.quietHours ? (
-          <section
-            className="wx-portal-settings-panel"
-            aria-labelledby="quiet-hours-heading"
-          >
+          <section className="wx-portal-settings-panel" aria-labelledby="quiet-hours-heading">
             <div className="wx-portal-settings-panel__heading">
               <div>
                 <h2 id="quiet-hours-heading">Quiet hours</h2>
-                <p>
-                  Non-urgent notifications may be limited during these hours.
-                </p>
+                <p>Non-urgent notifications may be limited during these hours.</p>
               </div>
             </div>
             <p className="wx-portal-notification-time">
-              {hour(prefs.quietHours.startHour)} –{" "}
-              {hour(prefs.quietHours.endHour)}
+              {hour(prefs.quietHours.startHour)} – {hour(prefs.quietHours.endHour)}
             </p>
             <p className="wx-portal-settings-hint">
-              This does not replace calling your care team directly for urgent
-              needs.
+              This does not replace calling your care team directly for urgent needs.
             </p>
           </section>
         ) : null}

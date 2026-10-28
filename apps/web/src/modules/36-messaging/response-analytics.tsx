@@ -6,9 +6,9 @@ import type { AnalyticsGroupBy, ResponseAnalyticsReport } from "@chartwarden/typ
 import { Button, KpiCard, KpiStrip, PageHeader } from "@chartwarden/ui";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
+import * as W from "./response-analytics-wording";
 import { SkeletonRows } from "./skeleton-rows";
 import { useResponseAnalytics } from "./use-response-analytics";
-import * as W from "./response-analytics-wording";
 import "./response-analytics.css";
 
 type OkReport = Extract<ResponseAnalyticsReport, { status: "ok" }>;

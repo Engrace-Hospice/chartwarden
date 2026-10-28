@@ -1,7 +1,7 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 2.11 round 5 — post-commit focus handoffs, empty list, announcements, and locked controls.
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { ChannelMembersDialog } from "./channel-members-dialog";

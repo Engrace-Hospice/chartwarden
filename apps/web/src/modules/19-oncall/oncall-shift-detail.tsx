@@ -17,7 +17,14 @@
 //
 // §5.1's "handoff notes" field is not built — `on_call_shift` has no such column and M19 publishes no
 // route that would carry one. A note box that discarded what was typed is worse than no note box.
-import { EmptyState, LoadingSpinner, PageHeader, StatusPill, t, useApiClient } from "@chartwarden/ui";
+import {
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  t,
+  useApiClient,
+} from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";

@@ -11,7 +11,7 @@
 // scopes every read and write by `app.org_id`.
 import { randomBytes, randomUUID } from "node:crypto";
 import { generateRecordsRequestCode } from "@chartwarden/intake-extraction";
-import { NotFoundError, ValidationError, ChartWardenError } from "@chartwarden/types";
+import { ChartWardenError, NotFoundError, ValidationError } from "@chartwarden/types";
 
 export const RECORDS_REQUEST_KINDS = [
   "history_and_physical",

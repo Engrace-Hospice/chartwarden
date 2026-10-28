@@ -1,8 +1,8 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/14-idg — the 2026-09 redesign of the Live Meeting surface: three panes, the
 // quorum banner in both states, attendance amendment, annotation-only rows for non-quorate decisions.
 // Asserts on recorded fetch calls (method + path + body), like idg-writes.dom.test.tsx.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";

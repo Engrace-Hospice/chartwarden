@@ -11,8 +11,8 @@ import { systemOrgContext, withOrgContext } from "@chartwarden/tenancy";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 
 import { markOverdueAddendumWindowsInTx } from "../election-addendum/compliance";
-import { scanExpeditedDeadlinesInTx } from "../nomnc/scan";
 import { completeActiveElectionPeriod } from "../election-period-completion";
+import { scanExpeditedDeadlinesInTx } from "../nomnc/scan";
 import { startDueRecertPeriodsForOrg } from "../recert-period-activation";
 import {
   activePeriodsPastEndForOrg,

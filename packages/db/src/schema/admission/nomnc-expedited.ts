@@ -5,6 +5,7 @@
 // tenancy, FORCEd RLS, write-audit triggers that scrub every name and free-text note.
 import { sql } from "drizzle-orm";
 import {
+  date,
   index,
   integer,
   pgTable,
@@ -12,7 +13,6 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
-  date,
 } from "drizzle-orm/pg-core";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
@@ -112,7 +112,10 @@ export const expeditedReviews = pgTable(
   },
   (t) => ({
     onePerNotice: uniqueIndex("expedited_review_one_per_notice").on(t.nomncNoticeId),
-    orgAdmissionIdx: index("expedited_review_org_admission_idx").on(t.organizationId, t.admissionId),
+    orgAdmissionIdx: index("expedited_review_org_admission_idx").on(
+      t.organizationId,
+      t.admissionId,
+    ),
   }),
 );
 

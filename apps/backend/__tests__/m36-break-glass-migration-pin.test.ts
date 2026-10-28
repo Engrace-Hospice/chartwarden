@@ -32,7 +32,9 @@ describe("migration 1140 break-glass", () => {
   it("the closed sets and numeric bounds in the SQL CHECKs and the Drizzle CHECKs are the constants", () => {
     expect(sql).toContain(`CHECK ("reason_code" IN (${inList(BREAK_GLASS_REASON_CODES)}))`);
     expect(schema).toContain(`IN (${inList(BREAK_GLASS_REASON_CODES)})`);
-    expect(sql).toContain(`CHECK ("outcome" IS NULL OR "outcome" IN (${inList(BREAK_GLASS_REVIEW_OUTCOMES)}))`);
+    expect(sql).toContain(
+      `CHECK ("outcome" IS NULL OR "outcome" IN (${inList(BREAK_GLASS_REVIEW_OUTCOMES)}))`,
+    );
     expect(sql).toContain(`CHECK ("read_kind" IN (${inList(BREAK_GLASS_READ_KINDS)}))`);
     expect(schema).toContain(`IN (${inList(BREAK_GLASS_READ_KINDS)})`);
     const range = `BETWEEN ${BREAK_GLASS_JUSTIFICATION_MIN} AND ${BREAK_GLASS_JUSTIFICATION_MAX}`;
@@ -50,16 +52,24 @@ describe("migration 1140 break-glass", () => {
       expect(sql).toContain(`CREATE TABLE "${t}"`);
       expect(sql).toContain(`ALTER TABLE "${t}" ENABLE ROW LEVEL SECURITY`);
       expect(sql).toContain(`ALTER TABLE "${t}" FORCE ROW LEVEL SECURITY`);
-      expect(sql).toContain(`CREATE POLICY "${t}_org_isolation" ON "${t}" FOR ALL TO chartwarden_app`);
-      expect(sql).toContain(`CREATE POLICY "${t}_destruction" ON "${t}" FOR ALL TO chartwarden_destruction`);
+      expect(sql).toContain(
+        `CREATE POLICY "${t}_org_isolation" ON "${t}" FOR ALL TO chartwarden_app`,
+      );
+      expect(sql).toContain(
+        `CREATE POLICY "${t}_destruction" ON "${t}" FOR ALL TO chartwarden_destruction`,
+      );
       expect(sql).toContain(`GRANT SELECT, DELETE ON "${t}" TO chartwarden_destruction`);
     }
-    expect(sql).toContain("USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)");
+    expect(sql).toContain(
+      "USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid)",
+    );
   });
 
   it("the app role never holds DELETE and can change only the revoke and review columns", () => {
     expect(sql).not.toMatch(/GRANT [^;]*DELETE[^;]*TO chartwarden_app/);
-    expect(sql).toContain('GRANT UPDATE ("revoked_at") ON "message_break_glass_grant" TO chartwarden_app');
+    expect(sql).toContain(
+      'GRANT UPDATE ("revoked_at") ON "message_break_glass_grant" TO chartwarden_app',
+    );
     expect(sql).toContain(
       'GRANT UPDATE ("reviewer_user_id", "reviewed_at", "outcome", "note") ON "message_break_glass_review" TO chartwarden_app',
     );
@@ -70,7 +80,9 @@ describe("migration 1140 break-glass", () => {
   it("the grant is insert/revoke-only on the database clock with one open grant per channel and grantee", () => {
     expect(sql).toContain("NEW.granted_at := now()");
     expect(sql).toContain("NEW.revoked_at := now()");
-    expect(sql).toContain("message_break_glass_grant_immutable: the only change allowed is ending the grant");
+    expect(sql).toContain(
+      "message_break_glass_grant_immutable: the only change allowed is ending the grant",
+    );
     expect(sql).toContain('CHECK ("expires_at" > "granted_at")');
     expect(sql).toContain(
       'CREATE UNIQUE INDEX "message_break_glass_grant_one_open" ON "message_break_glass_grant" ("organization_id", "channel_id", "grantee_user_id") WHERE "revoked_at" IS NULL',
@@ -82,7 +94,9 @@ describe("migration 1140 break-glass", () => {
     expect(sql).toContain('CREATE CONSTRAINT TRIGGER "trg_message_break_glass_grant_has_review"');
     expect(sql).toContain("DEFERRABLE INITIALLY DEFERRED");
     expect(sql).toContain("message_break_glass_grant_unreviewed");
-    expect(sql).toContain('CONSTRAINT "message_break_glass_review_grant_unique" UNIQUE ("organization_id", "grant_id")');
+    expect(sql).toContain(
+      'CONSTRAINT "message_break_glass_review_grant_unique" UNIQUE ("organization_id", "grant_id")',
+    );
   });
 
   it("the reviewer is never the grantee, the review is completed once and only after the grant ends", () => {
@@ -99,7 +113,9 @@ describe("migration 1140 break-glass", () => {
 
   it("a read is recorded only against a live grant held by the reader", () => {
     expect(sql).toContain("g.revoked_at IS NULL AND g.expires_at > now()");
-    expect(sql).toContain("g.grantee_user_id = nullif(current_setting('app.user_id', true), '')::uuid");
+    expect(sql).toContain(
+      "g.grantee_user_id = nullif(current_setting('app.user_id', true), '')::uuid",
+    );
     expect(sql).toContain("NEW.read_at := now()");
   });
 
@@ -110,7 +126,9 @@ describe("migration 1140 break-glass", () => {
       "message_break_glass_grant_has_review",
       "message_break_glass_read_guard",
     ]) {
-      expect(sql).toMatch(new RegExp(`${fn}\\(\\) RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER`));
+      expect(sql).toMatch(
+        new RegExp(`${fn}\\(\\) RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER`),
+      );
     }
     expect(sql).toContain("to_jsonb(NEW) - 'justification'");
     expect(sql).toContain("to_jsonb(NEW) - 'note'");
@@ -119,18 +137,37 @@ describe("migration 1140 break-glass", () => {
   });
 
   it("the permissions are seeded and granted to existing roles, with no aides or lpn on invoke", () => {
-    expect(sql).toContain("'messaging.break_glass.invoke', 'message_break_glass', 'invoke', 'compliance', 'none'");
-    expect(sql).toContain("'messaging.break_glass.review', 'message_break_glass', 'review', 'compliance', 'none'");
+    expect(sql).toContain(
+      "'messaging.break_glass.invoke', 'message_break_glass', 'invoke', 'compliance', 'none'",
+    );
+    expect(sql).toContain(
+      "'messaging.break_glass.review', 'message_break_glass', 'review', 'compliance', 'none'",
+    );
     const invokeBlock =
       /SELECT r\."organization_id", r\."id", 'messaging\.break_glass\.invoke' FROM "role" r WHERE r\."key" IN \(([^)]*)\)/.exec(
         sql,
       );
     expect(invokeBlock).not.toBeNull();
     const keys = (invokeBlock?.[1] ?? "").split(",").map((k) => k.trim().replace(/'/g, ""));
-    for (const banned of ["lpn", "msw", "chaplain", "chha", "aide", "hospice_aide", "home_health_aide", "compliance_officer"]) {
+    for (const banned of [
+      "lpn",
+      "msw",
+      "chaplain",
+      "chha",
+      "aide",
+      "hospice_aide",
+      "home_health_aide",
+      "compliance_officer",
+    ]) {
       expect(keys).not.toContain(banned);
     }
-    for (const needed of ["administrator", "org_admin", "rn", "medical_director", "director_of_nursing"]) {
+    for (const needed of [
+      "administrator",
+      "org_admin",
+      "rn",
+      "medical_director",
+      "director_of_nursing",
+    ]) {
       expect(keys).toContain(needed);
     }
   });

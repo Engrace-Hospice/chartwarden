@@ -39,10 +39,10 @@ import {
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { DeaSchedule, MedClass, PatientAllergyReader } from "@chartwarden/types";
 import {
+  ChartWardenError,
   NotFoundError,
   StepUpRequiredError,
   ValidationError,
-  ChartWardenError,
   assertCoverageDetermination,
 } from "@chartwarden/types";
 import {

@@ -10,13 +10,13 @@ import { type SQL, and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm"
 import {
   type AgingBucketLabel,
   type AppealTier,
-  agingBucketLabel,
   type DenialPayerKind,
+  agingBucketLabel,
   deriveTierDeadline,
 } from "../domain";
-import { type PayerBatchDeps, resolvePayerKinds } from "./denial-payer";
 import type { M25ReadActor } from "./actor";
 import { type CursorPage, decodeCursor, encodeCursor } from "./concurrency";
+import { type PayerBatchDeps, resolvePayerKinds } from "./denial-payer";
 import type {
   AppealDetail,
   AppealSummary,
@@ -452,7 +452,9 @@ export function buildDrizzleM25ReadService(
   }
   function toAppealSummary(r: typeof AC.$inferSelect): AppealSummary {
     // Rows created before CMS-correct deadlines carry no notice date: show their stored deadline as it was.
-    const derived = r.noticeDatedOn ? deriveTierDeadline(r.tier as AppealTier, r.noticeDatedOn) : null;
+    const derived = r.noticeDatedOn
+      ? deriveTierDeadline(r.tier as AppealTier, r.noticeDatedOn)
+      : null;
     return {
       id: r.id,
       denialCaseId: r.denialCaseId,

@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/08-encounters/events-by-m8.ts — Module 8's outbox-event contributions
 // (M8-T11, spec §4.4). The full `m8.*` taxonomy keyed on M8's own tables, under the `m8.` namespace
 // (M01 D8 / M03 D9). check-fitness-gaps.ts scans this file for naming (`mN.<resource>.<verb>`),
@@ -12,7 +13,6 @@
 // `payloadSchema` + declared consumers the dispatcher validates each publish against (§4.4 catalog).
 // `m8.encounter.signed` is the system's clinical-record nervous-system trigger — its payload is LOCKED.
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 /** The fourteen §2.1 encounter types (mirrors `encounter_type`, §3.2). */
 const encounterType = Type.String({ minLength: 1 });

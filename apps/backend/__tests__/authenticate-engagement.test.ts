@@ -1,6 +1,10 @@
 // apps/backend/__tests__/authenticate-engagement.test.ts — GAP-093(c): the authenticate hook stamps
 // `attributes.engagementId` ONLY from the resolver's server-side session state, never from a header.
-import { type ResolvedActor, STEP_UP_POLICY, type SessionContextResolver } from "@chartwarden/types";
+import {
+  type ResolvedActor,
+  STEP_UP_POLICY,
+  type SessionContextResolver,
+} from "@chartwarden/types";
 import type { FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import { createSessionAuthenticate } from "../src/bootstrap/index";
@@ -112,7 +116,9 @@ describe("authenticate hook - screen unlock for auditor sessions (#589)", () => 
 
   it("lets an ACTIVE auditor unlock, but still refuses any other write", async () => {
     await expect(callAs(ACTOR, "POST", "/api/v1/auth/unlock")).resolves.toBeUndefined();
-    await expect(callAs(ACTOR, "POST", "/api/v1/patients")).rejects.toMatchObject({ code: "AUDITOR_READ_ONLY" });
+    await expect(callAs(ACTOR, "POST", "/api/v1/patients")).rejects.toMatchObject({
+      code: "AUDITOR_READ_ONLY",
+    });
   });
 
   it("lets an ENROLMENT-stage auditor unlock, but still refuses the engagement read", async () => {

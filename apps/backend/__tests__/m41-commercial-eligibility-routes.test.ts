@@ -34,7 +34,11 @@ const PAYER = "55555555-5555-4555-8555-555555555555";
 const MEMBER_ID = "SYNTH-MEMBER-4242";
 const KEYS: Record<string, string[]> = {
   biller: ["commercial_billing.read", "commercial_billing.write"],
-  admin: ["commercial_billing.read", "commercial_billing.write", "commercial_billing.manage_enrollment"],
+  admin: [
+    "commercial_billing.read",
+    "commercial_billing.write",
+    "commercial_billing.manage_enrollment",
+  ],
   nobody: [],
 };
 
@@ -42,7 +46,12 @@ class Store implements EligibilityStore {
   checks: StoredEligibilityCheck[] = [];
   enrollments: StoredEnrollment[] = [];
   async loadPlan() {
-    return { id: PLAN, payerId: PAYER, eligibilityStalenessPolicy: "warn" as const, eligibilityMaxAgeDays: 30 };
+    return {
+      id: PLAN,
+      payerId: PAYER,
+      eligibilityStalenessPolicy: "warn" as const,
+      eligibilityMaxAgeDays: 30,
+    };
   }
   async routesFor() {
     return [{ clearinghousePayerId: "CH-9", effectiveFrom: "2026-01-01", effectiveTo: null }];
@@ -52,27 +61,55 @@ class Store implements EligibilityStore {
     if (!this.requireEnrollment) {
       return [{ status: "enrolled" as const, effectiveFrom: "2026-01-01", effectiveTo: null }];
     }
-    return this.enrollments.map((e) => ({ status: e.status, effectiveFrom: e.effectiveFrom, effectiveTo: e.effectiveTo }));
+    return this.enrollments.map((e) => ({
+      status: e.status,
+      effectiveFrom: e.effectiveFrom,
+      effectiveTo: e.effectiveTo,
+    }));
   }
   async findCheckByIdempotencyKey() {
     return null;
   }
   async insertCheck(scope: { organizationId: string }, row: NewEligibilityCheck) {
-    const stored = { ...row, organizationId: scope.organizationId, id: "66666666-6666-4666-8666-666666666666", checkedAt: new Date().toISOString() };
+    const stored = {
+      ...row,
+      organizationId: scope.organizationId,
+      id: "66666666-6666-4666-8666-666666666666",
+      checkedAt: new Date().toISOString(),
+    };
     this.checks.push(stored);
     return { row: stored, replayed: false };
   }
   async listChecks() {
     return this.checks;
   }
-  async setPlanEligibilityPolicy(_s: unknown, _id: string, policy: "warn" | "block", maxAge: number) {
-    return { id: PLAN, payerId: PAYER, eligibilityStalenessPolicy: policy, eligibilityMaxAgeDays: maxAge };
+  async setPlanEligibilityPolicy(
+    _s: unknown,
+    _id: string,
+    policy: "warn" | "block",
+    maxAge: number,
+  ) {
+    return {
+      id: PLAN,
+      payerId: PAYER,
+      eligibilityStalenessPolicy: policy,
+      eligibilityMaxAgeDays: maxAge,
+    };
   }
   async listEnrollments() {
     return this.enrollments;
   }
-  async createEnrollment(_s: unknown, row: Omit<StoredEnrollment, "id" | "organizationId" | "createdAt" | "updatedAt">) {
-    const e = { ...row, id: "77777777-7777-4777-8777-777777777777", organizationId: ORG, createdAt: "2026-10-25T00:00:00.000Z", updatedAt: "2026-10-25T00:00:00.000Z" };
+  async createEnrollment(
+    _s: unknown,
+    row: Omit<StoredEnrollment, "id" | "organizationId" | "createdAt" | "updatedAt">,
+  ) {
+    const e = {
+      ...row,
+      id: "77777777-7777-4777-8777-777777777777",
+      organizationId: ORG,
+      createdAt: "2026-10-25T00:00:00.000Z",
+      updatedAt: "2026-10-25T00:00:00.000Z",
+    };
     this.enrollments.push(e);
     return e;
   }
@@ -120,7 +157,10 @@ function makeServer() {
   );
   const registry = createPredicateRegistry();
   registry.register("step_up_recent", async (ctx) => ctx.attributes.stepUpRecent === true);
-  registry.register("provider_entity_billing_scope", async (_ctx, target) => (target as { providerEntityId?: string }).providerEntityId === PE);
+  registry.register(
+    "provider_entity_billing_scope",
+    async (_ctx, target) => (target as { providerEntityId?: string }).providerEntityId === PE,
+  );
   registry.register("caseload_or_scope", async () => true);
   registerAbacRegistry(registry);
   const store = new Store();
@@ -173,7 +213,7 @@ let keySeq = 0;
 // A fresh key per request: the M1 idempotency middleware (rightly) answers 409 when a key is reused with a different body.
 const as = (user: string, extra: Record<string, string> = {}) => ({
   "x-test-user": user,
-  "idempotency-key": `idem-${(keySeq += 1)}`,
+  "idempotency-key": `idem-${++keySeq}`,
   ...extra,
 });
 const code = (res: { json(): { error?: { code?: string } } }) => res.json().error?.code;
@@ -181,7 +221,12 @@ const code = (res: { json(): { error?: { code?: string } } }) => res.json().erro
 describe("POST /billing/commercial/eligibility/check", () => {
   it("runs the check, answers 200 uncached and never contains the member id", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: CHECK, headers: as("biller"), payload: body });
+    const res = await app.inject({
+      method: "POST",
+      url: CHECK,
+      headers: as("biller"),
+      payload: body,
+    });
     expect(res.statusCode).toBe(200);
     expect(res.headers["cache-control"]).toBe("no-store");
     expect(res.json()).toMatchObject({ outcome: "active", replayed: false, planId: PLAN });
@@ -191,26 +236,44 @@ describe("POST /billing/commercial/eligibility/check", () => {
 
   it("is 403 without the permission and 401 without a session", async () => {
     const { app } = makeServer();
-    expect((await app.inject({ method: "POST", url: CHECK, headers: as("nobody"), payload: body })).statusCode).toBe(403);
+    expect(
+      (await app.inject({ method: "POST", url: CHECK, headers: as("nobody"), payload: body }))
+        .statusCode,
+    ).toBe(403);
     expect((await app.inject({ method: "POST", url: CHECK, payload: body })).statusCode).toBe(401);
   });
 
   it("requires an Idempotency-Key", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: CHECK, headers: { "x-test-user": "biller" }, payload: body });
+    const res = await app.inject({
+      method: "POST",
+      url: CHECK,
+      headers: { "x-test-user": "biller" },
+      payload: body,
+    });
     expect(res.statusCode).toBe(400);
     expect(code(res)).toBe("IDEMPOTENCY_KEY_REQUIRED");
   });
 
   it("refuses an AI actor", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: CHECK, headers: as("biller", { "x-ai": "1" }), payload: body });
+    const res = await app.inject({
+      method: "POST",
+      url: CHECK,
+      headers: as("biller", { "x-ai": "1" }),
+      payload: body,
+    });
     expect(res.statusCode).toBe(403);
   });
 
   it("refuses a body that carries a member id, with the standard envelope and without echoing it", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "POST", url: CHECK, headers: as("biller"), payload: { ...body, memberId: MEMBER_ID } });
+    const res = await app.inject({
+      method: "POST",
+      url: CHECK,
+      headers: as("biller"),
+      payload: { ...body, memberId: MEMBER_ID },
+    });
     expect(res.statusCode).toBe(422);
     expect(code(res)).toBe("VALIDATION_FAILED");
     expect(res.body).not.toContain(MEMBER_ID);
@@ -219,7 +282,12 @@ describe("POST /billing/commercial/eligibility/check", () => {
   it("answers CH_NOT_WIRED (503) in the envelope when no clearinghouse is bound", async () => {
     bound = false;
     const { app, store } = makeServer();
-    const res = await app.inject({ method: "POST", url: CHECK, headers: as("biller"), payload: body });
+    const res = await app.inject({
+      method: "POST",
+      url: CHECK,
+      headers: as("biller"),
+      payload: body,
+    });
     expect(res.statusCode).toBe(503);
     expect(code(res)).toBe("CH_NOT_WIRED");
     expect(store.checks).toHaveLength(0);
@@ -228,7 +296,12 @@ describe("POST /billing/commercial/eligibility/check", () => {
   it("answers COMMERCIAL_PROVIDER_NOT_ENROLLED (409) when the provider entity is not enrolled", async () => {
     const { app, store } = makeServer();
     store.requireEnrollment = true;
-    const res = await app.inject({ method: "POST", url: CHECK, headers: as("biller"), payload: body });
+    const res = await app.inject({
+      method: "POST",
+      url: CHECK,
+      headers: as("biller"),
+      payload: body,
+    });
     expect(res.statusCode).toBe(409);
     expect(code(res)).toBe("COMMERCIAL_PROVIDER_NOT_ENROLLED");
     expect(store.checks).toHaveLength(0);
@@ -237,17 +310,47 @@ describe("POST /billing/commercial/eligibility/check", () => {
 
 describe("enrollment routes", () => {
   const ENR = "/api/v1/billing/commercial/enrollments";
-  const enrollBody = { providerEntityId: PE, payerId: PAYER, clearinghouseKey: "in_memory", status: "enrolled", effectiveFrom: "2026-01-01" };
+  const enrollBody = {
+    providerEntityId: PE,
+    payerId: PAYER,
+    clearinghouseKey: "in_memory",
+    status: "enrolled",
+    effectiveFrom: "2026-01-01",
+  };
 
   it("create needs manage_enrollment, a fresh step-up and an Idempotency-Key", async () => {
     const { app } = makeServer();
-    expect((await app.inject({ method: "POST", url: ENR, headers: as("biller", { "x-fresh": "1" }), payload: enrollBody })).statusCode).toBe(403);
-    const stale = await app.inject({ method: "POST", url: ENR, headers: as("admin"), payload: enrollBody });
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: ENR,
+          headers: as("biller", { "x-fresh": "1" }),
+          payload: enrollBody,
+        })
+      ).statusCode,
+    ).toBe(403);
+    const stale = await app.inject({
+      method: "POST",
+      url: ENR,
+      headers: as("admin"),
+      payload: enrollBody,
+    });
     expect(stale.statusCode).toBe(403);
     expect(code(stale)).toBe("STEP_UP_REQUIRED");
-    const noKey = await app.inject({ method: "POST", url: ENR, headers: { "x-test-user": "admin", "x-fresh": "1" }, payload: enrollBody });
+    const noKey = await app.inject({
+      method: "POST",
+      url: ENR,
+      headers: { "x-test-user": "admin", "x-fresh": "1" },
+      payload: enrollBody,
+    });
     expect(noKey.statusCode).toBe(400);
-    const ok = await app.inject({ method: "POST", url: ENR, headers: as("admin", { "x-fresh": "1" }), payload: enrollBody });
+    const ok = await app.inject({
+      method: "POST",
+      url: ENR,
+      headers: as("admin", { "x-fresh": "1" }),
+      payload: enrollBody,
+    });
     expect(ok.statusCode).toBe(201);
     expect(ok.json()).toMatchObject({ status: "enrolled", clearinghouseKey: "in_memory" });
   });
@@ -255,21 +358,40 @@ describe("enrollment routes", () => {
   it("an enrolled provider entity then passes the gate on the next check", async () => {
     const { app, store } = makeServer();
     store.requireEnrollment = true;
-    await app.inject({ method: "POST", url: ENR, headers: as("admin", { "x-fresh": "1" }), payload: enrollBody });
-    const res = await app.inject({ method: "POST", url: CHECK, headers: as("biller"), payload: body });
+    await app.inject({
+      method: "POST",
+      url: ENR,
+      headers: as("admin", { "x-fresh": "1" }),
+      payload: enrollBody,
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: CHECK,
+      headers: as("biller"),
+      payload: body,
+    });
     expect(res.statusCode).toBe(200);
   });
 
   it("lists enrollments for a provider entity", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: `${ENR}?providerEntityId=${PE}`, headers: { "x-test-user": "biller" } });
+    const res = await app.inject({
+      method: "GET",
+      url: `${ENR}?providerEntityId=${PE}`,
+      headers: { "x-test-user": "biller" },
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ items: [] });
   });
 
   it("patching an enrollment that is not the provider entity's is a 404", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "PATCH", url: `${ENR}/77777777-7777-4777-8777-777777777777`, headers: as("admin", { "x-fresh": "1" }), payload: { providerEntityId: PE, status: "suspended" } });
+    const res = await app.inject({
+      method: "PATCH",
+      url: `${ENR}/77777777-7777-4777-8777-777777777777`,
+      headers: as("admin", { "x-fresh": "1" }),
+      payload: { providerEntityId: PE, status: "suspended" },
+    });
     expect(res.statusCode).toBe(404);
   });
 });
@@ -278,19 +400,50 @@ describe("eligibility policy and reads", () => {
   it("sets a plan's policy and validates the range", async () => {
     const { app } = makeServer();
     const url = `/api/v1/billing/commercial/payer-plans/${PLAN}/eligibility-policy`;
-    expect((await app.inject({ method: "PATCH", url, headers: as("biller", { "x-fresh": "1" }), payload: { policy: "block", maxAgeDays: 14 } })).statusCode).toBe(403);
-    const stale = await app.inject({ method: "PATCH", url, headers: as("admin"), payload: { policy: "warn", maxAgeDays: 90 } });
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url,
+          headers: as("biller", { "x-fresh": "1" }),
+          payload: { policy: "block", maxAgeDays: 14 },
+        })
+      ).statusCode,
+    ).toBe(403);
+    const stale = await app.inject({
+      method: "PATCH",
+      url,
+      headers: as("admin"),
+      payload: { policy: "warn", maxAgeDays: 90 },
+    });
     expect(code(stale)).toBe("STEP_UP_REQUIRED");
-    const ok = await app.inject({ method: "PATCH", url, headers: as("admin", { "x-fresh": "1" }), payload: { policy: "block", maxAgeDays: 14 } });
+    const ok = await app.inject({
+      method: "PATCH",
+      url,
+      headers: as("admin", { "x-fresh": "1" }),
+      payload: { policy: "block", maxAgeDays: 14 },
+    });
     expect(ok.statusCode).toBe(200);
-    expect(ok.json()).toMatchObject({ eligibilityStalenessPolicy: "block", eligibilityMaxAgeDays: 14 });
-    const bad = await app.inject({ method: "PATCH", url, headers: as("admin", { "x-fresh": "1" }), payload: { policy: "block", maxAgeDays: 400 } });
+    expect(ok.json()).toMatchObject({
+      eligibilityStalenessPolicy: "block",
+      eligibilityMaxAgeDays: 14,
+    });
+    const bad = await app.inject({
+      method: "PATCH",
+      url,
+      headers: as("admin", { "x-fresh": "1" }),
+      payload: { policy: "block", maxAgeDays: 400 },
+    });
     expect(bad.statusCode).toBe(422);
   });
 
   it("a read without the provider entity is refused (404, fail closed) and are scope-checked", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: `/api/v1/billing/commercial/eligibility?patientId=${PATIENT}`, headers: { "x-test-user": "biller" } });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/billing/commercial/eligibility?patientId=${PATIENT}`,
+      headers: { "x-test-user": "biller" },
+    });
     expect(res.statusCode).toBe(404);
   });
 
@@ -298,10 +451,20 @@ describe("eligibility policy and reads", () => {
     const { app } = makeServer();
     const other = "99999999-0000-4000-8000-000000000001";
     const q = `patientId=${PATIENT}&planId=${PLAN}&providerEntityId=${other}`;
-    for (const url of [`/api/v1/billing/commercial/eligibility?${q}`, `/api/v1/billing/commercial/eligibility/latest?${q}`]) {
-      expect((await app.inject({ method: "GET", url, headers: { "x-test-user": "biller" } })).statusCode).toBe(404);
+    for (const url of [
+      `/api/v1/billing/commercial/eligibility?${q}`,
+      `/api/v1/billing/commercial/eligibility/latest?${q}`,
+    ]) {
+      expect(
+        (await app.inject({ method: "GET", url, headers: { "x-test-user": "biller" } })).statusCode,
+      ).toBe(404);
     }
-    const res = await app.inject({ method: "POST", url: CHECK, headers: as("biller"), payload: { ...body, providerEntityId: other } });
+    const res = await app.inject({
+      method: "POST",
+      url: CHECK,
+      headers: as("biller"),
+      payload: { ...body, providerEntityId: other },
+    });
     expect(res.statusCode).toBe(404);
   });
 
@@ -319,7 +482,11 @@ describe("eligibility policy and reads", () => {
 
   it("latest reports a missing check as a warning under the default policy", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: `/api/v1/billing/commercial/eligibility/latest?providerEntityId=${PE}&patientId=${PATIENT}&planId=${PLAN}`, headers: { "x-test-user": "biller" } });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/billing/commercial/eligibility/latest?providerEntityId=${PE}&patientId=${PATIENT}&planId=${PLAN}`,
+      headers: { "x-test-user": "biller" },
+    });
     expect(res.statusCode).toBe(200);
     expect(res.json().freshness).toMatchObject({ status: "missing", severity: "warning" });
   });

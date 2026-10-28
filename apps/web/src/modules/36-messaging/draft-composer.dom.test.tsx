@@ -1,9 +1,9 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 /**
  * WP 2.5 wired into the real composers: the channel composer restores a server draft and autosaves typing, and the
  * thread panel's reply composer does the same for its root.
  */
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { ConversationThread } from "./conversation-thread";

@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import type { QuietWindow } from "../listener/quiet-window";
 
 import {
+  ChartWardenError,
   ConflictError,
   type ExternalFeedCredentialKind,
   type ExternalFeedKind,
@@ -31,7 +32,6 @@ import {
   type LabAbnormalSummary,
   NotFoundError,
   ValidationError,
-  ChartWardenError,
 } from "@chartwarden/types";
 
 import {

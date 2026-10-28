@@ -102,4 +102,3 @@ export function makeFakeAlarmIngestStore() {
   };
   return { store, sources, events };
 }
-

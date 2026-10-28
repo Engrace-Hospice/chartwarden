@@ -1,3 +1,4 @@
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/22-documents — #91: the M22 write controls must not be inert.
 //
 // Before this change `apps/web/src/modules/22-documents` issued ZERO mutations — 1537 lines across
@@ -11,7 +12,6 @@
 // RECORDED FETCH CALLS, which for M22 also proves something a spy over the api client could not: that
 // the bytes go DIRECTLY to object storage and never through the API.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import type { JSX } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

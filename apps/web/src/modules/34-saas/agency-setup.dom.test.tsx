@@ -1,11 +1,11 @@
+import { ApiClientProvider } from "@chartwarden/ui";
+import type { ApiClient } from "@chartwarden/ui";
 // @vitest-environment jsdom
 // A new tenant has no provider entity (CCN / NPI / EIN) and no service location, and nothing in either app created
 // them — the ops runbook said "psql or scripts/db/seed.ts". The onboarding checks (`ccn_registered`, `org_seeded`,
 // `locations_seeded`) read exactly these rows, so a tenant could not finish onboarding on its own. This screen
 // creates both through the existing M2 org-admin routes.
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { ApiClientProvider } from "@chartwarden/ui";
-import type { ApiClient } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { AgencySetup } from "./agency-setup";
 

@@ -56,7 +56,9 @@ export function checkClaimBalance(c: ClaimCents, n: number): void {
   c.lines.forEach((l, i) => {
     const adj = sum(l.adjustments.map((a) => a.cents));
     if (l.charge - l.paid - adj !== 0) {
-      unbalanced(`claim ${n} service line ${i + 1} does not balance (charge - paid - CAS = ${usd(l.charge - l.paid - adj)})`);
+      unbalanced(
+        `claim ${n} service line ${i + 1} does not balance (charge - paid - CAS = ${usd(l.charge - l.paid - adj)})`,
+      );
     }
   });
   if (c.lines.length > 0 && sum(c.lines.map((l) => l.charge)) !== c.charge) {
@@ -72,7 +74,11 @@ export function checkClaimBalance(c: ClaimCents, n: number): void {
 }
 
 /** BPR02 must equal sum(CLP04) - sum(PLB amounts) (positive PLB reduces the payment). */
-export function checkPaymentBalance(bprCents: number, claimPaid: readonly number[], plb: readonly number[]): void {
+export function checkPaymentBalance(
+  bprCents: number,
+  claimPaid: readonly number[],
+  plb: readonly number[],
+): void {
   const expected = sum(claimPaid) - sum(plb);
   if (bprCents !== expected) {
     unbalanced(`BPR02 ${usd(bprCents)} != sum(CLP04) - sum(PLB) ${usd(expected)}`);

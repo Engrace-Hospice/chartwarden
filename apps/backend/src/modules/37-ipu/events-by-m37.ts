@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/37-ipu/events-by-m37.ts — Module 37's outbox-event contributions (§4.4). The
 // full `m37.*` taxonomy under the `m37.` namespace; check-fitness-gaps.ts scans this file for naming
 // (`m37.<resource>.<verb>`), ownership (moduleOwner='m37'), and valid declared consumers (real module ids).
@@ -8,7 +9,6 @@
 // M37 payloads are PHI-lean by construction — uuids + counts + enum lifecycle codes; never a patient name,
 // MRN, or free-text justification (those live only in the RLS-scoped rows, audit-denylisted).
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 const id = Type.String({ minLength: 1 });
 const nullableId = Type.Union([id, Type.Null()]);

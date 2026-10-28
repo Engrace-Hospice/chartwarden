@@ -8,9 +8,9 @@
 // PURE — schema checks and cross-field logic; no IO, no terminology lookups (the M38 HCPCS / RxNorm
 // resolution is a route-layer concern, and doing it here would make this package impure).
 
+import type { SupplyRequestKind } from "@chartwarden/types";
 import type { TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { SupplyRequestKind } from "@chartwarden/types";
 
 import { ComfortKitDeployRequestDataSchema } from "./comfort-kit-deploy/typebox";
 import { ComfortKitReplenishRequestDataSchema } from "./comfort-kit-replenish/typebox";

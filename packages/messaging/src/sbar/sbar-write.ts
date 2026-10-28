@@ -1,9 +1,9 @@
 // @chartwarden/messaging - the pure write-time SBAR gate (M36 WP 3.3), shared by the Drizzle service (policy read inside its
 // transaction) and the in-memory twin. A body without an sbar block passes untouched. Never echoes message text.
 import {
+  ChartWardenError,
   type EffectiveSbarPolicy,
   type RichBody,
-  ChartWardenError,
   richBodySbar,
   validateSbar,
 } from "@chartwarden/types";

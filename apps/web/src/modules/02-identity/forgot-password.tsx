@@ -26,10 +26,7 @@ export function ForgotPassword(): JSX.Element {
   }
 
   return (
-    <CenteredCardLayout
-      brand={<BrandLockup />}
-      footer={<a href="/login">Back to sign in</a>}
-    >
+    <CenteredCardLayout brand={<BrandLockup />} footer={<a href="/login">Back to sign in</a>}>
       {sent ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Check your email</h1>

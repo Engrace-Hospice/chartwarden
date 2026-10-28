@@ -110,10 +110,12 @@ function Rows({
         <tbody>
           {rows.map((cells, i) => (
             <tr
+              // biome-ignore lint/suspicious/noArrayIndexKey: a static report table; rows have no identity beyond position
               key={`${caption}-${i}`}
               style={{ borderTop: "1px solid var(--color-surface-container)" }}
             >
               {cells.map((c, j) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: cells are columns, identified by position
                 <td key={`${caption}-${i}-${j}`} style={{ padding: "0.4rem 0.75rem" }}>
                   {c}
                 </td>

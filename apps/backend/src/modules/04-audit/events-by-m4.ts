@@ -1,3 +1,4 @@
+import type { ModuleEventContribution } from "@chartwarden/types";
 // apps/backend/src/modules/04-audit/events-by-m4.ts — Module 4's outbox-event contribution
 // (GAP-003, M4 spec §7 M04-F03). The `m4.*` taxonomy under the `m4.` namespace (M01 D8 / M03 D9 /
 // M04 D9). check-fitness-gaps.ts scans this file for naming (`mN.<resource>.<verb>`), ownership
@@ -12,7 +13,6 @@
 // `[]` is the honest broadcast/no-consumer shape (the same one `m29.hl7_inbound_proposal.rejected`
 // uses for "a durable record; no consumer applies anything").
 import { Type } from "@sinclair/typebox";
-import type { ModuleEventContribution } from "@chartwarden/types";
 
 const HoldEventPayload = Type.Object({
   holdId: Type.String({ minLength: 1 }),

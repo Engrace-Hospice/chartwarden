@@ -22,11 +22,11 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ChartModuleRail } from "../../shell/chart-module-rail";
-import { useSession } from "../../shell/session";
 import { isCareTeamRole } from "../../shell/care-team-roles";
+import { ChartModuleRail } from "../../shell/chart-module-rail";
 import { GoalsProgressPanel } from "../../shell/goals-progress";
 import { ChartBanner, PatientSummaryPanel, useChartIdentity } from "../../shell/patient-context";
+import { useSession } from "../../shell/session";
 import { loadStaffNames } from "./idg-people";
 import { ACTION_TONE, MEETING_TONE, stateLabel } from "./idg-status";
 
@@ -273,9 +273,12 @@ export function PatientIdgHistory(): JSX.Element {
         const locs = await client.GET("/api/v1/locations", { params: { query: {} } });
         if (locs.error) throw new Error("locations read failed");
         const activeLocations = (locs.data?.items ?? []).filter((l) => l.status !== "inactive");
-        const items = (session?.orgWidePatientScope
-          ? activeLocations
-          : activeLocations.filter((location) => (session?.locationIds ?? []).includes(location.id))
+        const items = (
+          session?.orgWidePatientScope
+            ? activeLocations
+            : activeLocations.filter((location) =>
+                (session?.locationIds ?? []).includes(location.id),
+              )
         ).slice(0, 5);
         if (!active) return;
         setLocations(new Map(items.map((l) => [l.id, l.name])));
@@ -603,10 +606,10 @@ export function PatientIdgHistory(): JSX.Element {
                 }
               >
                 {schedulePartial ? (
-                  <p className="wx-row-sub" role="status">
+                  <output className="wx-row-sub">
                     Upcoming meetings are partially unavailable. Your IDG history remains visible;
                     retry the page to refresh scheduling context.
-                  </p>
+                  </output>
                 ) : null}
                 {next === undefined ? (
                   <LoadingSpinner />

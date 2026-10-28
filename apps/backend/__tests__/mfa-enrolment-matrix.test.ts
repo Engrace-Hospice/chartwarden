@@ -10,7 +10,11 @@ import {
   resolveMfaEnforcement,
   sessionClassRequiresMfa,
 } from "@chartwarden/auth";
-import { type ResolvedActor, STEP_UP_POLICY, type SessionContextResolver } from "@chartwarden/types";
+import {
+  type ResolvedActor,
+  STEP_UP_POLICY,
+  type SessionContextResolver,
+} from "@chartwarden/types";
 import Fastify, { type FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import { createSessionAuthenticate } from "../src/bootstrap/index";
@@ -46,10 +50,12 @@ describe("the MFA matrix (pure)", () => {
     expect(
       resolveMfaEnforcement({ NODE_ENV: "production", CHARTWARDEN_MFA_ENFORCEMENT: "false" }),
     ).toBe(false);
-    expect(resolveMfaEnforcement({ NODE_ENV: "production", CHARTWARDEN_MFA_ENFORCEMENT: "true" })).toBe(
+    expect(
+      resolveMfaEnforcement({ NODE_ENV: "production", CHARTWARDEN_MFA_ENFORCEMENT: "true" }),
+    ).toBe(true);
+    expect(resolveMfaEnforcement({ NODE_ENV: "test", CHARTWARDEN_MFA_ENFORCEMENT: "true" })).toBe(
       true,
     );
-    expect(resolveMfaEnforcement({ NODE_ENV: "test", CHARTWARDEN_MFA_ENFORCEMENT: "true" })).toBe(true);
   });
 });
 

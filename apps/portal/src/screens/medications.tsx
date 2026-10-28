@@ -48,8 +48,7 @@ const loading = <T,>(): Resource<T> => ({
 function parseAdministeredAt(value: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
   const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime()) || toLocalInput(parsed) !== value)
-    return null;
+  if (!Number.isFinite(parsed.getTime()) || toLocalInput(parsed) !== value) return null;
   if (parsed.getTime() > Date.now() + 59_999) return null;
   return parsed;
 }
@@ -59,9 +58,7 @@ function sortAdministrations(items: Administration[]): Administration[] {
     const parsed = Date.parse(value ?? "");
     return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
   };
-  return [...items].sort(
-    (a, b) => timestamp(b.administeredAt) - timestamp(a.administeredAt),
-  );
+  return [...items].sort((a, b) => timestamp(b.administeredAt) - timestamp(a.administeredAt));
 }
 
 function ResourceSkeleton({ label }: { label: string }): JSX.Element {
@@ -88,9 +85,7 @@ function ResourceError({
       <Glyph name="alert-circle" size={22} aria-hidden="true" />
       <div>
         <h3>{title}</h3>
-        <p>
-          {message ?? "We couldn't load this information. Please try again."}
-        </p>
+        <p>{message ?? "We couldn't load this information. Please try again."}</p>
       </div>
       <Button tone="secondary" onClick={onRetry}>
         <Glyph name="rotate-ccw" size={16} aria-hidden="true" /> Try again
@@ -112,9 +107,7 @@ function MedicationCard({
         </span>
         <div className="wx-medication-card__name">
           <h3>{medication.drugName || "Medication"}</h3>
-          {medication.isPrn ? (
-            <StatusPill tone="neutral" label="As needed (PRN)" />
-          ) : null}
+          {medication.isPrn ? <StatusPill tone="neutral" label="As needed (PRN)" /> : null}
         </div>
       </div>
       <dl className="wx-medication-card__details">
@@ -124,9 +117,7 @@ function MedicationCard({
         </div>
         <div>
           <dt>Route</dt>
-          <dd>
-            {medication.route ? humanize(medication.route) : "Not specified"}
-          </dd>
+          <dd>{medication.route ? humanize(medication.route) : "Not specified"}</dd>
         </div>
         <div className="wx-medication-card__schedule">
           <dt>Schedule</dt>
@@ -149,15 +140,10 @@ function MedicationList({
   resource: Resource<Medication>;
   retry: () => void;
 }): JSX.Element {
-  if (resource.status === "loading")
-    return <ResourceSkeleton label="Loading active medications" />;
+  if (resource.status === "loading") return <ResourceSkeleton label="Loading active medications" />;
   if (resource.status === "error")
     return (
-      <ResourceError
-        title="Medications unavailable"
-        message={resource.error}
-        onRetry={retry}
-      />
+      <ResourceError title="Medications unavailable" message={resource.error} onRetry={retry} />
     );
   if (resource.items.length === 0) {
     return (
@@ -171,10 +157,7 @@ function MedicationList({
   return (
     <ul className="wx-medications-grid" aria-label="Active medications">
       {resource.items.map((medication) => (
-        <MedicationCard
-          key={medication.medicationOrderId}
-          medication={medication}
-        />
+        <MedicationCard key={medication.medicationOrderId} medication={medication} />
       ))}
     </ul>
   );
@@ -208,7 +191,7 @@ function AdministrationHistory({
   return (
     <ul className="wx-medications-history" aria-label="Recent administrations">
       {sortAdministrations(resource.items).map((item, index) => (
-        // The existing endpoint does not expose administration IDs. Index is safe for this read-only snapshot.
+        // biome-ignore lint/suspicious/noArrayIndexKey: the endpoint exposes no administration id; read-only snapshot, never reordered
         <li key={index}>
           <span className="wx-medications-history__icon" aria-hidden="true">
             <Glyph name="check-circle" size={18} />
@@ -216,8 +199,7 @@ function AdministrationHistory({
           <div className="wx-medications-history__body">
             <strong>{item.drugName || "Medication"}</strong>
             <span>
-              {item.administeredAmount != null &&
-              Number.isFinite(item.administeredAmount)
+              {item.administeredAmount != null && Number.isFinite(item.administeredAmount)
                 ? `${item.administeredAmount}${item.administeredUnit ? ` ${item.administeredUnit}` : " (unit not specified)"}`
                 : "Amount not available"}
             </span>
@@ -225,8 +207,7 @@ function AdministrationHistory({
           <time
             className="wx-medications-history__time"
             dateTime={
-              item.administeredAt &&
-              Number.isFinite(Date.parse(item.administeredAt))
+              item.administeredAt && Number.isFinite(Date.parse(item.administeredAt))
                 ? item.administeredAt
                 : undefined
             }
@@ -257,9 +238,7 @@ function RecordAdministrationDialog({
   const [amount, setAmount] = useState("");
   const [unit, setUnit] = useState("");
   const [route, setRoute] = useState("");
-  const [administeredAt, setAdministeredAt] = useState(() =>
-    toLocalInput(new Date()),
-  );
+  const [administeredAt, setAdministeredAt] = useState(() => toLocalInput(new Date()));
   const [attestation, setAttestation] = useState("");
   const [review, setReview] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -283,21 +262,11 @@ function RecordAdministrationDialog({
     if (open) setAdministeredAt(toLocalInput(new Date()));
   }, [open]);
 
-  const selected = medications.find(
-    (medication) => medication.medicationOrderId === orderId,
-  );
-  const validAmount =
-    amount.trim() !== "" &&
-    Number.isFinite(Number(amount)) &&
-    Number(amount) > 0;
+  const selected = medications.find((medication) => medication.medicationOrderId === orderId);
+  const validAmount = amount.trim() !== "" && Number.isFinite(Number(amount)) && Number(amount) > 0;
   const parsedTime = parseAdministeredAt(administeredAt);
   const canReview = Boolean(
-    selected &&
-    validAmount &&
-    unit.trim() &&
-    route.trim() &&
-    parsedTime &&
-    attestation.trim(),
+    selected && validAmount && unit.trim() && route.trim() && parsedTime && attestation.trim(),
   );
 
   function changeMedication(id: string): void {
@@ -338,23 +307,19 @@ function RecordAdministrationDialog({
     setFeedback(null);
     const requestPatient = patientId;
     try {
-      const result = await client.POST(
-        "/api/v1/portal/administrations/caregiver-attested",
-        {
-          body: {
-            medicationOrderId: selected.medicationOrderId,
-            administeredAt: parsedTime.toISOString(),
-            administeredAmount: Number(amount),
-            administeredUnit: unit.trim(),
-            route: route.trim(),
-            caregiverAttestationText: attestation.trim(),
-          },
+      const result = await client.POST("/api/v1/portal/administrations/caregiver-attested", {
+        body: {
+          medicationOrderId: selected.medicationOrderId,
+          administeredAt: parsedTime.toISOString(),
+          administeredAmount: Number(amount),
+          administeredUnit: unit.trim(),
+          route: route.trim(),
+          caregiverAttestationText: attestation.trim(),
         },
-      );
+      });
       if (!mounted.current || patientRef.current !== requestPatient) return;
       if ("error" in result) {
-        if (result.response?.status !== 403 && result.response?.status !== 401)
-          setUncertain(true);
+        if (result.response?.status !== 403 && result.response?.status !== 401) setUncertain(true);
         setFeedback(
           result.response?.status === 403
             ? "Your account isn't authorized to record an administration. Contact your hospice team for help."
@@ -376,8 +341,7 @@ function RecordAdministrationDialog({
       }
     } finally {
       inFlight.current = false;
-      if (mounted.current && patientRef.current === requestPatient)
-        setSubmitting(false);
+      if (mounted.current && patientRef.current === requestPatient) setSubmitting(false);
     }
   }
 
@@ -397,28 +361,26 @@ function RecordAdministrationDialog({
           <div>
             <h2>Record a dose given</h2>
             <p>
-              Only record medication that has already been given. This does not
-              change the prescription.
+              Only record medication that has already been given. This does not change the
+              prescription.
             </p>
           </div>
         </header>
         {recorded ? (
+          // biome-ignore lint/a11y/useSemanticElements: <output> allows phrasing content only; this status holds flow content.
           <div className="wx-medications-dialog__complete" role="status">
             <Glyph name="check-circle" size={30} aria-hidden="true" />
             <h3>Administration recorded</h3>
             <p>
-              Your report was received. It will appear in recent administrations
-              if available in the record.
+              Your report was received. It will appear in recent administrations if available in the
+              record.
             </p>
             <Button onClick={onClose}>Done</Button>
           </div>
         ) : review ? (
           <div className="wx-medications-review">
             <h3>Check these details before recording</h3>
-            <p>
-              This is a report of what was given, not a request to administer a
-              dose.
-            </p>
+            <p>This is a report of what was given, not a request to administer a dose.</p>
             <dl>
               <div>
                 <dt>Medication</dt>
@@ -436,16 +398,11 @@ function RecordAdministrationDialog({
               </div>
               <div>
                 <dt>Date and time given</dt>
-                <dd>
-                  {formatPortalInstant(parsedTime?.toISOString()) ??
-                    "Date unavailable"}
-                </dd>
+                <dd>{formatPortalInstant(parsedTime?.toISOString()) ?? "Date unavailable"}</dd>
               </div>
               <div>
                 <dt>Caregiver attestation</dt>
-                <dd className="wx-medications-review__attestation">
-                  {attestation.trim()}
-                </dd>
+                <dd className="wx-medications-review__attestation">{attestation.trim()}</dd>
               </div>
             </dl>
             <label className="wx-medications-review__check">
@@ -455,10 +412,7 @@ function RecordAdministrationDialog({
                 disabled={submitting}
                 onChange={(e) => setConfirmed(e.target.checked)}
               />
-              <span>
-                I confirm this information accurately describes a dose already
-                given.
-              </span>
+              <span>I confirm this information accurately describes a dose already given.</span>
             </label>
             {feedback ? (
               <p className="wx-medications-dialog__feedback" role="alert">
@@ -496,9 +450,8 @@ function RecordAdministrationDialog({
         ) : (
           <form className="wx-medications-form" onSubmit={reviewSubmission}>
             <p className="wx-medications-form__note">
-              <Glyph name="info" size={17} aria-hidden="true" /> Only a primary
-              caregiver or healthcare DPOA may record an administration. Your
-              care team can help with access.
+              <Glyph name="info" size={17} aria-hidden="true" /> Only a primary caregiver or
+              healthcare DPOA may record an administration. Your care team can help with access.
             </p>
             <SelectField
               label="Medication"
@@ -521,15 +474,11 @@ function RecordAdministrationDialog({
                 <strong>Prescription reference</strong>
                 <span>
                   {selected.dose || "Dose not specified"} ·{" "}
-                  {selected.route
-                    ? humanize(selected.route)
-                    : "Route not specified"}
+                  {selected.route ? humanize(selected.route) : "Route not specified"}
                 </span>
                 <small>
                   {selected.scheduleSummary ||
-                    (selected.isPrn
-                      ? "As needed (PRN)"
-                      : "Schedule not specified")}
+                    (selected.isPrn ? "As needed (PRN)" : "Schedule not specified")}
                 </small>
               </div>
             ) : null}
@@ -560,9 +509,7 @@ function RecordAdministrationDialog({
                 placeholder="e.g. oral"
               />
               <div className="wx-medications-form__date">
-                <label htmlFor="wx-medication-administered-at">
-                  Date and time given
-                </label>
+                <label htmlFor="wx-medication-administered-at">Date and time given</label>
                 <input
                   id="wx-medication-administered-at"
                   type="datetime-local"
@@ -572,8 +519,8 @@ function RecordAdministrationDialog({
                   required
                 />
                 <small>
-                  Enter when the medication was actually administered, not when
-                  you are recording it.
+                  Enter when the medication was actually administered, not when you are recording
+                  it.
                 </small>
               </div>
             </div>
@@ -587,8 +534,7 @@ function RecordAdministrationDialog({
             />
             {administeredAt && !parsedTime ? (
               <p className="wx-medications-form__invalid" role="alert">
-                Enter a valid administration date and time that is not in the
-                future.
+                Enter a valid administration date and time that is not in the future.
               </p>
             ) : null}
             <footer>
@@ -609,12 +555,7 @@ function RecordAdministrationDialog({
 /** Keying the page prevents in-flight reads or form drafts from crossing patient boundaries. */
 export function PortalMedicationList(): JSX.Element {
   const { patientId } = usePortalPatient();
-  return (
-    <MedicationPageForPatient
-      key={patientId ?? "no-patient"}
-      patientId={patientId}
-    />
-  );
+  return <MedicationPageForPatient key={patientId ?? "no-patient"} patientId={patientId} />;
 }
 
 function MedicationPageForPatient({
@@ -631,14 +572,12 @@ function MedicationPageForPatient({
 
   useEffect(() => {
     void medAttempt;
+    void patientId; // the session is patient-bound: a patient switch refetches
     let active = true;
     setMeds(loading());
     void (async () => {
       try {
-        const result = await client.GET(
-          "/api/v1/portal/medications/active",
-          {},
-        );
+        const result = await client.GET("/api/v1/portal/medications/active", {});
         if (!active) return;
         setMeds(
           "error" in result
@@ -654,8 +593,7 @@ function MedicationPageForPatient({
               },
         );
       } catch {
-        if (active)
-          setMeds({ status: "error", items: [], error: readError(undefined) });
+        if (active) setMeds({ status: "error", items: [], error: readError(undefined) });
       }
     })();
     return () => {
@@ -665,14 +603,12 @@ function MedicationPageForPatient({
 
   useEffect(() => {
     void historyAttempt;
+    void patientId;
     let active = true;
     setHistory(loading());
     void (async () => {
       try {
-        const result = await client.GET(
-          "/api/v1/portal/administrations/recent",
-          {},
-        );
+        const result = await client.GET("/api/v1/portal/administrations/recent", {});
         if (!active) return;
         setHistory(
           "error" in result
@@ -713,8 +649,7 @@ function MedicationPageForPatient({
       actions={
         meds.status === "ready" && meds.items.length > 0 && patientId ? (
           <Button onClick={() => setDialogOpen(true)}>
-            <Glyph name="clipboard-check" size={18} aria-hidden="true" /> Record
-            a dose given
+            <Glyph name="clipboard-check" size={18} aria-hidden="true" /> Record a dose given
           </Button>
         ) : null
       }
@@ -723,15 +658,11 @@ function MedicationPageForPatient({
         <div className="wx-medications-intro" role="note">
           <Glyph name="info" size={20} aria-hidden="true" />
           <p>
-            For your reference: follow your hospice team's medication
-            instructions. This portal does not change prescriptions or recommend
-            doses.
+            For your reference: follow your hospice team's medication instructions. This portal does
+            not change prescriptions or recommend doses.
           </p>
         </div>
-        <section
-          aria-labelledby="wx-medications-active-title"
-          className="wx-medications-section"
-        >
+        <section aria-labelledby="wx-medications-active-title" className="wx-medications-section">
           <div className="wx-medications-section__heading">
             <div>
               <span className="wx-medications-eyebrow">YOUR CARE</span>
@@ -753,12 +684,8 @@ function MedicationPageForPatient({
           >
             <div className="wx-medications-section__heading">
               <div>
-                <span className="wx-medications-eyebrow">
-                  RECENTLY RECORDED
-                </span>
-                <h2 id="wx-medications-history-title">
-                  Recent administrations
-                </h2>
+                <span className="wx-medications-eyebrow">RECENTLY RECORDED</span>
+                <h2 id="wx-medications-history-title">Recent administrations</h2>
                 <p>Reports of doses already given.</p>
               </div>
               <button
@@ -772,31 +699,20 @@ function MedicationPageForPatient({
             </div>
             <AdministrationHistory resource={history} retry={retryHistory} />
           </section>
-          <aside
-            className="wx-medications-record-card"
-            aria-label="Administration guidance"
-          >
-            <span
-              className="wx-medications-record-card__icon"
-              aria-hidden="true"
-            >
+          <aside className="wx-medications-record-card" aria-label="Administration guidance">
+            <span className="wx-medications-record-card__icon" aria-hidden="true">
               <Glyph name="clipboard-check" size={23} />
             </span>
             <h2>Record a dose given</h2>
-            <p>
-              Authorized caregivers can report a dose that has already been
-              administered.
-            </p>
+            <p>Authorized caregivers can report a dose that has already been administered.</p>
             <p>This records an administration; it does not change an order.</p>
             {meds.status === "ready" && meds.items.length > 0 && patientId ? (
               <Button tone="secondary" onClick={() => setDialogOpen(true)}>
-                Record administration{" "}
-                <Glyph name="arrow-right" size={17} aria-hidden="true" />
+                Record administration <Glyph name="arrow-right" size={17} aria-hidden="true" />
               </Button>
             ) : (
               <span className="wx-medications-record-card__hint">
-                Medication information must be available before a dose can be
-                recorded.
+                Medication information must be available before a dose can be recorded.
               </span>
             )}
           </aside>

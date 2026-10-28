@@ -5,7 +5,11 @@ import { createApiClient } from "@chartwarden/ui";
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "./app";
-import { getGlobalResponseSignal, handleObservedResponse, setGlobalResponseSignal } from "./global-response-signal";
+import {
+  getGlobalResponseSignal,
+  handleObservedResponse,
+  setGlobalResponseSignal,
+} from "./global-response-signal";
 import { createScreenRegistry } from "./screen-registry";
 import { systemScreens } from "./system-pages";
 
@@ -27,7 +31,11 @@ function mount(fetch: () => Promise<Response>, at: string) {
   const registry = createScreenRegistry();
   registry.register(systemScreens);
   window.history.pushState({}, "", at);
-  const client = createApiClient({ baseUrl: "http://localhost", fetch, onResponseStatus: handleObservedResponse });
+  const client = createApiClient({
+    baseUrl: "http://localhost",
+    fetch,
+    onResponseStatus: handleObservedResponse,
+  });
   render(
     <AppShell
       registry={registry}
@@ -58,7 +66,10 @@ describe("tenant refusal end to end", () => {
   });
 
   it("does not navigate again when already on /tenant-unavailable (the page keeps its reason)", async () => {
-    const client = mount(refusal("TENANT_HOST_UNKNOWN", 404), "/tenant-unavailable?reason=suspended");
+    const client = mount(
+      refusal("TENANT_HOST_UNKNOWN", 404),
+      "/tenant-unavailable?reason=suspended",
+    );
     expect(await screen.findByRole("heading", { name: /suspended/i })).toBeTruthy();
     await client.GET("/api/v1/patients" as never, {} as never);
     await waitFor(() => expect(getGlobalResponseSignal()).toBeNull());

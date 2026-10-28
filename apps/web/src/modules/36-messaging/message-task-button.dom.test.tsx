@@ -1,8 +1,8 @@
+import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 3.4: the message-row trigger. Hidden while the tenant has tasks off (read once from the tasks list route's
 // `enabled` field and shared by every row), opens the dialog, and gives focus back.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type ApiClient, ApiClientProvider } from "@chartwarden/ui";
 import { describe, expect, it, vi } from "vitest";
 import { MessageTaskButton } from "./message-task-button";
 

@@ -1,7 +1,7 @@
+import { ApiClientProvider } from "@chartwarden/ui";
 // M36 WP 3.10: the composer action is shown only when the options route allows it, and keeps its outcome on screen.
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ApiClientProvider } from "@chartwarden/ui";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { MedicationQuestionButton } from "./medication-question-button";

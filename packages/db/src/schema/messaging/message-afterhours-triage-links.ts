@@ -2,7 +2,16 @@
 // 1132: org RLS (FORCEd), a UNIQUE message and source event, an update guard that lets only triage_call_id and outcome move, once.
 // Ids, one closed outcome and instants only. No FK to M19 (M36 never references M19 tables) and none to the purged outbox row.
 import { sql } from "drizzle-orm";
-import { check, foreignKey, index, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import {
+  check,
+  foreignKey,
+  index,
+  pgTable,
+  text,
+  timestamp,
+  unique,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 import { messageAckRequests } from "./message-acknowledgments";
 

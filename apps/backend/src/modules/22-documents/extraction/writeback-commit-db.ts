@@ -14,11 +14,11 @@
 // half-committed, and the reviewer sees the error instead of a "complete" that wrote nothing.
 import { type DbClient, schema } from "@chartwarden/db";
 import {
+  ChartWardenError,
   DOCLENS_M5_WRITEBACK_FIELDS,
   DegradedError,
   type ExtractionCommitRequestedPayload,
   M22_EXTRACTION_COMMIT_REQUESTED_EVENT,
-  ChartWardenError,
 } from "@chartwarden/types";
 import { and, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import type { CandidateValueCipher } from "./candidate-value-cipher";
