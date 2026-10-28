@@ -199,6 +199,32 @@ describe("classifyBash — review regressions (2026-10-27)", () => {
     expect(d("git push origin main:main")).toBe("ask");
     expect(d("git push origin +main")).toBe("deny");
   });
+  it("sees the git subcommand past global options (-C, -c, --git-dir)", () => {
+    expect(d("git -C ../other push origin main")).toBe("ask");
+    expect(d("git -C . push --force origin main")).toBe("deny");
+    expect(d("git --git-dir=.git push origin +main")).toBe("deny");
+    expect(d("git -C . commit -n -m wip")).toBe("deny");
+    expect(d("git -C ../other push -u origin feat/x", "feat/x")).toBe("allow");
+    expect(d("git -c core.hooksPath=/dev/null commit -m wip")).toBe("deny");
+    expect(d("git -c core.fsmonitor=./x status")).toBe("deny");
+    expect(d("git -c alias.st='!sh x' st")).toBe("deny");
+    expect(d("git --config-env=core.hooksPath=EVIL commit -m wip")).toBe("deny");
+    expect(d("git -c color.ui=never status")).toBe("allow");
+  });
+  it("keeps git diff/log/show/branch read-only", () => {
+    expect(d("git diff --output=/tmp/x main...HEAD")).toBe("deny");
+    expect(d("git log --ext-diff -p")).toBe("deny");
+    expect(d("git show --output=x HEAD")).toBe("deny");
+    expect(d("git diff --stat main...HEAD")).toBe("allow");
+    expect(d("git branch -D feat/x")).toBe("deny");
+    expect(d("git branch -f main HEAD")).toBe("deny");
+    expect(d("git branch -m old new")).toBe("deny");
+    expect(d("git branch --delete feat/x")).toBe("deny");
+    expect(d("git branch --set-upstream-to=origin/main")).toBe("deny");
+    expect(d("git branch -vv")).toBe("allow");
+    expect(d("git branch --list 'feat/*'")).toBe("allow");
+    expect(d("git branch --show-current")).toBe("allow");
+  });
   it("treats only dev-style chartwarden values as placeholders", () => {
     const prod = ["postgres://app:chartwardenProdPw", "1.2.3.4.example-host.net/cw"].join("@");
     expect(scanContent(prod, REG).map((x) => x.kind)).toEqual(["db-url-password"]);

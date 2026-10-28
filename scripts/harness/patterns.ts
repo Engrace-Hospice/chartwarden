@@ -326,6 +326,39 @@ function composeSubcommand(args: readonly string[]): string {
   return "";
 }
 
+/**
+ * A `git` invocation split into its subcommand and the arguments after it. Git's global options come
+ * BEFORE the subcommand (`git -C dir push`, `git -c core.hooksPath=/dev/null commit`), so reading the
+ * first non-flag word as the subcommand would take `dir` for it and wave the push or commit through.
+ */
+function gitInvocation(args: readonly string[]): {
+  sub: string;
+  rest: string[];
+  configs: string[];
+} {
+  const takesValue =
+    /^(-C|-c|--git-dir|--work-tree|--namespace|--exec-path|--super-prefix|--config-env)$/;
+  const configs: string[] = [];
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k] ?? "";
+    if (takesValue.test(a)) {
+      if (a === "-c" || a === "--config-env") configs.push(args[k + 1] ?? "");
+      k++;
+      continue;
+    }
+    if (a.startsWith("--config-env=")) configs.push(a.slice("--config-env=".length));
+    if (a.startsWith("-")) continue;
+    return { sub: a, rest: args.slice(k + 1), configs };
+  }
+  return { sub: "", rest: [], configs };
+}
+
+/** `-c` keys that switch off the repo's hooks or make git run a program of the caller's choosing. */
+const GIT_EXEC_CONFIG = /^(core\.hookspath|core\.fsmonitor|core\.sshcommand|alias\.)/i;
+/** `git branch` forms that change refs; the read-only listing forms are allowed in settings.json. */
+const GIT_BRANCH_MUTATES =
+  /^(-[a-zA-Z]*[fdDmMcCu][a-zA-Z]*|--(force|delete|move|copy|set-upstream-to|unset-upstream|edit-description)(=.*)?)$/;
+
 const deny = (reason: string): BashVerdict => ({ decision: "deny", reason });
 const ask = (reason: string): BashVerdict => ({ decision: "ask", reason });
 
@@ -353,16 +386,34 @@ function classifySegment(seg: string, ctx: BashContext): BashVerdict | null {
   const argline = args.join(" ");
 
   if (prog === "git") {
-    const sub = composeSubcommand(args);
+    const { sub, rest, configs } = gitInvocation(args);
     if (/\s--no-verify\b/.test(` ${argline}`)) {
       return deny(
         "`--no-verify` skips the repo's git hooks (the fitness gate and secret scan). Fix what the hook reports instead; a human can bypass deliberately outside the agent.",
       );
     }
+    if (configs.some((kv) => GIT_EXEC_CONFIG.test(kv))) {
+      return deny(
+        "`git -c` / `--config-env` setting core.hooksPath, core.fsmonitor, core.sshCommand or an alias disables the repo's hooks or runs an arbitrary program for this one command.",
+      );
+    }
+    if (
+      (sub === "diff" || sub === "log" || sub === "show") &&
+      rest.some((a) => /^--(output|ext-diff)\b/.test(a))
+    ) {
+      return deny(
+        "`--output` writes a file and `--ext-diff` runs an external program; neither is the read-only diff/log/show the allow-list is for.",
+      );
+    }
+    if (sub === "branch" && rest.some((a) => GIT_BRANCH_MUTATES.test(a))) {
+      return deny(
+        "This `git branch` form creates, moves, copies, deletes or re-points a branch; listing is the only form an agent may run.",
+      );
+    }
     if (sub === "commit") {
       // `-n` is commit's short form of --no-verify, also inside clusters like `-anm`; skip -m/-F values.
-      for (let k = 0; k < args.length; k++) {
-        const a = args[k] ?? "";
+      for (let k = 0; k < rest.length; k++) {
+        const a = rest[k] ?? "";
         if (/^-(m|F|C|c|t)$/.test(a) || /^--(message|file|reuse-message|template)$/.test(a)) {
           k++;
           continue;
@@ -387,7 +438,7 @@ function classifySegment(seg: string, ctx: BashContext): BashVerdict | null {
       return deny("Re-pointing core.hooksPath disables the repo's git hooks.");
     }
     if (sub === "push") {
-      const refs = args.filter((a) => !a.startsWith("-")).slice(1); // after "push"
+      const refs = rest.filter((a) => !a.startsWith("-")); // remote, then refspecs
       const remoteRefs = refs.slice(1);
       const targetsMain =
         remoteRefs.some((r) => /^\+?([^:]*:)?(refs\/heads\/)?main$/.test(r)) ||
