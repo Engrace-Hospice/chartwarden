@@ -1766,6 +1766,11 @@ jobs:
       # self-skip this workflow's live jobs guard against.
       - name: 20 browser specs — 13 critical-workflow + 7 axe-core WCAG 2A/AA scans (real stack)
         run: bun run test:e2e
+      # #852: the six-viewport layout smoke. Advisory (`continue-on-error`) until it has a first green run
+      # on this stack — it was authored without a live stack. Same web server, same seed; ~18 short tests.
+      - name: Six-viewport layout smoke (advisory until first green run, #852)
+        continue-on-error: true
+        run: bun run test:e2e:viewports
       - name: Upload the Playwright report, traces and stack logs
         if: failure()
         uses: actions/upload-artifact@v7

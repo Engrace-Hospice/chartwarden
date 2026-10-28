@@ -11,6 +11,22 @@ import { defineConfig, devices } from "@playwright/test";
 
 const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:5173";
 
+// #852 — specs owned by dedicated projects; the default `chromium` project must not run them.
+const VIEWPORT_SPEC = /viewport-matrix\.spec\.ts$/;
+const ADMIN_SPEC = /admin-console-smoke\.spec\.ts$/;
+const PORTAL_SPEC = /portal-smoke\.spec\.ts$/;
+const SPECIAL_SPECS = [VIEWPORT_SPEC, ADMIN_SPEC, PORTAL_SPEC];
+
+/** The six required viewports (320 = WCAG 1.4.10 reflow floor; 768/1024 = tablet portrait/landscape). */
+const VIEWPORTS = [
+  { width: 320, height: 568 },
+  { width: 375, height: 667 },
+  { width: 768, height: 1024 },
+  { width: 1024, height: 768 },
+  { width: 1440, height: 900 },
+  { width: 1920, height: 1080 },
+] as const;
+
 export default defineConfig({
   testDir: "./specs",
   outputDir: "./test-results",
@@ -36,5 +52,31 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    // The default job: every spec EXCEPT the opt-in ones below. `test:e2e` runs this project only.
+    {
+      name: "chromium",
+      testIgnore: SPECIAL_SPECS,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    // #852 — the six required viewports. One small layout smoke each (not every spec x 6), so the
+    // matrix is six short runs of one file. `bun run test:e2e:viewports`.
+    ...VIEWPORTS.map(({ width, height }) => ({
+      name: `viewport-${width}`,
+      testMatch: VIEWPORT_SPEC,
+      use: { ...devices["Desktop Chrome"], viewport: { width, height } },
+    })),
+    // #852 — the other two SPAs. Each has its own dev server, which the CI e2e job does not start, so
+    // the specs skip (with the reason in their output) until E2E_ADMIN_URL / E2E_PORTAL_URL is set.
+    {
+      name: "admin-console",
+      testMatch: ADMIN_SPEC,
+      use: { ...devices["Desktop Chrome"], baseURL: process.env.E2E_ADMIN_URL },
+    },
+    {
+      name: "portal",
+      testMatch: PORTAL_SPEC,
+      use: { ...devices["Desktop Chrome"], baseURL: process.env.E2E_PORTAL_URL },
+    },
+  ],
 });

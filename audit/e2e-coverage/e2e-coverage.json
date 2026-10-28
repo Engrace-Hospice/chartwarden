@@ -1583,6 +1583,440 @@
       "axeReached": false
     }
   ],
+  "dynamicWebScreens": 113,
+  "dynamicAxeReachedCount": 27,
+  "dynamicExcluded": [
+    {
+      "id": "medicaid.surveyor-read",
+      "path": "/admin/medicaid-billing-audit/:claimId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "hope.admission-overview",
+      "path": "/admissions/:admissionId/hope",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "hope.sfv-capture",
+      "path": "/admissions/:admissionId/hope/sfv/:sfvId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "hope.timepoint-capture",
+      "path": "/admissions/:admissionId/hope/timepoints/:kind",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "admission.detail",
+      "path": "/admissions/:id",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "admission.death-pronouncement",
+      "path": "/admissions/:id/death",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "admission.discharge",
+      "path": "/admissions/:id/discharge",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "admission.discharge-details",
+      "path": "/admissions/:id/discharge-details",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "admission.level-of-care-change",
+      "path": "/admissions/:id/level-of-care/new",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "admission.readmit",
+      "path": "/admissions/:id/readmit",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "admission.transfer-in",
+      "path": "/admissions/:id/transfer-in",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "bereavement.plan",
+      "path": "/bereavement/plans/:planId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "bereavement.plan.closeout",
+      "path": "/bereavement/plans/:planId/closeout",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "bereavement.contact",
+      "path": "/bereavement/plans/:planId/contacts/:contactId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "bereavement.contact.screen",
+      "path": "/bereavement/plans/:planId/contacts/:contactId/screen",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "bereavement.plan.history",
+      "path": "/bereavement/plans/:planId/history",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "bereavement.plan.outreach",
+      "path": "/bereavement/plans/:planId/outreach",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "bereavement.plan.risk",
+      "path": "/bereavement/plans/:planId/risk",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "bereavement.plan.seed",
+      "path": "/bereavement/plans/:planId/seed",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "billing.claim",
+      "path": "/billing/claims/:claimId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "billing.claim.acknowledgments",
+      "path": "/billing/claims/:claimId/acknowledgments",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "billing.claim.submissions",
+      "path": "/billing/claims/:claimId/submissions",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "billing.claim.validation",
+      "path": "/billing/claims/:claimId/validation",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "billing.noe.detail",
+      "path": "/billing/noe/:noeId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "billing.notr.detail",
+      "path": "/billing/notr/:notrId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "care-plan.summary",
+      "path": "/care-plans/:planId/summary",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "care-plan.versions",
+      "path": "/care-plans/:planId/versions",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "care-plan.version-detail",
+      "path": "/care-plans/:planId/versions/:versionId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "commercial.claim",
+      "path": "/commercial/billing/claims/:claimId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "commercial.claim-send-gate",
+      "path": "/commercial/billing/claims/:claimId/send-gate",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "commercial.claim-timeline",
+      "path": "/commercial/billing/claims/:claimId/timeline",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "consent.recipients-dpoa",
+      "path": "/consents/:consentId/recipients",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "admission.discharge-cosign",
+      "path": "/discharges/:id/cosign",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "documents.version-history",
+      "path": "/documents/:documentId/versions",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "evv.event-detail",
+      "path": "/evv/events/:eventId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "hope.assessment-detail",
+      "path": "/hope/assessments/:id",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "hope.submission-detail",
+      "path": "/hope/submissions/:id",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "idg.meeting-detail",
+      "path": "/idg/meetings/:id",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "idg.meeting-live",
+      "path": "/idg/meetings/:id/live",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "idg.minutes",
+      "path": "/idg/meetings/:id/minutes",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "idg.packet",
+      "path": "/idg/meetings/:meetingId/packets/:patientId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "documents.intake-batch",
+      "path": "/intake/:batchId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "intake.review-workspace",
+      "path": "/intake/:batchId/review",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "identity.accept-invitation",
+      "path": "/invite/:token",
+      "reason": "pre-auth token route: needs a live single-use invite/link token and a signed-out context"
+    },
+    {
+      "id": "ipu.bedside",
+      "path": "/ipu/admissions/:id",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "medicaid.claim",
+      "path": "/medicaid/billing/claims/:claimId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "medicaid.claim.acknowledgments",
+      "path": "/medicaid/billing/claims/:claimId/acknowledgments",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "medicaid.claim.submissions",
+      "path": "/medicaid/billing/claims/:claimId/submissions",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "medicaid.claim.validation",
+      "path": "/medicaid/billing/claims/:claimId/validation",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "medicaid.rb-arrangement",
+      "path": "/medicaid/billing/rb-arrangements/:arrangementId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "prescribing.medication-detail",
+      "path": "/medication-orders/:id",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "prescribing.edit-medication-draft",
+      "path": "/medication-orders/:id/edit",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "messaging.offboarding",
+      "path": "/messaging/governance/offboarding/:userId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "messaging.notification-landing",
+      "path": "/n/:id",
+      "reason": "pre-auth token route: needs a live single-use invite/link token and a signed-out context"
+    },
+    {
+      "id": "orders.detail",
+      "path": "/orders/:id",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "emar.administration-detail",
+      "path": "/patients/:patientId/administrations/:id",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "assessment.detail",
+      "path": "/patients/:patientId/assessments/:assessmentId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "emar.comfort-kit",
+      "path": "/patients/:patientId/comfort-kit/:deploymentId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "consent.detail",
+      "path": "/patients/:patientId/consents/:consentId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "discipline-plan.idg-revision",
+      "path": "/patients/:patientId/discipline-plans/:kind/idg-revisions/:versionId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "discipline-plan.versions",
+      "path": "/patients/:patientId/discipline-plans/:kind/versions",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "discipline-plan.aide-poc.edit",
+      "path": "/patients/:patientId/discipline-plans/aide-poc/:versionId/edit",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "discipline-plan.assessment",
+      "path": "/patients/:patientId/discipline-plans/msw-plan/:planId/assessments/:assessmentId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "encounter.read",
+      "path": "/patients/:patientId/encounters/:encounterId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "encounter.compose",
+      "path": "/patients/:patientId/encounters/:encounterId/compose",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "emar.iv-session",
+      "path": "/patients/:patientId/iv-sessions/:sessionId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "emar.reconciliation-worksheet",
+      "path": "/patients/:patientId/reconciliation/:worksheetId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "assessment.scale-trend",
+      "path": "/patients/:patientId/scales/:scaleType",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "admission.referral-detail",
+      "path": "/referrals/:id",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "prescribing.refill-detail",
+      "path": "/refills/:id",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "reporting.dashboard",
+      "path": "/reports/dashboards/:dashboardId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "reporting.role-dashboard",
+      "path": "/reports/role/:roleKey",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "safety.incident.detail",
+      "path": "/safety/incidents/:incidentId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "safety.sos.detail",
+      "path": "/safety/sos/:sosAlertId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "scheduling.visit-detail",
+      "path": "/scheduling/visits/:visitId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "billing.invoice-detail",
+      "path": "/subscription/invoices/:id",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "supplies.dispatch",
+      "path": "/supplies/dispatches/:dispatchId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "supplies.dispatch.perpetual_log",
+      "path": "/supplies/dispatches/:dispatchId/perpetual-log",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "supplies.request",
+      "path": "/supplies/requests/:supplyRequestId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "supplies.return",
+      "path": "/supplies/returns/:returnId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "identity.accept-tenant-invitation",
+      "path": "/tenant-invite/:token",
+      "reason": "pre-auth token route: needs a live single-use invite/link token and a signed-out context"
+    },
+    {
+      "id": "triage.call",
+      "path": "/triage/calls/:triageCallId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "triage.call.history",
+      "path": "/triage/calls/:triageCallId/history",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "triage.call.transcript",
+      "path": "/triage/calls/:triageCallId/transcript",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "triage.protocol",
+      "path": "/triage/protocols/:protocolId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    },
+    {
+      "id": "oncall.shift",
+      "path": "/triage/shifts/:shiftId",
+      "reason": "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet"
+    }
+  ],
   "rows": [
     {
       "id": "saas.account",
