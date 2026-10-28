@@ -1111,7 +1111,6 @@ import {
   buildDrizzleEligibilityWatchdogStore,
   buildDrizzleM24ReadService,
   buildDrizzleM24WriteService,
-  buildM24MedicaidCoverageResolver,
   buildDrizzleRbDaySweepStore,
   buildDrizzleStateChannelCredentialResolver,
   buildM24MedicaidCoverageResolver,
