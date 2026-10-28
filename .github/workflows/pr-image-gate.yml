@@ -81,4 +81,6 @@ jobs:
           exit-code: "1"
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          # The locked venv (#853) makes this a multi-GB image; Trivy's default 5m analysis timeout fails the scan.
+          timeout: 20m
           trivyignores: .trivyignore.yaml
