@@ -225,6 +225,48 @@ describe("classifyBash — review regressions (2026-10-27)", () => {
     expect(d("git branch --list 'feat/*'")).toBe("allow");
     expect(d("git branch --show-current")).toBe("allow");
   });
+  it("fails closed on git global options and -c keys it does not know", () => {
+    // --attr-source takes a separate value, so a denylist that missed it read "HEAD" as the subcommand.
+    expect(d("git --attr-source HEAD push origin main")).toBe("ask");
+    expect(d("git --attr-source=HEAD push --force origin main")).toBe("deny");
+    expect(d("git --some-future-flag push origin main")).toBe("ask");
+    expect(d("git -Cdir push origin main")).toBe("ask");
+    expect(d("git --no-pager --no-optional-locks log")).toBe("allow");
+    expect(d("git -c core.pager='sh x' log")).toBe("deny");
+    expect(d("git -c diff.external=./x diff")).toBe("deny");
+    expect(d("git -c user.name=x status")).toBe("ask");
+    expect(d("git -c core.quotepath=false status")).toBe("allow");
+    // A deny later in the same command is not masked by the earlier prompt.
+    expect(d("git --some-future-flag push --no-verify origin x")).toBe("deny");
+  });
+  it("asks when a GIT_* environment override precedes git", () => {
+    expect(d("GIT_SSH_COMMAND='sh x' git fetch")).toBe("ask");
+    expect(
+      d(
+        "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null git commit -m x",
+      ),
+    ).toBe("ask");
+    expect(d("GIT_EXTERNAL_DIFF=./x git diff")).toBe("ask");
+    expect(d("FOO=1 git status")).toBe("allow");
+  });
+  it("finds the program behind a quoted env value that contains a space", () => {
+    // `FOO="a b" git push ...` used to split inside the quotes and read `b"` as the program.
+    expect(d('FOO="a b" git push --force origin main')).toBe("deny");
+    expect(d("FOO='a b' git push origin main")).toBe("ask");
+    expect(d("FOO='a b' git status")).toBe("allow");
+    expect(d('git commit -m "handle -n flag"')).toBe("allow");
+  });
+  it("allows only listing forms of git branch (no abbreviations, no creation)", () => {
+    expect(d("git branch --del feat/x")).toBe("deny");
+    expect(d("git branch --forc main HEAD")).toBe("deny");
+    expect(d("git branch new-branch")).toBe("deny");
+    expect(d("git branch new-branch origin/main")).toBe("deny");
+    expect(d("git branch -c old new")).toBe("deny");
+    expect(d("git branch --contains HEAD")).toBe("allow");
+    expect(d("git branch -a --merged main")).toBe("allow");
+    expect(d("git branch --format=%(refname) --sort=-committerdate")).toBe("allow");
+    expect(d("git branch")).toBe("allow");
+  });
   it("treats only dev-style chartwarden values as placeholders", () => {
     const prod = ["postgres://app:chartwardenProdPw", "1.2.3.4.example-host.net/cw"].join("@");
     expect(scanContent(prod, REG).map((x) => x.kind)).toEqual(["db-url-password"]);

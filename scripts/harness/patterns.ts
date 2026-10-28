@@ -274,13 +274,22 @@ function segments(cmd: string): string[] {
   return out.map((x) => x.trim()).filter(Boolean);
 }
 
-/** Shell words, keeping a quoted string as one word (quotes stripped). */
+/**
+ * Shell words, keeping a quoted string as one word (quotes stripped), also INSIDE a word: in
+ * `FOO='a b' git push` the value is one word, so the program is still `git`. Splitting at the space
+ * inside the quotes read `b'` as the program and let the whole command through unchecked.
+ */
 function words(seg: string): string[] {
-  return [...seg.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3] ?? "");
+  return [...seg.matchAll(/(?:"[^"]*"|'[^']*'|\S)+/g)].map((m) =>
+    m[0].replace(
+      /"([^"]*)"|'([^']*)'/g,
+      (_q, dq: string | undefined, sq: string | undefined) => dq ?? sq ?? "",
+    ),
+  );
 }
 
 /** The program a simple command runs, skipping `VAR=value` prefixes and `sudo`/`time`/`command`. */
-function program(seg: string): { prog: string; args: string[] } {
+function program(seg: string): { prog: string; args: string[]; assigns: string[] } {
   const w = words(seg);
   let k = 0;
   while (
@@ -289,7 +298,11 @@ function program(seg: string): { prog: string; args: string[] } {
       /^(sudo|time|command|exec|nohup)$/.test(w[k] ?? ""))
   )
     k++;
-  return { prog: (w[k] ?? "").replace(/^.*\//, ""), args: w.slice(k + 1) };
+  return {
+    prog: (w[k] ?? "").replace(/^.*\//, ""),
+    args: w.slice(k + 1),
+    assigns: w.slice(0, k).filter((x) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(x)),
+  };
 }
 
 /** File-ish arguments: not flags, not globs or expansions, quotes stripped. */
@@ -331,33 +344,74 @@ function composeSubcommand(args: readonly string[]): string {
  * BEFORE the subcommand (`git -C dir push`, `git -c core.hooksPath=/dev/null commit`), so reading the
  * first non-flag word as the subcommand would take `dir` for it and wave the push or commit through.
  */
+// Global options of git.c: some take the next word, some take `=value`, some take nothing. Git matches
+// them exactly (no abbreviations), so anything else before the subcommand is one we do not understand,
+// and an option we cannot place may be hiding the real subcommand: that fails closed, it is not skipped.
+const GIT_GLOBAL_VALUE =
+  /^(-C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|--attr-source)$/;
+const GIT_GLOBAL_EQ =
+  /^--(git-dir|work-tree|namespace|exec-path|super-prefix|config-env|attr-source)=/;
+const GIT_GLOBAL_FLAG =
+  /^(-p|-P|--paginate|--no-pager|--no-replace-objects|--bare|--literal-pathspecs|--glob-pathspecs|--noglob-pathspecs|--icase-pathspecs|--no-optional-locks|--no-advice|--exec-path)$/;
+
 function gitInvocation(args: readonly string[]): {
   sub: string;
   rest: string[];
   configs: string[];
+  unknownGlobal: string | null;
 } {
-  const takesValue =
-    /^(-C|-c|--git-dir|--work-tree|--namespace|--exec-path|--super-prefix|--config-env)$/;
   const configs: string[] = [];
+  let unknownGlobal: string | null = null;
   for (let k = 0; k < args.length; k++) {
     const a = args[k] ?? "";
-    if (takesValue.test(a)) {
+    if (GIT_GLOBAL_VALUE.test(a)) {
       if (a === "-c" || a === "--config-env") configs.push(args[k + 1] ?? "");
       k++;
       continue;
     }
     if (a.startsWith("--config-env=")) configs.push(a.slice("--config-env=".length));
-    if (a.startsWith("-")) continue;
-    return { sub: a, rest: args.slice(k + 1), configs };
+    if (GIT_GLOBAL_EQ.test(a) || GIT_GLOBAL_FLAG.test(a)) continue;
+    if (a.startsWith("-")) {
+      unknownGlobal ??= a;
+      continue;
+    }
+    return { sub: a, rest: args.slice(k + 1), configs, unknownGlobal };
   }
-  return { sub: "", rest: [], configs };
+  return { sub: "", rest: [], configs, unknownGlobal };
 }
 
+/** `-c` keys that only change presentation. Any other key is a decision for the human. */
+const GIT_SAFE_CONFIG =
+  /^(color\.[a-z0-9.-]+|advice\.[a-z0-9.-]+|core\.(quotepath|abbrev|precomposeunicode)|log\.date)$/i;
 /** `-c` keys that switch off the repo's hooks or make git run a program of the caller's choosing. */
-const GIT_EXEC_CONFIG = /^(core\.hookspath|core\.fsmonitor|core\.sshcommand|alias\.)/i;
-/** `git branch` forms that change refs; the read-only listing forms are allowed in settings.json. */
-const GIT_BRANCH_MUTATES =
-  /^(-[a-zA-Z]*[fdDmMcCu][a-zA-Z]*|--(force|delete|move|copy|set-upstream-to|unset-upstream|edit-description)(=.*)?)$/;
+const GIT_EXEC_CONFIG =
+  /^(core\.(hookspath|fsmonitor|sshcommand|pager|editor|askpass)|alias\.|credential\.helper|diff\.external|protocol\.ext)/i;
+const configKey = (kv: string): string => kv.split("=")[0] ?? "";
+
+/** Environment overrides that change what git runs or which config it reads. */
+const GIT_ENV_OVERRIDE = /^GIT_/;
+
+// `git branch` is allowlist-only: the listing forms, and a pattern only after --list. Everything else
+// (create, move, copy, delete, upstream, an abbreviated `--del`, a bare name) is not read-only.
+const GIT_BRANCH_FLAG =
+  /^(-a|-r|-v|-vv|-i|-l|--all|--remotes|--verbose|--list|--show-current|--ignore-case|--no-color|--color(=.*)?|--column(=.*)?|--no-column|--abbrev(=\d+)?|--no-abbrev|--omit-empty)$/;
+const GIT_BRANCH_VALUE = /^--(contains|no-contains|merged|no-merged|points-at|sort|format)$/;
+const GIT_BRANCH_EQ = /^--(contains|no-contains|merged|no-merged|points-at|sort|format)=/;
+
+function gitBranchIsReadOnly(rest: readonly string[]): boolean {
+  const listing = rest.some((a) => a === "--list" || a === "-l");
+  for (let k = 0; k < rest.length; k++) {
+    const a = rest[k] ?? "";
+    if (GIT_BRANCH_FLAG.test(a) || GIT_BRANCH_EQ.test(a)) continue;
+    if (GIT_BRANCH_VALUE.test(a)) {
+      if (rest[k + 1] && !rest[k + 1]?.startsWith("-")) k++;
+      continue;
+    }
+    if (!a.startsWith("-") && listing) continue; // a glob pattern for --list
+    return false;
+  }
+  return true;
+}
 
 const deny = (reason: string): BashVerdict => ({ decision: "deny", reason });
 const ask = (reason: string): BashVerdict => ({ decision: "ask", reason });
@@ -382,19 +436,35 @@ export function classifyBash(cmd: string, ctx: BashContext = {}): BashVerdict {
 }
 
 function classifySegment(seg: string, ctx: BashContext): BashVerdict | null {
-  const { prog, args } = program(seg);
+  const { prog, args, assigns } = program(seg);
   const argline = args.join(" ");
 
   if (prog === "git") {
-    const { sub, rest, configs } = gitInvocation(args);
+    const { sub, rest, configs, unknownGlobal } = gitInvocation(args);
+    // Fail-closed prompts are held until the denies below have had their say.
+    let pending: BashVerdict | null = null;
+    if (unknownGlobal) {
+      pending = ask(
+        `Unrecognised git global option ${unknownGlobal} before the subcommand; it may hide a push or commit, so a human decides.`,
+      );
+    } else if (assigns.some((a) => GIT_ENV_OVERRIDE.test(a))) {
+      pending = ask(
+        "A GIT_* environment override (GIT_CONFIG_*, GIT_SSH_COMMAND, GIT_EXTERNAL_DIFF, GIT_PAGER, ...) changes what git runs or reads; a human decides.",
+      );
+    }
     if (/\s--no-verify\b/.test(` ${argline}`)) {
       return deny(
         "`--no-verify` skips the repo's git hooks (the fitness gate and secret scan). Fix what the hook reports instead; a human can bypass deliberately outside the agent.",
       );
     }
-    if (configs.some((kv) => GIT_EXEC_CONFIG.test(kv))) {
+    if (configs.some((kv) => GIT_EXEC_CONFIG.test(configKey(kv)))) {
       return deny(
-        "`git -c` / `--config-env` setting core.hooksPath, core.fsmonitor, core.sshCommand or an alias disables the repo's hooks or runs an arbitrary program for this one command.",
+        "`git -c` / `--config-env` setting core.hooksPath, core.fsmonitor, core.sshCommand, a pager, editor, helper or alias disables the repo's hooks or runs an arbitrary program for this one command.",
+      );
+    }
+    if (!pending && configs.some((kv) => !GIT_SAFE_CONFIG.test(configKey(kv)))) {
+      pending = ask(
+        "`git -c` / `--config-env` sets a key outside the presentation-only allowlist (color.*, advice.*, core.quotepath); a human decides.",
       );
     }
     if (
@@ -405,9 +475,9 @@ function classifySegment(seg: string, ctx: BashContext): BashVerdict | null {
         "`--output` writes a file and `--ext-diff` runs an external program; neither is the read-only diff/log/show the allow-list is for.",
       );
     }
-    if (sub === "branch" && rest.some((a) => GIT_BRANCH_MUTATES.test(a))) {
+    if (sub === "branch" && !gitBranchIsReadOnly(rest)) {
       return deny(
-        "This `git branch` form creates, moves, copies, deletes or re-points a branch; listing is the only form an agent may run.",
+        "This `git branch` form is not a listing: it can create, move, copy, delete or re-point a branch. Only --list, -a, -r, -v, --show-current, --contains/--merged/--format and similar are allowed.",
       );
     }
     if (sub === "commit") {
@@ -458,6 +528,7 @@ function classifySegment(seg: string, ctx: BashContext): BashVerdict | null {
         );
       }
     }
+    if (pending) return pending;
   }
 
   // --- Environment dumps and secret variables echoed into the transcript.
