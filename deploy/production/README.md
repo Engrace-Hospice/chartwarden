@@ -239,9 +239,9 @@ The log shows `DEPLOY HALTED FOR AN OPERATOR DECISION: AUTOMATIC ROLLBACK REFUSE
 applied. At that point:
 
 - Whatever was running is still running. If the failure came at or before `provision`, that is the previous
-  api/worker/web. If it came at `up` or smoke, it is the new release. Stopping app containers was rejected on
-  purpose: for an EHR, clinicians reading charts through a partly working app beats a full outage, and there is no
-  nginx maintenance page to stand in for a stopped stack yet (#865).
+  api/worker/web. If it came at `up` or smoke, it is the new release. Stopping app containers is not the default:
+  for an EHR, clinicians reading charts through a partly working app beats a full outage. If the operator does
+  decide to stop them (or the running app is unsafe on the new schema), turn the maintenance page on first, below.
 - `.env.production` names the **new** release, the only code written for this schema. The previous file is saved
   as `.env.production.previous-release`.
 
@@ -255,8 +255,32 @@ Pick one:
    docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate api worker web
    ```
 
-Either way, delete `.env.production.previous-release` afterwards (it holds secrets, mode 600). The repository has no
-deploy alert hook yet (#866). The signal is the failed `deploy` workflow run, which exits 75.
+Either way, delete `.env.production.previous-release` afterwards (it holds secrets, mode 600).
+
+**Maintenance page (#865).** A host-level nginx switch serves a static 503 page (`Retry-After: 600`, no PHI, no
+external assets) instead of a raw 502 while app containers are stopped:
+
+```sh
+/opt/chartwarden/maintenance.sh on       # touches /etc/nginx/chartwarden-maintenance.on; effective on the next request
+/opt/chartwarden/maintenance.sh status
+/opt/chartwarden/maintenance.sh off      # removes the flag
+```
+
+Equivalent by hand: `touch /etc/nginx/chartwarden-maintenance.on` / `rm /etc/nginx/chartwarden-maintenance.on`. No nginx
+reload is needed; the flag is tested per request. `/ready` and `/api/health` stay proxied so probes see the real stack.
+`bootstrap-vps.sh` installs `nginx/chartwarden-maintenance.conf` to `/etc/nginx/snippets/` and the page to
+`/var/www/chartwarden-maintenance/`; the frontend, backend and tenant vhosts include the snippet (on a host that predates
+this, re-copy the vhosts and snippet, then `nginx -t && systemctl reload nginx`). MinIO's storage vhost is not covered.
+**Turn maintenance off before re-running `deploy.sh`**: its smoke tier 3 probes the public URLs and would see the 503.
+Decision: `deploy.sh` never enables maintenance by itself. A halt is, by design, a state where the running app may
+still be serving clinicians, and flipping it on automatically would cause the outage the hold exists to avoid.
+
+**Deploy alert (#866).** Set `DEPLOY_ALERT_WEBHOOK_URL` in `.env.production` (a secret; a Slack-compatible incoming
+webhook or any endpoint accepting a JSON POST) and `deploy.sh` posts on any non-zero exit after the env file check: exit
+75 is labelled "operator decision required". The payload has only the commit SHA, the failing step, the exit code and
+the applied migration filenames. Delivery is best effort (5 s connect / 10 s total timeout; a failure is logged and
+never changes the deploy's exit status); the URL is never printed. Unset means no alert, and the failed `deploy`
+workflow run is then the only signal.
 
 ## Infrastructure images: digest pins (#855)
 

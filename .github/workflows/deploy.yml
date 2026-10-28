@@ -383,6 +383,7 @@ jobs:
             deploy/production/deploy.sh \
             deploy/production/preflight.sh \
             deploy/production/smoke.sh \
+            deploy/production/maintenance.sh \
             deploy/production/compose.yml \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
           # M36 WP 1.5 — the ClamAV sidecar's config is bind-mounted from $DEPLOY_DIR/clamav/ by compose.yml.

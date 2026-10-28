@@ -47,6 +47,7 @@ secret_b64() {
 install -d -m 0750 "$DEPLOY_DIR"
 install -m 0644 "$SOURCE_DIR/compose.yml" "$DEPLOY_DIR/compose.yml"
 install -m 0755 "$SOURCE_DIR/deploy.sh" "$DEPLOY_DIR/deploy.sh"
+install -m 0755 "$SOURCE_DIR/maintenance.sh" "$DEPLOY_DIR/maintenance.sh"
 install -m 0755 "$SOURCE_DIR/preflight.sh" "$DEPLOY_DIR/preflight.sh"
 
 if [ ! -f "$DEPLOY_DIR/.env.production" ]; then
@@ -103,6 +104,10 @@ if command -v nginx >/dev/null 2>&1; then
   install -d -m 0755 /etc/nginx/sites-available /etc/nginx/sites-enabled
   install -d -m 0755 /etc/nginx/conf.d
   install -m 0644 "$SOURCE_DIR/nginx/chartwarden-log-format.conf" /etc/nginx/conf.d/chartwarden-log-format.conf
+  # Maintenance switch (#865): the app vhosts include this snippet; the page it serves lives under /var/www.
+  install -d -m 0755 /etc/nginx/snippets /var/www/chartwarden-maintenance
+  install -m 0644 "$SOURCE_DIR/nginx/chartwarden-maintenance.conf" /etc/nginx/snippets/chartwarden-maintenance.conf
+  install -m 0644 "$SOURCE_DIR/nginx/maintenance.html" /var/www/chartwarden-maintenance/maintenance.html
   install -m 0644 "$SOURCE_DIR/nginx/chartwarden-storage.conf" /etc/nginx/sites-available/chartwarden-storage.conf
   ln -sfn /etc/nginx/sites-available/chartwarden-storage.conf /etc/nginx/sites-enabled/chartwarden-storage.conf
   if [ -n "$TENANT_BASE_DOMAIN" ]; then
