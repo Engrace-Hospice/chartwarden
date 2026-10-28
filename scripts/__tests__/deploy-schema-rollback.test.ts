@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
@@ -56,7 +56,9 @@ case "$*" in
     shift; while [ "$1" != "--classify" ]; do shift; done; shift
     exec "$STUB_BUN" "$STUB_CLASSIFIER" --classify "$@" ;;
   *"run --rm --no-deps api bun -e"*) exit "\${STUB_ENV_EXIT:-0}" ;;
-  *"run --rm --no-deps provision"*) exit "\${STUB_PROVISION_EXIT:-0}" ;;
+  *"run --rm --no-deps provision"*)
+    if [ -n "\${STUB_SLEEP:-}" ]; then touch "$STUB_STATE/hanging"; sleep "$STUB_SLEEP"; fi
+    exit "\${STUB_PROVISION_EXIT:-0}" ;;
   *"--force-recreate api worker web docling-worker"*) exit "\${STUB_UP_EXIT:-0}" ;;
 esac
 exit 0
@@ -65,6 +67,18 @@ const binDir = join(scratch, "bin");
 mkdirSync(binDir);
 writeFileSync(join(binDir, "docker"), DOCKER_STUB);
 chmodSync(join(binDir, "docker"), 0o755);
+
+// #866 — `curl` stub standing in for the webhook receiver: records argv, the -K config read from stdin (which holds
+// the URL) and the POSTed body; exits with STUB_CURL_EXIT (28 = curl's timeout code) to model a dead endpoint.
+const CURL_STUB = `#!/bin/sh
+printf '%s\\n' "$*" >> "$STUB_STATE/curl.args"
+cat > "$STUB_STATE/curl.stdin"
+for a in "$@"; do case "$a" in @*) cp "\${a#@}" "$STUB_STATE/curl.body" ;; esac; done
+exit "\${STUB_CURL_EXIT:-0}"
+`;
+writeFileSync(join(binDir, "curl"), CURL_STUB);
+chmodSync(join(binDir, "curl"), 0o755);
+const WEBHOOK = "https://hooks.example.test/services/T000/B000/s3cr3t-token";
 
 const OLD_API = "ghcr.io/o/chartwarden:sha-old";
 const NEW_API = "ghcr.io/o/chartwarden:sha-new";
@@ -81,6 +95,15 @@ interface Scenario {
   readonly envExit?: number;
   /** First-ever deploy: no ledger table until migrate runs. */
   readonly freshDb?: boolean;
+  /** `provision` blocks for this many seconds (so a signal can be delivered mid-deploy). */
+  readonly hangProvisionSeconds?: number;
+  /** smoke.sh makes the deploy dir read-only, so the EXIT-trap cleanup fails. */
+  readonly lockDir?: boolean;
+  /**
+   * Webhook URL: "env" = process environment, "file" = `.deploy-alert.env`, "legacy-env-file" = `.env.production`
+   * (which deploy.sh must NOT honour: compose injects that file into containers). Absent = unset.
+   */
+  readonly alert?: { readonly via: "env" | "file" | "legacy-env-file"; readonly url?: string; readonly curlExit?: number };
 }
 
 interface Outcome {
@@ -89,15 +112,34 @@ interface Outcome {
   readonly env: string;
   readonly calls: readonly string[];
   readonly previousReleaseSaved: boolean;
+  /** Parsed JSON body of the alert POST, or null when none was sent. */
+  readonly alertBody: Record<string, unknown> | null;
+  /** Everything curl was handed on argv (the URL must never be in it). */
+  readonly curlArgs: string;
+  /** The -K config curl read on stdin. */
+  readonly curlStdin: string;
 }
 
-function deploy(s: Scenario): Outcome {
+const readIfExists = (p: string): string => (existsSync(p) ? readFileSync(p, "utf8") : "");
+
+interface Prepared {
+  readonly dir: string;
+  readonly state: string;
+  readonly log: string;
+  readonly env: NodeJS.ProcessEnv;
+}
+
+function prepare(s: Scenario): Prepared {
   const dir = mkdtempSync(join(scratch, "host-"));
   const state = join(dir, ".stub");
   mkdirSync(state);
   copyFileSync(DEPLOY, join(dir, "deploy.sh"));
   writeFileSync(join(dir, "preflight.sh"), "exit 0\n");
-  writeFileSync(join(dir, "smoke.sh"), `#!/bin/sh\nexit ${s.smokeExit ?? 0}\n`);
+  // lockDir: smoke makes the deploy dir read-only, so the EXIT-trap cleanup (rm of the staged files) fails.
+  writeFileSync(
+    join(dir, "smoke.sh"),
+    `#!/bin/sh\n${s.lockDir ? "chmod 500 .\n" : ""}exit ${s.smokeExit ?? 0}\n`,
+  );
   chmodSync(join(dir, "smoke.sh"), 0o755);
   writeFileSync(join(dir, "compose.yml"), "services: {}\n");
   writeFileSync(
@@ -110,14 +152,23 @@ function deploy(s: Scenario): Outcome {
       "MINIO_APP_SECRET_KEY=x",
       "MINIO_ACCESS_LOG_WEBHOOK_TOKEN=x",
       "CHARTWARDEN_DESTRUCTION_PASSWORD=x",
+      ...(s.alert?.via === "legacy-env-file" && s.alert.url
+        ? [`DEPLOY_ALERT_WEBHOOK_URL=${s.alert.url}`]
+        : []),
       "",
     ].join("\n"),
   );
+  if (s.alert?.via === "file" && s.alert.url) {
+    writeFileSync(join(dir, ".deploy-alert.env"), `DEPLOY_ALERT_WEBHOOK_URL=${s.alert.url}\n`, {
+      mode: 0o600,
+    });
+  }
   const log = join(state, "calls.log");
   writeFileSync(log, "");
-  const r = spawnSync("sh", ["deploy.sh", NEW_API, "ghcr.io/o/chartwarden-web:sha-new"], {
-    cwd: dir,
-    encoding: "utf8",
+  return {
+    dir,
+    state,
+    log,
     env: {
       PATH: `${binDir}:/usr/bin:/bin`,
       CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED: "1",
@@ -134,15 +185,52 @@ function deploy(s: Scenario): Outcome {
       STUB_PROVISION_EXIT: String(s.provisionExit ?? 0),
       STUB_UP_EXIT: String(s.upExit ?? 0),
       STUB_LEDGER_FAIL: s.ledgerFail ?? "",
+      STUB_CURL_EXIT: String(s.alert?.curlExit ?? 0),
+      STUB_SLEEP: s.hangProvisionSeconds ? String(s.hangProvisionSeconds) : "",
+      ...(s.alert?.via === "env" && s.alert.url ? { DEPLOY_ALERT_WEBHOOK_URL: s.alert.url } : {}),
     },
-  });
+  };
+}
+
+const DEPLOY_ARGS = ["deploy.sh", NEW_API, "ghcr.io/o/chartwarden-web:sha-new"];
+
+function collect(p: Prepared, code: number, out: string): Outcome {
+  const { dir, state, log } = p;
+  chmodSync(dir, 0o700); // undo a lockDir scenario so the scratch dir can be removed
   return {
-    code: r.status ?? -1,
-    out: `${r.stdout}${r.stderr}`,
+    code,
+    out,
     env: readFileSync(join(dir, ".env.production"), "utf8"),
     calls: readFileSync(log, "utf8").split("\n").filter(Boolean),
     previousReleaseSaved: existsSync(join(dir, ".env.production.previous-release")),
+    alertBody: existsSync(join(state, "curl.body"))
+      ? (JSON.parse(readFileSync(join(state, "curl.body"), "utf8")) as Record<string, unknown>)
+      : null,
+    curlArgs: readIfExists(join(state, "curl.args")),
+    curlStdin: readIfExists(join(state, "curl.stdin")),
   };
+}
+
+function deploy(s: Scenario): Outcome {
+  const p = prepare(s);
+  const r = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+  return collect(p, r.status ?? -1, `${r.stdout}${r.stderr}`);
+}
+
+/** Starts a deploy that hangs in `provision`, delivers `signal` once it is there, and waits for it to exit. */
+async function deployThenSignal(s: Scenario, signal: NodeJS.Signals): Promise<Outcome> {
+  const p = prepare({ ...s, hangProvisionSeconds: 2 });
+  const child = spawn("sh", DEPLOY_ARGS, { cwd: p.dir, env: p.env });
+  let out = "";
+  child.stdout.on("data", (d: Buffer) => (out += d.toString()));
+  child.stderr.on("data", (d: Buffer) => (out += d.toString()));
+  const exited = new Promise<number>((res) => child.on("close", (c) => res(c ?? -1)));
+  for (let i = 0; i < 100 && !existsSync(join(p.state, "hanging")); i += 1) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  child.kill(signal);
+  const code = await exited;
+  return collect(p, code, out);
 }
 
 /** Recreations of the PREVIOUS release (the rollback `up` names api worker web and not docling-worker). */
@@ -244,5 +332,130 @@ describe.skipIf(BUN === "")("deploy.sh rollback decision under injected failures
     const o = deploy({ ledgerFail: "before" });
     expectRolledBack(o, false);
     expect(o.calls.some((c) => c.includes("scripts/db/migrate.ts"))).toBe(false);
+  });
+});
+
+// #866 — optional deploy failure alert. Fires on any non-zero exit, names exit 75, carries no PHI, never decides the
+// deploy's outcome, and never leaks the (secret) URL.
+describe.skipIf(BUN === "")("deploy.sh failure alert (#866)", () => {
+  const alert = { via: "env", url: WEBHOOK } as const;
+
+  it("fires on exit 75 naming the operator decision, with sha, step, code and migration filenames only", () => {
+    const o = deploy({ applied: ["1291_m1_drop_legacy.sql"], smokeExit: 1, alert });
+    expect(o.code, o.out).toBe(75);
+    expect(o.alertBody).toMatchObject({
+      sha: "new",
+      step: "smoke",
+      exit_code: 75,
+      operator_decision_required: true,
+      applied_migrations: ["1291_m1_drop_legacy.sql"],
+    });
+    expect(String(o.alertBody?.text)).toContain("operator decision required");
+    expect(Object.keys(o.alertBody ?? {}).sort()).toEqual(
+      ["applied_migrations", "exit_code", "operator_decision_required", "sha", "step", "text"].sort(),
+    );
+  });
+
+  it("fires on exit 1 as a plain failure", () => {
+    const o = deploy({ envExit: 1, alert });
+    expect(o.code, o.out).toBe(1);
+    expect(o.alertBody).toMatchObject({
+      step: "env-validation",
+      exit_code: 1,
+      operator_decision_required: false,
+      applied_migrations: [],
+    });
+    expect(String(o.alertBody?.text)).not.toContain("operator decision");
+  });
+
+  it("does not fire on a successful deploy", () => {
+    const o = deploy({ alert });
+    expect(o.code, o.out).toBe(0);
+    expect(o.alertBody).toBeNull();
+    expect(o.curlArgs).toBe("");
+  });
+
+  it("is a no-op when the webhook is unset", () => {
+    const o = deploy({ smokeExit: 1 });
+    expect(o.code, o.out).toBe(1);
+    expect(o.alertBody).toBeNull();
+    expect(o.curlArgs).toBe("");
+  });
+
+  it("reads the URL from .deploy-alert.env when the environment does not set it", () => {
+    const o = deploy({ smokeExit: 1, alert: { via: "file", url: WEBHOOK } });
+    expect(o.code, o.out).toBe(1);
+    expect(o.alertBody).toMatchObject({ step: "smoke", exit_code: 1 });
+  });
+
+  it("ignores the key in .env.production (compose injects that file into containers)", () => {
+    const o = deploy({ smokeExit: 1, alert: { via: "legacy-env-file", url: WEBHOOK } });
+    expect(o.code, o.out).toBe(1);
+    expect(o.alertBody).toBeNull();
+    expect(o.curlArgs).toBe("");
+  });
+
+  it("the alert secret never reaches the containers: absent from the env example and from compose env_file", () => {
+    const example = readFileSync(join(REPO, "deploy/production/.env.production.example"), "utf8");
+    expect(example).not.toContain("DEPLOY_ALERT_WEBHOOK_URL");
+    const compose = readFileSync(join(REPO, "deploy/production/compose.yml"), "utf8");
+    const envFiles = [...compose.matchAll(/^\s*env_file:\s*(.+)$/gm)].map((m) => (m[1] ?? "").trim());
+    expect(envFiles.length).toBeGreaterThan(0);
+    for (const f of envFiles) expect(f).not.toContain("deploy-alert");
+    expect(compose).not.toContain(".deploy-alert");
+    expect(compose).not.toContain("DEPLOY_ALERT_WEBHOOK_URL");
+  });
+
+  it.each([
+    ["SIGTERM", 143],
+    ["SIGHUP", 129],
+    ["SIGINT", 130],
+  ] as const)("a deploy killed by %s still alerts with exit %i", async (signal, code) => {
+    const o = await deployThenSignal({ alert }, signal);
+    expect(o.code, o.out).toBe(code);
+    expect(o.alertBody).toMatchObject({ step: "provision", exit_code: code });
+  });
+
+  it("the exit-75 hold path alerts exactly once (the signal traps do not double-fire it)", () => {
+    const o = deploy({ applied: ["1291_m1_drop_legacy.sql"], smokeExit: 1, alert });
+    expect(o.code).toBe(75);
+    expect(o.curlArgs.trim().split("\n")).toHaveLength(1);
+  });
+
+  it("a failing cleanup cannot skip the alert or change the exit code", () => {
+    const o = deploy({ smokeExit: 1, lockDir: true, alert });
+    expect(o.code, o.out).toBe(1);
+    expect(o.alertBody).toMatchObject({ step: "smoke", exit_code: 1 });
+  });
+
+  it("never prints or passes the URL on argv; it reaches curl only on stdin", () => {
+    const o = deploy({ applied: ["1291_m1_drop_legacy.sql"], smokeExit: 1, alert });
+    expect(o.out).not.toContain("s3cr3t-token");
+    expect(o.out).not.toContain("hooks.example.test");
+    expect(o.curlArgs).not.toContain("hooks.example.test");
+    expect(o.curlArgs).toMatch(/--max-time \d+/);
+    expect(o.curlArgs).toMatch(/--connect-timeout \d+/);
+    expect(o.curlStdin).toContain(WEBHOOK);
+  });
+
+  it("a failing webhook is logged and swallowed: the deploy keeps its own exit status", () => {
+    const held = deploy({
+      applied: ["1291_m1_drop_legacy.sql"],
+      smokeExit: 1,
+      alert: { ...alert, curlExit: 28 },
+    });
+    expect(held.code, held.out).toBe(75);
+    expect(held.out).toContain("deploy alert delivery FAILED");
+    expect(held.out).not.toContain("s3cr3t-token");
+    expect(deploy({ smokeExit: 1, alert: { ...alert, curlExit: 7 } }).code).toBe(1);
+  });
+
+  it("refuses a non-https or malformed URL without calling curl", () => {
+    for (const url of ["http://hooks.example.test/x", 'https://h.example.test/"x']) {
+      const o = deploy({ smokeExit: 1, alert: { via: "env", url } });
+      expect(o.code, o.out).toBe(1);
+      expect(o.curlArgs).toBe("");
+      expect(o.out).toContain("deploy alert skipped");
+    }
   });
 });
