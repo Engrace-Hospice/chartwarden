@@ -90,7 +90,14 @@ jobs:
           DOCS_ONLY_RE='^docs/(history|agents|reviews|research|audits|runbooks|reference|messaging-hub|mobile|cartography|harden-vps|UI-UX)/'
           newer_is_docs_only=false
           if [ "$latest_sha" != "${GITHUB_SHA}" ]; then
-            files=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${GITHUB_SHA}...${latest_sha}" --jq '[.files[].filename] | length, .[]' || true)
+            # Retry: a transient API failure would otherwise read as "code-bearing" and skip this run
+            # with no fresher run to cover it.
+            files=""
+            for attempt in 1 2 3; do
+              files=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${GITHUB_SHA}...${latest_sha}" --jq '[.files[].filename] | length, .[]') && break
+              files=""
+              sleep 5
+            done
             count=$(printf '%s\n' "$files" | head -n 1)
             # The compare API lists at most 300 files; a longer list is treated as code-bearing.
             if [ -n "$count" ] && [ "$count" -gt 0 ] && [ "$count" -lt 300 ] \
@@ -102,8 +109,9 @@ jobs:
             echo "proceed=true" >> "$GITHUB_OUTPUT"
           else
             echo "proceed=false" >> "$GITHUB_OUTPUT"
-            echo "main advanced to $latest_sha while this run (${GITHUB_SHA}) waited — a fresher run" \
-                 "already covers it; skipping the matrix for this one."
+            echo "main advanced to $latest_sha while this run (${GITHUB_SHA}) waited, with code changes or" \
+                 "an undeterminable diff — a fresher run should cover it; skipping the matrix for this one." \
+                 "If no newer run appears, dispatch deploy.yml."
           fi
 
   # ── The gate (#16) ──────────────────────────────────────────────────────────────────────────────
