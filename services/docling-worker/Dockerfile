@@ -20,7 +20,7 @@ COPY pyproject.toml ./
 # huggingface-hub) at 3.32.3 (CVE-2026-112940; fixed in 4.2.1), so it is lifted here with the rest.
 # pillow 13 is forced with --no-deps: docling-core / docling-ibm-models / docling-parse still declare pillow<13, but
 # every pillow 12.x carries fixable HIGH/CRITICAL image-parsing CVEs (fixed only in 13.0.0) in a path that parses
-# patient documents. Drop the override once those packages lift the cap. (uv.lock is not used by this build and
+# patient documents. Drop the override once those packages lift the cap. (uv.lock is the CI pytest lock and is not used by this build, and
 # still records pillow 12.3.0; do not treat it as the shipped version.)
 RUN pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision \
  && pip install ".[docling]" easyocr \
