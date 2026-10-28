@@ -184844,6 +184844,10 @@
                                 "type": "string"
                               },
                               {
+                                "const": "group",
+                                "type": "string"
+                              },
+                              {
                                 "const": "announcement",
                                 "type": "string"
                               },
@@ -185018,6 +185022,10 @@
                         },
                         {
                           "const": "dm",
+                          "type": "string"
+                        },
+                        {
+                          "const": "group",
                           "type": "string"
                         },
                         {
@@ -205488,6 +205496,77 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/groups": {
+      "post": {
+        "operationId": "postApiV1MessagingGroups",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Create a staff group conversation without a patient context",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "channelId",
+                    "created"
+                  ],
+                  "properties": {
+                    "channelId": {
+                      "type": "string"
+                    },
+                    "created": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "userIds"
+                ],
+                "properties": {
+                  "title": {
+                    "minLength": 1,
+                    "maxLength": 80,
+                    "type": "string"
+                  },
+                  "userIds": {
+                    "minItems": 2,
+                    "maxItems": 49,
+                    "uniqueItems": true,
+                    "type": "array",
+                    "items": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }

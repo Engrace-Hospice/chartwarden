@@ -17175,6 +17175,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a staff group conversation without a patient context */
+        post: operations["postApiV1MessagingGroups"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/handoffs": {
         parameters: {
             query?: never;
@@ -73950,7 +73967,7 @@ export interface operations {
                     "application/json": {
                         channels: {
                             channelId: string;
-                            kind: "care_team" | "discipline" | "location" | "on_call" | "dm" | "announcement" | "bereavement" | "family";
+                            kind: "care_team" | "discipline" | "location" | "on_call" | "dm" | "group" | "announcement" | "bereavement" | "family";
                             title: string | null;
                             subjectId: string | null;
                             archivedAt: string | null;
@@ -73991,7 +74008,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         channelId: string;
-                        kind: "care_team" | "discipline" | "location" | "on_call" | "dm" | "announcement" | "bereavement" | "family";
+                        kind: "care_team" | "discipline" | "location" | "on_call" | "dm" | "group" | "announcement" | "bereavement" | "family";
                         title: string | null;
                         subjectId: string | null;
                         archivedAt: string | null;
@@ -79093,6 +79110,38 @@ export interface operations {
                         revoked: true;
                         current: boolean;
                         push_endpoints_expired: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingGroups: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    title: string;
+                    userIds: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        channelId: string;
+                        created: boolean;
                     };
                 };
             };

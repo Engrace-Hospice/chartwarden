@@ -1641,6 +1641,7 @@ import {
   ChannelDetailResponseSchema as M36ChannelDetailResponseSchema,
   ChannelListResponseSchema as M36ChannelListResponseSchema,
   ChannelMembersResponseSchema as M36ChannelMembersResponseSchema,
+  CreateGroupBodySchema as M36CreateGroupBodySchema,
   DeliveryEndpointResponseSchema as M36DeliveryEndpointResponseSchema,
   DmStaffSearchQuerySchema as M36DmStaffSearchQuerySchema,
   DmStaffSearchResponseSchema as M36DmStaffSearchResponseSchema,
@@ -10857,6 +10858,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/messaging/dm": {
     summary: "Open or find a 1:1 DM channel (idempotent; 200/201)",
     body: M36OpenDmBodySchema,
+    response: M36OpenDmResponseSchema,
+  },
+  "POST /api/v1/messaging/groups": {
+    summary: "Create a staff group conversation without a patient context",
+    body: M36CreateGroupBodySchema,
     response: M36OpenDmResponseSchema,
   },
   "GET /api/v1/messaging/dm/staff": {

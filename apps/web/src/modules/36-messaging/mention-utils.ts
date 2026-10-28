@@ -54,7 +54,7 @@ export function insertMention(input: {
   candidate: MentionCandidate;
 }): { draft: string; references: MessageReferenceInput[]; caret: number } {
   const { draft, references, query, cursor, candidate } = input;
-  const token = `@${candidate.displayName}`;
+  const token = candidate.kind === "patient" ? "@Patient" : `@${candidate.displayName}`;
   const caret = query.start + token.length;
   return {
     draft: `${draft.slice(0, query.start)}${token}${draft.slice(cursor)}`,
@@ -68,7 +68,7 @@ export function insertMention(input: {
         entityId: candidate.entityId,
         start: query.start,
         end: caret,
-        displayLabel: candidate.displayName,
+        displayLabel: candidate.kind === "patient" ? "Patient" : candidate.displayName,
       },
     ],
   };

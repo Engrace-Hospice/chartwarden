@@ -60,13 +60,23 @@ export function useMentionCandidates(input: {
               .then(({ data }) => data ?? null)
               .catch(() => null)
           : Promise.resolve(null);
+      const patients =
+        query.query.trim().length >= 2
+          ? client
+              .GET("/api/v1/patients/messaging-search", {
+                params: { query: { q: query.query.trim(), limit: 10 } },
+              })
+              .then(({ data }) => data ?? null)
+              .catch(() => null)
+          : Promise.resolve(null);
       void Promise.all([
         client.GET("/api/v1/messaging/channels/{id}/mention-candidates", {
           params: { path: { id: channelId }, query: { q: query.query } },
         }),
         nonMembers,
+        patients,
       ])
-        .then(([{ data, error: failure }, outside]) => {
+        .then(([{ data, error: failure }, outside, patientResults]) => {
           if (generation !== generationRef.current) return;
           setLoading(false);
           setError(Boolean(failure));
@@ -83,7 +93,17 @@ export function useMentionCandidates(input: {
               displayName: person.displayName,
               detail: NOT_IN_CONVERSATION,
             }));
-          setCandidates([...members, ...others]);
+          const patientOptions = (patientResults?.patients ?? []).map((patient) => ({
+            kind: "patient" as const,
+            entityId: patient.patientId,
+            displayName: patient.displayName,
+            detail: "Patient",
+          }));
+          const unique = new Map<string, MentionOption>();
+          for (const option of [...members, ...patientOptions, ...others]) {
+            unique.set(`${option.kind}:${option.entityId}`, option);
+          }
+          setCandidates([...unique.values()]);
           setCanAdd(outside?.canAdd === true);
           setActiveIndex(0);
         })

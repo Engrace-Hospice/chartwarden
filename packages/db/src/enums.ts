@@ -293,6 +293,7 @@ export const channelKind = pgEnum("channel_kind", [
   "location", // subject = location_id; auto via M2 default_location_ids; care_related
   "on_call", // subject = provider_entity_id; auto via OnCallProvider (M19); care_related
   "dm", // 1:1, no subject; manual; care_related (clinician DMs discuss patients)
+  "group", // explicit staff roster, no subject; care_related
   "announcement", // tenant-wide admin broadcast; the one operational (1 yr) channel
   "bereavement", // subject = bereavement_plan_id (M16); care_related; 13-mo display window
   "family", // subject = patient_id; one per consented contact (ADR-0099); NO channel_member rows, visibility = the care-team predicate; care_related

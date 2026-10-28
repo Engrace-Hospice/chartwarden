@@ -313,6 +313,11 @@ export interface MessagingRouteService extends MessageReactionPinService, Messag
     userId: string,
     peerUserId: string,
   ): Promise<{ channelId: string; created: boolean }>;
+  createGroup(
+    orgId: string,
+    userId: string,
+    input: { title: string; userIds: readonly string[] },
+  ): Promise<{ channelId: string; created: true }>;
   /** Open or provision the caller's authorized patient care-team channel. The implementation
    *  revalidates current clinical access after synchronization and never adds the caller manually. */
   openCareTeamChannel(
