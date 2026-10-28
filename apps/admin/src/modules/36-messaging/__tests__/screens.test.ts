@@ -13,7 +13,7 @@ describe("M36 admin screen registry", () => {
     const paths = messagingAdminScreens.screens.map((s) => s.path);
     expect(new Set(ids).size).toBe(6);
     expect(new Set(paths).size).toBe(6);
-    for (const s of messagingAdminScreens.screens) expect(typeof s.screen).toBe("function");
+    for (const s of messagingAdminScreens.screens) expect(s.screen).toBeTruthy();
   });
 
   it("gates every screen on a real permission key", () => {

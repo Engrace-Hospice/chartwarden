@@ -60,11 +60,11 @@ function fixtureClient(requests: string[] = []) {
 }
 
 describe("portal P0 screens", () => {
-  it("presents the focused, chromeless sign-in experience", () => {
+  it("presents the focused, chromeless sign-in experience", async () => {
     window.history.pushState({}, "", "/portal/");
     render(<PortalApp client={fixtureClient()} />);
 
-    expect(screen.getByRole("heading", { name: "Sign in" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
     expect(screen.getByText("Private and secure")).toBeTruthy();
     expect(screen.getByText(/Never share your password/)).toBeTruthy();
   });

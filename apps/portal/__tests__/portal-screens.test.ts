@@ -11,7 +11,7 @@ describe("portal screen registry (M31 §5.1)", () => {
   it("binds every manifest entry to a component", () => {
     expect(portalScreens.screens).toHaveLength(PORTAL_SCREEN_MANIFEST.length);
     for (const s of portalScreens.screens) {
-      expect(typeof s.screen).toBe("function");
+      expect(s.screen).toBeTruthy();
     }
   });
 

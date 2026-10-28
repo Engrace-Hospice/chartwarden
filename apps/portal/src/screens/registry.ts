@@ -4,48 +4,52 @@ import type { ScreenDescriptor, ScreenRegistry, ScreenRegistryModule } from "@ch
 // root (main.tsx) registers into a registry the shell reads to build its router. Mirrors the M1 web-shell
 // registry contract (`@chartwarden/types` ScreenRegistry) so the portal is a first-class, gate-shaped SPA rather
 // than an ad-hoc router.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { PortalAcceptInvitation } from "./accept-invitation";
-import { PortalAccount } from "./account";
-import { PortalAmendments } from "./amendments";
-import { PortalBereavement } from "./bereavement";
-import { PortalCarePlanView } from "./care-plan";
-import { PortalDocumentList } from "./documents";
-import { PortalFuneralCase } from "./funeral-case";
-import { PortalLinkRedeem } from "./funeral-redeem";
 import { PORTAL_SCREEN_MANIFEST } from "./manifest";
-import { PortalMedicationList } from "./medications";
-import { PortalMessages } from "./messages";
-import { PortalPatientDashboard } from "./patient-dashboard";
-import { PortalPatientPicker } from "./patient-picker";
-import { PortalNotificationPreferences } from "./preferences";
-import { PortalSignIn } from "./sign-in";
-import { PortalSignedIn } from "./signed-in";
-import { TelehealthWaitingRoom } from "./telehealth-waiting-room";
-import { PortalVisitList } from "./visits";
 
 export type PortalScreen = ComponentType;
 
+/**
+ * Route-level code splitting (#849): each screen is its own chunk, so the entry carries only the shell + manifest.
+ * `app.tsx` wraps every route element in a Suspense boundary.
+ */
+function lazyScreen<K extends string>(
+  load: () => Promise<Record<K, ComponentType>>,
+  name: K,
+): PortalScreen {
+  return lazy(() => load().then((m) => ({ default: m[name] as ComponentType })));
+}
+
 /** id → component. Every PORTAL_SCREEN_MANIFEST id must resolve here (asserted at module build below). */
 const COMPONENTS: Record<string, PortalScreen> = {
-  "portal.sign-in": PortalSignIn,
-  "portal.accept-invitation": PortalAcceptInvitation,
-  "portal.signed-in": PortalSignedIn,
-  "portal.link-redeem-funeral": PortalLinkRedeem,
-  "portal.link-redeem-collaborator": PortalLinkRedeem,
-  "portal.funeral-case": PortalFuneralCase,
-  "portal.patient-picker": PortalPatientPicker,
-  "portal.dashboard": PortalPatientDashboard,
-  "portal.care-plan": PortalCarePlanView,
-  "portal.visits": PortalVisitList,
-  "portal.telehealth": TelehealthWaitingRoom,
-  "portal.medications": PortalMedicationList,
-  "portal.documents": PortalDocumentList,
-  "portal.messages": PortalMessages,
-  "portal.amendments": PortalAmendments,
-  "portal.preferences": PortalNotificationPreferences,
-  "portal.bereavement": PortalBereavement,
-  "portal.account": PortalAccount,
+  "portal.sign-in": lazyScreen(() => import("./sign-in"), "PortalSignIn"),
+  "portal.accept-invitation": lazyScreen(
+    () => import("./accept-invitation"),
+    "PortalAcceptInvitation",
+  ),
+  "portal.signed-in": lazyScreen(() => import("./signed-in"), "PortalSignedIn"),
+  "portal.link-redeem-funeral": lazyScreen(() => import("./funeral-redeem"), "PortalLinkRedeem"),
+  "portal.link-redeem-collaborator": lazyScreen(
+    () => import("./funeral-redeem"),
+    "PortalLinkRedeem",
+  ),
+  "portal.funeral-case": lazyScreen(() => import("./funeral-case"), "PortalFuneralCase"),
+  "portal.patient-picker": lazyScreen(() => import("./patient-picker"), "PortalPatientPicker"),
+  "portal.dashboard": lazyScreen(() => import("./patient-dashboard"), "PortalPatientDashboard"),
+  "portal.care-plan": lazyScreen(() => import("./care-plan"), "PortalCarePlanView"),
+  "portal.visits": lazyScreen(() => import("./visits"), "PortalVisitList"),
+  "portal.telehealth": lazyScreen(
+    () => import("./telehealth-waiting-room"),
+    "TelehealthWaitingRoom",
+  ),
+  "portal.medications": lazyScreen(() => import("./medications"), "PortalMedicationList"),
+  "portal.documents": lazyScreen(() => import("./documents"), "PortalDocumentList"),
+  "portal.messages": lazyScreen(() => import("./messages"), "PortalMessages"),
+  "portal.amendments": lazyScreen(() => import("./amendments"), "PortalAmendments"),
+  "portal.preferences": lazyScreen(() => import("./preferences"), "PortalNotificationPreferences"),
+  "portal.bereavement": lazyScreen(() => import("./bereavement"), "PortalBereavement"),
+  "portal.account": lazyScreen(() => import("./account"), "PortalAccount"),
 };
 
 const screens: ScreenDescriptor<PortalScreen>[] = PORTAL_SCREEN_MANIFEST.map((m) => {

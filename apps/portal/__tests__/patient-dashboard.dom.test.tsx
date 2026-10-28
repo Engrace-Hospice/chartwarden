@@ -69,10 +69,10 @@ function renderDashboard(
 }
 
 describe("patient dashboard redesign", () => {
-  it("renders independent loading skeletons with one page heading", () => {
+  it("renders independent loading skeletons with one page heading", async () => {
     const never = () => new Promise<Response>(() => undefined);
     renderDashboard({ onUpcoming: never, onSummary: never });
-    expect(screen.getByRole("heading", { name: "Welcome back", level: 1 })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Welcome back", level: 1 })).toBeTruthy();
     expect(screen.getByRole("status", { name: "Loading next visit" })).toBeTruthy();
     expect(screen.getByRole("status", { name: "Loading message summary" })).toBeTruthy();
   });

@@ -188,7 +188,7 @@ describe("portal priority screens", () => {
     );
     render(<PortalApp client={fixtureClient(requests)} />);
 
-    const join = screen.getByRole("button", { name: "Join visit" });
+    const join = await screen.findByRole("button", { name: "Join visit" });
     expect((join as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(join);
     expect(requests.some((request) => request.includes("/telehealth/"))).toBe(false);

@@ -35,10 +35,10 @@ function stub(
 afterEach(() => vi.unstubAllGlobals());
 
 describe("PR4.1 onboarding", () => {
-  it("preserves a chromeless, guided sign-in with a password alternative", () => {
+  it("preserves a chromeless, guided sign-in with a password alternative", async () => {
     window.history.pushState({}, "", "/portal/");
     render(<PortalApp client={stub(() => new Response(null, { status: 404 }))} />);
-    expect(screen.getByRole("heading", { name: "Sign in" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
     expect(screen.queryByRole("navigation", { name: "Portal navigation" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Use a password instead" }));
     expect(screen.getByRole("heading", { name: "Sign in with your password" })).toBeTruthy();
@@ -51,7 +51,7 @@ describe("PR4.1 onboarding", () => {
     vi.stubGlobal("fetch", mockFetch);
     window.history.pushState({}, "", "/portal/");
     render(<PortalApp client={stub(() => new Response(null, { status: 404 }))} />);
-    fireEvent.change(screen.getByRole("textbox", { name: "Email address" }), {
+    fireEvent.change(await screen.findByRole("textbox", { name: "Email address" }), {
       target: { value: "care@example.test" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Email me a sign-in link" }));

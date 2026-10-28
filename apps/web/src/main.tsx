@@ -12,11 +12,10 @@ import "./index.css"; // Tailwind v4 + the ChartWarden `wx-*` design-system laye
 // apps/backend/src/index.ts). It is the one place allowed to import feature module web-slices and
 // register their screens; the M1 shell stays pure. Every shipped module's screen set is registered below
 // (the generated `audit/ui-parity/UI_PARITY.md` is the per-module truth — no count is restated here).
-import { StrictMode } from "react";
+import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import {
   CredentialStateGuard,
-  ScreenLock,
   appLandingScreens,
   identityScreens,
   isAppLandingHost,
@@ -62,6 +61,11 @@ import { AppShell, createScreenRegistry, handleObservedResponse, systemScreens }
 
 // Apply the resolved Lantern theme (stored choice, else OS preference) before the first paint — no flash.
 initTheme();
+
+// The idle screen-lock pulls in the better-auth client; it only matters after 5 min idle, so keep it out of the entry (#849).
+const ScreenLock = lazy(() =>
+  import("./modules/02-identity/screen-lock").then((m) => ({ default: m.ScreenLock })),
+);
 
 const registry = createScreenRegistry();
 // TASK-033: every response the client observes is fed through the global signal so the shell can
@@ -122,7 +126,11 @@ createRoot(rootEl).render(
     <AppShell
       registry={registry}
       client={client}
-      chromeOverlay={<ScreenLock />}
+      chromeOverlay={
+        <Suspense fallback={null}>
+          <ScreenLock />
+        </Suspense>
+      }
       chromeGuard={CredentialStateGuard}
     />
   </StrictMode>,
