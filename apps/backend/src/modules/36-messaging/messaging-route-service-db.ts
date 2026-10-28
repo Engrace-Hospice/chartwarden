@@ -1,3 +1,4 @@
+import { hasOrgWideScope, resolveActorPermissions } from "@chartwarden/auth";
 // apps/backend/src/modules/36-messaging — PRODUCTION messaging route-service adapter over Drizzle
 // (FB-T04 reads; FB-T05 writes). The READ surface the merged-module screens consume (the channel
 // sidebar, channel detail + members, the thread history envelope, the alert inbox, the actor's
@@ -69,7 +70,6 @@ import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
-  ValidationError,
   formatMrn,
   richBodySbar,
 } from "@chartwarden/types";
@@ -689,6 +689,59 @@ export function createDbMessagingRouteService(
     warn: opts.warn,
   });
   const cipher = opts.cipher ?? createMessageBodyCipher({ kek: opts.kek });
+  async function patientMentionLabel(
+    orgId: string,
+    userId: string,
+    patientId: string,
+  ): Promise<string | null> {
+    try {
+      const grants = await resolveActorPermissions({ organizationId: orgId, userId });
+      if (!grants.has("patient.read")) return null;
+      const roles = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        const rows = await tx
+          .select({ role: ROLE.key })
+          .from(MEMBERSHIP)
+          .innerJoin(
+            MEMBERSHIP_ROLE,
+            and(
+              eq(MEMBERSHIP_ROLE.membershipId, MEMBERSHIP.id),
+              eq(MEMBERSHIP_ROLE.organizationId, orgId),
+            ),
+          )
+          .innerJoin(ROLE, and(eq(ROLE.id, MEMBERSHIP_ROLE.roleId), eq(ROLE.enabled, true)))
+          .where(
+            and(
+              eq(MEMBERSHIP.organizationId, orgId),
+              eq(MEMBERSHIP.userId, userId),
+              eq(MEMBERSHIP.status, "active"),
+              or(isNull(MEMBERSHIP_ROLE.expiresAt), sql`${MEMBERSHIP_ROLE.expiresAt} > now()`),
+            ),
+          );
+        return rows.map((row) => row.role);
+      });
+      const inScope =
+        hasOrgWideScope(roles) ||
+        (await getSeam("CaseloadProvider").isInCaseload({
+          organizationId: orgId,
+          userId,
+          patientId,
+        }));
+      if (!inScope) return null;
+      if (
+        !(
+          await part2Gate.allowedUserIds({ organizationId: orgId, patientId, userIds: [userId] })
+        ).has(userId)
+      )
+        return null;
+      const patient = await getSeam("PatientReader").findById({
+        organizationId: orgId,
+        id: patientId,
+      });
+      return patient ? `${patient.firstName} ${patient.lastName}`.trim() || "Patient" : null;
+    } catch {
+      return null;
+    }
+  }
   const hydrationContext = (
     orgId: string,
     viewerUserId: string,
@@ -699,6 +752,7 @@ export function createDbMessagingRouteService(
     viewerUserId,
     channelKind,
     cipher,
+    patientMentionLabel: (patientId: string) => patientMentionLabel(orgId, viewerUserId, patientId),
     warn: opts.warn,
     showLegalHold,
   });
@@ -817,12 +871,14 @@ export function createDbMessagingRouteService(
           detail: "Staff member",
         });
       }
-      if (staff.length >= 20) break;
+      if (needle && staff.length >= 20) break;
     }
 
     const patients = [];
     if (channel.kind === "care_team" && channel.subjectId) {
       try {
+        const authorizedLabel = await patientMentionLabel(orgId, userId, channel.subjectId);
+        if (!authorizedLabel) return staff;
         const patient = await getSeam("PatientReader").findById({
           organizationId: orgId,
           id: channel.subjectId,
@@ -1492,6 +1548,19 @@ export function createDbMessagingRouteService(
         candidates.map((candidate) => [`${candidate.kind}:${candidate.entityId}`, candidate]),
       );
       for (const reference of references) {
+        if (reference.kind === "patient") {
+          if (
+            input.body.slice(reference.start, reference.end) !== "@Patient" ||
+            !(await patientMentionLabel(orgId, input.authorUserId, reference.entityId))
+          ) {
+            throw new ChartWardenError(
+              "INVALID_MESSAGE_REFERENCES",
+              "patient reference is not authorized",
+              422,
+            );
+          }
+          continue;
+        }
         const candidate = candidateByKey.get(`${reference.kind}:${reference.entityId}`);
         if (
           !candidate ||
@@ -1644,6 +1713,19 @@ export function createDbMessagingRouteService(
           candidates.map((candidate) => [`${candidate.kind}:${candidate.entityId}`, candidate]),
         );
         for (const reference of references) {
+          if (reference.kind === "patient") {
+            if (
+              input.body.slice(reference.start, reference.end) !== "@Patient" ||
+              !(await patientMentionLabel(orgId, input.userId, reference.entityId))
+            ) {
+              throw new ChartWardenError(
+                "INVALID_MESSAGE_REFERENCES",
+                "patient reference is not authorized",
+                422,
+              );
+            }
+            continue;
+          }
           const candidate = candidateByKey.get(`${reference.kind}:${reference.entityId}`);
           if (
             !candidate ||
@@ -1990,6 +2072,44 @@ export function createDbMessagingRouteService(
         await ensureDmMember(tx, orgId, channelId, userId, "owner");
         await ensureDmMember(tx, orgId, channelId, peerUserId, "member");
         return { channelId, created };
+      });
+    },
+
+    async createGroup(orgId, userId, input) {
+      const title = input.title.trim();
+      const peers = [...new Set(input.userIds)];
+      if (
+        !title ||
+        title.length > 80 ||
+        peers.length < 2 ||
+        peers.length > 49 ||
+        peers.includes(userId)
+      ) {
+        throw new ChartWardenError(
+          "INVALID_GROUP",
+          "a group needs a title and at least two other staff members",
+          422,
+        );
+      }
+      return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        await assertActiveMessagingUser(tx, orgId, userId);
+        for (const peerId of peers) await assertDmPeerEligible(tx, orgId, peerId);
+        const [channel] = await tx
+          .insert(CH)
+          .values({
+            organizationId: orgId,
+            channelKind: "group",
+            subjectId: null,
+            dmParticipantKey: null,
+            title,
+            retentionClass: "care_related",
+          })
+          .returning({ id: CH.id });
+        if (!channel)
+          throw new ChartWardenError("GROUP_CREATE_FAILED", "could not create group", 503);
+        await ensureDmMember(tx, orgId, channel.id, userId, "owner");
+        for (const peerId of peers) await ensureDmMember(tx, orgId, channel.id, peerId, "member");
+        return { channelId: channel.id, created: true as const };
       });
     },
 

@@ -9,6 +9,7 @@ const FILTERS: readonly { value: ConversationFilter; label: string }[] = [
   { value: "unread", label: "Unread" },
   { value: "mentions", label: "Mentions" },
   { value: "dm", label: "Direct" },
+  { value: "group", label: "Groups" },
   { value: "care_team", label: "Care Teams" },
   { value: "archived", label: "Archived" },
 ];
@@ -171,7 +172,7 @@ export function ConversationInbox({
             title={channels.length === 0 ? "No conversations yet" : "No matching conversations"}
             description={
               channels.length === 0
-                ? "Start a direct message or open a patient care-team conversation."
+                ? "Start a direct message, create a group, or open a patient care-team conversation."
                 : "Try another search or filter."
             }
             action={

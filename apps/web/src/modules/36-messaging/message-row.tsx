@@ -55,7 +55,10 @@ export function MessageText({ message }: { message: Message }): JSX.Element {
     if (reference.start < cursor) continue;
     if (reference.start > cursor)
       parts.push(<span key={`t-${cursor}`}>{message.body.slice(cursor, reference.start)}</span>);
-    const text = message.body.slice(reference.start, reference.end);
+    const text =
+      reference.kind === "patient"
+        ? `@${reference.displayLabel}`
+        : message.body.slice(reference.start, reference.end);
     parts.push(
       reference.kind === "patient" && reference.navigable ? (
         <Link

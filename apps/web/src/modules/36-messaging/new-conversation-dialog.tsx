@@ -28,6 +28,8 @@ export function NewConversationDialog({
   const [staff, setStaff] = useState<DmStaffMember[] | null>(null);
   const [patients, setPatients] = useState<PatientSearchResult[] | null>(null);
   const [selectedStaff, setSelectedStaff] = useState<DmStaffMember | null>(null);
+  const [groupMembers, setGroupMembers] = useState<DmStaffMember[]>([]);
+  const [groupTitle, setGroupTitle] = useState("");
   const [selectedPatient, setSelectedPatient] = useState<PatientSearchResult | null>(null);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -52,7 +54,7 @@ export function NewConversationDialog({
     setPatients(null);
     setSearchError(null);
     const timer = window.setTimeout(() => {
-      if (type === "direct") {
+      if (type !== "patient") {
         void client
           .GET("/api/v1/messaging/dm/staff", {
             params: { query: { q: query.trim() || undefined } },
@@ -110,6 +112,8 @@ export function NewConversationDialog({
     setStaff(null);
     setPatients(null);
     setSelectedStaff(null);
+    setGroupMembers([]);
+    setGroupTitle("");
     setSelectedPatient(null);
     setHighlightedIndex(0);
     setSearchError(null);
@@ -117,18 +121,43 @@ export function NewConversationDialog({
   }
 
   async function createConversation(): Promise<void> {
-    if (creatingRequest.current || (type === "direct" ? !selectedStaff : !selectedPatient)) return;
+    if (
+      creatingRequest.current ||
+      (type === "direct"
+        ? !selectedStaff
+        : type === "group"
+          ? groupMembers.length < 2 || groupMembers.length > 49 || !groupTitle.trim()
+          : !selectedPatient)
+    )
+      return;
     creatingRequest.current = true;
     setCreating(true);
     setCreateError(null);
     const sequence = requestSequence.current;
-    const result =
-      type === "direct"
-        ? await client.POST("/api/v1/messaging/dm", { body: { userId: selectedStaff!.userId } })
-        : await client.POST("/api/v1/messaging/patients/{patientId}/care-team-channel", {
+    const result = await (type === "direct"
+      ? client.POST("/api/v1/messaging/dm", { body: { userId: selectedStaff!.userId } })
+      : type === "group"
+        ? client.POST("/api/v1/messaging/groups", {
+            body: {
+              title: groupTitle.trim(),
+              userIds: groupMembers.map((member) => member.userId),
+            },
+          })
+        : client.POST("/api/v1/messaging/patients/{patientId}/care-team-channel", {
             params: { path: { patientId: selectedPatient!.patientId } },
-          });
-    if (sequence !== requestSequence.current) return;
+          })
+    ).catch(() => null);
+    if (!result) {
+      setCreateError("Could not start this conversation. Please try again.");
+      creatingRequest.current = false;
+      setCreating(false);
+      return;
+    }
+    if (sequence !== requestSequence.current) {
+      creatingRequest.current = false;
+      setCreating(false);
+      return;
+    }
     creatingRequest.current = false;
     setCreating(false);
     if (result.error || !result.data?.channelId) {
@@ -149,9 +178,26 @@ export function NewConversationDialog({
     }
   }
 
-  const results = type === "direct" ? (staff ?? []) : (patients ?? []);
-  const loading = type === "direct" ? staff === null : patients === null;
-  const selected = type === "direct" ? selectedStaff : selectedPatient;
+  const results = type !== "patient" ? (staff ?? []) : (patients ?? []);
+  const loading = type !== "patient" ? staff === null : patients === null;
+  const selected =
+    type === "direct"
+      ? selectedStaff
+      : type === "group"
+        ? groupMembers.length >= 2 && Boolean(groupTitle.trim())
+        : selectedPatient;
+
+  function chooseStaff(person: DmStaffMember): void {
+    if (type === "group") {
+      setGroupMembers((current) =>
+        current.some((member) => member.userId === person.userId)
+          ? current.filter((member) => member.userId !== person.userId)
+          : current.length < 49
+            ? [...current, person]
+            : current,
+      );
+    } else setSelectedStaff(person);
+  }
 
   function handleSearchKey(event: KeyboardEvent<HTMLInputElement>): void {
     if (results.length === 0) return;
@@ -162,7 +208,7 @@ export function NewConversationDialog({
     } else if (event.key === "Enter") {
       event.preventDefault();
       const item = results[highlightedIndex];
-      if (type === "direct") setSelectedStaff(item as DmStaffMember);
+      if (type !== "patient") chooseStaff(item as DmStaffMember);
       else setSelectedPatient(item as PatientSearchResult);
     }
   }
@@ -182,7 +228,7 @@ export function NewConversationDialog({
           </p>
         </header>
         <div role="tablist" aria-label="Conversation type" className="wx-conversation-type-tabs">
-          {(["direct", "patient"] as const).map((option) => (
+          {(["direct", "group", "patient"] as const).map((option) => (
             <button
               key={option}
               type="button"
@@ -191,12 +237,18 @@ export function NewConversationDialog({
               disabled={creating}
               onClick={() => changeType(option)}
             >
-              {option === "direct" ? "Direct message" : "Patient care team"}
+              {option === "direct"
+                ? "Direct message"
+                : option === "group"
+                  ? "Group"
+                  : "Patient care team"}
             </button>
           ))}
         </div>
         <label className="wx-conversation-picker-search">
-          <span>{type === "direct" ? "Staff member" : "Patient"}</span>
+          <span>
+            {type === "patient" ? "Patient" : type === "group" ? "Add colleagues" : "Staff member"}
+          </span>
           <input
             type="search"
             value={query}
@@ -207,13 +259,13 @@ export function NewConversationDialog({
               setHighlightedIndex(0);
             }}
             onKeyDown={handleSearchKey}
-            placeholder={type === "direct" ? "Search by name or email…" : "Search by name or MRN…"}
-            aria-label={type === "direct" ? "Search eligible staff" : "Search authorized patients"}
+            placeholder={type === "patient" ? "Search by name or MRN…" : "Search by name or email…"}
+            aria-label={type === "patient" ? "Search authorized patients" : "Search eligible staff"}
             aria-controls="new-conversation-results"
             aria-activedescendant={
               results[highlightedIndex]
                 ? `conversation-result-${
-                    type === "direct"
+                    type !== "patient"
                       ? (results[highlightedIndex] as DmStaffMember).userId
                       : (results[highlightedIndex] as PatientSearchResult).patientId
                   }`
@@ -221,6 +273,32 @@ export function NewConversationDialog({
             }
           />
         </label>
+        {type === "group" ? (
+          <div className="wx-group-setup">
+            <label>
+              Group name
+              <input
+                value={groupTitle}
+                maxLength={80}
+                onChange={(event) => setGroupTitle(event.target.value)}
+                placeholder="e.g. Weekend care coordination"
+              />
+            </label>
+            <p>{groupMembers.length} colleagues selected · choose at least 2</p>
+            <div className="wx-group-selected" aria-label="Selected colleagues">
+              {groupMembers.map((person) => (
+                <button
+                  type="button"
+                  key={person.userId}
+                  onClick={() => chooseStaff(person)}
+                  aria-label={`Remove ${person.displayName}`}
+                >
+                  {person.displayName} ×
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div id="new-conversation-results" className="wx-conversation-picker-results">
           {loading ? (
             <output className="wx-conversation-picker-state">
@@ -235,13 +313,15 @@ export function NewConversationDialog({
             </div>
           ) : results.length === 0 ? (
             <EmptyState
-              title={type === "direct" ? "No eligible staff found" : "No authorized patients found"}
+              title={
+                type === "patient" ? "No authorized patients found" : "No eligible staff found"
+              }
               description="Try a different search."
             />
           ) : (
-            <ul aria-label={type === "direct" ? "Eligible staff" : "Authorized patients"}>
+            <ul aria-label={type === "patient" ? "Authorized patients" : "Eligible staff"}>
               {results.map((item, index) => {
-                const isStaff = type === "direct";
+                const isStaff = type !== "patient";
                 const id = isStaff
                   ? (item as DmStaffMember).userId
                   : (item as PatientSearchResult).patientId;
@@ -252,7 +332,9 @@ export function NewConversationDialog({
                   ? (item as DmStaffMember).roles.join(" · ") || "Staff member"
                   : formatMrn((item as PatientSearchResult).medicalRecordNumber);
                 const isSelected = isStaff
-                  ? selectedStaff?.userId === id
+                  ? type === "group"
+                    ? groupMembers.some((member) => member.userId === id)
+                    : selectedStaff?.userId === id
                   : selectedPatient?.patientId === id;
                 return (
                   <li key={id}>
@@ -263,7 +345,7 @@ export function NewConversationDialog({
                       onMouseEnter={() => setHighlightedIndex(index)}
                       onClick={() =>
                         isStaff
-                          ? setSelectedStaff(item as DmStaffMember)
+                          ? chooseStaff(item as DmStaffMember)
                           : setSelectedPatient(item as PatientSearchResult)
                       }
                     >
@@ -295,7 +377,7 @@ export function NewConversationDialog({
             disabled={!selected || creating}
             loading={creating}
           >
-            {creating ? "Opening…" : "Open conversation"}
+            {creating ? "Opening…" : type === "group" ? "Create group" : "Open conversation"}
           </Button>
         </footer>
       </div>

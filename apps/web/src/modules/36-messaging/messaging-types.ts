@@ -11,6 +11,7 @@ export type ChannelKind =
   | "location"
   | "on_call"
   | "dm"
+  | "group"
   | "announcement"
   | "bereavement"
   | "family";
@@ -135,8 +136,15 @@ export interface PatientHeaderInfo {
   lastName: string;
 }
 
-export type ConversationFilter = "all" | "unread" | "mentions" | "dm" | "care_team" | "archived";
-export type ConversationType = "direct" | "patient";
+export type ConversationFilter =
+  | "all"
+  | "unread"
+  | "mentions"
+  | "dm"
+  | "group"
+  | "care_team"
+  | "archived";
+export type ConversationType = "direct" | "group" | "patient";
 
 /** WP 1.5: one file in the composer tray. */
 export type AttachmentChipStatus =

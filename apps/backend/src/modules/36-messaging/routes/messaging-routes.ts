@@ -84,6 +84,7 @@ import {
   AlertRulePatchSchema,
   AnnounceBodySchema,
   ChannelParamsSchema,
+  CreateGroupBodySchema,
   DmStaffSearchQuerySchema,
   EditMessageBodySchema,
   EndpointParamsSchema,
@@ -775,6 +776,13 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     const body = parse(OpenDmBodySchema, request.body);
     const result = await service.openDm(organizationId, userId, body.userId);
     return reply.code(result.created ? 201 : 200).send(result);
+  });
+
+  app.post("/api/v1/messaging/groups", { preHandler: [DM] }, async (request, reply) => {
+    const { organizationId, userId } = actorOf(request);
+    const body = parse(CreateGroupBodySchema, request.body);
+    const result = await service.createGroup(organizationId, userId, body);
+    return reply.code(201).send(result);
   });
 
   // Minimum-necessary directory for the DM picker. Organization and actor are server-derived;

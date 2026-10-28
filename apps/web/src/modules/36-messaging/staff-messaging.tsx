@@ -404,6 +404,7 @@ function OrganizationStaffMessaging({
         (filter === "unread" && channel.unreadCount > 0) ||
         (filter === "mentions" && channel.mentionCount > 0) ||
         (filter === "dm" && channel.kind === "dm" && channel.archivedAt === null) ||
+        (filter === "group" && channel.kind === "group" && channel.archivedAt === null) ||
         (filter === "care_team" && channel.kind === "care_team" && channel.archivedAt === null) ||
         (filter === "archived" && channel.archivedAt !== null);
       if (!matchesFilter) return false;
