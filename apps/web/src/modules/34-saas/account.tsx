@@ -99,7 +99,6 @@ export function Account(): JSX.Element {
       header={
         <PageHeader
           title="Account"
-          breadcrumb="Admin / Organization"
           actions={
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <StatusPill label={statusLabel(lifecycle)} tone={lifecycleTone(lifecycle)} />

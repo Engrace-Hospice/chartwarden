@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import type { JSX } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { describe, expect, it } from "vitest";
@@ -18,6 +19,38 @@ const entry: NavEntry = {
   matchPrefixes: ["/admissions", "/referrals"],
 };
 
+const assessmentsEntry: NavEntry = {
+  ...entry,
+  key: "assessments",
+  label: "Assessments",
+  icon: "clipboard-check",
+  href: "/hope",
+  screens: [
+    { id: "hope", path: "/hope", title: "HOPE" },
+    { id: "hope-sfv", path: "/hope/sfv", title: "SFV Worklist" },
+  ],
+  children: [{ id: "hope-sfv", path: "/hope/sfv", title: "SFV Worklist" }],
+  matchPrefixes: ["/hope"],
+};
+
+function AccordionHarness(): JSX.Element {
+  const [openKey, setOpenKey] = useState<string | null>("admissions");
+  return (
+    <>
+      {[entry, assessmentsEntry].map((item) => (
+        <PrimaryNavEntry
+          key={item.key}
+          entry={item}
+          active={false}
+          pathname="/"
+          expanded={openKey === item.key}
+          onToggle={() => setOpenKey((current) => (current === item.key ? null : item.key))}
+        />
+      ))}
+    </>
+  );
+}
+
 function Harness(): JSX.Element {
   const location = useLocation();
   return (
@@ -29,6 +62,19 @@ function Harness(): JSX.Element {
 }
 
 describe("PrimaryNavEntry", () => {
+  it("closes the previous sidebar group when another opens", () => {
+    render(
+      <MemoryRouter>
+        <AccordionHarness />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("link", { name: "Referral Inbox" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show Assessments pages" }));
+    expect(screen.queryByRole("link", { name: "Referral Inbox" })).toBeNull();
+    expect(screen.getByRole("link", { name: "SFV Worklist" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Hide Assessments pages" }));
+    expect(screen.queryByRole("link", { name: "SFV Worklist" })).toBeNull();
+  });
   it("navigates and toggles its children when the module link is clicked", () => {
     render(
       <MemoryRouter initialEntries={["/"]}>

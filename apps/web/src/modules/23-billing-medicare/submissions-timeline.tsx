@@ -67,24 +67,7 @@ export function SubmissionsTimeline(): JSX.Element {
   if (error) return <EmptyState title="Unavailable" description={error} />;
 
   return (
-    <DetailPageLayout
-      header={
-        <PageHeader
-          title="Submissions"
-          breadcrumb={
-            <>
-              Billing — Medicare ·{" "}
-              <a
-                href={`/billing/claims/${claimId}`}
-                style={{ fontFamily: "var(--font-mono)", color: "var(--color-primary)" }}
-              >
-                {claimId}
-              </a>
-            </>
-          }
-        />
-      }
-    >
+    <DetailPageLayout header={<PageHeader title="Submissions" />}>
       <SubmissionsTable rows={rows} />
     </DetailPageLayout>
   );

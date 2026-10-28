@@ -73,7 +73,7 @@ export function PlaybookLibrary(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-          <PageHeader title="Playbooks" breadcrumb="Revenue Cycle — Playbooks">
+          <PageHeader title="Playbooks">
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               {PLAYBOOK_BANNER} Nothing is provided by ChartWarden: every playbook here was written
               by your organization.

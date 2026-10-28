@@ -165,7 +165,6 @@ export function ExternalVendorAdminScreen(): JSX.Element {
         header={
           <PageHeader
             title="External triage vendors"
-            breadcrumb="On-call triage / Configuration"
             actions={
               <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                 <button

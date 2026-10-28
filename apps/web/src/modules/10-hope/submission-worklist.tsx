@@ -214,7 +214,7 @@ export function SubmissionWorklist(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="HOPE Submissions" breadcrumb="Clinical / HOPE">
+        <PageHeader title="HOPE Submissions">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Monitor CMS submission batches by period, provider entity, and outcome status.
           </div>

@@ -395,10 +395,44 @@
     overflow: auto;
   }
 
+  .wx-route-breadcrumbs {
+    flex: none;
+    padding: 1.25rem 1.5rem 0;
+    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+  }
+  .wx-route-breadcrumbs ol {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .wx-route-breadcrumbs li {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .wx-route-breadcrumbs a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .wx-route-breadcrumbs a:hover {
+    text-decoration: underline;
+  }
+  .wx-route-breadcrumbs a:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 3px;
+  }
+  .wx-route-breadcrumb-separator {
+    opacity: 0.65;
+  }
+
   /* ---- Contextual module navigation ---------------------------------------
      Route links (not ARIA tab panels) derived from the same permission-filtered screen set as the
-     primary sidebar. The frame supplies stable shell-level placement while each screen keeps its own
-     title, breadcrumbs, KPI strip, filters and workflow state. */
+     primary sidebar. The frame supplies stable shell-level placement and breadcrumbs while each screen
+     keeps its own title, KPI strip, filters and workflow state. */
   .wx-module-tabs-frame {
     flex: none;
     min-width: 0;

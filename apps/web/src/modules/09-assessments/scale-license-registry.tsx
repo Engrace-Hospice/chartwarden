@@ -159,7 +159,7 @@ export function ScaleLicenseRegistry(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-          <PageHeader title="Scale Licenses" breadcrumb="Admin / Assessments">
+          <PageHeader title="Scale Licenses">
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Review licensed clinical scales, vendor coverage, seat limits, and renewal state.
             </div>

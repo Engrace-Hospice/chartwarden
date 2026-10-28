@@ -148,7 +148,6 @@ export function IncidentLedgerScreen(): JSX.Element {
       header={
         <PageHeader
           title="Safety Incidents"
-          breadcrumb="Field safety"
           actions={
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
               <Link to="/safety/incidents/new" style={linkButtonStyle}>

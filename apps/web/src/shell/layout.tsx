@@ -1,4 +1,5 @@
 import {
+  Breadcrumbs,
   DegradedBanner,
   EmptyState,
   Glyph,
@@ -23,7 +24,9 @@ import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, JSX, ReactNode } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { canSeeScreen, needsOrgSelection } from "./actor-session";
+import { resolveBreadcrumbs } from "./breadcrumb-navigation";
 import { clearAllDrafts } from "./ceremony-drafts";
+import { filterIpuNavigation, useIpuNavigationAvailability } from "./ipu-navigation";
 import { ModuleNavigationTabs } from "./module-navigation-tabs";
 import { NotificationBell } from "./notification-bell";
 import { clearPendingNotificationLink } from "./pending-deep-link";
@@ -69,6 +72,7 @@ export interface AppLayoutProps {
 
 export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   const session = useSession();
+  const ipu = useIpuNavigationAvailability();
   // Below the responsive breakpoint (TASK-033 / UI-004) the sidebar becomes an off-canvas drawer —
   // a fixed-width sidebar plus content leaves too little room at 390px wide, so it's hidden by
   // default and toggled by the header's hamburger button instead of always occupying the viewport.
@@ -107,11 +111,26 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   }, []);
   // Detail screens (param paths like /patients/:id) are reached programmatically, not via nav.
   // Gated screens show only when the actor holds the key (FB-T15 — server still enforces).
-  const sections = useMemo(
-    () => buildPrimaryNav(screens.filter((s) => canSeeScreen(s, session))),
-    [screens, session],
+  const visibleScreens = useMemo(
+    () =>
+      filterIpuNavigation(
+        screens.filter((s) => canSeeScreen(s, session)),
+        ipu.enabled,
+        ipu.hasActiveUnit,
+        ipu.isAdmin,
+      ),
+    [screens, session, ipu.enabled, ipu.hasActiveUnit, ipu.isAdmin],
+  );
+  const sections = useMemo(() => buildPrimaryNav(visibleScreens), [visibleScreens]);
+  const breadcrumbs = useMemo(
+    () => resolveBreadcrumbs(pathname, screens, sections, visibleScreens),
+    [pathname, screens, sections, visibleScreens],
   );
   const activeKey = activeEntryKey(sections, pathname);
+  const [openEntryKey, setOpenEntryKey] = useState<string | null>(activeKey);
+  useEffect(() => {
+    if (activeKey) setOpenEntryKey(activeKey);
+  }, [activeKey]);
   // Pre-org guard (ADR-0030): an authenticated session with no bound organization can't use ANY
   // org-scoped screen — the server 401/403s every org route, so the shell would render screens that
   // all read "Unavailable". Send the actor to organization-select instead. `/login/organization` is
@@ -159,6 +178,10 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
                   entry={entry}
                   active={entry.key === activeKey}
                   pathname={pathname}
+                  expanded={entry.key === openEntryKey}
+                  onToggle={() =>
+                    setOpenEntryKey((current) => (current === entry.key ? null : entry.key))
+                  }
                 />
               ))}
             </div>
@@ -192,6 +215,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
         </header>
         <main id="wx-main" className="wx-main wx-no-scrollbar" ref={mainRef} tabIndex={-1}>
           <ModuleNavigationTabs sections={sections} pathname={pathname} />
+          <Breadcrumbs items={breadcrumbs} />
           <Outlet />
         </main>
       </div>
@@ -208,15 +232,25 @@ export function PrimaryNavEntry({
   entry,
   active,
   pathname,
+  expanded,
+  onToggle,
 }: {
   entry: NavEntry;
   active: boolean;
   pathname: string;
+  /** The shell controls this to keep only one top-level group expanded. */
+  expanded?: boolean;
+  onToggle?: () => void;
 }): JSX.Element {
-  const [open, setOpen] = useState(active);
+  const [localOpen, setLocalOpen] = useState(active);
   useEffect(() => {
-    if (active) setOpen(true);
-  }, [active]);
+    if (active && expanded === undefined) setLocalOpen(true);
+  }, [active, expanded]);
+  const open = expanded ?? localOpen;
+  const toggle = (): void => {
+    if (onToggle) onToggle();
+    else setLocalOpen((current) => !current);
+  };
   const hasChildren = entry.children.length > 0 || (entry.borrowed?.length ?? 0) > 0;
   const listId = `wx-nav-${entry.key}`;
   return (
@@ -229,7 +263,7 @@ export function PrimaryNavEntry({
           aria-expanded={hasChildren ? open : undefined}
           aria-controls={hasChildren ? listId : undefined}
           onClick={() => {
-            if (hasChildren) setOpen((current) => !current);
+            if (hasChildren) toggle();
           }}
         >
           <Glyph name={entry.icon} size={18} strokeWidth={1.75} />
@@ -242,7 +276,7 @@ export function PrimaryNavEntry({
             aria-expanded={open}
             aria-controls={listId}
             aria-label={`${open ? "Hide" : "Show"} ${entry.label} pages`}
-            onClick={() => setOpen((o) => !o)}
+            onClick={toggle}
           >
             <Glyph name={open ? "chevron-down" : "chevron-right"} size={16} strokeWidth={1.75} />
           </button>

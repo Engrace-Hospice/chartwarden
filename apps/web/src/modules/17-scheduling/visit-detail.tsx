@@ -132,7 +132,7 @@ export function VisitDetail(): JSX.Element {
     ? `/calendar?view=${encodeURIComponent(params.get("view") ?? "day")}&date=${encodeURIComponent(visit.serviceDate)}${params.get("patient") ? `&patient=${encodeURIComponent(params.get("patient")!)}` : ""}&visit=${encodeURIComponent(visit.id)}`
     : "/calendar";
   const header = (
-    <PageHeader title="Visit" breadcrumb="Scheduling">
+    <PageHeader title="Visit">
       <NewVisitButton onNewVisit={() => setCreating(true)} />
     </PageHeader>
   );

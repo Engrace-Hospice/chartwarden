@@ -81,7 +81,6 @@ export function TerminologyAdmin(): JSX.Element {
       header={
         <PageHeader
           title="Terminology"
-          breadcrumb="Admin"
           actions={
             <Button
               type="button"

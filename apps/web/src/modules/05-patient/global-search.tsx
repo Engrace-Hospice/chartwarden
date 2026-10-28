@@ -256,7 +256,7 @@ export function GlobalSearchResults(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Search" breadcrumb="Workspace">
+        <PageHeader title="Search">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Search patients by name or MRN, and staff in your organization.
           </div>

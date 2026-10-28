@@ -136,7 +136,6 @@ export function MyOnCallScreen(): JSX.Element {
       header={
         <PageHeader
           title="My on-call"
-          breadcrumb="On-call triage"
           actions={
             <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
               <Link to="/triage/intake" style={primaryLinkButtonStyle}>

@@ -106,7 +106,7 @@ export function AdminApp({
         // gated on an authenticated, platform_ops-holding session (RequireChrome).
         element: (
           <RequireChrome>
-            <AdminLayout sections={nav} />
+            <AdminLayout sections={nav} screens={chromed} />
           </RequireChrome>
         ),
         children: [

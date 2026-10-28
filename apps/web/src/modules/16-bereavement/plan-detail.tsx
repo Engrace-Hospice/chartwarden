@@ -152,7 +152,6 @@ export function BereavementPlanDetail(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Bereavement plan {shortId(plan.planId)}</span>}
-        breadcrumb="Bereavement — plan detail"
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             <Link to={`/bereavement/plans/${planId}/outreach`} style={ghostButtonStyle}>

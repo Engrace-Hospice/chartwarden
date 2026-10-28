@@ -138,7 +138,6 @@ export function BereavementSupervisorDashboard(): JSX.Element {
       header={
         <PageHeader
           title="Bereavement program"
-          breadcrumb="Bereavement / Supervisor"
           actions={
             <Link to="/bereavement/eligible" style={ghostButtonStyle}>
               Intake queue

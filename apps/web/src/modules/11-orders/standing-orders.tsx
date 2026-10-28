@@ -98,7 +98,7 @@ export function StandingOrders(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Standing Orders" breadcrumb="Clinical / Orders">
+        <PageHeader title="Standing Orders">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Monitor recurring order templates, cadence, spawn limits, and next scheduled instance.
           </div>

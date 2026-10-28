@@ -115,7 +115,7 @@ export function RolesPermissions(): JSX.Element {
     <AdminSplitLayout
       header={
         <>
-          <PageHeader title="Roles & Permissions" breadcrumb="Admin / Access control">
+          <PageHeader title="Roles & Permissions">
             <p style={subtitle}>
               Review role access and permission coverage across your organization.
             </p>

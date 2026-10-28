@@ -94,7 +94,7 @@ export function IpuUnits(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Inpatient units" breadcrumb="IPU / Bed capacity">
+        <PageHeader title="Inpatient units">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Monitor unit readiness, bed capacity, RN coverage horizon, and turnover expectations.
           </div>

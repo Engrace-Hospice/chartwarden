@@ -88,7 +88,6 @@ export function MdmConsole(): JSX.Element {
       header={
         <PageHeader
           title="Master Data Management"
-          breadcrumb="Admin"
           actions={
             <Button type="button" tone="secondary" onClick={() => void search()} loading={loading}>
               Search

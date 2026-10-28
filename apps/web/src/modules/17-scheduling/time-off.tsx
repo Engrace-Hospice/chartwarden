@@ -79,7 +79,7 @@ export function SchedulingTimeOff(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Time-Off Queue" breadcrumb="Scheduling">
+        <PageHeader title="Time-Off Queue">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Supervisor review queue for requested time off
             {membership ? `, scoped to clinician ${membership.slice(0, 8)}` : ""}

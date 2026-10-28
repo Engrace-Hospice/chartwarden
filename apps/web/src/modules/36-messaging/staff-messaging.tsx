@@ -428,7 +428,7 @@ function OrganizationStaffMessaging({
 
   return (
     <div className="wx-messaging-page">
-      <PageHeader title="Messaging" breadcrumb="General / Messaging">
+      <PageHeader title="Messaging">
         <p className="wx-messaging-page-subtitle">
           Secure conversations in <strong>{organizationName}</strong>
         </p>

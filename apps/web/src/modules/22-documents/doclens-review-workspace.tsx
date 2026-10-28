@@ -381,10 +381,6 @@ export function DocLensReviewWorkspace(): JSX.Element {
     <div className="wx-reports wx-doclens">
       <header className="wx-page-head">
         <div>
-          <nav aria-label="Breadcrumb" className="wx-row-sub">
-            <Link to="/referrals">Referrals</Link> / <Link to="/intake">Intake review</Link> /{" "}
-            <Link to={`/intake/${ws.batch.id}`}>Batch details</Link>
-          </nav>
           <h1 style={{ fontSize: "1.875rem" }}>
             {ws.batch.patientName ?? (ws.batch.patientId ? "Patient" : "Unassigned intake")}
           </h1>

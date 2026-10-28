@@ -263,7 +263,6 @@ export function ValidationWorklist(): JSX.Element {
         header={
           <PageHeader
             title="Validation Worklist"
-            breadcrumb={`Billing — Medicare · Claim ${claimId}`}
             actions={
               <div
                 style={{

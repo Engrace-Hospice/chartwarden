@@ -70,7 +70,7 @@ export function Promos(): JSX.Element {
 
   return (
     <DetailPageLayout
-      header={<PageHeader title="Promo codes" breadcrumb="Billing" />}
+      header={<PageHeader title="Promo codes" />}
       aside={
         <div
           style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}

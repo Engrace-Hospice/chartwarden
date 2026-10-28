@@ -283,12 +283,7 @@ export function SubmissionDetail(): JSX.Element {
               </div>
             ) : undefined
           }
-        >
-          <nav aria-label="Breadcrumb" style={meta}>
-            <Link to="/hope/submissions">HOPE submissions</Link>
-            {row ? ` / ${row.submissionPeriod}` : ""}
-          </nav>
-        </PageHeader>
+        />
       }
     >
       {actionError ? (

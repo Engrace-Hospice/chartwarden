@@ -365,7 +365,7 @@ export function ConsentCapture(): JSX.Element {
 
   return (
     <PatientWorkspaceLayout banner={banner}>
-      <PageHeader title="Capture a new consent" breadcrumb="Consents" />
+      <PageHeader title="Capture a new consent" />
 
       <section style={card}>
         <h2 style={heading}>1. Type & terms</h2>

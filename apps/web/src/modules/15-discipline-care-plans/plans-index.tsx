@@ -85,7 +85,6 @@ export function DisciplinePlansIndex(): JSX.Element {
   const banner = (
     <PageHeader
       title={<span style={pageTitleStyle}>Discipline plans</span>}
-      breadcrumb="Clinical — the four CoP discipline plans of care"
       actions={
         <Link to={`/patients/${patientId}/discipline-plans/summary`} style={ghostButtonStyle}>
           Printable summary

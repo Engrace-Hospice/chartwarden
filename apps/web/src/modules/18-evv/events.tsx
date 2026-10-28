@@ -121,7 +121,6 @@ export function EvvEvents(): JSX.Element {
       header={
         <PageHeader
           title="EVV Event Ledger"
-          breadcrumb="Admin / EVV"
           actions={
             <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
               Refresh

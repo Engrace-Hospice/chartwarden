@@ -111,7 +111,6 @@ export function AiOptInBoard(): JSX.Element {
         header={
           <PageHeader
             title="AI capabilities"
-            breadcrumb="Organization / AI"
             actions={
               <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
                 Refresh

@@ -165,7 +165,6 @@ export function SafetyDashboardScreen(): JSX.Element {
       header={
         <PageHeader
           title="Field Safety Board"
-          breadcrumb="Field safety"
           actions={
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
               <Link to="/safety/sos" style={linkButtonStyle}>

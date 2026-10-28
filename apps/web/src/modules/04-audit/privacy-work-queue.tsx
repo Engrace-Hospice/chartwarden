@@ -38,7 +38,7 @@ export function PrivacyWorkQueue(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Privacy Requests" breadcrumb="Compliance / HIPAA">
+        <PageHeader title="Privacy Requests">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Work patient amendment requests (§164.526) and produce the accounting of disclosures
             (§164.528) and chart access history.

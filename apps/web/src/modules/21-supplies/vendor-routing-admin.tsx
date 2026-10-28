@@ -193,7 +193,6 @@ export function VendorRoutingAdmin(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Vendor routing</span>}
-        breadcrumb="Supplies — the D4 precedence ladder"
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             <button

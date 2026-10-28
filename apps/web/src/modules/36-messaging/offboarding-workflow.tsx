@@ -256,7 +256,7 @@ export function OffboardingWorkflow(): JSX.Element {
   const { userId = "" } = useParams();
   return (
     <>
-      <PageHeader title={OFFBOARDING_TITLE} breadcrumb={OFFBOARDING_BREADCRUMB}>
+      <PageHeader title={OFFBOARDING_TITLE}>
         <p className="wx-offboarding-detail">{OFFBOARDING_NOTICE}</p>
       </PageHeader>
       <section className="wx-offboarding" aria-label={OFFBOARDING_TITLE}>

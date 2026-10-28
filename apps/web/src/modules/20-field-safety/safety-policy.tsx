@@ -233,7 +233,6 @@ export function SafetyPolicyScreen(): JSX.Element {
       header={
         <PageHeader
           title="Safety Policy"
-          breadcrumb="Field safety"
           actions={
             <div style={actionGroupStyle}>
               <Link to="/safety" style={linkButtonStyle}>

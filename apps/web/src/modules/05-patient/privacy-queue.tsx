@@ -104,7 +104,7 @@ export function PrivacyQueue(): JSX.Element {
   };
 
   const header = (
-    <PageHeader title="Privacy restrictions" breadcrumb={<>Administration / Privacy</>}>
+    <PageHeader title="Privacy restrictions">
       <div style={{ color: t.onSurfaceVariant, fontSize: "0.85rem" }}>
         Patients whose records are restricted (42 CFR Part 2 and other privacy categories). Open a
         patient to see where each restriction came from and who can clear it.

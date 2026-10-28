@@ -231,7 +231,6 @@ export function SosDetailScreen(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>SOS {shortId(alert.id)}</span>}
-        breadcrumb="Field safety · Active SOS"
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             <Link to="/safety/sos" style={ghostButtonStyle}>

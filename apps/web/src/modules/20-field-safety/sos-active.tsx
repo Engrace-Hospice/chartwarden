@@ -204,7 +204,6 @@ export function ActiveSosScreen(): JSX.Element {
         header={
           <PageHeader
             title="Active SOS"
-            breadcrumb="Field safety"
             actions={
               <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
                 <Link to="/safety" style={linkButtonStyle}>

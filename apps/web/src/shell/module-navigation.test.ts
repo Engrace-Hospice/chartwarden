@@ -53,6 +53,27 @@ const scheduling = [
   ),
 ];
 
+const assessments = [
+  screen("hope.dashboard", "/hope", "HOPE", "hope.schedule.read"),
+  screen("encounter.cosignatures", "/work/cosignatures", "Cosignatures", "encounter.cosign"),
+  screen("encounter.drafts", "/work/drafts", "My Drafts", "encounter.author"),
+  screen(
+    "assessment.licenses",
+    "/admin/scales/licenses",
+    "Scale Licenses",
+    "assessment.license_read",
+  ),
+  screen(
+    "assessment.policies",
+    "/admin/scales/policies",
+    "Scale Policies",
+    "assessment.policy_read",
+  ),
+  screen("hope.sfv", "/hope/sfv", "SFV Worklist", "hope.sfv.read"),
+  screen("hope.submissions", "/hope/submissions", "HOPE Submissions", "hope.submission.read"),
+  screen("hope.compliance", "/hope/compliance", "HQRP Compliance", "hope.dashboard.read"),
+];
+
 const fullSession: Session = {
   userId: "user-1",
   organizationId: "org-1",
@@ -70,6 +91,30 @@ const fullSession: Session = {
 };
 
 describe("resolveModuleNavigation", () => {
+  it("shows Assessments tabs on HOPE in the working order", () => {
+    const navigation = resolveModuleNavigation(buildPrimaryNav(assessments), "/hope");
+    expect(navigation?.key).toBe("assessments");
+    expect(navigation?.items.map(({ label, path }) => [label, path])).toEqual([
+      ["HOPE Timepoints", "/hope"],
+      ["Cosignatures", "/work/cosignatures"],
+      ["My Drafts", "/work/drafts"],
+      ["Scale Licenses", "/admin/scales/licenses"],
+      ["Scale Policies", "/admin/scales/policies"],
+      ["SFV Worklist", "/hope/sfv"],
+      ["HOPE Submissions", "/hope/submissions"],
+      ["HQRP Compliance", "/hope/compliance"],
+    ]);
+    expect(navigation?.activePath).toBe("/hope");
+  });
+
+  it("keeps Assessments tabs limited to visible destinations", () => {
+    const visible = assessments.filter((item) =>
+      canSeeScreen(item, { ...fullSession, permissions: ["hope.schedule.read", "hope.sfv.read"] }),
+    );
+    const navigation = resolveModuleNavigation(buildPrimaryNav(visible), "/hope/sfv");
+    expect(navigation?.items.map((item) => item.path)).toEqual(["/hope", "/hope/sfv"]);
+    expect(navigation?.activePath).toBe("/hope/sfv");
+  });
   it("uses the exact curated Admissions order and reuses Pending Referrals as Referral Inbox", () => {
     const visible = admissions.filter((item) => canSeeScreen(item, fullSession));
     const navigation = resolveModuleNavigation(buildPrimaryNav(visible), "/referrals");

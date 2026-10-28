@@ -173,7 +173,6 @@ export function LegalHolds(): JSX.Element {
         header={
           <PageHeader
             title="Legal Holds"
-            breadcrumb="Compliance / Records"
             actions={
               <Button tone="primary" onClick={() => setShowCreate(true)}>
                 New Hold

@@ -99,7 +99,7 @@ export function AdrWorklist(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-          <PageHeader title="ADR Requests" breadcrumb="Revenue Cycle — ADR Requests">
+          <PageHeader title="ADR Requests">
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Additional documentation requests from your MAC, soonest response due first.
             </div>

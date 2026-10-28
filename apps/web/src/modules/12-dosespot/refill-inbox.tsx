@@ -121,7 +121,7 @@ export function RefillInbox(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Refill Inbox" breadcrumb="Clinical / Prescribing">
+        <PageHeader title="Refill Inbox">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Triage refill requests by SLA age, source medication order, and request status.
           </div>

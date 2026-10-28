@@ -154,7 +154,7 @@ export function SmartInbox(): JSX.Element {
   const { view, retry } = useSmartInbox();
   return (
     <>
-      <PageHeader title={INBOX_TITLE} breadcrumb={INBOX_BREADCRUMB}>
+      <PageHeader title={INBOX_TITLE}>
         <p className="wx-inbox-note">{INBOX_NOTICE}</p>
       </PageHeader>
       <section className="wx-inbox" aria-label={INBOX_TITLE}>

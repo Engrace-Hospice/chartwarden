@@ -155,7 +155,7 @@ export function AdmissionHopeOverview(): JSX.Element {
 
   if (loading) {
     return (
-      <DetailPageLayout header={<PageHeader title="HOPE" breadcrumb="Admissions / HOPE" />}>
+      <DetailPageLayout header={<PageHeader title="HOPE" />}>
         <div style={skeletonGrid} aria-label="Loading HOPE workflow">
           {SKELETON_KEYS.map((key) => (
             <div key={key} style={skeletonCard} />
@@ -167,7 +167,7 @@ export function AdmissionHopeOverview(): JSX.Element {
 
   if (error || !state) {
     return (
-      <DetailPageLayout header={<PageHeader title="HOPE" breadcrumb="Admissions / HOPE" />}>
+      <DetailPageLayout header={<PageHeader title="HOPE" />}>
         <EmptyState
           title="Unable to load HOPE workflow"
           description={error ?? "The workflow summary was not available."}
@@ -186,7 +186,6 @@ export function AdmissionHopeOverview(): JSX.Element {
       header={
         <PageHeader
           title="HOPE"
-          breadcrumb={`Admissions / ${patient ? `${patient.firstName} ${patient.lastName}` : "Admission"} / HOPE`}
           actions={
             <button
               type="button"
@@ -322,7 +321,7 @@ export function AdmissionHopeOverview(): JSX.Element {
               onClick={() => navigate(`/patients/${state.patientId}/assessments`)}
               style={ghostBtn}
             >
-              <Glyph name="clipboard-check" size={14} /> Open M9 Assessments
+              <Glyph name="clipboard-check" size={14} /> Open Assessments
             </button>
           ) : null}
         </section>

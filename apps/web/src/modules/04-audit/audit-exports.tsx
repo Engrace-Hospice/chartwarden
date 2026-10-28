@@ -102,7 +102,6 @@ export function AuditExports(): JSX.Element {
         header={
           <PageHeader
             title="Compliance Exports"
-            breadcrumb="Compliance / Audit"
             actions={
               <Button tone="primary" onClick={() => setShowCreate(true)}>
                 New Export

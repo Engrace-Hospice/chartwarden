@@ -361,10 +361,7 @@ export function MedicalReviewReportScreen(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader
-          title="Medical Review Report"
-          breadcrumb="Revenue Cycle — Medical Review Report"
-        >
+        <PageHeader title="Medical Review Report">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             {REPORT_NOTE}
           </div>

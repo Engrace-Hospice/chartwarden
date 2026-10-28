@@ -282,12 +282,6 @@ export function ClaimEditor(): JSX.Element {
       header={
         <PageHeader
           title="Claim Editor"
-          breadcrumb={
-            <>
-              Billing — Medicare ·{" "}
-              <span style={{ fontFamily: "var(--font-mono)" }}>{claim.claimControlNumber}</span>
-            </>
-          }
           actions={
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
               <StatusPill label={statusLabel(claim.state)} tone={claimStateTone(claim.state)} />

@@ -158,7 +158,6 @@ export function SupplyItemCatalog(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Supply catalog</span>}
-        breadcrumb="Supplies — platform SKUs and the tenant overlay"
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             <button

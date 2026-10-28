@@ -210,7 +210,6 @@ export function OverrideAudit(): JSX.Element {
       header={
         <PageHeader
           title="Override Audit"
-          breadcrumb="Billing / Medicare / Validation overrides"
           actions={
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <a href="/billing" style={linkButtonStyle}>

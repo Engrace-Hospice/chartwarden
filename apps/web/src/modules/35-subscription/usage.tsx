@@ -79,12 +79,7 @@ export function Usage(): JSX.Element {
 
   return (
     <WorkQueueLayout
-      header={
-        <PageHeader
-          title="Usage"
-          breadcrumb={`Billing / ${formatDate(current.periodStart)} — ${formatDate(current.periodEnd)}`}
-        />
-      }
+      header={<PageHeader title="Usage" />}
       table={
         <div
           style={{

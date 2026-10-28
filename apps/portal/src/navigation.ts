@@ -1,4 +1,6 @@
 import type { GlyphName } from "@chartwarden/ui";
+import type { BreadcrumbItem } from "@chartwarden/ui";
+import { matchPath } from "react-router-dom";
 import { PORTAL_SCREEN_MANIFEST } from "./screens/manifest";
 
 export type PortalNavSection = "primary" | "secondary";
@@ -107,4 +109,23 @@ export function portalNavTitle(pathname: string): string {
       return new RegExp(`^${pattern}${suffix}`).test(pathname);
     });
   return item?.label ?? "Family Portal";
+}
+
+/** The portal's sidebar hierarchy, including the visit detail reached from Visits. */
+export function portalBreadcrumbs(pathname: string, patientId: string | null): BreadcrumbItem[] {
+  if (pathname === "/patient-picker") return [{ label: "Choose patient" }];
+  if (pathname === "/account") return [{ label: "Account & security" }];
+  if (!patientId) return [];
+  const home = portalNavPath("portal.dashboard", patientId);
+  if (pathname === home) return [{ label: "Home" }];
+  const current = PORTAL_SCREEN_MANIFEST.filter(
+    (screen) => screen.chrome !== false && matchPath({ path: screen.path, end: true }, pathname),
+  ).sort((a, b) => b.path.length - a.path.length)[0];
+  if (!current) return [];
+  const items: BreadcrumbItem[] = [{ label: "Home", href: home }];
+  if (current.id === "portal.telehealth") {
+    items.push({ label: "Visits", href: portalNavPath("portal.visits", patientId) });
+  }
+  items.push({ label: current.title });
+  return items;
 }

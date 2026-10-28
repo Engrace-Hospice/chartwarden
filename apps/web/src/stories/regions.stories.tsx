@@ -30,7 +30,6 @@ export const PageHeaders: StoryObj = {
     <Pad>
       <PageHeader
         title="Patient Census"
-        breadcrumb="Clinical · Patients"
         actions={
           <>
             <button type="button">Export</button>

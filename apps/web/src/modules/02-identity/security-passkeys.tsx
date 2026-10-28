@@ -108,7 +108,7 @@ export function SecurityPasskeys(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Passkeys" breadcrumb="Security / Account">
+        <PageHeader title="Passkeys">
           <div
             style={{
               color: "var(--color-on-surface-variant)",

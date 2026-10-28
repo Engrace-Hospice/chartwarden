@@ -127,10 +127,7 @@ export function CostReportList(): JSX.Element {
     <WorkQueueLayout
       fullPageScroll
       header={
-        <PageHeader
-          title="Cost Reports"
-          breadcrumb="Revenue Cycle — CMS-1984-14 hospice cost reports"
-        >
+        <PageHeader title="Cost Reports">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Track fiscal-year cost reports, filing state, wage source, bad-debt exposure, and reopen
             history.

@@ -130,7 +130,7 @@ export function MedicationSignInbox(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Medications Awaiting Signature" breadcrumb="Clinical / Prescribing">
+        <PageHeader title="Medications Awaiting Signature">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Sign pending medication orders, with controlled substances surfaced for EPCS review.
           </div>

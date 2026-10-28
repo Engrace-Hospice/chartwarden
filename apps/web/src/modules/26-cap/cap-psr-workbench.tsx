@@ -166,7 +166,7 @@ export function CapPsrWorkbench(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="PS&R Reconciliation" breadcrumb="Revenue Cycle — MAC reconciliation">
+        <PageHeader title="PS&R Reconciliation">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review a PS&R import, compare MAC figures to the M26 ledger, and triage variance lines.
           </div>

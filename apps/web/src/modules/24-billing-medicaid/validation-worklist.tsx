@@ -218,7 +218,6 @@ export function MedicaidValidationWorklist(): JSX.Element {
         header={
           <PageHeader
             title="Validation Worklist"
-            breadcrumb="Billing / Medicaid / Claim validation"
             actions={
               <>
                 <a href="/medicaid/billing/claims" style={linkButtonStyle}>

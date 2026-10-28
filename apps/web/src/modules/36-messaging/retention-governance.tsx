@@ -296,7 +296,7 @@ export function RetentionGovernance(): JSX.Element {
   };
   return (
     <>
-      <PageHeader title={W.RETENTION_TITLE} breadcrumb={W.RETENTION_BREADCRUMB}>
+      <PageHeader title={W.RETENTION_TITLE}>
         <p className="wx-retention-detail">{W.RETENTION_INTRO}</p>
       </PageHeader>
       <section className="wx-retention" aria-label={W.RETENTION_TITLE}>

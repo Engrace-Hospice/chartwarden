@@ -130,7 +130,7 @@ export function VerbalMedicationOrdersQueue(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Verbal Medication Orders" breadcrumb="Clinical / Prescribing">
+        <PageHeader title="Verbal Medication Orders">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Track non-controlled verbal medication orders awaiting prescriber signature.
           </div>

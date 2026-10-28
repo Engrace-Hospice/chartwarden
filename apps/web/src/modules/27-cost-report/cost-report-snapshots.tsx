@@ -133,7 +133,6 @@ export function CostReportSnapshots(): JSX.Element {
       header={
         <PageHeader
           title="Snapshots & ECR"
-          breadcrumb="Revenue Cycle — content-hashed submit-lockdown (D10)"
           actions={
             latest ? (
               <StatusPill

@@ -55,7 +55,7 @@ export function Dunning(): JSX.Element {
 
   if (!IN_DUNNING(status.dunningStage)) {
     return (
-      <DetailPageLayout header={<PageHeader title="Dunning" breadcrumb="Billing" />}>
+      <DetailPageLayout header={<PageHeader title="Dunning" />}>
         <EmptyState
           title="Account in good standing"
           description="Your account is not in dunning. There is nothing to resolve."
@@ -66,7 +66,7 @@ export function Dunning(): JSX.Element {
 
   return (
     <DetailPageLayout
-      header={<PageHeader title="Dunning" breadcrumb="Billing" />}
+      header={<PageHeader title="Dunning" />}
       aside={
         <div
           style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}

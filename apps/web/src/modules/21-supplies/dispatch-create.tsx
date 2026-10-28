@@ -267,10 +267,7 @@ export function ComfortKitDispatchCreate(): JSX.Element {
       className="wx-kit-column"
       style={{ ...columnStyle, ...focusRootStyle }}
     >
-      <PageHeader
-        title={<span style={pageTitleStyle}>Dispatch a comfort kit</span>}
-        breadcrumb="Supplies — comfort kits"
-      />
+      <PageHeader title={<span style={pageTitleStyle}>Dispatch a comfort kit</span>} />
 
       <Notice tone="warning">
         This records a controlled-substance movement under DEA 21 CFR §1304. The server verifies

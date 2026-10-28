@@ -174,7 +174,6 @@ export function PatientListCensus(): JSX.Element {
       header={
         <PageHeader
           title="Patients · Census"
-          breadcrumb="Clinical — patient list"
           actions={
             <Link to="/referrals" className="wx-btn-primary">
               <Glyph name="plus" size={16} /> Admit patient

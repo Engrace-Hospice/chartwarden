@@ -135,7 +135,6 @@ export function IdgRevisionReview(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>{kindLabel(kind)} — IDG revision review</span>}
-        breadcrumb="Clinical — post-IDG finalization"
         actions={
           <Link
             to={`/patients/${patientId}/discipline-plans/${kind}/versions`}

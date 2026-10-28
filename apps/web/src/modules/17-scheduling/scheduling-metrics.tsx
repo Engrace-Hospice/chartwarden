@@ -60,7 +60,6 @@ export function SchedulingMetrics(): JSX.Element {
       header={
         <PageHeader
           title="Scheduling Metrics"
-          breadcrumb="Admin / Scheduling"
           actions={
             <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
               Refresh

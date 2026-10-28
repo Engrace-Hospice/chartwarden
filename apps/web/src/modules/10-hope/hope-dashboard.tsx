@@ -174,7 +174,7 @@ export function HopeDashboard(): JSX.Element {
     <>
       <DashboardLayout
         header={
-          <PageHeader title="HOPE Timepoints" breadcrumb="Clinical Quality — HOPE schedules">
+          <PageHeader title="HOPE Timepoints">
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Track open HOPE timepoint windows, closing deadlines, late schedules, and expired
               items by RFA.

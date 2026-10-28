@@ -109,7 +109,6 @@ export function AdministrationPolicy(): JSX.Element {
       header={
         <PageHeader
           title="Administration Policy"
-          breadcrumb="Admin / Medications"
           actions={
             <span style={{ display: "inline-flex", gap: "0.5rem" }}>
               <Button type="button" tone="secondary" onClick={() => void load()} disabled={loading}>

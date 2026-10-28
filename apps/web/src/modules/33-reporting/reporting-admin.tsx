@@ -114,7 +114,7 @@ export function ReportingAdmin(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Reporting Admin" breadcrumb="Platform / Materialized Views">
+        <PageHeader title="Reporting Admin">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Monitor materialized-view freshness, replica lag, refresh failures, and administrative
             controls.

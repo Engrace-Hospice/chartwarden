@@ -378,7 +378,7 @@ export function UnacknowledgedQueue(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-          <PageHeader title={QUEUE_TITLE} breadcrumb={QUEUE_BREADCRUMB}>
+          <PageHeader title={QUEUE_TITLE}>
             <p className="wx-queue-note">{QUEUE_NOTICE}</p>
             <output className="wx-queue-summary" aria-live="polite">
               {summary}

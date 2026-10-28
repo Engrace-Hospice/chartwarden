@@ -252,7 +252,7 @@ export function GlobalSearchSettings(): JSX.Element {
   const turningOn = confirming === true;
   return (
     <div className="wx-gss">
-      <PageHeader title="Global search" breadcrumb="Messaging / Settings">
+      <PageHeader title="Global search">
         <p className="wx-gss-lede">
           Lets staff search messages across every conversation they can already read.
         </p>

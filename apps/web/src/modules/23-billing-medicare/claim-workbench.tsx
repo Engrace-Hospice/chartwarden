@@ -162,7 +162,6 @@ export function ClaimWorkbench(): JSX.Element {
       header={
         <PageHeader
           title="Claim Workbench"
-          breadcrumb="Billing / Medicare"
           actions={
             <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
               <Link to="/billing/claims/new" style={ghostButtonStyle}>

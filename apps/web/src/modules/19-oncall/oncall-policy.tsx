@@ -176,7 +176,6 @@ export function OnCallPolicyScreen(): JSX.Element {
       header={
         <PageHeader
           title="On-call policy"
-          breadcrumb="On-call triage / Configuration"
           actions={
             <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
               <Link to="/triage/protocols" style={linkButtonStyle}>

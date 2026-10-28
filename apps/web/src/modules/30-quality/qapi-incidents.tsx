@@ -163,7 +163,7 @@ export function QapiIncidents(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="QAPI & Incidents" breadcrumb="Compliance / Quality">
+        <PageHeader title="QAPI & Incidents">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             The improvement programme and the incident register that feeds it.
           </div>

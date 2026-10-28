@@ -83,7 +83,6 @@ export function MetricsSurface(): JSX.Element {
       header={
         <PageHeader
           title="Billing Metrics"
-          breadcrumb="Billing / Medicare / Claim-state aggregates"
           actions={
             <a href="/billing" className="wx-btn-secondary">
               AR dashboard

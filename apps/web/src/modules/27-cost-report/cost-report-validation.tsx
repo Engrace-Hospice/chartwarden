@@ -131,7 +131,6 @@ export function CostReportValidation(): JSX.Element {
       header={
         <PageHeader
           title="Validation Worklist"
-          breadcrumb="Revenue Cycle — pre-submission rule library (§11.B)"
           actions={
             latest ? (
               <StatusPill tone={toneOf(RUN_TONE, latest.status)} label={humanize(latest.status)} />

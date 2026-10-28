@@ -200,7 +200,6 @@ export function SupervisorSubscriptionsScreen(): JSX.Element {
       header={
         <PageHeader
           title="Supervisor Subscriptions"
-          breadcrumb="Field safety"
           actions={
             <div style={actionGroupStyle}>
               <Link to="/safety" style={linkButtonStyle}>

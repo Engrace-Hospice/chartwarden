@@ -1,9 +1,9 @@
-import { Glyph } from "@chartwarden/ui";
+import { Breadcrumbs, Glyph } from "@chartwarden/ui";
 import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { PORTAL_BASE_PATH } from "./base-path";
-import { PORTAL_NAVIGATION, portalNavPath, portalNavTitle } from "./navigation";
+import { PORTAL_NAVIGATION, portalBreadcrumbs, portalNavPath, portalNavTitle } from "./navigation";
 import { PortalPatientContext, usePortalPatient } from "./patient-context";
 
 const PATIENT_PATH = /^\/p\/([^/]+)/;
@@ -416,6 +416,7 @@ export function PortalAppShell(): JSX.Element {
         <div className="wx-portal-workspace">
           <PortalHeader patientId={patientId} />
           <main className="wx-portal-main" id="portal-main" tabIndex={-1}>
+            <Breadcrumbs items={portalBreadcrumbs(pathname, patientId)} />
             {/* A patient ID alone never grants access (the server enforces that).
                 Remounting the routed screen on patient changes also ensures drafts,
                 request state, and prior patient data cannot flash before effects run. */}

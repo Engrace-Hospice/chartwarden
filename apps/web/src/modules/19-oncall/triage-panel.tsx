@@ -389,7 +389,6 @@ export function TriageCallPanel(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Triage call {shortId(call.id)}</span>}
-        breadcrumb="On-call triage · panel"
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             <CallStatePill state={call.state} />

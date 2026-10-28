@@ -162,9 +162,6 @@ export function CapSettlement(): JSX.Element {
       header={
         <PageHeader
           title="Settlement Worksheet"
-          breadcrumb={
-            period ? `Revenue Cycle — ${period.capYear}` : "Revenue Cycle — Cap settlement"
-          }
           actions={
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               {canPropose ? (

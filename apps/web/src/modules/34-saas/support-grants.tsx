@@ -141,7 +141,6 @@ export function SupportGrants(): JSX.Element {
         header={
           <PageHeader
             title="Support Consent Grants"
-            breadcrumb="Admin / Organization"
             actions={
               <Button type="button" onClick={() => setCeremonyOpen(true)}>
                 Issue grant

@@ -61,7 +61,7 @@ export function CapPlatformConstants(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Cap Constants" breadcrumb="Platform / CMS cap amounts">
+        <PageHeader title="Cap Constants">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Platform-admin view of CMS-published per-beneficiary cap constants and tenant-use lock
             state.
