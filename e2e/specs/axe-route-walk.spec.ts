@@ -24,8 +24,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { ADMIN_ACCOUNT } from "../fixtures/credentials";
 import { signInAs } from "../fixtures/helpers";
+import { openFirstPatientChart } from "../fixtures/patients";
+
+// #852: this spec also walks the dynamic screens whose only param is the patient id (second test
+// below). Every other dynamic web screen, and admin/portal, are covered or listed elsewhere — see
+// audit/e2e-coverage/E2E_COVERAGE.md.
 
 interface RegisteredScreen {
   readonly app: string;
@@ -46,6 +52,59 @@ function staticWebScreens(): RegisteredScreen[] {
     .sort((a, b) => a.path.localeCompare(b.path));
 }
 
+/**
+ * #852: dynamic `web` screens whose ONLY param is the patient id (`/patients/:id`,
+ * `/patients/:patientId/...`). The id is resolved at run time through the app itself
+ * (`openFirstPatientChart`, the same discovery rule as every other spec — no hardcoded UUID).
+ * Every other dynamic screen needs a different resource id (admission, claim, order, ...) with no
+ * runtime discovery path yet; `scripts/report-e2e-axe-coverage.ts` lists those WITH a reason and
+ * carries this same pattern (it checks this literal appears here — keep the two in sync).
+ */
+const PATIENT_SCOPED_PATH = /^\/patients\/:(id|patientId)(\/[a-z-]+)*$/;
+
+function patientScopedWebScreens(): RegisteredScreen[] {
+  const jsonPath = join(import.meta.dirname, "..", "..", "audit", "ui-parity", "ui-parity.json");
+  const data = JSON.parse(readFileSync(jsonPath, "utf8")) as { screens: RegisteredScreen[] };
+  return data.screens
+    .filter((s) => s.app === "web" && s.permission !== "(none)")
+    .filter((s) => PATIENT_SCOPED_PATH.test(s.path))
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/** Visits each screen at `resolvePath(screen)`, axe-scans it, and returns one string per issue. */
+async function walk(
+  page: Page,
+  screens: readonly RegisteredScreen[],
+  resolvePath: (screen: RegisteredScreen) => string,
+): Promise<string[]> {
+  const failures: string[] = [];
+  for (const screen of screens) {
+    const path = resolvePath(screen);
+    try {
+      await page.goto(path, { waitUntil: "domcontentloaded" });
+      // Capped: pages that poll never go idle, and the default 30s wait per such screen blew the walk's budget.
+      await page.waitForLoadState("networkidle", { timeout: 4_000 }).catch(() => {});
+    } catch (err) {
+      failures.push(`${screen.id} (${path}): navigation failed — ${String(err)}`);
+      continue;
+    }
+    const rootEmpty = await page
+      .locator("#root")
+      .evaluate((el) => el.childElementCount === 0)
+      .catch(() => true);
+    if (rootEmpty) {
+      failures.push(`${screen.id} (${path}): #root rendered empty`);
+      continue;
+    }
+    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
+    for (const v of results.violations) {
+      const targets = v.nodes.map((n) => n.target.join(" ")).join(", ");
+      failures.push(`${screen.id} (${path}): ${v.id} (${v.impact}) — ${targets}`);
+    }
+  }
+  return failures;
+}
+
 test.describe("Accessibility — route walk (#106, F-046)", () => {
   test("every static registered web screen scans clean for WCAG 2A/AA (admin persona)", async ({
     page,
@@ -56,34 +115,31 @@ test.describe("Accessibility — route walk (#106, F-046)", () => {
 
     await signInAs(page, ADMIN_ACCOUNT());
 
-    const failures: string[] = [];
-    for (const screen of screens) {
-      try {
-        await page.goto(screen.path, { waitUntil: "domcontentloaded" });
-        // Capped: pages that poll never go idle, and the default 30s wait per such screen blew the walk's budget.
-        await page.waitForLoadState("networkidle", { timeout: 4_000 }).catch(() => {});
-      } catch (err) {
-        failures.push(`${screen.id} (${screen.path}): navigation failed — ${String(err)}`);
-        continue;
-      }
-      const rootEmpty = await page
-        .locator("#root")
-        .evaluate((el) => el.childElementCount === 0)
-        .catch(() => true);
-      if (rootEmpty) {
-        failures.push(`${screen.id} (${screen.path}): #root rendered empty`);
-        continue;
-      }
-      const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
-      for (const v of results.violations) {
-        const targets = v.nodes.map((n) => n.target.join(" ")).join(", ");
-        failures.push(`${screen.id} (${screen.path}): ${v.id} (${v.impact}) — ${targets}`);
-      }
-    }
+    const failures = await walk(page, screens, (screen) => screen.path);
 
     expect(
       failures,
       `${failures.length} issue(s) across ${screens.length} screen(s):\n${failures.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  test("patient-scoped dynamic web screens scan clean for WCAG 2A/AA (admin persona, #852)", async ({
+    page,
+  }) => {
+    const screens = patientScopedWebScreens();
+    expect(screens.length).toBeGreaterThan(20); // the registry (or the pattern) going empty is its own defect
+    test.setTimeout(Math.max(120_000, screens.length * 8_000));
+
+    await signInAs(page, ADMIN_ACCOUNT());
+    const patientId = await openFirstPatientChart(page);
+
+    const failures = await walk(page, screens, (screen) =>
+      screen.path.replace(/:(id|patientId)\b/, patientId),
+    );
+
+    expect(
+      failures,
+      `${failures.length} issue(s) across ${screens.length} patient-scoped screen(s):\n${failures.join("\n")}`,
     ).toEqual([]);
   });
 });

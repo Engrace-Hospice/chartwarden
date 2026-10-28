@@ -46,7 +46,7 @@ jobs:
           cp .env.production.example .env.production
           docker compose --env-file .env.production -f compose.yml config -q
 
-  # #854: behaviour gate before the image is built or scanned (same job as ci.yml's `docling-pytest`).
+  # #854: behaviour gate before the image is built or scanned (ci.yml runs the same suite in its main job, #853, so `release` is gated too).
   docling-pytest:
     name: Docling worker pytest
     runs-on: [self-hosted, Linux, X64, hostinger]

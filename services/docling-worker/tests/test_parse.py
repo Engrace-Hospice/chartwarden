@@ -114,3 +114,73 @@ def test_parse_failure_is_a_422_without_the_message(client):
     )
     assert res.status_code == 422
     assert "Jane" not in res.text
+
+
+# --- #853: oversized / malformed documents and dependency floors ---------------------------------------------
+
+
+class _FakeStream:
+    status_code = 200
+
+    def __init__(self, chunks):
+        self._chunks = chunks
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def iter_bytes(self):
+        return iter(self._chunks)
+
+
+def test_download_rejects_an_oversized_source_with_413(monkeypatch):
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(main, "MAX_SOURCE_BYTES", 10)
+    monkeypatch.setattr(main.httpx, "stream", lambda *a, **k: _FakeStream([b"%PDF" + b"x" * 4, b"y" * 8]))
+    with pytest.raises(HTTPException) as err:
+        main._download("http://x")
+    assert err.value.status_code == 413
+
+
+@pytest.mark.parametrize("body", [b"", b"%PD", b"\x00\x01\x02\x03", b"<html>not a document</html>", b"PK\x03\x04zip"])
+def test_parse_rejects_malformed_or_unknown_content_with_415(client, monkeypatch, body):
+    monkeypatch.setattr(main, "_download", lambda url: body)
+    res = client.post(
+        "/parse", json={"job_id": "j1", "source_url": "http://x"}, headers={"Authorization": f"Bearer {TOKEN}"}
+    )
+    assert res.status_code == 415
+
+
+def test_parse_of_a_truncated_pdf_is_a_422(client):
+    def corrupt(path):
+        raise ValueError("PDF parse error: truncated xref")
+
+    main.app.dependency_overrides[main.get_converter] = lambda: corrupt
+    res = client.post(
+        "/parse", json={"job_id": "j1", "source_url": "http://x"}, headers={"Authorization": f"Bearer {TOKEN}"}
+    )
+    assert res.status_code == 422 and res.json()["detail"] == "docling_parse_failed"
+    assert "truncated xref" not in res.text
+
+
+def test_parse_route_returns_413_for_an_oversized_source(client, monkeypatch):
+    from fastapi import HTTPException
+
+    def too_big(url):
+        raise HTTPException(status_code=413, detail="source exceeds the size limit")
+
+    monkeypatch.setattr(main, "_download", too_big)
+    res = client.post(
+        "/parse", json={"job_id": "j1", "source_url": "http://x"}, headers={"Authorization": f"Bearer {TOKEN}"}
+    )
+    assert res.status_code == 413
+
+
+def test_pillow_is_at_the_patched_major():
+    # Every pillow 12.x carries fixable image-parsing CVEs (fixed in 13.0.0); uv.lock must not regress below it.
+    from importlib.metadata import version
+
+    assert int(version("pillow").split(".")[0]) >= 13

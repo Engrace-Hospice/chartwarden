@@ -96,6 +96,24 @@ const routeWalkSpecPresent =
   routeWalkSrc.includes('!s.path.includes(":")') &&
   routeWalkSrc.includes('s.permission !== "(none)"');
 
+// ---- #852: dynamic screens. Patient-scoped ones (the only param is the patient id) are axe-walked by the
+//      route-walk spec's second test with an id resolved at run time; the rest are listed WITH a reason. ----
+const PATIENT_SCOPED = /^\/patients\/:(id|patientId)(\/[a-z-]+)*$/;
+const patientWalkPresent = routeWalkSrc.includes(
+  String.raw`const PATIENT_SCOPED_PATH = ${PATIENT_SCOPED};`,
+);
+const webDynamic = uiParity.screens
+  .filter((s) => s.app === "web" && s.path.includes(":"))
+  .sort((a, b) => a.path.localeCompare(b.path));
+const dynamicAxeReached = webDynamic.filter(
+  (s) => patientWalkPresent && s.permission !== "(none)" && PATIENT_SCOPED.test(s.path),
+);
+const dynamicReasonFor = (s: RegisteredScreen): string =>
+  s.permission === "(none)"
+    ? "pre-auth token route: needs a live single-use invite/link token and a signed-out context"
+    : "needs a non-patient resource id (admission, claim, order, plan, meeting, ...) with no run-time discovery helper yet";
+const dynamicExcluded = webDynamic.filter((s) => !dynamicAxeReached.includes(s));
+
 interface Row {
   readonly id: string;
   readonly module: string;
@@ -167,20 +185,43 @@ if (zeroAxe.length === 0) {
     lines.push(`| \`${r.id}\` | ${r.module} | \`${r.path}\` | ${r.permission} |`);
 }
 lines.push("");
+lines.push("## Dynamic web screens (#852)");
+lines.push("");
+lines.push(
+  `${dynamicAxeReached.length}/${webDynamic.length} registered \`web\` screens carrying a \`:param\` segment are axe-walked by the second test in \`axe-route-walk.spec.ts\`: every screen whose ONLY param is the patient id, with the id resolved at run time through the app (\`openFirstPatientChart\`). The rest are excluded, each with its reason:`,
+);
+lines.push("");
+lines.push("| Screen id | Path | Permission | Why not walked |");
+lines.push("|---|---|---|---|");
+for (const s of dynamicExcluded)
+  lines.push(`| \`${s.id}\` | \`${s.path}\` | ${s.permission} | ${dynamicReasonFor(s)} |`);
+lines.push("");
+lines.push("## Viewports, admin/portal, authorization (#852)");
+lines.push("");
+lines.push(
+  "- **Six viewports** (320, 375, 768, 1024, 1440, 1920 wide) — `viewport-matrix.spec.ts`, run only by the " +
+    "`viewport-*` Playwright projects (`bun run test:e2e:viewports`): Home, census and a patient chart, axe " +
+    "plus a no-horizontal-document-scroll (WCAG 1.4.10) check. Not multiplied across the other specs.",
+);
+lines.push(
+  "- **`admin`/`portal` apps** (39 + 18 registered screens) — `admin-console-smoke.spec.ts` and " +
+    "`portal-smoke.spec.ts` (`bun run test:e2e:apps`): pre-auth screens only, skipped unless " +
+    "`E2E_ADMIN_URL` / `E2E_PORTAL_URL` point at a running dev server (the CI e2e job starts `web` only). " +
+    "Their session-gated screens are not walked: the console needs a `platform_ops` login and the portal a " +
+    "magic-link mailbox.",
+);
+lines.push(
+  "- **Cross-role authorization** — `role-authorization-matrix.spec.ts`: Clinician and Compliance Auditor " +
+    "denied on billing / agency-setup / audit / staff routes, Auditor and Administrator allowed where their " +
+    "permissions reach.",
+);
+lines.push("");
 lines.push("## Not measured here (by design)");
 lines.push("");
 lines.push(
-  "- **Dynamic routes** (116 registered `web` screens carrying a `:param` segment) — opened by " +
-    "navigating from a list in their owning spec, the same way a real user reaches them; a per-screen " +
-    "static count would need a fabricated resource id this report will not invent.",
-);
-lines.push(
-  "- **`admin`/`portal` apps** (47 screens) — separate Vite dev servers this suite's single " +
-    "`baseURL` does not reach.",
-);
-lines.push(
   "- **Keyboard operation, focus order, zoom, contrast on high-risk clinical forms, and screen-reader " +
-    "behavior** — not automatable by an axe scan; #106 names these as needing scheduled manual review.",
+    "behavior** — not automatable by an axe scan; follow the manual protocol in " +
+    "[`docs/testing/manual-a11y-protocol.md`](../../docs/testing/manual-a11y-protocol.md) and record results there.",
 );
 lines.push("");
 
@@ -193,6 +234,13 @@ const json = JSON.stringify(
     axeReachedCount: axeCount,
     zeroE2eCoverage: zeroE2e,
     zeroAxeCoverage: zeroAxe,
+    dynamicWebScreens: webDynamic.length,
+    dynamicAxeReachedCount: dynamicAxeReached.length,
+    dynamicExcluded: dynamicExcluded.map((s) => ({
+      id: s.id,
+      path: s.path,
+      reason: dynamicReasonFor(s),
+    })),
     rows,
   },
   null,

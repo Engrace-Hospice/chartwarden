@@ -68,6 +68,18 @@ jobs:
       # arch:fitness chained 7 things; it now chains 17, so for ten of them the log said less had been
       # checked than actually was — and a CI log understating its own coverage is read by whoever is
       # deciding whether a change is safe to ship. Naming the script instead cannot go stale.
+      # #853 - `arch:docling-lock` runs `uv lock --check` (offline when the lock agrees with pyproject.toml).
+      - name: Install uv (for arch:docling-lock)
+        run: |
+          command -v uv >/dev/null || python3 -m pip install --user "uv==0.9.10"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # #853 - the worker's own pytest, from the locked env. No `docling` extra: the tests inject the converter and
+      # never import Docling/torch, so this stays light (the full graph is built and checked by pr-image-gate).
+      - name: docling-worker pytest (locked env, no model extras)
+        working-directory: services/docling-worker
+        run: uv run --frozen --no-dev --extra test pytest -q
+
       - name: Architecture fitness gates (arch:fitness)
         # docs/plans/** is read-only to AUTOMATED runs (ADR-0030 / check-plan-integrity).
         # A human-authored PR that intentionally adds or edits a plan opts in by applying the
@@ -91,6 +103,15 @@ jobs:
       - name: Dependency vulnerability audit (audit:deps)
         run: bun run audit:deps
 
+      # #849: initial-bundle budgets (web/admin/portal) were enforced by nothing, so web and admin drifted to
+      # ~550 kB against 350 kB unnoticed. Production-build each SPA and fail when its entry is over budget.
+      # No new job or trigger: it rides build-and-verify (the metered runner is already up).
+      - name: Initial bundle size budgets (web, admin, portal)
+        run: |
+          for app in web admin portal; do
+            (cd "apps/$app" && bun run build:app && bun run size:check --check)
+          done
+
       # BLOCKING as of #33. It ran `continue-on-error: true` from the day it was added, so the gate
       # executed, failed, and was discarded on every commit — 187 diagnostics on `main`, and the two
       # real defects buried in them (#31, a cross-tenant ops route publishing the wrong response
@@ -99,20 +120,6 @@ jobs:
       # scans. `scripts/__tests__/lint-gate.test.ts` asserts this step stays blocking.
       - name: Lint
         run: bun run lint
-
-  # #854 / CW-QA-0010: the docling-worker is Python and outside the Bun test orchestration, so its pytest
-  # suite (unit + golden corpus + malformed-input + timeout cases) ran nowhere. `deploy.yml` calls this
-  # whole workflow before `release`, so the docling image cannot ship without it. Locked test extra only:
-  # Docling/torch are image-only and the tests inject the converter.
-  docling-pytest:
-    name: Docling worker pytest
-    runs-on: [self-hosted, Linux, X64, hostinger]
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v6
-      - name: pytest (locked test extra)
-        working-directory: services/docling-worker
-        run: uv run --locked --extra test pytest -q
 
   rls-live:
     name: RLS isolation — ${{ matrix.suite.name }} (live Postgres)
@@ -1779,9 +1786,20 @@ jobs:
       # rather than silently shrinking the suite to one test — the browser-side version of the
       # self-skip this workflow's live jobs guard against.
       - name: 20 browser specs — 13 critical-workflow + 7 axe-core WCAG 2A/AA scans (real stack)
-        run: bun run test:e2e
+        run: bun run test:e2e --grep-invert "#852"
+      # #852: everything added with the browser-coverage increment (patient-scoped axe walk, role matrix,
+      # six-viewport smoke) was authored without a live stack. Advisory (`continue-on-error`) until each
+      # has a first green run here; then drop the step's flag and the `--grep-invert` above.
+      - name: Browser-coverage additions — patient axe walk + role matrix (advisory, #852)
+        id: e2e_new
+        continue-on-error: true
+        run: bun run test:e2e:new
+      - name: Six-viewport layout smoke (advisory, #852)
+        id: e2e_viewports
+        continue-on-error: true
+        run: bun run test:e2e:viewports
       - name: Upload the Playwright report, traces and stack logs
-        if: failure()
+        if: failure() || steps.e2e_new.outcome == 'failure' || steps.e2e_viewports.outcome == 'failure'
         uses: actions/upload-artifact@v7
         with:
           name: e2e-failure-artifacts

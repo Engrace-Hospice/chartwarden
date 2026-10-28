@@ -2,5 +2,5 @@
 export { identityScreens } from "./screens";
 export { appLandingScreens } from "./app-landing-screens";
 export { isAppLandingHost } from "./tenant-info";
-export { ScreenLock } from "./screen-lock";
+// ScreenLock is deliberately NOT re-exported: main.tsx lazy-loads it so the better-auth client stays out of the entry (#849).
 export { CredentialStateGuard } from "./credential-state-guard";

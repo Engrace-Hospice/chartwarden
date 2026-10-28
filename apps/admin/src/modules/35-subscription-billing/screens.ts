@@ -5,21 +5,36 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 // (M35_CONTRIBUTED_PERMISSIONS in @chartwarden/auth) — the server stays the authoritative enforcer; this only
 // gates nav visibility. M34 owns the apps/admin shell; M35 owns this slice and registers into it at
 // composition (apps/admin/src/main.tsx), never importing the shell's internals — the frontend seam analogue.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { Dunning } from "./dunning";
-import { PlanEdit } from "./plan-edit";
-import { PlansList } from "./plans-list";
-import { Promos } from "./promos";
-import { RefundApprove } from "./refund-approve";
-import { RefundNew } from "./refund-new";
-import { RefundsQueue } from "./refunds-queue";
-import { Revenue } from "./revenue";
-import { SubscriptionApplyPromo } from "./subscription-apply-promo";
-import { SubscriptionDetail } from "./subscription-detail";
-import { SubscriptionPause } from "./subscription-pause";
-import { SubscriptionsList } from "./subscriptions-list";
-import { Usage } from "./usage";
-import { Webhooks } from "./webhooks";
+
+// Route-level code splitting (#849): each screen is its own chunk; the shell wraps routes in <Suspense>.
+const Dunning = lazy(() => import("./dunning").then((m) => ({ default: m.Dunning })));
+const PlanEdit = lazy(() => import("./plan-edit").then((m) => ({ default: m.PlanEdit })));
+const PlansList = lazy(() => import("./plans-list").then((m) => ({ default: m.PlansList })));
+const Promos = lazy(() => import("./promos").then((m) => ({ default: m.Promos })));
+const RefundApprove = lazy(() =>
+  import("./refund-approve").then((m) => ({ default: m.RefundApprove })),
+);
+const RefundNew = lazy(() => import("./refund-new").then((m) => ({ default: m.RefundNew })));
+const RefundsQueue = lazy(() =>
+  import("./refunds-queue").then((m) => ({ default: m.RefundsQueue })),
+);
+const Revenue = lazy(() => import("./revenue").then((m) => ({ default: m.Revenue })));
+const SubscriptionApplyPromo = lazy(() =>
+  import("./subscription-apply-promo").then((m) => ({ default: m.SubscriptionApplyPromo })),
+);
+const SubscriptionDetail = lazy(() =>
+  import("./subscription-detail").then((m) => ({ default: m.SubscriptionDetail })),
+);
+const SubscriptionPause = lazy(() =>
+  import("./subscription-pause").then((m) => ({ default: m.SubscriptionPause })),
+);
+const SubscriptionsList = lazy(() =>
+  import("./subscriptions-list").then((m) => ({ default: m.SubscriptionsList })),
+);
+const Usage = lazy(() => import("./usage").then((m) => ({ default: m.Usage })));
+const Webhooks = lazy(() => import("./webhooks").then((m) => ({ default: m.Webhooks })));
 
 export const subscriptionAdminScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 35,

@@ -164,7 +164,7 @@ function scanPortal(manifestPath: string, registryPath: string): void {
   const manifestSrc = read(manifestPath);
   const registrySrc = read(registryPath);
   const boundIds = new Set(
-    [...registrySrc.matchAll(/^\s*"([^"]+)":\s*\w+,?\s*$/gm)].map((m) => m[1]!),
+    [...registrySrc.matchAll(/^\s*"([^"]+)":\s*(?:\w+,?\s*$|lazyScreen\()/gm)].map((m) => m[1]!),
   );
 
   const seenId = new Map<string, boolean>();

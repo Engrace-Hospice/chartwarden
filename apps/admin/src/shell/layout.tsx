@@ -15,7 +15,6 @@ import { type MouseEvent, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { type AdminNavSection, activeAdminEntry } from "./admin-nav";
-import { authClient } from "./auth-client";
 import type { Session } from "./session";
 import { useSession } from "./session";
 
@@ -135,6 +134,8 @@ export function ActorMenu({ session }: { session: Session | null }): JSX.Element
   async function signOut(): Promise<void> {
     setSignOutFailed(false);
     try {
+      // Dynamic import: keeps the better-auth client out of the entry bundle (#849).
+      const { authClient } = await import("./auth-client");
       await authClient.signOut();
     } catch {
       // Not signed out: stay here and say so. Navigating to /login anyway could bounce straight back into a live session

@@ -1,4 +1,3 @@
-import { createChartWardenAuthClient } from "@chartwarden/auth/client";
 import {
   DegradedBanner,
   EmptyState,
@@ -34,7 +33,11 @@ import type { WebScreenDescriptor } from "./screen-registry";
 import type { Session } from "./session";
 import { useSession } from "./session";
 
-const authClient = createChartWardenAuthClient();
+// better-auth + WebAuthn are ~45 kB the first paint never needs (#849): load the client only when signing out.
+async function signOutOfAuth(): Promise<void> {
+  const { createChartWardenAuthClient } = await import("@chartwarden/auth/client");
+  await createChartWardenAuthClient().signOut();
+}
 
 function getInitials(name: string): string {
   const parts = name
@@ -420,7 +423,7 @@ export function ActorMenu({ session }: { session: Session | null }): JSX.Element
   async function signOut(): Promise<void> {
     setSignOutFailed(false);
     try {
-      await authClient.signOut();
+      await signOutOfAuth();
       clearAllDrafts();
       clearPendingNotificationLink();
     } catch {

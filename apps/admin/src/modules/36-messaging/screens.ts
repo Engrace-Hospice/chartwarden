@@ -2,10 +2,19 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 // apps/admin/src/modules/36-messaging — M36 platform-ops admin screens, registered into the M34-owned admin shell
 // at composition (apps/admin/src/main.tsx), the same pattern as 35-subscription-billing. Each `requiredPermission`
 // is the key the matching backend route gates on; the server stays authoritative, this only gates nav visibility.
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { AlertDeliveries } from "./alert-deliveries";
-import { ChannelMembers } from "./channel-members";
-import { IntegrityTile } from "./integrity-tile";
+
+// Route-level code splitting (#849): each screen is its own chunk; the shell wraps routes in <Suspense>.
+const AlertDeliveries = lazy(() =>
+  import("./alert-deliveries").then((m) => ({ default: m.AlertDeliveries })),
+);
+const ChannelMembers = lazy(() =>
+  import("./channel-members").then((m) => ({ default: m.ChannelMembers })),
+);
+const IntegrityTile = lazy(() =>
+  import("./integrity-tile").then((m) => ({ default: m.IntegrityTile })),
+);
 import { settingsScreens } from "./settings";
 
 export const messagingAdminScreens: ScreenRegistryModule<ComponentType> = {
@@ -34,7 +43,7 @@ export const messagingAdminScreens: ScreenRegistryModule<ComponentType> = {
       title: "Integrity jobs",
       navGroup: "Messaging",
       requiredPermission: "audit.read",
-      screen: IntegrityTile as ComponentType,
+      screen: IntegrityTile,
     },
     ...settingsScreens,
   ],

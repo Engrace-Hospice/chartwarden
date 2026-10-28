@@ -22,7 +22,7 @@ describe("M35 §5.2 admin screen registry (M35A-T04)", () => {
   it("registers the fourteen §5.2 screens, each bound to a component", () => {
     expect(subscriptionAdminScreens.screens).toHaveLength(14);
     for (const s of subscriptionAdminScreens.screens) {
-      expect(typeof s.screen, `${s.id} must bind a component`).toBe("function");
+      expect(s.screen, `${s.id} must bind a component`).toBeTruthy();
     }
   });
 
