@@ -9,6 +9,8 @@
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… (SUPERUSER, THROWAWAY db) bun run test:m1:tenant-host:live
  */
 import { readFileSync, readdirSync } from "node:fs";
+import { request as httpRequest } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import { Client } from "pg";
@@ -49,6 +51,24 @@ describe.skipIf(!DB_URL)("tenant-host guard — LIVE Postgres", () => {
     app.inject({ method: "GET", url, headers: { host } });
   const codeOf = (body: { error?: { code?: string }; code?: string }) =>
     body.error?.code ?? body.code;
+  // CI has no Node, so vitest runs on Bun, whose node:http does not match what light-my-request's
+  // `inject` expects: a redirect sent from an async onRequest hook then rejects with "Cannot writeHead
+  // headers after they are sent" AFTER the test passes (bare Fastify reproduces it; production serves
+  // real sockets and is unaffected). A redirect is therefore asserted over a real socket, as it is served.
+  const getOverSocket = async (host: string, path: string) => {
+    if (!app.server.listening) await app.listen({ port: 0, host: "127.0.0.1" });
+    const { port } = app.server.address() as AddressInfo;
+    return new Promise<{ statusCode: number; location: string | undefined }>((resolve, reject) => {
+      const req = httpRequest({ host: "127.0.0.1", port, path, headers: { host } }, (res) => {
+        res.resume();
+        res.on("end", () =>
+          resolve({ statusCode: res.statusCode ?? 0, location: res.headers.location }),
+        );
+      });
+      req.on("error", reject);
+      req.end();
+    });
+  };
 
   beforeAll(async () => {
     admin = new Client({ connectionString: DB_URL });
@@ -132,6 +152,7 @@ describe.skipIf(!DB_URL)("tenant-host guard — LIVE Postgres", () => {
   }, 600_000);
 
   afterAll(async () => {
+    await app?.close();
     await closeDb?.();
     await admin?.end();
   });
@@ -151,9 +172,9 @@ describe.skipIf(!DB_URL)("tenant-host guard — LIVE Postgres", () => {
 
   it("redirects a retired alias to the current slug (308), keeping path and query", async () => {
     sessionOrg = undefined;
-    const res = await get("sunrise.chartwarden.com", "/api/v1/ping?a=1");
+    const res = await getOverSocket("sunrise.chartwarden.com", "/api/v1/ping?a=1");
     expect(res.statusCode).toBe(308);
-    expect(res.headers.location).toBe("https://sunrise-hospice.chartwarden.com/api/v1/ping?a=1");
+    expect(res.location).toBe("https://sunrise-hospice.chartwarden.com/api/v1/ping?a=1");
   });
 
   it("answers 404 for an unprovisioned host and refuses suspended and closed tenants", async () => {
