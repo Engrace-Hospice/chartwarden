@@ -1,8 +1,8 @@
 # ChartWarden
 
 **Multi-tenant hospice EHR SaaS** — a specification corpus, architecture-fitness kit, and
-staged-implementation monorepo. Modules 1-40 are implemented on `main`; M41 (commercial billing) is a placeholder
-(status matrix: **🟢 40 · 🟡 0 · ⚪ 1**), spanning the clinical core, field/ops tier, the full
+staged-implementation monorepo. Every module, M41 (commercial billing) included, is implemented on `main`
+(per-module truth: the generated status matrix, `audit/implementation-status/IMPLEMENTATION_STATUS.md`), spanning the clinical core, field/ops tier, the full
 revenue cycle, interoperability (FHIR / external interfaces), quality (HQRP), the patient portal,
 the AI platform, and the SaaS/subscription platform.
 

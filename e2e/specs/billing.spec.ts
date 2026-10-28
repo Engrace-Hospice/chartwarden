@@ -1,13 +1,14 @@
 // e2e/specs/billing.spec.ts — critical workflow 6/6: billing (TEST-001).
 //
-// #106 (F-046) — the Medicare Claim Workbench (`/billing/claims`) stays scoped to reachability +
-// empty-state: `seed-scenario-billing.ts`'s own header documents WHY, and it is a real production
-// gap rather than a seeding one — `POST /billing/claims/assemble` is unconditionally unreachable.
-// #250 bound 4 of the 11 reader seams for real (`patientPayer`, `mdm.resolveProviderEntity`, two of
-// `referenceData`'s four methods); assemble still SEAM_UNBOUNDs at its second read,
-// `admission.resolveForRange` (M6) — M6's published seam readers don't offer the patient+range query
-// claim assembly needs, a real new read-surface addition to M6's own seam layer, filed as a
-// follow-up rather than built here.
+// #106 (F-046), #862 — the Medicare Claim Workbench (`/billing/claims`) stays scoped to reachability +
+// empty-state in the browser. That is a SEEDING/E2E limit, not a production one: `POST /billing/claims/assemble`
+// is reachable. The claim-assembly reader seams are bound to real data, and the real assembly service runs
+// against Postgres under RLS in `apps/backend/__tests__/m23-claim-assembly-seams.live.test.ts` (each seam, and the
+// end-to-end boundary) and `m23-visit-lines-assembly.live.test.ts` (claim-line assembly). What the route needs and
+// `db:seed:all` deliberately does not supply is TENANT-ENTERED reference data: until the tenant enters a per-diem
+// rate table (`/api/v1/billing/rate-tables`) assemble answers the typed `RATE_TABLE_MISSING` (422), so a browser
+// run has no assembled claim to render. `scripts/db/seed-scenario-billing.ts` seeds only the MAC credential and wage
+// index. `scripts/__tests__/readiness-claims.test.ts` pins this paragraph to those suites.
 //
 // The MEDICAID Claim Workbench (`/medicaid/billing/claims`) is different: `seed-scenario-billing.ts`
 // assembles, validates, and submits one real Oregon-adapter claim for the flagship patient
@@ -21,7 +22,7 @@ import { expect, test } from "@playwright/test";
 import { ADMIN_ACCOUNT } from "../fixtures/credentials";
 import { expectNoAxeViolations, signInAs } from "../fixtures/helpers";
 
-test.describe("Billing — Medicare (M23, assemble unreachable — #250)", () => {
+test.describe("Billing — Medicare (M23, reachability only — rate tables are tenant-entered, #862)", () => {
   test("main path: the Claim Workbench renders without crashing on an empty claim set", async ({
     page,
   }) => {

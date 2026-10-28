@@ -28,6 +28,7 @@ import { join } from "node:path";
 import { MODULES } from "../architecture/module-manifest";
 import { ROUTE_ENRICHMENTS } from "./openapi/enrichments";
 import { routeKey, scanRoutes } from "./openapi/scan-routes";
+import { createdTablesIn } from "./status-matrix-heuristics";
 
 const ROOT = process.cwd();
 const CHECK = process.argv.includes("--check");
@@ -86,8 +87,6 @@ for (const f of walk("packages/db/src/schema")) {
 
 // CREATE TABLE in migration SQL: set of migrated table names. Skip partition children
 // (`... PARTITION OF <owned-parent>`) and reserved-word captures from the optional IF-NOT-EXISTS.
-const createTableRe = /create\s+table\s+(?:if\s+not\s+exists\s+)?"?(\w+)"?([^;]*)/gi;
-const RESERVED = new Set(["if", "not", "exists"]);
 const migratedTables = new Set<string>();
 // `ALTER TABLE x RENAME TO y` (e.g. 1069 hipps_calculation -> per_diem_rate_calculation): the table is migrated under
 // its FINAL name, so an old CREATE TABLE must not read as an orphan. Applied after every CREATE has been collected.
@@ -96,12 +95,7 @@ const renamedTables: [string, string][] = [];
 for (const f of walk("packages/db/migrations")) {
   if (!f.endsWith(".sql")) continue;
   const src = read(f);
-  for (let m = createTableRe.exec(src); m; m = createTableRe.exec(src)) {
-    const name = m[1]!;
-    if (RESERVED.has(name.toLowerCase())) continue;
-    if (/partition\s+of/i.test(m[2]!)) continue; // partition child belongs to its owned parent
-    migratedTables.add(name);
-  }
+  for (const name of createdTablesIn(src)) migratedTables.add(name);
   for (let m = renameTableRe.exec(src); m; m = renameTableRe.exec(src))
     renamedTables.push([m[1]!, m[2]!]);
 }
@@ -253,6 +247,8 @@ const rows: Row[] = mods.map((m) => {
     .filter(Boolean)
     .map((d) => slug(d as string))
     .flatMap((s) => [s, s.replace(/s$/, "")]);
+  // Backend suites are also named by module id (`m41-commercial-claim.test.ts`), which carries no slug.
+  toks.push(`m${pad(m.id)}`);
   const tests =
     pkgTests ||
     backendTestFiles.some((b) => toks.some((t) => b.startsWith(`${t}-`) || b.startsWith(`${t}.`)));
