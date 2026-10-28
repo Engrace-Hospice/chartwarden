@@ -115,6 +115,8 @@ services:
       # Name of the IAM policy. The old `wardenx-app` policy stays attached to its account until the late cleanup
       # step (Step F), so a rollback keeps working.
       CHARTWARDEN_MINIO_POLICY: ${CHARTWARDEN_MINIO_POLICY:-chartwarden-app}
+      # Runs as the image's nonroot uid, whose $HOME may not be writable; keep mc's config under /tmp.
+      MC_CONFIG_DIR: /tmp/.mc
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |

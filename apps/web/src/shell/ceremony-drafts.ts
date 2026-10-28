@@ -23,5 +23,5 @@ export function clearDraft(key: string): void {
 /** Forget every stashed draft (sign-out, screen lock). */
 export function clearAllDrafts(): void {
   drafts.clear();
-  clearAllStepUpDrafts(); // the sessionStorage step-up stash goes with them
+  clearAllStepUpDrafts(); // the in-memory step-up drafts go with them
 }
