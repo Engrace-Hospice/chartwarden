@@ -10,20 +10,19 @@
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m17:oncall-rotation-entry:live
  */
+import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import { runWithRequestContext } from "@chartwarden/tenancy";
 import { ConflictError, NotFoundError } from "@chartwarden/types";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createDrizzleOnCallRotationStore } from "../src/modules/17-scheduling/seams/oncall-rotation-store";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ORG_A = "a8600000-0000-4000-8000-0000000000a1";
-const ORG_B = "b8600000-0000-4000-8000-0000000000b1";
 const HOUR_MS = 3_600_000;
 const NOW = new Date("2026-10-08T20:00:00.000Z");
 const at = (hours: number) => new Date(NOW.getTime() + hours * HOUR_MS).toISOString();
@@ -36,6 +35,8 @@ describe.skipIf(!DB_URL)("M17 oncall_rotation_entry — LIVE Postgres", () => {
   let handle: ReturnType<typeof createDbClient>;
   let store: ReturnType<typeof createDrizzleOnCallRotationStore>;
   const seeded: Record<string, Seed> = {};
+  let ORG_A = "";
+  let ORG_B = "";
 
   async function seedOrg(org: string, slug: string): Promise<void> {
     await admin.query(
@@ -109,14 +110,22 @@ describe.skipIf(!DB_URL)("M17 oncall_rotation_entry — LIVE Postgres", () => {
       .sort()) {
       await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
     }
-    await seedOrg(ORG_A, "cw860-a");
-    await seedOrg(ORG_B, "cw860-b");
     await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     app = new Client({ connectionString: appRoleUrl(DB_URL as string) });
     await app.connect();
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
+    // The races below only race if the store's pool can hold more than one connection (default max is 10).
+    expect(handle.pool.options.max).toBeGreaterThan(1);
     store = createDrizzleOnCallRotationStore(handle.db);
   }, 180_000);
+
+  // Fresh tenants per test, so every test creates what it reads and the file is order-independent.
+  beforeEach(async () => {
+    ORG_A = randomUUID();
+    ORG_B = randomUUID();
+    await seedOrg(ORG_A, `cw860-a-${ORG_A.slice(0, 8)}`);
+    await seedOrg(ORG_B, `cw860-b-${ORG_B.slice(0, 8)}`);
+  });
 
   afterAll(async () => {
     await handle?.close();
@@ -156,23 +165,31 @@ describe.skipIf(!DB_URL)("M17 oncall_rotation_entry — LIVE Postgres", () => {
   });
 
   describe("cross-tenant denial (RLS as chartwarden_app)", () => {
-    it("org B's GUC sees none of org A's rows; an unset GUC never matches rows", async () => {
+    it("org B's GUC sees none of org A's rows; an empty or never-set GUC sees nothing", async () => {
+      const a = seeded[ORG_A] as Seed;
+      await create(ORG_A, a.m1, "msw", 1, 2);
       const own = await asApp(ORG_A, "SELECT count(*)::int AS n FROM oncall_rotation_entry");
-      expect(own.rows[0].n).toBeGreaterThan(0);
-      const other = await asApp(
-        ORG_B,
-        "SELECT count(*)::int AS n FROM oncall_rotation_entry WHERE organization_id = $1",
-        [ORG_A],
-      );
+      expect(own.rows[0].n).toBe(1);
+      const other = await asApp(ORG_B, "SELECT count(*)::int AS n FROM oncall_rotation_entry");
       expect(other.rows[0].n).toBe(0);
-      const none = await asApp(null, "SELECT count(*)::int AS n FROM oncall_rotation_entry").catch(
-        () => null,
-      );
-      if (none) expect(none.rows[0].n).toBe(0);
+      // GUC set to '' (what asApp(null) does): the ''::uuid cast in the policy must fail closed.
+      await expect(
+        asApp(null, "SELECT count(*)::int AS n FROM oncall_rotation_entry"),
+      ).rejects.toThrow(/invalid input syntax for type uuid/i);
+      // GUC never set on the connection: current_setting(..., true) is NULL -> matches no rows.
+      const fresh = new Client({ connectionString: appRoleUrl(DB_URL as string) });
+      await fresh.connect();
+      try {
+        const res = await fresh.query("SELECT count(*)::int AS n FROM oncall_rotation_entry");
+        expect(res.rows[0].n).toBe(0);
+      } finally {
+        await fresh.end();
+      }
     });
 
     it("WITH CHECK refuses an insert for another tenant; cross-tenant UPDATE touches zero rows", async () => {
       const a = seeded[ORG_A] as Seed;
+      await create(ORG_A, a.m1, "msw", 1, 2);
       await expect(
         asApp(
           ORG_B,
@@ -187,17 +204,18 @@ describe.skipIf(!DB_URL)("M17 oncall_rotation_entry — LIVE Postgres", () => {
         [ORG_A],
       );
       expect(upd.rowCount).toBe(0);
+      expect(await store.list(ORG_A)).toHaveLength(1); // the refused insert left nothing behind
     });
 
     it("the store cannot cancel, list or schedule across tenants", async () => {
       const a = seeded[ORG_A] as Seed;
       const b = seeded[ORG_B] as Seed;
-      const [aEntry] = await store.list(ORG_A);
-      const aId = (aEntry as { id: string }).id;
+      const aId = (await create(ORG_A, a.m1, "msw", 1, 2)).id;
+      await create(ORG_B, b.m1, "msw", 1, 2);
       await expect(store.cancel(ORG_B, b.actor, aId)).rejects.toBeInstanceOf(NotFoundError);
       await expect(create(ORG_B, a.m1, "msw", 1, 2)).rejects.toBeInstanceOf(NotFoundError); // org A's member
       const listedB = await store.list(ORG_B, { includeCancelled: true });
-      expect(listedB.every((e) => e.membershipId !== a.m1 && e.membershipId !== a.m2)).toBe(true);
+      expect(listedB.map((e) => e.membershipId)).toEqual([b.m1]);
       expect((await store.list(ORG_A)).some((e) => e.id === aId)).toBe(true);
     });
   });
@@ -213,6 +231,16 @@ describe.skipIf(!DB_URL)("M17 oncall_rotation_entry — LIVE Postgres", () => {
       await expect(create(ORG_A, a.m1, "clinical_rn", 40, 48)).resolves.toBeTruthy();
       await store.cancel(ORG_A, a.actor, first.id);
       await expect(create(ORG_A, a.m1, "msw", 40, 48)).resolves.toBeTruthy();
+    });
+
+    it("DOCUMENTED BEHAVIOUR: the same person may hold overlapping but non-identical windows (no exclusion constraint)", async () => {
+      const a = seeded[ORG_A] as Seed;
+      await create(ORG_A, a.m1, "msw", 50, 58);
+      await expect(create(ORG_A, a.m1, "msw", 54, 62)).resolves.toBeTruthy();
+      const r = await roster(ORG_A);
+      expect(r.kind === "roster" && r.entries.filter((e) => e.membershipId === a.m1)).toHaveLength(
+        2,
+      );
     });
 
     it("the DB itself refuses an inverted window and an unknown discipline", async () => {
@@ -248,6 +276,9 @@ describe.skipIf(!DB_URL)("M17 oncall_rotation_entry — LIVE Postgres", () => {
       ).rows[0];
       expect(row.cancelled_at).not.toBeNull();
       expect([a.actor, a.m1]).toContain(row.by);
+      // The loser must not have overwritten the winner's stamp.
+      const winnerIdx = results.findIndex((r) => r.status === "fulfilled");
+      expect(row.by).toBe(winnerIdx === 0 ? a.actor : a.m1);
     });
 
     it("racing identical creates: one row, one ConflictError", async () => {
@@ -283,6 +314,8 @@ describe.skipIf(!DB_URL)("M17 oncall_rotation_entry — LIVE Postgres", () => {
     });
 
     it("the app role cannot DELETE, and cancelled_at/cancelled_by must move together", async () => {
+      const a = seeded[ORG_A] as Seed;
+      await create(ORG_A, a.m1, "msw", 95, 96); // a live row for both statements to hit
       await expect(
         asApp(ORG_A, "DELETE FROM oncall_rotation_entry WHERE organization_id = $1", [ORG_A]),
       ).rejects.toThrow(/permission denied/i);
@@ -295,13 +328,28 @@ describe.skipIf(!DB_URL)("M17 oncall_rotation_entry — LIVE Postgres", () => {
       ).rejects.toThrow(/cancelled_chk/);
     });
 
-    it("writes leave audit_event rows", async () => {
-      const n = (
-        await admin.query(
-          "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind = 'oncall_rotation_entry'",
-        )
-      ).rows[0].n;
-      expect(n).toBeGreaterThan(0);
+    it("one create and one cancel leave one insert and one update audit_event for that row", async () => {
+      const a = seeded[ORG_A] as Seed;
+      const count = async (eventType: string) =>
+        (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM audit_event WHERE organization_id = $1 AND resource_kind = 'oncall_rotation_entry' AND event_type = $2",
+            [ORG_A, eventType],
+          )
+        ).rows[0].n as number;
+      const [insertsBefore, updatesBefore] = [
+        await count("oncall_rotation_entry.insert"),
+        await count("oncall_rotation_entry.update"),
+      ];
+      const entry = await create(ORG_A, a.m1, "msw", 100, 108);
+      await store.cancel(ORG_A, a.actor, entry.id);
+      expect(await count("oncall_rotation_entry.insert")).toBe(insertsBefore + 1);
+      expect(await count("oncall_rotation_entry.update")).toBe(updatesBefore + 1);
+      const ids = await admin.query(
+        "SELECT count(*)::int AS n FROM audit_event WHERE resource_id = $1 AND resource_kind = 'oncall_rotation_entry'",
+        [entry.id],
+      );
+      expect(ids.rows[0].n).toBe(2);
     });
   });
 });
