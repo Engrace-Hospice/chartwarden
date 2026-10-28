@@ -20,6 +20,7 @@ import {
   identityScreens,
   isAppLandingHost,
 } from "./modules/02-identity";
+import { ScreenLockUnavailable } from "./modules/02-identity/screen-lock-unavailable";
 import { authorizationScreens } from "./modules/03-authorization";
 import { auditScreens } from "./modules/04-audit";
 import { patientScreens } from "./modules/05-patient";
@@ -127,7 +128,7 @@ createRoot(rootEl).render(
       registry={registry}
       client={client}
       chromeOverlay={
-        <ErrorBoundary fallback={null}>
+        <ErrorBoundary fallback={<ScreenLockUnavailable />}>
           <Suspense fallback={null}>
             <ScreenLock />
           </Suspense>
