@@ -2,7 +2,7 @@
 // announced outcomes, focus, and the step-up round trip through the whole page. Synthetic data only.
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { markStepUpReturn } from "../../shell/step-up-redirect";
+import { markStepUpReturn, stepUpDraftKeys } from "../../shell/step-up-redirect";
 import {
   type Call,
   ENROLLMENT_ID,
@@ -250,9 +250,7 @@ describe("CommercialEnrollments", () => {
     mount(ok([]), { manage: true, entry, write });
     const fresh = await screen.findByLabelText("Add enrollment", { selector: "aside" });
     expect((within(fresh).getByLabelText(/Clearinghouse key/) as HTMLInputElement).value).toBe("");
-    expect(Object.keys(window.sessionStorage).some((k) => k.startsWith("wx.step-up-draft:"))).toBe(
-      false,
-    );
+    expect(stepUpDraftKeys().length > 0).toBe(false);
   });
 
   // Fills the Add form, hits the step-up refusal (draft stashed), and comes back genuinely returned from /step-up.
@@ -276,8 +274,7 @@ describe("CommercialEnrollments", () => {
     });
     fireEvent.submit(drawer.querySelector("form") as HTMLFormElement);
     await screen.findByText("elsewhere");
-    const stashed = () =>
-      Object.keys(window.sessionStorage).some((k) => k.startsWith("wx.step-up-draft:"));
+    const stashed = () => stepUpDraftKeys().length > 0;
     expect(stashed()).toBe(true); // the redirect itself keeps the draft
     cleanup();
     markStepUpReturn(entry);

@@ -6,7 +6,12 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
-import { markStepUpReturn, stashStepUpDraft, stepUpDraftKey } from "../../shell/step-up-redirect";
+import {
+  markStepUpReturn,
+  stashStepUpDraft,
+  stepUpDraftKey,
+  stepUpDraftKeys,
+} from "../../shell/step-up-redirect";
 import { DISCLOSE_ACTION } from "./document-actions";
 import { VersionHistory } from "./version-history";
 
@@ -106,9 +111,7 @@ describe("VersionHistory — back from step-up", () => {
 
     await screen.findByText("Discharge summary");
     expect(screen.queryByText("Open version 2")).toBeNull();
-    await waitFor(() =>
-      expect(window.sessionStorage.getItem(`wx.step-up-draft:${draftKey}`)).toBeNull(),
-    );
+    await waitFor(() => expect(stepUpDraftKeys()).not.toContain(draftKey));
   });
 
   it("drops a returned draft whose version is not in the loaded chain", async () => {
@@ -124,8 +127,6 @@ describe("VersionHistory — back from step-up", () => {
 
     await screen.findByText("Discharge summary");
     expect(screen.queryByText("Open version 2")).toBeNull();
-    await waitFor(() =>
-      expect(window.sessionStorage.getItem(`wx.step-up-draft:${otherKey}`)).toBeNull(),
-    );
+    await waitFor(() => expect(stepUpDraftKeys()).not.toContain(otherKey));
   });
 });

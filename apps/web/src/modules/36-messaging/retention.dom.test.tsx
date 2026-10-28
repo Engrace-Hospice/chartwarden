@@ -22,7 +22,12 @@ import axe from "axe-core";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
-import { markStepUpReturn, stashStepUpDraft, stepUpDraftKey } from "../../shell/step-up-redirect";
+import {
+  markStepUpReturn,
+  stashStepUpDraft,
+  stepUpDraftKey,
+  stepUpDraftKeys,
+} from "../../shell/step-up-redirect";
 import { APPLY_ACTION, RELEASE_ACTION } from "./legal-hold-drafts";
 import { RetentionGovernance } from "./retention-governance";
 import { useLegalHolds } from "./use-retention";
@@ -590,7 +595,7 @@ describe("Step-up drafts are scoped and only reopen on a genuine return", () => 
     await openHolds();
     await screen.findByRole("list", { name: "Legal holds" });
     expect(screen.queryByRole("dialog")).toBeNull();
-    await waitFor(() => expect(window.sessionStorage.length).toBe(0));
+    await waitFor(() => expect(stepUpDraftKeys().length).toBe(0));
   });
 
   it("a return marker for another page does not reopen anything", async () => {
@@ -619,7 +624,7 @@ describe("Step-up drafts are scoped and only reopen on a genuine return", () => 
     const dialog = await screen.findByRole("dialog", { name: "Place a legal hold" });
     expect((within(dialog).getByLabelText(/^Name/) as HTMLInputElement).value).toBe("Case A");
     await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    expect(window.sessionStorage.length).toBe(0);
+    expect(stepUpDraftKeys().length).toBe(0);
   });
 
   it("a resumed release dialog opens once and does not refetch the list", async () => {

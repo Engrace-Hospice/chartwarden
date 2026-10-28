@@ -104,6 +104,11 @@ if (typeof window !== "undefined" && typeof window.localStorage?.clear !== "func
 // never in isolation. Passing waits return immediately, so a longer ceiling costs nothing.
 configure({ asyncUtilTimeout: 5000 });
 
-afterEach(() => {
+// The web app's step-up drafts live in module memory (#858: never Web Storage), so unlike the old sessionStorage
+// stash they would leak between tests; forget them after each dom test the way sign-out does.
+afterEach(async () => {
   cleanup();
+  if (typeof window === "undefined") return;
+  const { clearAllStepUpDrafts } = await import("./apps/web/src/shell/step-up-redirect");
+  clearAllStepUpDrafts();
 });

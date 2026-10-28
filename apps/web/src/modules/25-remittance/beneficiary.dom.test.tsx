@@ -10,7 +10,7 @@ import { useState } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
-import { markStepUpReturn } from "../../shell/step-up-redirect";
+import { markStepUpReturn, stepUpDraftKeys } from "../../shell/step-up-redirect";
 import { BeneficiaryAppealPanel } from "./beneficiary-appeal-panel";
 import {
   CHANGED_CUE,
@@ -441,9 +441,7 @@ describe("RepresentativePanel", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: "Record revocation" }));
     expect(await screen.findByText("STEP-UP PAGE")).toBeTruthy();
-    expect(
-      Object.keys(window.sessionStorage).some((k) => k.includes("representative-revoke")),
-    ).toBe(true);
+    expect(stepUpDraftKeys().some((k) => k.includes("representative-revoke"))).toBe(true);
     cleanup();
 
     // the step-up page records a one-shot return marker for the path it returns to
@@ -473,9 +471,7 @@ describe("RepresentativePanel", () => {
     await screen.findByText(/Fixture Person/);
     expect(screen.queryByLabelText("How it was received (note)")).toBeNull();
     await waitFor(() =>
-      expect(Object.keys(window.sessionStorage).some((k) => k.includes("representative-"))).toBe(
-        false,
-      ),
+      expect(stepUpDraftKeys().some((k) => k.includes("representative-"))).toBe(false),
     );
   });
 });
