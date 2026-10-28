@@ -21,13 +21,17 @@ export function measureInitialBundle(distDir: string, base: string): BundleMeasu
   const urls = new Set<string>();
   for (const m of readFileSync(indexHtml, "utf8").matchAll(ASSET_RE)) urls.add(m[1] ?? "");
   if (urls.size === 0) {
-    throw new Error("No <script>/<link modulepreload> assets found in index.html — nothing to measure.");
+    throw new Error(
+      "No <script>/<link modulepreload> assets found in index.html — nothing to measure.",
+    );
   }
   const prefix = `${base}/`;
   const rows: BundleRow[] = [];
   for (const url of urls) {
     if (!url.startsWith(prefix)) {
-      throw new Error(`Asset ${url} is external or not under the configured base "${prefix}" — cannot measure.`);
+      throw new Error(
+        `Asset ${url} is external or not under the configured base "${prefix}" — cannot measure.`,
+      );
     }
     const abs = join(distDir, url.slice(prefix.length));
     if (!existsSync(abs)) {

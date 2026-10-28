@@ -222,8 +222,18 @@ const MEDICAL_DIRECTOR = {
   "x-test-roles": "medical_director",
 };
 const CHAPLAIN = { "x-test-user": "chap_1", "x-test-org": ORG, "x-test-roles": "chaplain" };
-const LPN = { "x-test-user": "lpn_1", "x-test-org": ORG, "x-test-roles": "lpn", "x-test-pe": "pe_1" };
-const LVN = { "x-test-user": "lvn_1", "x-test-org": ORG, "x-test-roles": "lvn", "x-test-pe": "pe_1" };
+const LPN = {
+  "x-test-user": "lpn_1",
+  "x-test-org": ORG,
+  "x-test-roles": "lpn",
+  "x-test-pe": "pe_1",
+};
+const LVN = {
+  "x-test-user": "lvn_1",
+  "x-test-org": ORG,
+  "x-test-roles": "lvn",
+  "x-test-pe": "pe_1",
+};
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 const COMPLIANCE = {
   "x-test-user": "compliance_1",
@@ -400,7 +410,9 @@ describe("M10-T06 — §4.7 hope.sfvAuthorAllowed (RN/NP/LPN/LVN; CMS HOPE Guida
   });
   it("a medical director (MD) is still denied the SFV route (403)", async () => {
     const { app, triggeringAssessmentId } = await openSfv();
-    expect((await postSfv(app, MEDICAL_DIRECTOR, triggeringAssessmentId, "MD")).statusCode).toBe(403);
+    expect((await postSfv(app, MEDICAL_DIRECTOR, triggeringAssessmentId, "MD")).statusCode).toBe(
+      403,
+    );
     await app.close();
   });
   it("an LPN is still denied a non-SFV timepoint (403)", async () => {
