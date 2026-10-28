@@ -1765,9 +1765,20 @@ jobs:
       # rather than silently shrinking the suite to one test — the browser-side version of the
       # self-skip this workflow's live jobs guard against.
       - name: 20 browser specs — 13 critical-workflow + 7 axe-core WCAG 2A/AA scans (real stack)
-        run: bun run test:e2e
+        run: bun run test:e2e --grep-invert "#852"
+      # #852: everything added with the browser-coverage increment (patient-scoped axe walk, role matrix,
+      # six-viewport smoke) was authored without a live stack. Advisory (`continue-on-error`) until each
+      # has a first green run here; then drop the step's flag and the `--grep-invert` above.
+      - name: Browser-coverage additions — patient axe walk + role matrix (advisory, #852)
+        id: e2e_new
+        continue-on-error: true
+        run: bun run test:e2e:new
+      - name: Six-viewport layout smoke (advisory, #852)
+        id: e2e_viewports
+        continue-on-error: true
+        run: bun run test:e2e:viewports
       - name: Upload the Playwright report, traces and stack logs
-        if: failure()
+        if: failure() || steps.e2e_new.outcome == 'failure' || steps.e2e_viewports.outcome == 'failure'
         uses: actions/upload-artifact@v7
         with:
           name: e2e-failure-artifacts

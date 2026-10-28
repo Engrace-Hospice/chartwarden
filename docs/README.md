@@ -210,6 +210,7 @@ represent **completed, merged** waves and are retained as historical governance 
 | [`reviews/`](./reviews/) | Review prompt templates (architecture compliance, exceedance, red-team, lock-grade, production readiness). |
 | [`agents/`](./agents/) | Agent-skill config: issue tracker, triage labels, domain docs. |
 | [`UI-UX/`](./UI-UX/) | UI redesign plan, component catalog, migration matrix and phase-0 UI inventory. |
+| [`testing/manual-a11y-protocol.md`](./testing/manual-a11y-protocol.md) | Manual WCAG 2.2 AA protocol (keyboard/focus, 200%/400% zoom, VoiceOver/NVDA) with a results template — the half of accessibility an axe scan cannot cover (#852). |
 | [`messaging-hub/`](./messaging-hub/README.md) | Proposal: evolve M36 into a Clinical Communication & Care Coordination Hub — baseline/gap map, architecture, phased work packages (0–6), clinical workflows & safety, UX, testing/release gates, 88-capability register. |
 
 ---

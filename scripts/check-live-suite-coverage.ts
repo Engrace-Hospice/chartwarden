@@ -100,6 +100,8 @@ const DEFERRED: Readonly<Record<string, string>> = {
   // closed, the suite is 18/18, and the `e2e` job now runs it — so the entry is gone, exactly as the
   // stale-deferral check below demands. The next suite that genuinely cannot run yet registers here
   // rather than quietly failing to be wired.
+  "test:e2e:apps":
+    "#852: admin-console + portal smoke needs apps/admin (:5175) and apps/portal (:5174) dev servers, which the e2e job does not start; the specs skip without E2E_ADMIN_URL / E2E_PORTAL_URL. Wire a server-start step into the e2e job to retire this.",
 };
 
 export interface LiveScript {
