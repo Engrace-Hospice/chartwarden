@@ -1,12 +1,13 @@
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
-// apps/web/src/modules/25-remittance — milestone 4 QIC reconsideration. Asserts on RECORDED FETCH CALLS (method, path,
-// If-Match, body) like the other M25 write tests, so a control wired to a handler that never fires still fails. The
-// server owns every rule and its refusal is shown verbatim; the escalation form survives step-up; a missing QIC
-// receipt date is a visible state, never a blank, and offers no escalation.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
+// apps/web/src/modules/25-remittance — milestone 4 QIC reconsideration. Asserts on RECORDED FETCH CALLS (method, path,
+// If-Match, body) like the other M25 write tests, so a control wired to a handler that never fires still fails. The
+// server owns every rule and its refusal is shown verbatim; the escalation form survives step-up; a missing QIC
+// receipt date is a visible state, never a blank, and offers no escalation.
+import { peekStepUpDraft, stepUpDraftKeys } from "../../shell/step-up-redirect";
 import { AppealDetailPanel } from "./appeal-detail-panel";
 
 const APPEAL = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
@@ -379,9 +380,10 @@ describe("M25 QIC reconsideration - escalation", () => {
     change("Confirmation or tracking reference", "FAX-CONF-77");
     fireEvent.click(screen.getByRole("button", { name: "Record escalation request" }));
     await waitFor(() => expect(screen.getByTestId("where").textContent).toContain("/step-up"));
-    const stashed = Object.keys(window.sessionStorage).filter((k) => k.includes("m25-qic"));
+    const stashed = stepUpDraftKeys().filter((k) => k.includes("m25-qic"));
     expect(stashed.length).toBe(1);
-    expect(window.sessionStorage.getItem(stashed[0] as string)).toContain("FAX-CONF-77");
+    expect(JSON.stringify(peekStepUpDraft(stashed[0] as string))).toContain("FAX-CONF-77");
+    expect(JSON.stringify({ ...window.sessionStorage })).not.toContain("FAX-CONF-77");
   });
 
   it("restores the escalation form after step-up", async () => {

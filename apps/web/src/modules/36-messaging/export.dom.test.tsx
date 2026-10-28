@@ -13,7 +13,7 @@ import axe from "axe-core";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
-import { markStepUpReturn } from "../../shell/step-up-redirect";
+import { markStepUpReturn, stepUpDraftKeys } from "../../shell/step-up-redirect";
 import { ExportApprovals } from "./export-approvals";
 import { ExportMine } from "./export-mine";
 import { validateDraft } from "./export-request";
@@ -83,8 +83,7 @@ function LocationProbe(): JSX.Element {
   return <output data-testid="loc">{`${pathname}${search}`}</output>;
 }
 const here = (): string => screen.getByTestId("loc").textContent ?? "";
-const stashedKeys = (): string[] =>
-  Object.keys(window.sessionStorage).filter((k) => k.startsWith("wx.step-up-draft:"));
+const stashedKeys = (): string[] => stepUpDraftKeys();
 
 function mount(
   ui: JSX.Element,

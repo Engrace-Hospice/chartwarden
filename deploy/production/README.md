@@ -258,6 +258,60 @@ Pick one:
 Either way, delete `.env.production.previous-release` afterwards (it holds secrets, mode 600). The repository has no
 deploy alert hook yet (#866). The signal is the failed `deploy` workflow run, which exits 75.
 
+## Infrastructure images: digest pins (#855)
+
+Every third-party image in `compose.yml` is `repo:tag@sha256:<digest>` (the tag is the human label; the digest is
+what is pulled). The GHCR application images are digest-pinned through env by `deploy.sh`. `bun run
+arch:compose-policy` (part of `arch:fitness`) fails on any literal image without a digest.
+
+| Service | Image | Version at pin time (2026-10-27) |
+|---|---|---|
+| postgres | `pgvector/pgvector:pg18` | PostgreSQL 18 (same digest as `backup/Dockerfile`) |
+| valkey | `valkey/valkey:8-alpine` | Valkey 8.x |
+| minio, minio-provision | `cgr.dev/chainguard/minio:latest` | MinIO `RELEASE.2026-10-23T20-06-51Z` |
+| clamav | `clamav/clamav-debian:1.4` | ClamAV 1.4.x |
+
+MinIO: `minio/minio` is no longer published to Docker Hub, so the server is Chainguard's build (it ships `minio`,
+`mc`, `sh` and `bash`, but no `curl`; the healthcheck therefore probes `/minio/health/ready` over bash `/dev/tcp`).
+It defaults to uid 65532, but the existing `minio-data` volume is root-owned, so the service sets `user: "0:0"`.
+Moving to the nonroot user needs a one-time `chown -R 65532 /data` on the volume. Chainguard's free tier only
+tags `latest`; older digests stay pullable for now but are not guaranteed, so mirror the pinned digest into a
+registry you control (e.g. GHCR) before relying on it for disaster recovery.
+
+**Updating an image**
+1. Resolve the new digest: `docker buildx imagetools inspect <repo:tag>` (the top-level `Digest:` is the index digest).
+2. Edit `compose.yml` (tag and digest together) and the version table above; if it is postgres, update
+   `backup/Dockerfile` to the same digest.
+3. Restore-test: run the restore drill (`docs/runbooks/m36-restore-drill.md`; for postgres/minio also restore the
+   previous backup onto the new image) and `smoke.sh` against a staging stack.
+4. `bun run arch:compose-policy`, then ship through the normal PR/deploy path. Rollback is the previous digest.
+
+## Resource budget (#856)
+
+Every service sets `mem_limit` and `cpus` (plain `docker compose up` honours these, no Swarm needed); long-running
+services also set `mem_reservation`, and postgres additionally has a larger `cpu_shares`. Enforced by
+`bun run arch:compose-policy`. **These are reasonable defaults for a single 16 GiB / 8 vCPU host, not load-tested
+values**; tune them from `docker stats` and OOM events (`docker inspect -f '{{.State.OOMKilled}}' <ctr>`).
+
+| Service | mem_limit | mem_reservation | cpus |
+|---|---|---|---|
+| postgres | 4g | 2g | 4 (cpu_shares 2048) |
+| clamav | 4g | 1g | 2 |
+| docling-worker | 2g | 512m | 2 |
+| api / worker | 1536m each | 512m each | 2 each |
+| valkey | 1g | 128m | 1 |
+| minio | 1g | 256m | 2 |
+| web | 128m | 32m | 0.5 |
+| one-shots (migrate, provision, minio-provision, tenant-buckets, seed-runner, hl7-listener) | 128m-1g | none | 0.5-2 |
+
+Long-running limits sum to about 15 GiB (memory limits are ceilings, not a simultaneous allocation) and
+reservations to about 5 GiB, which leaves headroom for the OS, host Nginx and Docker on 16 GiB. CPU limits are
+deliberately oversubscribed (they throttle, they do not reserve). One-shots run transiently during deploys.
+To tune: edit the numbers, keep `mem_limit` set on every service, and keep reservations below roughly half of RAM.
+A hit memory ceiling shows as an OOM kill and a restart, so a limit set too low trades noisy neighbours for outages.
+Known gaps: Postgres `shared_buffers`/`work_mem` and Valkey `maxmemory` are not tuned to these limits.
+`preflight.sh` prints a warning (never fails) when the host has under about 15 GB of RAM or under about 1.5 GB available.
+
 ## Supply chain (F-040 / #100)
 
 The `release` job scans, describes and signs every image it publishes — all three addressing the

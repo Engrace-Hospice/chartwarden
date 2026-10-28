@@ -1,9 +1,10 @@
-// §4.12 — a disclosure / survey-export open must name its recipient. The server refuses the mint with
-// no resolvable partner (403), so the dialog asks for one instead of offering an action that cannot work.
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../shell/session";
+// §4.12 — a disclosure / survey-export open must name its recipient. The server refuses the mint with
+// no resolvable partner (403), so the dialog asks for one instead of offering an action that cannot work.
+import { stepUpDraftKeys } from "../../shell/step-up-redirect";
 import { DocumentPreviewDialog } from "./document-actions";
 
 const DOCUMENT = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
@@ -290,12 +291,12 @@ describe("DocumentPreviewDialog — disclosure recipient", () => {
     await waitFor(() => expect(open.disabled).toBe(false));
     fireEvent.click(open);
     await screen.findByRole("link", { name: "Verify now" });
-    expect(window.sessionStorage.length).toBeGreaterThan(0);
+    expect(stepUpDraftKeys().length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
-    expect(window.sessionStorage.length).toBe(0);
+    expect(stepUpDraftKeys().length).toBe(0);
   });
 
   it("does not restore an old external choice after an internal-purpose refusal", async () => {
@@ -308,7 +309,7 @@ describe("DocumentPreviewDialog — disclosure recipient", () => {
     await waitFor(() => expect(open.disabled).toBe(false));
     fireEvent.click(open);
     await screen.findByRole("link", { name: "Verify now" });
-    expect(window.sessionStorage.length).toBeGreaterThan(0);
+    expect(stepUpDraftKeys().length).toBeGreaterThan(0);
 
     fireEvent.change(screen.getByLabelText("Reason for access"), {
       target: { value: "treatment" },
@@ -316,7 +317,7 @@ describe("DocumentPreviewDialog — disclosure recipient", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open" }));
     await screen.findByRole("link", { name: "Verify now" });
 
-    expect(window.sessionStorage.length).toBe(0);
+    expect(stepUpDraftKeys().length).toBe(0);
   });
 
   it("announces the recipient hint as a status message", () => {

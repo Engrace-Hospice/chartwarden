@@ -13,9 +13,18 @@
 # volumes/database are missing while old-named ones exist, so a stale host fails safe instead of starting empty state.
 name: ${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}
 
+# #855/#856 policy (enforced by `bun run arch:compose-policy`): every literal third-party image is pinned
+# `repo:tag@sha256:<digest>` (the GHCR app images are digest-pinned by deploy.sh via env), and every service
+# sets `mem_limit` and `cpus` (plain `docker compose up` honours both; reservations are `mem_reservation`).
+# The numbers are single-host defaults (16 GiB / 8 vCPU), not load-tested: see README "Resource budget".
+
 services:
   postgres:
-    image: pgvector/pgvector:pg18
+    image: pgvector/pgvector:pg18@sha256:2358fcba361ed2233a5ed81b5fe4ca779ccb304120ce531a3bf51c0ed7e2bc11
+    mem_limit: 4g
+    cpus: 4
+    mem_reservation: 2g
+    cpu_shares: 2048
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -33,7 +42,10 @@ services:
     command: ["postgres", "-c", "max_locks_per_transaction=4096"]
 
   valkey:
-    image: valkey/valkey:8-alpine
+    image: valkey/valkey:8-alpine@sha256:2602ace2be6569bc2bbb06f873776516ab9089821525be34f4305c67eb9db02a
+    mem_limit: 1g
+    cpus: 1
+    mem_reservation: 128m
     restart: unless-stopped
     command: ["valkey-server", "--appendonly", "yes"]
     volumes:
@@ -45,9 +57,16 @@ services:
       retries: 12
 
   minio:
-    image: minio/minio:latest
+    image: cgr.dev/chainguard/minio:latest@sha256:e70b2b1e74d79457f808710483bd726ff364529ca30736eaa15a6ab547d3a5a7
+    mem_limit: 1g
+    cpus: 2
+    mem_reservation: 256m
     restart: unless-stopped
     command: server /data --console-address ":9001"
+    # #855: MinIO no longer publishes minio/minio to Docker Hub, so this is Chainguard's build (nonroot uid 65532 by
+    # default). The existing minio-data volume was written by the old image as root, so keep root to avoid a chown
+    # migration on the live host; move to 65532 only together with a chown of the volume (see README, image updates).
+    user: "0:0"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set in .env.production}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set in .env.production}
@@ -66,7 +85,8 @@ services:
     ports:
       - "127.0.0.1:9000:9000"
     healthcheck:
-      test: ["CMD-SHELL", "curl --fail --silent http://localhost:9000/minio/health/ready >/dev/null || exit 1"]
+      # The Chainguard image has bash but no curl/wget: probe /minio/health/ready over bash's /dev/tcp.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /minio/health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && read -r status <&3 && case \"$$status\" in *' 200 '*) exit 0;; esac; exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -82,8 +102,10 @@ services:
   # idempotent (policy create overwrites, user add re-sets the secret) and reruns on every deploy, so
   # rotating MINIO_APP_SECRET_KEY in .env.production is one deploy.
   minio-provision:
-    # Reuse the running server's image; it includes /usr/bin/mc and /bin/sh.
-    image: minio/minio:latest
+    # Reuse the running server's image; the Chainguard build includes /usr/bin/mc and /bin/sh.
+    image: cgr.dev/chainguard/minio:latest@sha256:e70b2b1e74d79457f808710483bd726ff364529ca30736eaa15a6ab547d3a5a7
+    mem_limit: 128m
+    cpus: 0.5
     restart: "no"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -93,6 +115,8 @@ services:
       # Name of the IAM policy. The old `wardenx-app` policy stays attached to its account until the late cleanup
       # step (Step F), so a rollback keeps working.
       CHARTWARDEN_MINIO_POLICY: ${CHARTWARDEN_MINIO_POLICY:-chartwarden-app}
+      # Runs as the image's nonroot uid, whose $HOME may not be writable; keep mc's config under /tmp.
+      MC_CONFIG_DIR: /tmp/.mc
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -132,6 +156,9 @@ services:
   docling-worker:
     image: ${CHARTWARDEN_DOCLING_IMAGE:-ghcr.io/engrace-hospice/chartwarden-docling-worker:unset}
     pull_policy: always
+    mem_limit: 2g
+    cpus: 2
+    mem_reservation: 512m
     restart: unless-stopped
     environment:
       DOCLING_WORKER_TOKEN: ${DOCLING_WORKER_TOKEN:?set in .env.production}
@@ -146,6 +173,8 @@ services:
   migrate:
     image: ${CHARTWARDEN_IMAGE:?set immutable GHCR image in .env.production}
     pull_policy: always
+    mem_limit: 1g
+    cpus: 2
     env_file: .env.production
     command: ["bun", "run", "scripts/db/migrate.ts", "--strict"]
     environment:
@@ -160,6 +189,8 @@ services:
   provision:
     image: ${CHARTWARDEN_IMAGE:?set immutable GHCR image in .env.production}
     pull_policy: always
+    mem_limit: 256m
+    cpus: 1
     env_file: .env.production
     command: ["bun", "run", "scripts/db/provision-runtime-roles.ts"]
     environment:
@@ -178,11 +209,12 @@ services:
   # still-updating scanner leaves attachments `pending` (nothing is delivered), it must never block the EHR.
   # Alert on a stuck scanner: old `pending` rows / `deferred` scans (docs/architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md).
   clamav:
-    image: clamav/clamav-debian:1.4
+    image: clamav/clamav-debian:1.4@sha256:03a2f641117f0a8c908bac65a63c5e1e4695badc52a340c9d30397d7cebb9154
     restart: unless-stopped
     # clamd loads the whole signature set (a reload briefly doubles it): bound it so a scan flood or a bad update
     # cannot starve postgres/minio/api on the same host.
     mem_limit: 4g
+    mem_reservation: 1g
     cpus: 2
     networks: [scan]
     volumes:
@@ -201,6 +233,8 @@ services:
   tenant-buckets:
     image: ${CHARTWARDEN_IMAGE:?set immutable GHCR image in .env.production}
     pull_policy: always
+    mem_limit: 256m
+    cpus: 1
     env_file: .env.production
     command: ["bun", "run", "scripts/backfill-tenant-buckets.ts"]
     environment:
@@ -214,6 +248,9 @@ services:
   api:
     image: ${CHARTWARDEN_IMAGE:?set immutable GHCR image in .env.production}
     pull_policy: always
+    mem_limit: 1536m
+    cpus: 2
+    mem_reservation: 512m
     restart: unless-stopped
     env_file: .env.production
     command: ["bun", "run", "apps/backend/src/index.ts"]
@@ -263,6 +300,9 @@ services:
   worker:
     image: ${CHARTWARDEN_IMAGE:?set immutable GHCR image in .env.production}
     pull_policy: always
+    mem_limit: 1536m
+    cpus: 2
+    mem_reservation: 512m
     restart: unless-stopped
     env_file: .env.production
     command: ["bun", "run", "apps/backend/src/worker.ts"]
@@ -333,6 +373,8 @@ services:
     profiles: ["hl7-listener"]
     image: ${CHARTWARDEN_IMAGE:?set immutable GHCR image in .env.production}
     pull_policy: always
+    mem_limit: 1g
+    cpus: 1
     restart: unless-stopped
     env_file: .env.production
     command: ["bun", "run", "apps/backend/src/index.ts"]
@@ -374,6 +416,9 @@ services:
   web:
     image: ${CHARTWARDEN_WEB_IMAGE:?set immutable GHCR image in .env.production}
     pull_policy: always
+    mem_limit: 128m
+    cpus: 0.5
+    mem_reservation: 32m
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
@@ -409,6 +454,8 @@ services:
     profiles: ["seed"]
     image: ${CHARTWARDEN_IMAGE:?set immutable GHCR image in .env.production}
     pull_policy: always
+    mem_limit: 1g
+    cpus: 1
     env_file: .env.production
     network_mode: "service:seed-api"
     command: ["bun", "run", "db:seed:all"]

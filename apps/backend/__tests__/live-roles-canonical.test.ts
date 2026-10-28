@@ -36,14 +36,24 @@ describe("live-suite canonical role list", () => {
     expect(new Set(LIVE_DROP_ROLES).size).toBe(LIVE_DROP_ROLES.length);
   });
 
-  it("is the only role list: no suite or kit declares its own ROLES array", () => {
-    const offenders = readdirSync(__dirname)
-      .filter((f) => f.endsWith(".ts") && f !== SELF && f !== "_live-app-role.ts")
-      .filter((f) =>
-        /^\s*(?:export\s+)?const\s+(?:DB_)?ROLES\s*(?::[^=]+)?=\s*\[/m.test(
-          readFileSync(join(__dirname, f), "utf8"),
-        ),
-      );
+  it("is the only role list: no live suite or kit declares its own ROLES array", () => {
+    // Every directory that holds live suites, not just this one (#859: packages/db and scripts suites
+    // kept hand-written lists that missed roles a sibling suite left behind).
+    const dirs = [
+      __dirname,
+      join(__dirname, "../../../packages/db/migrations/__tests__"),
+      join(__dirname, "../../../scripts/__tests__"),
+    ];
+    const offenders = dirs.flatMap((dir) =>
+      readdirSync(dir)
+        .filter((f) => f.endsWith(".ts") && f !== SELF && f !== "_live-app-role.ts" && f !== "_live-roles.ts")
+        .filter((f) =>
+          /^\s*(?:export\s+)?(?:const|let)\s+(?:DB_)?ROLES\s*(?::[^=]+)?=\s*\[/m.test(
+            readFileSync(join(dir, f), "utf8"),
+          ),
+        )
+        .map((f) => join(dir, f)),
+    );
     expect(offenders).toEqual([]);
   });
 });

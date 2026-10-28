@@ -46,10 +46,22 @@ jobs:
           cp .env.production.example .env.production
           docker compose --env-file .env.production -f compose.yml config -q
 
+  # #854: behaviour gate before the image is built or scanned (ci.yml runs the same suite in its main job, #853, so `release` is gated too).
+  docling-pytest:
+    name: Docling worker pytest
+    runs-on: [self-hosted, Linux, X64, hostinger]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v6
+      - name: pytest (locked test extra)
+        working-directory: services/docling-worker
+        run: uv run --locked --extra test pytest -q
+
   docling-scan:
     name: Docling image CVE scan
+    needs: docling-pytest
     runs-on: [self-hosted, Linux, X64, hostinger]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.docling-pytest.result == 'success' }}
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -69,4 +81,6 @@ jobs:
           exit-code: "1"
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          # The locked venv (#853) makes this a multi-GB image; Trivy's default 5m analysis timeout fails the scan.
+          timeout: 20m
           trivyignores: .trivyignore.yaml

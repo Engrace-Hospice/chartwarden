@@ -71,6 +71,8 @@ export const GATES = [
   "arch:error-envelope",
   // GAP-033 - every renderer template has a bespoke form or a reasoned allow-list entry; the two registries agree.
   "arch:pdf-templates",
+  // #855/#856 - production compose images are digest-pinned and every service is resource-bounded.
+  "arch:compose-policy",
   "arch:context-attributes",
   "arch:route-reachability",
   "arch:live-suites",

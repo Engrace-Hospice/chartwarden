@@ -24,15 +24,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { dropLiveRoles } from "./_live-roles";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-];
 
 /** Parents that are soft-deleted, never hard-deleted — see the header. */
 const SOFT_DELETED_PARENTS: readonly string[] = [
@@ -97,12 +92,7 @@ describe.skipIf(!DB_URL)("FK index coverage — LIVE Postgres catalog (GAP-178)"
   async function resetSchema() {
     await db.query("DROP SCHEMA IF EXISTS public CASCADE");
     await db.query("CREATE SCHEMA public");
-    for (const r of ROLES) {
-      await db.query(
-        `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${r}') THEN ` +
-          `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
-      );
-    }
+    await dropLiveRoles(db);
   }
 
   async function applyMigrations() {

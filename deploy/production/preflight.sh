@@ -87,4 +87,15 @@ if [ "$existing_stack" -eq 1 ]; then
   fi
 fi
 
+# 6. Advisory only (#856): the compose resource budget (README, "Resource budget") assumes a 16 GiB host. Never fails.
+if [ -r /proc/meminfo ]; then
+  mem_total_kb=$(sed -n 's/^MemTotal:[[:space:]]*\([0-9]*\) kB.*/\1/p' /proc/meminfo)
+  mem_avail_kb=$(sed -n 's/^MemAvailable:[[:space:]]*\([0-9]*\) kB.*/\1/p' /proc/meminfo)
+  if [ -n "$mem_total_kb" ] && [ "$mem_total_kb" -lt 15000000 ]; then
+    echo "preflight WARNING: host has $((mem_total_kb / 1024)) MiB RAM; the compose mem_limit budget assumes 16 GiB (README, Resource budget)" >&2
+  elif [ -n "$mem_avail_kb" ] && [ "$mem_avail_kb" -lt 1500000 ]; then
+    echo "preflight WARNING: only $((mem_avail_kb / 1024)) MiB of memory is available; a deploy may trigger OOM kills" >&2
+  fi
+fi
+
 echo "preflight ok (dir=$deploy_dir project=$project volume=$pg_volume db=$db_name existing_stack=$existing_stack)"

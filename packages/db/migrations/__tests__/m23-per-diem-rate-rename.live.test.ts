@@ -22,16 +22,11 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { dropLiveRoles } from "./_live-roles";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");
 const RENAME_MIGRATION = "1069_m23_per_diem_rate_rename.sql";
-const ROLES = [
-  "chartwarden_app",
-  "chartwarden_admin",
-  "chartwarden_readonly",
-  "chartwarden_audit_writer",
-];
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 /** Holds BOTH rule keys before 1069: the unique-safety guard must skip it and the verification block must not false-fail. */
@@ -154,12 +149,7 @@ describe.skipIf(!DB_URL)("M23 migration 1069 — per-diem class rename — LIVE 
     await db.connect();
     await db.query("DROP SCHEMA IF EXISTS public CASCADE");
     await db.query("CREATE SCHEMA public");
-    for (const r of ROLES) {
-      await db.query(
-        `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${r}') THEN
-           EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
-      );
-    }
+    await dropLiveRoles(db);
     for (const f of sqlFiles().filter((x) => x < RENAME_MIGRATION)) await applyFile(f);
     ({ claim: claimA, row: rowA } = await seedLegacy(ORG_A, 1));
     ({ row: rowB } = await seedLegacy(ORG_B, 2));

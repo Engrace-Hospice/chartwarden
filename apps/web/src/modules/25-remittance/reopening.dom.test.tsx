@@ -1,11 +1,12 @@
 import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
-// apps/web/src/modules/25-remittance — milestone 3 denial routing and MAC reopenings. Asserts on RECORDED FETCH CALLS
-// (method, path, If-Match, body) like the other M25 write tests, so a control wired to a handler that never fires
-// still fails. The server owns every rule and its refusal is shown verbatim; the filing form survives step-up.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SessionProvider } from "../../shell/session";
+// apps/web/src/modules/25-remittance — milestone 3 denial routing and MAC reopenings. Asserts on RECORDED FETCH CALLS
+// (method, path, If-Match, body) like the other M25 write tests, so a control wired to a handler that never fires
+// still fails. The server owns every rule and its refusal is shown verbatim; the filing form survives step-up.
+import { peekStepUpDraft, stepUpDraftKeys } from "../../shell/step-up-redirect";
 import { DenialDetailPanel } from "./denial-detail-panel";
 
 const DENIAL = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
@@ -382,9 +383,10 @@ describe("M25 reopening lifecycle", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Record filing" }));
     await waitFor(() => expect(screen.getByTestId("where").textContent).toContain("/step-up"));
-    const stashed = Object.keys(window.sessionStorage).filter((k) => k.includes("m25-reopening"));
+    const stashed = stepUpDraftKeys().filter((k) => k.includes("m25-reopening"));
     expect(stashed.length).toBe(1);
-    expect(window.sessionStorage.getItem(stashed[0] as string)).toContain("PRT-90210");
+    expect(JSON.stringify(peekStepUpDraft(stashed[0] as string))).toContain("PRT-90210");
+    expect(JSON.stringify({ ...window.sessionStorage })).not.toContain("PRT-90210");
   });
 
   it("shows a stale-version refusal verbatim and reloads", async () => {

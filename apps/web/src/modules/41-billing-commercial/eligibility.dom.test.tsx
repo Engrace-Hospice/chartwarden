@@ -5,7 +5,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/re
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { markStepUpReturn } from "../../shell/step-up-redirect";
+import { markStepUpReturn, stepUpDraftKeys } from "../../shell/step-up-redirect";
 import { ELIGIBILITY_HISTORY_LIMIT, localToday } from "./commercial-model";
 import {
   type Call,
@@ -624,9 +624,7 @@ describe("CommercialEligibility policy drawer", () => {
     fireEvent.submit(back.querySelector("form") as HTMLFormElement);
     await screen.findByText("Eligibility policy updated.");
     expect(writes(calls)).toHaveLength(2);
-    expect(Object.keys(window.sessionStorage).some((k) => k.startsWith("wx.step-up-draft:"))).toBe(
-      false,
-    );
+    expect(stepUpDraftKeys().length > 0).toBe(false);
   });
 
   async function stashedDraft(entry: string, extra: Partial<Opts> = {}): Promise<void> {
@@ -638,13 +636,10 @@ describe("CommercialEligibility policy drawer", () => {
     fill(await policyDrawer(), "14");
     fireEvent.submit((await policyDrawer()).querySelector("form") as HTMLFormElement);
     await screen.findByText("elsewhere");
-    expect(Object.keys(window.sessionStorage).some((k) => k.startsWith("wx.step-up-draft:"))).toBe(
-      true,
-    );
+    expect(stepUpDraftKeys().length > 0).toBe(true);
     cleanup();
   }
-  const draftKept = (): boolean =>
-    Object.keys(window.sessionStorage).some((k) => k.startsWith("wx.step-up-draft:"));
+  const draftKept = (): boolean => stepUpDraftKeys().length > 0;
 
   it("discards a stale draft on an ordinary visit (no step-up return marker)", async () => {
     const entry = `${WITH_PLAN}&policy=edit`;

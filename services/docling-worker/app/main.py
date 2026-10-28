@@ -112,6 +112,15 @@ def docling_version() -> str:
 
 
 def _download(url: str) -> bytes:
+    try:
+        return _fetch(url)
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="source fetch timed out") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="source fetch failed") from exc
+
+
+def _fetch(url: str) -> bytes:
     with httpx.stream("GET", url, timeout=FETCH_TIMEOUT_S, follow_redirects=False) as res:
         if res.status_code != 200:
             raise HTTPException(status_code=502, detail=f"source fetch failed with HTTP {res.status_code}")
