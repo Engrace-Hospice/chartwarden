@@ -22,7 +22,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { dropLiveRoles } from "../../../../apps/backend/__tests__/_live-app-role";
+import { dropLiveRoles } from "./_live-roles";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..");

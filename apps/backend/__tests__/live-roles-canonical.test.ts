@@ -46,7 +46,7 @@ describe("live-suite canonical role list", () => {
     ];
     const offenders = dirs.flatMap((dir) =>
       readdirSync(dir)
-        .filter((f) => f.endsWith(".ts") && f !== SELF && f !== "_live-app-role.ts")
+        .filter((f) => f.endsWith(".ts") && f !== SELF && f !== "_live-app-role.ts" && f !== "_live-roles.ts")
         .filter((f) =>
           /^\s*(?:export\s+)?(?:const|let)\s+(?:DB_)?ROLES\s*(?::[^=]+)?=\s*\[/m.test(
             readFileSync(join(dir, f), "utf8"),

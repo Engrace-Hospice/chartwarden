@@ -22,7 +22,7 @@ import { join } from "node:path";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { MIGRATIONS_DIR, applyMigrations, ensureLedger } from "../db/migrate";
-import { dropLiveRoles } from "../../apps/backend/__tests__/_live-app-role";
+import { dropLiveRoles } from "../../packages/db/migrations/__tests__/_live-roles";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 

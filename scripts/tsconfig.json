@@ -7,7 +7,7 @@
     "lib": ["ES2023", "DOM"],
     "noEmit": false
   },
-  "include": ["**/*.ts", "**/*.tsx", "../architecture/**/*.ts", "../apps/backend/__tests__/_live-app-role.ts"],
+  "include": ["**/*.ts", "**/*.tsx", "../architecture/**/*.ts", "../packages/db/migrations/__tests__/_live-roles.ts"],
   "exclude": ["__fixtures__"],
   "references": [
     { "path": "../apps/backend" },
