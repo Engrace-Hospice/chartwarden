@@ -31,6 +31,10 @@ function fake(rows: Record<string, unknown> = {}): { inner: any; seen: any } {
     async findMany() {
       return [{ id: "x", ...rows }];
     },
+    async incrementOne(d: any) {
+      seen.incrementOne = d;
+      return { id: "x", ...d.set };
+    },
     async count() {
       return 7;
     },
@@ -68,6 +72,69 @@ describe("withTwoFactorEncryption (ADR-0034)", () => {
     expect(one?.backupCodes).toBe("BC");
     const many = await a.findMany({ model: "twoFactor" });
     expect(many[0]?.secret).toBe("S");
+  });
+
+  it("incrementOne: swaps backup codes against the STORED ciphertext and seals the new list", async () => {
+    const stored = seal("A,B,C", KEY);
+    const { inner, seen } = fake({ backupCodes: stored });
+    const a = withTwoFactorEncryption(inner, () => KEY);
+    // What Better Auth 1.7 sends: the plaintext findOne returned, and the redeemed list.
+    const out = await a.incrementOne?.({
+      model: "twoFactor",
+      where: [
+        { field: "id", value: "x" },
+        { field: "backupCodes", value: "A,B,C" },
+      ],
+      increment: {},
+      set: { backupCodes: "B,C" },
+    });
+    expect(seen.incrementOne.where).toEqual([
+      { field: "id", value: "x" },
+      { field: "backupCodes", value: stored },
+    ]);
+    expect(isSealed(seen.incrementOne.set.backupCodes as string)).toBe(true);
+    expect(out?.backupCodes).toBe("B,C");
+  });
+
+  it("incrementOne: a stale backup-code list returns null and writes nothing", async () => {
+    const { inner, seen } = fake({ backupCodes: seal("A,B,C", KEY) });
+    const a = withTwoFactorEncryption(inner, () => KEY);
+    const out = await a.incrementOne?.({
+      model: "twoFactor",
+      where: [
+        { field: "id", value: "x" },
+        { field: "backupCodes", value: "A,B" },
+      ],
+      increment: {},
+      set: { backupCodes: "B" },
+    });
+    expect(out).toBeNull();
+    expect(seen.incrementOne).toBeUndefined();
+  });
+
+  it("incrementOne: lockout counters (no secret field) pass through unchanged", async () => {
+    const { inner, seen } = fake();
+    const a = withTwoFactorEncryption(inner, () => KEY);
+    const call = {
+      model: "twoFactor",
+      where: [{ field: "id", value: "x" }],
+      increment: { failedVerificationCount: 1 },
+    };
+    await a.incrementOne?.(call);
+    expect(seen.incrementOne).toEqual(call);
+  });
+
+  it("incrementOne: other models pass through untouched", async () => {
+    const { inner, seen } = fake();
+    const a = withTwoFactorEncryption(inner, () => KEY);
+    const call = {
+      model: "user",
+      where: [{ field: "secret", value: "verbatim" }],
+      increment: {},
+      set: { secret: "verbatim" },
+    };
+    await a.incrementOne?.(call);
+    expect(seen.incrementOne).toEqual(call);
   });
 
   it("passes non-twoFactor models through untouched (no spurious encryption)", async () => {

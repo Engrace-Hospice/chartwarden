@@ -2,6 +2,24 @@
 # `drizzle.config.ts`). The journal (`meta/_journal.json`) is authoritative — custom SQL
 # migrations are added via `drizzle-kit generate --custom` so they register in order.
 #
+# COMPATIBILITY DECLARATION (#861). Every migration from 1288 on starts with a header comment that
+# declares exactly one of:
+#   -- compat: expand     the PREVIOUS release still works on the new schema (additive)
+#   -- compat: contract   it does not, or you are not sure
+# `bun run arch:migration-compat` (in arch:fitness) fails on a missing or invalid declaration, and on an
+# `expand` file containing obviously contracting statements: DROP of a table/view/function/type/schema/
+# sequence/index/policy/trigger/role/extension, DROP COLUMN/CONSTRAINT/DEFAULT, ADD CONSTRAINT (even
+# NOT VALID), CREATE UNIQUE INDEX, REVOKE, TRUNCATE, DELETE FROM, ALTER ROLE, RENAME, SET SCHEMA,
+# ALTER COLUMN ... TYPE, SET NOT NULL without a DEFAULT on that table.column in the same file, and
+# ADD COLUMN ... NOT NULL without DEFAULT. Constraints, unique indexes, triggers and policies on a table
+# the same file CREATEs are exempt, because no previous release uses that table. It is a conservative text
+# heuristic. It also judges statements inside function bodies, and it cannot see semantic changes (a
+# changed function, an UPDATE rewriting values). Declaring `contract` is always acceptable. A widened CHECK
+# is DROP CONSTRAINT + ADD CONSTRAINT, which the gate reads as `contract`.
+# Why it matters: production deploy.sh auto-restores the previous release after a failed deploy only when
+# every migration it applied is a checked `expand`. Otherwise it halts for an operator (exit 75).
+# Files below 1288 are grandfathered undeclared, which deploy.sh treats as `contract`.
+#
 # M1-T04 (Foundation initial migration, spec §3.11–3.12):
 #   0000_foundation_initial                  — enums + all 16 table DDL (Drizzle-generated)
 #   0001_foundation_rls_roles_partitioning   — DB roles, append-only GRANT model,

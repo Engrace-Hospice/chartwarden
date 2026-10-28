@@ -1,7 +1,9 @@
 // e2e/specs/ipu.spec.ts — critical workflow: move an inpatient admission into a bed (F-080, #91).
 //
 // #91's fifth acceptance criterion asks for one E2E spec per module driving the primary write path.
-// M37's is the §2.2 admission lifecycle: `pending -> bed_pending -> bed_assigned -> active`. An IPU
+// M37's is the §2.2 admission lifecycle as far as a browser can drive it: `pending -> bed_pending ->
+// bed_assigned`. The last step, to `active`, is M6's level-of-care-period acknowledgement (GAP-106), not
+// an RN action, so the spec ends at the read-only "Awaiting M6 LCP acknowledgement" status. An IPU
 // admission that cannot move is an admission that never happened — the bed is not reserved, the census
 // does not count the patient, and M23 generates no per-diem line for the stay.
 //
@@ -36,13 +38,13 @@
 // verify routes are mounted (F-029), but the factor they require can never be enrolled: the web app
 // ships a passkey-enrolment screen and NO TOTP-enrolment surface, and no seeded persona has either.
 // So the criterion is attested in the seed, by the physician, at admission — which is where CoP 418.108
-// puts it anyway ("documented at admission with hospice MD attestation") — and `confirm` here acts on
-// an admission whose criterion already exists, exactly as a real one would. The same gate is what keeps
-// M8 encounter signing and M14 IDG adjourn out of this suite.
+// puts it anyway ("documented at admission with hospice MD attestation") — so the criterion already
+// exists when M6's acknowledgement later activates the admission, exactly as a real one would. The
+// same gate is what keeps M8 encounter signing and M14 IDG adjourn out of this suite.
 //
 // THIS SPEC CONSUMES ITS SEED, like `orders.spec.ts` and `evv.spec.ts`: it moves the one seeded GIP
-// admission to `active`, so a second run finds no `pending` row and fails at the first assertion rather
-// than passing vacuously. CI reseeds before the suite; locally re-run `bun run db:seed:scenario-remaining`
+// admission to `bed_assigned`, so a second run finds no `pending` row and fails at the first assertion
+// rather than passing vacuously. CI reseeds before the suite; locally re-run `bun run db:seed:scenario-remaining`
 // between runs. It is not made self-supplying because opening an IPU admission needs an M6 level-of-care
 // period in `assigning`, which is a whole admission lifecycle upstream of this screen.
 //
@@ -57,7 +59,7 @@ import { expectNoAxeViolations, signInAs } from "../fixtures/helpers";
 const UNIT_NAME = "Engrace Inpatient Unit";
 
 test.describe("IPU", () => {
-  test("main path: an RN requests a bed, assigns it, and confirms the admission", async ({
+  test("main path: an RN requests a bed, assigns it, and the admission awaits M6's acknowledgement", async ({
     page,
   }) => {
     await signInAs(page, RN_ACCOUNT());
@@ -116,27 +118,17 @@ test.describe("IPU", () => {
     const bedAssignedRow = page.getByRole("row").filter({ hasText: "Bed assigned" }).first();
     await expect(bedAssignedRow).toBeVisible({ timeout: 15_000 });
 
-    // ── 3. Confirm — the admission activates and the bed becomes occupied ──────────────────────────
+    // ── 3. Confirm is not the RN's to do ───────────────────────────────────────────────────────────
     //
-    // The GIP arm of this transition is the one with a second precondition: a `gip_admission_criteria`
-    // row must exist or the machine raises GIP_CRITERIA_REQUIRED. The seed attested it at admission
-    // (see the header), so what is being proven here is the activation, not the attestation.
-    await bedAssignedRow.getByRole("button", { name: "Confirm", exact: true }).click();
-    const confirmDialog = page.getByRole("dialog", { name: "Confirm this admission" });
-    await expect(confirmDialog).toBeVisible();
-    await confirmDialog.getByRole("button", { name: "Confirm admission" }).click();
-    await expect(confirmDialog).toBeHidden({ timeout: 15_000 });
-
-    const activeRow = page
-      .getByRole("row")
-      .filter({ hasText: "GIP" })
-      .filter({ hasText: "Active" });
-    await expect(activeRow.first()).toBeVisible({ timeout: 15_000 });
-
-    // An active stay offers the two transitions only an active stay has, and no longer offers the three
-    // it has already made — a second, independent read of the same state change off a different surface.
-    await expect(activeRow.first().getByRole("button", { name: "Discharge" })).toBeVisible();
-    await expect(activeRow.first().getByRole("button", { name: "Request bed" })).toHaveCount(0);
+    // GAP-106 (#321): `POST /ipu-admissions/:id/confirm` is system-internal (always 403 for a tenant
+    // session) — M6's level-of-care-period acknowledgement activates the admission, not a browser. So a
+    // bed-assigned row offers a read-only status in place of a Confirm button, and this is as far as a
+    // browser can take the stay. Asserting both halves keeps a Confirm button from quietly returning as
+    // a dead control that 403s.
+    await expect(bedAssignedRow.getByText("Awaiting M6 LCP acknowledgement")).toBeVisible();
+    await expect(bedAssignedRow.getByRole("button", { name: "Confirm", exact: true })).toHaveCount(
+      0,
+    );
   });
 
   test("the IPU admissions worklist is accessible (WCAG 2.1 A/AA)", async ({ page }) => {

@@ -125,6 +125,32 @@ dropped).
 the first time it runs (existing values are never touched, and this happens before the rollback backup is taken).
 To rotate the MinIO application secret, edit `MINIO_APP_SECRET_KEY` and deploy: `minio-provision` re-sets it.
 
+## Backups and restore (`compose.backup.yml`, `backup/`, #857)
+
+Coordinated, encrypted, off-site backups of Postgres (pgBackRest, WAL archiving / PITR) and every MinIO bucket
+(versioned SSE-C mirror to an object-locked bucket), tied together by a per-snapshot marker (DB LSN + object
+manifest with sha256). Design, variables, key management and RPO/RTO: `docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md`
+§4.8; operating loop and alerts: `CHARTWARDEN_OPS_RUNBOOK_v0.1.md` §5.7. `deploy.yml` ships `compose.backup.yml` and
+`backup/` with every release; nothing runs until it is enabled once:
+
+```sh
+cd /opt/chartwarden    # after setting the BACKUP_* ids in .env.production and the files in ./secrets/ (DR/BCP §4.8.4)
+install -d -m 0700 -o 999 -g 999 secrets   # one file per secret, mode 0400, owner 999 (the image's postgres user)
+dc() { docker compose --env-file .env.production -f compose.yml -f compose.backup.yml "$@"; }
+dc build postgres                      # chartwarden-backup:local (pgvector/pgvector:pg18 + pgBackRest + mc)
+dc run --rm minio-backup-provision     # read-only MinIO account for the backup
+dc up -d postgres backup               # recreates postgres once (same volume) with archive_mode=on
+dc logs -f backup                      # the first snapshot takes a full base backup
+```
+
+The off-site bucket must have Object Lock with a COMPLIANCE default retention of >= 100 days (every snapshot checks
+it), a lifecycle longer than the lock, and three keys with the policies in `backup/offsite-policies/` (WAL-only key
+in `postgres`, backup key in the sidecar, read-only key for restores). `OPS_ALERT_WEBHOOK_URL` (https) is mandatory.
+`deploy.sh` never recreates `postgres`, so releases keep archiving on. Recreating `postgres` with `compose.yml` alone
+turns archiving off; the next snapshot then fails and pages. Restore into an isolated target with
+`BACKUP_ENV_FILE=... ./backup/restore.sh latest`, then run the verifier it prints. Prove changes to `backup/` with
+`bun run backup:coordinated-drill` (private containers; writes `audit/restore-drill/<date>-coordinated-backup-drill.md`).
+
 ## OWNER DECISION: production now enables the Oregon Medicaid gateway (GAP-146)
 
 `M24_LAUNCH_GATEWAY_ENABLED` used to be opt-in, so a production deploy that never set it silently built no Medicaid
@@ -187,10 +213,50 @@ without a code change. A new install should set both keys to its `nginx/chartwar
 
 ### Rollback and migrations
 
-`deploy.sh` now records how many migrations the release applied and reports the rollback accordingly:
+Migrations are forward-only and commit one file at a time, so a failed deploy can leave the schema ahead of the
+previous release, or partway between the two releases. `deploy.sh` never starts the previous release on a schema
+it cannot prove that release can run on (#861). It reads the migration ledger (`_chartwarden_migration`) before
+migrating (and aborts, changing nothing, if it cannot), then again after, and the difference decides what a later
+failure does:
 
-- **0 applied** — the restored image ran against this exact schema minutes ago; the rollback is clean, and the log says so.
-- **N applied (or unknown)** — images roll back, the schema does not. The restored release is running against a schema it has never seen, which is safe **only** if every migration in the release was expand-phase. Nothing in the toolchain enforces that, so the log says plainly that a human has to check `git diff --name-only <prev>..<sha> -- packages/db/migrations`.
+| What this deploy applied | On failure |
+| --- | --- |
+| nothing | restore `.env.production`, recreate the previous api/worker/web (exit 1). The log says "rollback is clean". |
+| only migrations declared `-- compat: expand` that also pass the `arch:migration-compat` check (classified by the new image) | same as above (exit 1). The log says "rollback is expand-safe". |
+| anything else: a `contract` or undeclared migration (every migration before 1288 is undeclared), or the ledger or classifier could not be read | **hold** (exit **75**). Nothing is restarted or recreated. |
+
+A failed migrate step is judged the same way: the ledger shows exactly which files committed before the failure.
+A first-ever deploy has no previous release, and every pre-1288 file is undeclared, so it always holds on failure.
+If `migrate.ts` adopts a historical filename alias (it renames the ledger row), that name shows up as newly
+applied and causes a false hold. This is the safe direction.
+
+The compatibility contract (each new migration declares `expand` or `contract`, enforced by
+`bun run arch:migration-compat`) is described in `packages/db/migrations/README.md`.
+
+#### When a deploy halts for an operator decision
+
+The log shows `DEPLOY HALTED FOR AN OPERATOR DECISION: AUTOMATIC ROLLBACK REFUSED` and lists the migrations it
+applied. At that point:
+
+- Whatever was running is still running. If the failure came at or before `provision`, that is the previous
+  api/worker/web. If it came at `up` or smoke, it is the new release. Stopping app containers was rejected on
+  purpose: for an EHR, clinicians reading charts through a partly working app beats a full outage, and there is no
+  nginx maintenance page to stand in for a stopped stack yet (#865).
+- `.env.production` names the **new** release, the only code written for this schema. The previous file is saved
+  as `.env.production.previous-release`.
+
+Pick one:
+
+1. **Roll forward (the default).** Fix the cause, then re-run `deploy.sh` with the same or a fixed release.
+   `migrate` is idempotent: it applies only what is still pending.
+2. **Roll back**, only after reading the applied migrations and confirming the previous code works on this schema:
+   ```sh
+   cp .env.production.previous-release .env.production
+   docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate api worker web
+   ```
+
+Either way, delete `.env.production.previous-release` afterwards (it holds secrets, mode 600). The repository has no
+deploy alert hook yet (#866). The signal is the failed `deploy` workflow run, which exits 75.
 
 ## Supply chain (F-040 / #100)
 

@@ -20005,7 +20005,7 @@
         "tags": [
           "10-hope"
         ],
-        "summary": "Record an SFV completion (RFA-04; RN/NP author)",
+        "summary": "Record an SFV completion (RFA-04; RN/NP/LPN/LVN author)",
         "parameters": [
           {
             "name": "admissionId",
@@ -20284,6 +20284,14 @@
                       },
                       {
                         "const": "MD",
+                        "type": "string"
+                      },
+                      {
+                        "const": "LPN",
+                        "type": "string"
+                      },
+                      {
+                        "const": "LVN",
                         "type": "string"
                       }
                     ]
@@ -140453,6 +140461,14 @@
                       },
                       {
                         "const": "MD",
+                        "type": "string"
+                      },
+                      {
+                        "const": "LPN",
+                        "type": "string"
+                      },
+                      {
+                        "const": "LVN",
                         "type": "string"
                       }
                     ]

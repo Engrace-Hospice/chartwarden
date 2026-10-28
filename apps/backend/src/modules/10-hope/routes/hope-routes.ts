@@ -5,7 +5,7 @@
 // slice; Drizzle in prod under `withOrgContext` so RLS backstops).
 //
 // §4.7 wiring: the timepoint write/sign routes add `requireAbac('hope.authorDisciplineAllowed')` (RN/NP/MD
-// only — the D4 author rule M10 owns); the SFV route adds `requireAbac('hope.sfvAuthorAllowed')` (RN/NP
+// only — the D4 author rule M10 owns); the SFV route adds `requireAbac('hope.sfvAuthorAllowed')` (RN/NP/LPN/LVN
 // only); the correction route adds `requireAbac('hope.correctionAuthorAllowed')` (original signer or
 // clinical-lead, target = `:id`).
 //
@@ -26,7 +26,8 @@ import {
   requireAbac,
   requirePermission,
 } from "@chartwarden/auth";
-import { UnauthorizedError, ValidationError } from "@chartwarden/types";
+import { assertAuthorBoundToActor } from "@chartwarden/hope";
+import { type HopeRfaKind, UnauthorizedError, ValidationError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import {
@@ -114,6 +115,24 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
   return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
+/**
+ * #850: the correct body accepts the SFV author union (RN/NP/MD/LPN/LVN) because the record's RFA kind is
+ * only known server-side. The claimed attribution must clear the per-RFA floor AND be one of the ACTOR's own
+ * role-derived disciplines, for every RFA kind and every claimed value (never the body's word). An
+ * unresolvable id falls to the strict (non-SFV) floor.
+ */
+async function assertCorrectionAttribution(
+  service: HopeRouteService,
+  request: FastifyRequest,
+  organizationId: string,
+  assessmentId: string,
+  claimed: string,
+): Promise<void> {
+  const facts = await service.loadAssessment(organizationId, assessmentId);
+  const rfaKind = (facts?.rfaKind ?? "02_huv1") as HopeRfaKind;
+  assertAuthorBoundToActor(rfaKind, claimed, request.context?.roles ?? []);
+}
+
 // Static permission guards (§4.6).
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
 const READ_SCHEDULE = P("hope.schedule.read");
@@ -160,9 +179,13 @@ const noTarget = (): AbacTarget => ({});
 const ABAC_AUTHOR = requireAbac("hope.timepoint.write", "hope.authorDisciplineAllowed", {
   getTarget: noTarget,
 }) as PreHandler;
-const ABAC_SIGN = requireAbac("hope.timepoint.sign", "hope.authorDisciplineAllowed", {
-  getTarget: noTarget,
-}) as PreHandler;
+// Draft edit / answer patch / sign address an existing row (`:id`), so the predicate can see its RFA kind
+// and apply the SFV author rule to an SFV correction draft (#850). Default target = request params.
+const ABAC_AUTHOR_ON_ROW = requireAbac(
+  "hope.timepoint.write",
+  "hope.authorDisciplineAllowed",
+) as PreHandler;
+const ABAC_SIGN = requireAbac("hope.timepoint.sign", "hope.authorDisciplineAllowed") as PreHandler;
 const ABAC_SFV = requireAbac("hope.timepoint.write", "hope.sfvAuthorAllowed", {
   getTarget: noTarget,
 }) as PreHandler;
@@ -335,7 +358,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     },
   );
 
-  // 5 — record an SFV completion (RFA 04); RN/NP-only author (§4.7); matches an open SFV row.
+  // 5 — record an SFV completion (RFA 04); RN/NP/LPN/LVN author (§4.7); matches an open SFV row.
   app.post(
     "/api/v1/admissions/:admissionId/hope/sfv",
     { preHandler: [WRITE, LATE_OVERRIDE_GATE, SCOPE("hope.timepoint.write"), ABAC_SFV] },
@@ -344,6 +367,8 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { admissionId } = parse(AdmissionParamsSchema, request.params);
       const body = parse(RecordSfvSchema, request.body);
       requireOverrideJustification(body);
+      // #850: the body's CMS attribution must be the actor's own discipline (an LPN cannot sign as RN).
+      assertAuthorBoundToActor("04_sfv", body.authorDiscipline, request.context?.roles ?? []);
       const res = await service.recordSfv(organizationId, userId, admissionId, {
         triggeringAssessmentId: body.triggeringAssessmentId,
         targetDate: body.targetDate,
@@ -359,7 +384,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // 6 — update a draft assessment.
   app.put(
     "/api/v1/hope/assessments/:id",
-    { preHandler: [WRITE, SCOPE("hope.timepoint.write"), ABAC_AUTHOR] },
+    { preHandler: [WRITE, SCOPE("hope.timepoint.write"), ABAC_AUTHOR_ON_ROW] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
@@ -391,6 +416,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
       const body = parse(CorrectTimepointSchema, request.body);
+      await assertCorrectionAttribution(service, request, organizationId, id, body.authorDiscipline);
       const res = await service.correctTimepoint(organizationId, userId, id, {
         correctionReason: body.correctionReason,
         ifVersion: body.ifVersion,
@@ -479,7 +505,7 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
   // 9D — canonical answer patch. Public API supports only set/clear; skipped remains internal.
   app.patch(
     "/api/v1/hope/assessments/:id/answers",
-    { preHandler: [WRITE, SCOPE("hope.timepoint.write"), ABAC_AUTHOR] },
+    { preHandler: [WRITE, SCOPE("hope.timepoint.write"), ABAC_AUTHOR_ON_ROW] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);

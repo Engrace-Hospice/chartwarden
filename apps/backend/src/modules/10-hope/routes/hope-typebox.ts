@@ -1,5 +1,3 @@
-import { HOPE_J2051_SYMPTOM_CODES, HOPE_RFA_KINDS } from "@chartwarden/types";
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/10-hope/routes/hope-typebox.ts — M10-T06 TypeBox route schemas (§4.1 / §4.3).
 // Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox
 // import for a Drizzle one. Validation runs through TypeBox `Value` → M1's VALIDATION_FAILED envelope.
@@ -9,6 +7,8 @@ import { ValidationError } from "@chartwarden/types";
 // the server-authoritative `evaluateJ2051Trigger` (D4) reads at sign — so the trigger/ SFV flow is wired
 // end-to-end. The server IGNORES any client-sent trigger flag (D4); the `data` object is otherwise carried
 // opaquely and narrowed by the per-section validators server-side.
+import { HOPE_J2051_SYMPTOM_CODES, HOPE_RFA_KINDS } from "@chartwarden/types";
+import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
@@ -40,6 +40,9 @@ const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Typ
 const RFA_KIND = lit(HOPE_RFA_KINDS);
 /** The §4.3 HOPE author disciplines accepted at the route boundary (the ABAC predicate is authoritative). */
 const AUTHOR_DISCIPLINE = Type.Union([Type.Literal("RN"), Type.Literal("NP"), Type.Literal("MD")]);
+/** SFV (RFA-04) authors additionally allow LPN/LVN (CMS HOPE Guidance Manual v1.03); MD stays accepted at
+ *  the boundary so it is refused by the ABAC predicate (403), as before. */
+const SFV_AUTHOR_DISCIPLINE = lit(["RN", "NP", "MD", "LPN", "LVN"] as const);
 /** The §4.3 J2051 per-symptom severity vocabulary. */
 const J2051_SEVERITY = Type.Union([
   Type.Literal("none"),
@@ -195,7 +198,7 @@ export const RecordTimepointSchema = Type.Object({
 export const RecordSfvSchema = Type.Object({
   triggeringAssessmentId: Type.String({ minLength: 1, maxLength: 64 }),
   targetDate: Type.String({ format: "date-time" }),
-  authorDiscipline: AUTHOR_DISCIPLINE,
+  authorDiscipline: SFV_AUTHOR_DISCIPLINE,
   adminOverride: Type.Optional(Type.Boolean()),
   adminOverrideJustification: Type.Optional(Type.String({ minLength: 20, maxLength: 1000 })),
   data: HopeData,
@@ -231,7 +234,7 @@ export const CorrectTimepointSchema = Type.Object({
   correctionReason: Type.String({ minLength: 1, maxLength: 2000 }),
   ifVersion: Type.Optional(Type.Integer({ minimum: 1 })),
   targetDate: Type.String({ format: "date-time" }),
-  authorDiscipline: AUTHOR_DISCIPLINE,
+  authorDiscipline: SFV_AUTHOR_DISCIPLINE,
   data: HopeData,
 });
 export const InactivateTimepointSchema = Type.Object({

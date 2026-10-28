@@ -38,7 +38,7 @@ const json =
   () =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
-function mount(ui: JSX.Element) {
+function mount(ui: JSX.Element, permissions: string[] = ["hope.submission.read"]) {
   return render(
     <ApiClientProvider client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}>
       <SessionProvider
@@ -47,7 +47,7 @@ function mount(ui: JSX.Element) {
           organizationId: "o",
           membershipId: "m",
           roles: [],
-          permissions: ["hope.submission.read"],
+          permissions,
           isAdmin: false,
         }}
       >
@@ -99,6 +99,24 @@ describe("Submission worklist KPIs", () => {
     expect(screen.getAllByText(/Action needed: Upload in CMS portal/)).toHaveLength(1);
   });
 
+  it("names the active filters in the empty state and clears them", async () => {
+    mount(<SubmissionWorklist />);
+    fireEvent.click(await screen.findByRole("button", { name: /Awaiting confirmation/ }));
+    fireEvent.change(screen.getByLabelText("Submission status"), { target: { value: "accepted" } });
+    expect(await screen.findByText("No matching submissions")).toBeTruthy();
+    expect(
+      screen.getByText(/Active filters: status Accepted, card filter Awaiting confirmation/),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(await screen.findByText("4 matching submissions")).toBeTruthy();
+  });
+
+  it("pluralises the batch count", async () => {
+    mount(<SubmissionWorklist />);
+    await screen.findByText("4 matching submissions");
+    expect(screen.getByText("Records to correct, in 1 batch")).toBeTruthy();
+  });
+
   it("exports the filtered rows as a CSV download", async () => {
     let captured: Blob | null = null;
     URL.createObjectURL = ((b: Blob) => {
@@ -109,7 +127,7 @@ describe("Submission worklist KPIs", () => {
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
     mount(<SubmissionWorklist />);
     fireEvent.click(await screen.findByRole("button", { name: /Awaiting confirmation/ }));
-    fireEvent.click(await screen.findByRole("button", { name: "Export submission log" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Export filtered log" }));
     const blob = captured as unknown as Blob;
     const text = await new Promise<string>((resolve) => {
       const reader = new FileReader();
@@ -150,6 +168,12 @@ describe("Assessment iQIES submission panel", () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(container.textContent).toBe("");
   });
+
+  it("exposes the panel as a named group", async () => {
+    routes[path] = json({ submissions: [] });
+    mount(<IqiesSubmissionPanel assessmentId="a1" />);
+    expect(await screen.findByRole("group", { name: "iQIES submission" })).toBeTruthy();
+  });
 });
 
 describe("HQRP compliance", () => {
@@ -165,5 +189,20 @@ describe("HQRP compliance", () => {
     mount(<HqrpComplianceDashboard />);
     const link = await screen.findByRole("link", { name: "View submissions" });
     expect(link.getAttribute("href")).toBe("/hope/submissions");
+    expect(screen.getByText(/share of batches with a final CMS outcome/i)).toBeTruthy();
+  });
+
+  it("hides the submissions link without hope.submission.read", async () => {
+    routes["/api/v1/hope/compliance"] = json({
+      hopeOnTimeRate: 0.9,
+      sfvOnTimeRate: 0.9,
+      submissionAcceptanceRate: 0.5,
+      hopeOnTimeCounts: {},
+      sfvOnTimeCounts: {},
+      submissionAcceptanceCounts: {},
+    });
+    mount(<HqrpComplianceDashboard />, []);
+    await screen.findByText(/share of batches with a final CMS outcome/i);
+    expect(screen.queryByRole("link", { name: "View submissions" })).toBeNull();
   });
 });

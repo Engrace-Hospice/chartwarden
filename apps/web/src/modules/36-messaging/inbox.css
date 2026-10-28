@@ -337,5 +337,6 @@
   .wx-messaging-filters button,
   .wx-conversation-type-tabs button {
     min-height: 2.75rem;
+    min-width: 2.75rem; /* a short label ("All") is otherwise only ~33px wide */
   }
 }

@@ -148,7 +148,7 @@ describe("GAP-016 — M5 DB route service publishes m5.patient.* through the out
   it("addPayer publishes m5.patient.payer_changed", async () => {
     const h = harness([
       [{ id: PATIENT }],
-      undefined,
+      [], // #845: no open coverage at this rank (locked SELECT … FOR UPDATE), so nothing to close
       [
         {
           id: "pp-1",

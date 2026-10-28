@@ -28,7 +28,12 @@ import {
   voidTob,
 } from "@chartwarden/medicaid-adapters";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { ChartWardenError, ForbiddenError, NotFoundError } from "@chartwarden/types";
+import {
+  ChartWardenError,
+  ForbiddenError,
+  NotFoundError,
+  type PatientCoverageReader,
+} from "@chartwarden/types";
 import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 import type { CredentialCipherPort } from "../credential-crypto";
 import type { M24WriteActor } from "./actor";
@@ -112,7 +117,47 @@ export interface CoverageResolverPort {
     organizationId: string;
     patientId: string;
     onDate: string;
+    /**
+     * #845 — when given, the SAME Medicaid coverage row must be the top-ranked Medicaid coverage on every day of
+     * `onDate..throughDate` (M5's range-wide resolver), not merely in force on `onDate`; otherwise null.
+     */
+    throughDate?: string;
   }): Promise<{ id: string; payerId: string; subscriberId: string } | null>;
+}
+
+/**
+ * The production {@link CoverageResolverPort} over M5's §3.4 `PatientCoverageReader` seam, resolved at CALL time so
+ * registration order does not matter. #845 — a claim window (`throughDate` given) asks the range-wide resolver: one
+ * Medicaid row on top on EVERY day of the window, else nothing; a single date (eligibility) stays a point read.
+ */
+export function buildM24MedicaidCoverageResolver(
+  reader: () => Pick<PatientCoverageReader, "activeCoverageOfKind" | "coverageForRange">,
+): CoverageResolverPort {
+  return {
+    async activeMedicaidCoverage(q) {
+      const r = reader();
+      const found =
+        q.throughDate === undefined
+          ? await r.activeCoverageOfKind({
+              organizationId: q.organizationId,
+              patientId: q.patientId,
+              coverageKind: "medicaid",
+              onDate: q.onDate,
+            })
+          : await r
+              .coverageForRange({
+                organizationId: q.organizationId,
+                patientId: q.patientId,
+                from: q.onDate,
+                to: q.throughDate,
+                coverageKind: "medicaid",
+              })
+              .then((res) => (res.status === "uniform" ? res.coverage : null));
+      return found
+        ? { id: found.id, payerId: found.payerId, subscriberId: found.subscriberId }
+        : null;
+    },
+  };
 }
 
 /**
@@ -383,11 +428,12 @@ export function buildDrizzleM24WriteService(
         organizationId: actor.organizationId,
         patientId: input.patientId,
         onDate: input.serviceFrom,
+        throughDate: input.serviceTo,
       });
       if (!resolved) {
         throw new ConflictError(
           "MEDICAID_COVERAGE_NOT_IN_FORCE",
-          "this patient holds no Medicaid coverage in force on the claim's first service date",
+          "this patient holds no single Medicaid coverage in force on every day of the claim's service window (split the claim where the coverage changes)",
         );
       }
       return withOrgContext(db, actor, async (tx) => {

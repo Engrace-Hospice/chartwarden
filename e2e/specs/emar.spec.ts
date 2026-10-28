@@ -41,6 +41,26 @@ test.describe("eMAR", () => {
     await expect(dialog.getByLabel("Medication")).toBeVisible();
     await expect(dialog.getByLabel("Medication")).toContainText(/Morphine/i);
 
+    // The picker opens on the patient's FIRST active order, and other specs (prescribing) leave their own
+    // morphine orders on this chart, so pin the seeded one — its label starts "Morphine sulfate oral
+    // solution" (case-sensitive: the prescribing spec's is "Morphine Sulfate 20 MG/ML…", demo ones "DEMO…").
+    const seededOrder = dialog
+      .getByLabel("Medication")
+      .locator("option", { hasText: /^Morphine sulfate oral solution/ })
+      .first();
+    const seededOrderId = await seededOrder.getAttribute("value");
+    if (!seededOrderId) {
+      throw new Error("e2e: the seeded morphine order is not offered in the Medication picker");
+    }
+    await dialog.getByLabel("Medication").selectOption(seededOrderId);
+
+    // "Right dose" is validated server-side against a stated amount: the dialog opens with Dose and
+    // Unit empty, and committing without them is refused ("five-rights validation failed: dose").
+    // 0.25 mL is the seeded order's own dose (seed-scenario-orders-meds-idg: doseQuantity 0.25,
+    // doseUnit "mL") — change the two together.
+    await dialog.getByLabel("Dose", { exact: true }).fill("0.25");
+    await dialog.getByLabel("Unit", { exact: true }).fill("mL");
+
     // The commit is refused until every right is confirmed — the checklist gates the dialog.
     const commit = dialog.getByRole("button", { name: "Record administration" });
     await expect(commit).toBeDisabled();

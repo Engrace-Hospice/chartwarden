@@ -381,11 +381,11 @@ async function main(): Promise<number> {
       fault: faultNote,
       backupMethod: {
         postgres:
-          "pg_dump -U postgres -d chartwarden | gzip, as deploy/production/reseed-demo.sh runs it (logical, single snapshot, no WAL archive, no PITR)",
+          "pg_dump -U postgres -d chartwarden | gzip, as deploy/production/reseed-demo.sh runs it (logical, single snapshot; this drill's mechanism only: since #857 production runs pgBackRest with WAL archiving / PITR, see the coordinated drill)",
         objectStore:
-          "tar of the stopped MinIO /data (closest real mechanism; production has NO object-store backup)",
+          "tar of the stopped MinIO /data (this drill's own stand-in; since #857 production's object backup is deploy/production/backup/cw-backup.sh: versioned, SSE-C encrypted, object-locked off-site mirror)",
         coordination:
-          "writes quiesced between the two (production has no coordination between them)",
+          "writes quiesced between the two (since #857 production coordinates them with a snapshot marker: DB LSN + object manifest; see audit/restore-drill/2026-10-27-coordinated-backup-drill.md)",
       },
       rto: { restoreWallMs, phasesMs: phases, verifyWallMs },
       rpo: {

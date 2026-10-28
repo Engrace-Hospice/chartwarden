@@ -53,12 +53,17 @@ export function MessageTimeline({
   onJumpToMessage,
   pending,
 }: MessageTimelineProps): JSX.Element {
+  // The history scrolls, so a keyboard user must be able to reach it (axe `scrollable-region-focusable`).
+  // Message rows are not tab stops and their action buttons depend on permissions (an archived thread has
+  // none), so the region itself is the tab stop. Only the error state, whose Retry button is focusable,
+  // leaves it a script-only focus target.
+  const holdsFocusable = loadError !== null;
   return (
     <div
       ref={timelineRef}
       className="wx-message-timeline"
       aria-label="Message history"
-      tabIndex={-1}
+      tabIndex={holdsFocusable ? -1 : 0}
       onScroll={onScroll}
     >
       <TimelineState

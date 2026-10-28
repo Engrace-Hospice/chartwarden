@@ -4,10 +4,13 @@
 
 Run 349b8d at 2026-10-22T06:36:05.756Z. Fault injected: none.
 
-## Backup method (what production really does)
-- **postgres**: pg_dump -U postgres -d chartwarden | gzip, as deploy/production/reseed-demo.sh runs it (logical, single snapshot, no WAL archive, no PITR)
-- **objectStore**: tar of the stopped MinIO /data (closest real mechanism; production has NO object-store backup)
-- **coordination**: writes quiesced between the two (production has no coordination between them)
+## Backup method used by this drill
+
+> **Superseded statement (2026-10-27, #857).** When this drill ran, production had no object-store backup, no DB/object coordination and no PITR. The repository now ships all three (`deploy/production/backup/`, `compose.backup.yml`), proven end to end by [`2026-10-27-coordinated-backup-drill.md`](./2026-10-27-coordinated-backup-drill.md). What is still operational, not code: provisioning the off-site bucket and keys, enabling the overlay on the VPS, and the first witnessed production restore (tracked in the #857 follow-up ops issue). This M36 drill keeps its own pg_dump + volume-tar mechanism on purpose: it proves M36 consistency, not the production backup.
+
+- **postgres**: pg_dump -U postgres -d chartwarden | gzip, as deploy/production/reseed-demo.sh runs it (logical, single snapshot; this drill's mechanism only: since #857 production runs pgBackRest with WAL archiving / PITR, see the coordinated drill)
+- **objectStore**: tar of the stopped MinIO /data (this drill's own stand-in; since #857 production's object backup is deploy/production/backup/cw-backup.sh: versioned, SSE-C encrypted, object-locked off-site mirror)
+- **coordination**: writes quiesced between the two (since #857 production coordinates them with a snapshot marker: DB LSN + object manifest; see audit/restore-drill/2026-10-27-coordinated-backup-drill.md)
 
 ## Measured RTO (demo scale)
 Restore wall time (new Postgres up, roles bootstrapped, dump loaded, object store restored): **11.6 s**. Verification: 0.5 s.

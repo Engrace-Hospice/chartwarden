@@ -5332,7 +5332,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeAssessmentResponseSchema,
   },
   "POST /api/v1/admissions/:admissionId/hope/sfv": {
-    summary: "Record an SFV completion (RFA-04; RN/NP author)",
+    summary: "Record an SFV completion (RFA-04; RN/NP/LPN/LVN author)",
     body: M10RecordSfvSchema,
     status: 201,
     response: M10HopeAssessmentResponseSchema,

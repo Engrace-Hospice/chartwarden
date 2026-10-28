@@ -230,7 +230,7 @@ export function buildClaimAssemblyService(
       if (!payer || !payer.medicarePrimary) {
         throw new ChartWardenError(
           "NON_MEDICARE_PRIMARY_PAYER",
-          "Medicare FFS Part A is not the primary payer for this service window (D15). A claim whose primary payer is a commercial plan is assembled by Module 41 (Billing - Commercial); Medicaid is Module 24",
+          "Medicare FFS Part A is not the primary payer on every day of this service window (D15). If the primary coverage changes inside the window, split the claim at the change. A claim whose primary payer is a commercial plan is assembled by Module 41 (Billing - Commercial); Medicaid is Module 24",
           409,
         );
       }

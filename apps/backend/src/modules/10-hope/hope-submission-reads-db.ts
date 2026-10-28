@@ -3,7 +3,7 @@
 // assessment's correction stands. All run inside the caller's `withOrgContext` transaction (RLS-scoped).
 import { type DbClient, schema } from "@chartwarden/db";
 import type { HopeSubmissionItemStatus } from "@chartwarden/types";
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, desc, eq, getTableColumns, inArray } from "drizzle-orm";
 import {
   MAX_CORRECTION_CHAIN,
   findingSeverity,
@@ -16,6 +16,9 @@ const SUBITEM = schema.hopeSubmissionItems;
 const RESULT = schema.hopeSubmissionResultEvents;
 const ASSESS = schema.hopeAssessments;
 export type SubmissionItemRow = typeof SUBITEM.$inferSelect;
+// Skip `iqies_validation_result` (the raw XML payload): item reads that only render the view never need it.
+const { iqiesValidationResult: _heavyItem, ...LIGHT_ITEM_COLUMNS } = getTableColumns(SUBITEM);
+export const LIGHT_ITEM = LIGHT_ITEM_COLUMNS;
 
 interface Standing {
   readonly correctionAssessmentId: string | null;
@@ -42,7 +45,8 @@ export async function rejectedStandings(
       .select({ id: ASSESS.id, corrects: ASSESS.correctsAssessmentId })
       .from(ASSESS)
       .where(inArray(ASSESS.correctsAssessmentId, frontier))
-      .orderBy(asc(ASSESS.createdAt));
+      // newest first: the first child seen is the live correction; an older one is an abandoned attempt
+      .orderBy(desc(ASSESS.createdAt), desc(ASSESS.id));
     frontier = [];
     for (const c of level) {
       if (!c.corrects || childOf.has(c.corrects)) continue;
@@ -109,7 +113,7 @@ export async function loadSubmissionItems(
   submissionId: string,
 ): Promise<HopeSubmissionItemView[]> {
   const items = (await t
-    .select()
+    .select(LIGHT_ITEM)
     .from(SUBITEM)
     .where(eq(SUBITEM.hopeSubmissionId, submissionId))
     .orderBy(asc(SUBITEM.createdAt), asc(SUBITEM.id))) as SubmissionItemRow[];

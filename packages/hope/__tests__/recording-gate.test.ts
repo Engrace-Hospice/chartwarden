@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertAuthorDisciplineAllowed,
   isHopeAuthorDisciplineAllowed,
+  assertAuthorBoundToActor,
   isSfvAuthorDisciplineAllowed,
 } from "../src/recording/discipline";
 import {
@@ -148,15 +149,49 @@ describe("assertSectionQForDischarge — D9 reason branch", () => {
   });
 });
 
+describe("author attribution is bound to the actor's own roles (#850)", () => {
+  it("an LPN may attribute an SFV to LPN but not to RN", () => {
+    expect(() => assertAuthorBoundToActor("04_sfv", "LPN", ["lpn"])).not.toThrow();
+    expect(() => assertAuthorBoundToActor("04_sfv", "RN", ["lpn"])).toThrowError(
+      expect.objectContaining({ code: "M10_DISCIPLINE_NOT_PERMITTED", statusCode: 403 }),
+    );
+  });
+  it("an RN may not claim LPN; an LVN-role actor may claim LVN", () => {
+    expect(() => assertAuthorBoundToActor("04_sfv", "LPN", ["rn"])).toThrowError(
+      expect.objectContaining({ code: "M10_DISCIPLINE_NOT_PERMITTED" }),
+    );
+    expect(() => assertAuthorBoundToActor("04_sfv", "LVN", ["lvn", "viewer"])).not.toThrow();
+  });
+  it("a non-SFV record still refuses LPN even when the actor holds the lpn role", () => {
+    expect(() => assertAuthorBoundToActor("02_huv1", "LPN", ["lpn"])).toThrowError(
+      expect.objectContaining({ code: "M10_DISCIPLINE_NOT_PERMITTED" }),
+    );
+  });
+});
+
 describe("author-discipline rule (§4.7, RN/NP-only author rule)", () => {
   it("RN/NP/MD may author a HOPE timepoint; others may not", () => {
     expect(isHopeAuthorDisciplineAllowed("RN")).toBe(true);
     expect(isHopeAuthorDisciplineAllowed("MD")).toBe(true);
     expect(isHopeAuthorDisciplineAllowed("LPN")).toBe(false);
   });
-  it("only RN/NP may author an SFV", () => {
-    expect(isSfvAuthorDisciplineAllowed("NP")).toBe(true);
-    expect(isSfvAuthorDisciplineAllowed("MD")).toBe(false);
+  it("only RN/NP/LPN/LVN may author an SFV (CMS HOPE Guidance Manual v1.03)", () => {
+    for (const d of ["RN", "NP", "LPN", "LVN"]) expect(isSfvAuthorDisciplineAllowed(d)).toBe(true);
+    for (const d of ["MD", "SW", "CHAPLAIN", "AIDE", "lpn", ""])
+      expect(isSfvAuthorDisciplineAllowed(d)).toBe(false);
+  });
+  it("LPN/LVN stay excluded from the non-SFV timepoints (rule unchanged)", () => {
+    expect(isHopeAuthorDisciplineAllowed("LVN")).toBe(false);
+    expect(() => assertAuthorDisciplineAllowed("01_admission", "LPN")).toThrowError(
+      expect.objectContaining({ code: "M10_DISCIPLINE_NOT_PERMITTED", statusCode: 403 }),
+    );
+  });
+  it("service guard and ABAC data agree for an LPN SFV", () => {
+    expect(() => assertAuthorDisciplineAllowed("04_sfv", "LPN")).not.toThrow();
+    expect(() => assertAuthorDisciplineAllowed("04_sfv", "LVN")).not.toThrow();
+    expect(() => assertAuthorDisciplineAllowed("04_sfv", "SW")).toThrowError(
+      expect.objectContaining({ code: "M10_DISCIPLINE_NOT_PERMITTED" }),
+    );
   });
   it("assertAuthorDisciplineAllowed branches on rfa_kind (403 M10_DISCIPLINE_NOT_PERMITTED)", () => {
     expect(() => assertAuthorDisciplineAllowed("01_admission", "MD")).not.toThrow();

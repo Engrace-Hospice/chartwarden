@@ -91,16 +91,57 @@ function splitLine(line: string, delimiter: string): string[] {
 
 const POSITIONAL = ["assessmentId", "status", "code", "message"];
 
-function parseDelimited(input: string): ParsedCmsReport {
-  const lines = input.split(/\r?\n/).filter((l) => l.trim() !== "");
-  const first = lines[0] ?? "";
-  const delimiter = first.includes("\t") ? "\t" : first.includes("|") ? "|" : ",";
-  let header = POSITIONAL;
-  let start = 0;
-  if (/assessment/i.test(first)) {
-    header = splitLine(first, delimiter).map((h) => h.replace(/[\s-]+/g, "").trim());
-    start = 1;
+/** Split on newlines that are OUTSIDE double quotes, so a quoted cell may span lines. */
+function splitRecords(input: string): { records: string[]; unterminated: boolean } {
+  const records: string[] = [];
+  let cur = "";
+  let quoted = false;
+  for (const ch of input) {
+    if (ch === '"') quoted = !quoted; // an escaped "" toggles twice, which nets out
+    if (!quoted && ch === "\n") {
+      records.push(cur.replace(/\r$/, ""));
+      cur = "";
+    } else cur += ch;
   }
+  // An open quote at EOF means the tail is one unterminated cell: drop it and let the caller report it.
+  if (!quoted) records.push(cur.replace(/\r$/, ""));
+  return { records: records.filter((r) => r.trim() !== ""), unterminated: quoted };
+}
+
+/** Most frequent of tab / pipe / comma in the first record, ignoring quoted text (comma wins ties and zero). */
+function sniffDelimiter(first: string): string {
+  const counts: Record<string, number> = { "\t": 0, "|": 0, ",": 0 };
+  let quoted = false;
+  for (const ch of first) {
+    if (ch === '"') quoted = !quoted;
+    else if (!quoted && ch in counts) counts[ch] = (counts[ch] ?? 0) + 1;
+  }
+  return (["\t", "|"] as const).reduce(
+    (best, d) => ((counts[d] ?? 0) > (counts[best] ?? 0) ? d : best),
+    ",",
+  );
+}
+
+const norm = (h: string): string => h.toLowerCase().replace(/[\s_-]+/g, "");
+
+/** A header row names BOTH an assessment-id column and a status-like column; a data line whose message merely
+ * mentions "assessment" is not one (it is then parsed as data, so it can never be silently dropped). */
+function isHeader(cells: readonly string[]): boolean {
+  const keys = cells.map(norm);
+  return (
+    keys.some((k) => k === "assessmentid" || k === "assessment") &&
+    keys.some((k) => k === "status" || k === "result" || k === "outcome")
+  );
+}
+
+function parseDelimited(input: string): ParsedCmsReport {
+  const { records: lines, unterminated } = splitRecords(input);
+  const first = lines[0] ?? "";
+  const delimiter = sniffDelimiter(first);
+  const firstCells = splitLine(first, delimiter);
+  const hasHeader = isHeader(firstCells);
+  const header = hasHeader ? firstCells.map((h) => h.replace(/[\s-]+/g, "").trim()) : POSITIONAL;
+  const start = hasHeader ? 1 : 0;
   const rows: ParsedCmsRow[] = [];
   const errors: string[] = [];
   for (let i = start; i < lines.length; i++) {
@@ -109,10 +150,14 @@ function parseDelimited(input: string): ParsedCmsReport {
     header.forEach((h, idx) => {
       rec[h] = cells[idx];
     });
-    const parsed = fromRecord(rec, `Line ${i + 1}`);
+    const parsed = fromRecord(rec, `Data row ${i - start + 1}`);
     if (typeof parsed === "string") errors.push(parsed);
     else rows.push(parsed);
   }
+  if (unterminated)
+    errors.push(
+      `Unterminated quote after data row ${Math.max(lines.length - start, 0)}; remaining lines were not parsed.`,
+    );
   return { rows, errors };
 }
 
@@ -144,7 +189,7 @@ function parseJson(input: string): ParsedCmsReport {
 }
 
 export function parseCmsReport(input: string): ParsedCmsReport {
-  const trimmed = input.trim();
+  const trimmed = input.replace(/^\uFEFF/, "").trim();
   if (trimmed === "") return { rows: [], errors: ["Nothing to import."] };
   if (trimmed.length > MAX_REPORT_CHARS)
     return {

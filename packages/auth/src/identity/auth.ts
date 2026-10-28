@@ -285,7 +285,7 @@ export function resolveTrustedOrigins(
  * Better Auth's Expo plugin trusts the broad `exp://` scheme automatically in development. ChartWarden
  * requires every native scheme to be configured explicitly, so retain the official plugin's request
  * and callback handling while removing only that implicit development initializer. This is pinned to
- * @better-auth/expo 1.6.25 and covered by the config-shape test.
+ * @better-auth/expo 1.7.14 and covered by the config-shape test.
  */
 function explicitOriginsExpoPlugin(): ReturnType<typeof expo> {
   const { init: _implicitDevelopmentOrigin, ...plugin } = expo();

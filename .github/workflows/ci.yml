@@ -732,6 +732,8 @@ jobs:
           - { name: "M5 SSN identifier", scripts: "test:m5:ssn-identifier:live" }
           # F-229 (#248) — M5 `PatientAddressReader.primaryAddress` (full street address seam).
           - { name: "M5 address reader", scripts: "test:m5:address-reader:live" }
+          # #845 — one coverage per rank per day: 1291 repair + exclusion constraint, writer closure, range-wide payer resolver.
+          - { name: "M5 payer intervals", scripts: "test:m5:payer-intervals:live" }
           - {
               name: "M25 Remittance",
               scripts: "test:m25:835-ingestion:live test:m25:interim-payments-seam:live test:m25:manual-match:live",
@@ -1701,15 +1703,20 @@ jobs:
             sleep 1
           done
           echo "MinIO did not become ready" >&2; docker logs chartwarden-ci-minio-e2e; exit 1
+      # No `--with-deps`: it shells out to `sudo apt-get`, and the self-hosted runner user has no
+      # passwordless sudo, so the job used to die here in ~20s ("sudo: a password is required") before a
+      # single spec ran. The browser download itself needs no root.
       - name: Install the Chromium build this Playwright version pins
-        # The self-hosted runner has no passwordless sudo, so `--with-deps` (apt-get as root) dies with
-        # "sudo: a password is required" (run 40526156442). Install the OS libraries only where sudo works;
-        # elsewhere they must be preinstalled on the runner image (`sudo npx playwright install-deps chromium` once).
+        run: bunx playwright install chromium
+      # The system libraries Chromium links against are a one-time runner setup. Install them here only
+      # when passwordless sudo exists; otherwise say so and rely on what the runner already has (a launch
+      # failure in the specs then names the missing library, instead of the install step hiding it).
+      - name: Install Chromium system libraries when sudo allows
         run: |
           if sudo -n true 2>/dev/null; then
-            bunx playwright install --with-deps chromium
+            bunx playwright install-deps chromium
           else
-            bunx playwright install chromium
+            echo "no passwordless sudo: relying on the runner's preinstalled Chromium libraries"
           fi
       - name: Migrate
         run: bun run db:migrate

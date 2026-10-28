@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { audit } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/10-hope — PRODUCTION HopeRouteService (M10L reads + writes, mirrors M9L).
@@ -35,7 +34,7 @@ import {
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { HopeRfaKind, LatestAssessment, ScaleType } from "@chartwarden/types";
 import { ConflictError, NotFoundError, ValidationError } from "@chartwarden/types";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../bootstrap/index";
 import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "./abac-predicates";
@@ -56,15 +55,19 @@ import {
 import { createHopeSpecRegistry } from "./hope-spec-registry";
 import { buildHopeSubmissionHeader, readHopeSoftwareVendor } from "./hope-submission-header";
 import {
+  LIGHT_ITEM,
   loadSubmissionFindings,
   loadSubmissionItems,
   resolutionCountsByBatch,
 } from "./hope-submission-reads-db";
 import {
+  appendReportResults,
   classifyCmsResult,
   deriveBatchOutcome,
   isResultImportable,
+  isSettledItemStatus,
   manualUploadTransmittedPayload,
+  reportHashes,
   settledBatchEvent,
   worstOutcome,
 } from "./hope-submission-result";
@@ -107,6 +110,18 @@ type ScheduleRow = typeof SCHED.$inferSelect;
 type AssessmentRow = typeof ASSESS.$inferSelect;
 type SfvRow = typeof SFV.$inferSelect;
 type SubmissionRow = typeof SUB.$inferSelect;
+// Reads that only render the view skip `acceptance_report` (base64 ZIP + raw CMS results). The report
+// reference is projected out of the jsonb instead.
+const { acceptanceReport: _heavyReport, ...LIGHT_SUB_COLUMNS } = getTableColumns(SUB);
+const LIGHT_SUB = {
+  ...LIGHT_SUB_COLUMNS,
+  reportReference: sql<string | null>`${SUB.acceptanceReport}->>'reportReference'`.as(
+    "report_reference",
+  ),
+};
+type LightSubmissionRow = Omit<SubmissionRow, "acceptanceReport"> & {
+  reportReference?: string | null;
+};
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 const HOPE_J2053_ITEM_CODES = [
@@ -257,7 +272,7 @@ const toSfvView = (r: SfvRow): HopeSfvView => ({
 
 const NO_RESOLUTIONS = { needs: 0, inProgress: 0, resubmitted: 0 };
 const toSubmissionView = (
-  r: SubmissionRow,
+  r: LightSubmissionRow,
   resolutions: typeof NO_RESOLUTIONS = NO_RESOLUTIONS,
 ): HopeSubmissionView => ({
   id: r.id,
@@ -283,7 +298,8 @@ const toSubmissionView = (
   resubmittedCount: resolutions.resubmitted,
 });
 
-const reportReferenceOf = (r: SubmissionRow): string | null => {
+const reportReferenceOf = (r: LightSubmissionRow): string | null => {
+  if (typeof r.reportReference === "string") return r.reportReference;
   const report = (r as { acceptanceReport?: { reportReference?: unknown } | null })
     .acceptanceReport;
   return typeof report?.reportReference === "string" ? report.reportReference : null;
@@ -869,7 +885,7 @@ export function createDbHopeBackend(
 
   async function loadSubmissionDetail(
     t: DbClient,
-    r: SubmissionRow,
+    r: LightSubmissionRow,
   ): Promise<HopeSubmissionDetailView> {
     const items = await loadSubmissionItems(t, r.id);
     const count = (x: string) => items.filter((i) => i.resolution === x).length;
@@ -974,7 +990,7 @@ export function createDbHopeBackend(
     // ── iQIES submission reads (§2.2.4) ────────────────────────────────────────────────────────────
     async listSubmissions(organizationId, providerEntityId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const rows = (await tx.select().from(SUB)) as SubmissionRow[];
+        const rows = (await tx.select(LIGHT_SUB).from(SUB)) as LightSubmissionRow[];
         const scoped = rows.filter(
           (r) => !providerEntityId || r.providerEntityId === providerEntityId,
         );
@@ -987,7 +1003,11 @@ export function createDbHopeBackend(
     },
     async getSubmission(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [r] = (await tx.select().from(SUB).where(eq(SUB.id, id)).limit(1)) as SubmissionRow[];
+        const [r] = (await tx
+          .select(LIGHT_SUB)
+          .from(SUB)
+          .where(eq(SUB.id, id))
+          .limit(1)) as LightSubmissionRow[];
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
         return loadSubmissionDetail(tx as unknown as DbClient, r);
       });
@@ -997,7 +1017,7 @@ export function createDbHopeBackend(
         const t = tx as unknown as DbClient;
         await loadA(t, assessmentId);
         const rows = await t
-          .select({ item: SUBITEM, sub: SUB })
+          .select({ item: { itemStatus: SUBITEM.itemStatus }, sub: LIGHT_SUB_COLUMNS })
           .from(SUBITEM)
           .innerJoin(SUB, eq(SUB.id, SUBITEM.hopeSubmissionId))
           .where(eq(SUBITEM.hopeAssessmentId, assessmentId))
@@ -1137,17 +1157,20 @@ export function createDbHopeBackend(
           .select({
             patientId: ASSESS.patientId,
             signedByMembershipId: ASSESS.signedByMembershipId,
+            rfaKind: ASSESS.rfaKind,
           })
           .from(ASSESS)
           .where(and(eq(ASSESS.id, assessmentId), eq(ASSESS.organizationId, organizationId)))
           .limit(1)) as {
           patientId: string;
           signedByMembershipId: string | null;
+          rfaKind: string;
         }[];
         if (!r) return null; // absent / cross-tenant → deny
         return {
           patientId: r.patientId,
           originalSignedBy: r.signedByMembershipId ?? null,
+          rfaKind: r.rfaKind,
         };
       });
     },
@@ -1993,7 +2016,7 @@ export function createDbHopeBackend(
         for (const candidate of candidates) {
           if (!candidate.specVersionId || !candidate.isc) continue;
           const existing = await t
-            .select({ item: SUBITEM, submissionStatus: SUB.status })
+            .select({ id: SUBITEM.id })
             .from(SUBITEM)
             .innerJoin(SUB, eq(SUB.id, SUBITEM.hopeSubmissionId))
             .where(
@@ -2198,8 +2221,22 @@ export function createDbHopeBackend(
           .limit(1)
           .for("update")) as SubmissionRow[]; // row lock: serialises concurrent recordings of one batch
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
-        const reportHash = createHash("sha256").update(JSON.stringify(args.results)).digest("hex");
-        if (r.resultReportHash === reportHash) return loadSubmissionDetail(t, r); // idempotent replay
+        const { canonical: reportHash, legacy: legacyReportHash } = reportHashes(args.results);
+        if (r.resultReportHash === reportHash || r.resultReportHash === legacyReportHash)
+          return loadSubmissionDetail(t, r); // idempotent replay
+        // Replay of an OLDER report (A, B, A): its rows are already stored; re-appending them or overwriting the
+        // import metadata would corrupt the audit trail, and verdicts are final. Return the view untouched.
+        const [seen] = await t
+          .select({ id: RESULT.id })
+          .from(RESULT)
+          .where(
+            and(
+              eq(RESULT.hopeSubmissionId, id),
+              inArray(RESULT.reportHash, [reportHash, legacyReportHash]),
+            ),
+          )
+          .limit(1);
+        if (seen) return loadSubmissionDetail(t, r);
         require_(
           isResultImportable(r.status),
           ["packaged", "queued", "ready"].includes(r.status)
@@ -2207,7 +2244,10 @@ export function createDbHopeBackend(
             : "M10_SUBMISSION_RESULT_ALREADY_RECORDED",
           `Submission ${id} is ${r.status}; a result can only be recorded for a batch that was downloaded/uploaded and is still awaiting its CMS result.`,
         );
-        const items = await t.select().from(SUBITEM).where(eq(SUBITEM.hopeSubmissionId, id));
+        const items = await t
+          .select(LIGHT_ITEM)
+          .from(SUBITEM)
+          .where(eq(SUBITEM.hopeSubmissionId, id));
         const byAssessmentId = new Map(items.map((item) => [item.hopeAssessmentId, item]));
         require_(
           args.results.some(
@@ -2230,6 +2270,7 @@ export function createDbHopeBackend(
           const prev = item ? worst.get(item.id) : undefined;
           if (
             item &&
+            !isSettledItemStatus(item.itemStatus) && // a CMS verdict is final; later reports only add audit rows
             status !== "pending" &&
             (!prev || worstOutcome(prev.status, status) === status)
           )
@@ -2302,7 +2343,10 @@ export function createDbHopeBackend(
                 : {}),
               reportReference: args.reportReference ?? null,
               reportHash,
-              results: args.results,
+              results: appendReportResults(
+                (r.acceptanceReport as { results?: unknown } | null)?.results,
+                args.results,
+              ),
             },
             updatedAt: now,
           })

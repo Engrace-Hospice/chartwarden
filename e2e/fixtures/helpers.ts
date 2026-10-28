@@ -52,12 +52,22 @@ export async function signOut(page: Page): Promise<void> {
  * animation cancelled by a re-render rejects, and a cancelled animation is a settled one.
  * `waitForLoadState("networkidle")` first, so an animation kicked off by late-arriving data is
  * already in flight by the time we enumerate.
+ *
+ * An animation that repeats forever — a loading skeleton's pulse, a spinner — never finishes, so it is
+ * skipped: awaiting it hangs this evaluate until the test times out (the messaging "offline" spec, whose
+ * thread shows skeleton rows while it cannot load). Such an animation has no "settled" state to wait for.
  */
 async function waitForTransitionsToSettle(page: Page): Promise<void> {
   await page.waitForLoadState("networkidle").catch(() => {});
   await page.evaluate(async () => {
     await Promise.all(
-      document.getAnimations().map((animation) => animation.finished.catch(() => undefined)),
+      document
+        .getAnimations()
+        // A null `effect` gives `undefined !== Infinity`, so it is still awaited — and resolves normally.
+        .filter(
+          (animation) => animation.effect?.getTiming().iterations !== Number.POSITIVE_INFINITY,
+        )
+        .map((animation) => animation.finished.catch(() => undefined)),
     );
   });
 }

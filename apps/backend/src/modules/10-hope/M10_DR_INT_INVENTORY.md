@@ -105,7 +105,7 @@ Notes:
   exponential backoff + the `hope:submission.dlq` (depth-alert) bound retries; the capture path never touches
   the adapter so a submission-side DoS cannot starve bedside recording.
 - **Elevation (E):** `hope.submission.manage` (assemble/retry) is Compliance-Officer / Platform-Admin only
-  (§6); RN/NP cannot trigger submission. The RN/NP-only HOPE-author rule is a structural floor on capture.
+  (§6); RN/NP cannot trigger submission. The HOPE-author discipline rule (RN/NP/MD; SFV RN/NP/LPN/LVN) is a structural floor on capture.
 - **Cross-tenant:** RLS on all six owned tables keys on `app.org_id` with `WITH CHECK`; even with RBAC/ABAC
   stubbed open, RLS alone blocks the cross-tenant read; a forged id returns 404 (RLS-hidden), never 403.
   The MinIO `tenants/<org_id>/` prefix isolates envelopes at the storage layer.
