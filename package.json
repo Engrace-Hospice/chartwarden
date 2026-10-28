@@ -440,6 +440,7 @@
     "arch:request-header-auth": "bun run scripts/check-request-header-auth.ts",
     "arch:error-envelope": "bun run scripts/check-error-envelope.ts",
     "arch:pdf-templates": "bun run scripts/check-pdf-template-coverage.ts",
+    "arch:compose-policy": "bun run scripts/check-compose-policy.ts",
     "test:golden:m22": "vitest run apps/backend/__tests__/m22-forms-golden.test.ts",
     "arch:context-attributes": "bun run scripts/check-context-attributes.ts",
     "arch:route-reachability": "bun run scripts/check-route-reachability.ts",
