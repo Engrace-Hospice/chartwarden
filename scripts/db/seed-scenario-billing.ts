@@ -6,17 +6,11 @@
  * Genuine platform gaps hit and worked around/documented (all confirmed by reading the actual route/
  * write-service code, not assumed):
  *
- *   - M23: worse than "stops at DRAFT" — `POST /billing/claims/assemble` itself is unconditionally
- *     unreachable, though LESS unconditionally than this comment used to say (#250 bound four of the
- *     eleven reader seams for real: `patientPayer`, `mdm.resolveProviderEntity`, and two of
- *     `referenceData`'s four methods — see `boot-assembly.ts`'s header for the exact per-seam
- *     accounting). `assemble()`'s SECOND read, `admission.resolveForRange` (M6), still throws
- *     `SEAM_UNBOUND` for every real call — M6's published seam readers are id/single-date-keyed and
- *     none answers "every period for this patient overlapping this range", which needs a real new
- *     read-surface addition to M6's own seam layer, not an M23-side adapter. M23 stays skipped entirely
- *     below — even the validate/eligibility queueName↔event-string mismatch this comment originally
- *     flagged (`M23_SUBMISSION_REQUEST_EVENTS` never contains `"validation-run"`/`"eligibility.refresh"`)
- *     is moot once assemble itself can't run.
+ *   - M23: `POST /billing/claims/assemble` is reachable (the assembly seams are bound; proven live in
+ *     `m23-claim-assembly-seams.live.test.ts`), but it needs tenant-entered reference data that no seed
+ *     enters: the per-diem rate table (`/api/v1/billing/rate-tables`) and sequestration policy. Without
+ *     them assemble answers the typed `RATE_TABLE_MISSING` (422), so M23 seeds only the MAC submitter
+ *     credential + wage index below and no Medicare claim is assembled here.
  *   - M25: `POST /api/v1/internal/remittance/advices` — the ONLY route that creates a remittance/835
  *     row — was gated on `request.context?.attributes?.systemPrincipal === true`, a field nothing wrote;
  *     that was fixed on `main` at commit `46414c60` (#75/#76, F-030) well before #250 — the guard now

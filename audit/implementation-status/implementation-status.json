@@ -748,7 +748,7 @@
       "status": "Implemented",
       "spec": true,
       "schema": true,
-      "migration": false,
+      "migration": true,
       "routes": true,
       "enriched": {
         "routes": 19,
@@ -815,7 +815,7 @@
         "enriched": 26
       },
       "screens": true,
-      "tests": false,
+      "tests": true,
       "adapter": null,
       "liveInfra": {
         "tables": 16,
