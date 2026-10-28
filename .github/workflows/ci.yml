@@ -69,10 +69,11 @@ jobs:
       # checked than actually was — and a CI log understating its own coverage is read by whoever is
       # deciding whether a change is safe to ship. Naming the script instead cannot go stale.
       # #853 - `arch:docling-lock` runs `uv lock --check` (offline when the lock agrees with pyproject.toml).
+      # setup-uv, not `pip install`: the self-hosted runners' python3 ships without pip.
       - name: Install uv (for arch:docling-lock)
-        run: |
-          command -v uv >/dev/null || python3 -m pip install --user "uv==0.9.10"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.10"
 
       # #853 - the worker's own pytest, from the locked env. No `docling` extra: the tests inject the converter and
       # never import Docling/torch, so this stays light (the full graph is built and checked by pr-image-gate).
