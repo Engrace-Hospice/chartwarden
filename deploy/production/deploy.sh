@@ -48,6 +48,53 @@ if [ ! -f .env.production ] || [ ! -f compose.yml ]; then
   exit 66
 fi
 
+# ── DEPLOY ALERT (#866): optional, best effort, never decides the deploy's outcome ──────────────────────────────
+# DEPLOY_ALERT_WEBHOOK_URL (environment, else .env.production) is a SECRET and is never printed or put on a command
+# line. When set, any non-zero exit from here on POSTs a small JSON document: commit SHA, failing step, exit code and
+# applied migration filenames (validated ledger names only). Nothing else, so no PHI and no secrets can ride along.
+# Exit 75 is named "operator decision required". Unset = no-op. A failed or slow delivery is logged and swallowed.
+deploy_step=preflight
+# Exit status of a deploy that stopped for an operator decision (EX_TEMPFAIL), distinct from a plain failure.
+HOLD_EXIT=75
+alert_url=${DEPLOY_ALERT_WEBHOOK_URL:-$(sed -n 's/^DEPLOY_ALERT_WEBHOOK_URL=//p' .env.production | tail -n 1 | tr -d '\r' | sed -e 's/^"\([^"]*\)".*$/\1/' -e "s/^'\([^']*\)'.*\$/\1/" -e 's/[[:space:]]\{1,\}#.*$//' -e 's/[[:space:]]*$//')}
+
+deploy_alert() {
+  alert_rc=$1
+  [ "$alert_rc" -ne 0 ] || return 0
+  [ -n "$alert_url" ] || return 0
+  case "$alert_url" in
+    *[\"\\[:space:]]*) echo "deploy alert skipped: DEPLOY_ALERT_WEBHOOK_URL contains characters that are not allowed" >&2; return 0 ;;
+    https://?*) ;;
+    *) echo "deploy alert skipped: DEPLOY_ALERT_WEBHOOK_URL must be an https:// URL" >&2; return 0 ;;
+  esac
+  command -v curl >/dev/null 2>&1 || { echo "deploy alert skipped: curl is not installed" >&2; return 0; }
+  alert_sha=$(printf '%s' "${backend_image##*:sha-}" | tr -cd 'a-zA-Z0-9' | cut -c1-64)
+  alert_files=""
+  if [ -n "${schema_applied:-}" ]; then
+    alert_files=$(printf '%s\n' "$schema_applied" | grep -E '^[0-9]{4}_[a-z0-9_.]+\.sql$' | sed 's/.*/"&"/' | paste -sd, - || true)
+  fi
+  if [ "$alert_rc" -eq "$HOLD_EXIT" ]; then
+    alert_what="operator decision required (exit $alert_rc), automatic rollback refused"
+  else
+    alert_what="failed (exit $alert_rc)"
+  fi
+  alert_body=$(mktemp) || return 0
+  printf '{"text":"ChartWarden deploy %s at step %s, sha %s","sha":"%s","step":"%s","exit_code":%s,"operator_decision_required":%s,"applied_migrations":[%s]}\n' \
+    "$alert_what" "$deploy_step" "$alert_sha" "$alert_sha" "$deploy_step" "$alert_rc" \
+    "$([ "$alert_rc" -eq "$HOLD_EXIT" ] && echo true || echo false)" "$alert_files" >"$alert_body"
+  # The URL goes to curl on stdin (-K -), not argv, so it never shows in `ps`; curl's own output is discarded.
+  if printf 'url = "%s"\n' "$alert_url" \
+    | curl -sS -K - --connect-timeout 5 --max-time 10 -X POST -H 'Content-Type: application/json' \
+        --data-binary "@$alert_body" >/dev/null 2>&1; then
+    echo "deploy alert sent (exit $alert_rc, step $deploy_step)" >&2
+  else
+    echo "deploy alert delivery FAILED (exit $alert_rc, step $deploy_step); the deploy result is unchanged" >&2
+  fi
+  rm -f "$alert_body"
+  return 0
+}
+trap 'deploy_alert "$?"' EXIT
+
 # The Postgres database name (compose.yml: ${CHARTWARDEN_DB_NAME:-chartwarden}). It is interpolated into
 # connection URLs and psql/pg_dump arguments, so fail fast unless it is a plain lower-case identifier.
 # An exported variable wins over .env.production, exactly as it does for compose interpolation.
@@ -96,7 +143,8 @@ cleanup() {
   rm -f "$next_file" "$backup_file"
   [ -z "${ledger_before:-}" ] || rm -f "$ledger_before" "$ledger_before.after"
 }
-trap cleanup EXIT
+# shellcheck disable=SC2154 # alert_exit is assigned inside the trap string itself
+trap 'alert_exit=$?; cleanup; deploy_alert "$alert_exit"; exit "$alert_exit"' EXIT
 
 awk -v backend="$backend_image" -v web="$web_image" -v docling="$docling_image" '
   BEGIN { saw_backend = 0; saw_web = 0; saw_docling = 0 }
@@ -127,9 +175,6 @@ schema_applied=""
 # healthy ones running. Recreating them then would start them from the NEW compose.yml (which names the
 # chartwarden_* database roles, migration 1139) against a schema that may not have been renamed yet.
 migrate_ok=0
-# Exit status of a deploy that stopped for an operator decision (EX_TEMPFAIL), distinct from a plain failure.
-HOLD_EXIT=75
-
 psql_admin() {
   docker compose --env-file .env.production -f compose.yml exec -T postgres \
     psql -U postgres -d "$db_name" -v ON_ERROR_STOP=1 -At "$@" </dev/null
@@ -267,6 +312,7 @@ verify_image_digest() {
   return 0
 }
 
+deploy_step=verify-signatures
 backend_ref=$backend_image
 web_ref=$web_image
 docling_ref=$docling_image
@@ -330,6 +376,7 @@ fi
 # Make the new release configuration visible only after its image references have been validated.
 mv "$next_file" .env.production
 
+deploy_step=pull
 docker compose --env-file .env.production -f compose.yml pull migrate provision api worker web docling-worker || {
   restore_previous_release
   exit 1
@@ -340,6 +387,7 @@ docker compose --env-file .env.production -f compose.yml pull migrate provision 
 # crash-looping API/worker containers after an otherwise successful migration. This import is pure
 # environment validation — it opens no database, Redis, or storage connection — and its error names
 # variable keys and rules, never their values.
+deploy_step=env-validation
 if ! docker compose --env-file .env.production -f compose.yml run --rm --no-deps api \
   bun -e 'import { assertProductionEnv } from "./apps/backend/src/bootstrap/env.ts"; assertProductionEnv(); console.log("production environment contract validated");'; then
   echo "new release environment validation failed; no migrations were applied and no new release service was started" >&2
@@ -349,6 +397,7 @@ fi
 
 # `up --no-deps` below never starts dependency services. Create/refresh the scoped MinIO
 # service account before the new api/worker credentials are used (including secret rotations).
+deploy_step=minio-provision
 docker compose --env-file .env.production -f compose.yml run --rm minio-provision || {
   echo "MinIO application account provisioning failed; no migrations were applied" >&2
   restore_previous_release
@@ -358,6 +407,7 @@ docker compose --env-file .env.production -f compose.yml run --rm minio-provisio
 # Production migrations are forward-only and commit one file at a time. A code rollback can restore the prior
 # image but cannot reverse a migration, so the ledger is read before and after, and the difference decides what
 # a later failure may restart (schema_verdict). Reading it first is the last point where failing costs nothing.
+deploy_step=ledger
 ledger_before=$(mktemp)
 # `exec` needs a running, healthy postgres; `run migrate` used to start it through depends_on. Never recreated here.
 if ! { docker compose --env-file .env.production -f compose.yml up -d --no-recreate --wait postgres \
@@ -367,6 +417,7 @@ if ! { docker compose --env-file .env.production -f compose.yml up -d --no-recre
   restore_previous_release
   exit 1
 fi
+deploy_step=migrate
 if docker compose --env-file .env.production -f compose.yml run --rm --no-deps migrate \
   bun run scripts/db/migrate.ts --strict --schema-only; then
   migrate_ok=1
@@ -379,6 +430,7 @@ else
   restore_previous_release
   exit 1
 fi
+deploy_step=provision
 docker compose --env-file .env.production -f compose.yml run --rm --no-deps provision || {
   restore_previous_release
   exit 1
@@ -400,6 +452,7 @@ if [ -n "$clamd_conf_hash" ] && [ "$clamd_conf_hash" != "$clamd_conf_applied" ];
 fi
 docker compose --env-file .env.production -f compose.yml run --rm --no-deps tenant-buckets \
   || echo "WARNING: tenant bucket backfill failed; uploads create a missing bucket on demand" >&2
+deploy_step=up
 docker compose --env-file .env.production -f compose.yml up -d --no-deps --force-recreate api worker web docling-worker || {
   restore_previous_release
   exit 1
@@ -410,6 +463,7 @@ docker compose --env-file .env.production -f compose.yml up -d --no-deps --force
 # proved nothing about the worker, the web tier, nginx, TLS, or whether anyone can actually log in.
 # `smoke.sh` runs four tiers and fails the deploy at the first one that does not hold; see its header
 # for what each tier rules out.
+deploy_step=smoke
 if ! ./smoke.sh; then
   restore_previous_release
   exit 1
