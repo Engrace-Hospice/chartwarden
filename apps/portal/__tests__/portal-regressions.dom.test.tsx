@@ -129,7 +129,7 @@ describe("PR5 portal cross-screen regression checks", () => {
       }
       return json({}, 404);
     });
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(await screen.findByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "Join visit" }));
     expect(await screen.findByText(/We couldn't connect to the video visit/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Join visit" })).not.toBeDisabled();
@@ -151,7 +151,7 @@ describe("PR5 portal cross-screen regression checks", () => {
       }
       return json({}, 404);
     });
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(await screen.findByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "Join visit" }));
     expect(await screen.findByTitle("Video visit")).toBeTruthy();
     await act(async () => {

@@ -13,7 +13,15 @@ import type { ApiClient, FeatureFlags, SystemStatusComponent } from "@chartwarde
 // (error boundary, correlation id, API client, session, feature flags, system status) around a
 // react-router router built from the screen registry. The shell reads the registry but never
 // imports a feature module — modules register their screens at composition (apps/web/src/main.tsx).
-import { Suspense, createElement, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import {
+  Suspense,
+  createElement,
+  lazy,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 import type { ComponentType, JSX, ReactNode } from "react";
 import {
   Navigate,
@@ -37,7 +45,6 @@ import { AppLayout } from "./layout";
 import { LiveFeatureFlagProvider } from "./live-feature-flags";
 import { OfflineBanner } from "./offline-banner";
 import { RedirectRememberingLink } from "./redirect-remembering-link";
-import { RoleHome } from "./role-home";
 import type { WebScreen } from "./screen-registry";
 import { ActorSessionProvider, useSessionState } from "./session";
 import type { Session } from "./session";
@@ -115,6 +122,9 @@ function RequireScreenPermission({
     </>
   );
 }
+
+/** The role dashboard is ~50 kB of source and only the index route needs it (#849): load it on demand. */
+const RoleHome = lazy(() => import("./role-home").then((m) => ({ default: m.RoleHome })));
 
 /** Suspense boundary for a lazily-loaded route screen (TASK-033 route-level code-splitting). */
 function withSuspense(element: ReactNode): JSX.Element {
@@ -239,7 +249,7 @@ export function AppShell({
             children: [
               ...(chromelessOwnsRoot
                 ? []
-                : [{ index: true, element: <RoleHome screens={chromed} /> }]),
+                : [{ index: true, element: withSuspense(<RoleHome screens={chromed} />) }]),
               ...chromed.map((s) => ({
                 path: s.path.replace(/^\//, ""),
                 // Param-path screens (`/x/:id`) are reached by links, and their descriptor key was only ever a

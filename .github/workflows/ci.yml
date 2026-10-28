@@ -91,6 +91,15 @@ jobs:
       - name: Dependency vulnerability audit (audit:deps)
         run: bun run audit:deps
 
+      # #849: initial-bundle budgets (web/admin/portal) were enforced by nothing, so web and admin drifted to
+      # ~550 kB against 350 kB unnoticed. Production-build each SPA and fail when its entry is over budget.
+      # No new job or trigger: it rides build-and-verify (the metered runner is already up).
+      - name: Initial bundle size budgets (web, admin, portal)
+        run: |
+          for app in web admin portal; do
+            (cd "apps/$app" && bun run build:app && bun run size:check --check)
+          done
+
       # BLOCKING as of #33. It ran `continue-on-error: true` from the day it was added, so the gate
       # executed, failed, and was discarded on every commit — 187 diagnostics on `main`, and the two
       # real defects buried in them (#31, a cross-tenant ops route publishing the wrong response

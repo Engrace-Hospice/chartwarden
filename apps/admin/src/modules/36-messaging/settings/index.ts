@@ -1,10 +1,15 @@
 // apps/admin/src/modules/36-messaging/settings — M36 settings screens (alert rules, notification preferences,
 // delivery endpoints). `settingsScreens` is spread into the module's `screens` array at registration.
 import type { ScreenDescriptor } from "@chartwarden/types";
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { AlertRules } from "./alert-rules";
-import { DeliveryEndpoints } from "./delivery-endpoints";
-import { NotificationPreferences } from "./notification-preferences";
+const AlertRules = lazy(() => import("./alert-rules").then((m) => ({ default: m.AlertRules })));
+const DeliveryEndpoints = lazy(() =>
+  import("./delivery-endpoints").then((m) => ({ default: m.DeliveryEndpoints })),
+);
+const NotificationPreferences = lazy(() =>
+  import("./notification-preferences").then((m) => ({ default: m.NotificationPreferences })),
+);
 
 export { AlertRules, DeliveryEndpoints, NotificationPreferences };
 

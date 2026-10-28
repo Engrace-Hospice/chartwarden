@@ -4,8 +4,14 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 // `requiredPermission: "member.manage"` reuses the SAME admin-only bar Staff Management gates on — a
 // pragmatic choice for a first, single-surface ops slice rather than minting a new `ops.*` permission
 // category (see the backend route's own comment, apps/backend/src/bootstrap/routes/ops-outbox.ts).
+import { lazy } from "react";
 import type { ComponentType } from "react";
-import { OutboxEventRedirect, OutboxList } from "./outbox-list";
+
+// Route-level code splitting (#849): each screen is its own chunk; the shell wraps routes in <Suspense>.
+const OutboxEventRedirect = lazy(() =>
+  import("./outbox-list").then((m) => ({ default: m.OutboxEventRedirect })),
+);
+const OutboxList = lazy(() => import("./outbox-list").then((m) => ({ default: m.OutboxList })));
 
 export const opsAdminScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 1,
