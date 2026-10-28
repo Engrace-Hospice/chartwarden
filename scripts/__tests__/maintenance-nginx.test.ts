@@ -13,7 +13,8 @@ const INCLUDE = "include /etc/nginx/snippets/chartwarden-maintenance.conf;";
 
 describe("deploy/production maintenance switch (#865)", () => {
   const snippet = read("deploy/production/nginx/chartwarden-maintenance.conf");
-  const page = read("deploy/production/nginx/maintenance.html");
+  // The page is inline in the snippet (the static handler would 405 a PUT/PATCH/DELETE/OPTIONS).
+  const page = snippet.slice(snippet.indexOf("return 503 '"));
 
   it("is gated on a flag file and answers 503", () => {
     expect(snippet).toMatch(
@@ -26,19 +27,19 @@ describe("deploy/production maintenance switch (#865)", () => {
   it("serves the static page with Retry-After and no caching", () => {
     expect(snippet).toMatch(/add_header Retry-After "\d+" always;/);
     expect(snippet).toMatch(/add_header Cache-Control "no-store" always;/);
-    expect(snippet).toContain("root /var/www/chartwarden-maintenance;");
-    expect(snippet).toContain("rewrite ^ /maintenance.html break;");
+    expect(snippet).toContain("default_type text/html;");
+    expect(snippet).not.toMatch(/^\s*(root|rewrite|try_files)\b/m);
   });
 
-  it("keeps the health probes outside the maintenance response", () => {
-    const exempt = 'if ($uri ~ "^/(ready|api/health)$") { set $cw_maintenance ""; }';
+  it("keeps the api probes outside the maintenance response, anchored with \\z", () => {
+    const exempt = 'if ($uri ~ "^/(ready|health)\\z") { set $cw_maintenance ""; }';
     expect(snippet).toContain(exempt);
     expect(snippet.indexOf("set $cw_maintenance 1")).toBeLessThan(snippet.indexOf(exempt));
     expect(snippet.indexOf(exempt)).toBeLessThan(snippet.indexOf("return 503"));
   });
 
   it("the page exists and is self-contained", () => {
-    expect(existsSync(join(ROOT, "deploy/production/nginx/maintenance.html"))).toBe(true);
+    expect(page).toContain("briefly unavailable");
     expect(page).not.toMatch(/(src|href)\s*=\s*["']?(https?:)?\/\//i);
     expect(page).not.toMatch(/<script/i);
     expect(page).not.toMatch(/url\(/i);
@@ -48,10 +49,9 @@ describe("deploy/production maintenance switch (#865)", () => {
     expect(read(`deploy/production/nginx/chartwarden-${name}.conf`)).toContain(INCLUDE);
   });
 
-  it("bootstrap installs the snippet, the page and the toggle script", () => {
+  it("bootstrap installs the snippet and the toggle script", () => {
     const bootstrap = read("deploy/production/bootstrap-vps.sh");
     expect(bootstrap).toContain("nginx/chartwarden-maintenance.conf");
-    expect(bootstrap).toContain("nginx/maintenance.html");
     expect(bootstrap).toContain("maintenance.sh");
   });
 

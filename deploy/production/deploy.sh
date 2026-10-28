@@ -49,14 +49,19 @@ if [ ! -f .env.production ] || [ ! -f compose.yml ]; then
 fi
 
 # ── DEPLOY ALERT (#866): optional, best effort, never decides the deploy's outcome ──────────────────────────────
-# DEPLOY_ALERT_WEBHOOK_URL (environment, else .env.production) is a SECRET and is never printed or put on a command
-# line. When set, any non-zero exit from here on POSTs a small JSON document: commit SHA, failing step, exit code and
+# DEPLOY_ALERT_WEBHOOK_URL (environment, else $deploy_dir/.deploy-alert.env, mode 0600) is a SECRET and is never printed
+# or put on a command line. It is deliberately NOT read from .env.production: compose.yml injects that whole file into
+# the api, worker, web and migrate containers, which have no business holding it. When set, any non-zero exit from here on POSTs a small JSON document: commit SHA, failing step, exit code and
 # applied migration filenames (validated ledger names only). Nothing else, so no PHI and no secrets can ride along.
 # Exit 75 is named "operator decision required". Unset = no-op. A failed or slow delivery is logged and swallowed.
 deploy_step=preflight
 # Exit status of a deploy that stopped for an operator decision (EX_TEMPFAIL), distinct from a plain failure.
 HOLD_EXIT=75
-alert_url=${DEPLOY_ALERT_WEBHOOK_URL:-$(sed -n 's/^DEPLOY_ALERT_WEBHOOK_URL=//p' .env.production | tail -n 1 | tr -d '\r' | sed -e 's/^"\([^"]*\)".*$/\1/' -e "s/^'\([^']*\)'.*\$/\1/" -e 's/[[:space:]]\{1,\}#.*$//' -e 's/[[:space:]]*$//')}
+alert_url=${DEPLOY_ALERT_WEBHOOK_URL:-}
+alert_file=$deploy_dir/.deploy-alert.env
+if [ -z "$alert_url" ] && [ -f "$alert_file" ]; then
+  alert_url=$(sed -n 's/^DEPLOY_ALERT_WEBHOOK_URL=//p' "$alert_file" | tail -n 1 | tr -d '\r' | sed -e 's/^"\([^"]*\)".*$/\1/' -e "s/^'\([^']*\)'.*\$/\1/" -e 's/[[:space:]]\{1,\}#.*$//' -e 's/[[:space:]]*$//')
+fi
 
 deploy_alert() {
   alert_rc=$1
@@ -93,6 +98,12 @@ deploy_alert() {
   rm -f "$alert_body"
   return 0
 }
+# A killed deploy (ssh dropped, runner cancelled) still alerts: the signal trap turns the signal into an exit, which
+# runs the EXIT trap below with the conventional 128+N status. This composes with the exit-75 hold path, which exits
+# normally and never hits these.
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 trap 'deploy_alert "$?"' EXIT
 
 # The Postgres database name (compose.yml: ${CHARTWARDEN_DB_NAME:-chartwarden}). It is interpolated into
@@ -144,7 +155,7 @@ cleanup() {
   [ -z "${ledger_before:-}" ] || rm -f "$ledger_before" "$ledger_before.after"
 }
 # shellcheck disable=SC2154 # alert_exit is assigned inside the trap string itself
-trap 'alert_exit=$?; cleanup; deploy_alert "$alert_exit"; exit "$alert_exit"' EXIT
+trap 'alert_exit=$?; cleanup || :; deploy_alert "$alert_exit"; exit "$alert_exit"' EXIT
 
 awk -v backend="$backend_image" -v web="$web_image" -v docling="$docling_image" '
   BEGIN { saw_backend = 0; saw_web = 0; saw_docling = 0 }

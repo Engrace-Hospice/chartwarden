@@ -267,20 +267,30 @@ external assets) instead of a raw 502 while app containers are stopped:
 ```
 
 Equivalent by hand: `touch /etc/nginx/chartwarden-maintenance.on` / `rm /etc/nginx/chartwarden-maintenance.on`. No nginx
-reload is needed; the flag is tested per request. `/ready` and `/api/health` stay proxied so probes see the real stack.
-`bootstrap-vps.sh` installs `nginx/chartwarden-maintenance.conf` to `/etc/nginx/snippets/` and the page to
-`/var/www/chartwarden-maintenance/`; the frontend, backend and tenant vhosts include the snippet (on a host that predates
-this, re-copy the vhosts and snippet, then `nginx -t && systemctl reload nginx`). MinIO's storage vhost is not covered.
+reload is needed; the flag is tested per request. Every method (GET, PUT, PATCH, DELETE, OPTIONS, POST) gets the 503
+and `Retry-After: 600`; the page is inline in the snippet, so no file has to be served.
+Probes: the api answers `/ready` and `/health` at its root, and those two exact paths are exempt (`/ready%0a`,
+`/ready/` are not). They reach the api only through the **backend** vhost (everything proxied) and, for `/ready` only,
+the **tenant** vhost. On the **frontend** vhost they fall through to the web container, not the api, so that vhost has
+no api probe.
+Scope: the snippet gates the port-80 vhosts, in front of any certbot HTTP-to-HTTPS redirect, so a client is redirected
+first and then sees the 503. Webhook senders (Twilio, Postmark, ...) get the 503 and must retry; nothing queues them.
+`bootstrap-vps.sh` installs `nginx/chartwarden-maintenance.conf` to `/etc/nginx/snippets/`; the frontend, backend and
+tenant vhosts include it (on a host that predates this, re-copy the vhosts and snippet, then
+`nginx -t && systemctl reload nginx`). MinIO's storage vhost is not covered.
 **Turn maintenance off before re-running `deploy.sh`**: its smoke tier 3 probes the public URLs and would see the 503.
 Decision: `deploy.sh` never enables maintenance by itself. A halt is, by design, a state where the running app may
 still be serving clinicians, and flipping it on automatically would cause the outage the hold exists to avoid.
 
-**Deploy alert (#866).** Set `DEPLOY_ALERT_WEBHOOK_URL` in `.env.production` (a secret; a Slack-compatible incoming
-webhook or any endpoint accepting a JSON POST) and `deploy.sh` posts on any non-zero exit after the env file check: exit
-75 is labelled "operator decision required". The payload has only the commit SHA, the failing step, the exit code and
-the applied migration filenames. Delivery is best effort (5 s connect / 10 s total timeout; a failure is logged and
-never changes the deploy's exit status); the URL is never printed. Unset means no alert, and the failed `deploy`
-workflow run is then the only signal.
+**Deploy alert (#866).** Put `DEPLOY_ALERT_WEBHOOK_URL=https://...` (a Slack-compatible incoming webhook, or any
+endpoint taking a JSON POST) in `<deploy dir>/.deploy-alert.env`, mode 0600 (template: `.deploy-alert.env.example`;
+`bootstrap-vps.sh` creates it commented out). It is **not** read from `.env.production`, because `compose.yml` injects
+that whole file into the api, worker, web and migrate containers. An exported `DEPLOY_ALERT_WEBHOOK_URL` wins over the
+file. `deploy.sh` then posts on any non-zero exit after the env file check, including a killed deploy (HUP/INT/TERM
+become exit 129/130/143): exit 75 is labelled "operator decision required". The payload has only the commit SHA, the
+failing step, the exit code and the applied migration filenames. Delivery is best effort (5 s connect / 10 s total
+timeout; a failure is logged and never changes the deploy's exit status); the URL is never printed. Unset means no
+alert, and the failed `deploy` workflow run is then the only signal.
 
 ## Infrastructure images: digest pins (#855)
 

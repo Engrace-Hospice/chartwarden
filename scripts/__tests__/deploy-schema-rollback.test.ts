@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
@@ -56,7 +56,9 @@ case "$*" in
     shift; while [ "$1" != "--classify" ]; do shift; done; shift
     exec "$STUB_BUN" "$STUB_CLASSIFIER" --classify "$@" ;;
   *"run --rm --no-deps api bun -e"*) exit "\${STUB_ENV_EXIT:-0}" ;;
-  *"run --rm --no-deps provision"*) exit "\${STUB_PROVISION_EXIT:-0}" ;;
+  *"run --rm --no-deps provision"*)
+    if [ -n "\${STUB_SLEEP:-}" ]; then touch "$STUB_STATE/hanging"; sleep "$STUB_SLEEP"; fi
+    exit "\${STUB_PROVISION_EXIT:-0}" ;;
   *"--force-recreate api worker web docling-worker"*) exit "\${STUB_UP_EXIT:-0}" ;;
 esac
 exit 0
@@ -93,8 +95,15 @@ interface Scenario {
   readonly envExit?: number;
   /** First-ever deploy: no ledger table until migrate runs. */
   readonly freshDb?: boolean;
-  /** Webhook URL: "env" puts it in the process environment, "file" in .env.production, absent = unset. */
-  readonly alert?: { readonly via: "env" | "file"; readonly url?: string; readonly curlExit?: number };
+  /** `provision` blocks for this many seconds (so a signal can be delivered mid-deploy). */
+  readonly hangProvisionSeconds?: number;
+  /** smoke.sh makes the deploy dir read-only, so the EXIT-trap cleanup fails. */
+  readonly lockDir?: boolean;
+  /**
+   * Webhook URL: "env" = process environment, "file" = `.deploy-alert.env`, "legacy-env-file" = `.env.production`
+   * (which deploy.sh must NOT honour: compose injects that file into containers). Absent = unset.
+   */
+  readonly alert?: { readonly via: "env" | "file" | "legacy-env-file"; readonly url?: string; readonly curlExit?: number };
 }
 
 interface Outcome {
@@ -113,13 +122,24 @@ interface Outcome {
 
 const readIfExists = (p: string): string => (existsSync(p) ? readFileSync(p, "utf8") : "");
 
-function deploy(s: Scenario): Outcome {
+interface Prepared {
+  readonly dir: string;
+  readonly state: string;
+  readonly log: string;
+  readonly env: NodeJS.ProcessEnv;
+}
+
+function prepare(s: Scenario): Prepared {
   const dir = mkdtempSync(join(scratch, "host-"));
   const state = join(dir, ".stub");
   mkdirSync(state);
   copyFileSync(DEPLOY, join(dir, "deploy.sh"));
   writeFileSync(join(dir, "preflight.sh"), "exit 0\n");
-  writeFileSync(join(dir, "smoke.sh"), `#!/bin/sh\nexit ${s.smokeExit ?? 0}\n`);
+  // lockDir: smoke makes the deploy dir read-only, so the EXIT-trap cleanup (rm of the staged files) fails.
+  writeFileSync(
+    join(dir, "smoke.sh"),
+    `#!/bin/sh\n${s.lockDir ? "chmod 500 .\n" : ""}exit ${s.smokeExit ?? 0}\n`,
+  );
   chmodSync(join(dir, "smoke.sh"), 0o755);
   writeFileSync(join(dir, "compose.yml"), "services: {}\n");
   writeFileSync(
@@ -132,15 +152,23 @@ function deploy(s: Scenario): Outcome {
       "MINIO_APP_SECRET_KEY=x",
       "MINIO_ACCESS_LOG_WEBHOOK_TOKEN=x",
       "CHARTWARDEN_DESTRUCTION_PASSWORD=x",
-      ...(s.alert?.via === "file" && s.alert.url ? [`DEPLOY_ALERT_WEBHOOK_URL=${s.alert.url}`] : []),
+      ...(s.alert?.via === "legacy-env-file" && s.alert.url
+        ? [`DEPLOY_ALERT_WEBHOOK_URL=${s.alert.url}`]
+        : []),
       "",
     ].join("\n"),
   );
+  if (s.alert?.via === "file" && s.alert.url) {
+    writeFileSync(join(dir, ".deploy-alert.env"), `DEPLOY_ALERT_WEBHOOK_URL=${s.alert.url}\n`, {
+      mode: 0o600,
+    });
+  }
   const log = join(state, "calls.log");
   writeFileSync(log, "");
-  const r = spawnSync("sh", ["deploy.sh", NEW_API, "ghcr.io/o/chartwarden-web:sha-new"], {
-    cwd: dir,
-    encoding: "utf8",
+  return {
+    dir,
+    state,
+    log,
     env: {
       PATH: `${binDir}:/usr/bin:/bin`,
       CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED: "1",
@@ -158,12 +186,20 @@ function deploy(s: Scenario): Outcome {
       STUB_UP_EXIT: String(s.upExit ?? 0),
       STUB_LEDGER_FAIL: s.ledgerFail ?? "",
       STUB_CURL_EXIT: String(s.alert?.curlExit ?? 0),
+      STUB_SLEEP: s.hangProvisionSeconds ? String(s.hangProvisionSeconds) : "",
       ...(s.alert?.via === "env" && s.alert.url ? { DEPLOY_ALERT_WEBHOOK_URL: s.alert.url } : {}),
     },
-  });
+  };
+}
+
+const DEPLOY_ARGS = ["deploy.sh", NEW_API, "ghcr.io/o/chartwarden-web:sha-new"];
+
+function collect(p: Prepared, code: number, out: string): Outcome {
+  const { dir, state, log } = p;
+  chmodSync(dir, 0o700); // undo a lockDir scenario so the scratch dir can be removed
   return {
-    code: r.status ?? -1,
-    out: `${r.stdout}${r.stderr}`,
+    code,
+    out,
     env: readFileSync(join(dir, ".env.production"), "utf8"),
     calls: readFileSync(log, "utf8").split("\n").filter(Boolean),
     previousReleaseSaved: existsSync(join(dir, ".env.production.previous-release")),
@@ -173,6 +209,28 @@ function deploy(s: Scenario): Outcome {
     curlArgs: readIfExists(join(state, "curl.args")),
     curlStdin: readIfExists(join(state, "curl.stdin")),
   };
+}
+
+function deploy(s: Scenario): Outcome {
+  const p = prepare(s);
+  const r = spawnSync("sh", DEPLOY_ARGS, { cwd: p.dir, encoding: "utf8", env: p.env });
+  return collect(p, r.status ?? -1, `${r.stdout}${r.stderr}`);
+}
+
+/** Starts a deploy that hangs in `provision`, delivers `signal` once it is there, and waits for it to exit. */
+async function deployThenSignal(s: Scenario, signal: NodeJS.Signals): Promise<Outcome> {
+  const p = prepare({ ...s, hangProvisionSeconds: 2 });
+  const child = spawn("sh", DEPLOY_ARGS, { cwd: p.dir, env: p.env });
+  let out = "";
+  child.stdout.on("data", (d: Buffer) => (out += d.toString()));
+  child.stderr.on("data", (d: Buffer) => (out += d.toString()));
+  const exited = new Promise<number>((res) => child.on("close", (c) => res(c ?? -1)));
+  for (let i = 0; i < 100 && !existsSync(join(p.state, "hanging")); i += 1) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  child.kill(signal);
+  const code = await exited;
+  return collect(p, code, out);
 }
 
 /** Recreations of the PREVIOUS release (the rollback `up` names api worker web and not docling-worker). */
@@ -324,8 +382,48 @@ describe.skipIf(BUN === "")("deploy.sh failure alert (#866)", () => {
     expect(o.curlArgs).toBe("");
   });
 
-  it("reads the URL from .env.production when the environment does not set it", () => {
+  it("reads the URL from .deploy-alert.env when the environment does not set it", () => {
     const o = deploy({ smokeExit: 1, alert: { via: "file", url: WEBHOOK } });
+    expect(o.code, o.out).toBe(1);
+    expect(o.alertBody).toMatchObject({ step: "smoke", exit_code: 1 });
+  });
+
+  it("ignores the key in .env.production (compose injects that file into containers)", () => {
+    const o = deploy({ smokeExit: 1, alert: { via: "legacy-env-file", url: WEBHOOK } });
+    expect(o.code, o.out).toBe(1);
+    expect(o.alertBody).toBeNull();
+    expect(o.curlArgs).toBe("");
+  });
+
+  it("the alert secret never reaches the containers: absent from the env example and from compose env_file", () => {
+    const example = readFileSync(join(REPO, "deploy/production/.env.production.example"), "utf8");
+    expect(example).not.toContain("DEPLOY_ALERT_WEBHOOK_URL");
+    const compose = readFileSync(join(REPO, "deploy/production/compose.yml"), "utf8");
+    const envFiles = [...compose.matchAll(/^\s*env_file:\s*(.+)$/gm)].map((m) => (m[1] ?? "").trim());
+    expect(envFiles.length).toBeGreaterThan(0);
+    for (const f of envFiles) expect(f).not.toContain("deploy-alert");
+    expect(compose).not.toContain(".deploy-alert");
+    expect(compose).not.toContain("DEPLOY_ALERT_WEBHOOK_URL");
+  });
+
+  it.each([
+    ["SIGTERM", 143],
+    ["SIGHUP", 129],
+    ["SIGINT", 130],
+  ] as const)("a deploy killed by %s still alerts with exit %i", async (signal, code) => {
+    const o = await deployThenSignal({ alert }, signal);
+    expect(o.code, o.out).toBe(code);
+    expect(o.alertBody).toMatchObject({ step: "provision", exit_code: code });
+  });
+
+  it("the exit-75 hold path alerts exactly once (the signal traps do not double-fire it)", () => {
+    const o = deploy({ applied: ["1291_m1_drop_legacy.sql"], smokeExit: 1, alert });
+    expect(o.code).toBe(75);
+    expect(o.curlArgs.trim().split("\n")).toHaveLength(1);
+  });
+
+  it("a failing cleanup cannot skip the alert or change the exit code", () => {
+    const o = deploy({ smokeExit: 1, lockDir: true, alert });
     expect(o.code, o.out).toBe(1);
     expect(o.alertBody).toMatchObject({ step: "smoke", exit_code: 1 });
   });
