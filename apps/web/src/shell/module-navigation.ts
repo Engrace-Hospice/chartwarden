@@ -50,7 +50,7 @@ const ADMISSIONS_ITEMS: readonly { path: string; label: string }[] = [
 const ASSESSMENTS_ITEMS: readonly { path: string; label: string }[] = [
   { path: "/hope", label: "HOPE Timepoints" },
   { path: "/work/cosignatures", label: "Cosignatures" },
-  { path: "/work/drafts", label: "My Drafts" },
+  { path: "/work/drafts", label: "My visit drafts" },
   { path: "/admin/scales/licenses", label: "Scale Licenses" },
   { path: "/admin/scales/policies", label: "Scale Policies" },
   { path: "/hope/sfv", label: "SFV Worklist" },

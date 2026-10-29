@@ -564,7 +564,7 @@ export function LiveMeeting(): JSX.Element {
     {
       id: "patient",
       header: "Patient",
-      cell: (d) => (d.patientId ? nameOf(d.patientId) : "Team"),
+      cell: (d) => (d.patientId ? nameOf(d.patientId) : "Whole meeting"),
     },
     {
       id: "status",
@@ -976,7 +976,7 @@ export function LiveMeeting(): JSX.Element {
                         onClick={() => setDialog({ kind: "decision" })}
                         disabled={!isLive}
                       >
-                        Record for this patient
+                        Record a decision
                       </Button>
                     ) : null}
                   </>

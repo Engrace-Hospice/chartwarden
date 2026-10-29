@@ -98,10 +98,10 @@ function Sig({
         </div>
       </div>
       <label>
-        Route
+        SIG route (required)
         <input
           value={sig.route ?? ""}
-          placeholder="Enter route"
+          placeholder="Defaults to the drug route if left blank"
           onChange={(e) => put("route", e.target.value)}
         />
       </label>
@@ -342,12 +342,40 @@ export function MedicationOrderEditor(): JSX.Element {
   }, [api, id]);
   const save = async () => {
     if (saving || loadingDraft || (editing && !admission)) return;
+    // The SIG route is its own field (the server refuses an order without it): fall back to the drug route.
+    const sigRoute = (data.sigStructured?.route ?? "").toString().trim() || route.trim();
+    const preflight: MedicationFinding[] = [
+      ...(!editing && !physician
+        ? [
+            {
+              field: "prescribingPhysicianMdmId",
+              code: "REQUIRED",
+              message: "Select a prescribing physician.",
+            },
+          ]
+        : []),
+      ...(!sigRoute
+        ? [
+            {
+              field: "data.sigStructured.route",
+              code: "REQUIRED",
+              message: "SIG route is required.",
+            },
+          ]
+        : []),
+    ];
+    if (preflight.length) {
+      setFindings(preflight);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    const sendData = { ...data, sigStructured: { ...(data.sigStructured ?? {}), route: sigRoute } };
     setSaving(true);
     setSaveError(null);
     setFindings([]);
     const body = editing
       ? {
-          data: serializeMedicationData(data, kind),
+          data: serializeMedicationData(sendData, kind),
           drugName: name,
           strength,
           refillsAuthorized: data.refillsAuthorized ?? 0,
@@ -362,7 +390,7 @@ export function MedicationOrderEditor(): JSX.Element {
           strength,
           doseForm: form,
           route,
-          data: serializeMedicationData(data, kind),
+          data: serializeMedicationData(sendData, kind),
           prescriberDiscipline: discipline,
           prescribingPhysicianMdmId: physician,
           ...(pharmacy ? { dispensingPharmacyMdmId: pharmacy } : {}),
@@ -550,7 +578,7 @@ export function MedicationOrderEditor(): JSX.Element {
                       </div>
                       <div className="med-editor-pair-field">
                         <label>
-                          Route
+                          Drug route
                           <input
                             value={route}
                             placeholder="Enter route"
@@ -604,6 +632,11 @@ export function MedicationOrderEditor(): JSX.Element {
                   </select>
                 </label>
                 <Finding path="medClass" findings={findings} />
+                <p className="med-editor-help">
+                  Choose controlled_substance for any DEA-scheduled drug (for example lorazepam,
+                  Schedule IV). The controlled-substance flag and the High Risk count come from this
+                  class, not from the drug, so a scheduled drug saved as standard is not counted.
+                </p>
                 {!editing ? (
                   <p className="med-editor-help">
                     Changing the class resets directions and dispensing fields already entered.

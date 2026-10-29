@@ -586,3 +586,35 @@ describe("GET /idg/meetings/:meetingId/packets/:patientId — content + W-SUD-01
     await app.close();
   });
 });
+
+describe("seeded packet snapshot (scripts/db/lib/idg-seed-snapshot.ts)", () => {
+  it("is accepted by the packet reader — the placeholder lacking patientCover/carePlanSummary was not", async () => {
+    const { buildSeedPacketSnapshot } = await import("../../../scripts/db/lib/idg-seed-snapshot");
+    const at = "2026-10-29T12:00:00.000Z";
+    const snap = buildSeedPacketSnapshot({
+      meetingId: MTG,
+      patientId: P_PLAIN,
+      admissionId: "66666666-6666-4666-8666-666666666666",
+      locationId: LOC,
+      builtAtIso: at,
+      fullNameRedacted: "Eleanor W.",
+      age: 80,
+      lastSignedVersionId: null,
+    });
+    const ok = await mapPacketContent(
+      { builtSnapshot: snap, disciplineViews: {} } as never,
+      async () => true,
+    );
+    expect(ok.content).not.toBeNull();
+    const legacyPlaceholder = {
+      schemaVersion: "2026-01-v1",
+      meta: snap.meta,
+      sinceLastIdg: snap.sinceLastIdg,
+    };
+    const bad = await mapPacketContent(
+      { builtSnapshot: legacyPlaceholder, disciplineViews: {} } as never,
+      async () => true,
+    );
+    expect(bad.content).toBeNull();
+  });
+});

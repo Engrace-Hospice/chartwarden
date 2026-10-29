@@ -49,7 +49,7 @@ const DECISION_KINDS = [
 type DecisionKind = (typeof DECISION_KINDS)[number];
 
 const KIND_LABEL: Record<DecisionKind, string> = {
-  team_note: "Team note",
+  team_note: "Team note (whole meeting, no patient)",
   care_plan_update: "Care-plan update — add a problem",
   level_of_care_consideration: "Level-of-care consideration",
   recertification_consideration: "Recertification consideration",
@@ -269,6 +269,13 @@ export function DecisionModal({
             onChange={(e) => setKind(e.target.value as DecisionKind)}
             options={DECISION_KINDS.map((k) => ({ value: k, label: KIND_LABEL[k] }))}
           />
+
+          {!needsPatient ? (
+            <p style={meta}>
+              A team note belongs to the whole meeting, not to a patient. Pick another decision kind
+              to attach it to a patient.
+            </p>
+          ) : null}
 
           {needsPatient ? (
             patients.length === 0 ? (

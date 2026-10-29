@@ -34,10 +34,10 @@ import {
   getIvSession,
   listPatientMedicationOrders,
 } from "./emar-api";
-import { stateLabel } from "./emar-status";
+import { formatLocalTs, stateLabel } from "./emar-status";
 import { IvSegmentModal } from "./iv-segment-modal";
 
-const ts = (v: string): string => v.slice(0, 16).replace("T", " ");
+const ts = formatLocalTs;
 
 const SEGMENT_CTA: Record<IvSegmentMode, string> = {
   iv_continuous_start: "Start",

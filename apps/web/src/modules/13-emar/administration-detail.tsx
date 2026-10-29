@@ -41,9 +41,9 @@ import {
   getAdministration,
   voidAdministration,
 } from "./emar-api";
-import { ADMIN_STATUS_TONE, lateEntryTone, stateLabel } from "./emar-status";
+import { ADMIN_STATUS_TONE, formatLocalTs, lateEntryTone, stateLabel } from "./emar-status";
 
-const ts = (v: string | null): string => (v ? v.slice(0, 16).replace("T", " ") : "—");
+const ts = formatLocalTs;
 
 /** The four acts this screen can commit; each needs a reason the record keeps. */
 type DetailAct = "correct" | "void" | "acknowledge" | "dispute" | null;

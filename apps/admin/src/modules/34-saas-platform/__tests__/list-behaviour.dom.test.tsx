@@ -236,7 +236,7 @@ describe("state-held selections", () => {
     flagKey: "beta.thing",
     organizationId: null,
     flagKind: "product",
-    valueType: "boolean",
+    valueType: "bool",
     value: true,
     rolloutPercent: null,
     killSwitchActive: false,

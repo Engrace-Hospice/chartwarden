@@ -30,6 +30,7 @@ import {
 // pins that no module invents a second.
 import { useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { usePatientNames } from "../../shell/patient-names";
 import { useSession } from "../../shell/session";
 import {
   type CosignerRole,
@@ -104,10 +105,47 @@ const VERBAL_ATTESTATION_MIN = 100;
 const humanize = (k: string): string =>
   k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
+const ROLE_LABEL: Record<string, string> = {
+  hospice_physician: "Hospice physician",
+  medical_director: "Medical director",
+  np: "NP",
+  pa: "PA",
+  rn_case_manager: "RN case manager",
+  clinical_supervisor: "Clinical supervisor",
+};
+const roleLabel = (k: string): string => ROLE_LABEL[k] ?? humanize(k);
+
+/** What the Sign dialog shows about the order being signed (all read from the order the page already loaded). */
+export interface MedicationOrderSummary {
+  readonly patientId: string;
+  readonly drugName: string;
+  readonly strength: string;
+  readonly route: string;
+  readonly data?: {
+    readonly sigStructured?: {
+      readonly doseQuantity?: number | string;
+      readonly doseUnit?: string;
+      readonly route?: string;
+      readonly frequencyCode?: string;
+    };
+    readonly sigFreeText?: string;
+  } | null;
+}
+
+function sigText(order: MedicationOrderSummary): string {
+  const sig = order.data?.sigStructured;
+  const structured = [sig?.doseQuantity, sig?.doseUnit, sig?.route, sig?.frequencyCode]
+    .filter((v) => v !== undefined && v !== "")
+    .join(" ");
+  return order.data?.sigFreeText?.trim() || structured || "Not recorded";
+}
+
 export interface MedicationActionModalProps {
   readonly open: boolean;
   readonly action: MedicationAction;
   readonly orderId: string;
+  /** Shown as a summary in the Sign dialog. */
+  readonly order?: MedicationOrderSummary;
   readonly onClose: () => void;
   readonly onDone: (order: MedicationOrderView) => void;
 }
@@ -116,6 +154,7 @@ export function MedicationActionModal({
   open,
   action,
   orderId,
+  order,
   onClose,
   onDone,
 }: MedicationActionModalProps): JSX.Element | null {
@@ -130,6 +169,7 @@ export function MedicationActionModal({
     return PRESCRIBER_ROLE_KEYS.filter((r) => held.has(r));
   }, [session]);
 
+  const patientNames = usePatientNames(action === "sign" && order ? [order.patientId] : []);
   const [discipline, setDiscipline] = useState("");
   const [cosignerRole, setCosignerRole] = useState<CosignerRole>(COSIGNER_ROLES[0]);
   const [attestation, setAttestation] = useState("");
@@ -237,15 +277,42 @@ export function MedicationActionModal({
             </p>
           ) : (
             <SelectField
-              label={action === "verbal" ? "Recording as" : "Send to discipline"}
+              label={action === "verbal" ? "Recording as" : "Send as (a role you hold)"}
               value={discipline}
               onChange={(e) => setDiscipline(e.target.value)}
               options={[
                 ...(prescriberRoles.length > 1 ? [{ value: "", label: "Select a role…" }] : []),
-                ...prescriberRoles.map((r) => ({ value: r, label: humanize(r) })),
+                ...prescriberRoles.map((r) => ({ value: r, label: roleLabel(r) })),
               ]}
             />
           )
+        ) : null}
+
+        {action === "request-signature" ? (
+          <p style={meta}>
+            You can only send an order as a role you hold. An order drafted by a non-prescriber,
+            such as an RN case manager, may need a physician cosignature before it can be signed.
+          </p>
+        ) : null}
+
+        {action === "sign" && order ? (
+          <dl style={summary} aria-label="Order summary">
+            <dt>Patient</dt>
+            <dd>{patientNames[order.patientId]?.name ?? "Patient"}</dd>
+            <dt>Drug</dt>
+            <dd>{order.drugName}</dd>
+            <dt>Strength</dt>
+            <dd>{order.strength || "—"}</dd>
+            <dt>Route</dt>
+            <dd>{order.route || "—"}</dd>
+            <dt>SIG</dt>
+            <dd>{sigText(order)}</dd>
+            <dt>Signing as</dt>
+            <dd>
+              {session?.displayName ?? "You"}
+              {prescriberRoles.length ? ` (${prescriberRoles.map(roleLabel).join(", ")})` : ""}
+            </dd>
+          </dl>
         ) : null}
 
         {action === "cosign" ? (
@@ -337,6 +404,13 @@ export function MedicationActionModal({
   );
 }
 
+const summary = {
+  display: "grid",
+  gridTemplateColumns: "auto 1fr",
+  gap: "0.25rem 0.75rem",
+  margin: 0,
+  fontSize: "0.85rem",
+} as const;
 const title = { margin: 0, fontSize: "1.05rem", fontWeight: 600 } as const;
 const meta = { margin: 0, fontSize: "0.75rem", color: "var(--color-on-surface-variant)" } as const;
 const errorText = { margin: 0, fontSize: "0.8rem", color: "var(--color-error)" } as const;

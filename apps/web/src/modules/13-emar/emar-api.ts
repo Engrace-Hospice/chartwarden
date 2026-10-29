@@ -87,6 +87,27 @@ export type AdministrationPolicyView = Ok<operations["getApiV1AdminAdministratio
  *  M13 dose DTO carries only the order id; joining it to this list is what makes the row legible. */
 export type ActiveMedicationOrder = Ok<operations["getApiV1Medicationorders"]>["orders"][number];
 
+/**
+ * The order's stated per-dose amount and unit, read from `data` the way M12's `sigStructuredOf` does (flat or
+ * under `sigStructured`). A non-positive or unit-less dose is "not stated" -> null, never zero. Used only to
+ * PRE-FILL the administer form; the server's five-rights check is the control.
+ */
+export function orderStatedDose(
+  order: Pick<ActiveMedicationOrder, "data">,
+): { amount: number; unit: string } | null {
+  const root =
+    typeof order.data === "object" && order.data !== null
+      ? (order.data as Record<string, unknown>)
+      : {};
+  const nested = root.sigStructured;
+  const src =
+    typeof nested === "object" && nested !== null ? (nested as Record<string, unknown>) : root;
+  const { doseQuantity, doseUnit } = src;
+  if (typeof doseQuantity !== "number" || !(doseQuantity > 0)) return null;
+  if (typeof doseUnit !== "string" || doseUnit.trim() === "") return null;
+  return { amount: doseQuantity, unit: doseUnit };
+}
+
 /** The M12 lifecycle status of an order. */
 export type MedicationOrderStatus = ActiveMedicationOrder["status"];
 

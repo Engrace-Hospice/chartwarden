@@ -48,6 +48,7 @@ import {
   type RecordAdministrationBody,
   errorMessage,
   isWitnessRequired,
+  orderStatedDose,
   recordAdministration,
   recordRefusal,
   wristbandRefusalOf,
@@ -156,11 +157,18 @@ export function AdministerModal({
     setBusy(false);
   }, [open, initialOrderId, orders]);
 
-  // Route/dose default from the order, so the common case is a confirmation rather than transcription.
+  // Route/dose/unit default from the selected order so the common case is a confirmation rather than
+  // transcription. Re-applied when the clinician switches order (the previous order's values are wrong for
+  // the new one); still editable, and the server's five-rights check is the control.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the order id on purpose (see above)
   useEffect(() => {
     if (!order) return;
-    setRoute((prev) => (prev.length > 0 ? prev : order.route));
-  }, [order]);
+    const dose = orderStatedDose(order);
+    setRoute(order.route);
+    setAmount(dose ? String(dose.amount) : "");
+    setUnit(dose ? dose.unit : "");
+    // Keyed on the order id: a refreshed orders array must not overwrite what the clinician already typed.
+  }, [order?.id]);
 
   const minutesLate = useMemo(() => {
     const parsed = Date.parse(at);
@@ -334,8 +342,10 @@ export function AdministerModal({
             <fieldset style={fieldset}>
               <legend style={legend}>Five rights</legend>
               <p style={meta}>
-                Confirm each before recording. This checklist gates this dialog only — the server
-                does not yet validate the rights against the order.
+                Confirm each before recording. The server also checks the order itself: the right
+                patient and an administrable order, the route, the dose and unit against the order's
+                stated dose, and that the time is not in the future. It does not verify the drug
+                beyond the order you selected (unless you scan the NDC), or a dose schedule.
               </p>
               {FIVE_RIGHTS.map((r) => (
                 <label key={r.id} style={checkRow}>
