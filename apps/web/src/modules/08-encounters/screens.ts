@@ -6,30 +6,16 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 // visibility is gated by the matching M8 permission key; the SERVER stays the only enforcement point
 // (no frontend authz).
 //
-// #91 / F-063 — THE NOTE CAN NOW BE AUTHORED. `encounter-compose.tsx` is the §2.6 tap-to-document
-// surface: the template's sections, the vocabulary each accepts, per-entry `${slot}` params, verbatim
-// per-section free text, vitals capture, save (§7.7 `If-Match`) and finalize. This header used to say
-// the authoring surfaces would "fill in as their write paths harden" — `PATCH .../selections` had been
-// mounted since M8-T09 and persisting since #114. What was missing is the MENU: the route carries
-// `sectionId`/`code` as free strings and rejects an unknown one, and the template registry + vocabulary
-// corpus (`@chartwarden/hearthnote`, `@chartwarden/narrative-vocab`, both since M8-T05) were on nobody's wire.
-// `GET .../template` is that menu, served rather than shipped so the client cannot hold a second,
-// divergent copy of the rules `assembleSelections` enforces.
+// Authoring: `encounter-compose.tsx` is the §2.6 tap-to-document surface (template sections, per-section
+// vocabulary, `${slot}` params, verbatim free text, vitals, save with §7.7 `If-Match`, finalize); its menu is
+// served by `GET .../template` so the client holds no second copy of the `assembleSelections` rules.
+// `new-encounter-modal.tsx` starts an encounter from the patient encounters list. Care-plan links are
+// persisted (`POST/GET/DELETE .../care-plan-links`; DELETE is a soft invalidate) and edited from
+// `encounter-read.tsx`. Addenda are authored in `addendum-panel.tsx`.
 //
-// …AND IT CAN NOW BE STARTED (F-083). The paragraph above was written from inside the composer, which is
-// where the gap hid: `createDraft` has been exported from `encounters-api.ts` since that change with NO
-// CALLER, and no screen offered a control that produced an encounter. Everything downstream of an
-// encounter id worked and nothing produced one — every encounter in the product came from a seed script.
-// `new-encounter-modal.tsx` is that control, on the patient encounters list.
-//
-// STILL DEFERRED, each for a reason:
+// STILL DEFERRED:
 //   • Layer-2 (`hearthnote/enhance` + the modification decisions) — the §2.6 D5 AI ladder is its own
 //     ceremony with its own governance surface, not part of authoring the deterministic note.
-//   • Care-plan links — `POST .../care-plan-links` parses a body, DISCARDS it, persists nothing and
-//     returns the ENCOUNTER's id as `linkId`; `DELETE` is a documented no-op. A control over that would
-//     report a link that does not exist (the F-007 rule). Filed separately.
-//   • (Addenda authoring is NOT deferred any more — GAP-027: the encounter detail screen's addenda panel
-//     edits, finalizes and signs an addendum; see addendum-panel.tsx.)
 import { lazy } from "react";
 import type { ComponentType } from "react";
 const CosignatureQueue = lazy(() =>
