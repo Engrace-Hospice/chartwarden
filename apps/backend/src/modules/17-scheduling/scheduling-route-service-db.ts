@@ -855,6 +855,98 @@ export function createDbSchedulingBackend(
     });
   }
 
+  /**
+   * The rest of a discharge's scheduling clean-up (published visits are cancelled by the caller): every
+   * `proposed` visit of the admission is dismissed (it can never be published for an ended admission, and
+   * a proposal was never visible to chart consumers, so no visit events), and every `active` recurring
+   * policy of the admission is discontinued so the materializer stops creating visits for it (#912).
+   */
+  async function endSchedulingForAdmission(
+    orgId: string,
+    userId: string,
+    admissionId: string,
+    reason: string,
+  ): Promise<{ dismissedProposed: number; discontinuedPolicies: number }> {
+    return withOrgContext(db, orgContextFor(orgId, userId), async (txRaw) => {
+      const tx = txRaw as DbClient;
+      const now = new Date();
+      const proposed = await tx
+        .select(VISIT_WRITE_COLS)
+        .from(V)
+        .where(
+          and(
+            eq(V.organizationId, orgId),
+            eq(V.admissionId, admissionId),
+            eq(V.status, "proposed"),
+          ),
+        );
+      for (const v of proposed) {
+        const transition = transitionVisit(v.status as VisitStatus, { type: "dismiss", reason });
+        await tx
+          .update(V)
+          .set({
+            status: transition.to,
+            cancelledByMembershipId: userId || null,
+            cancelledAt: now,
+            cancellationReason: reason,
+            cancellationReasonCode: "admission_lifecycle",
+            version: (v.version as number) + 1,
+            updatedAt: now,
+          })
+          .where(eq(V.id, v.id));
+        await appendHistory(
+          tx,
+          orgId,
+          {
+            id: v.id,
+            providerEntityId: v.providerEntityId as string,
+            locationId: v.locationId as string,
+          },
+          transition.effects,
+          userId,
+        );
+      }
+      const policies = await tx
+        .select({ id: RV.id, version: RV.version })
+        .from(RV)
+        .where(
+          and(
+            eq(RV.organizationId, orgId),
+            eq(RV.admissionId, admissionId),
+            eq(RV.status, "active"),
+          ),
+        );
+      for (const r of policies) {
+        const [counted] = await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(V)
+          .where(
+            and(
+              eq(V.organizationId, orgId),
+              eq(V.parentRecurringVisitId, r.id),
+              eq(V.cancellationReasonCode, "admission_lifecycle"),
+            ),
+          );
+        await tx
+          .update(RV)
+          .set({
+            status: "discontinued",
+            discontinuedAt: now,
+            discontinuedBy: userId || null,
+            version: (r.version as number) + 1,
+            updatedAt: now,
+          })
+          .where(eq(RV.id, r.id));
+        await emit(tx, orgId, "m17.recurring_visit.discontinued", "recurring_visit", r.id, {
+          recurringVisitId: r.id,
+          cancelledChildCount: counted?.n ?? 0,
+          discontinuedBy: userId,
+        });
+      }
+      return { dismissedProposed: proposed.length, discontinuedPolicies: policies.length };
+    });
+  }
+
   const proposalDisciplines: readonly InterventionDiscipline[] = [
     "rn",
     "lpn",
@@ -1899,7 +1991,13 @@ export function createDbSchedulingBackend(
         new Date(`${input.dischargeDate}T00:00:00.000Z`),
         reason,
       );
-      return { cancelledVisits };
+      const { dismissedProposed, discontinuedPolicies } = await endSchedulingForAdmission(
+        orgId,
+        userId,
+        input.admissionId,
+        reason,
+      );
+      return { cancelledVisits, dismissedProposed, discontinuedPolicies };
     },
 
     async scanVisitAttentionForOrg(orgId: string, userId: string, options: { now?: Date } = {}) {

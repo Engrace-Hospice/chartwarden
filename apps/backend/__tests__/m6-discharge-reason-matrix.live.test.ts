@@ -537,16 +537,13 @@ describe.skipIf(!DB_URL)("S10 — terminal transitions reach every consumer, LIV
   });
 
   /**
-   * REPORTED, NOT FIXED. M17's discharge handler (`handleAdmissionDischarge`) cancels FUTURE `published`
-   * visits and nothing else: a `proposed` visit stays on the planning board, and an `active` recurring-visit
-   * policy stays active, for every ending including death. `materializeRecurringVisitsForOrg` selects
-   * policies on `status = 'active'` alone and M17 never reads admission state when it schedules, so the
-   * policy is the thing that would keep creating visits for an ended admission. (That last step was read
-   * from the source, not executed: the pre-schedule gate needs a credentialed, role-holding clinician and
-   * a caseload entry.) These tests assert today's behaviour, so they FAIL when the gap is closed.
+   * M17's discharge handler (#912) also dismisses every `proposed` visit and discontinues every `active`
+   * recurring-visit policy of the admission, for every ending including death. Before the fix both survived,
+   * and `materializeRecurringVisitsForOrg` (which selects policies on `status = 'active'` alone) could have
+   * kept creating visits for an ended admission.
    */
-  describe("REPORTED, NOT FIXED — M17 leaves scheduling residue on an ended admission", () => {
-    it.each(TRANSITIONS)("$name: a proposed visit is left proposed", async (t) => {
+  describe("M17 closes the planning board and the recurrence for an ended admission", () => {
+    it.each(TRANSITIONS)("$name: a proposed visit is dismissed", async (t) => {
       const patientId = randomUUID();
       const admissionId = await activeAdmission(ORG_A, patientId);
       const proposed = await seedVisit(ORG_A, admissionId, patientId, "proposed");
@@ -555,12 +552,15 @@ describe.skipIf(!DB_URL)("S10 — terminal transitions reach every consumer, LIV
       await t.run(ORG_A, admissionId);
       await drain();
 
-      // The control proves the M17 consumer ran, so the unchanged `proposed` row is the gap and not a no-op.
       expect(await visitStatus(control)).toBe("cancelled");
-      expect(await visitStatus(proposed)).toBe("proposed");
+      expect(await visitStatus(proposed)).toBe("cancelled");
+      const { rows } = await admin.query("SELECT cancellation_reason_code FROM visit WHERE id=$1", [
+        proposed,
+      ]);
+      expect(rows[0].cancellation_reason_code).toBe("admission_lifecycle");
     });
 
-    it.each(TRANSITIONS)("$name: an active recurring-visit policy stays active", async (t) => {
+    it.each(TRANSITIONS)("$name: an active recurring-visit policy is discontinued", async (t) => {
       const patientId = randomUUID();
       const admissionId = await activeAdmission(ORG_A, patientId);
       const policy = await one(
@@ -585,8 +585,16 @@ describe.skipIf(!DB_URL)("S10 — terminal transitions reach every consumer, LIV
       await t.run(ORG_A, admissionId);
       await drain();
 
-      expect(await visitStatus(control)).toBe("cancelled"); // M17 ran; the policy below is the gap
-      expect(await one("SELECT status FROM recurring_visit WHERE id=$1", [policy])).toBe("active");
+      expect(await visitStatus(control)).toBe("cancelled");
+      expect(await one("SELECT status FROM recurring_visit WHERE id=$1", [policy])).toBe(
+        "discontinued",
+      );
+      expect(
+        await one(
+          "SELECT count(*)::int FROM outbox_event WHERE event_type='m17.recurring_visit.discontinued' AND aggregate_id=$1",
+          [policy],
+        ),
+      ).toBe(1);
     });
   });
 });
