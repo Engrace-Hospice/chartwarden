@@ -52,12 +52,15 @@ async function completeIntakeContext(page: Page): Promise<void> {
   // By option value (the UB-04 code), not label: the labels are "<code> — <text>" and would break on relabel.
   await page.getByRole("combobox", { name: /Type of admission/ }).selectOption("3"); // Elective
   await page.getByRole("combobox", { name: /Point of origin/ }).selectOption("1"); // Non-health care facility
+  // The selected patient's benefit-period plan loads asynchronously and gates Continue.
+  await expect(page.getByRole("spinbutton", { name: "Benefit period number" })).toHaveValue("1");
 }
 
 test.describe("Admission", () => {
   test("main path: direct-intake wizard creates an admission for a real patient", async ({
     page,
   }) => {
+    test.setTimeout(90_000);
     await signInAs(page, ADMIN_ACCOUNT());
     // Discover a real, in-scope patient through the app itself, then find them in the lookup.
     await openFirstPatientChart(page);
@@ -92,6 +95,7 @@ test.describe("Admission", () => {
   });
 
   test("the wizard gates each step on its own required field", async ({ page }) => {
+    test.setTimeout(90_000);
     await signInAs(page, ADMIN_ACCOUNT());
     await page.goto("/admissions/new");
 

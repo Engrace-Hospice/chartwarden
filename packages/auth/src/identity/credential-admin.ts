@@ -80,19 +80,22 @@ export const credentialAdminPlugin = () =>
           // The username plugin normalizes and validates this create; password.hash is the configured
           // ChartWarden Argon2id implementation (and remains the single hashing implementation).
           const passwordHash = await ctx.context.password.hash(password);
-          // Better Auth's internal adapter accepts the user record only.
-          const user = await ctx.context.internalAdapter.createUser({
-            name: body.name.trim(),
-            username: body.username,
-            displayUsername: body.username.trim(),
-            ...(typeof body.email === "string" && body.email.trim().length > 0
-              ? { email: body.email.trim().toLowerCase() }
-              : { email: undefined }),
-            emailVerified: false,
-            credentialState: "password_change_required",
-            credentialStateReason: "admin_provisioned",
-            credentialVersion: 1,
-          } as never);
+          // Better Auth 1.7 requires a provisioning source for user validation hooks.
+          const user = await ctx.context.internalAdapter.createUser(
+            {
+              name: body.name.trim(),
+              username: body.username,
+              displayUsername: body.username.trim(),
+              ...(typeof body.email === "string" && body.email.trim().length > 0
+                ? { email: body.email.trim().toLowerCase() }
+                : { email: undefined }),
+              emailVerified: false,
+              credentialState: "password_change_required",
+              credentialStateReason: "admin_provisioned",
+              credentialVersion: 1,
+            } as never,
+            { method: "admin" },
+          );
           try {
             await ctx.context.internalAdapter.linkAccount({
               userId: user.id,
