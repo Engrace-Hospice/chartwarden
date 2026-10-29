@@ -92,6 +92,8 @@ async function wipePriorOrdersMedsIdg(patientId: string): Promise<void> {
     await db.query("DELETE FROM administration_record WHERE medication_order_id = ANY($1)", [
       medIds,
     ]);
+    // scheduled_dose has no FK to medication_order: left behind, its rows render as a bare order id in the eMAR grid.
+    await db.query("DELETE FROM scheduled_dose WHERE medication_order_id = ANY($1)", [medIds]);
     await db.query("DELETE FROM medication_order WHERE id = ANY($1)", [medIds]);
   }
 

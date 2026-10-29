@@ -143,12 +143,14 @@ export function PatientEmar(): JSX.Element {
     void load();
   }, [client, holdDoseId, load]);
 
-  /** The DRUG for a medication order id, from M12. Falls back to the truncated id — the pre-F-031 display —
-   *  rather than inventing a name for an order this caller cannot read. */
+  /** The DRUG for a medication order id, from M12. Falls back to an explicit "not available" label with the short id,
+   *  rather than inventing a name for an order this caller cannot read or that no longer exists. */
   const drugLabel = useCallback(
     (medicationOrderId: string): string => {
       const order = orders.find((o) => o.id === medicationOrderId);
-      return order ? `${order.drugName} ${order.strength}` : medicationOrderId.slice(0, 10);
+      return order
+        ? `${order.drugName} ${order.strength}`
+        : `Order not available (${medicationOrderId.slice(0, 8)})`;
     },
     [orders],
   );
