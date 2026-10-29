@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(**/.env)",
+      "Read(**/.env.local)",
+      "Read(**/.env.development)",
+      "Read(**/.env.staging)",
+      "Read(**/.env.production)",
+      "Read(**/.env.tenant)",
+      "Read(**/.env.bak*)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/*.p12)",
+      "Read(**/*.pfx)",
+      "Read(**/id_rsa*)",
+      "Read(**/id_ed25519*)",
+      "Read(**/*.dump)",
+      "Read(**/*.sql.gz)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.pgpass)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git * --no-verify*)"
+    ],
+    "ask": [
+      "Edit(/compliance/**)",
+      "Edit(/.claude/settings.json)",
+      "Edit(/.claude/rules/**)",
+      "Edit(/scripts/harness/**)",
+      "Edit(/scripts/check-compliance-controls.ts)",
+      "Edit(/.githooks/**)",
+      "Edit(/.gitleaks.toml)",
+      "Edit(/.trivyignore.yaml)",
+      "Edit(/.github/workflows/**)",
+      "Edit(/deploy/production/**)",
+      "Bash(git push *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh secret *)",
+      "Bash(ssh *)",
+      "Bash(scp *)",
+      "Bash(rsync *)"
+    ],
+    "allow": [
+      "Bash(bun run build)",
+      "Bash(bun run typecheck)",
+      "Bash(bun run lint)",
+      "Bash(bun run test)",
+      "Bash(bun run arch:*)",
+      "Bash(bun run harness:*)",
+      "Bash(bun run status:matrix)",
+      "Bash(bunx vitest run scripts/__tests__/*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git branch)",
+      "Bash(git branch --list*)",
+      "Bash(git branch --show-current)",
+      "Bash(git branch -a)",
+      "Bash(git branch -r)",
+      "Bash(git branch -v)",
+      "Bash(git branch -vv)"
+    ]
+  },
+  "env": {
+    "ECC_HOOK_PROFILE": "standard",
+    "ECC_DISABLED_HOOKS": "pre:observe:continuous-learning,stop:evaluate-session,stop:desktop-notify",
+    "ECC_SKIP_OBSERVE": "1",
+    "ECC_GOVERNANCE_CAPTURE": "1",
+    "ECC_SESSION_RETENTION_DAYS": "30",
+    "ECC_SESSION_START_MAX_CHARS": "4000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  },
+  "cleanupPeriodDays": 30,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read|Grep|Glob|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/harness/pre-tool-guard.ts",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/harness/post-tool-ledger.ts",
+            "async": true,
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/harness/stop-gate.ts",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}

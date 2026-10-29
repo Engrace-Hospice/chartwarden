@@ -35,6 +35,9 @@ export const GATES = [
   "arch:vuln-allowlist",
   // #853 - services/docling-worker/uv.lock satisfies pyproject.toml (the image installs the lock with `--frozen`).
   "arch:docling-lock",
+  // Same "is the repo in a shape worth checking" family: every HIPAA/SOC 2 claim in
+  // compliance/controls.yaml still resolves to real evidence, and the agent harness is still wired.
+  "arch:compliance",
   "arch:parity",
   // Before `arch:boundaries`: that gate resolves import boundaries THROUGH the .cjs mirror, so a mirror
   // that disagrees with the manifest makes its verdict meaningless. Better to say the mirror is wrong

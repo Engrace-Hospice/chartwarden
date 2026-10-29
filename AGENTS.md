@@ -99,6 +99,15 @@ the `docs/history/gates-*.md` files ([index](./docs/history/README.md)).
 - **Triage labels:** five canonical roles, label string = name — `docs/agents/triage-labels.md`.
 - **Domain docs:** single-context; repo-root `CONTEXT.md` (not yet created) plus `docs/adr/` — `docs/agents/domain.md`.
 
+## Compliance harness (always on)
+
+Committed `.claude/` (settings, hooks, rules, skills, `compliance-reviewer` agent) keeps agents away from
+PHI and secrets and runs the change-scoped gates at Stop; [`docs/compliance/AGENT_HARNESS.md`](./docs/compliance/AGENT_HARNESS.md)
+explains each piece. A `[chartwarden-harness]` deny is information — fix the cause, never route around it.
+Synthetic SSN/MBI values only (`compliance/synthetic-identifiers.json`; skill `synthetic-phi`). A change
+that adds, weakens or removes a security control updates its row in `compliance/controls.yaml`
+(`arch:compliance` keeps every claim pointing at real evidence). Before a PR: skill `compliance-pr`.
+
 ## Using ECC
 
 [ECC](https://github.com/affaan-m/ECC) is an optional per-user Claude Code plugin (`ecc@ecc`); these notes

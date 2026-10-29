@@ -6,7 +6,15 @@ node_modules/
 
 # AI coding-agent tool config/state — personal/local, not part of the ChartWarden corpus.
 .agents/
-.claude/
+# `.claude/` is the exception: its settings, rules, skills and agents are the SHARED compliance harness
+# (docs/compliance/AGENT_HARNESS.md; `arch:compliance` fails if this goes back to ignoring the whole
+# directory). Only the per-developer pieces stay local — the ledger can name files and sessions.
+.claude/settings.local.json
+.claude/audit/
+.claude/.cache/
+.claude/sessions/
+.claude/hookify.*.local.md
+.claude/worktrees/
 .codex/
 .cursor/
 

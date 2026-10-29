@@ -1,0 +1,283 @@
+# ChartWarden — compliance control register (claim → evidence)
+# -----------------------------------------------------------------------------------------------
+# Each row ties a HIPAA Security Rule standard and/or SOC 2 Trust Services Criterion to the thing in
+# THIS repo that proves it: a package.json script (a gate or live suite), a CI workflow string, or a
+# file. `bun run arch:compliance` (part of arch:fitness) fails when:
+#   - an evidence script/file/CI reference no longer exists (the claim outlived its proof);
+#   - an `implemented` row has no AUTOMATED evidence (a script or CI reference) — a control proven
+#     only by a document is a control on paper;
+#   - a `partial`/`gap` row has no reason, or its review_by date is past or more than 180 days out;
+#   - a required HIPAA standard or SOC 2 criterion has no row at all.
+#
+# This is engineering traceability for auditors and for the agent harness. It is NOT a legal opinion
+# and does not by itself make ChartWarden "HIPAA compliant" or "SOC 2 certified": those need the
+# administrative program (policies, training, risk analysis sign-off, BAAs) and, for SOC 2, an
+# independent auditor's report over an observation window. Edits to this file ask for human approval
+# (.claude/settings.json).
+#
+# status: implemented | partial | gap | not-applicable
+
+controls:
+  # ---------------------------------------------------------------- §164.312 technical safeguards
+  - id: CW-AC-01
+    title: Tenant isolation enforced in the database (RLS, FORCEd, NOBYPASSRLS app role)
+    hipaa: ["164.312(a)(1)", "164.308(a)(4)(ii)(B)"]
+    soc2: ["CC6.1", "C1.1"]
+    status: implemented
+    evidence:
+      - script: arch:tenancy
+      - script: test:rls:live
+      - ci: "cross-tenant isolation proof"
+      - file: apps/backend/__tests__/_live-app-role.ts
+
+  - id: CW-AC-02
+    title: Unique user identification and authorization at the route (RBAC + ABAC predicates)
+    hipaa: ["164.312(a)(2)(i)", "164.308(a)(4)(ii)(C)"]
+    soc2: ["CC6.1", "CC6.3"]
+    status: implemented
+    evidence:
+      - script: arch:abac-predicates
+      - script: arch:abac-composed
+      - script: arch:request-header-auth
+      - script: test:auth:live
+
+  - id: CW-AC-03
+    title: Emergency access (break-glass) as a two-person, audited control
+    hipaa: ["164.312(a)(2)(ii)"]
+    soc2: ["CC6.1"]
+    status: implemented
+    evidence:
+      - script: test:m3:break-glass:live
+      - script: test:m3:break-glass-outbox:live
+      - script: test:m36:break-glass:live
+
+  - id: CW-AC-04
+    title: Automatic logoff / session lock and device session management
+    hipaa: ["164.312(a)(2)(iii)"]
+    soc2: ["CC6.1"]
+    status: implemented
+    evidence:
+      - script: test:m2:screen-unlock:live
+      - script: test:m36:session-devices:live
+
+  - id: CW-AC-05
+    title: Encryption at rest with per-tenant keys
+    hipaa: ["164.312(a)(2)(iv)"]
+    soc2: ["CC6.1", "C1.1"]
+    status: implemented
+    evidence:
+      - script: test:m34:tenant-key-provider:live
+      - script: test:crypto-labels:backfill:live
+      - script: test:m36:body-key-ring:live
+      - file: docs/architecture/CHARTWARDEN_SECURITY_HARDENING_v0_2.md
+
+  - id: CW-AU-01
+    title: Audit controls — PHI reads and writes leave an integrity-checked trail
+    hipaa: ["164.312(b)", "164.312(c)(1)"]
+    soc2: ["CC7.2", "CC4.1"]
+    status: implemented
+    evidence:
+      - script: test:m4:audit-integrity:live
+      - script: test:m4:read-audit:live
+      - script: test:audit:nested-redaction:live
+      - script: arch:audit-denylist-sync
+
+  - id: CW-AU-02
+    title: External auditor access is staged behind BAA acceptance and a second factor
+    hipaa: ["164.308(b)(1)", "164.312(d)"]
+    soc2: ["CC6.2", "CC9.2"]
+    status: implemented
+    evidence:
+      - script: test:m2:auditor-enrolment:live
+      - script: test:m2:auditor-redemption:live
+      - script: test:m3:auditor-engagement:live
+
+  - id: CW-IA-01
+    title: Person/entity authentication — MFA, step-up for sensitive actions, credential throttling
+    hipaa: ["164.312(d)", "164.308(a)(5)(ii)(D)"]
+    soc2: ["CC6.1", "CC6.2"]
+    status: implemented
+    evidence:
+      - script: test:m2:auth-hardening:live
+      - script: test:m2:step-up-override:live
+      - script: test:rate-limit-store:live
+      - file: packages/auth/src/identity/credential-throttle.ts
+
+  - id: CW-TX-01
+    title: Transmission security — TLS/HSTS at the edge, certificate pinning to external interfaces
+    hipaa: ["164.312(e)(1)", "164.312(e)(2)(ii)"]
+    soc2: ["CC6.7"]
+    status: partial
+    evidence:
+      - file: deploy/production/web-security-headers.conf
+      - file: apps/backend/src/modules/29-external-interfaces/__tests__/m29-cert-pin-and-destination-policy.test.ts
+    gap:
+      reason: TLS configuration of the Pangolin edge and internal service-to-service hops is documented but not asserted by any gate; add a TLS scan (e.g. testssl.sh) against staging to CI.
+      owner: platform
+      review_by: 2027-01-31
+
+  # ---------------------------------------------------------------- §164.308 administrative (engineering-side)
+  - id: CW-RA-01
+    title: Risk analysis — STRIDE threat model maintained with the architecture
+    hipaa: ["164.308(a)(1)(ii)(A)", "164.308(a)(1)(ii)(B)"]
+    soc2: ["CC3.2"]
+    status: partial
+    evidence:
+      - file: docs/architecture/CHARTWARDEN_SECURITY_HARDENING_v0_2.md
+      - script: arch:architecture-docs
+    gap:
+      reason: The threat model exists, but a dated, signed-off HIPAA risk analysis (likelihood x impact per asset, with the Privacy/Security Officer's acceptance) is an administrative artifact this repo does not yet hold.
+      owner: security-officer
+      review_by: 2027-01-31
+
+  - id: CW-MON-01
+    title: Information system activity review and log-in monitoring (security alerting on audit events)
+    hipaa: ["164.308(a)(1)(ii)(D)", "164.308(a)(5)(ii)(C)"]
+    soc2: ["CC7.2", "CC7.3"]
+    status: gap
+    evidence:
+      - file: docs/compliance/AISOC_INTEGRATION.md
+    gap:
+      reason: Audit events are recorded (CW-AU-01) but nothing reviews them — no detection rules for brute force, impossible travel, mass export or break-glass use, and no alert routing. Planned as a self-hosted SOC sidecar inside the BAA boundary; see docs/compliance/AISOC_INTEGRATION.md.
+      owner: security-officer
+      review_by: 2027-01-31
+
+  - id: CW-IR-01
+    title: Security incident procedures and breach-notification workflow
+    hipaa: ["164.308(a)(6)", "164.404"]
+    soc2: ["CC7.3", "CC7.4", "CC7.5"]
+    status: partial
+    evidence:
+      - file: docs/architecture/CHARTWARDEN_DR_BCP_v0.1.md
+      - file: docs/architecture/CHARTWARDEN_OPS_RUNBOOK_v0.1.md
+      - script: arch:architecture-docs
+    gap:
+      reason: Procedures are written; no tabletop exercise or incident-drill record exists yet to show they were exercised during an observation window.
+      owner: security-officer
+      review_by: 2027-01-31
+
+  - id: CW-CP-01
+    title: Contingency plan — backups, restore drill, disaster recovery
+    hipaa: ["164.308(a)(7)(ii)(A)", "164.308(a)(7)(ii)(B)", "164.308(a)(7)(ii)(D)"]
+    soc2: ["A1.2", "A1.3"]
+    status: partial
+    evidence:
+      - script: backup:restore-drill
+      - script: m36:restore-drill
+      - file: audit/restore-drill/m36-restore-drill.md
+      - file: ops/pgbackrest/pgbackrest.conf.template
+    gap:
+      reason: DR_BCP records that no streaming replica or WAL archiving is running yet; restore drills exist for M36 but not as a scheduled whole-database drill with recorded RTO/RPO.
+      owner: platform
+      review_by: 2027-01-31
+
+  - id: CW-MAL-01
+    title: Protection from malicious software — attachment AV scanning and image vulnerability scanning
+    hipaa: ["164.308(a)(5)(ii)(B)"]
+    soc2: ["CC6.8", "CC7.1"]
+    status: implemented
+    evidence:
+      - file: deploy/clamav/clamd.conf
+      - file: apps/backend/__tests__/m36-attachment-scanners.test.ts
+      - script: test:m36:attachments:live
+      - ci: aquasecurity/trivy-action
+      - script: arch:vuln-allowlist
+
+  - id: CW-VM-01
+    title: Vulnerability management — dependency advisories gated, SBOM per release image
+    hipaa: ["164.308(a)(1)(ii)(B)"]
+    soc2: ["CC7.1", "CC9.2"]
+    status: partial
+    evidence:
+      - script: audit:deps
+      - script: arch:audit-exceptions
+      - ci: "syft "
+    gap:
+      reason: No static analysis (SAST) runs on the TypeScript source. Add pinned Semgrep rule packs with a findings ratchet before the first SOC 2 observation window.
+      owner: engineering
+      review_by: 2027-01-31
+
+  - id: CW-CM-01
+    title: Change management — fitness gates before main, signed release images, no committed conflicts
+    hipaa: ["164.308(a)(8)"]
+    soc2: ["CC8.1"]
+    status: partial
+    evidence:
+      - script: arch:fitness
+      - file: .githooks/pre-push
+      - ci: "cosign sign"
+      - script: arch:merge-artifacts
+    gap:
+      reason: deploy.yml's `verify` job (which calls ci.yml) is commented out and ci.yml's pull_request trigger only targets `fix/admission`, so a push to main builds, signs and deploys without CI ever running; the only enforcement is the opt-in, bypassable pre-push hook. Re-enable `verify` and make `release` need it (debounce already limits cost), then flip to implemented.
+      owner: engineering
+      review_by: 2026-12-15
+
+  - id: CW-CM-02
+    title: AI coding agents operate inside the change-management and minimum-necessary controls
+    hipaa: ["164.308(a)(3)(ii)(A)", "164.308(a)(4)(ii)(B)", "164.502(b)"]
+    soc2: ["CC8.1", "CC6.1"]
+    status: implemented
+    evidence:
+      - script: arch:compliance
+      - script: harness:phi-scan
+      - file: .claude/settings.json
+      - file: scripts/harness/pre-tool-guard.ts
+      - file: docs/compliance/AGENT_HARNESS.md
+      - file: scripts/__tests__/harness-hooks.test.ts
+
+  - id: CW-SEC-01
+    title: Secrets never committed — secret scanning on commit and in CI
+    hipaa: ["164.312(a)(2)(iv)", "164.308(a)(5)(ii)(D)"]
+    soc2: ["CC6.1", "CC6.7"]
+    status: partial
+    gap:
+      reason: The CI job exists but CI does not gate main today (see CW-CM-01), and the pre-commit hook is opt-in per clone and skips gitleaks when it is not installed. Closes with CW-CM-01.
+      owner: engineering
+      review_by: 2026-12-15
+    evidence:
+      - file: .gitleaks.toml
+      - file: .githooks/pre-commit
+      - ci: "gitleaks"
+      - script: harness:phi-scan
+
+  - id: CW-BA-01
+    title: Business associate agreements tracked for every vendor that touches PHI
+    hipaa: ["164.308(b)(1)", "164.314(a)"]
+    soc2: ["CC9.2"]
+    status: partial
+    evidence:
+      - file: docs/architecture/CHARTWARDEN_INTEGRATIONS_v0_1.md
+      - file: docs/architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md
+      - script: arch:ai-governance
+    gap:
+      reason: BAA status is prose in the integration and AI-governance docs (Anthropic BAA "in progress"); there is no machine-checked vendor register with BAA date and scope per vendor (OVH, Hostinger, Postmark, DoseSpot, Stedi, Anthropic, GitHub).
+      owner: privacy-officer
+      review_by: 2027-01-31
+
+  - id: CW-DS-01
+    title: Retention and disposal — legal holds honoured, destruction is governed
+    hipaa: ["164.310(d)(2)(i)", "164.316(b)(2)(i)"]
+    soc2: ["C1.2"]
+    status: implemented
+    evidence:
+      - script: test:m10:retention:live
+      - script: test:m36:retention-destruction:live
+      - script: test:m36:retention-governance:live
+      - file: docs/runbooks/m36-retention-destruction.md
+
+  - id: CW-AI-01
+    title: AI features governed — PHI scope, read-only messaging, kill switch
+    hipaa: ["164.502(b)", "164.312(b)"]
+    soc2: ["CC6.1", "PI1.3"]
+    status: implemented
+    evidence:
+      - script: arch:ai-governance
+      - script: arch:ai-messaging-readonly
+      - script: test:m30:phi-scope:live
+      - script: test:m32:kill-switch-role-key:live
+
+# Every one of these must be cited by at least one row (the gate enforces it), so a row cannot be
+# deleted to make a gap disappear.
+required:
+  hipaa: ["164.312(a)(1)", "164.312(b)", "164.312(c)(1)", "164.312(d)", "164.312(e)(1)", "164.308(a)(1)(ii)(A)", "164.308(a)(1)(ii)(D)", "164.308(a)(5)(ii)(B)", "164.308(a)(6)", "164.308(a)(7)(ii)(A)", "164.308(b)(1)"]
+  soc2: ["CC3.2", "CC6.1", "CC6.7", "CC6.8", "CC7.1", "CC7.2", "CC7.3", "CC8.1", "CC9.2", "A1.2", "A1.3", "C1.2"]

@@ -1,0 +1,42 @@
+# ChartWarden — gitleaks configuration (pinned binary v8.30.1 in CI and .githooks/pre-commit)
+#
+# Default ruleset, minus `generic-api-key`: this codebase names hundreds of identifiers `*Key`
+# (permission keys, capability keys, template keys), and that rule produced 120+ false positives on the
+# 2026-10-27 baseline and zero real ones. Vendor-specific rules (AWS, GitHub, Stripe, Slack, Anthropic,
+# private keys, …) stay on. PHI-shaped identifiers and inline database passwords are covered by
+# `bun run harness:phi-scan` (scripts/harness/patterns.ts), which runs next to this in both places.
+#
+# Allowlist entries must say why. Edits to this file ask for human approval (.claude/settings.json).
+
+[extend]
+useDefault = true
+disabledRules = ["generic-api-key"]
+
+[allowlist]
+description = "Templates, design files, fixtures and documented example credentials"
+paths = [
+  '''(^|/)bun\.lock$''',
+  '''\.example$''',
+  '''\.pen$''',
+  '''^scripts/__fixtures__/''',
+  '''^HOPE Data Spec''',
+]
+regexes = [
+  '''AKIAIOSFODNN7EXAMPLE''',
+  '''wJalrXUtnFXSbcqYW2ZPxRfiCYEXAMPLEKEY''',
+  '''REPLACE[_-]?ME''',
+]
+
+# Rule-scoped allowlists for two measured false positives on the baseline.
+[[rules]]
+id = "linkedin-client-secret"
+[[rules.allowlists]]
+description = "`linkedIncidentId` in M20 field safety is an identifier, not a LinkedIn secret"
+regexTarget = "line"
+regexes = ['''linkedIncidentId''']
+
+[[rules]]
+id = "stripe-access-token"
+[[rules.allowlists]]
+description = "Stripe adapter tests use sk_test_ fixture keys"
+paths = ['''^packages/subscription-billing/__tests__/''']
