@@ -8,11 +8,16 @@
  * It also holds `triage.paper_reentry` (#640): categorised `compliance` (M19 decision 3), so the category sweep
  * hands it to the read-only `auditor`, but it is the one M19 write that can back-date a call past a coverage gap.
  * M19 §2.7 gives it to the org admin or DON; a Compliance Officer keeps it (a role that acts, unlike an auditor).
+ *
+ * And `encounter.administrative_override`: categorised `compliance`, so the sweep handed it to every field role
+ * (chaplain, volunteer, aide, LPN included), yet it is the sole gate on voiding a draft visit, which the route
+ * documents as admin-only. The whole-catalog admin roles keep it; of the persona roles only the clinical supervisor does.
  */
 const IDG_KEY_ROLES: Readonly<Record<string, ReadonlySet<string>>> = {
   "idg.coordinate": new Set(["clinical_supervisor", "medical_director"]),
   "idg.schedule": new Set(["clinical_supervisor", "medical_director"]),
   "triage.paper_reentry": new Set(["clinical_supervisor", "compliance_officer"]),
+  "encounter.administrative_override": new Set(["clinical_supervisor"]),
 };
 
 /** True unless `permissionKey` is a restricted IDG key and `roleKey` is not one of its default roles. */

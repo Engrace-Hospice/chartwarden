@@ -31,6 +31,21 @@ describe("roleMayHoldPermission (M14 default roles for idg.coordinate / idg.sche
   });
 });
 
+describe("roleMayHoldPermission (M8 encounter.administrative_override, the draft-visit void gate)", () => {
+  it.each(["rn", "rn_case_manager", "lpn", "chha", "chaplain", "volunteer", "md", "np", "auditor"])(
+    "withholds the void gate from %s",
+    (role) => {
+      expect(roleMayHoldPermission(role, "encounter.administrative_override")).toBe(false);
+    },
+  );
+
+  it("keeps it for the clinical supervisor", () => {
+    expect(roleMayHoldPermission("clinical_supervisor", "encounter.administrative_override")).toBe(
+      true,
+    );
+  });
+});
+
 describe("roleMayHoldPermission (M19 triage.paper_reentry, #640)", () => {
   it.each(["auditor", "clinician", "rn", "volunteer"])(
     "withholds the back-dating write from %s",
