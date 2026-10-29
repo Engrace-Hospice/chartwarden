@@ -1073,6 +1073,20 @@ export const AdmissionSummaryResponseSchema = Type.Object({
   holdReason: Type.Union([Type.String(), Type.Null()]),
   holdAt: Type.Union([Type.String(), Type.Null()]),
   releasedAt: Type.Union([Type.String(), Type.Null()]),
+  // Census-row facts (replace the per-row admission/patient reads the list screen used to make).
+  patientAgeYears: Type.Optional(Type.Union([Type.Integer(), Type.Null()])),
+  referralId: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  admissionAt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  activatedAt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+  serviceAddressSnapshot: Type.Optional(
+    Type.Union([
+      Type.Object({ city: Type.String(), state: Type.Union([Type.String(), Type.Null()]) }),
+      Type.Null(),
+    ]),
+  ),
+  hospicePhysician: Type.Optional(
+    Type.Union([Type.Object({ displayName: Type.String() }), Type.Null()]),
+  ),
 });
 
 /** `GET /api/v1/admissions`'s own paginated page. */

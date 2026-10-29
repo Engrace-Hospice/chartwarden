@@ -13,20 +13,21 @@ const summary = {
   unreadMessagesCount: 3,
   pendingDocumentSharesCount: 4,
 };
+const wrap = (items: unknown) => ({ category: "visits", items });
 const visits = [
   {
     visitId: "33333333-3333-4333-8333-333333333333",
     scheduledStartedAt: "2099-10-15T14:00:00.000Z",
     scheduledEndedAt: "2099-10-15T15:00:00.000Z",
-    visitPurposeLabel: "Later visit",
-    visitSetting: "home",
+    purposeLabel: "Later visit",
+    settingLabel: "home",
   },
   {
     visitId: "44444444-4444-4444-8444-444444444444",
     scheduledStartedAt: "2099-10-14T14:00:00.000Z",
     scheduledEndedAt: "2099-10-14T15:00:00.000Z",
-    visitPurposeLabel: "Earlier visit",
-    visitSetting: "home",
+    purposeLabel: "Earlier visit",
+    settingLabel: "home",
   },
 ];
 
@@ -57,10 +58,10 @@ function renderDashboard(
           options.onSummary?.() ??
           response(options.summary ?? summary, options.summaryStatus ?? 200)
         );
-      if (path === "/api/v1/portal/upcoming")
+      if (path === "/api/v1/portal/visits/upcoming")
         return (
           options.onUpcoming?.() ??
-          response(options.upcoming ?? visits, options.upcomingStatus ?? 200)
+          response(wrap(options.upcoming ?? visits), options.upcomingStatus ?? 200)
         );
       return response({}, 404);
     },
@@ -131,7 +132,7 @@ describe("patient dashboard redesign", () => {
     renderDashboard({
       onUpcoming: () => {
         attempts += 1;
-        return attempts === 1 ? response({}, 500) : response(visits);
+        return attempts === 1 ? response({}, 500) : response(wrap(visits));
       },
     });
     expect(await screen.findByText("2 active medications")).toBeTruthy();
@@ -159,7 +160,7 @@ describe("patient dashboard redesign", () => {
           return new Promise<Response>((resolve) => {
             resolveFirst = resolve;
           });
-        return response([{ ...visits[0], visitPurposeLabel: "New patient visit" }]);
+        return response(wrap([{ ...visits[0], purposeLabel: "New patient visit" }]));
       },
     });
     await waitFor(() => expect(upcomingCalls).toBe(1));
@@ -167,7 +168,7 @@ describe("patient dashboard redesign", () => {
     window.dispatchEvent(new PopStateEvent("popstate"));
     expect(await screen.findByText("New patient visit")).toBeTruthy();
     await act(async () => {
-      resolveFirst?.(response([{ ...visits[0], visitPurposeLabel: "Old patient visit" }]));
+      resolveFirst?.(response(wrap([{ ...visits[0], purposeLabel: "Old patient visit" }])));
     });
     expect(screen.queryByText("Old patient visit")).toBeNull();
   });

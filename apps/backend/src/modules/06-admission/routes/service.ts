@@ -669,6 +669,13 @@ export interface AdmissionSummary extends SummaryRow {
   readonly holdReason: string | null;
   readonly holdAt: string | null;
   readonly releasedAt: string | null;
+  /** Census-row facts, so the list needs no per-row patient/admission read. Absent from the in-memory service. */
+  readonly referralId?: string | null;
+  readonly admissionAt?: string | null;
+  readonly activatedAt?: string | null;
+  readonly serviceAddressSnapshot?: { readonly city: string; readonly state: string | null } | null;
+  readonly hospicePhysician?: { readonly displayName: string } | null;
+  readonly patientAgeYears?: number | null;
 }
 
 /** One of a patient's admissions (F-065) — enough to pick the one being documented against. */

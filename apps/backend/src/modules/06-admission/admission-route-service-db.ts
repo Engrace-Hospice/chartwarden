@@ -46,7 +46,10 @@ import {
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../bootstrap/index";
 import { readCurrentResidenceAddress } from "../05-patient/address-reader";
-import { patientAdmissionIdentitiesInTx } from "../05-patient/patient-admission-identity";
+import {
+  patientAdmissionIdentitiesInTx,
+  patientAgeYearsInTx,
+} from "../05-patient/patient-admission-identity";
 import { getMdmEntityProvider } from "../40-mdm/seams";
 import type { ActorSite } from "./actor-site";
 import { createDocumentReaderEvidenceValidator } from "./admission-document-validator";
@@ -2142,6 +2145,12 @@ export function createDbAdmissionRouteService(
             holdReason: ADM.holdReason,
             holdAt: ADM.holdAt,
             releasedAt: ADM.releasedAt,
+            referralId: ADM.referralId,
+            admissionAt: ADM.admissionAt,
+            activatedAt: ADM.activatedAt,
+            hospicePhysicianId: ADM.hospicePhysicianId,
+            serviceAddressCity: ADM.serviceAddressCity,
+            serviceAddressState: ADM.serviceAddressState,
           })
           .from(ADM)
           .where(where)
@@ -2154,9 +2163,42 @@ export function createDbAdmissionRouteService(
           organizationId,
           pageRows.map((row) => row.patientId),
         );
+        const ages = await patientAgeYearsInTx(
+          tx,
+          organizationId,
+          pageRows.map((row) => row.patientId),
+        );
+        const physicianIds = [
+          ...new Set(pageRows.map((r) => r.hospicePhysicianId).filter((x): x is string => !!x)),
+        ];
+        const physicians = new Map(
+          await Promise.all(
+            physicianIds.map(
+              async (pid) =>
+                [
+                  pid,
+                  // A directory outage degrades the census to no physician name, not a 500.
+                  await getMdmEntityProvider()
+                    .resolvePhysician(organizationId, pid)
+                    .catch(() => undefined),
+                ] as const,
+            ),
+          ),
+        );
         const items = pageRows.map((r) => ({
           ...toSummary(r),
           patient: patients.get(r.patientId) ?? null,
+          patientAgeYears: ages.get(r.patientId) ?? null,
+          referralId: r.referralId ?? null,
+          admissionAt: r.admissionAt?.toISOString() ?? null,
+          activatedAt: r.activatedAt?.toISOString() ?? null,
+          serviceAddressSnapshot: r.serviceAddressCity
+            ? { city: r.serviceAddressCity, state: r.serviceAddressState ?? null }
+            : null,
+          hospicePhysician: (() => {
+            const ph = r.hospicePhysicianId ? physicians.get(r.hospicePhysicianId) : null;
+            return ph ? { displayName: ph.canonical.displayName } : null;
+          })(),
           holdReason: r.holdReason ?? null,
           holdAt: r.holdAt ? r.holdAt.toISOString() : null,
           releasedAt: r.releasedAt ? r.releasedAt.toISOString() : null,

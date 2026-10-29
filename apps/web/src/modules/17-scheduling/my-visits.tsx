@@ -20,6 +20,8 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { NameLabel, patientNameOf } from "../../shell/name-display";
+import { usePatientNames } from "../../shell/patient-names";
 import { useSession } from "../../shell/session";
 import { stashStepUpDraft, stepUpRedirectFor, takeStepUpDraft } from "../../shell/step-up-redirect";
 import { mapSchedulingApiError } from "./scheduling-errors";
@@ -99,6 +101,8 @@ export function MyVisits(): JSX.Element {
     [visits],
   );
 
+  const patientNames = usePatientNames(visits.map((v) => v.patientId));
+
   const rows = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const visible = visits.filter((v) => {
@@ -112,6 +116,7 @@ export function MyVisits(): JSX.Element {
         !q ||
         v.id.toLowerCase().includes(q) ||
         v.patientId.toLowerCase().includes(q) ||
+        (patientNames[v.patientId]?.name ?? "").toLowerCase().includes(q) ||
         v.assignedMembershipId.toLowerCase().includes(q) ||
         v.visitPurpose.toLowerCase().includes(q) ||
         v.status.toLowerCase().includes(q);
@@ -120,7 +125,7 @@ export function MyVisits(): JSX.Element {
     return [...visible].sort(
       (a, b) => Date.parse(a.scheduledStartedAt) - Date.parse(b.scheduledStartedAt),
     );
-  }, [visits, dateFilter, purpose, searchQuery, status]);
+  }, [visits, dateFilter, purpose, searchQuery, status, patientNames]);
 
   const activeFilters = [
     searchQuery.trim() !== "",
@@ -354,9 +359,7 @@ export function MyVisits(): JSX.Element {
                         </div>
                       </td>
                       <td style={tdStyle}>
-                        <code className="wx-data-md" style={codeStyle}>
-                          {shortId(v.patientId)}
-                        </code>
+                        <NameLabel value={patientNameOf(patientNames, v.patientId)} />
                       </td>
                       <td style={tdStyle}>{stateLabel(v.visitPurpose)}</td>
                       <td

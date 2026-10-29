@@ -30,6 +30,8 @@ export interface AuditEventRecord {
   readonly before: Record<string, unknown> | null;
   readonly after: Record<string, unknown> | null;
   readonly context: Record<string, unknown>;
+  /** Display name of `actorUserId` when the search asked for it and the actor is a member of the org. */
+  readonly actorName?: string | null;
   readonly retentionClass:
     | "operational"
     | "compliance"
@@ -53,6 +55,13 @@ export interface AuditEventFilter {
    *  the public search route's query schema — an in-process filter for a module's own history read. */
   readonly resourceId?: string;
   readonly eventType?: string;
+  /** Case-insensitive substring on the event type; `.`/`_` and spaces are interchangeable, so both
+   *  `membership.rev` and "membership revoked" (the human label) match `m2.membership.revoked`. */
+  readonly eventTypeContains?: string;
+  /** Hide read/view noise (`*.viewed`, `*.list_viewed`). A view filter only - the rows are never deleted. */
+  readonly excludeAccessReads?: boolean;
+  /** Attach `actorName` (org members only) to each record. Opt-in so exports/hashes never see it. */
+  readonly includeActorNames?: boolean;
   readonly outcome?: string;
   readonly severity?: string;
   /** Inclusive lower bound on `createdAt` (ISO-8601). */
@@ -292,12 +301,28 @@ function toDisclosureEntry(record: AuditEventRecord, scope: AccountingScope): Di
   };
 }
 
+/** Lower-case and treat `.`, `_` and runs of spaces alike, so event types and their labels compare equal. */
+export function normalizeEventText(text: string): string {
+  return text.toLowerCase().replace(/[._\s]+/g, " ").trim();
+}
+
+/** A read/view event (`*.viewed`, `*.list_viewed`) - the high-volume noise a log reader may hide. */
+export function isViewNoise(eventType: string): boolean {
+  return eventType.endsWith(".viewed") || eventType.endsWith(".list_viewed");
+}
+
 /** Apply the §4.2 filter to one record (org scope is applied by the caller). */
 function matchesFilter(record: AuditEventRecord, filter: AuditEventFilter): boolean {
   if (filter.actorUserId && record.actorUserId !== filter.actorUserId) return false;
   if (filter.resourceKind && record.resourceKind !== filter.resourceKind) return false;
   if (filter.resourceId && record.resourceId !== filter.resourceId) return false;
   if (filter.eventType && record.eventType !== filter.eventType) return false;
+  if (
+    filter.eventTypeContains &&
+    !normalizeEventText(record.eventType).includes(normalizeEventText(filter.eventTypeContains))
+  )
+    return false;
+  if (filter.excludeAccessReads && isViewNoise(record.eventType)) return false;
   if (filter.outcome && record.outcome !== filter.outcome) return false;
   if (filter.severity && record.severity !== filter.severity) return false;
   if (filter.from && record.createdAt < filter.from) return false;

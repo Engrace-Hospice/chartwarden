@@ -301,7 +301,7 @@ async function choosePatient(dialog: HTMLElement): Promise<void> {
 
 async function fillValidVisit(dialog: HTMLElement): Promise<void> {
   await choosePatient(dialog);
-  await choose(dialog, /active admission/i, "Admitted 2026-08-01");
+  await choose(dialog, /active admission/i, "Admitted Aug 1, 2026");
   fireEvent.change(within(dialog).getByLabelText(/scheduled start/i), {
     target: { value: "2026-08-28T09:00" },
   });
@@ -337,10 +337,10 @@ describe("#91 — a visit can be scheduled", () => {
     const dialog = await openNewVisit();
     await choosePatient(dialog);
     fireEvent.focus(within(dialog).getByRole("combobox", { name: /active admission/i }));
-    expect(await within(dialog).findByText("Admitted 2026-08-01")).toBeTruthy();
+    expect(await within(dialog).findByText("Admitted Aug 1, 2026")).toBeTruthy();
     // F-065 — until that read existed nothing could resolve a patient's admission (#161).
     expect(calls).toContain(`GET /api/v1/patients/${PATIENT}/admissions`);
-    expect(within(dialog).queryByText("Admitted 2025-01-01")).toBeNull();
+    expect(within(dialog).queryByText("Admitted Jan 1, 2025")).toBeNull();
   });
 
   it("a patient with no open admission is told why, offered a path, and the create is refused", async () => {

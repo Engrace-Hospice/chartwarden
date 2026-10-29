@@ -406,6 +406,78 @@ describe("Admission intake workspace", () => {
     expect(client.PATCH).not.toHaveBeenCalled();
   });
 
+  it("lets a user with patient.edit add the residence inside the dialog, then re-reads the addresses", async () => {
+    const base = withoutAddress(() => ok({ batches: [] }));
+    const post = vi.fn(async () => ok({ id: "address-9" }));
+    const client = { ...base, POST: post } as unknown as ApiClient;
+    renderWithShell(client, { ...session, permissions: [...session.permissions!, "patient.edit"] });
+    await openDetails();
+
+    fireEvent.change(screen.getByLabelText("Street address"), { target: { value: "9 Elm St" } });
+    fireEvent.change(screen.getByLabelText("City"), { target: { value: "Salem" } });
+    fireEvent.change(screen.getByLabelText("State (2 letters)"), { target: { value: "or" } });
+    fireEvent.change(screen.getByLabelText("ZIP code"), { target: { value: "97301" } });
+    const before = getCalls(client, "/api/v1/patients/{id}/addresses");
+    fireEvent.click(screen.getByRole("button", { name: "Save residence address" }));
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        "/api/v1/patients/{id}/addresses",
+        expect.objectContaining({
+          params: { path: { id: "patient-1" } },
+          body: expect.objectContaining({
+            line1: "9 Elm St",
+            city: "Salem",
+            state: "OR",
+            postalCode: "97301",
+            kind: "home",
+            isPrimary: true,
+          }),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(getCalls(client, "/api/v1/patients/{id}/addresses")).toBeGreaterThan(before),
+    );
+  });
+
+  it("offers no inline address form without patient.edit (the chart link remains)", async () => {
+    renderWithShell(withoutAddress(() => ok({ batches: [] })));
+    await openDetails();
+    expect(screen.queryByLabelText("Street address")).toBeNull();
+    expect(screen.getByRole("link", { name: "Open patient addresses" })).toBeTruthy();
+  });
+
+  it("names the signed-in user and role in the CTI dialog, not a fixed job title", async () => {
+    const client = clientFor(
+      readiness({
+        requirements: [
+          {
+            code: "cti",
+            label: "Certification of Terminal Illness",
+            status: "action_required",
+            blocking: true,
+            message: "Certification of Terminal Illness is required.",
+            action: "REVIEW_CTI",
+          },
+        ],
+      }),
+    );
+    renderWithShell(client, {
+      ...session,
+      displayName: "Pat Signer",
+      roles: ["hospice_physician"],
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Admission Intake" })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Create CTI" })[0]!);
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Pat Signer")).toBeTruthy();
+    expect(within(dialog).getByText(/Hospice physician/)).toBeTruthy();
+    expect(within(dialog).queryByText("Admission coordinator")).toBeNull();
+  });
+
   // Patient reads fail with `status`; `failing.current` lets a test flip the mock back to success.
   function withPatientFailure(status: number, readinessResponse = readiness()) {
     const base = clientFor(readinessResponse);

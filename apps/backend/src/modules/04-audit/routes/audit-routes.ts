@@ -78,7 +78,7 @@ export function registerAuditRoutes(app: FastifyInstance, deps: AuditRouteDeps):
     const { organizationId } = actorOf(request);
     const q = parse(AuditEventsQuerySchema, request.query);
     await metaLogIfElevated(request, "GET /api/v1/audit/events");
-    return deps.query.searchEvents(organizationId, q);
+    return deps.query.searchEvents(organizationId, { ...q, includeActorNames: true });
   });
 
   // --- §4.2 single-event detail (the before/after diff) -----------------------------------

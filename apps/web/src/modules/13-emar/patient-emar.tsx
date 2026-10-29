@@ -189,200 +189,205 @@ export function PatientEmar(): JSX.Element {
       <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
         <ChartModuleRail patientId={patientId ?? ""} current="medications" />
 
-        {/* Center — the MAR grid + recent administrations */}
-        <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}>
-          <h1
-            style={{
-              margin: "0 0 1rem",
-              fontFamily: t.fontDisplay,
-              fontWeight: 500,
-              fontSize: "1.375rem",
-              color: t.onSurface,
-            }}
-          >
-            Medication Administration Record
-          </h1>
+        {/* index.css stacks any row that starts with the chart tab strip into a column, so the
+            content row is its own wrapper: without it the grid column is squeezed above the
+            Administer card and clips "Recent administrations". */}
+        <div style={{ display: "flex", flex: 1, minHeight: 0, minWidth: 0 }}>
+          {/* Center — the MAR grid + recent administrations */}
+          <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}>
+            <h1
+              style={{
+                margin: "0 0 1rem",
+                fontFamily: t.fontDisplay,
+                fontWeight: 500,
+                fontSize: "1.375rem",
+                color: t.onSurface,
+              }}
+            >
+              Medication Administration Record
+            </h1>
 
-          {error ? (
-            <EmptyState title="Unavailable" description={error} />
-          ) : loading && doses.length === 0 ? (
-            <LoadingSpinner />
-          ) : grid.meds.length === 0 ? (
-            <EmptyState
-              title="No doses scheduled"
-              description="No scheduled doses in this window. Doses are materialized from active medication orders by a background consumer that is not yet wired, so this grid stays empty — record against the medication order in the Administer panel."
-            />
-          ) : (
-            <section style={{ ...cardSurface, padding: "1rem 1.25rem", overflowX: "auto" }}>
-              <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "0.82rem" }}>
-                <thead>
-                  <tr>
-                    <th style={{ ...gridHead, textAlign: "left" }}>Medication order</th>
-                    {grid.slots.map((s) => (
-                      <th key={s} style={gridHead} className="tabular-nums">
-                        {s}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {grid.meds.map((med) => (
-                    <tr key={med}>
-                      <td
-                        style={{
-                          ...gridCell,
-                          textAlign: "left",
-                          color: t.onSurface,
-                        }}
-                      >
-                        {drugLabel(med)}
-                      </td>
-                      {grid.slots.map((s) => {
-                        const dose = grid.at(med, s);
-                        return (
-                          <td key={s} style={gridCell}>
-                            {dose ? (
-                              <button
-                                type="button"
-                                onClick={() => setSelectedDoseId(dose.id)}
-                                aria-pressed={dose.id === selectedDoseId}
-                                style={{
-                                  border: "none",
-                                  background:
-                                    dose.id === selectedDoseId ? t.primaryTint : "transparent",
-                                  borderRadius: "9999px",
-                                  padding: "0.1rem",
-                                  cursor: "pointer",
-                                }}
-                              >
-                                <StatusPill
-                                  label={stateLabel(dose.status)}
-                                  tone={DOSE_TONE[dose.status] ?? "neutral"}
-                                />
-                              </button>
-                            ) : (
-                              <span style={{ color: t.muted }}>—</span>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </section>
-          )}
-
-          {/* Recent administrations (real) */}
-          {recent.length > 0 ? (
-            <section style={{ marginTop: "1.5rem" }}>
-              <h2 style={sectionTitle}>Recent administrations</h2>
-              <div style={{ ...cardSurface, padding: "0 1.25rem" }}>
-                {recent.slice(0, 12).map((a, i) => (
-                  <button
-                    key={a.id}
-                    type="button"
-                    onClick={() =>
-                      navigate(
-                        a.ivSessionId
-                          ? `/patients/${patientId}/iv-sessions/${a.ivSessionId}`
-                          : `/patients/${patientId}/administrations/${a.id}`,
-                      )
-                    }
-                    style={{ ...adminRow, borderTop: i === 0 ? "none" : ghostBorder }}
-                  >
-                    <span style={{ flex: 1, minWidth: 0, textAlign: "left", color: t.onSurface }}>
-                      <span className="tabular-nums">{ts(a.administeredAt)}</span>
-                      <span style={dateMeta}>
-                        {" · "}
-                        {drugLabel(a.medicationOrderId)} · {stateLabel(a.mode)}
-                      </span>
-                    </span>
-                    <StatusPill
-                      label={stateLabel(a.status)}
-                      tone={ADMIN_STATUS_TONE[a.status] ?? "neutral"}
-                    />
-                    {a.requiresRnReview ? <StatusPill label="RN review" tone="warning" /> : null}
-                    <StatusPill
-                      label={stateLabel(a.lateEntryTier)}
-                      tone={lateEntryTone(a.lateEntryTier)}
-                    />
-                    {a.isControlledSubstance ? (
-                      <StatusPill label="Controlled" tone="critical" glyph="alert" />
-                    ) : null}
-                    <Glyph name="arrow-right" size={16} />
-                  </button>
-                ))}
-              </div>
-            </section>
-          ) : null}
-        </div>
-
-        {/* Right rail — Administer. Driven by the ACTIVE ORDERS, not by a grid selection: nothing
-            materializes scheduled doses in production, so a cell is a shortcut, never the entry point. */}
-        <aside style={rightRail}>
-          <div style={{ ...cardSurface, padding: "1.125rem" }}>
-            <h2 style={railTitle}>Administer</h2>
-
-            {selectedDose ? (
-              <dl style={detailGrid}>
-                <dt style={dt}>Selected dose</dt>
-                <dd style={dd}>{drugLabel(selectedDose.medicationOrderId)}</dd>
-                <dt style={dt}>Due</dt>
-                <dd style={{ ...dd }} className="tabular-nums">
-                  {ts(selectedDose.dueAt)}
-                </dd>
-                <dt style={dt}>Status</dt>
-                <dd style={dd}>
-                  <StatusPill
-                    label={stateLabel(selectedDose.status)}
-                    tone={DOSE_TONE[selectedDose.status] ?? "neutral"}
-                  />
-                </dd>
-              </dl>
+            {error ? (
+              <EmptyState title="Unavailable" description={error} />
+            ) : loading && doses.length === 0 ? (
+              <LoadingSpinner />
+            ) : grid.meds.length === 0 ? (
+              <EmptyState
+                title="No doses scheduled"
+                description="No scheduled doses in this window. Doses are materialized from active medication orders by a background consumer that is not yet wired, so this grid stays empty — record against the medication order in the Administer panel."
+              />
             ) : (
-              <p style={meta}>
-                Records against one of this patient&rsquo;s active medication orders. Select a dose
-                in the grid to pre-fill it.
-              </p>
+              <section style={{ ...cardSurface, padding: "1rem 1.25rem", overflowX: "auto" }}>
+                <table style={{ borderCollapse: "collapse", width: "100%", fontSize: "0.82rem" }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...gridHead, textAlign: "left" }}>Medication order</th>
+                      {grid.slots.map((s) => (
+                        <th key={s} style={gridHead} className="tabular-nums">
+                          {s}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {grid.meds.map((med) => (
+                      <tr key={med}>
+                        <td
+                          style={{
+                            ...gridCell,
+                            textAlign: "left",
+                            color: t.onSurface,
+                          }}
+                        >
+                          {drugLabel(med)}
+                        </td>
+                        {grid.slots.map((s) => {
+                          const dose = grid.at(med, s);
+                          return (
+                            <td key={s} style={gridCell}>
+                              {dose ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedDoseId(dose.id)}
+                                  aria-pressed={dose.id === selectedDoseId}
+                                  style={{
+                                    border: "none",
+                                    background:
+                                      dose.id === selectedDoseId ? t.primaryTint : "transparent",
+                                    borderRadius: "9999px",
+                                    padding: "0.1rem",
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  <StatusPill
+                                    label={stateLabel(dose.status)}
+                                    tone={DOSE_TONE[dose.status] ?? "neutral"}
+                                  />
+                                </button>
+                              ) : (
+                                <span style={{ color: t.muted }}>—</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
             )}
 
-            <div style={railActions}>
-              <Button tone="primary" onClick={() => setCeremony("administer")}>
-                Record administration
-              </Button>
-              <Button tone="secondary" onClick={() => setCeremony("refuse")}>
-                Record refusal
-              </Button>
-              {selectedDose && selectedDose.status === "pending" ? (
-                <Button tone="tertiary" onClick={() => setHoldDoseId(selectedDose.id)}>
-                  Hold this dose
-                </Button>
-              ) : null}
-              {orders.length > 0 ? (
-                <Button
-                  tone="tertiary"
-                  onClick={() =>
-                    setIvStartOrderId(selectedDose?.medicationOrderId ?? orders[0]!.id)
-                  }
-                >
-                  Start IV infusion
-                </Button>
-              ) : null}
-              {controlledOrders.length > 0 ? (
-                <Button tone="tertiary" onClick={() => setWitnessOpen(true)}>
-                  Witness a controlled substance
-                </Button>
-              ) : null}
-            </div>
-
-            {actionError ? (
-              <p role="alert" style={{ ...meta, color: t.error }}>
-                {actionError}
-              </p>
+            {/* Recent administrations (real) */}
+            {recent.length > 0 ? (
+              <section style={{ marginTop: "1.5rem" }}>
+                <h2 style={sectionTitle}>Recent administrations</h2>
+                <div style={{ ...cardSurface, padding: "0 1.25rem" }}>
+                  {recent.slice(0, 12).map((a, i) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() =>
+                        navigate(
+                          a.ivSessionId
+                            ? `/patients/${patientId}/iv-sessions/${a.ivSessionId}`
+                            : `/patients/${patientId}/administrations/${a.id}`,
+                        )
+                      }
+                      style={{ ...adminRow, borderTop: i === 0 ? "none" : ghostBorder }}
+                    >
+                      <span style={{ flex: 1, minWidth: 0, textAlign: "left", color: t.onSurface }}>
+                        <span className="tabular-nums">{ts(a.administeredAt)}</span>
+                        <span style={dateMeta}>
+                          {" · "}
+                          {drugLabel(a.medicationOrderId)} · {stateLabel(a.mode)}
+                        </span>
+                      </span>
+                      <StatusPill
+                        label={stateLabel(a.status)}
+                        tone={ADMIN_STATUS_TONE[a.status] ?? "neutral"}
+                      />
+                      {a.requiresRnReview ? <StatusPill label="RN review" tone="warning" /> : null}
+                      <StatusPill
+                        label={stateLabel(a.lateEntryTier)}
+                        tone={lateEntryTone(a.lateEntryTier)}
+                      />
+                      {a.isControlledSubstance ? (
+                        <StatusPill label="Controlled" tone="critical" glyph="alert" />
+                      ) : null}
+                      <Glyph name="arrow-right" size={16} />
+                    </button>
+                  ))}
+                </div>
+              </section>
             ) : null}
           </div>
-        </aside>
+
+          {/* Right rail — Administer. Driven by the ACTIVE ORDERS, not by a grid selection: nothing
+            materializes scheduled doses in production, so a cell is a shortcut, never the entry point. */}
+          <aside style={rightRail}>
+            <div style={{ ...cardSurface, padding: "1.125rem" }}>
+              <h2 style={railTitle}>Administer</h2>
+
+              {selectedDose ? (
+                <dl style={detailGrid}>
+                  <dt style={dt}>Selected dose</dt>
+                  <dd style={dd}>{drugLabel(selectedDose.medicationOrderId)}</dd>
+                  <dt style={dt}>Due</dt>
+                  <dd style={{ ...dd }} className="tabular-nums">
+                    {ts(selectedDose.dueAt)}
+                  </dd>
+                  <dt style={dt}>Status</dt>
+                  <dd style={dd}>
+                    <StatusPill
+                      label={stateLabel(selectedDose.status)}
+                      tone={DOSE_TONE[selectedDose.status] ?? "neutral"}
+                    />
+                  </dd>
+                </dl>
+              ) : (
+                <p style={meta}>
+                  Records against one of this patient&rsquo;s active medication orders. Select a
+                  dose in the grid to pre-fill it.
+                </p>
+              )}
+
+              <div style={railActions}>
+                <Button tone="primary" onClick={() => setCeremony("administer")}>
+                  Record administration
+                </Button>
+                <Button tone="secondary" onClick={() => setCeremony("refuse")}>
+                  Record refusal
+                </Button>
+                {selectedDose && selectedDose.status === "pending" ? (
+                  <Button tone="tertiary" onClick={() => setHoldDoseId(selectedDose.id)}>
+                    Hold this dose
+                  </Button>
+                ) : null}
+                {orders.length > 0 ? (
+                  <Button
+                    tone="tertiary"
+                    onClick={() =>
+                      setIvStartOrderId(selectedDose?.medicationOrderId ?? orders[0]!.id)
+                    }
+                  >
+                    Start IV infusion
+                  </Button>
+                ) : null}
+                {controlledOrders.length > 0 ? (
+                  <Button tone="tertiary" onClick={() => setWitnessOpen(true)}>
+                    Witness a controlled substance
+                  </Button>
+                ) : null}
+              </div>
+
+              {actionError ? (
+                <p role="alert" style={{ ...meta, color: t.error }}>
+                  {actionError}
+                </p>
+              ) : null}
+            </div>
+          </aside>
+        </div>
 
         <AdministerModal
           open={ceremony !== null}

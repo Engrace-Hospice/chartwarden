@@ -6,6 +6,7 @@ import {
   PageHeader,
   StatusPill,
   cardSurface,
+  formatDateOnly,
   isoToLocalInput,
   t,
   useApiClient,
@@ -13,6 +14,8 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { NameLabel, patientNameOf } from "../../shell/name-display";
+import { type PatientNames, usePatientNames } from "../../shell/patient-names";
 import { WORKFLOW_TONE, rfaLabel, stateLabel } from "./hope-status";
 
 type FixedKind = "01_admission" | "02_huv1" | "03_huv2" | "05_discharge";
@@ -115,6 +118,8 @@ function HopeCaptureWorkspace({
     void load();
   }, [load]);
 
+  const patientNames = usePatientNames(state?.patientId ? [state.patientId] : []);
+
   const item = useMemo(() => {
     if (!state || !kind) return null;
     if (kind === "01_admission") return state.admissionAssessment;
@@ -203,8 +208,9 @@ function HopeCaptureWorkspace({
           }
         >
           <span style={metaLine}>
-            Patient <span className="wx-data-md">{state.patientId ?? "unresolved"}</span>
-            {state.admissionAt ? ` · Admission ${fmtDate(state.admissionAt)}` : ""}
+            Patient{" "}
+            <span className="wx-data-md">{patientLabel(state.patientId, patientNames)}</span>
+            {state.admissionAt ? ` · Admission ${fmtAdmissionDate(state.admissionAt)}` : ""}
           </span>
         </PageHeader>
       }
@@ -404,6 +410,19 @@ function workflowLabel(status: string): string {
 function formatWindow(start: string | null, end: string | null): string {
   if (!start || !end) return "-";
   return `${fmtDate(start)} - ${fmtDate(end)}`;
+}
+
+/** The patient's name; the id if the viewer cannot read the patient; "unresolved" with no patient. */
+function patientLabel(patientId: string | null, names: PatientNames): JSX.Element | string {
+  if (!patientId) return "unresolved";
+  const name = patientNameOf(names, patientId);
+  return name === null ? patientId : <NameLabel value={name} />;
+}
+
+/** `admissionAt` is a date column serialized as midnight UTC: format it date-only so US zones do not show the day before. */
+function fmtAdmissionDate(value: string): string {
+  const formatted = formatDateOnly(value);
+  return formatted === value ? fmtDate(value) : formatted;
 }
 
 function fmtDate(value: string | null | undefined): string {

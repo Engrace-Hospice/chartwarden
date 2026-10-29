@@ -33313,6 +33313,17 @@ export interface operations {
                             holdReason: string | null;
                             holdAt: string | null;
                             releasedAt: string | null;
+                            patientAgeYears?: number | null;
+                            referralId?: string | null;
+                            admissionAt?: string | null;
+                            activatedAt?: string | null;
+                            serviceAddressSnapshot?: {
+                                city: string;
+                                state: string | null;
+                            } | null;
+                            hospicePhysician?: {
+                                displayName: string;
+                            } | null;
                         }[];
                         nextCursor: string | null;
                     };
@@ -40195,6 +40206,8 @@ export interface operations {
                 patientId?: string;
                 resourceKind?: string;
                 eventType?: string;
+                eventTypeContains?: string;
+                excludeAccessReads?: boolean;
                 outcome?: string;
                 severity?: string;
                 from?: string;
@@ -40238,6 +40251,7 @@ export interface operations {
                             context: {
                                 [key: string]: unknown;
                             };
+                            actorName?: string | null;
                             retentionClass: "operational" | "compliance" | "legal_hold" | "compliance_42cfr_part2";
                         }[];
                         nextCursor: string | null;
@@ -40288,6 +40302,7 @@ export interface operations {
                         context: {
                             [key: string]: unknown;
                         };
+                        actorName?: string | null;
                         retentionClass: "operational" | "compliance" | "legal_hold" | "compliance_42cfr_part2";
                     };
                 };

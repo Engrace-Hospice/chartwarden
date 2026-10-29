@@ -102,7 +102,7 @@ describe("MyVisits web workflow", () => {
   }
 
   it("starts a published Visit with the mandatory EVV reason and refreshes the list", async () => {
-    const get = vi.fn(async () => ({ data: [visit] }));
+    const get = vi.fn(async (..._args: unknown[]) => ({ data: [visit] }));
     const post = vi.fn(async () => ({ data: { ...visit, status: "en_route" } }));
     const dialog = await openStartDialog({ GET: get, POST: post });
 
@@ -117,7 +117,8 @@ describe("MyVisits web workflow", () => {
         body: { evvMissingReason: REASON },
       }),
     );
-    expect(get).toHaveBeenCalledTimes(2);
+    // The list loads, then reloads after the start (patient-name lookups are separate GETs).
+    expect(get.mock.calls.filter(([path]) => path === "/api/v1/visits")).toHaveLength(2);
   });
 
   it("refuses a start reason shorter than 40 characters without calling the server", async () => {
@@ -283,8 +284,8 @@ describe("MyVisits web workflow", () => {
       expect((screen.getByLabelText(/active admission/i) as HTMLInputElement).disabled).toBe(false),
     );
     fireEvent.focus(screen.getByLabelText(/active admission/i));
-    await waitFor(() => expect(screen.getByText(/Admitted 2026-01-02/i)).toBeTruthy());
-    fireEvent.click(screen.getByText(/Admitted 2026-01-02/i));
+    await waitFor(() => expect(screen.getByText(/Admitted Jan 2, 2026/i)).toBeTruthy());
+    fireEvent.click(screen.getByText(/Admitted Jan 2, 2026/i));
     await waitFor(() => expect(screen.getByRole("option", { name: /nurse one/i })).toBeTruthy());
     fireEvent.change(screen.getByLabelText(/assigned clinician/i), {
       target: { value: visit.assignedMembershipId },

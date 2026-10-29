@@ -13,6 +13,7 @@ import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 // the patient's admissions from reading everyone's and rendering the same-shaped list.
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { JSX } from "react";
+import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -112,9 +113,34 @@ describe("F-066 — AdmissionLookupField is patient-scoped", () => {
     fireEvent.focus(screen.getByRole("combobox"));
     const options = await screen.findAllByRole("option");
     expect(options).toHaveLength(2);
-    expect(options[0]?.textContent).toContain("Admitted 2025-11-02");
+    expect(options[0]?.textContent).toContain("Admitted Nov 2, 2025");
     expect(options[0]?.textContent).toContain("open");
     expect(options[1]?.textContent).toContain("discharged 2026-02-01");
+  });
+
+  it("shows a readable date, not the ISO timestamp, once an admission is picked", async () => {
+    function Controlled(): JSX.Element {
+      const [value, setValue] = useState("");
+      return (
+        <MemoryRouter>
+          <ApiClientProvider
+            client={createApiClient({ baseUrl: "http://localhost", fetch: stubFetch })}
+          >
+            <AdmissionLookupField
+              label="Admission"
+              value={value}
+              onChange={setValue}
+              patientId={PATIENT}
+            />
+          </ApiClientProvider>
+        </MemoryRouter>
+      );
+    }
+    render(<Controlled />);
+    const input = screen.getByRole("combobox") as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.click((await screen.findAllByRole("option"))[0] as HTMLElement);
+    expect(input.value).toBe("Admitted Nov 2, 2025");
   });
 
   it("is disabled and says why until a patient is chosen — never a list nobody can choose from", async () => {

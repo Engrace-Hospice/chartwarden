@@ -23,6 +23,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useSession } from "../../shell/session";
 import { ADMISSION_TONE, stateLabel as enumLabel } from "./admission-status";
 import { AdmissionsTabs, Avatar, Filter, Stat } from "./admissions-chrome";
 
@@ -36,23 +37,21 @@ interface AdmissionRow {
   version: number;
   patientId?: string | null;
   patient: { id: string; firstName: string; lastName: string; mrn: string } | null;
-}
-
-interface AdmissionDetail {
-  id: string;
+  // Census-row facts the list endpoint now returns (no per-row patient/admission reads).
+  patientAgeYears?: number | null;
   referralId?: string | null;
   admissionAt?: string | null;
   activatedAt?: string | null;
   serviceAddressSnapshot?: { city: string; state: string | null } | null;
   hospicePhysician?: { displayName: string } | null;
 }
+type AdmissionDetail = AdmissionRow;
 
 interface PatientSummary {
   id: string;
   mrn?: string | null;
   firstName?: string | null;
   lastName?: string | null;
-  dob?: string | null;
 }
 
 interface Requirement {
@@ -89,16 +88,6 @@ function patientDisplayName(patient: PatientSummary | null, patientId?: string |
   return name || patient?.mrn || patientId || "Unresolved";
 }
 
-function ageOf(dob?: string | null): number | null {
-  const m = dob ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob) : null;
-  if (!m) return null;
-  const now = new Date();
-  let age = now.getFullYear() - Number(m[1]);
-  const month = now.getMonth() + 1;
-  if (month < Number(m[2]) || (month === Number(m[2]) && now.getDate() < Number(m[3]))) age -= 1;
-  return age;
-}
-
 const maskMrn = (mrn?: string | null): string => (mrn ? `…${mrn.slice(-4)}` : "—");
 
 function usDate(value?: string | null): string {
@@ -116,9 +105,8 @@ const sourceOf = (d?: AdmissionDetail): string =>
 export function AdmissionCensus(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  const canOpenPatient = useSession()?.permissions?.includes("patient.read") ?? false;
   const [items, setItems] = useState<AdmissionRow[]>([]);
-  const [patientsById, setPatientsById] = useState<Record<string, PatientSummary>>({});
-  const [details, setDetails] = useState<Record<string, AdmissionDetail>>({});
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -154,40 +142,6 @@ export function AdmissionCensus(): JSX.Element {
       setItems((prev) => (cursor ? [...prev, ...rows] : rows));
       setNextCursor(data?.nextCursor ?? null);
       setLoading(false);
-
-      const patientIds = [
-        ...new Set(rows.map((r) => r.patientId).filter((id): id is string => !!id)),
-      ];
-      void Promise.all(
-        patientIds.map((id) =>
-          client
-            .GET("/api/v1/patients/{id}", { params: { path: { id } } })
-            .then((r) => [id, r.data as PatientSummary | undefined] as const)
-            .catch(() => [id, undefined] as const),
-        ),
-      ).then((pairs) => {
-        if (!active) return;
-        setPatientsById((prev) => {
-          const next = { ...prev };
-          for (const [id, p] of pairs) if (p) next[id] = p;
-          return next;
-        });
-      });
-      void Promise.all(
-        rows.map((r) =>
-          client
-            .GET("/api/v1/admissions/{id}", { params: { path: { id: r.id } } })
-            .then((res) => [r.id, res.data as AdmissionDetail | undefined] as const)
-            .catch(() => [r.id, undefined] as const),
-        ),
-      ).then((pairs) => {
-        if (!active) return;
-        setDetails((prev) => {
-          const next = { ...prev };
-          for (const [id, d] of pairs) if (d) next[id] = d;
-          return next;
-        });
-      });
     })();
     return () => {
       active = false;
@@ -199,7 +153,7 @@ export function AdmissionCensus(): JSX.Element {
     const cutoff = range === "all" ? 0 : Date.now() - Number(range) * DAY;
     return items.filter((a) => {
       const patient = a.patient;
-      const d = details[a.id];
+      const d = a;
       if (source && sourceOf(d) !== source) return false;
       if (cutoff) {
         const at = d?.admissionAt ? Date.parse(d.admissionAt) : Number.NaN;
@@ -214,12 +168,12 @@ export function AdmissionCensus(): JSX.Element {
         (d?.hospicePhysician?.displayName ?? "").toLowerCase().includes(q)
       );
     });
-  }, [items, details, searchQuery, source, range]);
+  }, [items, searchQuery, source, range]);
 
   const kpis = useMemo(() => {
     const now = new Date();
     const thisMonth = items.filter((a) => {
-      const at = details[a.id]?.admissionAt;
+      const at = a.admissionAt;
       if (!at) return false;
       const d = new Date(at);
       return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
@@ -232,7 +186,7 @@ export function AdmissionCensus(): JSX.Element {
       onHold: items.filter((a) => a.state === "on_hold").length,
       ended: items.filter((a) => ENDED.includes(a.state)).length,
     };
-  }, [items, details]);
+  }, [items]);
 
   const hasActiveFilters = searchQuery !== "" || state !== "" || source !== "" || range !== "all";
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -409,8 +363,8 @@ export function AdmissionCensus(): JSX.Element {
                 {pagedItems.map((a) => {
                   const patient = a.patient;
                   const name = patientDisplayName(patient, a.patientId);
-                  const age = ageOf(a.patientId ? patientsById[a.patientId]?.dob : null);
-                  const d = details[a.id];
+                  const age = a.patientAgeYears ?? null;
+                  const d = a;
                   const isSelected = selected?.id === a.id;
                   return (
                     <tr
@@ -433,7 +387,7 @@ export function AdmissionCensus(): JSX.Element {
                         <span style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
                           <Avatar name={name} />
                           <span style={{ minWidth: 0 }}>
-                            {a.patientId && patientsById[a.patientId] ? (
+                            {a.patientId && a.patient && canOpenPatient ? (
                               <Link
                                 to={`/patients/${a.patientId}`}
                                 className="wx-row-title"
@@ -513,8 +467,8 @@ export function AdmissionCensus(): JSX.Element {
           key={selected.id}
           admission={selected}
           patient={selected.patient}
-          dob={selected.patientId ? patientsById[selected.patientId]?.dob : null}
-          detail={details[selected.id]}
+          ageYears={selected.patientAgeYears ?? null}
+          detail={selected}
           onClose={() => setDrawerOpen(false)}
           onOpen={() => navigate(`/admissions/${selected.id}`)}
         />
@@ -526,14 +480,14 @@ export function AdmissionCensus(): JSX.Element {
 function AdmissionDrawer({
   admission: a,
   patient,
-  dob,
+  ageYears,
   detail,
   onClose,
   onOpen,
 }: {
   admission: AdmissionRow;
   patient: PatientSummary | null;
-  dob?: string | null;
+  ageYears?: number | null;
   detail?: AdmissionDetail;
   onClose: () => void;
   onOpen: () => void;
@@ -555,7 +509,7 @@ function AdmissionDrawer({
   }, [client, a.id]);
 
   const name = patientDisplayName(patient, a.patientId);
-  const age = ageOf(dob);
+  const age = ageYears ?? null;
   const reqs = readiness?.requirements ?? [];
   const stepDone = (codes: string[]) => {
     const own = reqs.filter((r) => codes.includes(r.code));

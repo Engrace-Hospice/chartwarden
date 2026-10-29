@@ -308,13 +308,13 @@ describe("Encounter workspace web workflow", () => {
     // The admission lookup is an ARIA combobox whose popup listbox shares its label, so the
     // label alone matches two nodes — address the input by its role.
     fireEvent.focus(screen.getByRole("combobox", { name: /active admission/i }));
-    await waitFor(() => expect(screen.getByText("Admitted 2026-08-01")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("Admitted Aug 1, 2026")).toBeTruthy());
     expect(get).toHaveBeenCalledWith(
       "/api/v1/patients/{patientId}/admissions",
       expect.objectContaining({ params: { path: { patientId: "patient-1" } } }),
     );
-    expect(screen.queryByText("Admitted 2025-01-01")).toBeNull();
-    fireEvent.click(screen.getByText("Admitted 2026-08-01"));
+    expect(screen.queryByText("Admitted Jan 1, 2025")).toBeNull();
+    fireEvent.click(screen.getByText("Admitted Aug 1, 2026"));
     fireEvent.change(screen.getByLabelText(/service date/i), { target: { value: "2026-08-31" } });
     fireEvent.click(screen.getByRole("button", { name: /create encounter/i }));
 

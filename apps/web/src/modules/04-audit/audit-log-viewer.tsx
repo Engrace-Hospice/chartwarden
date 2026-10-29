@@ -35,6 +35,7 @@ interface AuditEvent {
   before: Record<string, unknown> | null;
   after: Record<string, unknown> | null;
   context: Record<string, unknown>;
+  actorName?: string | null;
   retentionClass: string;
 }
 
@@ -43,8 +44,16 @@ interface Filters {
   resourceKind: string;
   outcome: string;
   severity: string;
+  // De-emphasis only: read/view events stay in the log; unticking shows them again.
+  hideReads: boolean;
 }
-const EMPTY_FILTERS: Filters = { eventType: "", resourceKind: "", outcome: "", severity: "" };
+const EMPTY_FILTERS: Filters = {
+  eventType: "",
+  resourceKind: "",
+  outcome: "",
+  severity: "",
+  hideReads: true,
+};
 const AUDIT_PAGE_SIZES = [25, 50, 100] as const;
 
 // §6.6 status taxonomy: audit outcome + severity → tone. `denied` is a deliberate guard block (warning,
@@ -77,7 +86,9 @@ export function AuditLogViewer(): JSX.Element {
       setLoading(true);
       setError(null);
       const query: Record<string, string | number> = { limit: pageSize };
-      if (filters.eventType) query.eventType = filters.eventType;
+      if (filters.eventType.trim()) query.eventTypeContains = filters.eventType.trim();
+      // An explicit event-type search wins over the noise filter, so typing "viewed" is never empty.
+      if (filters.hideReads && !filters.eventType.trim()) query.excludeAccessReads = "true";
       if (filters.resourceKind) query.resourceKind = filters.resourceKind;
       if (filters.outcome) query.outcome = filters.outcome;
       if (filters.severity) query.severity = filters.severity;
@@ -106,7 +117,8 @@ export function AuditLogViewer(): JSX.Element {
     filters.eventType !== "" ||
     filters.resourceKind !== "" ||
     filters.outcome !== "" ||
-    filters.severity !== "";
+    filters.severity !== "" ||
+    !filters.hideReads;
 
   const clearFilters = () => {
     setFilters(EMPTY_FILTERS);
@@ -159,7 +171,7 @@ export function AuditLogViewer(): JSX.Element {
                 <input
                   type="search"
                   aria-label="Action / event type"
-                  placeholder="Search action..."
+                  placeholder="Search action…"
                   value={filters.eventType}
                   onChange={(e) => setFilters((f) => ({ ...f, eventType: e.target.value }))}
                 />
@@ -201,6 +213,15 @@ export function AuditLogViewer(): JSX.Element {
                   <option value="warn">Warn</option>
                   <option value="critical">Critical</option>
                 </select>
+              </label>
+              <label className="wx-filter-field" style={{ flexDirection: "row", gap: "0.35rem" }}>
+                <input
+                  type="checkbox"
+                  aria-label="Hide read events"
+                  checked={filters.hideReads}
+                  onChange={(e) => setFilters((f) => ({ ...f, hideReads: e.target.checked }))}
+                />
+                <span>Hide read events</span>
               </label>
               <select
                 aria-label="Events per page"
@@ -370,7 +391,9 @@ function ActorCell({ event }: { event: AuditEvent }): JSX.Element {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
       <span style={{ fontWeight: 600, color: "var(--color-on-surface)" }}>
-        {event.actorUserId ? (
+        {event.actorName ? (
+          <span title={event.actorUserId ?? undefined}>{event.actorName}</span>
+        ) : event.actorUserId ? (
           <span className="wx-data-md">{event.actorUserId}</span>
         ) : (
           label(event.actorKind)

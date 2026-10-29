@@ -8,7 +8,7 @@
 // filter/access/scope predicates are pushed to SQL so pagination is exact (LIMIT n+1).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { type SQL, and, desc, eq, getTableColumns, gte, lte, or, sql } from "drizzle-orm";
+import { type SQL, and, desc, eq, getTableColumns, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { rowHeldByActiveLegalHold } from "../lifecycle/hold-overlay";
 import {
   ACCOUNTING_TPO_EXCLUSION_NOTE,
@@ -24,6 +24,7 @@ import {
   type PatientAccessFilter,
   decodeCursor,
   encodeCursor,
+  normalizeEventText,
   resolveLimit,
 } from "./audit-query";
 
@@ -64,6 +65,19 @@ function afterCursor(cursor?: string): SQL | undefined {
     and(sql`${A.createdAt} = ${c.createdAt}`, sql`${A.id} < ${c.id}`),
   );
 }
+
+/** Escape LIKE metacharacters so the user's text is matched literally. */
+const escapeLike = (text: string): string => text.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+/** Event type contains `text` (case-insensitive; `.`/`_` read as spaces, like the human label). Parameterised. */
+function eventTypeContains(text: string): SQL | undefined {
+  const needle = normalizeEventText(text);
+  if (needle === "") return undefined;
+  return sql`lower(translate(${A.eventType}, '._', '  ')) LIKE ${`%${escapeLike(needle)}%`} ESCAPE '\\'`;
+}
+
+/** Not a read/view event. */
+const notViewNoise: SQL = sql`${A.eventType} NOT LIKE '%.viewed' AND ${A.eventType} NOT LIKE '%.list_viewed'`;
 
 /** Event TOUCHES `patientId`: context.patientId match, or a `patient`-kind row. */
 function touchesPatient(patientId: string): SQL {
@@ -123,6 +137,29 @@ function ctxString(context: Record<string, unknown>, field: string): string | un
   return typeof v === "string" && v.length > 0 ? v : undefined;
 }
 
+type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+
+/** Display names for `ids`, restricted to users with a membership in `orgId` (never another tenant's user). */
+async function actorNames(
+  tx: Tx,
+  orgId: string,
+  ids: readonly (string | null)[],
+): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter((i): i is string => !!i))];
+  if (unique.length === 0) return new Map();
+  const rows = await tx
+    .selectDistinct({ id: schema.users.id, name: schema.users.name, username: schema.users.displayUsername })
+    .from(schema.users)
+    .innerJoin(schema.memberships, eq(schema.memberships.userId, schema.users.id))
+    .where(and(eq(schema.memberships.organizationId, orgId), inArray(schema.users.id, unique)));
+  const out = new Map<string, string>();
+  for (const r of rows) {
+    const name = r.name?.trim() || r.username?.trim();
+    if (name) out.set(r.id, name);
+  }
+  return out;
+}
+
 /** Build the production AuditQuery over the pooled Drizzle client. */
 export function createDbAuditQuery(db: DbClient): AuditQuery {
   const run = <T>(orgId: string, fn: (tx: Parameters<Parameters<DbClient["transaction"]>[0]>[0]) => Promise<T>) =>
@@ -150,6 +187,8 @@ export function createDbAuditQuery(db: DbClient): AuditQuery {
         filter.resourceKind ? eq(A.resourceKind, filter.resourceKind) : undefined,
         filter.resourceId ? sql`${A.resourceId} = ${filter.resourceId}::uuid` : undefined,
         filter.eventType ? eq(A.eventType, filter.eventType) : undefined,
+        filter.eventTypeContains ? eventTypeContains(filter.eventTypeContains) : undefined,
+        filter.excludeAccessReads ? notViewNoise : undefined,
         filter.outcome ? eq(A.outcome, filter.outcome as typeof A.$inferSelect.outcome) : undefined,
         filter.severity ? eq(A.severity, filter.severity as typeof A.$inferSelect.severity) : undefined,
         filter.from ? gte(A.createdAt, new Date(filter.from)) : undefined,
@@ -157,7 +196,15 @@ export function createDbAuditQuery(db: DbClient): AuditQuery {
         filter.patientId ? touchesPatient(filter.patientId) : undefined,
         afterCursor(filter.cursor),
       );
-      return run(orgId, async (tx) => paginate(await fetch(tx, where, limit), limit, (r) => r));
+      return run(orgId, async (tx) => {
+        const page = paginate(await fetch(tx, where, limit), limit, (r) => r);
+        if (!filter.includeActorNames) return page;
+        const names = await actorNames(tx, orgId, page.items.map((r) => r.actorUserId));
+        return {
+          ...page,
+          items: page.items.map((r) => ({ ...r, actorName: names.get(r.actorUserId ?? "") ?? null })),
+        };
+      });
     },
 
     async getEvent(orgId: string, id: string): Promise<AuditEventRecord | null> {

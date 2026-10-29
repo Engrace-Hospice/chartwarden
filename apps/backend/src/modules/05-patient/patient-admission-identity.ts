@@ -1,5 +1,5 @@
 import { type DbClient, schema } from "@chartwarden/db";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 /** The small patient identity an already authorized admission read may display. */
 export interface AdmissionPatientIdentity {
@@ -29,4 +29,27 @@ export async function patientAdmissionIdentitiesInTx(
       and(eq(schema.patients.organizationId, organizationId), inArray(schema.patients.id, ids)),
     );
   return new Map(rows.map((row) => [row.id, row]));
+}
+
+/**
+ * Whole-year ages for the census list (no date of birth leaves M5). Same tenant-scoped transaction as
+ * the identity read; a patient the caller's transaction cannot see is simply absent from the map.
+ */
+export async function patientAgeYearsInTx(
+  tx: DbClient,
+  organizationId: string,
+  patientIds: readonly string[],
+): Promise<Map<string, number>> {
+  const ids = [...new Set(patientIds)];
+  if (ids.length === 0) return new Map();
+  const rows = await tx
+    .select({
+      id: schema.patients.id,
+      ageYears: sql<number>`date_part('year', age(${schema.patients.dob}))::int`,
+    })
+    .from(schema.patients)
+    .where(
+      and(eq(schema.patients.organizationId, organizationId), inArray(schema.patients.id, ids)),
+    );
+  return new Map(rows.map((row) => [row.id, Number(row.ageYears)]));
 }

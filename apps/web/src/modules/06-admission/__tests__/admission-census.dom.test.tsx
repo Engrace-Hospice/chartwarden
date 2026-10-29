@@ -19,7 +19,7 @@ function ok(data: unknown) {
   return { data, error: undefined, response: new Response(null, { status: 200 }) };
 }
 
-function clientFor(patientReadUnavailable = false): ApiClient {
+function clientFor(): ApiClient {
   return {
     GET: vi.fn(async (path: string) => {
       if (path === "/api/v1/admissions") {
@@ -31,26 +31,14 @@ function clientFor(patientReadUnavailable = false): ApiClient {
               version: 3,
               patientId: "patient-1",
               patient: { id: "patient-1", firstName: "Elena", lastName: "Rivera", mrn: "MRN-1001" },
+              patientAgeYears: 80,
+              referralId: "ref-1",
+              admissionAt: "2026-08-28T10:00:00.000Z",
+              serviceAddressSnapshot: { city: "Portland", state: "OR" },
+              hospicePhysician: { displayName: "Dr. Quinn" },
             },
           ],
           nextCursor: null,
-        });
-      }
-      if (path === "/api/v1/patients/{id}") {
-        if (patientReadUnavailable)
-          return {
-            data: undefined,
-            error: { code: "FORBIDDEN" },
-            response: new Response(null, { status: 403 }),
-          };
-        return ok({
-          id: "patient-1",
-          organizationId: "org-1",
-          mrn: "MRN-1001",
-          firstName: "Elena",
-          lastName: "Rivera",
-          dob: "1946-04-12",
-          status: "active",
         });
       }
       return ok({});
@@ -58,11 +46,11 @@ function clientFor(patientReadUnavailable = false): ApiClient {
   } as unknown as ApiClient;
 }
 
-function renderCensus(client: ApiClient): void {
+function renderCensus(client: ApiClient, permissions = session.permissions): void {
   render(
     <MemoryRouter initialEntries={["/admissions"]}>
       <ApiClientProvider client={client}>
-        <SessionProvider session={session}>
+        <SessionProvider session={{ ...session, permissions }}>
           <Routes>
             <Route path="/admissions" element={<AdmissionCensus />} />
           </Routes>
@@ -73,7 +61,7 @@ function renderCensus(client: ApiClient): void {
 }
 
 describe("Admission census", () => {
-  it("shows the linked patient name in the admissions table", async () => {
+  it("shows the linked patient and row facts from the list response alone (no per-row reads)", async () => {
     const client = clientFor();
     renderCensus(client);
 
@@ -83,14 +71,14 @@ describe("Admission census", () => {
     expect(patientLink.getAttribute("href")).toBe("/patients/patient-1");
     // The MRN is masked to its last four in the table (full value in the cell's title).
     expect(screen.getAllByText("…1001").length).toBeGreaterThan(0);
-    expect(client.GET).toHaveBeenCalledWith(
-      "/api/v1/patients/{id}",
-      expect.objectContaining({ params: { path: { id: "patient-1" } } }),
-    );
+    expect(screen.getAllByText(/Dr\. Quinn/).length).toBeGreaterThan(0);
+    const paths = (client.GET as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    expect(paths).not.toContain("/api/v1/patients/{id}");
+    expect(paths).not.toContain("/api/v1/admissions/{id}");
   });
 
-  it("keeps the admission-provided name when the separate patient read fails", async () => {
-    renderCensus(clientFor(true));
+  it("does not link to the patient chart when the user cannot read patients", async () => {
+    renderCensus(clientFor(), ["admission.read"]);
     await waitFor(() => expect(screen.getAllByText("Elena Rivera").length).toBeGreaterThan(0));
     expect(screen.queryByRole("link", { name: "Elena Rivera" })).toBeNull();
     expect(screen.getAllByText("…1001").length).toBeGreaterThan(0);

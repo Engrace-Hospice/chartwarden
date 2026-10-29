@@ -90,6 +90,8 @@ function bodyFor(method: string, path: string): unknown {
         layer1Preview: storedSections.length > 0 ? "Patient reports dyspnea at rest." : "",
         version: storedVersion,
       };
+    if (path === `/api/v1/patients/${PATIENT}`)
+      return { id: PATIENT, firstName: "Ada", lastName: "Lovelace", mrn: "MRN-9" };
     if (path.endsWith("/vitals")) return { encounterId: ENCOUNTER, vitals: [] };
     if (path.endsWith("/mileage")) return null;
     if (path.endsWith("/my-drafts"))
@@ -386,5 +388,11 @@ describe("#91 — My Drafts leads somewhere a draft can be finished", () => {
     // Until the composer existed, every row in the author's unfinished-work queue led to a read-only
     // view of the thing they came here to write.
     expect(await screen.findByText("navigated")).toBeTruthy();
+  });
+
+  it("names the patient instead of a truncated id", async () => {
+    mount("/work/drafts", <MyDrafts />, "/work/drafts");
+    expect(await screen.findByText("Lovelace, Ada")).toBeTruthy();
+    expect(screen.queryByText(PATIENT.slice(0, 8))).toBeNull();
   });
 });

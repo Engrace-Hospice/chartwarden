@@ -44,15 +44,19 @@ function fixtureClient(requests: string[] = []) {
         });
       }
       if (url.pathname === "/api/v1/portal/sessions/select-patient") return json({ ok: true });
-      if (url.pathname === "/api/v1/portal/upcoming") {
-        return json([
-          {
-            visitId: "33333333-3333-4333-8333-333333333333",
-            scheduledStartedAt: "2099-10-14T14:00:00.000Z",
-            visitPurposeLabel: "Nurse visit",
-            visitSetting: "home",
-          },
-        ]);
+      if (url.pathname === "/api/v1/portal/visits/upcoming") {
+        return json({
+          category: "visits",
+          items: [
+            {
+              visitId: "33333333-3333-4333-8333-333333333333",
+              scheduledStartedAt: "2099-10-14T14:00:00.000Z",
+              scheduledEndedAt: "2099-10-14T15:00:00.000Z",
+              purposeLabel: "Nurse visit",
+              settingLabel: "home",
+            },
+          ],
+        });
       }
       return new Response(null, { status: 404 });
     },

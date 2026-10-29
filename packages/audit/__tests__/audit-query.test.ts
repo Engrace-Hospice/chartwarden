@@ -179,3 +179,27 @@ describe("accounting() — §164.528 / §2.13 scope differentiation (M4-T09, §7
     expect(r.disclosures.map((d) => d.eventId)).not.toContain("x");
   });
 });
+
+describe("searchEvents() eventTypeContains / excludeAccessReads", () => {
+  const seeded = createInMemoryAuditQuery([
+    rec({ id: "e1", createdAt: "2026-01-01T00:00:01Z", eventType: "m2.membership.revoked" }),
+    rec({ id: "e2", createdAt: "2026-01-01T00:00:02Z", eventType: "alert.list_viewed" }),
+    rec({ id: "e3", createdAt: "2026-01-01T00:00:03Z", eventType: "patient.viewed" }),
+  ]).query;
+  const ids = async (f: Parameters<typeof seeded.searchEvents>[1]) =>
+    (await seeded.searchEvents("org_a", f)).items.map((r) => r.id).sort();
+
+  it("matches a case-insensitive substring of the event type", async () => {
+    expect(await ids({ eventTypeContains: "MEMBERSHIP.rev" })).toEqual(["e1"]);
+  });
+
+  it("matches the human label form (spaces for dots and underscores)", async () => {
+    expect(await ids({ eventTypeContains: "membership revoked" })).toEqual(["e1"]);
+    expect(await ids({ eventTypeContains: "list viewed" })).toEqual(["e2"]);
+  });
+
+  it("hides view events only when asked, never otherwise", async () => {
+    expect(await ids({ excludeAccessReads: true })).toEqual(["e1"]);
+    expect(await ids({})).toEqual(["e1", "e2", "e3"]);
+  });
+});

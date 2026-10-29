@@ -46,6 +46,7 @@ export const AuditEventSchema = Type.Object({
   before: Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()]),
   after: Type.Union([Type.Record(Type.String(), Type.Unknown()), Type.Null()]),
   context: Type.Record(Type.String(), Type.Unknown()),
+  actorName: Type.Optional(Type.Union([Type.String(), Type.Null()])),
   retentionClass: Type.Union([
     Type.Literal("operational"),
     Type.Literal("compliance"),
@@ -65,6 +66,8 @@ export const AuditEventsQuerySchema = Type.Object({
   patientId: Type.Optional(Type.String({ format: "uuid" })),
   resourceKind: Type.Optional(Type.String()),
   eventType: Type.Optional(Type.String()),
+  eventTypeContains: Type.Optional(Type.String({ maxLength: 100 })),
+  excludeAccessReads: Type.Optional(Type.Boolean()),
   outcome: Type.Optional(Type.String()),
   severity: Type.Optional(Type.String()),
   from: Type.Optional(Type.String({ format: "date-time" })),

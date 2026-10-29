@@ -289,6 +289,31 @@ describe("Referral Phase 2 workflow screens", () => {
     ).toBe(true);
   });
 
+  it("labels the first review step for what it does on a freshly received referral", async () => {
+    const received = { ...referral, state: "received", status: "received" };
+    const client = clientFor({
+      GET: vi.fn(async (path: string) =>
+        path === "/api/v1/referrals/{id}" ? ok(received) : ok({ items: [], nextCursor: null }),
+      ) as never,
+    });
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Start review" })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Return to review" })).toBeNull();
+  });
+
+  it("keeps 'Return to review' where information was pending (a real return)", async () => {
+    const pending = { ...referral, state: "pending_information", status: "pending_information" };
+    const client = clientFor({
+      GET: vi.fn(async (path: string) =>
+        path === "/api/v1/referrals/{id}" ? ok(pending) : ok({ items: [], nextCursor: null }),
+      ) as never,
+    });
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Return to review" })).toBeTruthy(),
+    );
+  });
+
   it("allows referral information to be updated before qualification", async () => {
     const client = clientFor();
     renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);

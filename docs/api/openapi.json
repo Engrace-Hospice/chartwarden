@@ -18345,6 +18345,93 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "patientAgeYears": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "referralId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "admissionAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "activatedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "serviceAddressSnapshot": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "city",
+                                  "state"
+                                ],
+                                "properties": {
+                                  "city": {
+                                    "type": "string"
+                                  },
+                                  "state": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "hospicePhysician": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "displayName"
+                                ],
+                                "properties": {
+                                  "displayName": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
@@ -47892,6 +47979,23 @@
             }
           },
           {
+            "name": "eventTypeContains",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 100,
+              "type": "string"
+            }
+          },
+          {
+            "name": "excludeAccessReads",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "outcome",
             "in": "query",
             "required": false,
@@ -48101,6 +48205,16 @@
                             "patternProperties": {
                               "^(.*)$": {}
                             }
+                          },
+                          "actorName": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "retentionClass": {
                             "anyOf": [
@@ -48314,6 +48428,16 @@
                       "patternProperties": {
                         "^(.*)$": {}
                       }
+                    },
+                    "actorName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "retentionClass": {
                       "anyOf": [

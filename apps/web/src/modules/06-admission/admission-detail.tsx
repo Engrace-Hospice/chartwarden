@@ -83,6 +83,7 @@ import { MissingDischargeDetailsAlert } from "./discharge-details-alert";
 import { DischargeOrderSection } from "./discharge-order-ui";
 import { NomncPanel } from "./nomnc-panel";
 import { PatientIntakeDetails } from "./patient-intake-details";
+import { ResidenceQuickAdd } from "./residence-quick-add";
 import { TransferNoticeStatus } from "./transfer-notice-status";
 import { authFailureRedirect } from "./write-workflow";
 
@@ -253,6 +254,7 @@ export function AdmissionDetail({
   // One-shot confirmation handed back by the discharge workflow after a successful submit.
   const flashNotice = (location.state as { notice?: string } | null)?.notice ?? null;
   const hasPermission = (key: string): boolean => session?.permissions?.includes(key) ?? false;
+  const sessionSigner = signedInSigner(session);
   const [admission, setAdmission] = useState<AdmissionDetailView | null>(null);
   const [readiness, setReadiness] = useState<AdmissionReadiness | null>(null);
   const [periods, setPeriods] = useState<PeriodRow[]>([]);
@@ -332,6 +334,7 @@ export function AdmissionDetail({
   const [electedAttendingPhysicianId, setElectedAttendingPhysicianId] = useState("");
   const [waiverAcknowledged, setWaiverAcknowledged] = useState(false);
   const [stateAddendum, setStateAddendum] = useState("");
+  const [signNow, setSignNow] = useState(false);
   const [electionSignerName, setElectionSignerName] = useState("");
   const [electionSignerRole, setElectionSignerRole] = useState<
     "patient" | "legal_representative" | "caregiver"
@@ -515,6 +518,9 @@ export function AdmissionDetail({
     setUploadedSignatureDate("");
     setUploadStage("idle");
     setActivationLocationId("");
+    setSignNow(false);
+    setElectionSignerName("");
+    setElectionSignerRole("patient");
   }, []);
 
   const branchError = useCallback(
@@ -545,6 +551,34 @@ export function AdmissionDetail({
       return false;
     },
     [load, navigate],
+  );
+
+  const electionSignerFields = (
+    <>
+      <label htmlFor="election-signer-name" style={fieldLabel}>
+        Signer name
+      </label>
+      <input
+        id="election-signer-name"
+        value={electionSignerName}
+        onChange={(ev) => setElectionSignerName(ev.target.value)}
+        style={inputStyle}
+      />
+      <label htmlFor="election-signer-role" style={fieldLabel}>
+        Signer role
+      </label>
+      <select
+        id="election-signer-role"
+        value={electionSignerRole}
+        onChange={(ev) =>
+          setElectionSignerRole(ev.target.value as "patient" | "legal_representative" | "caregiver")
+        }
+      >
+        <option value="patient">Patient</option>
+        <option value="legal_representative">Legal representative</option>
+        <option value="caregiver">Caregiver</option>
+      </select>
+    </>
   );
 
   const activate = useCallback(async () => {
@@ -654,6 +688,42 @@ export function AdmissionDetail({
     load,
   ]);
 
+  /** Reads the statement's current version, then signs it. Returns false (error already shown) on failure. */
+  const signElectionStatementById = useCallback(
+    async (statementId: string): Promise<boolean> => {
+      // election-certification does not expose the statement version; fetch it for the optimistic lock.
+      const {
+        data: currentElection,
+        error: readError,
+        response: readResponse,
+      } = await client.GET("/api/v1/election-statements/{id}", {
+        params: { path: { id: statementId } },
+      });
+      if (readError || !currentElection) {
+        branchError(
+          readResponse?.status,
+          readError?.error?.code,
+          "Could not load the current Election Statement.",
+        );
+        return false;
+      }
+      const { error: err, response } = await client.POST("/api/v1/election-statements/{id}/sign", {
+        params: { path: { id: statementId } },
+        body: {
+          signingPatientName: electionSignerName.trim(),
+          signingRole: electionSignerRole,
+          ifVersion: currentElection.version,
+        } as never,
+      });
+      if (err) {
+        branchError(response?.status, err?.error?.code, "Could not sign the Election Statement.");
+        return false;
+      }
+      return true;
+    },
+    [client, branchError, electionSignerName, electionSignerRole],
+  );
+
   const createElectionStatement = useCallback(async () => {
     if (!id || !currentPeriod(electionCert, periods)) return;
     const period = currentPeriod(electionCert, periods);
@@ -670,31 +740,49 @@ export function AdmissionDetail({
       setActionError("Confirm the election/waiver acknowledgment before creating the statement.");
       return;
     }
+    if (signNow && electionSignerName.trim().length === 0) {
+      setActionError("Provide the signer name.");
+      return;
+    }
     setBusy(true);
     setActionError(null);
-    const { error: err, response } = await client.POST(
-      "/api/v1/admissions/{id}/election-statements",
-      {
-        params: { path: { id } },
-        body: {
-          electionPeriodId: period.id,
-          effectiveDate: electionEffectiveDate,
-          primaryDiagnosisIcd10: primaryDiagnosisIcd10.trim().toUpperCase(),
-          electedProviderEntityId,
-          electedAttendingPhysicianId: electedAttendingPhysicianId || undefined,
-          waiverAcknowledged,
-          stateAddendum: stateAddendum.trim() || undefined,
-        } as never,
-      },
-    );
+    const {
+      data: created,
+      error: err,
+      response,
+    } = await client.POST("/api/v1/admissions/{id}/election-statements", {
+      params: { path: { id } },
+      body: {
+        electionPeriodId: period.id,
+        effectiveDate: electionEffectiveDate,
+        primaryDiagnosisIcd10: primaryDiagnosisIcd10.trim().toUpperCase(),
+        electedProviderEntityId,
+        electedAttendingPhysicianId: electedAttendingPhysicianId || undefined,
+        waiverAcknowledged,
+        stateAddendum: stateAddendum.trim() || undefined,
+      } as never,
+    });
     if (err) {
       branchError(response?.status, err?.error?.code, "Could not create the Election Statement.");
+      return;
+    }
+    // Same two server calls as the separate dialogs (draft, then sign with its own permission/step-up).
+    // If signing fails the statement stays created: close the create dialog (a retry would 409) and leave
+    // the Sign action to finish it.
+    const createdId = (created as { id?: string } | undefined)?.id;
+    if (signNow && createdId && !(await signElectionStatementById(createdId))) {
+      closeCeremony();
+      setActionError("The Election Statement was created but not signed. Use Sign to finish it.");
+      void load();
       return;
     }
     setBusy(false);
     closeCeremony();
     void load();
   }, [
+    signNow,
+    electionSignerName,
+    signElectionStatementById,
     id,
     electionCert,
     periods,
@@ -891,72 +979,18 @@ export function AdmissionDetail({
 
   const signElectionStatement = useCallback(async () => {
     const election = currentPeriod(electionCert, periods)?.electionStatement;
-
     if (!election) return;
-
     if (electionSignerName.trim().length === 0) {
       setActionError("Provide the signer name.");
       return;
     }
-
     setBusy(true);
     setActionError(null);
-
-    // election-certification currently does not expose the Election
-    // Statement version. Fetch the statement itself to obtain the
-    // current optimistic-lock version before signing.
-    const {
-      data: currentElection,
-      error: readError,
-      response: readResponse,
-    } = await client.GET("/api/v1/election-statements/{id}", {
-      params: {
-        path: {
-          id: election.id,
-        },
-      },
-    });
-
-    if (readError || !currentElection) {
-      branchError(
-        readResponse?.status,
-        readError?.error?.code,
-        "Could not load the current Election Statement.",
-      );
-      return;
-    }
-
-    const { error: err, response } = await client.POST("/api/v1/election-statements/{id}/sign", {
-      params: {
-        path: {
-          id: election.id,
-        },
-      },
-      body: {
-        signingPatientName: electionSignerName.trim(),
-        signingRole: electionSignerRole,
-        ifVersion: currentElection.version,
-      } as never,
-    });
-
-    if (err) {
-      branchError(response?.status, err?.error?.code, "Could not sign the Election Statement.");
-      return;
-    }
-
+    if (!(await signElectionStatementById(election.id))) return;
     setBusy(false);
     closeCeremony();
     void load();
-  }, [
-    electionCert,
-    periods,
-    electionSignerName,
-    electionSignerRole,
-    client,
-    branchError,
-    closeCeremony,
-    load,
-  ]);
+  }, [electionCert, periods, electionSignerName, signElectionStatementById, closeCeremony, load]);
 
   const createCti = useCallback(async () => {
     const period = currentPeriod(electionCert, periods);
@@ -1746,6 +1780,7 @@ export function AdmissionDetail({
                 addressLoadFailed={addressLoadFailed}
                 onRetryAddresses={() => void retryPatient()}
                 retrying={retryingPatient}
+                canAddAddress={hasPermission("patient.edit")}
               />
 
               <MdmEntityLookupField
@@ -1768,8 +1803,8 @@ export function AdmissionDetail({
 
             <div style={admissionDetailsModalSignerStyle}>
               <span style={fieldLabelStyle}>Recorded by</span>
-              <strong>Admission coordinator</strong>
-              <span style={hintTextStyle}>This session</span>
+              <strong>{sessionSigner.name}</strong>
+              <span style={hintTextStyle}>{sessionSigner.role}</span>
             </div>
 
             <div style={admissionDetailsModalActionsStyle}>
@@ -1808,7 +1843,7 @@ export function AdmissionDetail({
               ]}
             />
           }
-          signer={{ name: "Admission coordinator", role: "This session" }}
+          signer={sessionSigner}
           commitLabel="Close"
           onCommit={closeCeremony}
           onCancel={closeCeremony}
@@ -1833,7 +1868,7 @@ export function AdmissionDetail({
               ]}
             />
           }
-          signer={{ name: "Admission coordinator", role: "This session" }}
+          signer={sessionSigner}
           commitLabel="Close"
           onCommit={closeCeremony}
           onCancel={closeCeremony}
@@ -1861,7 +1896,7 @@ export function AdmissionDetail({
               ]}
             />
           }
-          signer={{ name: "Admission coordinator", role: "This session" }}
+          signer={sessionSigner}
           commitLabel="Close"
           onCommit={closeCeremony}
           onCancel={closeCeremony}
@@ -1898,7 +1933,7 @@ export function AdmissionDetail({
               )}
             </div>
           }
-          signer={{ name: "Admission coordinator", role: "This session" }}
+          signer={sessionSigner}
           commitLabel="Close"
           onCommit={closeCeremony}
           onCancel={closeCeremony}
@@ -1951,6 +1986,17 @@ export function AdmissionDetail({
                 />
                 Patient/representative acknowledged hospice election and applicable waiver.
               </label>
+              {hasPermission("election.sign") ? (
+                <label style={checkboxLabelStyle}>
+                  <input
+                    type="checkbox"
+                    checked={signNow}
+                    onChange={(ev) => setSignNow(ev.target.checked)}
+                  />
+                  Also record the signer&apos;s signature now (create and sign)
+                </label>
+              ) : null}
+              {signNow ? electionSignerFields : null}
               <label htmlFor="state-addendum" style={fieldLabel}>
                 State addendum
               </label>
@@ -1968,8 +2014,13 @@ export function AdmissionDetail({
               ) : null}
             </div>
           }
-          signer={{ name: "Admission coordinator", role: "This session" }}
-          commitLabel={busy ? "Creating..." : "Create statement"}
+          legalText={
+            signNow
+              ? "I attest the Election Statement was reviewed and signed by the named signer."
+              : undefined
+          }
+          signer={sessionSigner}
+          commitLabel={busy ? "Creating..." : signNow ? "Create and sign" : "Create statement"}
           onCommit={() => void createElectionStatement()}
           onCancel={closeCeremony}
         />
@@ -1983,31 +2034,7 @@ export function AdmissionDetail({
                 Capture the patient or representative signature. This is required before the
                 admission can activate.
               </span>
-              <label htmlFor="election-signer-name" style={fieldLabel}>
-                Signer name
-              </label>
-              <input
-                id="election-signer-name"
-                value={electionSignerName}
-                onChange={(ev) => setElectionSignerName(ev.target.value)}
-                style={inputStyle}
-              />
-              <label htmlFor="election-signer-role" style={fieldLabel}>
-                Signer role
-              </label>
-              <select
-                id="election-signer-role"
-                value={electionSignerRole}
-                onChange={(ev) =>
-                  setElectionSignerRole(
-                    ev.target.value as "patient" | "legal_representative" | "caregiver",
-                  )
-                }
-              >
-                <option value="patient">Patient</option>
-                <option value="legal_representative">Legal representative</option>
-                <option value="caregiver">Caregiver</option>
-              </select>
+              {electionSignerFields}
               {actionError ? (
                 <p role="alert" aria-live="assertive" style={alertStyle}>
                   {actionError}
@@ -2016,7 +2043,7 @@ export function AdmissionDetail({
             </div>
           }
           legalText="I attest the Election Statement was reviewed and signed by the named signer."
-          signer={{ name: "Recording clinician", role: "This session" }}
+          signer={sessionSigner}
           commitLabel={busy ? "Signing..." : "Sign statement"}
           onCommit={() => void signElectionStatement()}
           onCancel={closeCeremony}
@@ -2085,7 +2112,7 @@ export function AdmissionDetail({
               ) : null}
             </div>
           }
-          signer={{ name: "Admission coordinator", role: "This session" }}
+          signer={sessionSigner}
           commitLabel={busy ? "Creating..." : "Create CTI"}
           onCommit={() => void createCti()}
           onCancel={closeCeremony}
@@ -2115,7 +2142,7 @@ export function AdmissionDetail({
             </div>
           }
           legalText="I attest this physician signature applies to the Certification of Terminal Illness."
-          signer={{ name: "Recording user", role: "This session" }}
+          signer={sessionSigner}
           commitLabel={busy ? "Signing..." : "Sign CTI"}
           onCommit={() => void signCti()}
           onCancel={closeCeremony}
@@ -2173,7 +2200,7 @@ export function AdmissionDetail({
               ) : null}
             </div>
           }
-          signer={{ name: "Recording clinician", role: "This session" }}
+          signer={sessionSigner}
           commitLabel={busy ? "Recording..." : "Record acknowledgment"}
           onCommit={() => void acknowledgeNor()}
           onCancel={closeCeremony}
@@ -2215,7 +2242,7 @@ export function AdmissionDetail({
             </div>
           }
           legalText="I attest the admission is ready for activation."
-          signer={{ name: "Activating clinician", role: "This session" }}
+          signer={sessionSigner}
           commitLabel={busy ? "Activating..." : "Activate"}
           onCommit={() => void activate()}
           onCancel={closeCeremony}
@@ -2405,6 +2432,21 @@ function currentPeriod(
   );
 }
 
+/** The signed-in user as shown in ceremony dialogs: their name and role(s), not a fixed job title. */
+function signedInSigner(session: { displayName?: string; roles?: string[] } | null): {
+  name: string;
+  role: string;
+} {
+  const roles = (session?.roles ?? []).map((r) => {
+    const words = r.replace(/_/g, " ");
+    return words.charAt(0).toUpperCase() + words.slice(1);
+  });
+  return {
+    name: session?.displayName || "Signed-in user",
+    role: roles.join(", ") || "This session",
+  };
+}
+
 function currentResidenceAddress(addresses: AddressView[] | null): AddressView | null {
   if (!addresses?.length) return null;
   return (
@@ -2434,7 +2476,9 @@ function ServiceLocationBlock({
   addressLoadFailed,
   onRetryAddresses,
   retrying,
+  canAddAddress,
 }: {
+  canAddAddress: boolean;
   patientId?: string;
   address: AddressView | null;
   patientUnavailable: boolean;
@@ -2480,6 +2524,10 @@ function ServiceLocationBlock({
             {RESIDENCE_REQUIRED_MESSAGE} You can add it during admission, before you save the
             admission details.
           </div>
+
+          {patientId && canAddAddress ? (
+            <ResidenceQuickAdd patientId={patientId} onSaved={onRetryAddresses} />
+          ) : null}
 
           {patientId ? <IntakePendingAddressHint patientId={patientId} /> : null}
 

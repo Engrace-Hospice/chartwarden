@@ -178,4 +178,29 @@ describe("HOPE capture workspace", () => {
       }),
     );
   });
+
+  it("names the patient and shows the admission's calendar day in any timezone", async () => {
+    // admissionAt is a date serialized as midnight UTC; in a US zone a local-time render reads Aug 26.
+    const GET = vi.fn(async (path: string) =>
+      path === "/api/v1/patients/{id}"
+        ? ok({ id: "patient-1", firstName: "Ada", lastName: "Lovelace" })
+        : ok(workflow("open")),
+    );
+    const client = { GET, POST: vi.fn() } as unknown as ApiClient;
+    renderRoute(client, `/admissions/${admissionId}/hope/timepoints/02_huv1`);
+
+    expect(await screen.findByText("Lovelace, Ada")).toBeTruthy();
+    expect(screen.queryByText("patient-1")).toBeNull();
+    expect(screen.getByText(/Admission Aug 27, 2026/)).toBeTruthy();
+  });
+
+  it("falls back to the patient id when the name cannot be read", async () => {
+    const GET = vi.fn(async (path: string) =>
+      path === "/api/v1/patients/{id}" ? { data: undefined, error: {} } : ok(workflow("open")),
+    );
+    const client = { GET, POST: vi.fn() } as unknown as ApiClient;
+    renderRoute(client, `/admissions/${admissionId}/hope/timepoints/02_huv1`);
+
+    expect(await screen.findByText("patient-1")).toBeTruthy();
+  });
 });

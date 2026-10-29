@@ -15,6 +15,24 @@ interface UpcomingVisit {
   visitSetting: string;
 }
 
+interface PortalUpcomingItem {
+  visitId: string;
+  scheduledStartedAt?: string;
+  scheduledEndedAt?: string;
+  purposeLabel?: string;
+  settingLabel?: string;
+}
+
+function toUpcomingVisit(item: PortalUpcomingItem): UpcomingVisit {
+  return {
+    visitId: item.visitId,
+    scheduledStartedAt: item.scheduledStartedAt ?? "",
+    ...(item.scheduledEndedAt ? { scheduledEndedAt: item.scheduledEndedAt } : {}),
+    visitPurposeLabel: item.purposeLabel ?? "",
+    visitSetting: item.settingLabel ?? "",
+  };
+}
+
 function DashboardSkeleton({
   label,
   compact = false,
@@ -318,9 +336,9 @@ export function PortalPatientDashboard(): JSX.Element {
     setUpcoming({ patientId: requestedPatient, items: [], loading: true, error: null });
     if (!requestedPatient) return () => undefined;
     void (async () => {
-      const response = await client.GET("/api/v1/portal/upcoming", {
-        params: { query: { patient: requestedPatient } },
-      });
+      // Same session-pinned M31 endpoint the Visits screen reads (the M17 `/portal/upcoming` route
+      // needed a caller-named patient and failed the whole card when its grant check refused).
+      const response = await client.GET("/api/v1/portal/visits/upcoming", {});
       if (!active) return;
       setUpcoming(
         "error" in response
@@ -332,7 +350,9 @@ export function PortalPatientDashboard(): JSX.Element {
             }
           : {
               patientId: requestedPatient,
-              items: (response.data as UpcomingVisit[] | undefined) ?? [],
+              items: ((response.data?.items ?? []) as unknown as PortalUpcomingItem[]).map(
+                toUpcomingVisit,
+              ),
               loading: false,
               error: null,
             },

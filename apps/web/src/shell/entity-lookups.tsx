@@ -1,4 +1,9 @@
-import { EntityLookupField, humanizeIdentifier, useApiClient } from "@chartwarden/ui";
+import {
+  EntityLookupField,
+  formatDateOnly,
+  humanizeIdentifier,
+  useApiClient,
+} from "@chartwarden/ui";
 import type {
   ApiClient,
   EntityLookupFieldProps,
@@ -184,6 +189,13 @@ async function loadCareTeamStaff(
   };
 }
 
+/** `admissionAt` is a date serialized as midnight UTC; format it as a date-only value so no timezone shifts the day. */
+function admissionDateLabel(admissionAt: string | null): string {
+  if (!admissionAt) return "Admission (no date recorded)";
+  const formatted = formatDateOnly(admissionAt);
+  return `Admitted ${formatted === admissionAt ? admissionAt.slice(0, 10) : formatted}`;
+}
+
 /**
  * F-066 (#161) — the patient's admissions, newest first, from the read F-065 added.
  *
@@ -230,11 +242,9 @@ async function loadPatientAdmissions(
       // The admission a human recognises is the one they can DATE. The uuid stays as the secondary,
       // because it is what the wizard sends and a biller reconciling against a record may need it.
       id: a.id,
-      label: optionLabel(
-        a.admissionAt ? `Admitted ${a.admissionAt.slice(0, 10)}` : "Admission (no date recorded)",
-        shortId(a.id),
-      ),
-      searchLabel: a.admissionAt ?? a.id,
+      label: optionLabel(admissionDateLabel(a.admissionAt), shortId(a.id)),
+      // What the field shows once picked: a readable date, never the raw ISO timestamp.
+      searchLabel: admissionDateLabel(a.admissionAt),
       description: a.dischargedAt
         ? `${a.state} · discharged ${a.dischargedAt.slice(0, 10)}`
         : `${a.state} · open`,

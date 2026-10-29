@@ -87,6 +87,19 @@ controls:
       - script: test:m36:body-key-ring:live
       - file: docs/architecture/CHARTWARDEN_SECURITY_HARDENING_v0_2.md
 
+  - id: CW-AC-06
+    title: List and audit reads return minimum-necessary facts — computed age (never date of birth) on the admission census; actor names resolved only inside the caller's org
+    hipaa: ["164.502(b)", "164.312(b)"]
+    soc2: ["CC6.1", "CC6.7"]
+    status: partial
+    evidence:
+      - file: apps/backend/src/modules/05-patient/patient-admission-identity.ts
+      - file: packages/audit/src/query/drizzle-audit-query.ts
+    gap:
+      reason: The census age field and the audit actorName org-scoped lookup are covered by in-memory tests and a manual Docker check only; no live suite proves them against the NOBYPASSRLS role.
+      owner: platform
+      review_by: 2027-01-31
+
   - id: CW-AU-01
     title: Audit controls — PHI reads and writes leave an integrity-checked trail
     hipaa: ["164.312(b)", "164.312(c)(1)"]

@@ -22,6 +22,8 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { NameLabel, patientNameOf } from "../../shell/name-display";
+import { usePatientNames } from "../../shell/patient-names";
 import { lateEntryTone, stateLabel } from "./encounter-status";
 
 interface EncounterRow {
@@ -88,6 +90,7 @@ export function MyDrafts(): JSX.Element {
     ],
     [items],
   );
+  const patientNames = usePatientNames(items.map((e) => e.patientId));
   const filteredItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return items
@@ -101,6 +104,7 @@ export function MyDrafts(): JSX.Element {
           [
             e.id,
             e.patientId,
+            patientNames[e.patientId]?.name ?? "",
             e.encounterType,
             e.discipline,
             e.serviceDate,
@@ -110,7 +114,7 @@ export function MyDrafts(): JSX.Element {
         return matchesDiscipline && matchesLate && matchesSearch;
       })
       .sort((a, b) => b.serviceDate.localeCompare(a.serviceDate));
-  }, [disciplineFilter, items, lateFilter, searchQuery]);
+  }, [disciplineFilter, items, lateFilter, patientNames, searchQuery]);
   const pageCount = Math.max(1, Math.ceil(filteredItems.length / pageSize));
   const activePage = Math.min(page, pageCount);
   const pagedItems = filteredItems.slice((activePage - 1) * pageSize, activePage * pageSize);
@@ -319,7 +323,9 @@ export function MyDrafts(): JSX.Element {
                           tone={lateEntryTone(e.lateEntryTier)}
                         />
                       </td>
-                      <td style={monoMutedStyle}>{e.patientId.slice(0, 8)}</td>
+                      <td>
+                        <NameLabel value={patientNameOf(patientNames, e.patientId)} />
+                      </td>
                       <td>
                         <Button
                           size="sm"

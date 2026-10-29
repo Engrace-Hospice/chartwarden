@@ -216,7 +216,7 @@ export function ReferralDetail(): JSX.Element {
                         })
                       }
                     >
-                      Return to review
+                      {r.status === "received" ? "Start review" : "Return to review"}
                     </Button>
                   ) : null}
                   {canQualify ? (
