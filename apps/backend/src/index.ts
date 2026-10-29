@@ -12104,9 +12104,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           //
           // §4.8 M36 delivery-failure trigger (#205 M36 follow-up) rides the same `ports` object —
           // `m19TriggerPorts` (below) satisfies `DeliveryFailureTriggerPorts` too
-          // (createDrizzleInboundTriggerPorts's return type is the intersection). No producer publishes
-          // `m36.notification.delivery_failed` yet (events-by-m36.ts's header), so this binding is wired
-          // and ready, not yet exercised.
+          // (createDrizzleInboundTriggerPorts's return type is the intersection). The producer is M36's
+          // `applyDeliveryTransition` (delivery-settlement.ts), which publishes
+          // `m36.notification.delivery_failed` when a delivery settles `failed`; m36-oncall-page-chain.live
+          // proves the payload it builds.
           ...buildOncallTriggerConsumers({
             db: dbHandle.db,
             ports: m19TriggerPorts,
