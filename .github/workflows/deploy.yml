@@ -16,6 +16,26 @@ on:
   push:
     branches:
       - main
+    # A push that touches ONLY these paths skips the whole pipeline (no ~150-job matrix, no deploy).
+    # Every entry is a docs directory no arch gate or test reads (checked by grepping scripts/,
+    # architecture/, apps/ and packages/ for executable reads) and `docs/` is in .dockerignore, so no
+    # image changes. Deliberately NOT ignored: docs/adr, docs/architecture, docs/modules, docs/design,
+    # docs/ai, docs/api, docs/plans (read by check-adr-docs, check-architecture-docs, check-module-docs,
+    # check-ui-screens, check-ai-governance, openapi:emit, check-plan-integrity), root *.md (CLAUDE.md /
+    # AGENTS.md mirror) and everything outside docs/. KEEP IN SYNC with DOCS_ONLY_RE in `debounce`.
+    paths-ignore:
+      - "docs/history/**"
+      - "docs/agents/**"
+      - "docs/reviews/**"
+      - "docs/research/**"
+      - "docs/audits/**"
+      - "docs/runbooks/**"
+      - "docs/reference/**"
+      - "docs/messaging-hub/**"
+      - "docs/mobile/**"
+      - "docs/cartography/**"
+      - "docs/harden-vps/**"
+      - "docs/UI-UX/**"
   workflow_dispatch: {}
 
 concurrency:
@@ -64,12 +84,34 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           latest_sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)
-          if [ "$latest_sha" = "${GITHUB_SHA}" ]; then
+          # Pushes that touch only `paths-ignore` docs trigger no run, so a newer docs-only commit must
+          # not make this run yield to a "fresher run" that will never exist. KEEP IN SYNC with
+          # on.push.paths-ignore above.
+          DOCS_ONLY_RE='^docs/(history|agents|reviews|research|audits|runbooks|reference|messaging-hub|mobile|cartography|harden-vps|UI-UX)/'
+          newer_is_docs_only=false
+          if [ "$latest_sha" != "${GITHUB_SHA}" ]; then
+            # Retry: a transient API failure would otherwise read as "code-bearing" and skip this run
+            # with no fresher run to cover it.
+            files=""
+            for attempt in 1 2 3; do
+              files=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${GITHUB_SHA}...${latest_sha}" --jq '[.files[].filename] | length, .[]') && break
+              files=""
+              sleep 5
+            done
+            count=$(printf '%s\n' "$files" | head -n 1)
+            # The compare API lists at most 300 files; a longer list is treated as code-bearing.
+            if [ -n "$count" ] && [ "$count" -gt 0 ] && [ "$count" -lt 300 ] \
+              && ! printf '%s\n' "$files" | tail -n +2 | grep -qvE "$DOCS_ONLY_RE"; then
+              newer_is_docs_only=true
+            fi
+          fi
+          if [ "$latest_sha" = "${GITHUB_SHA}" ] || [ "$newer_is_docs_only" = true ]; then
             echo "proceed=true" >> "$GITHUB_OUTPUT"
           else
             echo "proceed=false" >> "$GITHUB_OUTPUT"
-            echo "main advanced to $latest_sha while this run (${GITHUB_SHA}) waited — a fresher run" \
-                 "already covers it; skipping the matrix for this one."
+            echo "main advanced to $latest_sha while this run (${GITHUB_SHA}) waited, with code changes or" \
+                 "an undeterminable diff — a fresher run should cover it; skipping the matrix for this one." \
+                 "If no newer run appears, dispatch deploy.yml."
           fi
 
   # ── The gate (#16) ──────────────────────────────────────────────────────────────────────────────

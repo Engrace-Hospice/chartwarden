@@ -31,7 +31,7 @@ function Frame(): JSX.Element {
       <ActorSessionProvider initial={SESSION}>
         <MemoryRouter initialEntries={["/"]}>
           <Routes>
-            <Route element={<AdminLayout sections={SECTIONS} />}>
+            <Route element={<AdminLayout sections={SECTIONS} screens={[]} />}>
               <Route path="/" element={<div>home</div>} />
             </Route>
           </Routes>
