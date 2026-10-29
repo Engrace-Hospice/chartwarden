@@ -12,7 +12,10 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { loadRegistry } from "./io";
-import { describeFindings, isScannable, scanContent } from "./patterns";
+import { describeFindings, isScannable, scanLarge } from "./patterns";
+
+/** NUL-separated git output (`-z`): non-ASCII and special names are not quoted, so no file is skipped as "missing". */
+const splitNul = (out: string): string[] => out.split("\0").filter(Boolean);
 
 const root = process.cwd();
 const args = process.argv.slice(2);
@@ -22,9 +25,7 @@ const git = (a: string[]) =>
 let files: string[];
 let read: (f: string) => Buffer | null;
 if (args[0] === "--staged") {
-  files = git(["diff", "--cached", "--name-only", "--diff-filter=ACMR"])
-    .split("\n")
-    .filter(Boolean);
+  files = splitNul(git(["diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"]));
   read = (f) => {
     try {
       return execFileSync("git", ["show", `:${f}`], { cwd: root, maxBuffer: 64 * 1024 * 1024 });
@@ -33,8 +34,7 @@ if (args[0] === "--staged") {
     }
   };
 } else {
-  files =
-    args[0] === "--all" || args.length === 0 ? git(["ls-files"]).split("\n").filter(Boolean) : args;
+  files = args[0] === "--all" || args.length === 0 ? splitNul(git(["ls-files", "-z"])) : args;
   read = (f) => {
     try {
       const p = join(root, f);
@@ -52,9 +52,9 @@ let scanned = 0;
 for (const f of files) {
   if (!isScannable(f)) continue;
   const buf = read(f);
-  if (!buf || buf.length > 2_097_152 || buf.includes(0)) continue;
+  if (!buf || buf.includes(0)) continue;
   scanned++;
-  const findings = scanContent(buf.toString("utf8"), registry, f);
+  const findings = scanLarge(buf.toString("utf8"), registry, f);
   if (findings.length > 0) problems.push(describeFindings(f, findings));
 }
 

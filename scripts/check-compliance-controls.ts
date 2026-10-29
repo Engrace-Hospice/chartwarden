@@ -22,11 +22,20 @@
  *         input AND output to disk; `stop:evaluate-session` mines transcripts);
  *      8. `.gitignore` does not swallow the shared harness (`.claude/` was ignored wholesale) but does
  *         ignore the local ledger/cache;
- *      9. `AGENTS.md` is a verbatim copy of `CLAUDE.md` (a standing rule in CLAUDE.md, now enforced).
+ *      9. `AGENTS.md` is a verbatim copy of `CLAUDE.md` (a standing rule in CLAUDE.md, now enforced);
+ *     10. the PreToolUse hook covers Bash and every editing tool, is synchronous and has a timeout (an
+ *         async or mis-matched hook is a guard that advises nothing);
+ *     11. no allow rule is a prefix glob that also matches a mutating sibling (`git diff*` matches
+ *         `git difftool`; write `git diff` and `git diff *`);
+ *     12. `.gitignore` is an allow-list for `.claude/` (new local state stays out of git) and ignores `.env`;
+ *     13. `.github/CODEOWNERS` names an owner for the harness, the compliance record and the scanners;
+ *     14. `compliance/synthetic-identifiers.json` carries a review fingerprint that matches its lists,
+ *         so a value cannot be added without the review being redone on purpose.
  *
  * Run:   bun run scripts/check-compliance-controls.ts
  * CI:    exits 1 on any violation (arch:fitness stage).
  */
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -158,12 +167,24 @@ export const REQUIRED_DISABLED_ECC_HOOKS = [
   "stop:evaluate-session",
 ];
 
+export const REQUIRED_GUARD_TOOLS = ["Bash", "Read", "Grep", "Glob", "Edit", "Write", "MultiEdit"];
+export const REQUIRED_CODEOWNED = [
+  "/.claude/settings.json",
+  "/scripts/harness/",
+  "/compliance/",
+  "/.githooks/",
+  "/.gitleaks.toml",
+];
+export const REQUIRED_DENIES = ["Bash(git push --force *)", "Bash(git * --no-verify*)"];
+/** Prefix globs that also match a mutating sibling command. */
+const LOOSE_ALLOW = /^Bash\(git (status|diff|log|show|branch)\*\)$/;
+
 interface HookEntry {
   matcher?: string;
-  hooks?: Array<{ command?: string }>;
+  hooks?: Array<{ command?: string; async?: boolean; timeout?: number }>;
 }
 interface Settings {
-  permissions?: { deny?: string[] };
+  permissions?: { deny?: string[]; allow?: string[] };
   hooks?: Record<string, HookEntry[]>;
   env?: Record<string, string>;
 }
@@ -171,12 +192,23 @@ interface Settings {
 const commandsFor = (s: Settings, event: string): string[] =>
   (s.hooks?.[event] ?? []).flatMap((h) => (h.hooks ?? []).map((x) => x.command ?? ""));
 
+/** Fingerprint of the reviewed synthetic-identifier lists (order-independent). */
+export function registryFingerprint(reg: { ssn?: string[]; mbi?: string[] }): string {
+  const canonical = JSON.stringify({
+    ssn: [...(reg.ssn ?? [])].sort(),
+    mbi: [...(reg.mbi ?? [])].sort(),
+  });
+  return createHash("sha256").update(canonical).digest("hex");
+}
+
 /** PURE over file contents. */
 export function checkHarness(files: {
   settings?: string;
   gitignore?: string;
   claudeMd?: string;
   agentsMd?: string;
+  codeowners?: string;
+  registry?: string;
 }): string[] {
   const v: string[] = [];
   if (files.settings === undefined)
@@ -194,6 +226,28 @@ export function checkHarness(files: {
     v.push(".claude/settings.json: PreToolUse does not run scripts/harness/pre-tool-guard.ts");
   if (!commandsFor(s, "Stop").some((c) => c.includes("scripts/harness/stop-gate.ts")))
     v.push(".claude/settings.json: Stop does not run scripts/harness/stop-gate.ts");
+  for (const d of REQUIRED_DENIES)
+    if (!deny.has(d)) v.push(`.claude/settings.json: permissions.deny is missing \`${d}\``);
+  for (const a of s.permissions?.allow ?? [])
+    if (LOOSE_ALLOW.test(a))
+      v.push(
+        `.claude/settings.json: allow rule \`${a}\` also matches mutating siblings; use the exact command and \`<command> *\``,
+      );
+  const guard = (s.hooks?.PreToolUse ?? []).flatMap((h) =>
+    (h.hooks ?? [])
+      .filter((x) => (x.command ?? "").includes("scripts/harness/pre-tool-guard.ts"))
+      .map((x) => ({ matcher: h.matcher ?? "", ...x })),
+  );
+  for (const g of guard) {
+    const tools = new Set(g.matcher.split("|").map((t) => t.trim()));
+    if (!tools.has("*"))
+      for (const t of REQUIRED_GUARD_TOOLS)
+        if (!tools.has(t))
+          v.push(`.claude/settings.json: the PreToolUse guard matcher does not cover \`${t}\``);
+    if (g.async === true) v.push(".claude/settings.json: the PreToolUse guard must not be async");
+    if (typeof g.timeout !== "number")
+      v.push(".claude/settings.json: the PreToolUse guard needs an explicit timeout");
+  }
   const disabled = new Set((s.env?.ECC_DISABLED_HOOKS ?? "").split(",").map((x) => x.trim()));
   for (const h of REQUIRED_DISABLED_ECC_HOOKS)
     if (!disabled.has(h))
@@ -210,6 +264,46 @@ export function checkHarness(files: {
     );
   for (const need of [".claude/audit/", ".claude/.cache/", ".claude/settings.local.json"])
     if (!gi.includes(need)) v.push(`.gitignore must ignore \`${need}\` (local, per-developer)`);
+  // Allow-list form: `.claude/*` ignored, the shared pieces re-included. Anything new stays local.
+  if (!gi.includes(".claude/*"))
+    v.push(
+      ".gitignore must ignore `.claude/*` and re-include only the shared harness (allow-list)",
+    );
+  for (const keep of [
+    "!.claude/settings.json",
+    "!.claude/rules/",
+    "!.claude/agents/",
+    "!.claude/skills/",
+  ])
+    if (!gi.includes(keep)) v.push(`.gitignore must re-include \`${keep}\` (shared harness)`);
+  if (!gi.some((l) => /^\/?\.env(\*|$)/.test(l)))
+    v.push(
+      ".gitignore must ignore `.env` (search tools honour it, so it keeps live secrets out of results)",
+    );
+
+  if (files.codeowners === undefined) v.push(".github/CODEOWNERS is missing");
+  else
+    for (const p of REQUIRED_CODEOWNED)
+      if (!files.codeowners.split("\n").some((l) => l.trim().startsWith(p) && /@\S+/.test(l)))
+        v.push(`.github/CODEOWNERS has no owner for \`${p}\``);
+
+  if (files.registry !== undefined) {
+    try {
+      const reg = JSON.parse(files.registry) as {
+        ssn?: string[];
+        mbi?: string[];
+        reviewed?: { sha256?: string; by?: string; on?: string };
+      };
+      if (!reg.reviewed?.by || !reg.reviewed?.on)
+        v.push("compliance/synthetic-identifiers.json has no `reviewed` {by, on, sha256}");
+      else if (reg.reviewed.sha256 !== registryFingerprint(reg))
+        v.push(
+          "compliance/synthetic-identifiers.json changed since it was reviewed: a human confirms every listed value is synthetic, then updates `reviewed.sha256` (bun run scripts/check-compliance-controls.ts --fingerprint)",
+        );
+    } catch (e) {
+      v.push(`compliance/synthetic-identifiers.json does not parse: ${String(e)}`);
+    }
+  }
 
   if (
     files.claudeMd !== undefined &&
@@ -224,6 +318,13 @@ export function checkHarness(files: {
 
 function main(): void {
   const root = process.cwd();
+  if (process.argv.includes("--fingerprint")) {
+    const reg = JSON.parse(
+      readFileSync(join(root, "compliance/synthetic-identifiers.json"), "utf8"),
+    );
+    console.log(registryFingerprint(reg));
+    return;
+  }
   const read = (p: string): string | undefined =>
     existsSync(join(root, p)) ? readFileSync(join(root, p), "utf8") : undefined;
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
@@ -271,6 +372,8 @@ function main(): void {
       gitignore: read(".gitignore"),
       claudeMd: read("CLAUDE.md"),
       agentsMd: read("AGENTS.md"),
+      codeowners: read(".github/CODEOWNERS"),
+      registry: read("compliance/synthetic-identifiers.json"),
     }),
   );
 

@@ -1,0 +1,14 @@
+# Who must review a change to the agent harness, the compliance record and the secret scanners.
+# Takes effect once main's branch protection requires code-owner review (open in #16); until then
+# it documents the owner and `arch:compliance` keeps it from being deleted.
+/.claude/settings.json     @fabwebdev
+/.claude/rules/            @fabwebdev
+/.claude/agents/           @fabwebdev
+/.claude/skills/           @fabwebdev
+/scripts/harness/          @fabwebdev
+/scripts/check-compliance-controls.ts @fabwebdev
+/compliance/               @fabwebdev
+/.githooks/                @fabwebdev
+/.gitleaks.toml            @fabwebdev
+/.github/CODEOWNERS        @fabwebdev
+/.github/workflows/        @fabwebdev

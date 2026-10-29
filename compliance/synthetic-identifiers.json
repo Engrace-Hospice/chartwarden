@@ -1,5 +1,5 @@
 {
-  "$comment": "Identifier values that are KNOWN SYNTHETIC and may appear in code, tests, fixtures and docs. The agent harness (scripts/harness/pre-tool-guard.ts) and phi-scan refuse any other SSN- or MBI-shaped value. SSNs with area 000, 666 or 900-999 are never issued and are always allowed without listing. Adding a value here is a human decision: .claude/settings.json makes edits to compliance/** ask for approval. Seeded 2026-10-27 from the values already committed in the repo (grandfathered) \u2014 confirm none of them is a real person's identifier.",
+  "$comment": "Identifier values that are KNOWN SYNTHETIC and may appear in code, tests, fixtures and docs. The agent harness (scripts/harness/pre-tool-guard.ts) and phi-scan refuse any other SSN- or MBI-shaped value. SSNs with area 000, 666 or 900-999 are never issued and are always allowed without listing. Adding a value here is a human decision: .claude/settings.json makes edits to compliance/** ask for approval. Seeded 2026-10-27 from the values already committed in the repo (grandfathered) \u2014 Reviewed 2026-10-28 (see `reviewed`): `arch:compliance` recomputes the fingerprint over ssn+mbi and fails when the lists change without a new review, so adding a value is always a visible, deliberate edit.",
   "ssn": [
     "078-05-1120",
     "111-22-3333",
@@ -41,5 +41,11 @@
     "6JK4TE5MK72",
     "7MN4TE5MK73",
     "9AA9AA9AA99"
-  ]
+  ],
+  "reviewed": {
+    "by": "fabwebdev",
+    "on": "2026-10-28",
+    "confirmed": "none of these is a real person's identifier",
+    "sha256": "946e047392623815c30588963d539235db21cc57a9592bd688adedf217f04637"
+  }
 }

@@ -208,7 +208,7 @@ controls:
       - ci: "cosign sign"
       - script: arch:merge-artifacts
     gap:
-      reason: deploy.yml's `verify` job (which calls ci.yml) is commented out and ci.yml's pull_request trigger only targets `fix/admission`, so a push to main builds, signs and deploys without CI ever running; the only enforcement is the opt-in, bypassable pre-push hook. Re-enable `verify` and make `release` need it (debounce already limits cost), then flip to implemented.
+      reason: deploy.yml's `verify` job calls the full ci.yml and `release` needs it (#846; arch:release-gate fails if that is removed), so CI gates the deploy path. What is still open is that main has no branch protection and the `production` Environment has no required reviewers (#16, needs a paid plan and an owner decision), so a workflow edit or a re-run can bypass the gate, and the pre-push hook is opt-in per clone. Close with branch protection (required check plus code-owner review) and Environment reviewers, then flip to implemented.
       owner: engineering
       review_by: 2026-12-15
 
@@ -216,7 +216,7 @@ controls:
     title: AI coding agents operate inside the change-management and minimum-necessary controls
     hipaa: ["164.308(a)(3)(ii)(A)", "164.308(a)(4)(ii)(B)", "164.502(b)"]
     soc2: ["CC8.1", "CC6.1"]
-    status: implemented
+    status: partial
     evidence:
       - script: arch:compliance
       - script: harness:phi-scan
@@ -224,6 +224,12 @@ controls:
       - file: scripts/harness/pre-tool-guard.ts
       - file: docs/compliance/AGENT_HARNESS.md
       - file: scripts/__tests__/harness-hooks.test.ts
+      - file: scripts/__tests__/harness-bypasses.test.ts
+      - file: .github/CODEOWNERS
+    gap:
+      reason: The PreToolUse guard is a set of shell-text heuristics for a cooperative agent, not a sandbox (a determined process can read a file through a construct the rules do not anticipate), and the local ledger is an unkeyed hash chain that catches accidents, not tampering. Closes with a filesystem sandbox or secrets kept outside the working tree, plus the ledger head published somewhere the agent cannot write, and code-owner review enforced on .claude/, scripts/harness/ and compliance/ (needs the branch protection in CW-CM-01).
+      owner: engineering
+      review_by: 2027-01-31
 
   - id: CW-SEC-01
     title: Secrets never committed — secret scanning on commit and in CI
@@ -231,13 +237,14 @@ controls:
     soc2: ["CC6.1", "CC6.7"]
     status: partial
     gap:
-      reason: The CI job exists but CI does not gate main today (see CW-CM-01), and the pre-commit hook is opt-in per clone and skips gitleaks when it is not installed. Closes with CW-CM-01.
+      reason: The CI job gates the release path through deploy.yml's `verify`, but the pre-commit hook is opt-in per clone and skips gitleaks when it is not installed, and the gate itself is bypassable until branch protection exists (see CW-CM-01). Closes with CW-CM-01 plus an enforced hook install.
       owner: engineering
       review_by: 2026-12-15
     evidence:
       - file: .gitleaks.toml
       - file: .githooks/pre-commit
-      - ci: "gitleaks"
+      - ci: "secret-and-phi-scan:"
+      - ci: "gitleaks dir . --config .gitleaks.toml"
       - script: harness:phi-scan
 
   - id: CW-BA-01
