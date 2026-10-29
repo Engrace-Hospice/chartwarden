@@ -325,6 +325,12 @@ jobs:
               name: "M13 PRN concurrency + order-to-administration",
               scripts: "test:m13:prn-concurrency:live test:m12-m13:order-administration:live",
             }
+          # S08/S09 (clinical workflow audit 2026-10-28) — returned-lab edge cases (concurrency, pinned silent
+          # drops, missing critical consumers / review step) and the on-call page chain (coverage gap -> page).
+          - {
+              name: "M11 lab-result edge cases + M36 on-call page chain",
+              scripts: "test:m11:lab-result-edge-cases:live test:m36:oncall-page-chain:live",
+            }
           # F-152 (#248) — the §2.8 D17 medication-reconciliation worksheet, opened from all four M6
           # trigger events.
           - { name: "M13 reconciliation triggers", scripts: "test:m13:reconciliation-triggers:live" }
