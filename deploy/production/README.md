@@ -306,7 +306,8 @@ arch:compose-policy` (part of `arch:fitness`) fails on any literal image without
 | clamav | `clamav/clamav-debian:1.4` | ClamAV 1.4.x |
 
 MinIO: `minio/minio` is no longer published to Docker Hub, so the server is Chainguard's build (it ships `minio`,
-`mc`, `sh` and `bash`, but no `curl`; the healthcheck therefore probes `/minio/health/ready` over bash `/dev/tcp`).
+`mc`, `sh` and `bash`, but no `curl`; the healthcheck therefore probes `/minio/health/ready` over bash `/dev/tcp`
+and sends `Host: localhost`, which MinIO requires for this HTTP/1.0 request).
 It defaults to uid 65532, but the existing `minio-data` volume is root-owned, so the service sets `user: "0:0"`.
 Moving to the nonroot user needs a one-time `chown -R 65532 /data` on the volume. Chainguard's free tier only
 tags `latest`; older digests stay pullable for now but are not guaranteed, so mirror the pinned digest into a
