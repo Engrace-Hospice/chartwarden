@@ -71,3 +71,53 @@ export function medicationFindings(error: unknown): MedicationFinding[] {
   };
   return value?.error?.details ?? value?.details ?? [];
 }
+
+const FINDING_LABELS: Record<string, string> = {
+  admissionId: "Admission",
+  medClass: "Medication class",
+  rxnormRxcui: "RxNorm drug",
+  ndc: "NDC",
+  drugName: "Drug name",
+  strength: "Strength",
+  doseForm: "Dose form",
+  route: "Drug route",
+  prescriberDiscipline: "Prescriber discipline",
+  prescribingPhysicianMdmId: "Prescribing physician",
+  dispensingPharmacyMdmId: "Dispensing pharmacy",
+  refillsAuthorized: "Refills",
+  sigStructured: "SIG",
+  "sig.doseQuantity": "SIG dose quantity",
+  "sig.doseUnit": "SIG dose unit",
+  "sig.route": "SIG route",
+  "sig.frequencyCode": "SIG frequency",
+  "sig.duration.durationValue": "SIG duration",
+  "sig.duration.durationUnit": "SIG duration unit",
+  "sig.asNeeded": "SIG as needed",
+  "sig.asNeededReasonCode": "SIG as-needed reason",
+  sigFreeText: "SIG text",
+  indication: "Indication",
+  clinicalJustification: "Clinical justification",
+  quantity: "Dispense quantity",
+  "quantity.value": "Dispense quantity",
+  "quantity.unit": "Dispense quantity unit",
+  daysSupply: "Days supply",
+  daw: "Dispense as written",
+  deaSchedule: "DEA schedule",
+};
+
+/** A reader-facing name for a finding's field path (`data.sigStructured.route` → `SIG route`). */
+export function medicationFieldLabel(field?: string): string | null {
+  const key = medicationFindingKey(field);
+  if (key === null) return null;
+  return FINDING_LABELS[key] ?? null;
+}
+
+/** `SIG route: message; Strength: message` — findings whose field has no label show the bare message. */
+export function describeMedicationFindings(findings: readonly MedicationFinding[]): string {
+  return findings
+    .map((f) => {
+      const label = medicationFieldLabel(f.field);
+      return label ? `${label}: ${f.message}` : f.message;
+    })
+    .join("; ");
+}

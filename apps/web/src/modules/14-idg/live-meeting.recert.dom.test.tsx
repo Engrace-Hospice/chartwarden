@@ -210,7 +210,7 @@ describe("Live meeting — live refresh", () => {
     act(() => void window.dispatchEvent(new Event("focus")));
     await waitFor(() => expect(decisionGets).toBeGreaterThan(before));
     expect(await screen.findByText("Referral")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Record for this patient" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record a decision" }));
     expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 });

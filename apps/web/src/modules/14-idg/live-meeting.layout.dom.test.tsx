@@ -190,7 +190,7 @@ describe("Live meeting — three-pane redesign", () => {
   it("preselects the worklist patient in the decision recorder", async () => {
     mount();
     await screen.findByRole("region", { name: "Patient packet" });
-    fireEvent.click(await screen.findByRole("button", { name: "Record for this patient" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Record a decision" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Record a decision")).toBeTruthy();
   });

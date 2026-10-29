@@ -36,7 +36,11 @@ import {
   HospiceCoverageSection,
 } from "../../shell/hospice-coverage";
 import { useSession } from "../../shell/session";
-import { type MedicationAction, MedicationActionModal } from "./medication-action-modal";
+import {
+  type MedicationAction,
+  MedicationActionModal,
+  type MedicationOrderSummary,
+} from "./medication-action-modal";
 import { MED_ORDER_TONE, SEND_TONE, controlledLabel, stateLabel } from "./medication-status";
 import { setCoverageDetermination } from "./medications-api";
 import { RetransmitModal } from "./retransmit-modal";
@@ -51,6 +55,7 @@ interface MedicationOrderView {
   strength: string;
   doseForm: string;
   route: string;
+  data?: MedicationOrderSummary["data"];
   rxnormRxcui: string | null;
   ndc: string | null;
   prescriberDiscipline: string;
@@ -259,6 +264,7 @@ export function MedicationDetail(): JSX.Element {
           open
           action={action}
           orderId={row.id}
+          order={row}
           onClose={() => setAction(null)}
           onDone={() => setReloadKey((k) => k + 1)}
         />

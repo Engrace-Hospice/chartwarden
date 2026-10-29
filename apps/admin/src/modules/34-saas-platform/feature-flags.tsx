@@ -33,12 +33,12 @@ const FLAG_KINDS = ["product", "rollout", "kill_switch", "migration"] as const;
 type FlagKind = (typeof FLAG_KINDS)[number];
 
 // The `FeatureFlagViewSchema` read shape the route serves (CursorPageOf<FeatureFlagView>).
-interface FeatureFlagView {
+export interface FeatureFlagView {
   id: string;
   flagKey: string;
   organizationId: string | null;
   flagKind: FlagKind;
-  valueType: "boolean" | "string" | "number" | "json";
+  valueType: "bool" | "string" | "number" | "json";
   value: unknown;
   rolloutPercent: number | null;
   killSwitchActive: boolean;
@@ -234,6 +234,10 @@ export function FeatureFlags(): JSX.Element {
 // the loaded set is the platform flag inventory). Enabled = a truthy boolean flag not kill-switched.
 // `loadFailed` renders every tile "—" instead of a misleading literal 0 when the GET errored (the
 // same live-browser-audit misleading-zeros pattern already fixed for Staff Management).
+/** Enabled = a boolean flag (wire value type `bool`, as in the DB enum) that is true and not kill-switched. */
+export const countEnabledFlags = (flags: readonly FeatureFlagView[]): number =>
+  flags.filter((f) => f.valueType === "bool" && f.value === true && !f.killSwitchActive).length;
+
 function FlagKpis({
   flags,
   loadFailed,
@@ -242,10 +246,7 @@ function FlagKpis({
   loadFailed: boolean;
 }): JSX.Element {
   const total = loadFailed ? null : flags.length;
-  const enabled = loadFailed
-    ? null
-    : flags.filter((f) => f.valueType === "boolean" && f.value === true && !f.killSwitchActive)
-        .length;
+  const enabled = loadFailed ? null : countEnabledFlags(flags);
   const killed = loadFailed ? null : flags.filter((f) => f.killSwitchActive).length;
   const perTenant = loadFailed ? null : flags.filter((f) => f.organizationId !== null).length;
   return (

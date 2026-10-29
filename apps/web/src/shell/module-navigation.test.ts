@@ -97,7 +97,7 @@ describe("resolveModuleNavigation", () => {
     expect(navigation?.items.map(({ label, path }) => [label, path])).toEqual([
       ["HOPE Timepoints", "/hope"],
       ["Cosignatures", "/work/cosignatures"],
-      ["My Drafts", "/work/drafts"],
+      ["My visit drafts", "/work/drafts"],
       ["Scale Licenses", "/admin/scales/licenses"],
       ["Scale Policies", "/admin/scales/policies"],
       ["SFV Worklist", "/hope/sfv"],

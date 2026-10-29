@@ -2,7 +2,7 @@
 // The §2.2 administration, §2.3 scheduled-dose, §2.5 late-entry, §2.8 reconciliation, and §2.7 comfort-kit
 // enums each map to the §6.6 badge taxonomy tone (grounded in the @chartwarden/types unions). Controlled
 // substances keep the gold `critical` treatment (DESIGN.md §10), consistent with M12.
-import type { StatusTone } from "@chartwarden/ui";
+import { type StatusTone, isoToLocalInput } from "@chartwarden/ui";
 
 // AdministrationStatus = committed | pending_caregiver_review | superseded | voided.
 export const ADMIN_STATUS_TONE: Record<string, StatusTone> = {
@@ -62,4 +62,10 @@ export function lateEntryTone(tier: string): StatusTone {
 /** Title-case an underscore enum value, e.g. `pending_caregiver_review` → `Pending Caregiver Review`. */
 export function stateLabel(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** A server instant shown in the viewer's LOCAL zone as `YYYY-MM-DD HH:mm` (matches the datetime-local fields); "—" if absent/unparseable. */
+export function formatLocalTs(value: string | null | undefined): string {
+  const local = isoToLocalInput(value);
+  return local === "" ? "—" : local.replace("T", " ");
 }

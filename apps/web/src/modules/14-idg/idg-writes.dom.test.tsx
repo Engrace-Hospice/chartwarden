@@ -346,6 +346,8 @@ describe("#91 — the meeting can be conducted", () => {
       expect(screen.getByRole("button", { name: "Record decision" })).toBeTruthy(),
     );
     fireEvent.click(screen.getByRole("button", { name: "Record decision" }));
+    // Honest about scope: a team note is whole-meeting, so the dialog says it never names a patient.
+    expect(await screen.findByText(/belongs to the whole meeting, not to a patient/i)).toBeTruthy();
     fireEvent.change(await waitFor(() => screen.getByLabelText(/^Note$/i)), {
       target: { value: "Team reviewed the caseload; no patient-scoped action." },
     });

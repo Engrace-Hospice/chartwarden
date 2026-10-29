@@ -28,6 +28,7 @@
 //     from the caller's own grants. A 403 is the answer, surfaced verbatim.
 //   • The §2.3 verbal-order window, and the §2.7 refill SLA.
 import type { ApiClient, operations } from "@chartwarden/ui";
+import { describeMedicationFindings, medicationFindings } from "./medication-validation";
 
 // ── schema-derived type extraction ─────────────────────────────────────────────────────────────────────
 
@@ -121,27 +122,58 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
   const httpStatus = typeof status === "number" ? status : null;
   const err =
     body && typeof body === "object" && "error" in body
-      ? (body as { error?: { code?: unknown; message?: unknown } }).error
+      ? (body as { error?: { code?: unknown; message?: unknown; details?: unknown } }).error
       : undefined;
   const detail = typeof err?.message === "string" ? err.message : null;
   const code = typeof err?.code === "string" ? err.code : null;
+  const findings = medicationFindings(body);
+  const abacDenied = httpStatus === 403 && detail !== null && /^abac predicate '/.test(detail);
   const message =
-    code === "EPCS_NOT_CERTIFIED"
-      ? "Controlled-substance prescribing is unavailable until the agency completes DEA EPCS certification. This order cannot be signed electronically."
-      : code === "SIGN_REQUIRES_EPCS"
-        ? "A controlled-substance order must be signed through the EPCS path, not this one."
-        : code === "SIGNER_NOT_ELIGIBLE"
-          ? "Your prescribing discipline is not eligible to sign this class of medication order."
-          : httpStatus === 403
-            ? (detail ?? "Your role is not permitted to take this action on this order.")
-            : httpStatus === 409
-              ? (detail ?? "This order changed before your action was applied. Reload the queue.")
-              : httpStatus === 404
-                ? "That order is no longer available to you."
-                : httpStatus === 422
-                  ? (detail ?? "The server rejected the details supplied.")
-                  : (detail ?? "The action could not be completed.");
+    findings.length > 0
+      ? `${detail ?? "The order is not ready"}: ${describeMedicationFindings(findings)}`
+      : abacDenied
+        ? (ABAC_DENIED_COPY[/^abac predicate '([^']+)'/.exec(detail ?? "")?.[1] ?? ""] ??
+          "Your role is not permitted to take this action on this order.")
+        : code && CODE_COPY[code]
+          ? CODE_COPY[code]
+          : failureByStatus(code, httpStatus, detail);
   return { ok: false, status: httpStatus, code, message };
+}
+
+/** Plain-language copy for refusal codes (the server messages stay as they are). */
+const CODE_COPY: Record<string, string> = {
+  SIGNER_NOT_ORDERING_PHYSICIAN:
+    "Only the order's prescriber or the named ordering physician can sign this order.",
+  COSIGN_REQUIRED:
+    "This order needs a physician cosignature before it can be signed. Ask the cosigner to cosign it first.",
+};
+
+/** The ABAC predicate behind a 403, by name; unknown predicates fall back to a generic sentence. */
+const ABAC_DENIED_COPY: Record<string, string> = {
+  medication_signer_eligible:
+    "You cannot sign this order: none of your roles is eligible to sign medication orders. A physician, nurse practitioner or physician assistant must sign.",
+};
+
+function failureByStatus(
+  code: string | null,
+  httpStatus: number | null,
+  detail: string | null,
+): string {
+  return code === "EPCS_NOT_CERTIFIED"
+    ? "Controlled-substance prescribing is unavailable until the agency completes DEA EPCS certification. This order cannot be signed electronically."
+    : code === "SIGN_REQUIRES_EPCS"
+      ? "A controlled-substance order must be signed through the EPCS path, not this one."
+      : code === "SIGNER_NOT_ELIGIBLE"
+        ? "Your prescribing discipline is not eligible to sign this class of medication order."
+        : httpStatus === 403
+          ? (detail ?? "Your role is not permitted to take this action on this order.")
+          : httpStatus === 409
+            ? (detail ?? "This order changed before your action was applied. Reload the queue.")
+            : httpStatus === 404
+              ? "That order is no longer available to you."
+              : httpStatus === 422
+                ? (detail ?? "The server rejected the details supplied.")
+                : (detail ?? "The action could not be completed.");
 }
 
 const ok = <T>(value: T): WriteResult<T> => ({ ok: true, value });

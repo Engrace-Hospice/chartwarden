@@ -63,7 +63,7 @@ async function stubFetch(input: RequestInfo | URL): Promise<Response> {
         {
           id: DISCHARGED_ADMISSION,
           state: "discharged",
-          admissionAt: "2026-01-04T00:00:00.000Z",
+          admissionAt: "2026-01-04T14:03:11.000Z", // a real instant, not midnight UTC
           dischargedAt: "2026-02-01T00:00:00.000Z",
         },
       ],
@@ -115,6 +115,8 @@ describe("F-066 — AdmissionLookupField is patient-scoped", () => {
     expect(options).toHaveLength(2);
     expect(options[0]?.textContent).toContain("Admitted Nov 2, 2025");
     expect(options[0]?.textContent).toContain("open");
+    // A non-midnight instant is still a readable date, never the raw ISO prefix.
+    expect(options[1]?.textContent).toContain("Admitted Jan 4, 2026");
     expect(options[1]?.textContent).toContain("discharged 2026-02-01");
   });
 

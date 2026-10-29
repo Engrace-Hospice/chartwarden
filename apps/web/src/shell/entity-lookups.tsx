@@ -192,8 +192,9 @@ async function loadCareTeamStaff(
 /** `admissionAt` is a date serialized as midnight UTC; format it as a date-only value so no timezone shifts the day. */
 function admissionDateLabel(admissionAt: string | null): string {
   if (!admissionAt) return "Admission (no date recorded)";
-  const formatted = formatDateOnly(admissionAt);
-  return `Admitted ${formatted === admissionAt ? admissionAt.slice(0, 10) : formatted}`;
+  // The server sends a full ISO instant (midnight UTC); formatDateOnly only formats a bare YYYY-MM-DD and
+  // otherwise returns its input unchanged, so cut the date part first.
+  return `Admitted ${formatDateOnly(admissionAt.slice(0, 10))}`;
 }
 
 /**

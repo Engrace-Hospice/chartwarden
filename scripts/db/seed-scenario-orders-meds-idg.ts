@@ -20,7 +20,7 @@
  *     existing — not on the agenda item — driving agenda/attendance/decision/adjourn through the real
  *     API (as above) is not sufficient to make a reviewed patient show up there. This script closes
  *     that gap the same documented way: one `idg_patient_packet` row seeded directly. The
- *     `built_snapshot`/`discipline_views` JSONB values below are intentionally minimal placeholders,
+ *     `built_snapshot`/`discipline_views` JSONB values below are placeholders (now a full schema-valid snapshot via lib/idg-seed-snapshot.ts),
  *     not a full `PacketSnapshot`/`DisciplineViewBlock` (packages/types/src/idg.ts) — no builder route
  *     exists to produce the real shape, and the History tab list itself never reads those fields
  *     (only the flat packet row + separately-queried decisions/action items).
@@ -40,6 +40,7 @@
  */
 import { Client } from "pg";
 import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
+import { buildSeedPacketSnapshot } from "./lib/idg-seed-snapshot";
 import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
@@ -155,30 +156,27 @@ async function seedIdgPatientPacket(
   await db.connect();
   await db.query("SET session_replication_role = replica");
   const builtAt = nowIso();
-  const builtSnapshot = {
-    schemaVersion: "2026-01-v1",
-    meta: {
-      meetingId,
-      patientId,
-      admissionId,
-      locationId: LOCATION_MAIN_ID,
-      builtAt,
-      sinceCursorIso: builtAt,
-      sinceContext: "first_idg",
-      builderJobId: "seed-scenario-orders-meds-idg",
-      appliedSudRedaction: false,
-    },
-    // No packet-builder route exists to produce the real since-last-IDG digests (see header
-    // comment) — left as an intentionally empty placeholder, not fabricated clinical content.
-    sinceLastIdg: {
-      encounters: [],
-      significantAssessmentChanges: [],
-      j2051Triggers: [],
-      ordersChanged: [],
-      medicationsChanged: [],
-      flaggedEvents: [],
-    },
-  };
+  const facts = (
+    await db.query<{ n: string; yrs: number; v: string | null }>(
+      `SELECT left(p.legal_first_name,40) || ' ' || left(p.legal_last_name,1) || '.' n,
+              date_part('year', age(p.dob))::int yrs,
+              (SELECT v.id::text FROM care_plan_version v JOIN care_plan c ON c.id = v.care_plan_id
+                WHERE c.patient_id = p.id AND v.status = 'signed' ORDER BY v.sequence DESC LIMIT 1) v
+         FROM patient p WHERE p.id = $1`,
+      [patientId],
+    )
+  ).rows[0];
+  if (!facts) throw new Error("seedIdgPatientPacket: patient not found");
+  const builtSnapshot = buildSeedPacketSnapshot({
+    meetingId,
+    patientId,
+    admissionId,
+    locationId: LOCATION_MAIN_ID,
+    builtAtIso: builtAt,
+    fullNameRedacted: facts.n,
+    age: facts.yrs,
+    lastSignedVersionId: facts.v,
+  });
   await db.query(
     `INSERT INTO idg_patient_packet
        (organization_id, provider_entity_id, location_id, idg_meeting_id, patient_id, admission_id,

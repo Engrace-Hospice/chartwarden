@@ -28,8 +28,9 @@ import {
   errorMessage,
   listMissedDoses,
 } from "./emar-api";
+import { formatLocalTs } from "./emar-status";
 
-const ts = (v: string): string => v.slice(0, 16).replace("T", " ");
+const ts = formatLocalTs;
 
 export function MissedDoseInbox(): JSX.Element {
   const client = useApiClient();

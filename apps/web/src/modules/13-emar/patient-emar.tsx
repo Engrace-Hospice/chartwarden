@@ -59,7 +59,13 @@ import {
   listPatientMedicationOrders,
   listScheduledDoses,
 } from "./emar-api";
-import { ADMIN_STATUS_TONE, DOSE_TONE, lateEntryTone, stateLabel } from "./emar-status";
+import {
+  ADMIN_STATUS_TONE,
+  DOSE_TONE,
+  formatLocalTs,
+  lateEntryTone,
+  stateLabel,
+} from "./emar-status";
 import { IvSegmentModal } from "./iv-segment-modal";
 import { WitnessAttestModal } from "./witness-attest-modal";
 
@@ -71,8 +77,8 @@ interface PatientSummary {
   status: string;
 }
 
-const ts = (v: string): string => v.slice(0, 16).replace("T", " ");
-const slotOf = (iso: string): string => iso.slice(11, 16); // HH:MM
+const ts = formatLocalTs;
+const slotOf = (iso: string): string => formatLocalTs(iso).slice(11, 16); // local HH:MM, matches the displayed times
 
 export function PatientEmar(): JSX.Element {
   const client = useApiClient();

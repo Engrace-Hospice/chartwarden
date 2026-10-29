@@ -354,6 +354,77 @@ describe("#91 — the lifecycle ceremonies the queues exist for", () => {
     expect(typeof bodies[0]?.signedAtClient).toBe("string");
   });
 
+  it("the Sign dialog summarises the order and the signer before anything is sent", async () => {
+    mountOrder();
+    fireEvent.click(await waitFor(() => screen.getByRole("button", { name: "Sign" })));
+    const summary = await screen.findByLabelText("Order summary");
+    expect(summary.textContent).toContain("Morphine Sulfate 20 MG/ML Oral Solution");
+    expect(summary.textContent).toContain("20 mg/mL");
+    expect(summary.textContent).toContain("Hospice physician");
+    expect(writes()).toEqual([]);
+  });
+
+  it("an ABAC denial and the sign refusal codes read as plain language", async () => {
+    const cases: Array<[Record<string, unknown>, RegExp]> = [
+      [
+        {
+          status: 403,
+          body: {
+            error: {
+              code: "FORBIDDEN",
+              message: "abac predicate 'medication_signer_eligible' denied for 'prescribing.sign'",
+            },
+          },
+        },
+        /none of your roles is eligible/i,
+      ],
+      [
+        { status: 403, body: { error: { code: "SIGNER_NOT_ORDERING_PHYSICIAN", message: "raw" } } },
+        /prescriber or the named ordering physician can sign/i,
+      ],
+      [
+        { status: 409, body: { error: { code: "COSIGN_REQUIRED", message: "raw" } } },
+        /needs a physician cosignature/i,
+      ],
+    ];
+    for (const [failure, expected] of cases) {
+      writeFailure = failure as { status: number; body: unknown };
+      const { unmount } = mountOrder();
+      fireEvent.click(await waitFor(() => screen.getByRole("button", { name: "Sign" })));
+      fireEvent.click(
+        await waitFor(() => screen.getAllByRole("button", { name: "Sign" })[1] as HTMLElement),
+      );
+      const alert = (await screen.findByRole("alert")).textContent ?? "";
+      expect(alert).toMatch(expected);
+      expect(alert).not.toMatch(/abac predicate|raw/);
+      unmount();
+    }
+  });
+
+  it("send for signature lists the server's findings with readable field names", async () => {
+    orderStatus = "draft";
+    writeFailure = {
+      status: 422,
+      body: {
+        error: {
+          code: "VALIDATION_FAILED",
+          message: "medication order is not ready for signature",
+          details: [
+            { field: "data.sigStructured.route", code: "required", message: "is required" },
+          ],
+        },
+      },
+    };
+    mountOrder();
+    fireEvent.click(
+      await waitFor(() => screen.getByRole("button", { name: "Send for signature" })),
+    );
+    fireEvent.click(
+      await waitFor(() => screen.getAllByRole("button", { name: /^Send$/ })[0] as HTMLElement),
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain("SIG route: is required");
+  });
+
   it("an ACTIVE order offers discontinue and complete — and neither before it is active (#136)", async () => {
     orderStatus = "signed";
     const { unmount } = mountOrder();
