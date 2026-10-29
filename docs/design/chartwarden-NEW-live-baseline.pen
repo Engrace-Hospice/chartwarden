@@ -1,0 +1,1633 @@
+{
+  "version": "2.21",
+  "children": [
+    {
+      "type": "text",
+      "id": "MLBO4",
+      "x": 0,
+      "y": -110,
+      "name": "Provenance",
+      "fill": "#475569",
+      "textGrowth": "fixed-width",
+      "width": 1440,
+      "content": "ChartWarden NEW design baseline (live capture). Tokens read from the running web app (apps/web index.css, :root and .dark) on 2026-10-22; screens captured at 1440 px as the seeded Administrator. This is a frozen reference of the implemented new design (primary #1a56eb, Inter, cool-white canvas), not an independently authored mockup: it can detect drift from today, not drift from design intent. Supersedes the Lantern frames (primary #3b45a8, Fraunces) for colour and type.",
+      "lineHeight": 1.4,
+      "fontFamily": "Inter",
+      "fontSize": 16,
+      "fontWeight": "normal"
+    },
+    {
+      "type": "frame",
+      "id": "Z55nD",
+      "x": 0,
+      "y": 0,
+      "name": "Live - Home (1440x723)",
+      "clip": true,
+      "width": 1440,
+      "height": 723,
+      "fill": {
+        "type": "image",
+        "enabled": true,
+        "url": "exports/new-live/home.jpg",
+        "mode": "stretch"
+      }
+    },
+    {
+      "type": "frame",
+      "id": "qLg0G",
+      "x": 1520,
+      "y": 0,
+      "name": "Live - Patients Census (1440x723)",
+      "clip": true,
+      "width": 1440,
+      "height": 723,
+      "fill": {
+        "type": "image",
+        "enabled": true,
+        "url": "exports/new-live/patient-census.jpg",
+        "mode": "stretch"
+      }
+    },
+    {
+      "type": "frame",
+      "id": "MOj4H",
+      "x": 3040,
+      "y": 0,
+      "name": "Live - Patient Chart (Overview) (1440x723)",
+      "clip": true,
+      "width": 1440,
+      "height": 723,
+      "fill": {
+        "type": "image",
+        "enabled": true,
+        "url": "exports/new-live/patient-chart.jpg",
+        "mode": "stretch"
+      }
+    },
+    {
+      "type": "frame",
+      "id": "dHElN",
+      "x": 4560,
+      "y": 0,
+      "name": "Live - Billing / Claims (1440x723)",
+      "clip": true,
+      "width": 1440,
+      "height": 723,
+      "fill": {
+        "type": "image",
+        "enabled": true,
+        "url": "exports/new-live/billing-claims.jpg",
+        "mode": "stretch"
+      }
+    },
+    {
+      "type": "frame",
+      "id": "Zbqo1",
+      "x": 0,
+      "y": 843,
+      "name": "Token Swatches (light)",
+      "fill": "$color-surface-lowest",
+      "cornerRadius": 12,
+      "stroke": "$color-card-border",
+      "strokeWidth": 1,
+      "layout": "vertical",
+      "gap": 8,
+      "padding": 24,
+      "children": [
+        {
+          "type": "frame",
+          "id": "Qwx7G",
+          "name": "Swatch Row",
+          "gap": 12,
+          "children": [
+            {
+              "type": "frame",
+              "id": "mOUS1",
+              "name": "primary",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "K1NEu",
+                  "name": "Chip primary",
+                  "fill": "$color-primary",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "JHKp0",
+                  "name": "Hex primary",
+                  "fill": "#475569",
+                  "content": "#1a56eb",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "HXpVS",
+              "name": "primary_strong",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "DPHev",
+                  "name": "Chip primary_strong",
+                  "fill": "$color-primary-strong",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "GsPX3",
+                  "name": "Hex primary_strong",
+                  "fill": "#475569",
+                  "content": "#1443c6",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "XYLOu",
+              "name": "primary_tint",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "PGEax",
+                  "name": "Chip primary_tint",
+                  "fill": "$color-primary-tint",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "GVW7b",
+                  "name": "Hex primary_tint",
+                  "fill": "#475569",
+                  "content": "#e6edfd",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "x7yOx",
+              "name": "primary_dim",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "I4fyBq",
+                  "name": "Chip primary_dim",
+                  "fill": "$color-primary-dim",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "Xfyjy",
+                  "name": "Hex primary_dim",
+                  "fill": "#475569",
+                  "content": "#a9c1f8",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "HHxxW",
+              "name": "on_primary",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "oTw1j",
+                  "name": "Chip on_primary",
+                  "fill": "$color-on-primary",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "vfSao",
+                  "name": "Hex on_primary",
+                  "fill": "#475569",
+                  "content": "#ffffff",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "SQSbX",
+              "name": "accent",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "iiQy7",
+                  "name": "Chip accent",
+                  "fill": "$color-accent",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "ZtCOc",
+                  "name": "Hex accent",
+                  "fill": "#475569",
+                  "content": "#d97706",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "E3dMv",
+              "name": "accent_tint",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "FdzkG",
+                  "name": "Chip accent_tint",
+                  "fill": "$color-accent-tint",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "Xaxr1",
+                  "name": "Hex accent_tint",
+                  "fill": "#475569",
+                  "content": "#fef3c7",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "NsqA3",
+              "name": "success",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "dxraQ",
+                  "name": "Chip success",
+                  "fill": "$color-success",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "UI4P7",
+                  "name": "Hex success",
+                  "fill": "#475569",
+                  "content": "#16a34a",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "V40ZbF",
+              "name": "warning",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "qKfuf",
+                  "name": "Chip warning",
+                  "fill": "$color-warning",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "tM7WE",
+                  "name": "Hex warning",
+                  "fill": "#475569",
+                  "content": "#b45309",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "wgwRd",
+              "name": "error",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "YlFwW",
+                  "name": "Chip error",
+                  "fill": "$color-error",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "KRKdi",
+                  "name": "Hex error",
+                  "fill": "#475569",
+                  "content": "#dc2626",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "URNxy",
+              "name": "alert",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "ENsv7",
+                  "name": "Chip alert",
+                  "fill": "$color-alert",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "djUTz",
+                  "name": "Hex alert",
+                  "fill": "#475569",
+                  "content": "#e5484d",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "pQJ4d",
+              "name": "success_pill_fg",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "S6X8Lf",
+                  "name": "Chip success_pill_fg",
+                  "fill": "$color-success-pill-fg",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "s0OS2",
+                  "name": "Hex success_pill_fg",
+                  "fill": "#475569",
+                  "content": "#166534",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "I9rhN",
+              "name": "warning_pill_fg",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "yKtt3",
+                  "name": "Chip warning_pill_fg",
+                  "fill": "$color-warning-pill-fg",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "e9A18",
+                  "name": "Hex warning_pill_fg",
+                  "fill": "#475569",
+                  "content": "#92400e",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "HNkUj",
+              "name": "error_pill_fg",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "daufA",
+                  "name": "Chip error_pill_fg",
+                  "fill": "$color-error-pill-fg",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "DrMkB",
+                  "name": "Hex error_pill_fg",
+                  "fill": "#475569",
+                  "content": "#b91c1c",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "l2YJdA",
+              "name": "alert_pill_fg",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "adMWz",
+                  "name": "Chip alert_pill_fg",
+                  "fill": "$color-alert-pill-fg",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "S8dHib",
+                  "name": "Hex alert_pill_fg",
+                  "fill": "#475569",
+                  "content": "#b42330",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "jhKpi",
+              "name": "background",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "TNh2q",
+                  "name": "Chip background",
+                  "fill": "$color-background",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "aWchZ",
+                  "name": "Hex background",
+                  "fill": "#475569",
+                  "content": "#f7f8fa",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "xWPWp",
+              "name": "surface",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "Fjyk7",
+                  "name": "Chip surface",
+                  "fill": "$color-surface",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "BUtjb",
+                  "name": "Hex surface",
+                  "fill": "#475569",
+                  "content": "#f7f8fa",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Oq9rT",
+              "name": "surface_lowest",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "KLvhx",
+                  "name": "Chip surface_lowest",
+                  "fill": "$color-surface-lowest",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "DBGCW",
+                  "name": "Hex surface_lowest",
+                  "fill": "#475569",
+                  "content": "#ffffff",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "cMa5j",
+              "name": "surface_low",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "kRzV6",
+                  "name": "Chip surface_low",
+                  "fill": "$color-surface-low",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "jAEtg",
+                  "name": "Hex surface_low",
+                  "fill": "#475569",
+                  "content": "#f4f6f9",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "CG3UV",
+              "name": "surface_container",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "jyz3s",
+                  "name": "Chip surface_container",
+                  "fill": "$color-surface-container",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "B8uAfg",
+                  "name": "Hex surface_container",
+                  "fill": "#475569",
+                  "content": "#eef1f5",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "gfGG2",
+              "name": "surface_high",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "r8pl7",
+                  "name": "Chip surface_high",
+                  "fill": "$color-surface-high",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "LHewa",
+                  "name": "Hex surface_high",
+                  "fill": "#475569",
+                  "content": "#e5e9ef",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "x9FwY",
+              "name": "surface_highest",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "SuUGc",
+                  "name": "Chip surface_highest",
+                  "fill": "$color-surface-highest",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "eyHjF",
+                  "name": "Hex surface_highest",
+                  "fill": "#475569",
+                  "content": "#dce1e8",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "YMH07",
+              "name": "sidebar",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "RKL0u",
+                  "name": "Chip sidebar",
+                  "fill": "$color-sidebar",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "Udyr9",
+                  "name": "Hex sidebar",
+                  "fill": "#475569",
+                  "content": "#f2f5f9",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "G0V8Xd",
+              "name": "card_border",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "ocIo1",
+                  "name": "Chip card_border",
+                  "fill": "$color-card-border",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "MVauf",
+                  "name": "Hex card_border",
+                  "fill": "#475569",
+                  "content": "#e4e8ee",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ymQB8",
+              "name": "on_surface",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "OS6Lz",
+                  "name": "Chip on_surface",
+                  "fill": "$color-on-surface",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "YLSAy",
+                  "name": "Hex on_surface",
+                  "fill": "#475569",
+                  "content": "#0f172a",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "OW37n",
+              "name": "on_surface_variant",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "uiJxt",
+                  "name": "Chip on_surface_variant",
+                  "fill": "$color-on-surface-variant",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "ThfrU",
+                  "name": "Hex on_surface_variant",
+                  "fill": "#475569",
+                  "content": "#475569",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "C1ZzyW",
+              "name": "muted",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "w6xVqj",
+                  "name": "Chip muted",
+                  "fill": "$color-muted",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "ttG8F",
+                  "name": "Hex muted",
+                  "fill": "#475569",
+                  "content": "#586476",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "Qo2zn",
+              "name": "outline",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "R6Pptv",
+                  "name": "Chip outline",
+                  "fill": "$color-outline",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "DMjF1",
+                  "name": "Hex outline",
+                  "fill": "#475569",
+                  "content": "#94a3b8",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "BXj46",
+              "name": "outline_variant",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "mGeHL",
+                  "name": "Chip outline_variant",
+                  "fill": "$color-outline-variant",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "h14su1",
+                  "name": "Hex outline_variant",
+                  "fill": "#475569",
+                  "content": "#dfe4eb",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "mlgDp",
+              "name": "focus_ring",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "poFwP",
+                  "name": "Chip focus_ring",
+                  "fill": "$color-focus-ring",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "Yy148",
+                  "name": "Hex focus_ring",
+                  "fill": "#475569",
+                  "content": "#1a56eb",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "bTIZR",
+              "name": "on_emphasis",
+              "layout": "vertical",
+              "gap": 6,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 8,
+                  "id": "ZHhbN",
+                  "name": "Chip on_emphasis",
+                  "fill": "$color-on-emphasis",
+                  "width": 56,
+                  "height": 40,
+                  "stroke": "$color-card-border",
+                  "strokeWidth": 1
+                },
+                {
+                  "type": "text",
+                  "id": "sy0PP",
+                  "name": "Hex on_emphasis",
+                  "fill": "#475569",
+                  "content": "#ffffff",
+                  "fontFamily": "Inter",
+                  "fontSize": 9,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "themes": {
+    "mode": [
+      "light",
+      "dark"
+    ]
+  },
+  "variables": {
+    "color-primary": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#1a56eb",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#7aa2ff",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-primary-strong": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#1443c6",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#9bb8ff",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-primary-tint": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#e6edfd",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#16264d",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-primary-dim": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#a9c1f8",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#1e3a8a",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-on-primary": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#0b1120",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-accent": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#d97706",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#f5b544",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-accent-tint": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#fef3c7",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#3a2a10",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-success": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#16a34a",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#4ade80",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-warning": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#b45309",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#fbbf24",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-error": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#dc2626",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#f87171",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-alert": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#e5484d",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#fb7185",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-success-pill-fg": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#166534",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#4ade80",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-warning-pill-fg": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#92400e",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#fbbf24",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-error-pill-fg": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#b91c1c",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#f87171",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-alert-pill-fg": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#b42330",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#fb7185",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-background": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f7f8fa",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#0b1120",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-surface": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f7f8fa",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#0b1120",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-surface-lowest": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#111827",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-surface-low": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f4f6f9",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#151e2e",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-surface-container": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#eef1f5",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#1b2436",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-surface-high": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#e5e9ef",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#232e42",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-surface-highest": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#dce1e8",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#2c384e",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-sidebar": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f2f5f9",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#0e1626",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-card-border": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#e4e8ee",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#222c3e",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-on-surface": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#0f172a",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#e5e9f0",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-on-surface-variant": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#475569",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#a7b1c2",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-muted": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#586476",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#8b97ab",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-outline": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#94a3b8",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#6b778c",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-outline-variant": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#dfe4eb",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#263145",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-focus-ring": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#1a56eb",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#7aa2ff",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "color-on-emphasis": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#ffffff",
+          "theme": {
+            "mode": "light"
+          }
+        },
+        {
+          "value": "#0b1120",
+          "theme": {
+            "mode": "dark"
+          }
+        }
+      ]
+    },
+    "radius-sm": {
+      "type": "number",
+      "value": 6
+    },
+    "radius-md": {
+      "type": "number",
+      "value": 8
+    },
+    "radius-lg": {
+      "type": "number",
+      "value": 12
+    },
+    "radius-xl": {
+      "type": "number",
+      "value": 16
+    },
+    "radius-2xl": {
+      "type": "number",
+      "value": 24
+    },
+    "font-sans": {
+      "type": "string",
+      "value": "Inter"
+    },
+    "font-mono": {
+      "type": "string",
+      "value": "IBM Plex Mono"
+    }
+  },
+  "fileToken": "e3cae8c2-34f6-439c-90f5-974eae87ad66"
+}

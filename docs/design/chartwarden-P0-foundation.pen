@@ -1,5 +1,5 @@
 {
-  "version": "2.13",
+  "version": "2.21",
   "children": [
     {
       "type": "frame",
@@ -247,6 +247,7 @@
             "bottom": 1
           },
           "strokeAlignment": "inner",
+          "strokeLinejoin": "round",
           "gap": 16,
           "padding": [
             0,
@@ -348,6 +349,7 @@
                 "right": 1
               },
               "strokeAlignment": "inner",
+              "strokeLinejoin": "round",
               "layout": "vertical",
               "gap": 2,
               "padding": [
@@ -1271,6 +1273,7 @@
             "bottom": 1
           },
           "strokeAlignment": "inner",
+          "strokeLinejoin": "round",
           "gap": 16,
           "padding": [
             0,
@@ -1354,6 +1357,7 @@
             "bottom": 1
           },
           "strokeAlignment": "inner",
+          "strokeLinejoin": "round",
           "gap": 16,
           "padding": [
             14,
@@ -1546,6 +1550,7 @@
                 "right": 1
               },
               "strokeAlignment": "inner",
+              "strokeLinejoin": "round",
               "layout": "vertical",
               "gap": 2,
               "padding": [
@@ -2905,6 +2910,7 @@
             "bottom": 1
           },
           "strokeAlignment": "inner",
+          "strokeLinejoin": "round",
           "gap": 16,
           "padding": [
             0,
@@ -2996,6 +3002,7 @@
                 "right": 1
               },
               "strokeAlignment": "inner",
+              "strokeLinejoin": "round",
               "layout": "vertical",
               "gap": 2,
               "padding": [
@@ -6385,6 +6392,7 @@
             "bottom": 1
           },
           "strokeAlignment": "inner",
+          "strokeLinejoin": "round",
           "gap": 16,
           "padding": [
             0,
@@ -6440,6 +6448,7 @@
                 "right": 1
               },
               "strokeAlignment": "inner",
+              "strokeLinejoin": "round",
               "layout": "vertical",
               "gap": 2,
               "padding": [
@@ -7625,6 +7634,7 @@
             "bottom": 1
           },
           "strokeAlignment": "inner",
+          "strokeLinejoin": "round",
           "gap": 16,
           "padding": [
             0,
@@ -7680,6 +7690,7 @@
                 "right": 1
               },
               "strokeAlignment": "inner",
+              "strokeLinejoin": "round",
               "layout": "vertical",
               "gap": 2,
               "padding": [
@@ -7881,6 +7892,7 @@
                 "right": 1
               },
               "strokeAlignment": "inner",
+              "strokeLinejoin": "round",
               "layout": "vertical",
               "children": [
                 {
@@ -8259,6 +8271,7 @@
                     "bottom": 1
                   },
                   "strokeAlignment": "inner",
+                  "strokeLinejoin": "round",
                   "gap": 10,
                   "padding": [
                     12,
@@ -8500,6 +8513,7 @@
                     "top": 1
                   },
                   "strokeAlignment": "inner",
+                  "strokeLinejoin": "round",
                   "gap": 10,
                   "padding": 16,
                   "alignItems": "center",
@@ -8571,6 +8585,7 @@
             "bottom": 1
           },
           "strokeAlignment": "inner",
+          "strokeLinejoin": "round",
           "gap": 16,
           "padding": [
             0,
@@ -9426,6 +9441,7 @@
             "bottom": 1
           },
           "strokeAlignment": "inner",
+          "strokeLinejoin": "round",
           "gap": 16,
           "padding": [
             0,
@@ -9481,6 +9497,7 @@
                 "right": 1
               },
               "strokeAlignment": "inner",
+              "strokeLinejoin": "round",
               "layout": "vertical",
               "gap": 2,
               "padding": [
@@ -10407,6 +10424,7 @@
             "bottom": 1
           },
           "strokeAlignment": "inner",
+          "strokeLinejoin": "round",
           "gap": 16,
           "padding": [
             0,
@@ -11358,5 +11376,6 @@
       "type": "color",
       "value": "#f1f0ec"
     }
-  }
+  },
+  "fileToken": "e3cae8c2-34f6-439c-90f5-974eae87ad66"
 }
