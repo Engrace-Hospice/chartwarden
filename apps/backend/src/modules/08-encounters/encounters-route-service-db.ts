@@ -2283,14 +2283,14 @@ export function createDbEncounterRouteService(
             // "this is what the platform was shipping" beats a uuid that names nothing (#128).
             vocabVersionId: r.vocabVersionId ?? activeVocabPin().id,
             voidedAt: new Date(),
-            voidedBy: r.authoredByMembershipId, // no distinct void actor threaded (see file header)
+            voidedBy: args.actorMembershipId, // CW-CL-10: the voiding admin, never the original author
             voidedReason: args.reason,
             updatedAt: new Date(),
           })
           .where(eq(ENC.id, encounterId));
         await emit(t, organizationId, "m8.encounter.voided", "encounter", encounterId, {
           encounterId,
-          voidedBy: r.authoredByMembershipId,
+          voidedBy: args.actorMembershipId,
           voidedReason: args.reason,
         });
         return { status: "voided" };

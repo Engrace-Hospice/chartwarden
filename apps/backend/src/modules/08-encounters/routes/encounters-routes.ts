@@ -703,9 +703,10 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     "/api/v1/encounters/:encounterId/void",
     { preHandler: [ADMIN_OVERRIDE] },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, userId } = actorOf(request);
       const body = parse(VoidEncounterSchema, request.body);
       return service.voidEncounter(organizationId, encounterIdOf(request), {
+        actorMembershipId: userId,
         isAdmin: true,
         reason: body.reason,
         at: today(),

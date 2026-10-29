@@ -2,8 +2,8 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1872,
-    "coveredRoutes": 1872,
+    "routes": 1873,
+    "coveredRoutes": 1873,
     "directRoutesReferenced": 1710
   },
   "modules": [
@@ -41,6 +41,7 @@
         "apps/backend/__tests__/m36-transactional-email.live.test.ts",
         "apps/backend/__tests__/mfa-enrolment-matrix.test.ts",
         "apps/backend/__tests__/public-tenant-routes.test.ts",
+        "apps/backend/__tests__/s11-adversarial-stages.live.test.ts",
         "apps/backend/__tests__/screen-unlock.test.ts",
         "apps/backend/__tests__/session-step-up.test.ts",
         "apps/backend/__tests__/step-up-mount.test.ts"
@@ -63,7 +64,8 @@
         "apps/backend/__tests__/m2-auth-hardening.live.test.ts",
         "apps/backend/__tests__/m23-dde-queue-hardening.live.test.ts",
         "apps/backend/__tests__/m36-global-search-query.test.ts",
-        "apps/backend/__tests__/m36-retention-governance.live.test.ts"
+        "apps/backend/__tests__/m36-retention-governance.live.test.ts",
+        "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
       ],
       "directRoutesReferenced": 16
     },
@@ -91,6 +93,7 @@
         "apps/backend/__tests__/f238-doclens-clinical-writeback.live.test.ts",
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
+        "apps/backend/__tests__/m10-s04-hope-override.live.test.ts",
         "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
         "apps/backend/__tests__/m2-link-redemption.live.test.ts",
         "apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
@@ -105,7 +108,8 @@
         "apps/backend/__tests__/m5-patient-wristband.live.test.ts",
         "apps/backend/__tests__/m5-privacy-officer.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
-        "apps/backend/__tests__/patient-routes.test.ts"
+        "apps/backend/__tests__/patient-routes.test.ts",
+        "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
       ],
       "directRoutesReferenced": 45
     },
@@ -124,12 +128,14 @@
         "apps/backend/__tests__/discharge-details-routes.test.ts",
         "apps/backend/__tests__/discharge-worklist-routes.test.ts",
         "apps/backend/__tests__/election-addendum-upload-routes.test.ts",
+        "apps/backend/__tests__/m10-s04-hope-override.live.test.ts",
         "apps/backend/__tests__/m2-link-redemption.live.test.ts",
         "apps/backend/__tests__/m36-promotion-targets.live.test.ts",
         "apps/backend/__tests__/m6-nomnc-expedited.live.test.ts",
         "apps/backend/__tests__/m6-physician-authority.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
-        "apps/backend/__tests__/readmission-routes.test.ts"
+        "apps/backend/__tests__/readmission-routes.test.ts",
+        "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
       ],
       "directRoutesReferenced": 98
     },
@@ -179,7 +185,8 @@
         "apps/backend/__tests__/m36-promotion-targets.live.test.ts",
         "apps/backend/__tests__/m36-promotions.live.test.ts",
         "apps/backend/__tests__/m8-chart-promotion.test.ts",
-        "apps/backend/__tests__/m8-encounter-addenda-read.live.test.ts"
+        "apps/backend/__tests__/m8-encounter-addenda-read.live.test.ts",
+        "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
       ],
       "directRoutesReferenced": 37
     },
@@ -199,7 +206,9 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/hope-routes.test.ts",
-        "apps/backend/__tests__/m6-readmission.live.test.ts"
+        "apps/backend/__tests__/m10-s04-hope-override.live.test.ts",
+        "apps/backend/__tests__/m6-readmission.live.test.ts",
+        "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
       ],
       "directRoutesReferenced": 29
     },
@@ -215,6 +224,7 @@
         "apps/backend/__tests__/orders-routes.test.ts",
         "apps/backend/__tests__/orm-recovery.test.ts",
         "apps/backend/__tests__/orm-resend.test.ts",
+        "apps/backend/__tests__/s11-adversarial-stages.live.test.ts",
         "apps/backend/__tests__/stuck-recovery.test.ts"
       ],
       "directRoutesReferenced": 30
@@ -241,7 +251,8 @@
       "suiteFiles": [
         "apps/backend/__tests__/emar-caregiver-barcode.test.ts",
         "apps/backend/__tests__/emar-routes.test.ts",
-        "apps/backend/__tests__/m6-readmission.live.test.ts"
+        "apps/backend/__tests__/m6-readmission.live.test.ts",
+        "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
       ],
       "directRoutesReferenced": 22
     },
@@ -260,7 +271,8 @@
         "apps/backend/__tests__/m14-chart-promotion.test.ts",
         "apps/backend/__tests__/m36-promotion-targets.live.test.ts",
         "apps/backend/__tests__/m36-promotions.live.test.ts",
-        "apps/backend/__tests__/m6-readmission.live.test.ts"
+        "apps/backend/__tests__/m6-readmission.live.test.ts",
+        "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
       ],
       "directRoutesReferenced": 39
     },
@@ -542,7 +554,7 @@
     },
     {
       "module": "36-messaging",
-      "routes": 204,
+      "routes": 205,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",

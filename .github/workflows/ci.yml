@@ -308,6 +308,8 @@ jobs:
           # GAP-181 — the monthly `hope-retention-scan` (flags only; destruction stays on M4) + the M9 cadence ledger.
           - { name: "M10 HOPE retention scan", scripts: "test:m10:retention:live" }
           - { name: "M10 HOPE submission result", scripts: "test:m10:submission-result:live" }
+          # S04 (clinical workflow audit 2026-10-28, CW-CL-03) — HOPE deadline override + iQIES hand-off through the route stack.
+          - { name: "M10 HOPE S04 override", scripts: "test:m10:s04-override:live" }
           - { name: "M11 Orders", scripts: "test:m11:read:live test:m11:write:live" }
           - { name: "M11 downstream signed fan-out", scripts: "test:m11:downstream-signed:live" }
           # F-152 (#248) — the §2.7 D7 order-suggestion banner (Valkey) + the D8 one-shot auto-complete.
@@ -359,6 +361,21 @@ jobs:
               name: "M13 PRN concurrency + order-to-administration",
               scripts: "test:m13:prn-concurrency:live test:m12-m13:order-administration:live",
             }
+          # S11 (clinical workflow audit 2026-10-28) - cross-tenant, unauthorised, revoked-membership, break-glass and
+          # auditor-enrolment adversarial cases through the real routes of each clinical stage.
+          - {
+              name: "S11 adversarial cases across clinical stages",
+              scripts: "test:s11:adversarial-stages:live",
+            }
+          # S01/S02 (clinical workflow audit 2026-10-28) — referral -> duplicate detection -> election -> admission ->
+          # episode, and concurrent admission vs transfer / discharge / readmission (real parallel transactions).
+          - {
+              name: "M6 S01 referral-to-episode + S02 admission concurrency",
+              scripts: "test:m6:s01:live test:m6:s02:live",
+            }
+          # S12 (clinical workflow audit 2026-10-28) — outbox retry/backoff/dead-letter, killed-worker reclaim, DB-outage
+          # recovery, discharge-cascade redelivery and offline-replay idempotency.
+          - { name: "S12 replay and recovery", scripts: "test:s12:replay-recovery:live" }
           # S08/S09 (clinical workflow audit 2026-10-28) — returned-lab edge cases (concurrency, pinned silent
           # drops, missing critical consumers / review step) and the on-call page chain (coverage gap -> page).
           - {
@@ -1262,6 +1279,8 @@ jobs:
           # GAP-101 — M36 out-of-band delivery workers (send_push/sms/voice/email) + vendor-webhook reconcile.
           - { name: "M36 out-of-band delivery", scripts: "test:m36:delivery:live" }
           - { name: "M14 action-item auto-close", scripts: "test:m14:autoclose:live" }
+          # S05 (clinical workflow audit 2026-10-28) — care plan -> visit -> signed note -> cosign -> IDG update.
+          - { name: "M14 S05 care plan to IDG", scripts: "test:m14:s05-careplan-to-idg:live" }
           # F-164 (#248) — 6 of the §4.5 "since last IDG" projection-cache consumers (M9/M10/M11/M12).
           - { name: "M14 since-last-IDG cache", scripts: "test:m14:since-last-idg-cache:live" }
           # F-171 (#248) — the real §7.1/§7.2 T-24h packet-build worker (schedule-materialise + packets-cron).
@@ -1293,6 +1312,9 @@ jobs:
           # Readmission workflow — re-election into the next benefit period, the period-3 F2F gate, and the
           # readmission NOE held until the prior election's NOTR / final claim is filed.
           - { name: "M6 readmission", scripts: "test:m6:readmission:live" }
+          # S03 (clinical workflow audit 2026-10-28) — CTI and recertification: valid, missing signature, overdue,
+          # invalid face-to-face.
+          - { name: "M6 S03 CTI + recert", scripts: "test:m6:s03-cti-recert:live" }
           - { name: "M23 NOE draft", scripts: "test:m23:noe-draft:live" }
           # M23 §4.4 — HETS 270/271 eligibility (sandbox transport) + hospice-periods read + MBI non-persistence.
           - {

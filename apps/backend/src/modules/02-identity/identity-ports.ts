@@ -259,8 +259,11 @@ export interface SessionWriter {
     organizationId: string;
     organizationName: string;
   }): Promise<OrgBinding> | OrgBinding;
-  /** Revoke every session tied to a membership (offboard §7.5). Returns # revoked. */
-  revokeForMembership(membershipId: string): Promise<number> | number;
+  /**
+   * Revoke every session tied to a membership (offboard §7.5). Returns # revoked. `organizationId` is the
+   * membership's tenant: `membership` is RLS-scoped, so a DB writer needs it to find the member at all.
+   */
+  revokeForMembership(membershipId: string, organizationId: string): Promise<number> | number;
   /** Revoke every session belonging to a user (full deactivation §7.5). Returns # revoked. */
   revokeAllForUser(userId: string): Promise<number> | number;
   /** Revoke ONE session (the unlock lockout, #589). Returns whether a session was revoked. */

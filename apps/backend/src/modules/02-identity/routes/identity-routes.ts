@@ -905,7 +905,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       await deps.memberships.setStatus(mId, "revoked");
     });
     // Revoking a membership terminates that user's sessions in this org within seconds (§7.5).
-    await deps.sessions.revokeForMembership(mId);
+    await deps.sessions.revokeForMembership(mId, orgId);
     await auditMembershipRevoked(
       deps.audit,
       auditContextFor(request, { organizationId: orgId, userId: actor.userId }),

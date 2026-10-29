@@ -15,7 +15,8 @@ const DEPCRUISE = join(ROOT, "node_modules", ".bin", "depcruise");
 const CFG = join(ROOT, "architecture", ".dependency-cruiser.cjs");
 // Repo-root probes spawn separate Bun/depcruise scans and can exceed the ordinary unit-test
 // ceiling on a busy workstation. Keep the allowance limited to these integration-style checks.
-const BASELINE_GATE_TIMEOUT_MS = 120_000;
+// check-table-ownership alone takes ~110 s wall-clock while live suites share the machine, so 120 s flaked.
+const BASELINE_GATE_TIMEOUT_MS = 300_000;
 
 interface CommandResult {
   readonly status: number;

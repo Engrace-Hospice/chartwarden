@@ -344,6 +344,16 @@ const LOC = schema.levelOfCarePeriods;
 const NOR = schema.noticeOfRightsAcknowledgments;
 const CW = schema.complianceWindows;
 const DE = schema.dischargeEvents;
+/**
+ * §2.3.1 backstop behind the "no double election" pre-check: two writers can both pass the pre-check, and the
+ * loser then hits `admission_patient_open_idx`. Without this it reached the caller as a raw 23505 (500).
+ */
+const patientAlreadyElected = (): AdmissionStateError =>
+  new AdmissionStateError(
+    "PATIENT_ALREADY_ELECTED",
+    "patient has another open admission (opened concurrently)",
+  );
+
 const TE = schema.transferEvents;
 const RE = schema.revocationEvents;
 const RA = schema.referralActivities;
@@ -3390,7 +3400,12 @@ export function createDbAdmissionRouteService(
             admissionId: adm.id,
           };
         },
-      );
+      ).catch((err: unknown) => {
+        throw mapUniqueViolation(err, {
+          admission_patient_open_idx: patientAlreadyElected,
+          admission_org_referral_once_uidx: () => new ReferralAlreadyConvertedError(id),
+        });
+      });
       // After the conversion has committed, so a refused or rolled-back conversion never leaves a grant behind.
       if (grant.patientId)
         await patientResolver().grantAdmittingAccess({
@@ -3950,6 +3965,8 @@ export function createDbAdmissionRouteService(
           state: adm.status,
           version: Number(adm.version),
         };
+      }).catch((err: unknown) => {
+        throw mapUniqueViolation(err, { admission_patient_open_idx: patientAlreadyElected });
       });
     },
     async updateAdmission(organizationId, id, input, ifVersion): Promise<MutationResult> {

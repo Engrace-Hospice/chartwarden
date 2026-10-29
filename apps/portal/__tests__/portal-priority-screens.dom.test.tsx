@@ -133,8 +133,9 @@ describe("portal priority screens", () => {
     window.history.pushState({}, "", `/portal/p/${PATIENT_ID}/documents`);
     render(<PortalApp client={fixtureClient()} />);
 
-    expect(await screen.findByRole("heading", { name: "Welcome guide" })).toBeTruthy();
-    expect(screen.getByRole("list")).toBeTruthy();
+    const heading = await screen.findByRole("heading", { name: "Welcome guide" });
+    // The route breadcrumb is also a list; the document must sit in a list of its own.
+    expect(heading.closest("ul")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Download Welcome guide" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Send a document" })).toBeTruthy();
   });

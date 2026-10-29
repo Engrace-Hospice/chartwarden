@@ -583,16 +583,29 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const id = await draft("routine_visit", "rn");
     const reason = "documented void reason meeting the 40-character minimum length rule";
     const v = await svc.voidEncounter(ORG_A, id, {
+      actorMembershipId: CASE_MANAGER_MEMBERSHIP_ID,
       isAdmin: true,
       reason,
       at: SERVICE_DATE as never,
     });
     expect(v.status).toBe("voided");
     expect(await eventsFor(id)).toContain("m8.encounter.voided");
+    // CW-CL-10: the voiding admin is attributed, not the draft's author.
+    const voided = await admin.query(
+      "SELECT voided_by, authored_by_membership_id FROM encounter WHERE id=$1",
+      [id],
+    );
+    expect(voided.rows[0].voided_by).toBe(CASE_MANAGER_MEMBERSHIP_ID);
+    expect(voided.rows[0].voided_by).not.toBe(voided.rows[0].authored_by_membership_id);
     // A non-admin void is refused (403) before any write.
     const id2 = await draft("routine_visit", "rn");
     await expect(
-      svc.voidEncounter(ORG_A, id2, { isAdmin: false, reason, at: SERVICE_DATE as never }),
+      svc.voidEncounter(ORG_A, id2, {
+        actorMembershipId: CASE_MANAGER_MEMBERSHIP_ID,
+        isAdmin: false,
+        reason,
+        at: SERVICE_DATE as never,
+      }),
     ).rejects.toMatchObject({ statusCode: 403 });
   });
 
@@ -1335,6 +1348,7 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     // the void — decodable, and still never confusable with a signed note's pin.
     const id = await draft("routine_visit", "rn");
     await svc.voidEncounter(ORG_A, id, {
+      actorMembershipId: CASE_MANAGER_MEMBERSHIP_ID,
       isAdmin: true,
       reason: "documented void reason meeting the 40-character minimum length rule",
       at: SERVICE_DATE as never,

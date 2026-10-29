@@ -7,7 +7,8 @@
 // M1; via the Drizzle query builder, never raw SQL — mirrors membership-repository.ts). Foundation
 // `session`/`membership` are not org-RLS'd; runs on the app connection.
 import { type DbClient, schema } from "@chartwarden/db";
-import { eq } from "drizzle-orm";
+import { withOrgContext } from "@chartwarden/tenancy";
+import { and, eq } from "drizzle-orm";
 import type { SessionWriter } from "./identity-ports";
 
 export function createDbSessionWriter(db: DbClient): SessionWriter {
@@ -25,15 +26,25 @@ export function createDbSessionWriter(db: DbClient): SessionWriter {
         expiresAt: new Date(expiresAt).toISOString(),
       };
     },
-    async revokeForMembership(membershipId) {
-      const [m] = await db
-        .select({ userId: schema.memberships.userId })
-        .from(schema.memberships)
-        .where(eq(schema.memberships.id, membershipId));
+    async revokeForMembership(membershipId, organizationId) {
+      // `membership` is RLS-scoped by `app.org_id`: read outside an org context the app role sees NO rows,
+      // this returned 0 and a revoked member's sessions silently stayed alive (S11). Enter the tenant.
+      const [m] = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
+        tx
+          .select({ userId: schema.memberships.userId })
+          .from(schema.memberships)
+          .where(eq(schema.memberships.id, membershipId)),
+      );
       if (!m) return 0;
       const revoked = await db
         .delete(schema.sessions)
-        .where(eq(schema.sessions.userId, m.userId))
+        // Only the sessions bound to THIS org: a member revoked from A keeps their sessions in B (M3).
+        .where(
+          and(
+            eq(schema.sessions.userId, m.userId),
+            eq(schema.sessions.activeOrganizationId, organizationId),
+          ),
+        )
         .returning({ id: schema.sessions.id });
       return revoked.length;
     },

@@ -40,16 +40,32 @@ controls:
       - script: arch:abac-composed
       - script: arch:request-header-auth
       - script: test:auth:live
+      - script: test:m10:s04-override:live
+      - script: test:s11:adversarial-stages:live
+
+  - id: CW-AC-02A
+    title: Workforce termination — sessions end and org binding fails closed on membership revoke/suspend
+    hipaa: ["164.308(a)(3)(ii)(C)"]
+    soc2: ["CC6.2", "CC6.3"]
+    status: implemented
+    evidence:
+      - script: test:s11:adversarial-stages:live
+      - file: apps/backend/src/modules/02-identity/session-writer-db.ts
 
   - id: CW-AC-03
     title: Emergency access (break-glass) as a two-person, audited control
     hipaa: ["164.312(a)(2)(ii)"]
     soc2: ["CC6.1"]
-    status: implemented
+    status: partial
     evidence:
       - script: test:m3:break-glass:live
       - script: test:m3:break-glass-outbox:live
       - script: test:m36:break-glass:live
+      - script: test:s11:adversarial-stages:live
+    gap:
+      reason: S11 shows break-glass opens a chart on only 2 of the 8 workflow stages (pinned by glassOpens:false); the other 6 refuse. It fails closed, so this is an availability gap, not a PHI exposure.
+      owner: platform
+      review_by: 2027-01-31
 
   - id: CW-AC-04
     title: Automatic logoff / session lock and device session management

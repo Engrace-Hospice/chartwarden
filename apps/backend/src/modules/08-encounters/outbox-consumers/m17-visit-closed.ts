@@ -116,6 +116,8 @@ export function buildM8VisitClosedConsumer(deps: {
               status: "voided",
               vocabVersionId: "00000000-0000-4000-8000-0000000000d8",
               voidedAt: now,
+              // `voided_by` is NOT NULL (FK memberships) and there is no system membership, so a system void is
+              // attributed to the draft's author; `voidedReason` says it was a system void (CW-CL-10 covers human voids).
               voidedBy: encounter.authoredByMembershipId,
               voidedReason: reason,
               updatedAt: now,

@@ -64,7 +64,9 @@ describe("portal documents redesign", () => {
         )}
       />,
     );
-    const list = await screen.findByRole("list");
+    // The route breadcrumb is also a list, so anchor on the document list through its own first heading.
+    const list = (await screen.findByRole("heading", { name: "Newer plan" })).closest("ul");
+    if (!list) throw new Error("expected the shared-documents list");
     expect(
       within(list)
         .getAllByRole("heading")

@@ -658,7 +658,7 @@ export interface EncounterRouteService {
   voidEncounter(
     organizationId: string,
     encounterId: string,
-    args: { isAdmin: boolean; reason: string; at: LocalDate },
+    args: { isAdmin: boolean; reason: string; at: LocalDate; actorMembershipId: string },
   ): Promise<{ status: "voided" }>;
   getCosignature(
     organizationId: string,

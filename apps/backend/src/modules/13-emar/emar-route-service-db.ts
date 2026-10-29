@@ -85,12 +85,13 @@ import {
 } from "@chartwarden/emar";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
+  ConflictError,
   type MedClass,
   NotFoundError,
   type PatientWristbandVerifier,
   ValidationError,
 } from "@chartwarden/types";
-import { and, asc, eq, gt, gte, inArray, isNull, lte, ne, or } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import type {
   CaregiverReviewAbacFacts,
   EmarScopeRefKind,
@@ -960,6 +961,37 @@ export function createDbEmarBackend(
       args: RecordAdministrationArgs,
     ): Promise<AdministrationView> {
       return withOrg(orgId, async (tx) => {
+        // S12 -- an offline replay is keyed on (deviceId, localId): a second delivery of the same queued row
+        // (lost ack, retried sync) returns the committed record instead of recording the dose again. The
+        // advisory lock serialises concurrent replays; no unique index backs this (admin_rec_offline_capture_idx
+        // is a plain index), so the lock + lookup is the whole guard.
+        if (args.offlineCapture) {
+          const { deviceId, localId } = args.offlineCapture;
+          await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(hashtext(${`offline:${orgId}:${deviceId}:${localId}`}))`,
+          );
+          const [prior] = await tx
+            .select()
+            .from(ADM)
+            .where(
+              and(
+                eq(ADM.organizationId, orgId),
+                eq(ADM.deviceId, deviceId),
+                eq(ADM.localId, localId),
+              ),
+            )
+            .limit(1);
+          if (prior) {
+            // The request was authorized against ITS order/patient, so a key that names a different dose is a
+            // client reusing a localId, not a replay: refuse it (never echo the stored record, never drop the dose).
+            if (prior.medicationOrderId !== args.medicationOrderId || prior.mode !== args.mode) {
+              throw new ConflictError(
+                "offline capture key already used for a different administration",
+              );
+            }
+            return toAdminView(prior, null);
+          }
+        }
         const recordedAt = new Date();
         const lateEntryTier = resolveLateEntryTier(args.administeredAt, recordedAt.toISOString());
         const isComfortKitDrawdown = Boolean(args.comfortKitDeploymentId);

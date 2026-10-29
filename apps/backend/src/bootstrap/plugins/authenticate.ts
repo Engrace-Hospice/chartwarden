@@ -233,6 +233,15 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     const scope: OrgScope = { orgId: snap.activeOrganizationId };
     const actor = await deps.getResolver().resolveActor(scope, snap.sessionId);
     if (!actor) return; // session/org mismatch — no org binding, no roles (no cross-tenant leak)
+    // A STAFF session is only as good as the membership behind it. The enrichment reader answers `membershipId:
+    // null` once that membership is revoked or suspended, but the session row (and the 5-minute RBAC cache keyed
+    // on user+org) outlive it: without this the revoked user kept their cached permissions, and any break-glass
+    // grant, until the cache expired (S11). Fail closed - no org binding, so every org route denies at once.
+    if (actor.sessionClass === "staff" && actor.membershipId === null) {
+      // Same "choose an organization" signal as the pre-org branch (#589): the user may still belong to another org.
+      request.context.attributes.orgUnbound = true;
+      return;
+    }
     // M2 §2.2.4 — an `auditor`-class session is READ-ONLY, enforced here for every route (the class
     // descriptor's `readOnly` flag had no reader, and the auditor role's single read permission is the second
     // layer, not the only one). The only mutation allowed is signing out.

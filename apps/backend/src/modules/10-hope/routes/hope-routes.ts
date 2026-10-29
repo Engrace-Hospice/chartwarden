@@ -153,8 +153,12 @@ const ADMIN_LATE_OVERRIDE = P("hope.admin.late_deadline_override");
 // permission `hope.admin.late_deadline_override` and nothing referenced it. Now a request that asks for the
 // override must hold that permission (403 otherwise) AND state a justification (422) — which the service
 // records on a critical audit event when the override is actually used. The flag only ever ADDS a gate.
-const adminOverrideRequested = (body: unknown): boolean =>
-  (body as { adminOverride?: unknown } | null | undefined)?.adminOverride === true;
+// Fail closed on the RAW value: the handler's `parse()` runs `Value.Convert`, which coerces "true"/1 to
+// `true` AFTER this gate has run, so a strict `=== true` here let `adminOverride: "true"` skip the permission.
+const adminOverrideRequested = (body: unknown): boolean => {
+  const raw = (body as { adminOverride?: unknown } | null | undefined)?.adminOverride;
+  return raw !== undefined && raw !== null && raw !== false;
+};
 const LATE_OVERRIDE_GATE: PreHandler = async (request, reply) => {
   if (!adminOverrideRequested(request.body)) return;
   await ADMIN_LATE_OVERRIDE(request, reply);
