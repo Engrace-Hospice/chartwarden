@@ -319,6 +319,12 @@ jobs:
               name: "M13 eMAR",
               scripts: "test:m13:read:live test:m13:write:live test:m13:rn-case-manager:live",
             }
+          # S06/S07 (clinical workflow audit 2026-10-28) — PRN double-dose under concurrency, and the real
+          # M11/M12 order lifecycle (sign / verbal / discontinue) feeding M13 administration.
+          - {
+              name: "M13 PRN concurrency + order-to-administration",
+              scripts: "test:m13:prn-concurrency:live test:m12-m13:order-administration:live",
+            }
           # F-152 (#248) — the §2.8 D17 medication-reconciliation worksheet, opened from all four M6
           # trigger events.
           - { name: "M13 reconciliation triggers", scripts: "test:m13:reconciliation-triggers:live" }
