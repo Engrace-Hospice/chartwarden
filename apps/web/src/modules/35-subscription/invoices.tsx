@@ -73,13 +73,13 @@ export function Invoices(): JSX.Element {
       }
       filters={
         <div style={filtersStyle}>
-          <div className="wx-subtabs wx-subtabs-inline" role="tablist">
+          <div className="wx-subtabs wx-subtabs-inline">
             {STATUSES.map((s) => (
               <button
                 key={s}
                 type="button"
                 onClick={() => setStatusFilter(s)}
-                aria-selected={statusFilter === s}
+                aria-pressed={statusFilter === s}
               >
                 {cap(s)}
               </button>
