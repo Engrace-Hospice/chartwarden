@@ -600,7 +600,7 @@ export function buildOncallTriggerConsumers(
     ),
     // §4.8 — a paged on-call recipient never got the page. Not `trigger(...)`: this reads no `visitId`
     // and its facts resolver is `resolveDeliveryFailureFacts`, not `resolveInboundTriggerFacts` (see this
-    // file's header). the producer is M36's `applyDeliveryTransition` (delivery-settlement.ts), which publishes
+    // file's header). The producer is M36's `applyDeliveryTransition` (delivery-settlement.ts), which publishes
     // `m36.notification.delivery_failed` when a delivery settles `failed`.
     {
       consumerName: "m19.m36-delivery-failed",

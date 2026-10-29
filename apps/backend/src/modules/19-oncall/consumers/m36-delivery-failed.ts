@@ -33,7 +33,8 @@
 // M19 cannot get is still handled: an absent `providerEntityId` on an on-call failure cannot anchor a row
 // (`triage_call.provider_entity_id` is NOT NULL), so it dead-letters for a human rather than being
 // anchored to a guess. M36's `applyDeliveryTransition` (delivery-settlement.ts) is the producer; this
-// decider is exercised end to end by m19-inbound-triggers.live.
+// decider is exercised against a hand-built payload by m19-inbound-triggers.live; the producer's payload
+// shape is pinned by m36-oncall-page-chain.live and gap-101.
 import type {
   IsoInstant,
   M19SubscribedEventName,

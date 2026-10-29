@@ -273,7 +273,8 @@ describe.skipIf(!DB_URL)("S09 on-call page chain — LIVE Postgres", () => {
   it("REPORTED, NOT FIXED: a gap in an org where nobody holds the seeded roles raises the alert but reaches no one", async () => {
     // ORG_C's only member is a nurse. The rule names org_admin + clinical_supervisor, so the page resolves to nobody.
     // The raw emitter (what the production consumer is bound to) neither errors nor falls back, so the event is
-    // acknowledged as handled and no human is told. Tracked in the S09 follow-up issue.
+    // acknowledged as handled and no human is told. This test builds the consumer itself, so a fix applied only
+    // at the production binding would not trip it: the next test pins that binding's source too.
     const before = (await alerts(ORG_C, `%${PE_1}%`)).length;
 
     await handleEvent(gapEvent(ORG_C, PE_1, HOUR_10));
@@ -281,6 +282,12 @@ describe.skipIf(!DB_URL)("S09 on-call page chain — LIVE Postgres", () => {
     const rows = await alerts(ORG_C, `%${PE_1}%`);
     expect(rows).toHaveLength(before + 1);
     expect(await recipients(rows[0].id)).toEqual([]);
+  });
+
+  it("REPORTED, NOT FIXED: the production binding hands the consumer the bare emitter (no recipient fallback)", () => {
+    const boot = readFileSync(join(__dirname, "../src/index.ts"), "utf8");
+
+    expect(boot).toContain('buildM36OncallAlertConsumer(getSeam("AlertEmitter") as AlertEmitter)');
   });
 
   it("when the coverage-gap page fails to deliver, the published delivery_failed names the entity and the alert type", async () => {

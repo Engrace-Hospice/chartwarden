@@ -177,15 +177,30 @@ describe.skipIf(!DB_URL)("S08 lab-result edge cases — LIVE Postgres", () => {
     expect((await orderRow(order)).last_lab_observation_attached_id).toBe(obs(1));
   });
 
-  it("two different observations racing both apply, and the first-received instant is stamped once", async () => {
+  it("two different observations racing both apply, and a later delivery never overwrites the first-received instant", async () => {
     const order = await seedLabOrder();
+    // A ticking clock gives every write its own instant, so an overwrite is visible (a constant clock hides it).
+    let tick = 0;
+    const ticking = buildM11LabResultsApplierConsumer({
+      db: handle.db,
+      outbox,
+      now: () => new Date(NOW.getTime() + tick++ * 60_000),
+    });
 
-    await Promise.all([handleEvent(attached(order, obs(2))), handleEvent(attached(order, obs(3)))]);
+    await Promise.all([
+      ticking.handle(attached(order, obs(2)) as never),
+      ticking.handle(attached(order, obs(3)) as never),
+    ]);
 
     expect(await eventsFor("m11.order.results_received", order)).toBe(2);
-    const row = await orderRow(order);
-    expect([obs(2), obs(3)]).toContain(row.last_lab_observation_attached_id);
-    expect(new Date(row.results_first_received_at).toISOString()).toBe(NOW.toISOString());
+    const raced = await orderRow(order);
+    expect([obs(2), obs(3)]).toContain(raced.last_lab_observation_attached_id);
+    const firstReceived = new Date(raced.results_first_received_at).getTime();
+    expect([NOW.getTime(), NOW.getTime() + 60_000]).toContain(firstReceived);
+    await ticking.handle(attached(order, obs(9)) as never); // a third, later delivery
+    const after = await orderRow(order);
+    expect(after.last_lab_observation_attached_id).toBe(obs(9));
+    expect(new Date(after.results_first_received_at).getTime()).toBe(firstReceived);
   });
 
   it("REPORTED, NOT FIXED: a critical result bound to NO order emits nothing at all, so nobody can be told", async () => {
@@ -232,7 +247,7 @@ describe.skipIf(!DB_URL)("S08 lab-result edge cases — LIVE Postgres", () => {
     expect(declared(M29_OUTBOX_EVENTS, "m29.lab_observation.abnormal_flag")).toEqual([]);
   });
 
-  it("REPORTED, NOT FIXED: a returned lab has no review step: no reviewed state, no review method, and it never leaves the queue", async () => {
+  it("REPORTED, NOT FIXED: a returned lab has no review step: no reviewed state, no review column, no review-named method", async () => {
     const { rows } = await admin.query(
       "SELECT unnest(enum_range(NULL::order_results_status))::text AS v",
     );
@@ -247,11 +262,9 @@ describe.skipIf(!DB_URL)("S08 lab-result edge cases — LIVE Postgres", () => {
     expect(Object.keys(service).filter((k) => /review|acknowledg/i.test(k))).toEqual([
       "resultsPendingReview",
     ]);
-    const order = await seedLabOrder();
-    await handleEvent(attached(order, obs(8)));
-    const { orders: first } = await service.resultsPendingReview(ORG);
-    const { orders: again } = await service.resultsPendingReview(ORG);
-    expect(first.map((o) => o.id)).toContain(order);
-    expect(again.map((o) => o.id)).toContain(order);
+    const columns = await admin.query(
+      "SELECT column_name FROM information_schema.columns WHERE table_name='order_record' AND column_name ~* '(review|acknowledg)'",
+    );
+    expect(columns.rows).toEqual([]);
   });
 });
