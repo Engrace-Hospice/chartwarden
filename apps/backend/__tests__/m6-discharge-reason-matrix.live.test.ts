@@ -8,9 +8,11 @@
  * payload with `reason: "death"`. Nothing proved that one real discharge per reason reaches EVERY consumer
  * with a payload they accept, or that the end state is the same whatever the reason. This does, in a table.
  *
- * Not repeated here, each is covered with its own seeded rows by a suite that already runs a real discharge:
- * M13 (doses, comfort kits; no `reason` filter in the consumer), M37 (IPU), M16 (bereavement; death only —
- * `m16-bereavement-intake.live`, `m16-discharge-death-secondary.live`).
+ * Not repeated here: M16 (bereavement; death only) is driven by a real discharge in
+ * `m16-bereavement-intake.live` and `m16-discharge-death-secondary.live`. M13 (doses, comfort kits; no
+ * `reason` filter in the consumer) and M37 (IPU; skips `reason = "death"` on purpose) are covered only by
+ * suites that hand-INSERT the `m6.admission.discharged` event, so a real per-reason payload reaching them is
+ * NOT proved by anything yet.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m6:discharge-reason-matrix:live
  */
@@ -98,8 +100,9 @@ interface Transition {
   readonly name: string;
   /** The `reason` M6 puts on `m6.admission.discharged` for this ending. */
   readonly reason: string;
-  /** What M5's consumer leaves the chart as. Death is `null`: M5 applies no edge on a death delivery, the
-   *  `→ deceased` edge belongs to the separate `m6.discharge.death` cascade (`gap-004-death-cascade.live`). */
+  /** What M5's consumer leaves the chart as. Death is `null`: M5 applies no edge on a death delivery (the
+   *  chart stays `active` here; `m5.death-cascade` is not registered in this suite). M6 emits the separate
+   *  `m6.discharge.death` hand-off, which `gap-004-death-cascade.live` consumes. */
   readonly patientEndsAs: "discharged" | null;
   readonly run: (org: string, admissionId: string) => Promise<void>;
 }
@@ -343,9 +346,15 @@ describe.skipIf(!DB_URL)("S10 — terminal transitions reach every consumer, LIV
     },
   ];
 
-  /** Tick until the backlog is claimed (activation + discharge emit several rows per admission). */
+  /** Tick the backlog out, then insist no row failed or was retried: a consumer that threw is dead-lettered
+   *  or backed off, and the no-op dispatcher log would otherwise hide it. (Rows stay `pending` while a
+   *  module this harness does not register has not consumed them, so status alone proves nothing.) */
   async function drain(): Promise<void> {
     for (let i = 0; i < 6; i += 1) await dispatcher.tick();
+    const { rows } = await admin.query(
+      "SELECT event_type, status, attempt_count, last_error FROM outbox_event WHERE status = 'failed' OR (last_error IS NOT NULL AND last_error NOT LIKE 'deferred:%')",
+    );
+    expect(rows).toEqual([]);
   }
 
   beforeAll(async () => {
@@ -428,33 +437,34 @@ describe.skipIf(!DB_URL)("S10 — terminal transitions reach every consumer, LIV
     const orgs: ActiveOrgEnumerator = {
       listActiveOrgs: async () => [{ organizationId: ORG_A }, { organizationId: ORG_B }],
     };
+    const consumers = [
+      {
+        consumerName: "m5.m6-admission-discharged",
+        consumerModule: "m5",
+        eventTypes: ["m6.admission.discharged"],
+        async handle(event: { organizationId: string; payload: unknown }) {
+          await applyAdmissionDischarged(m5Deps as never, {
+            organizationId: event.organizationId,
+            payload: event.payload,
+          });
+        },
+      } as never,
+      buildM7AdmissionActivatedConsumer({ db: handle.db, outbox: bind("m7") as never }),
+      buildM7AdmissionDischargedConsumer({ db: handle.db, outbox: bind("m7") as never }),
+      buildM10AdmissionSchedulingConsumer({
+        db: handle.db,
+        outbox: bind("m10") as never,
+        resolveSiting: (organizationId: string, admissionId: string) =>
+          admissionSchedulingContextForOrg(handle.db, organizationId, admissionId),
+      } as never) as never,
+      buildM11DischargeCascadeConsumer({ db: handle.db, outbox: bind("m11") as never }),
+      buildM12DischargeCascadeConsumer({ db: handle.db, outbox: bind("m12") as never }),
+      buildM17AdmissionLifecycleConsumer({ db: handle.db, outbox: bind("m17") as never }),
+    ];
     dispatcher = createOutboxDispatcher({
       db: handle.db,
       orgs,
-      consumers: [
-        {
-          consumerName: "m5.m6-admission-discharged",
-          consumerModule: "m5",
-          eventTypes: ["m6.admission.discharged"],
-          async handle(event: { organizationId: string; payload: unknown }) {
-            await applyAdmissionDischarged(m5Deps as never, {
-              organizationId: event.organizationId,
-              payload: event.payload,
-            });
-          },
-        } as never,
-        buildM7AdmissionActivatedConsumer({ db: handle.db, outbox: bind("m7") as never }),
-        buildM7AdmissionDischargedConsumer({ db: handle.db, outbox: bind("m7") as never }),
-        buildM10AdmissionSchedulingConsumer({
-          db: handle.db,
-          outbox: bind("m10") as never,
-          resolveSiting: (organizationId: string, admissionId: string) =>
-            admissionSchedulingContextForOrg(handle.db, organizationId, admissionId),
-        } as never) as never,
-        buildM11DischargeCascadeConsumer({ db: handle.db, outbox: bind("m11") as never }),
-        buildM12DischargeCascadeConsumer({ db: handle.db, outbox: bind("m12") as never }),
-        buildM17AdmissionLifecycleConsumer({ db: handle.db, outbox: bind("m17") as never }),
-      ],
+      consumers,
       eventCatalog: catalog,
       options: { log: () => {} },
     });
@@ -492,12 +502,9 @@ describe.skipIf(!DB_URL)("S10 — terminal transitions reach every consumer, LIV
       await t.run(ORG_A, admissionId);
       await drain();
 
-      // M5. Death hands off to the `m6.discharge.death` cascade instead of moving the chart itself.
-      if (t.patientEndsAs) expect(await patientStatus(patientId)).toBe(t.patientEndsAs);
-      else {
-        expect(await patientStatus(patientId)).not.toBe("discharged");
-        expect(await deathHandoffs(admissionId)).toBe(1);
-      }
+      // M5. Death applies no edge here; M6 emits the `m6.discharge.death` hand-off for the death cascade.
+      expect(await patientStatus(patientId)).toBe(t.patientEndsAs ?? "active");
+      if (!t.patientEndsAs) expect(await deathHandoffs(admissionId)).toBe(1);
       expect(await carePlanStatus(admissionId)).toBe("discharged"); // M7
       expect(await dischargeTimepoints(admissionId)).toBe(1); // M10
       expect(await orderStatus(lab)).toBe("discontinued"); // M11
@@ -524,7 +531,8 @@ describe.skipIf(!DB_URL)("S10 — terminal transitions reach every consumer, LIV
 
       expect(await orderStatus(otherOrder)).toBe("pending_signature");
       expect(await visitStatus(otherVisit)).toBe("published");
-      expect(await carePlanStatus(otherAdmission)).not.toBe("discharged");
+      expect(await carePlanStatus(otherAdmission)).toBe("draft");
+      expect(await patientStatus(otherPatient)).toBe("active");
     });
   });
 
@@ -542,10 +550,13 @@ describe.skipIf(!DB_URL)("S10 — terminal transitions reach every consumer, LIV
       const patientId = randomUUID();
       const admissionId = await activeAdmission(ORG_A, patientId);
       const proposed = await seedVisit(ORG_A, admissionId, patientId, "proposed");
+      const control = await seedVisit(ORG_A, admissionId, patientId, "published");
 
       await t.run(ORG_A, admissionId);
       await drain();
 
+      // The control proves the M17 consumer ran, so the unchanged `proposed` row is the gap and not a no-op.
+      expect(await visitStatus(control)).toBe("cancelled");
       expect(await visitStatus(proposed)).toBe("proposed");
     });
 
@@ -569,9 +580,12 @@ describe.skipIf(!DB_URL)("S10 — terminal transitions reach every consumer, LIV
         ],
       );
 
+      const control = await seedVisit(ORG_A, admissionId, patientId, "published");
+
       await t.run(ORG_A, admissionId);
       await drain();
 
+      expect(await visitStatus(control)).toBe("cancelled"); // M17 ran; the policy below is the gap
       expect(await one("SELECT status FROM recurring_visit WHERE id=$1", [policy])).toBe("active");
     });
   });

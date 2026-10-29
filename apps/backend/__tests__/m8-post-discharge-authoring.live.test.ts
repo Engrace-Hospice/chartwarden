@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 /**
  * S10 — the M8 post-discharge authoring guard, proven against real Postgres.
  *
@@ -9,8 +8,12 @@ import { randomUUID } from "node:crypto";
  * through M6's REAL `AdmissionStatusReader`, with the real catalog-validating outbox publisher.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m8:post-discharge:live
+
+ * The boundary compares the service date to the UTC date of `dischargedAt` (no tenant time zone), so the
+ * 12:00Z and 20:00Z fixtures below do not exercise an evening discharge that is already tomorrow in UTC.
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
  */
+import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createInMemorySessionContextStore, createSessionContextResolver } from "@chartwarden/auth";
