@@ -171,10 +171,7 @@ export function MedicaidTradingPartnerCredentials(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader
-          title="Trading Partner Credentials"
-          breadcrumb="Billing — Medicaid · state channel configuration"
-        >
+        <PageHeader title="Trading Partner Credentials">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Monitor state channel setup, secret presence, active windows, and sandbox readiness.
           </div>

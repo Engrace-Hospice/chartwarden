@@ -156,11 +156,6 @@ export function CapDashboard(): JSX.Element {
       header={
         <PageHeader
           title="Cap Watch"
-          breadcrumb={
-            period
-              ? `Revenue Cycle — ${period.capYear} · ${humanize(period.methodology) ?? "methodology unset"}`
-              : "Revenue Cycle — Cap management"
-          }
           actions={
             period ? (
               <StatusPill

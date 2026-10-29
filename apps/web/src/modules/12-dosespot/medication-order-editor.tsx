@@ -397,11 +397,6 @@ export function MedicationOrderEditor(): JSX.Element {
       banner={
         <PageHeader
           title={editing ? "Edit medication draft" : "New medication order"}
-          breadcrumb={
-            <button type="button" onClick={requestCancel}>
-              ← {editing ? "Medication order" : "Medications"}
-            </button>
-          }
           actions={
             <Button tone="secondary" onClick={requestCancel}>
               Cancel

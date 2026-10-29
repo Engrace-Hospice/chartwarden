@@ -120,7 +120,7 @@ export function MedicaidOverrideAudit(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Override Audit" breadcrumb="Billing — Medicaid · validation overrides">
+        <PageHeader title="Override Audit">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review append-only validation overrides by rule, actor, claim, and full rationale.
           </div>

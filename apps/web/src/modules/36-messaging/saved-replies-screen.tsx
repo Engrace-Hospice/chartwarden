@@ -185,7 +185,7 @@ export function SavedReplies(): JSX.Element {
 
   return (
     <div className="wx-saved-replies">
-      <PageHeader title="Saved replies" breadcrumb="General / Messaging" />
+      <PageHeader title="Saved replies" />
       <InlineAlert tone="info">
         A saved reply is text you can drop into a message from the composer. You can edit it before
         sending, and what you send is an ordinary message. Saved replies must not contain patient

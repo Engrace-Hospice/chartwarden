@@ -98,7 +98,6 @@ export function MedicaidArDashboard(): JSX.Element {
       header={
         <PageHeader
           title="Medicaid AR"
-          breadcrumb="Billing / Medicaid / Open accounts receivable"
           actions={
             <>
               <a href="/billing" style={linkButtonStyle}>

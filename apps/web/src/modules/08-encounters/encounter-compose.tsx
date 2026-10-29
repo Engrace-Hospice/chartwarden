@@ -300,9 +300,6 @@ export function EncounterCompose(): JSX.Element {
       header={
         <PageHeader
           title="Compose visit note"
-          breadcrumb={`${humanize(encounter.encounterType)} · ${humanize(
-            encounter.discipline,
-          )} · ${encounter.serviceDate}`}
           actions={
             <div style={headerActions}>
               <Button tone="tertiary" onClick={() => navigate(-1)}>

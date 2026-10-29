@@ -233,7 +233,6 @@ export function SupplyRequestDetailScreen(): JSX.Element {
         title={
           <span style={pageTitleStyle}>Supply request {shortId(request.supplyRequestId)}</span>
         }
-        breadcrumb={`Supplies — ${requestKindLabel(request.kind)}`}
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             <Link to="/supplies" style={ghostButtonStyle}>

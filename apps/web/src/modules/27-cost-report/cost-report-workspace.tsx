@@ -116,9 +116,6 @@ export function CostReportWorkspace(): JSX.Element {
       header={
         <PageHeader
           title="Cost Report Workspace"
-          breadcrumb={
-            detail ? `Revenue Cycle — FYE ${shortDate(detail.fiscalYearEndDate)}` : "Revenue Cycle"
-          }
           actions={
             <span style={{ display: "inline-flex", alignItems: "center" }}>
               {detail ? (

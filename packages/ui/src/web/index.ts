@@ -6,6 +6,8 @@
 export { CorrelationIdBadge } from "./components/correlation-id-badge";
 export type { CorrelationIdBadgeProps } from "./components/correlation-id-badge";
 export { Button, IconButton, softDangerBackground } from "./components/button";
+export { Breadcrumbs } from "./components/breadcrumbs";
+export type { BreadcrumbItem } from "./components/breadcrumbs";
 export type { ButtonProps, ButtonSize, ButtonTone, IconButtonProps } from "./components/button";
 export { Card } from "./components/card";
 export type { CardProps } from "./components/card";

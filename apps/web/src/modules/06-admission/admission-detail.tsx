@@ -1115,7 +1115,6 @@ export function AdmissionDetail({
         header={
           <PageHeader
             title="Admission Intake"
-            breadcrumb="Admissions / Intake"
             actions={
               <div
                 style={{
@@ -1517,7 +1516,6 @@ export function AdmissionDetail({
       header={
         <PageHeader
           title="Admission"
-          breadcrumb="Admissions / Detail"
           actions={
             <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
               <StatusPill

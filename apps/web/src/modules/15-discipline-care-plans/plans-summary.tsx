@@ -96,7 +96,6 @@ export function DisciplinePlansSummary(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Discipline plans — summary</span>}
-        breadcrumb="Clinical — shareable single-page summary"
         actions={
           <div style={{ display: "flex", gap: t.space2 }}>
             <button type="button" style={ghostButtonStyle} onClick={() => window.print()}>

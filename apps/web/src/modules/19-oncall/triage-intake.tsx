@@ -117,7 +117,6 @@ export function TriageIntakeScreen(): JSX.Element {
       header={
         <PageHeader
           title="Take a call"
-          breadcrumb="On-call / Intake"
           actions={
             <Link to="/triage" style={linkButtonStyle}>
               Back to queue

@@ -140,7 +140,7 @@ export function AppealTracker(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Appeals" breadcrumb="Revenue Cycle — Appeals">
+        <PageHeader title="Appeals">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Track appeal tiers, filing deadlines, current state, and decision outcomes.
           </div>

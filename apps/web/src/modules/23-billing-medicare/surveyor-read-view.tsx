@@ -214,7 +214,7 @@ export function SurveyorReadView(): JSX.Element {
 
   return (
     <AdminSplitLayout
-      header={<PageHeader title="Billing Audit (Surveyor)" breadcrumb="Admin · Compliance" />}
+      header={<PageHeader title="Billing Audit (Surveyor)" />}
       list={
         loading ? (
           <LoadingSpinner />

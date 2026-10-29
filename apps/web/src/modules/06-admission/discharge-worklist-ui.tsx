@@ -6,6 +6,7 @@ import { EmptyState, LoadingSpinner, useApiClient } from "@chartwarden/ui";
 import { type JSX, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { fmtDate } from "../../shell/patient-context";
+import { Avatar } from "./admissions-chrome";
 import {
   HUB_PAGE_SIZE,
   type HubPatient,
@@ -177,13 +178,16 @@ export function PatientCell({
   const label = known ? patientName(patient, "Unresolved patient") : "…";
   return (
     <td>
-      {link ? (
-        <Link to={`/patients/${row.patientId}`} className="wx-row-title">
-          {label}
-        </Link>
-      ) : (
-        <span className="wx-row-title">{label}</span>
-      )}
+      <span className="wx-patient-cell">
+        <Avatar name={label} />
+        {link ? (
+          <Link to={`/patients/${row.patientId}`} className="wx-row-title">
+            {label}
+          </Link>
+        ) : (
+          <span className="wx-row-title">{label}</span>
+        )}
+      </span>
     </td>
   );
 }
@@ -209,7 +213,7 @@ export function RecentlyDischargedTable({
 }): JSX.Element {
   return (
     <div className="wx-list-table-wrap">
-      <table className="wx-list-table">
+      <table className="wx-list-table wx-list-table-static">
         <caption className="wx-sr-only">{caption}</caption>
         <thead>
           <tr>

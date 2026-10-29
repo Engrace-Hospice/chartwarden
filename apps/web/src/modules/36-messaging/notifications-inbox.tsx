@@ -191,7 +191,7 @@ export function NotificationsInbox(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Notifications & Tasks" breadcrumb="General / Notifications">
+        <PageHeader title="Notifications & Tasks">
           <div className="wx-notif-subtitle">
             Review alert delivery, operational notifications, and upcoming worklist scopes.
           </div>

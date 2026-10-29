@@ -74,7 +74,6 @@ export function AssessmentDetail(): JSX.Element {
       header={
         <PageHeader
           title={scaleLabel || "Assessment detail"}
-          breadcrumb="Clinical / Assessments / Capture detail"
           actions={
             <Button tone="tertiary" onClick={() => navigate(-1)}>
               Go back

@@ -200,7 +200,7 @@ export function MyVisits(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-          <PageHeader title="My Visits" breadcrumb="Field / Scheduling">
+          <PageHeader title="My Visits">
             <div
               style={{
                 color: "var(--color-on-surface-variant)",

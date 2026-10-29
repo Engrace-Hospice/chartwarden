@@ -13,17 +13,16 @@ import { Button } from "../components/button";
 import { Glyph, type GlyphName } from "../system/glyphs";
 import { ghostBorder, t } from "../theme/tokens";
 
-/** Page Header — screen title, breadcrumb, page-level actions. */
+/** Page Header — screen title and page-level actions. Route breadcrumbs live in the shell. */
 export interface PageHeaderProps {
   title: ReactNode;
-  breadcrumb?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
 }
 // 2026-10-04 — matches the redesigned list pages (Admissions, its Pending Referrals / Compliance tabs):
 // a bold sans title over the canvas, no divider rule; the KPI cards and filter panel below carry the
 // structure.
-export function PageHeader({ title, breadcrumb, actions, children }: PageHeaderProps): JSX.Element {
+export function PageHeader({ title, actions, children }: PageHeaderProps): JSX.Element {
   return (
     <header
       className="wx-page-header"
@@ -34,11 +33,6 @@ export function PageHeader({ title, breadcrumb, actions, children }: PageHeaderP
         padding: `${t.space5} ${t.space5} ${t.space2}`,
       }}
     >
-      {breadcrumb ? (
-        <div className="wx-breadcrumb" style={{ fontSize: "0.8rem", color: t.onSurfaceVariant }}>
-          {breadcrumb}
-        </div>
-      ) : null}
       <div
         style={{
           display: "flex",

@@ -90,6 +90,8 @@ export interface DocumentUploadDialogProps {
   readonly open: boolean;
   /** Files the patient chart uploads are filed against; omitted for a tenant-wide upload. */
   readonly patientId?: string | null;
+  /** Visible confirmation of the selected target when upload starts from the organization explorer. */
+  readonly patientLabel?: string;
   /**
    * Set to add a NEW VERSION of an existing document rather than create one. The server refuses this
    * for a document under legal hold or tombstoned, which is the case this mode exists to be refused in.
@@ -102,6 +104,7 @@ export interface DocumentUploadDialogProps {
 export function DocumentUploadDialog({
   open,
   patientId = null,
+  patientLabel,
   targetDocumentId = null,
   onClose,
   onDone,
@@ -182,6 +185,11 @@ export function DocumentUploadDialog({
     >
       <div style={body}>
         <h2 style={heading}>{newVersion ? "Upload new version" : "Upload document"}</h2>
+        {patientId && patientLabel ? (
+          <p style={meta}>
+            Patient: {patientLabel} · This file will appear in their Documents tab.
+          </p>
+        ) : null}
 
         <label style={fieldLabel}>
           <span style={labelText}>File</span>

@@ -145,10 +145,7 @@ export function MedicaidRbArrangements(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader
-          title="R&B Arrangements"
-          breadcrumb="Billing — Medicaid · nursing-facility pass-through"
-        >
+        <PageHeader title="R&B Arrangements">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Track facility agreements, effective windows, per-diem rates, and day-level readiness.
           </div>

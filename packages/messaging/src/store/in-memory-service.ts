@@ -965,6 +965,40 @@ export function createInMemoryMessagingService(
       return { channelId, created: true };
     },
 
+    async createGroup(orgId, userId, input) {
+      const title = input.title.trim();
+      const peers = [...new Set(input.userIds)];
+      if (
+        !title ||
+        title.length > 80 ||
+        peers.length < 2 ||
+        peers.length > 49 ||
+        peers.includes(userId)
+      ) {
+        throw new ChartWardenError(
+          "INVALID_GROUP",
+          "a group needs a title and at least two other staff members",
+          422,
+        );
+      }
+      assertEligibleStaff(orgId, userId);
+      for (const peerId of peers) assertEligibleStaff(orgId, peerId);
+      const channelId = id("ch");
+      const members = new Map<string, { role: ChannelMemberRole; source: ChannelMemberSource }>();
+      members.set(userId, { role: "owner", source: "manual" });
+      for (const peerId of peers) members.set(peerId, { role: "member", source: "manual" });
+      channels.set(channelId, {
+        channelId,
+        orgId,
+        kind: "group",
+        title,
+        subjectId: null,
+        archivedAt: null,
+        members,
+      });
+      return { channelId, created: true as const };
+    },
+
     async openCareTeamChannel(orgId, userId, patientId) {
       assertEligibleStaff(orgId, userId);
       const roster = careTeamPatients.get(`${orgId}:${patientId}`);

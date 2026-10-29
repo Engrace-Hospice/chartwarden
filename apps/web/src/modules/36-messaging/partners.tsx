@@ -541,7 +541,7 @@ export function ExternalPartners(): JSX.Element {
 
   return (
     <>
-      <PageHeader title="External partners" breadcrumb="Messaging">
+      <PageHeader title="External partners">
         <p className="wx-export-detail">
           Share one conversation, read-only, with a pharmacy or equipment partner for a limited
           time. Every read is logged. Creating a share needs partner sharing to be switched on for

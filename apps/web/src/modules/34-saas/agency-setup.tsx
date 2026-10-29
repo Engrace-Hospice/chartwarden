@@ -80,7 +80,7 @@ export function AgencySetup(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Agency setup" breadcrumb="Admin / Organization">
+        <PageHeader title="Agency setup">
           <p style={{ margin: 0, fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
             Register your agency's CMS identity and its service locations. Onboarding cannot finish
             until both exist.

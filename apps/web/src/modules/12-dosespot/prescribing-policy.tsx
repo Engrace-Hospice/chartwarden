@@ -67,7 +67,6 @@ export function PrescribingPolicy(): JSX.Element {
       header={
         <PageHeader
           title="Prescribing Policy"
-          breadcrumb="Admin / Medications"
           actions={
             <Button type="button" tone="secondary" onClick={() => void load()} disabled={loading}>
               {loading ? "Refreshing..." : "Refresh"}

@@ -121,7 +121,6 @@ export function MedicaidValidationQueue(): JSX.Element {
       header={
         <PageHeader
           title="Validation Worklist"
-          breadcrumb="Billing — Medicaid · blocked claims by rule"
           actions={
             <a href="/medicaid/billing/claims" style={linkStyle}>
               Open claim workbench →

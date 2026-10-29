@@ -74,7 +74,6 @@ export function TriageTranscriptScreen(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Transcript {shortId(triageCallId)}</span>}
-        breadcrumb="On-call triage · protected read"
         actions={
           <Link to={`/triage/calls/${triageCallId}`} style={ghostButtonStyle}>
             Back to the panel

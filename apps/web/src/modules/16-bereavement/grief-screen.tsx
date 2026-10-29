@@ -134,7 +134,6 @@ export function BereavementGriefScreen(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Complicated grief screen</span>}
-        breadcrumb={`Bereavement — ${contact.displayName}`}
         actions={
           <Link to={`/bereavement/plans/${planId}/contacts/${contactId}`} style={ghostButtonStyle}>
             Back to contact

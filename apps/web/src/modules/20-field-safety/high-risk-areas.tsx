@@ -228,7 +228,6 @@ export function HighRiskAreasScreen(): JSX.Element {
       header={
         <PageHeader
           title="High-Risk Areas"
-          breadcrumb="Field safety"
           actions={
             <div style={actionGroupStyle}>
               <Link to="/safety" style={linkButtonStyle}>

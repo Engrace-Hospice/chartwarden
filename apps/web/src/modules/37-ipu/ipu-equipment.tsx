@@ -159,7 +159,7 @@ export function IpuEquipment(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="IPU equipment" breadcrumb="IPU / Equipment register">
+        <PageHeader title="IPU equipment">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review durable and biomed equipment readiness before bedside assignment.
           </div>

@@ -216,7 +216,6 @@ export function OnCallShiftsScreen(): JSX.Element {
         header={
           <PageHeader
             title="On-call roster"
-            breadcrumb="On-call / Shifts"
             actions={
               <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                 <Button tone="primary" onClick={() => setCreating(true)}>

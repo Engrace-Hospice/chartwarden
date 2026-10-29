@@ -404,6 +404,7 @@ function OrganizationStaffMessaging({
         (filter === "unread" && channel.unreadCount > 0) ||
         (filter === "mentions" && channel.mentionCount > 0) ||
         (filter === "dm" && channel.kind === "dm" && channel.archivedAt === null) ||
+        (filter === "group" && channel.kind === "group" && channel.archivedAt === null) ||
         (filter === "care_team" && channel.kind === "care_team" && channel.archivedAt === null) ||
         (filter === "archived" && channel.archivedAt !== null);
       if (!matchesFilter) return false;
@@ -428,7 +429,7 @@ function OrganizationStaffMessaging({
 
   return (
     <div className="wx-messaging-page">
-      <PageHeader title="Messaging" breadcrumb="General / Messaging">
+      <PageHeader title="Messaging">
         <p className="wx-messaging-page-subtitle">
           Secure conversations in <strong>{organizationName}</strong>
         </p>

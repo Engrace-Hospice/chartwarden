@@ -371,7 +371,7 @@ export function BreakGlassReview(): JSX.Element {
   };
   return (
     <>
-      <PageHeader title={W.REVIEW_TITLE} breadcrumb={W.REVIEW_BREADCRUMB}>
+      <PageHeader title={W.REVIEW_TITLE}>
         <p className="wx-break-glass-detail">{W.REVIEW_NOTICE}</p>
         {overdue > 0 ? (
           <StatusPill tone="error" glyph="alert" label={W.overdueCount(overdue)} />

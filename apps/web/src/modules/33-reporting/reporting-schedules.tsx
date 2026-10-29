@@ -97,7 +97,7 @@ export function ReportingSchedules(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Scheduled Reports" breadcrumb="Reporting & Analytics">
+        <PageHeader title="Scheduled Reports">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Manage report delivery schedules and inspect the run ledger for a selected schedule.
           </div>

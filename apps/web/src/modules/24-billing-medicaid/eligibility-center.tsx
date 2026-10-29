@@ -137,10 +137,7 @@ export function MedicaidEligibilityCenter(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader
-          title="Eligibility"
-          breadcrumb="Billing — Medicaid · coverage and MCO assignment"
-        >
+        <PageHeader title="Eligibility">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review eligibility history, masked recipient identifiers, MCO routing, and freshness.
           </div>

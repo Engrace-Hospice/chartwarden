@@ -122,7 +122,7 @@ export function ExportMine(): JSX.Element {
 
   return (
     <>
-      <PageHeader title={W.MINE_TITLE} breadcrumb={W.BREADCRUMB}>
+      <PageHeader title={W.MINE_TITLE}>
         <p className="wx-export-detail">{W.MINE_NOTICE}</p>
         <ExportRequest
           onRequested={() => {

@@ -216,7 +216,6 @@ export function SupplyTeamDashboard(): JSX.Element {
       {loading ? <span style={mutedStyle}>Refreshing…</span> : null}
       <PageHeader
         title={<span style={pageTitleStyle}>Supply team</span>}
-        breadcrumb="Supplies, DME & comfort kits"
         actions={
           <div style={{ display: "flex", gap: t.space2, flexWrap: "wrap" }}>
             <Link to="/supplies/dispatches/new" style={ghostButtonStyle}>

@@ -169,7 +169,6 @@ export function VolunteerComplianceGates(): JSX.Element {
         header={
           <PageHeader
             title="Volunteer compliance"
-            breadcrumb="Admin — 42 CFR §418.78(b) / (d) gates"
             actions={
               <div style={{ display: "flex", gap: t.space2 }}>
                 <Button

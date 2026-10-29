@@ -128,7 +128,6 @@ export function DisciplineVersionHistory(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>{kindLabel(kind)} — version history</span>}
-        breadcrumb="Clinical — sealed version chain"
         actions={
           <Link to={`/patients/${patientId}/discipline-plans`} style={ghostButtonStyle}>
             All discipline plans

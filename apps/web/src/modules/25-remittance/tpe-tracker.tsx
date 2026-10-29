@@ -71,7 +71,7 @@ export function TpeTracker(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-          <PageHeader title="TPE Program" breadcrumb="Revenue Cycle — TPE Program">
+          <PageHeader title="TPE Program">
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Targeted Probe and Educate rounds, the MAC's error rate against the threshold you
               recorded, and the earliest next round. Referral risk is advisory, not a CMS

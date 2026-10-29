@@ -127,7 +127,6 @@ export function RuleConfigEditor(): JSX.Element {
       header={
         <PageHeader
           title="Validation Rule Config"
-          breadcrumb="Billing / Medicare / Overlay library"
           actions={
             <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
               <a href="/billing" style={ghostButtonStyle}>

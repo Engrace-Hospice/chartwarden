@@ -511,7 +511,7 @@ export function AckBroadcast(): JSX.Element {
   };
   return (
     <>
-      <PageHeader title={BROADCAST_TITLE} breadcrumb={BROADCAST_BREADCRUMB}>
+      <PageHeader title={BROADCAST_TITLE}>
         {mine.status === "off" ? null : <p className="wx-bc-sub">{BROADCAST_NOTICE}</p>}
       </PageHeader>
       <div className="wx-bc">

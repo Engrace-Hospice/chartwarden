@@ -65,7 +65,7 @@ export function Invoices(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Invoices" breadcrumb="Billing">
+        <PageHeader title="Invoices">
           <div style={headerDescriptionStyle}>
             Review issued invoices, payment state, due dates, and detailed invoice records.
           </div>

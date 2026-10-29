@@ -118,7 +118,6 @@ function EvvMetricsDashboard({ title }: { title: string }): JSX.Element {
       header={
         <PageHeader
           title={title}
-          breadcrumb="Admin / EVV"
           actions={
             <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
               Refresh

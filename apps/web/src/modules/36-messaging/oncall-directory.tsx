@@ -137,7 +137,7 @@ export function OnCallDirectory(): JSX.Element {
   const zone = view.status === "ready" ? view.coverage.tiers[0]?.time_zone : undefined;
   return (
     <>
-      <PageHeader title={ONCALL_TITLE} breadcrumb={ONCALL_BREADCRUMB}>
+      <PageHeader title={ONCALL_TITLE}>
         <p className="wx-oncall-line">{ONCALL_NOTICE}</p>
         {view.status === "ready" && zone ? (
           <output className="wx-oncall-asof" aria-live="polite">

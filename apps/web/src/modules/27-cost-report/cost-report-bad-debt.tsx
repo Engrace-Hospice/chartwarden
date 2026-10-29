@@ -141,10 +141,7 @@ export function CostReportBadDebt(): JSX.Element {
     <WorkQueueLayout
       fullPageScroll
       header={
-        <PageHeader
-          title="Bad-Debt Log"
-          breadcrumb="Revenue Cycle — Medicare bad-debt reimbursement (D7)"
-        >
+        <PageHeader title="Bad-Debt Log">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review deductible and coinsurance bad debt, collection-effort documentation, supporting
             documents, and claimed amounts for the selected report.

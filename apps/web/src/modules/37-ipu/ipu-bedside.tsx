@@ -191,7 +191,7 @@ export function IpuBedside(): JSX.Element {
     <>
       <DetailPageLayout
         header={
-          <PageHeader title="Bedside" breadcrumb="IPU / Admissions / Bedside">
+          <PageHeader title="Bedside">
             <div style={headerMetaStyle}>
               <StatusPill tone={stateTone(admission.state)} label={titleCase(admission.state)} />
               <span style={levelBadgeStyle}>{admission.kind.toUpperCase()}</span>

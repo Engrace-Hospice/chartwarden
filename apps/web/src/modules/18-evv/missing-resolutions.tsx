@@ -145,7 +145,6 @@ export function EvvMissingResolutions(): JSX.Element {
         header={
           <PageHeader
             title="Missing-EVV Resolutions"
-            breadcrumb="Admin / EVV"
             actions={
               <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
                 Refresh

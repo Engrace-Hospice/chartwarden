@@ -314,7 +314,7 @@ export function DeathBoard(): JSX.Element {
 
   return (
     <>
-      <PageHeader title="Death follow-up" breadcrumb="Messaging">
+      <PageHeader title="Death follow-up">
         <p className="wx-export-detail">
           The checklist for the work that follows a patient's death. Each item has one owner who
           marks it complete. This board only coordinates people: it does not change the chart.

@@ -205,7 +205,6 @@ export function MacCredentials(): JSX.Element {
         header={
           <PageHeader
             title="MAC Credentials"
-            breadcrumb="Billing / Medicare / Submitter credentials"
             actions={
               <>
                 <a href="/billing" style={linkButtonStyle}>

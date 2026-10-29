@@ -50,7 +50,6 @@
     font-size: 1.25rem !important;
   }
 
-  .wx-messaging-page > .wx-page-header .wx-breadcrumb,
   .wx-messaging-page-subtitle {
     display: none;
   }

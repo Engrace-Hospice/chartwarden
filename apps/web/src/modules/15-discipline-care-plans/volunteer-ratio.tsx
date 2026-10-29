@@ -105,7 +105,6 @@ export function VolunteerHourRatio(): JSX.Element {
         header={
           <PageHeader
             title="Volunteer 5% ratio"
-            breadcrumb="Admin — 42 CFR §418.78(e) volunteer time-cost ratio"
             actions={
               <Button type="button" onClick={() => setAdjusting(true)}>
                 Log hour adjustment

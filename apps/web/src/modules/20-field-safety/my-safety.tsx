@@ -221,7 +221,6 @@ export function MySafetyScreen(): JSX.Element {
       header={
         <PageHeader
           title="My Safety"
-          breadcrumb="Field safety"
           actions={
             <div style={actionGroupStyle}>
               <Link to="/me/safety/check-ins" style={linkButtonStyle}>

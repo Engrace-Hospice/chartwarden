@@ -153,7 +153,6 @@ export function MedicaidAssemblyWizard(): JSX.Element {
         header={
           <PageHeader
             title="Assemble Medicaid Claim"
-            breadcrumb="Billing / Medicaid / Claim assembly"
             actions={
               <a href="/medicaid/billing/claims" style={linkButtonStyle}>
                 Claim workbench
@@ -189,7 +188,6 @@ export function MedicaidAssemblyWizard(): JSX.Element {
       header={
         <PageHeader
           title="Assemble Medicaid Claim"
-          breadcrumb={`Billing / Medicaid / Step ${step + 1} of ${STEP_TITLES.length}`}
           actions={
             <a href="/medicaid/billing/claims" style={linkButtonStyle}>
               Claim workbench

@@ -70,7 +70,7 @@ export function TaxonomyOverlay(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Denial Taxonomy" breadcrumb="Revenue Cycle — CARC / RARC">
+        <PageHeader title="Denial Taxonomy">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Look up the regulatory CARC/RARC floor and the tenant-specific action overlay.
           </div>

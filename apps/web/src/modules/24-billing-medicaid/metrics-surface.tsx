@@ -178,7 +178,6 @@ export function MedicaidMetricsSurface(): JSX.Element {
       header={
         <PageHeader
           title="Medicaid Metrics"
-          breadcrumb="Billing — Medicaid · denial rate, aging, channels"
           actions={
             <a href="/medicaid/billing/ar-dashboard" style={linkStyle}>
               AR dashboard →

@@ -115,7 +115,7 @@ export function AuditLogViewer(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Audit Log" breadcrumb="Admin / Compliance">
+        <PageHeader title="Audit Log">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review append-only access, authorization, data-change, and platform-operation events.
           </div>

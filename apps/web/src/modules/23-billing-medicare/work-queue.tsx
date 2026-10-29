@@ -121,7 +121,6 @@ export function BillingWorkQueue(): JSX.Element {
       header={
         <PageHeader
           title="Billing Work Queue"
-          breadcrumb="Billing"
           actions={
             <Link to="/billing/claims/new" style={ghostButtonStyle}>
               Assemble claim

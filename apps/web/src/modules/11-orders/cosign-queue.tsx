@@ -101,7 +101,7 @@ export function CosignQueue(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-          <PageHeader title="Orders - Cosign Pending" breadcrumb="Clinical / Orders">
+          <PageHeader title="Orders - Cosign Pending">
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Review orders waiting for the required clinical cosignature.
             </div>

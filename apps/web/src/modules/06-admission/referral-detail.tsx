@@ -140,7 +140,6 @@ export function ReferralDetail(): JSX.Element {
       header={
         <PageHeader
           title={r.patientNameAtReceipt}
-          breadcrumb="Admissions / Referral"
           actions={
             <div style={actions}>
               <StatusPill

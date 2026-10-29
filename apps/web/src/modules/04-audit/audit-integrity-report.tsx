@@ -49,7 +49,6 @@ export function AuditIntegrityReport(): JSX.Element {
       header={
         <PageHeader
           title="Audit Integrity Report"
-          breadcrumb="Compliance / Audit"
           actions={
             <Button type="button" tone="secondary" onClick={() => void load()} disabled={loading}>
               {loading ? "Checking..." : "Re-check"}

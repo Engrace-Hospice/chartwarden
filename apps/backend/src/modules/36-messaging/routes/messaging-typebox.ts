@@ -178,6 +178,11 @@ export const OpenDmBodySchema = Type.Object({
   userId: Id, // the peer user to open/find a DM with
 });
 
+export const CreateGroupBodySchema = Type.Object({
+  title: Type.String({ minLength: 1, maxLength: 80 }),
+  userIds: Type.Array(UuidId, { minItems: 2, maxItems: 49, uniqueItems: true }),
+});
+
 export const DmStaffSearchQuerySchema = Type.Object({
   q: Type.Optional(Type.String({ maxLength: 100 })),
 });

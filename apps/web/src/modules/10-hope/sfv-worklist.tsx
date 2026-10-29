@@ -124,7 +124,7 @@ export function SfvWorklist(): JSX.Element {
       <WorkQueueLayout
         fullPageScroll
         header={
-          <PageHeader title="Symptom Follow-Up Visits" breadcrumb="Clinical Quality — HOPE SFV">
+          <PageHeader title="Symptom Follow-Up Visits">
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Track symptom follow-up visits triggered by HOPE assessments, due dates, missed
               visits, and overdue risk.

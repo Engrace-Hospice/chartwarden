@@ -1,4 +1,5 @@
 import {
+  Breadcrumbs,
   Glyph,
   InlineAlert,
   SkipLink,
@@ -15,6 +16,8 @@ import { type MouseEvent, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { type AdminNavSection, activeAdminEntry } from "./admin-nav";
+import { resolveAdminBreadcrumbs } from "./breadcrumb-navigation";
+import type { AdminScreenDescriptor } from "./registry";
 import type { Session } from "./session";
 import { useSession } from "./session";
 
@@ -29,7 +32,13 @@ function initials(name: string): string {
   return `${first[0]}${second[0]}`.toUpperCase();
 }
 
-export function AdminLayout({ sections }: { sections: readonly AdminNavSection[] }): JSX.Element {
+export function AdminLayout({
+  sections,
+  screens,
+}: {
+  sections: readonly AdminNavSection[];
+  screens: readonly AdminScreenDescriptor[];
+}): JSX.Element {
   const session = useSession();
   // Below 768px the sidebar is an off-canvas drawer toggled by the header's menu button (app-shell.css).
   const { navOpen, setNavOpen, closeForNavigation, sidebarRef, toggleRef } = useOffCanvasNav(
@@ -43,6 +52,7 @@ export function AdminLayout({ sections }: { sections: readonly AdminNavSection[]
     mainRef.current?.scrollTo(0, 0);
   }, [pathname]);
   const activeKey = activeAdminEntry(sections, pathname);
+  const breadcrumbs = resolveAdminBreadcrumbs(pathname, screens, sections);
 
   function closeNavOnLinkClick(e: MouseEvent<HTMLElement>): void {
     if ((e.target as HTMLElement).closest("a")) closeForNavigation();
@@ -114,6 +124,7 @@ export function AdminLayout({ sections }: { sections: readonly AdminNavSection[]
           </div>
         </header>
         <main id="wx-main" className="wx-main wx-no-scrollbar" ref={mainRef} tabIndex={-1}>
+          <Breadcrumbs items={breadcrumbs} />
           <Outlet />
         </main>
       </div>

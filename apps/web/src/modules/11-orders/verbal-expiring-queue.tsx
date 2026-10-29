@@ -103,7 +103,7 @@ export function VerbalExpiringQueue(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-          <PageHeader title="Verbal Orders - Expiring" breadcrumb="Clinical / Orders">
+          <PageHeader title="Verbal Orders - Expiring">
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Track verbal orders inside the signature window by deadline urgency.
             </div>

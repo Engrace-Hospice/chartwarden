@@ -110,7 +110,6 @@ export function ComfortKitPerpetualLog(): JSX.Element {
     <div className="wx-kit-column" style={columnStyle}>
       <PageHeader
         title={<span style={pageTitleStyle}>Perpetual log — kit {log.kitSerialNumber}</span>}
-        breadcrumb="Supplies — DEA 21 CFR §1304 controlled-substance record"
         actions={
           <Link to={`/supplies/dispatches/${dispatchId}`} style={ghostButtonStyle}>
             Back to dispatch

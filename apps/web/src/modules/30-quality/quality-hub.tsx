@@ -150,7 +150,7 @@ export function QualityHub(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Quality" breadcrumb="Compliance / Quality">
+        <PageHeader title="Quality">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             HQRP measures and Conditions of Participation posture.
           </div>

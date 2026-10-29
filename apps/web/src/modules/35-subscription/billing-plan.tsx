@@ -102,7 +102,6 @@ export function BillingPlan(): JSX.Element {
       header={
         <PageHeader
           title="Plans"
-          breadcrumb="Billing / Change plan"
           actions={
             <Link to="/subscription" style={headerActionStyle}>
               Back to billing

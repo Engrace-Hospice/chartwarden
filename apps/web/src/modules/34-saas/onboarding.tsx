@@ -141,7 +141,6 @@ export function Onboarding(): JSX.Element {
       header={
         <PageHeader
           title="Onboarding"
-          breadcrumb="Admin / Organization"
           actions={
             <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
               Refresh

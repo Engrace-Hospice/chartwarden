@@ -11,6 +11,7 @@ export function channelKindLabel(kind: ChannelSummary["kind"]): string {
     location: "Location",
     on_call: "On Call",
     dm: "Direct message",
+    group: "Group",
     announcement: "Announcement",
     bereavement: "Bereavement",
     family: "Family",

@@ -218,7 +218,7 @@ export function ExportApprovals(): JSX.Element {
   }, [selected]);
   return (
     <>
-      <PageHeader title={W.APPROVALS_TITLE} breadcrumb={W.BREADCRUMB}>
+      <PageHeader title={W.APPROVALS_TITLE}>
         <p className="wx-export-detail">{W.APPROVALS_NOTICE}</p>
       </PageHeader>
       <section className="wx-export" aria-label={W.APPROVALS_TITLE}>

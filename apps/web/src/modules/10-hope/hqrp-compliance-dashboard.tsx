@@ -123,7 +123,7 @@ export function HqrpComplianceDashboard(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="HQRP Compliance" breadcrumb="Clinical Quality / HOPE">
+        <PageHeader title="HQRP Compliance">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Monitor the HOPE and SFV compliance rates that feed HQRP reporting posture.
           </div>

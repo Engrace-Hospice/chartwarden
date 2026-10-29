@@ -665,12 +665,7 @@ export function NoticeWindowDetail({
 
   return (
     <DetailPageLayout
-      header={
-        <PageHeader
-          title={`${config.acronym} ${recordId(record)}`}
-          breadcrumb={`Billing — ${config.longName}`}
-        />
-      }
+      header={<PageHeader title={`${config.acronym} ${recordId(record)}`} />}
       aside={
         <aside style={asideStyle}>
           <h3 style={asideTitleStyle}>Filing window</h3>

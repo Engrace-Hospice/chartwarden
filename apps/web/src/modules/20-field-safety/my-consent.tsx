@@ -162,7 +162,6 @@ export function MyConsentScreen(): JSX.Element {
       header={
         <PageHeader
           title="My Safety Consent"
-          breadcrumb="Field safety"
           actions={
             <div style={actionGroupStyle}>
               <Link to="/me/safety" style={linkButtonStyle}>

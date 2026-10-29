@@ -72,7 +72,7 @@ export function ScalePolicyEditor(): JSX.Element {
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Scale Policies" breadcrumb="Admin / Assessments">
+        <PageHeader title="Scale Policies">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Review which clinical scales are enabled for new documentation in this organization.
           </div>

@@ -216,14 +216,6 @@ export function MedicaidClaimEditor(): JSX.Element {
       header={
         <PageHeader
           title="Medicaid Claim"
-          breadcrumb={
-            <>
-              Billing — Medicaid ·{" "}
-              <span style={{ fontFamily: "var(--font-mono)" }}>
-                {claim.medicaidClaimControlNumber}
-              </span>
-            </>
-          }
           actions={
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
               <StatusPill

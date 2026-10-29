@@ -134,10 +134,7 @@ export function CostReportRules(): JSX.Element {
     <WorkQueueLayout
       fullPageScroll
       header={
-        <PageHeader
-          title="Validation Rules"
-          breadcrumb="Revenue Cycle — pre-submission rule library (§11.B)"
-        >
+        <PageHeader title="Validation Rules">
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Browse platform defaults and tenant extensions by rule code, category, severity, MAC
             scope, and regulatory requirement.

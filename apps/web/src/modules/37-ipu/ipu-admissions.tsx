@@ -163,7 +163,7 @@ export function IpuAdmissions(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-          <PageHeader title="IPU admissions" breadcrumb="IPU / Admissions">
+          <PageHeader title="IPU admissions">
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
               Track General Inpatient and Inpatient Respite stays by lifecycle state and placement.
             </div>

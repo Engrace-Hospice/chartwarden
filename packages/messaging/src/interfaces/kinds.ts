@@ -25,6 +25,7 @@ export type ChannelKind =
   | "location"
   | "on_call"
   | "dm"
+  | "group"
   | "announcement"
   | "bereavement"
   | "family";
@@ -37,6 +38,7 @@ export const CHANNEL_KINDS = [
   "location",
   "on_call",
   "dm",
+  "group",
   "announcement",
   "bereavement",
   "family",
@@ -119,6 +121,14 @@ export const CHANNEL_KIND_DESCRIPTORS: {
   },
   dm: {
     kind: "dm",
+    subject: null,
+    subjectRequirement: "forbidden",
+    retentionClass: "care_related",
+    membershipSource: "manual",
+    lifecycleSource: "manual",
+  },
+  group: {
+    kind: "group",
     subject: null,
     subjectRequirement: "forbidden",
     retentionClass: "care_related",

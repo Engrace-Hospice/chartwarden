@@ -20,6 +20,45 @@ const MSG = schema.messages;
 const MER = schema.messageEntityReferences;
 const MATT = schema.messageAttachments;
 const USER = schema.users;
+const HIDDEN_PATIENT_ID = "00000000-0000-0000-0000-000000000000";
+
+export function hidePatientMentionNodes(value: unknown, denied: ReadonlySet<string>): unknown {
+  if (Array.isArray(value)) return value.map((item) => hidePatientMentionNodes(item, denied));
+  if (!value || typeof value !== "object") return value;
+  const node = value as Record<string, unknown>;
+  if (
+    node.type === "mention" &&
+    node.kind === "patient" &&
+    typeof node.entityId === "string" &&
+    denied.has(node.entityId)
+  ) {
+    return { ...node, entityId: HIDDEN_PATIENT_ID, label: "Patient" };
+  }
+  return Object.fromEntries(
+    Object.entries(node).map(([key, item]) => [key, hidePatientMentionNodes(item, denied)]),
+  );
+}
+
+export function projectPatientMentionBody(
+  body: string,
+  references: readonly { kind: string; entityId: string; start: number; end: number }[],
+  denied: ReadonlySet<string>,
+): { body: string; ranges: { start: number; end: number }[] } {
+  let safeBody = "";
+  let cursor = 0;
+  const ranges = references.map((reference) => {
+    safeBody += body.slice(cursor, reference.start);
+    const start = safeBody.length;
+    safeBody +=
+      reference.kind === "patient" && denied.has(reference.entityId)
+        ? "@Patient"
+        : body.slice(reference.start, reference.end);
+    cursor = reference.end;
+    return { start, end: safeBody.length };
+  });
+  safeBody += body.slice(cursor);
+  return { body: safeBody, ranges };
+}
 
 /** The columns a page query must select, in this shape, to be hydrated. */
 export const MESSAGE_ROW_COLUMNS = {
@@ -70,6 +109,7 @@ export interface HydrationContext {
   readonly viewerUserId: string;
   readonly channelKind: string;
   readonly cipher: MessageBodyCipher;
+  readonly patientMentionLabel?: (patientId: string) => Promise<string | null>;
   readonly warn?: (message: string, context: Record<string, string>) => void;
   /**
    * WP 5.6 (ADR-0086): the viewer holds `messaging.retention.manage`, so a message under an active legal hold carries `legalHold: true`.
@@ -153,6 +193,15 @@ export async function hydrateMessages(
           .leftJoin(USER, and(eq(USER.id, MER.entityId), eq(MER.referenceKind, "staff")))
           .where(and(eq(MER.organizationId, orgId), inArray(MER.messageId, messageIds)))
           .orderBy(asc(MER.startOffset));
+  const patientLabels = new Map<string, string | null>();
+  for (const patientId of new Set(
+    referenceRows.filter((row) => row.kind === "patient").map((row) => row.entityId),
+  )) {
+    patientLabels.set(patientId, (await ctx.patientMentionLabel?.(patientId)) ?? null);
+  }
+  const deniedPatients = new Set(
+    [...patientLabels].filter(([, label]) => label === null).map(([id]) => id),
+  );
   const referencesByMessage = new Map<string, typeof referenceRows>();
   for (const reference of referenceRows) {
     const values = referencesByMessage.get(reference.messageId) ?? [];
@@ -219,14 +268,40 @@ export async function hydrateMessages(
         });
       }
       const stats = replyStats.get(m.id);
+      const rawReferences = redactedAt === undefined ? (referencesByMessage.get(m.id) ?? []) : [];
+      const projection = projectPatientMentionBody(decoded.body, rawReferences, deniedPatients);
+      const safeReferences = rawReferences.map((reference, index) => {
+        const denied = reference.kind === "patient" && deniedPatients.has(reference.entityId);
+        return {
+          kind: reference.kind as "staff" | "patient",
+          entityId: denied ? HIDDEN_PATIENT_ID : reference.entityId,
+          start: projection.ranges[index]!.start,
+          end: projection.ranges[index]!.end,
+          displayLabel:
+            reference.kind === "staff"
+              ? reference.staffName?.trim() || "Staff member"
+              : (patientLabels.get(reference.entityId) ?? "Patient"),
+          navigable:
+            reference.kind === "patient" && !denied && patientLabels.has(reference.entityId),
+        };
+      });
       return {
         messageId: m.id,
         channelId: m.channelId,
         authorUserId: m.authorUserId,
         authorDisplayName: m.authorDisplayName?.trim() || null,
-        body: decoded.body,
+        body: projection.body,
         bodyKind: m.bodyKind as MessageBodyKind,
-        ...(decoded.bodyDoc ? { bodyDoc: decoded.bodyDoc } : {}),
+        ...(decoded.bodyDoc
+          ? {
+              bodyDoc: deniedPatients.size
+                ? (hidePatientMentionNodes(
+                    decoded.bodyDoc,
+                    deniedPatients,
+                  ) as typeof decoded.bodyDoc)
+                : decoded.bodyDoc,
+            }
+          : {}),
         ...(decoded.unreadable ? { bodyUnreadable: true as const } : {}),
         createdAt: m.createdAt.toISOString(),
         editedAt: redactedAt === undefined ? visibleEditedAt(m) : null,
@@ -246,19 +321,7 @@ export async function hydrateMessages(
           (boundByMessage.get(m.id) ?? 0) - (attachmentsByMessage.get(m.id)?.length ?? 0),
         ),
         ...(clinicalLinks.has(m.id) ? { clinicalLinks: clinicalLinks.get(m.id) } : {}),
-        references: (redactedAt === undefined ? (referencesByMessage.get(m.id) ?? []) : []).map(
-          (reference) => ({
-            kind: reference.kind as "staff" | "patient",
-            entityId: reference.entityId,
-            start: reference.start,
-            end: reference.end,
-            displayLabel:
-              reference.kind === "staff"
-                ? reference.staffName?.trim() || "Staff member"
-                : "Patient",
-            navigable: reference.kind === "patient" && ctx.channelKind === "care_team",
-          }),
-        ),
+        references: safeReferences,
       };
     }),
   );

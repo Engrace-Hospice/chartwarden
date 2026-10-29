@@ -77,7 +77,6 @@ export function MedicaidAcknowledgmentsTimeline(): JSX.Element {
       header={
         <PageHeader
           title="Acknowledgments"
-          breadcrumb="Billing — Medicaid · payer acknowledgments"
           actions={
             <a href={`/medicaid/billing/claims/${claimId}`} style={linkStyle}>
               ← Back to claim

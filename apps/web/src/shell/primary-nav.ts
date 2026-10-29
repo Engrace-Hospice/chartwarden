@@ -204,8 +204,8 @@ export const PRIMARY_NAV: NavSectionSpec[] = [
         claims: ["/me/visits", "/evv", "/me/evv", "/safety", "/me/safety", "/triage", "/me/oncall"],
       },
       {
-        key: "communications",
-        label: "Communications",
+        key: "messaging",
+        label: "Messaging",
         icon: "message-square",
         to: "/messaging",
         claims: ["/messaging", "/notifications"],

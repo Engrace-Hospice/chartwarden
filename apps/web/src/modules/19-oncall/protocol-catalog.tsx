@@ -176,7 +176,6 @@ export function TriageProtocolCatalogScreen(): JSX.Element {
         header={
           <PageHeader
             title="Triage protocols"
-            breadcrumb="On-call triage / Catalog"
             actions={
               <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
                 <button

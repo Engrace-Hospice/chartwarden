@@ -117,7 +117,6 @@ export function SafetyMetricsScreen(): JSX.Element {
       header={
         <PageHeader
           title="Safety Metrics"
-          breadcrumb="Field safety"
           actions={
             <div style={actionGroupStyle}>
               <Link to="/safety" style={linkButtonStyle}>
