@@ -1,9 +1,5 @@
 // e2e/specs/tenant-operations.spec.ts — critical workflow 2/6: tenant operations (TEST-001).
-// Staff roster (/admin/staff — the Administration · Users view) is gated on the `member.manage` permission — Administrator has
-// it, Clinician/Compliance Auditor don't. `app.tsx` maps every chromed screen to its route
-// regardless of permission (nav-hiding is only a second line of defense), so a caller without the
-// permission still renders the page shell but the member-list fetch 403s — this is the real,
-// user-visible denied path, not a route redirect.
+// Staff roster (/admin/staff — Users) is gated on `member.manage` at the route boundary.
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { ADMIN_ACCOUNT, CLINICIAN_ACCOUNT } from "../fixtures/credentials";
@@ -24,10 +20,8 @@ test.describe("Tenant operations", () => {
   }) => {
     await signInAs(page, CLINICIAN_ACCOUNT());
     await page.goto("/admin/staff");
-    await expectStaffScreen(page);
-    await expect(
-      page.getByText("Could not load staff. You may not have permission to manage members."),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Staff Management", level: 1 })).toBeVisible();
+    await expect(page.getByText("You do not have access")).toBeVisible();
     await expect(page.getByText(ADMIN_ACCOUNT().email)).not.toBeVisible();
   });
 
@@ -42,13 +36,10 @@ test.describe("Tenant operations", () => {
 });
 
 /**
- * The staff roster since the #235 redesign: /admin/staff is the "Users" view of the Administration
- * workspace (an "Administration" page heading over a Users · Roles · Organization · … tab strip),
- * where it used to be its own "Staff Management" page. The Users tab and the roster's own controls
- * render for every caller; only the member read behind them is permission-gated.
+ * The allowed route renders the Users workspace and its Administration tabs.
  */
 async function expectStaffScreen(page: Page): Promise<void> {
-  await expect(page.getByRole("heading", { name: "Administration", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Users", level: 1 })).toBeVisible();
   await expect(
     page.getByRole("navigation", { name: "Administration" }).getByRole("link", { name: "Users" }),
   ).toBeVisible();

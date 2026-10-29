@@ -192,8 +192,11 @@ export function WorkQueueLayout({
         className="wx-work-split"
         style={fullPageScroll ? { display: "flex", minHeight: 0, flexShrink: 0 } : splitRow}
       >
-        <div
+        <section
           className="wx-work-table"
+          aria-label="Results"
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: Scrollable results need keyboard focus.
+          tabIndex={0}
           style={
             fullPageScroll
               ? { flex: 1, minWidth: 0, overflowX: "auto" }
@@ -201,11 +204,17 @@ export function WorkQueueLayout({
           }
         >
           {table}
-        </div>
+        </section>
         {detail ? (
-          <div className="wx-context-rail" style={contextRailBounds}>
+          <section
+            className="wx-context-rail"
+            style={contextRailBounds}
+            aria-label="Details"
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: Scrollable details need keyboard focus.
+            tabIndex={0}
+          >
             {detail}
-          </div>
+          </section>
         ) : null}
       </div>
     </div>
@@ -363,9 +372,15 @@ export function ConversationView({ list, children, detail }: ConversationViewPro
           {children}
         </div>
         {detail ? (
-          <div className="wx-context-rail" style={contextRailBounds}>
+          <section
+            className="wx-context-rail"
+            style={contextRailBounds}
+            aria-label="Details"
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: Scrollable details need keyboard focus.
+            tabIndex={0}
+          >
             {detail}
-          </div>
+          </section>
         ) : null}
       </div>
     </div>
@@ -425,9 +440,15 @@ export function AdminSplitLayout({
           {children}
         </div>
         {detail ? (
-          <div className="wx-context-rail wx-no-scrollbar" style={contextRailBounds}>
+          <section
+            className="wx-context-rail wx-no-scrollbar"
+            style={contextRailBounds}
+            aria-label="Details"
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: Scrollable details need keyboard focus.
+            tabIndex={0}
+          >
             {detail}
-          </div>
+          </section>
         ) : null}
       </div>
     </div>
@@ -447,9 +468,15 @@ export function DetailPageLayout({ header, children, aside }: DetailPageLayoutPr
       <div style={splitRow}>
         <div style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}>{children}</div>
         {aside ? (
-          <div className="wx-context-rail" style={contextRailBounds}>
+          <section
+            className="wx-context-rail"
+            style={contextRailBounds}
+            aria-label="Details"
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: Scrollable details need keyboard focus.
+            tabIndex={0}
+          >
             {aside}
-          </div>
+          </section>
         ) : null}
       </div>
     </div>

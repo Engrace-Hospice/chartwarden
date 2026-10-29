@@ -86,7 +86,8 @@ services:
       - "127.0.0.1:9000:9000"
     healthcheck:
       # The Chainguard image has bash but no curl/wget: probe /minio/health/ready over bash's /dev/tcp.
-      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /minio/health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && read -r status <&3 && case \"$$status\" in *' 200 '*) exit 0;; esac; exit 1"]
+      # MinIO rejects the HTTP/1.0 request without a Host header.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /minio/health/ready HTTP/1.0\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && read -r status <&3 && case \"$$status\" in *' 200 '*) exit 0;; esac; exit 1"]
       interval: 10s
       timeout: 5s
       retries: 12

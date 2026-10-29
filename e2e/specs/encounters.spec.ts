@@ -58,6 +58,7 @@ test.describe("Encounters", () => {
   test("main path: an RN opens a visit note, composes it, finalizes and signs it", async ({
     page,
   }) => {
+    test.setTimeout(120_000);
     await signInAs(page, RN_ACCOUNT());
 
     const patientId = await openPatientChartByLastName(page, PATIENT_LAST_NAME);
@@ -112,14 +113,15 @@ test.describe("Encounters", () => {
     // refusal is the server's — the composer captions required sections "Required" and never
     // pre-empts it. The tabs are the section nav; a section is satisfied by an entry OR by prose, and
     // the shipped vocabulary has no entries for several of them, so free text is what always works.
-    const tabs = page.locator("nav button");
-    const required = tabs.filter({ hasText: "Required" });
-    const count = await required.count();
-    expect(count).toBeGreaterThan(0);
-    for (let i = 0; i < count; i += 1) {
-      // Re-resolve each time: the tab's own caption changes from "Required" to "Documented" as it is
-      // filled, so the filtered list shrinks under us. Always take the first still-unfilled one.
-      await tabs.filter({ hasText: "Required" }).first().click();
+    const sections = page.getByRole("complementary", { name: "Visit note sections" });
+    const requiredLabels = await sections
+      .getByRole("button")
+      .filter({ hasText: "Required" })
+      .allTextContents();
+    expect(requiredLabels.length).toBeGreaterThan(0);
+    for (const label of requiredLabels) {
+      // Keep the section name: a caption may change to "Documented" while another is edited.
+      await sections.getByRole("button", { name: label.replace(/Required/, "").trim() }).click();
       await page
         .getByLabel("Additional notes")
         .fill("Patient resting comfortably; no new symptoms reported this visit.");

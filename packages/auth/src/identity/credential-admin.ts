@@ -80,7 +80,7 @@ export const credentialAdminPlugin = () =>
           // The username plugin normalizes and validates this create; password.hash is the configured
           // ChartWarden Argon2id implementation (and remains the single hashing implementation).
           const passwordHash = await ctx.context.password.hash(password);
-          // better-auth ≥ 1.7 takes the provisioning source as a required second argument.
+          // Better Auth 1.7 requires a provisioning source for user validation hooks.
           const user = await ctx.context.internalAdapter.createUser(
             {
               name: body.name.trim(),
