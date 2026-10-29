@@ -177763,6 +177763,33 @@
                               }
                             ]
                           },
+                          "advisoryDeaSchedule": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "II",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "III",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "IV",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "V",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "cosignRequired": {
                             "type": "boolean"
                           },
@@ -178172,6 +178199,33 @@
                       "type": "boolean"
                     },
                     "deaSchedule": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "II",
+                              "type": "string"
+                            },
+                            {
+                              "const": "III",
+                              "type": "string"
+                            },
+                            {
+                              "const": "IV",
+                              "type": "string"
+                            },
+                            {
+                              "const": "V",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "advisoryDeaSchedule": {
                       "anyOf": [
                         {
                           "anyOf": [
@@ -178735,6 +178789,33 @@
                       "type": "boolean"
                     },
                     "deaSchedule": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "II",
+                              "type": "string"
+                            },
+                            {
+                              "const": "III",
+                              "type": "string"
+                            },
+                            {
+                              "const": "IV",
+                              "type": "string"
+                            },
+                            {
+                              "const": "V",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "advisoryDeaSchedule": {
                       "anyOf": [
                         {
                           "anyOf": [
@@ -179503,6 +179584,33 @@
                       "type": "boolean"
                     },
                     "deaSchedule": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "II",
+                              "type": "string"
+                            },
+                            {
+                              "const": "III",
+                              "type": "string"
+                            },
+                            {
+                              "const": "IV",
+                              "type": "string"
+                            },
+                            {
+                              "const": "V",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "advisoryDeaSchedule": {
                       "anyOf": [
                         {
                           "anyOf": [
@@ -243411,6 +243519,33 @@
                             "type": "boolean"
                           },
                           "deaSchedule": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "II",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "III",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "IV",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "V",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "advisoryDeaSchedule": {
                             "anyOf": [
                               {
                                 "anyOf": [

@@ -31,6 +31,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 // persisting (the platform default is authoritative).
 import {
   ALLERGY_OVERRIDE_DATA_KEY,
+  advisoryDeaSchedule,
   isEpcsRequired,
   transitionMedicationOrder,
   transitionRefillRequest,
@@ -193,6 +194,7 @@ const toOrderView = (r: MoRow): MedicationOrderView => ({
   dispensingPharmacyMdmId: r.dispensingPharmacyMdmId ?? null,
   isControlledSubstance: r.isControlledSubstance,
   deaSchedule: r.deaSchedule ?? null,
+  advisoryDeaSchedule: advisoryDeaSchedule(r.drugName),
   cosignRequired: r.cosignRequired,
   cosignStatus: (r.cosignStatus as "pending" | "attached" | null) ?? null,
   refillsRemaining: Number(r.refillsRemaining),

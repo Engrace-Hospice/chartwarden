@@ -291,6 +291,7 @@ export const MedicationOrderResponseSchema = Type.Object({
   dispensingPharmacyMdmId: Nullable(Type.String()),
   isControlledSubstance: Type.Boolean(),
   deaSchedule: Nullable(DEA_SCHEDULE),
+  advisoryDeaSchedule: Type.Optional(Nullable(DEA_SCHEDULE)),
   cosignRequired: Type.Boolean(),
   cosignStatus: Nullable(Type.Union([Type.Literal("pending"), Type.Literal("attached")])),
   refillsRemaining: Type.Integer(),

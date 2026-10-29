@@ -41,6 +41,7 @@
 export * from "./classes/catalog";
 export * from "./classes/contracts";
 export * from "./classes/sud-treatment-drugs";
+export * from "./classes/scheduled-drugs";
 export * from "./lifecycle";
 export * from "./refill";
 export * from "./epcs";

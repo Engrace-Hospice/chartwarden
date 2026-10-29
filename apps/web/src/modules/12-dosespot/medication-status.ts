@@ -63,6 +63,23 @@ export function controlledLabel(deaSchedule: string | null): string {
   return `C-${deaSchedule ?? "?"}`;
 }
 
+/** The server's class-based flag OR the drug-name advisory: what the High Risk count and the detail pages use. */
+export function isHighRisk(m: {
+  isControlledSubstance: boolean;
+  advisoryDeaSchedule?: string | null;
+}): boolean {
+  return m.isControlledSubstance || !!m.advisoryDeaSchedule;
+}
+
+/** Advisory note for a drug the server's class flag did not mark controlled. */
+export function advisoryNote(m: {
+  isControlledSubstance: boolean;
+  advisoryDeaSchedule?: string | null;
+}): string | null {
+  if (m.isControlledSubstance || !m.advisoryDeaSchedule) return null;
+  return `The drug is DEA ${controlledLabel(m.advisoryDeaSchedule)} by name, but this order's class is not controlled_substance. Advisory only; signing and eMAR rules follow the class.`;
+}
+
 /** Title-case an underscore enum value, e.g. `pending_signature` → `Pending Signature`. */
 export function stateLabel(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());

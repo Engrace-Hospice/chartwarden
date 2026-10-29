@@ -35,7 +35,13 @@ import {
   useChartIdentity,
 } from "../../shell/patient-context";
 import { AllergyBanner, OutsideMedicationList } from "./chart-allergies-outside-meds";
-import { MED_ORDER_TONE, controlledLabel, stateLabel } from "./medication-status";
+import {
+  MED_ORDER_TONE,
+  advisoryNote,
+  controlledLabel,
+  isHighRisk,
+  stateLabel,
+} from "./medication-status";
 import { ATTENTION_STATUSES } from "./medication-workspace";
 import { loadPatientAdmissions } from "./medications-api";
 import { PrescribeModal } from "./prescribe-modal";
@@ -246,7 +252,7 @@ export function PatientMedications(): JSX.Element {
     const changed = (v: string | null) => (v ? new Date(v).getTime() >= weekAgo : false);
     return {
       active: counts.active,
-      highRisk: items.filter((m) => m.isControlledSubstance && !ENDED.includes(m.status)).length,
+      highRisk: items.filter((m) => isHighRisk(m) && !ENDED.includes(m.status)).length,
       prn: items.filter((m) => isPrn(m) && isActive(m)).length,
       recent: items.filter((m) => changed(m.createdAt) || changed(m.discontinuedAt)).length,
     };
@@ -662,7 +668,7 @@ function MedicationDetailCard({
             {m.isControlledSubstance ? (
               <span className="wx-danger-chip">Yes ({controlledLabel(m.deaSchedule)})</span>
             ) : (
-              "No"
+              (advisoryNote(m) ?? "No")
             )}
           </Field>
           <Field label="Refills">
@@ -720,7 +726,7 @@ function MedicationsRail({
   identity: ReturnType<typeof useChartIdentity>;
   items: MedRow[];
 }): JSX.Element {
-  const highRisk = items.filter((m) => m.isControlledSubstance && !ENDED.includes(m.status));
+  const highRisk = items.filter((m) => isHighRisk(m) && !ENDED.includes(m.status));
   const actions: { label: string; icon: GlyphName; to: string }[] = [
     {
       label: "Reconcile Medications",

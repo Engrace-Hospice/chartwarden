@@ -72041,6 +72041,7 @@ export interface operations {
                             dispensingPharmacyMdmId: string | null;
                             isControlledSubstance: boolean;
                             deaSchedule: ("II" | "III" | "IV" | "V") | null;
+                            advisoryDeaSchedule?: ("II" | "III" | "IV" | "V") | null;
                             cosignRequired: boolean;
                             cosignStatus: ("pending" | "attached") | null;
                             refillsRemaining: number;
@@ -72128,6 +72129,7 @@ export interface operations {
                         dispensingPharmacyMdmId: string | null;
                         isControlledSubstance: boolean;
                         deaSchedule: ("II" | "III" | "IV" | "V") | null;
+                        advisoryDeaSchedule?: ("II" | "III" | "IV" | "V") | null;
                         cosignRequired: boolean;
                         cosignStatus: ("pending" | "attached") | null;
                         refillsRemaining: number;
@@ -72188,6 +72190,7 @@ export interface operations {
                         dispensingPharmacyMdmId: string | null;
                         isControlledSubstance: boolean;
                         deaSchedule: ("II" | "III" | "IV" | "V") | null;
+                        advisoryDeaSchedule?: ("II" | "III" | "IV" | "V") | null;
                         cosignRequired: boolean;
                         cosignStatus: ("pending" | "attached") | null;
                         refillsRemaining: number;
@@ -72391,6 +72394,7 @@ export interface operations {
                         dispensingPharmacyMdmId: string | null;
                         isControlledSubstance: boolean;
                         deaSchedule: ("II" | "III" | "IV" | "V") | null;
+                        advisoryDeaSchedule?: ("II" | "III" | "IV" | "V") | null;
                         cosignRequired: boolean;
                         cosignStatus: ("pending" | "attached") | null;
                         refillsRemaining: number;
@@ -87797,6 +87801,7 @@ export interface operations {
                             dispensingPharmacyMdmId: string | null;
                             isControlledSubstance: boolean;
                             deaSchedule: ("II" | "III" | "IV" | "V") | null;
+                            advisoryDeaSchedule?: ("II" | "III" | "IV" | "V") | null;
                             cosignRequired: boolean;
                             cosignStatus: ("pending" | "attached") | null;
                             refillsRemaining: number;

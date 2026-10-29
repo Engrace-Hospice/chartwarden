@@ -41,7 +41,13 @@ import {
   MedicationActionModal,
   type MedicationOrderSummary,
 } from "./medication-action-modal";
-import { MED_ORDER_TONE, SEND_TONE, controlledLabel, stateLabel } from "./medication-status";
+import {
+  MED_ORDER_TONE,
+  SEND_TONE,
+  advisoryNote,
+  controlledLabel,
+  stateLabel,
+} from "./medication-status";
 import { setCoverageDetermination } from "./medications-api";
 import { RetransmitModal } from "./retransmit-modal";
 
@@ -372,7 +378,7 @@ export function MedicationDetail(): JSX.Element {
                             glyph="alert"
                           />
                         ) : (
-                          "No"
+                          (advisoryNote(row) ?? "No")
                         )}
                       </Fact>
                       <Fact label="Signed">

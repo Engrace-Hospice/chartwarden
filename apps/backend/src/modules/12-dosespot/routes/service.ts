@@ -93,6 +93,8 @@ export interface MedicationOrderView {
   readonly dispensingPharmacyMdmId: string | null;
   readonly isControlledSubstance: boolean;
   readonly deaSchedule: DeaSchedule | null;
+  /** Advisory only: the schedule the drug NAME suggests, regardless of class. Never gates signing or the eMAR. */
+  readonly advisoryDeaSchedule?: DeaSchedule | null;
   readonly cosignRequired: boolean;
   readonly cosignStatus: "pending" | "attached" | null;
   readonly refillsRemaining: number;
