@@ -291,7 +291,10 @@ jobs:
                 "test:m7:read:live test:m7:write:live test:m7:conformance:live
                 test:m7:consent-wiring:live",
             }
-          - { name: "M8 Encounters", scripts: "test:m8:read:live test:m8:write:live" }
+          - {
+              name: "M8 Encounters",
+              scripts: "test:m8:read:live test:m8:write:live test:m8:post-discharge:live",
+            }
           # GAP-027 — GET /encounters/:id `addenda[]` through the real route + Drizzle service + RLS.
           - { name: "M8 addenda read", scripts: "test:m8:addenda-read:live" }
           - { name: "M9 Assessments", scripts: "test:m9:read:live test:m9:write:live" }
@@ -1148,6 +1151,9 @@ jobs:
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.
           - { name: "M6 CoP documents", scripts: "test:m6:cop-documents:live" }
+          # S10 — the four terminal transitions (live discharge, revocation, transfer, death) through the real
+          # M6 service and the real dispatcher into M5/M7/M10/M11/M12/M17, plus the pinned M17 residue gaps.
+          - { name: "S10 discharge reason matrix", scripts: "test:m6:discharge-reason-matrix:live" }
           # F-192 (#248) — M6's seventh artifact, the transfer summary (`discharge_summary_transfer`,
           # migration 0267): `m6.transfer.created` (both directions) through the identical F-100 chain,
           # into `transfer_event.document_id`, the column M6 built for it and nothing ever wrote.
