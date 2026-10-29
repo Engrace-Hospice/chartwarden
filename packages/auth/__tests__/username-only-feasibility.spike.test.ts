@@ -104,17 +104,14 @@ function spikeProvisioningPlugin() {
         },
         async (ctx) => {
           const password = await ctx.context.password.hash(ctx.body.password);
-          const created = await ctx.context.internalAdapter.createUser(
-            {
-              name: ctx.body.name,
-              username: ctx.body.username,
-              displayUsername: ctx.body.username,
-              // Deliberately absent. No placeholder and no empty string.
-              email: undefined as unknown as string,
-              emailVerified: false,
-            },
-            { method: "admin" },
-          );
+          const created = await ctx.context.internalAdapter.createUser({
+            name: ctx.body.name,
+            username: ctx.body.username,
+            displayUsername: ctx.body.username,
+            // Deliberately absent. No placeholder and no empty string.
+            email: undefined as unknown as string,
+            emailVerified: false,
+          });
           await ctx.context.internalAdapter.linkAccount({
             userId: created.id,
             providerId: "credential",
