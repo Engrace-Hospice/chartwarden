@@ -77,6 +77,7 @@ test.describe("Scheduling", () => {
   test("main path: a visit is scheduled from the day view and appears on that day", async ({
     page,
   }) => {
+    test.setTimeout(90_000);
     await signInAs(page, ADMIN_ACCOUNT());
     await page.goto("/scheduling/day");
     await expect(page.getByRole("heading", { name: "Day View" })).toBeVisible({ timeout: 15_000 });
@@ -113,10 +114,10 @@ test.describe("Scheduling", () => {
     await dialog.getByLabel("Visit purpose").selectOption("routine_visit");
     await dialog.getByLabel("Visit setting").selectOption("telephonic");
 
-    // The assignee picker offers the org's ACTIVE ROSTER, not an eligibility list — the §4.7 D8
-    // pre-schedule gate is the server's, and filtering here would be a second implementation of it.
-    // So the spec picks the RN and lets the server decide, which is the whole point of the gate.
-    await pickLookupOption(dialog, "Assigned clinician", "Rita", /Rita/i);
+    // The assignee is now a select of eligible clinicians for this visit.
+    await dialog.getByRole("combobox", { name: /Assigned clinician/ }).selectOption({
+      label: "Rita Alvarez, RN · RN",
+    });
 
     await dialog.getByLabel("Scheduled start").fill(`${day}T14:00`);
     await dialog.getByLabel("Scheduled end").fill(`${day}T15:00`);

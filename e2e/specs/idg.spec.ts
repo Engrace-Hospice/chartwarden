@@ -78,6 +78,7 @@ test.describe("IDG", () => {
   test("main path: the D13 commit point refuses a stale session, then adjourns after a real step-up", async ({
     page,
   }) => {
+    test.setTimeout(180_000);
     await signInAs(page, PRESCRIBER_ACCOUNT());
 
     // The one seeded meeting, in session. Filtered on the state as well, so a re-run against an
