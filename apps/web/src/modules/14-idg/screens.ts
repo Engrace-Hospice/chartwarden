@@ -38,8 +38,8 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 // a record. Both were fixed on the server in the same change.
 //
 // STILL DEFERRED, and each for a reason rather than a schedule:
-//   • Remove an agenda item — `DELETE /idg/agenda/:id` is a tenant-checked NO-OP (no delete grant, no
-//     tombstone column). A control over it would report a removal that did not happen (the F-007 rule).
+//   • Remove an agenda item — `DELETE /idg/agenda/:id` answers a typed 501 (the agenda is append-only: no delete
+//     grant, no tombstone column) and changes nothing. No control is offered (the F-007 rule).
 //   • The `care_plan_update` decision beyond `problem_add` — its other five mutation ops address M7 plan
 //     elements by uuid and need the care-plan element picker on the M07 surface.
 //   • Socket.IO real-time decision/action-item propagation (no realtime gateway exists yet), and the

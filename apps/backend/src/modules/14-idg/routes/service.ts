@@ -343,6 +343,17 @@ export function actionItemMeetingAdjournedError(): ChartWardenError {
     409,
   );
 }
+/**
+ * CW-CLIN-006 — 501: agenda items cannot be removed. The agenda is append-only (no DELETE grant, no
+ * tombstone column), so the route refuses instead of reporting a removal that did not happen.
+ */
+export function agendaItemRemovalUnsupportedError(): ChartWardenError {
+  return new ChartWardenError(
+    "AGENDA_ITEM_REMOVAL_UNSUPPORTED",
+    "agenda items cannot be removed: the agenda is append-only and the item is unchanged",
+    501,
+  );
+}
 /** The 422 for a note write on a meeting that is neither `live` nor (in-window) `adjourned`. */
 export function noteMeetingNotLiveError(): ChartWardenError {
   return new ChartWardenError(
@@ -797,7 +808,7 @@ export interface IdgRouteService {
     userId: string,
     id: string,
     expectedVersion?: number,
-  ): Promise<{ id: string; removed: true }>;
+  ): Promise<never>;
   /** The meeting's ordered agenda (F-062 — add/update/remove existed; nothing listed them). */
   listAgenda(orgId: string, meetingId: string): Promise<AgendaItemView[]>;
   /** WP 3.7: proposals waiting on the coordinator, for the patients the caller may see (`enabled:false` when off). */
@@ -1635,14 +1646,11 @@ export function createInMemoryIdgBackend(
       if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
       return { ...row };
     },
-    async removeAgendaItem(orgId, _userId, id, expectedVersion) {
+    async removeAgendaItem(orgId, _userId, id) {
       const row = agenda.get(id);
       if (!row) throw new NotFoundError("idg_agenda_item");
-      const meeting = meetingOf(orgId, row.meetingId);
-      assertMeetingWriteAllowed(meeting.status, "agenda");
-      if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
-      agenda.delete(id);
-      return { id, removed: true };
+      meetingOf(orgId, row.meetingId);
+      throw agendaItemRemovalUnsupportedError();
     },
 
     async listAgenda(orgId, meetingId) {

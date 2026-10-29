@@ -6072,8 +6072,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
     headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "DELETE /api/v1/idg/agenda/:id": {
-    summary: "Remove an agenda item",
-    response: M14RemovedResponseSchema,
+    summary: "Remove an agenda item (always 501: the agenda is append-only; the item is unchanged)",
     headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,
   },
   "POST /api/v1/idg/meetings/:id/decisions": {

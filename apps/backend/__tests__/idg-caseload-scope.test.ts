@@ -164,8 +164,10 @@ describe("action-item assignee and adjourn guards (GAP-127)", () => {
       statusCode: 412,
     });
     await expect(svc.removeAgendaItem(ORG, "m_coord", agd.id, 9)).rejects.toMatchObject({
-      statusCode: 412,
+      statusCode: 501,
+      code: "AGENDA_ITEM_REMOVAL_UNSUPPORTED",
     });
+    expect((await svc.listAgenda(ORG, MEETING)).map((a) => a.id)).toContain(agd.id);
 
     const pol = await svc.createRecurringPolicy(ORG, "m_coord", {
       locationId: "loc_1",

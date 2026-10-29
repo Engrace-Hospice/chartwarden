@@ -12066,7 +12066,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove an agenda item */
+        /** Remove an agenda item (always 501: the agenda is append-only; the item is unchanged) */
         delete: operations["deleteApiV1IdgAgendaById"];
         options?: never;
         head?: never;
@@ -63470,14 +63470,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        /** Format: uuid */
-                        id: string;
-                        /** @constant */
-                        removed: true;
-                    };
-                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

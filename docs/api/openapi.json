@@ -146087,7 +146087,7 @@
         "tags": [
           "14-idg"
         ],
-        "summary": "Remove an agenda item",
+        "summary": "Remove an agenda item (always 501: the agenda is append-only; the item is unchanged)",
         "parameters": [
           {
             "name": "id",
@@ -146118,28 +146118,7 @@
         ],
         "responses": {
           "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "id",
-                    "removed"
-                  ],
-                  "properties": {
-                    "id": {
-                      "format": "uuid",
-                      "type": "string"
-                    },
-                    "removed": {
-                      "const": true,
-                      "type": "boolean"
-                    }
-                  }
-                }
-              }
-            }
+            "description": "OK"
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
