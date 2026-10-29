@@ -13,6 +13,7 @@
 // (the M10 §7.13 fail-open convention).
 import {
   MED_CLASS_CATALOG,
+  advisoryDeaSchedule,
   isEpcsRequired,
   transitionMedicationOrder,
   transitionRefillRequest,
@@ -94,7 +95,7 @@ export interface MedicationOrderView {
   readonly isControlledSubstance: boolean;
   readonly deaSchedule: DeaSchedule | null;
   /** Advisory only: the schedule the drug NAME suggests, regardless of class. Never gates signing or the eMAR. */
-  readonly advisoryDeaSchedule?: DeaSchedule | null;
+  advisoryDeaSchedule?: DeaSchedule | null;
   readonly cosignRequired: boolean;
   readonly cosignStatus: "pending" | "attached" | null;
   readonly refillsRemaining: number;
@@ -868,6 +869,7 @@ export function createInMemoryDoseSpotBackend(
       dispensingPharmacyMdmId: args.dispensingPharmacyMdmId ?? null,
       isControlledSubstance: controlled,
       deaSchedule: args.deaSchedule ?? null,
+      advisoryDeaSchedule: advisoryDeaSchedule(args.drugName),
       cosignRequired: false,
       cosignStatus: null,
       refillsRemaining: args.refillsAuthorized,
@@ -962,7 +964,10 @@ export function createInMemoryDoseSpotBackend(
           throw new ValidationError("medication draft validation failed", findings);
         r.data = patch.data;
       }
-      if (patch.drugName !== undefined) r.drugName = patch.drugName;
+      if (patch.drugName !== undefined) {
+        r.drugName = patch.drugName;
+        r.advisoryDeaSchedule = advisoryDeaSchedule(patch.drugName);
+      }
       if (patch.strength !== undefined) r.strength = patch.strength;
       if (patch.refillsAuthorized !== undefined) {
         r.refillsAuthorized = patch.refillsAuthorized;

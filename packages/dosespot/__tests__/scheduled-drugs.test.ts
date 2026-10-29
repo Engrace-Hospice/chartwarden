@@ -7,6 +7,10 @@ describe("advisoryDeaSchedule", () => {
     expect(advisoryDeaSchedule("Morphine sulfate oral solution")).toBe("II");
     expect(advisoryDeaSchedule("buprenorphine/naloxone 8-2 mg")).toBe("III");
   });
+  it("takes the most restrictive schedule when a name lists several drugs", () => {
+    expect(advisoryDeaSchedule("lorazepam / morphine kit")).toBe("II");
+    expect(advisoryDeaSchedule("pregabalin 25 mg")).toBe("V");
+  });
   it("returns null for an unscheduled drug and never matches inside another word", () => {
     expect(advisoryDeaSchedule("Acetaminophen 500 mg")).toBeNull();
     expect(advisoryDeaSchedule("Haloperidol 1 mg")).toBeNull();

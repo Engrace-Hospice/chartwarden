@@ -634,9 +634,10 @@ export function MedicationOrderEditor(): JSX.Element {
                 <Finding path="medClass" findings={findings} />
                 <p className="med-editor-help">
                   The controlled-substance flag, EPCS signing and the eMAR witness step follow this
-                  class. After saving, a drug that is DEA-scheduled by name (for example lorazepam,
-                  Schedule IV) saved as standard is still shown as an advisory and counted under
-                  High Risk, but its signing and eMAR rules do not change.
+                  class. Choose controlled_substance for a DEA-scheduled drug. After saving, a drug
+                  that is DEA-scheduled by name (for example lorazepam, Schedule IV) saved as
+                  standard is still shown as an advisory and counted under High Risk, but its
+                  signing and eMAR rules do not change.
                 </p>
                 {!editing ? (
                   <p className="med-editor-help">

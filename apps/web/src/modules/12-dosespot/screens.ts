@@ -8,40 +8,13 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 // Nav visibility is gated by the matching M12 permission key; the SERVER stays the only enforcement point (no
 // frontend authz, ADR-0030 — out-of-scope resources 404, never 403).
 //
-// #91 / F-065 — PRESCRIBING WORKS NOW. The prescribe modal (drug identity from M38's RxNorm search and
-// the concept's own published NDCs, never typed), the §2.2 lifecycle ceremonies (request-signature,
-// sign, cosign, discontinue, complete), the §2.3 verbal order, and the §2.7 refill approve/deny are all
-// built and DOM-covered (`medication-writes.dom.test.tsx`).
-//
-// Two things had to be true on the server first, and only one of them was:
-//   • The lifecycle had to REACH a state the eMAR can administer against. Until #136 `signed` had one
-//     exit — through a DoseSpot transmission worker that does not exist — so every signed order was
-//     frozen: never completable, never discontinuable, never `active`.
-//   • `POST /medication-orders` requires `admissionId`, and NOTHING could resolve one for a patient. The
-//     org-wide census takes no patient filter and its items carry no `patientId`; the patient read
-//     carries no admission. This change adds `GET /api/v1/patients/:patientId/admissions` (F-065) —
-//     the read M07 declined to build a create without, and the one M24's claim wizard works around by
-//     asking a clerk to type the uuid.
-//
-// F-075 (#91 AC5) — `e2e/specs/prescribing.spec.ts` drives the primary path in a real browser: search
-// M38 for the drug, resolve its NDC, create the draft, send it for signature, sign it, and assert the
-// order reaches the patient's ACTIVE list — the state M13's eMAR administers against. Writing it found
-// that "PRESCRIBING WORKS NOW" was not true on any seeded stack, for a reason outside M12: `code_system`,
-// `code_system_version` and `concept_rxnorm` were EMPTY, because those tables say "writes only via
-// `terminology_loader`" — an external loader that is not in this repository — and no seed wrote a row.
-// The drug search returned nothing, so no concept could be selected, so no NDC could be resolved, so the
-// modal's submit stayed disabled. `scripts/db/seed-terminology.ts` (new, in `db:seed:all`) seeds the
-// hospice comfort-kit concepts, including the morphine RxCUI the scenario seed already hard-codes.
-//
-// The screen was HONEST about it the whole time ("If this deployment's terminology has not been
-// loaded…"), which is exactly why it went unnoticed: the failure read as a deployment fact rather than a
-// missing seed. Verified in both directions — the spec fails with the concepts deleted and passes with
-// them present.
-//
-// KNOWN, NOT FIXED HERE: "Ordering physician (MDM id)" is a free-text control asking a prescriber to
-// type a UUID — the exact pattern this header rejects two paragraphs up for RxCUI and NDC, and the one
-// CLAUDE.md records M24's claim wizard working around by asking a clerk to type it. M40 holds the
-// directory read a picker would bind to.
+// Prescribing: the prescribe modal takes drug identity from M38's RxNorm search and the concept's own
+// published NDCs (never typed) and the ordering physician from the M40 directory lookup
+// (`MdmEntityLookupField kind="physician"`); the server also checks the physician is an active directory
+// record at draft creation. The §2.2 lifecycle ceremonies (request-signature, sign, cosign, discontinue,
+// complete), the §2.3 verbal order and the §2.7 refill approve/deny are built and DOM-covered
+// (`medication-writes.dom.test.tsx`); `e2e/specs/prescribing.spec.ts` drives the primary path in a browser
+// and depends on the seeded M38 hospice comfort-kit concepts (`scripts/db/seed-terminology.ts`).
 //
 // STILL DEFERRED, each for a reason rather than a schedule:
 //   • The `sign-controlled` EPCS two-step. §2.4/D18 ships Phase 1 `not_certified`, so

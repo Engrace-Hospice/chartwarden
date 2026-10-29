@@ -15,6 +15,7 @@ import type {
   RefillInboxProvider,
 } from "@chartwarden/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
+import type { PhysicianDirectoryPort } from "../prescribing-physician-check";
 import type {
   DoseSpotConsentValidator,
   DoseSpotMdmValidator,
@@ -112,6 +113,11 @@ export function getDoseSpotTerminologyValidator(): DoseSpotTerminologyValidator 
 /** Resolve the M40 `MdmEntityProvider` seam narrowed to the order service's physician/pharmacy validator. */
 export function getDoseSpotMdmValidator(): DoseSpotMdmValidator {
   return getSeam("MdmEntityProvider") as DoseSpotMdmValidator;
+}
+
+/** Resolve the M40 `MdmEntityProvider` seam narrowed to the ordering-physician directory check (CW-CLIN-008). */
+export function getDoseSpotPhysicianDirectory(): PhysicianDirectoryPort {
+  return getSeam("MdmEntityProvider") as PhysicianDirectoryPort;
 }
 
 /** Resolve the M39 `ConsentEvaluator` seam narrowed to the order service's SUD-medication consent gate. */

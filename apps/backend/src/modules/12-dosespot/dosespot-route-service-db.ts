@@ -88,6 +88,10 @@ import {
   prescriberEligible,
   signerStanding,
 } from "./prescriber-eligibility";
+import {
+  type PhysicianDirectoryPort,
+  assertPrescribingPhysicianActive,
+} from "./prescribing-physician-check";
 import { buildMedicationOrderRenderPayload } from "./render-payloads";
 import type {
   ControlledSubstancePolicyView,
@@ -304,6 +308,11 @@ export interface DoseSpotSafetyGateDeps {
    * instead of being activated locally. Absent / false ⇒ the F-058 behaviour is unchanged (`not_required`).
    */
   readonly transmissionEnabledFor?: (organizationId: string) => boolean;
+  /**
+   * CW-CLIN-008 — the M40 directory `createDraft` checks the ordering physician against. Absent ⇒ no check (the
+   * live suites run without the seam); the boot wiring passes the registered `MdmEntityProvider`.
+   */
+  readonly resolvePhysicianDirectory?: () => PhysicianDirectoryPort;
 }
 
 export function createDbDoseSpotBackend(
@@ -781,6 +790,14 @@ export function createDbDoseSpotBackend(
 
     // ── Medication-order writes (§2.2 lifecycle; the service does the transitions, no DB triggers) ───
     async createDraft(organizationId, userId, args) {
+      // Outside `withOrg`: the M40 provider opens its own tenant-scoped read (no nested GUC rebinding).
+      const directory = gates.resolvePhysicianDirectory?.();
+      if (directory)
+        await assertPrescribingPhysicianActive(
+          directory,
+          organizationId,
+          args.prescribingPhysicianMdmId,
+        );
       return withOrg(organizationId, async (tx) =>
         readOrder(tx, await insertDraft(tx, organizationId, userId, args)),
       );

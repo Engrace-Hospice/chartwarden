@@ -48,6 +48,7 @@ export {
   createRefillInboxProvider,
   getDoseSpotConsentValidator,
   getDoseSpotMdmValidator,
+  getDoseSpotPhysicianDirectory,
   getDoseSpotTerminologyValidator,
   getMedicationOrderProvider,
   getRefillInboxProvider,

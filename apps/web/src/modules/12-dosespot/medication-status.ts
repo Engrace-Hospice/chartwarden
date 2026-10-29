@@ -77,7 +77,7 @@ export function advisoryNote(m: {
   advisoryDeaSchedule?: string | null;
 }): string | null {
   if (m.isControlledSubstance || !m.advisoryDeaSchedule) return null;
-  return `The drug is DEA ${controlledLabel(m.advisoryDeaSchedule)} by name, but this order's class is not controlled_substance. Advisory only; signing and eMAR rules follow the class.`;
+  return `The drug name suggests DEA ${controlledLabel(m.advisoryDeaSchedule)}, but this order's class is not controlled_substance. Advisory only; signing and eMAR rules follow the class.`;
 }
 
 /** Title-case an underscore enum value, e.g. `pending_signature` → `Pending Signature`. */

@@ -39,11 +39,20 @@ export const SCHEDULED_DRUG_SCHEDULES: Readonly<Record<string, DeaSchedule>> = {
 
 const SCHEDULED_DRUG_PATTERN = new RegExp(
   `\\b(${Object.keys(SCHEDULED_DRUG_SCHEDULES).join("|")})\\b`,
-  "i",
+  "gi",
 );
 
-/** The most restrictive (lowest-numbered) schedule among matched names, or null when none match. */
+/**
+ * The most restrictive (lowest-numbered) schedule among ALL matched names, or null when none match. `\b` also
+ * matches across a hyphen or slash ("non-morphine" matches): for an advisory a false positive is the safer error.
+ */
 export function advisoryDeaSchedule(drugName: string): DeaSchedule | null {
-  const hit = SCHEDULED_DRUG_PATTERN.exec(drugName)?.[1];
-  return hit ? (SCHEDULED_DRUG_SCHEDULES[hit.toLowerCase()] ?? null) : null;
+  const order: readonly DeaSchedule[] = ["II", "III", "IV", "V"];
+  let best = -1;
+  for (const m of drugName.matchAll(SCHEDULED_DRUG_PATTERN)) {
+    const schedule = SCHEDULED_DRUG_SCHEDULES[(m[1] ?? "").toLowerCase()];
+    const rank = schedule ? order.indexOf(schedule) : -1;
+    if (rank >= 0 && (best < 0 || rank < best)) best = rank;
+  }
+  return best < 0 ? null : (order[best] ?? null);
 }
