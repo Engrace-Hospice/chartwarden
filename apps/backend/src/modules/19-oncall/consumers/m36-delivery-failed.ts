@@ -24,7 +24,7 @@
 //   • NEITHER, because the recipient was not on-call → `ignore`. §4.8's filter, honoured rather than
 //     widened: M19 does not own every failed notification in the platform.
 //
-// ── THE PAYLOAD IS REAL NOW, BUT NO PRODUCER EXISTS YET ─────────────────────────────────────────────────
+// ── THE PAYLOAD IS REAL, AND SO IS THE PRODUCER ─────────────────────────────────────────────────────────
 //
 // `events-by-m36.ts` catalogues the wire payload (#205 hard-half follow-up); the type below is this
 // module's own domain-shaped VIEW of it, mapped from the catalog's generic `sourceAggregateId` by
@@ -32,8 +32,9 @@
 // M19 only trusts an aggregate id when the alert that failed to deliver was one of its own). Every field
 // M19 cannot get is still handled: an absent `providerEntityId` on an on-call failure cannot anchor a row
 // (`triage_call.provider_entity_id` is NOT NULL), so it dead-letters for a human rather than being
-// anchored to a guess. No producer publishes this event yet — see `events-by-m36.ts`'s header — so this
-// decider is wired and ready, not yet exercised in production.
+// anchored to a guess. M36's `applyDeliveryTransition` (delivery-settlement.ts) is the producer; this
+// decider is exercised against a hand-built payload by m19-inbound-triggers.live; the producer's payload
+// shape is pinned by m36-oncall-page-chain.live and gap-101.
 import type {
   IsoInstant,
   M19SubscribedEventName,
