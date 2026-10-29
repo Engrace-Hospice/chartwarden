@@ -24,7 +24,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { appendLedger, loadRegistry, projectDir, readHookInput, sha256 } from "./io";
-import { describeFindings, isScannable, scanContent } from "./patterns";
+import { describeFindings, isScannable, scanLarge } from "./patterns";
 
 /** Path pattern → the fast gates that read it. Exported for the tests. */
 export const GATE_MAP: ReadonlyArray<readonly [RegExp, readonly string[]]> = [
@@ -76,10 +76,15 @@ function git(root: string, args: string[]): string {
   });
 }
 
+/** NUL-separated (`-z`): git quotes non-ASCII and special names otherwise, and a quoted name looks deleted. */
+export function splitNul(out: string): string[] {
+  return out.split("\0").filter(Boolean);
+}
+
 function changedFiles(root: string): string[] {
-  const tracked = git(root, ["diff", "--name-only", "HEAD"]).split("\n");
-  const untracked = git(root, ["ls-files", "--others", "--exclude-standard"]).split("\n");
-  return [...new Set([...tracked, ...untracked].map((s) => s.trim()).filter(Boolean))].sort();
+  const tracked = splitNul(git(root, ["diff", "--name-only", "-z", "HEAD"]));
+  const untracked = splitNul(git(root, ["ls-files", "--others", "--exclude-standard", "-z"]));
+  return [...new Set([...tracked, ...untracked])].sort();
 }
 
 interface State {
@@ -124,16 +129,16 @@ async function main(): Promise<void> {
   const problems: string[] = [];
   const failIds: string[] = [];
 
-  // PHI / credential scan of what changed (text files ≤ 1 MB).
+  // PHI / credential scan of what changed (text files; one past MAX_SCAN_CHARS is reported, not skipped).
   const registry = loadRegistry(root);
   for (const f of present) {
     if (!isScannable(f)) continue;
     const full = join(root, f);
     const st = statSync(full);
-    if (!st.isFile() || st.size > 1_048_576) continue;
+    if (!st.isFile()) continue;
     const buf = readFileSync(full);
     if (buf.includes(0)) continue; // binary
-    const findings = scanContent(buf.toString("utf8"), registry, f);
+    const findings = scanLarge(buf.toString("utf8"), registry, f);
     if (findings.length > 0) {
       failIds.push(`phi:${f}`);
       problems.push(`PHI/secret scan: ${describeFindings(f, findings)}`);

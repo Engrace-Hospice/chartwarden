@@ -124,7 +124,8 @@ jobs:
 
   # CW-SEC-01 / CW-CM-02 (compliance/controls.yaml): no credential and no non-synthetic SSN/MBI reaches
   # main. The same two scanners run in .githooks/pre-commit (opt-in per clone via setup:hooks); this is
-  # the copy a developer cannot skip — once deploy.yml's `verify` job is re-enabled (see CW-CM-01).
+  # the copy a developer cannot skip: deploy.yml's `verify` job calls this workflow, so a red scan stops
+  # the release (#846; `arch:release-gate` fails if that wiring is removed).
   # Pinned binary + checksum verified against the release's own checksums file.
   secret-and-phi-scan:
     runs-on: [self-hosted, Linux, X64, hostinger]
@@ -145,7 +146,7 @@ jobs:
         run: |
           set -euo pipefail
           dir="$RUNNER_TEMP/gitleaks" && mkdir -p "$dir"
-          curl -sSL -o "$dir/gl.tgz" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL --retry 3 --max-time 120 -o "$dir/gl.tgz" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
           echo "${GITLEAKS_SHA256}  $dir/gl.tgz" | sha256sum -c -
           tar -xzf "$dir/gl.tgz" -C "$dir" gitleaks
           echo "$dir" >> "$GITHUB_PATH"

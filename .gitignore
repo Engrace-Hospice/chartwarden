@@ -9,6 +9,13 @@ node_modules/
 # `.claude/` is the exception: its settings, rules, skills and agents are the SHARED compliance harness
 # (docs/compliance/AGENT_HARNESS.md; `arch:compliance` fails if this goes back to ignoring the whole
 # directory). Only the per-developer pieces stay local — the ledger can name files and sessions.
+# Allow-list, not deny-list: anything new under .claude/ (plans, prds, scheduled_tasks.lock, worktrees,
+# local settings, the ledger) stays out of git unless it is named below.
+.claude/*
+!.claude/settings.json
+!.claude/rules/
+!.claude/agents/
+!.claude/skills/
 .claude/settings.local.json
 .claude/audit/
 .claude/.cache/

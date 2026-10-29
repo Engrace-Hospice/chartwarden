@@ -13,10 +13,9 @@ useDefault = true
 disabledRules = ["generic-api-key"]
 
 [allowlist]
-description = "Templates, design files, fixtures and documented example credentials"
+description = "Design files, fixtures and documented example credentials (templates are scanned)"
 paths = [
   '''(^|/)bun\.lock$''',
-  '''\.example$''',
   '''\.pen$''',
   '''^scripts/__fixtures__/''',
   '''^HOPE Data Spec''',
