@@ -26,7 +26,7 @@ export const CodeStatusListResponseSchema = Type.Object({
   history: Type.Array(CodeStatusViewSchema),
 });
 
-/** A reason is trimmed before it is stored, so one that is only whitespace must be a 400, not a CHECK violation. */
+/** A reason is trimmed before it is stored, so one that is only whitespace must be a 422 (VALIDATION_FAILED), not a CHECK violation. */
 const NON_BLANK = "\\S";
 
 export const SetCodeStatusBodySchema = Type.Object({

@@ -306,6 +306,7 @@ function CodeStatusPanel({ patientId }: { patientId: string }): JSX.Element {
                         id={retractTriggerId(e.id)}
                         type="button"
                         tone="secondary"
+                        disabled={busy}
                         onClick={() => {
                           setRetractId(e.id);
                           setRetractReason("");

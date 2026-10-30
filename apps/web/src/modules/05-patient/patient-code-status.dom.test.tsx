@@ -232,6 +232,31 @@ describe("PatientCodeStatusTab", () => {
     release({ data: ENTRY, response: { status: 201 } });
   });
 
+  it("does not open a second retraction while one is being written", async () => {
+    const other = { ...ENTRY, id: "e-2", codeStatus: "full_code" };
+    let release: (r: Result) => void = () => {};
+    renderTab(
+      { current: ENTRY, history: [ENTRY, other] },
+      () =>
+        new Promise<Result>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const triggers = await screen.findAllByRole("button", { name: "Mark entered in error" });
+    fireEvent.click(triggers[0] as HTMLElement);
+    fireEvent.change(screen.getByLabelText(/why was this entered in error/i), {
+      target: { value: "wrong chart" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm entered in error" }));
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Mark entered in error" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true),
+    );
+    release({ data: ENTRY, response: { status: 201 } });
+  });
+
   it("starts clean when the same mounted tab is given another patient", async () => {
     const GET = vi.fn(async (_path: string, init: { params: { path: { id: string } } }) => ({
       data:
