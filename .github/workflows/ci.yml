@@ -31,9 +31,8 @@ concurrency:
 jobs:
   build-and-verify:
     runs-on: [self-hosted, Linux, X64, hostinger]
-    # `tsc -b` over the full project graph outgrew Node's default heap on the runner (~2 GB, sized
-    # from runner RAM): it died with "Reached heap limit … JavaScript heap out of memory" (SIGABRT,
-    # exit 134) before arch:fitness, the unit suite or the dependency audit ever ran.
+    # Build batches run as separate tsc processes with a 4 GiB heap ceiling; other Node tools
+    # retain their existing limit.
     env:
       NODE_OPTIONS: --max-old-space-size=6144
     steps:
