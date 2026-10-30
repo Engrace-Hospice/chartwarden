@@ -79,8 +79,11 @@ describe("check-release-gate", () => {
     expect(releaseGateProblems(y)).toHaveLength(1);
   });
 
-  const QUALITY = "  quality:\n    needs: debounce\n    runs-on: x\n";
-  const NO_CI = `${DEBOUNCE}${QUALITY}  release:\n    needs: [debounce, quality]\n${DEPLOY}`;
+  const STEPS = "    steps:\n      - run: bun run typecheck\n      - run: bun run lint\n";
+  const QUALITY = `  quality:\n    needs: debounce\n    runs-on: x\n${STEPS}`;
+  const RELEASE_IF = "    if: ${{ !cancelled() && needs.quality.result == 'success' }}\n";
+  const RELEASE = `  release:\n    needs: [debounce, quality]\n${RELEASE_IF}`;
+  const NO_CI = `${DEBOUNCE}${QUALITY}${RELEASE}${DEPLOY}`;
   const WAIVER = "# release-gate: ci-waived — owner decision, test\n";
 
   it("passes a recorded waiver when release still needs the quality job", () => {
@@ -95,12 +98,34 @@ describe("check-release-gate", () => {
   });
 
   it("still requires deploy to need release under a waiver", () => {
-    const y =
-      WAIVER +
-      wf(
-        `${DEBOUNCE}${QUALITY}  release:\n    needs: [debounce, quality]\n  deploy:\n    runs-on: x\n`,
-      );
+    const y = WAIVER + wf(`${DEBOUNCE}${QUALITY}${RELEASE}  deploy:\n    runs-on: x\n`);
     expect(releaseGateProblems(y)).toEqual(["`deploy` does not need `release`"]);
+  });
+
+  it("fails a waiver whose quality job lost its lint step or is disabled", () => {
+    const noLint = QUALITY.replace("      - run: bun run lint\n", "");
+    expect(releaseGateProblems(WAIVER + wf(`${DEBOUNCE}${noLint}${RELEASE}${DEPLOY}`))).toEqual([
+      "the `quality` job does not run `bun run lint`",
+    ]);
+    const off = QUALITY.replace("    runs-on: x\n", "    if: false\n    runs-on: x\n");
+    expect(releaseGateProblems(WAIVER + wf(`${DEBOUNCE}${off}${RELEASE}${DEPLOY}`))).toEqual([
+      "the `quality` job is disabled by a constant `if:`",
+    ]);
+  });
+
+  it("fails a waiver whose release if: ignores the quality result", () => {
+    const rel = "  release:\n    needs: [debounce, quality]\n    if: always()\n";
+    expect(releaseGateProblems(WAIVER + wf(`${DEBOUNCE}${QUALITY}${rel}${DEPLOY}`))).toEqual([
+      "`release` has a CI waiver but its `if:` does not require needs.quality.result == 'success'",
+    ]);
+  });
+
+  it("ignores a waiver line buried inside a script block", () => {
+    const y = wf(`${DEBOUNCE}${QUALITY}${RELEASE}${DEPLOY}`).replace(
+      "      - run: bun run lint\n",
+      "      - run: |\n          # release-gate: ci-waived — sneaky\n          bun run lint\n",
+    );
+    expect(releaseGateProblems(y)).not.toEqual([]);
   });
 
   it("ignores a waiver with no reason", () => {
