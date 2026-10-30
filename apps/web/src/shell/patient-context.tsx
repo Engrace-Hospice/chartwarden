@@ -290,7 +290,7 @@ function useCodeStatus(patientId: string): CodeStatusState {
       .then((next) => {
         if (!active) return;
         setEntry((prev) => {
-          if (next.kind !== "unavailable" || prev?.patientId !== patientId) {
+          if (next.kind !== "unavailable" || !prev || prev.patientId !== patientId) {
             return { patientId, state: next };
           }
           const known = prev.state.kind === "stale" ? prev.state.last : prev.state;
@@ -303,7 +303,7 @@ function useCodeStatus(patientId: string): CodeStatusState {
       active = false;
     };
   }, [client, patientId, refreshKey]);
-  return entry?.patientId === patientId ? entry.state : { kind: "unknown" };
+  return entry && entry.patientId === patientId ? entry.state : { kind: "unknown" };
 }
 
 function CodeStatusChip({
