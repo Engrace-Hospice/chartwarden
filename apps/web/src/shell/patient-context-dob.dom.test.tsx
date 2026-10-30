@@ -242,6 +242,40 @@ describe("patient-context code status chip (ADR-0104)", () => {
     expect(screen.queryByText("Full code")).toBeNull();
   });
 
+  it("keeps a known status, marked not refreshed, when a re-read fails; then recovers", async () => {
+    const responses: Record<string, unknown> = { [PATH]: entry("dnr") };
+    renderBanner(IDENTITY, responses);
+    expect(await screen.findByText("DNR")).toBeTruthy();
+    delete responses[PATH]; // the re-read now fails
+    await act(async () => {
+      notifyCodeStatusChanged("p-1");
+    });
+    expect(await screen.findByText("DNR (not refreshed)")).toBeTruthy();
+    expect(screen.queryByText("Code status unavailable")).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Code status: DNR (not refreshed). Open code status" }),
+    ).toBeTruthy();
+    responses[PATH] = entry("full_code");
+    await act(async () => {
+      notifyCodeStatusChanged("p-1");
+    });
+    expect(await screen.findByText("Full code")).toBeTruthy();
+    expect(screen.queryByText(/not refreshed/)).toBeNull();
+  });
+
+  it("stays marked after two failed re-reads in a row", async () => {
+    const responses: Record<string, unknown> = { [PATH]: entry("dnr") };
+    renderBanner(IDENTITY, responses);
+    await screen.findByText("DNR");
+    delete responses[PATH];
+    for (let i = 0; i < 2; i++) {
+      await act(async () => {
+        notifyCodeStatusChanged("p-1");
+      });
+    }
+    expect(await screen.findByText("DNR (not refreshed)")).toBeTruthy();
+  });
+
   it("ignores a change notification for another patient", async () => {
     const responses: Record<string, unknown> = { [PATH]: entry("full_code") };
     renderBanner(IDENTITY, responses);
