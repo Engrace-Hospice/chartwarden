@@ -88,9 +88,10 @@ describe("PatientCodeStatusTab", () => {
     });
     await fillAndSubmit(/^DNR$/, "Patient request");
     expect(await screen.findByText(/could not be saved/i)).toBeTruthy();
-    expect(
-      (screen.getByRole("button", { name: "Record code status" }) as HTMLButtonElement).disabled,
-    ).toBe(false);
+    const submit = screen.getByRole("button", { name: "Record code status" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(false);
+    // The button disabled itself mid-write, which drops focus to <body>; it must come back.
+    await waitFor(() => expect(document.activeElement).toBe(submit));
   });
 
   it("sends one write when submitted twice in a row", async () => {

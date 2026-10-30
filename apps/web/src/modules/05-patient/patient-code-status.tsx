@@ -37,6 +37,7 @@ const FIRST_RADIO_ID = "code-status-first-value";
 const REASON_ID = "code-status-reason";
 const VALUE_ERROR_ID = "code-status-value-error";
 const RETRACT_REASON_ID = "code-status-retract-reason";
+const SUBMIT_ID = "code-status-submit";
 const retractTriggerId = (entryId: string): string => `code-status-retract-${entryId}`;
 
 const focusById = (id: string): void => document.getElementById(id)?.focus();
@@ -70,6 +71,7 @@ function CodeStatusPanel({ patientId }: { patientId: string }): JSX.Element {
   const busyRef = useRef(false); // a state flag lags a second Enter press; the ref does not
   const loadSeq = useRef(0); // only the newest read may set the list (post-write re-read)
   const restoreFocusTo = useRef<string | null>(null); // the retract trigger to refocus once it is back
+  const refocusAfterWrite = useRef<string | null>(null); // a disabled button drops focus to <body>; put it back on a failed write
   const currentRef = useRef<HTMLParagraphElement>(null);
 
   const load = useCallback(async () => {
@@ -105,6 +107,13 @@ function CodeStatusPanel({ patientId }: { patientId: string }): JSX.Element {
     }
   }, [retractId]);
 
+  // Runs once `busy` clears and the buttons are enabled again, so the focus call can land.
+  useEffect(() => {
+    if (busy || !refocusAfterWrite.current) return;
+    focusById(refocusAfterWrite.current);
+    refocusAfterWrite.current = null;
+  }, [busy]);
+
   function closeRetraction(entryId: string): void {
     restoreFocusTo.current = retractTriggerId(entryId);
     setRetractId(null);
@@ -138,6 +147,7 @@ function CodeStatusPanel({ patientId }: { patientId: string }): JSX.Element {
       })
       .catch(() => null);
     busyRef.current = false;
+    if (!res || res.error) refocusAfterWrite.current = SUBMIT_ID;
     setBusy(false);
     if (!res) {
       return setFormError({
@@ -173,6 +183,7 @@ function CodeStatusPanel({ patientId }: { patientId: string }): JSX.Element {
       })
       .catch(() => null);
     busyRef.current = false;
+    if (!res || res.error) refocusAfterWrite.current = RETRACT_REASON_ID;
     setBusy(false);
     if (!res) {
       return setRetractError("The entry could not be retracted. Check the list before retrying.");
@@ -245,7 +256,7 @@ function CodeStatusPanel({ patientId }: { patientId: string }): JSX.Element {
           />
           {formError?.field === "form" ? <InlineAlert>{formError.message}</InlineAlert> : null}
           <div>
-            <Button type="submit" disabled={busy}>
+            <Button id={SUBMIT_ID} type="submit" disabled={busy}>
               Record code status
             </Button>
           </div>
