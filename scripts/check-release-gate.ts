@@ -28,8 +28,24 @@ const DEPLOY_YML = join(
   ".github/workflows/deploy.yml",
 );
 const CI_WORKFLOW = "./.github/workflows/ci.yml";
-/** `# release-gate: ci-waived — <reason>` in deploy.yml: the owner's recorded decision to deploy without CI. */
+/** `# release-gate: ci-waived until YYYY-MM-DD — <reason>` in deploy.yml: the owner's recorded, time-boxed decision to deploy without CI. */
 const CI_WAIVER = /^ {0,2}#[ \t]*release-gate:[ \t]*ci-waived[ \t]+\S.*$/m;
+/** Anchored to `ci-waived` so a stray `until <date>` later in the reason text cannot satisfy it. */
+const WAIVER_EXPIRY = /ci-waived[ \t]+until[ \t]+(\d{4}-\d{2}-\d{2})\b/;
+
+/** A waiver must carry an expiry and the expiry must not have passed, so "temporary" cannot become permanent. */
+function waiverExpiryProblems(yaml: string, today: Date): string[] {
+  const line = CI_WAIVER.exec(yaml)?.[0];
+  if (line === undefined) return [];
+  const expiry = WAIVER_EXPIRY.exec(line)?.[1];
+  if (expiry === undefined)
+    return ["the CI waiver has no `until YYYY-MM-DD` expiry (a waiver must be time-boxed)"];
+  if (expiry < today.toISOString().slice(0, 10))
+    return [
+      `the CI waiver expired on ${expiry}: restore \`verify\` or renew the waiver deliberately`,
+    ];
+  return [];
+}
 
 interface Job {
   readonly needs: readonly string[];
@@ -136,7 +152,7 @@ function qualityFloorProblems(yaml: string, jobs: ReadonlyMap<string, Job>): str
 }
 
 /** Every way `yaml` lets an unverified commit reach a release or the VPS; empty when the gate holds. */
-export function releaseGateProblems(yaml: string): string[] {
+export function releaseGateProblems(yaml: string, today: Date = new Date()): string[] {
   const jobs = parseJobs(yaml);
   const problems: string[] = [];
   if (!jobs.has("release")) problems.push("no `release` job");
@@ -149,7 +165,8 @@ export function releaseGateProblems(yaml: string): string[] {
     (j) => jobs.get(j)?.uses === CI_WORKFLOW,
   );
   // A waiver drops the full CI, not the floor: `release` must still need the `quality` job (typecheck + lint).
-  if (waived) problems.push(...qualityFloorProblems(yaml, jobs));
+  if (waived)
+    problems.push(...waiverExpiryProblems(yaml, today), ...qualityFloorProblems(yaml, jobs));
   if (!verified && !waived)
     problems.push(`\`release\` does not (transitively) need a job that \`uses: ${CI_WORKFLOW}\``);
   if (!transitiveNeeds(jobs, "deploy").has("release"))

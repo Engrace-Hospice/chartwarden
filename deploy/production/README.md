@@ -356,7 +356,7 @@ will move a tag, so signing or attesting one proves nothing a minute later.
 | Step | Tool | Failure behaviour |
 | --- | --- | --- |
 | Vulnerability scan | Trivy | **HIGH/CRITICAL fail the release.** Only `.trivyignore.yaml` gets past it, and every entry needs a statement plus an unexpired date within 90 days (`arch:vuln-allowlist`). |
-| SBOM | syft (SPDX JSON) | Uploaded as a workflow artifact **and** attached to the image as a cosign attestation. An empty SBOM fails the build — it would answer "are we affected?" with a confident, wrong "no". |
+| SBOM | syft (SPDX JSON) | Attached to the image as a cosign attestation (**authoritative**, verified with `cosign verify-attestation` before deploy) and uploaded as a workflow artifact (**best-effort**: a full artifact-storage quota raises a warning, not a failed release). An empty SBOM fails the build — it would answer "are we affected?" with a confident, wrong "no". |
 | Signature | cosign, keyless | Signed after the scan passes. Signing a known-vulnerable image devalues every signature the process has produced. |
 
 Scanning happens **before** signing on purpose: the signature asserts that an artefact went through this
