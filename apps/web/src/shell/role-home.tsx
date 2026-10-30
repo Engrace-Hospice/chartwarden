@@ -910,6 +910,8 @@ const QUICK_ICON: Record<string, GlyphName> = {
   "audit.log": "file-text",
 };
 
+const TASK_PREVIEW_COUNT = 5;
+
 const TASK_CHIPS: { key: TaskCategory | "all"; label: string }[] = [
   { key: "all", label: "All" },
   { key: "assessments", label: "Assessments" },
@@ -925,6 +927,7 @@ export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.E
   const [patients, setPatients] = useState<Map<string, PatientRef>>(new Map());
   const [loading, setLoading] = useState(true);
   const [taskChip, setTaskChip] = useState<TaskCategory | "all">("all");
+  const [showAllTasks, setShowAllTasks] = useState(false);
   const action = primaryAction(screens, session);
   const quickAccess = useMemo(() => quickAccessScreens(screens, session), [screens, session]);
 
@@ -1054,7 +1057,10 @@ export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.E
                   type="button"
                   aria-pressed={taskChip === c.key}
                   className={taskChip === c.key ? "is-selected" : undefined}
-                  onClick={() => setTaskChip(c.key)}
+                  onClick={() => {
+                    setTaskChip(c.key);
+                    setShowAllTasks(false);
+                  }}
                 >
                   {c.label}
                   <span className="wx-seg-count wx-nums">{taskCounts[c.key] ?? 0}</span>
@@ -1067,7 +1073,7 @@ export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.E
               <p className="wx-row-sub">No open tasks in this view.</p>
             ) : (
               <ul className="wx-home-list">
-                {tasks.slice(0, 5).map((x) => {
+                {tasks.slice(0, showAllTasks ? undefined : TASK_PREVIEW_COUNT).map((x) => {
                   const due = dueLabel(x.dueAt);
                   return (
                     <li key={x.id}>
@@ -1100,6 +1106,17 @@ export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.E
                 })}
               </ul>
             )}
+            {!loading && tasks.length > TASK_PREVIEW_COUNT ? (
+              <button
+                type="button"
+                className="wx-link-button"
+                style={{ alignSelf: "start", fontWeight: 500, fontSize: "0.875rem" }}
+                aria-expanded={showAllTasks}
+                onClick={() => setShowAllTasks((v) => !v)}
+              >
+                {showAllTasks ? "Show less" : `View all ${tasks.length}`}
+              </button>
+            ) : null}
           </Card>
 
           <Card title="Patients Needing Attention" icon="user-circle" viewAll="/patients">

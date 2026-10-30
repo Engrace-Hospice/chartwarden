@@ -1256,7 +1256,7 @@ const alertErrorStyle: CSSProperties = {
 };
 
 const alertWarningStyle: CSSProperties = {
-  color: t.warning,
+  color: t.warningPillFg, // raw t.warning on this tint is 4.12:1, short of WCAG AA
   background: "color-mix(in srgb, var(--color-warning) 10%, transparent)",
   borderColor: "color-mix(in srgb, var(--color-warning) 28%, transparent)",
 };

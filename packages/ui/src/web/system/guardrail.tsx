@@ -131,6 +131,8 @@ export function CountdownChip({
           ? "warning"
           : "neutral";
   const fg = TONE_FG[tone];
+  // Raw tone text on its own tint fails WCAG contrast; darken it the way the Guard Chip does.
+  const textColor = tone === "neutral" ? fg : `color-mix(in srgb, ${fg} 60%, ${t.onSurface})`;
   return (
     <span
       className="wx-countdown-chip"
@@ -143,7 +145,7 @@ export function CountdownChip({
         padding: "0.2rem 0.55rem",
         borderRadius: "9999px",
         background: tone === "neutral" ? t.surfaceContainer : tint(fg),
-        color: fg,
+        color: textColor,
         fontFamily: t.fontSans,
         fontSize: "0.75rem",
         fontWeight: 500,

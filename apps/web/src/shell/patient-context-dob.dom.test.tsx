@@ -5,7 +5,7 @@ process.env.TZ = "America/Los_Angeles";
 
 import { ApiClientProvider } from "@chartwarden/ui";
 import { act, render, screen } from "@testing-library/react";
-import type { ComponentProps } from "react";
+import { type ComponentProps, type JSX, useLayoutEffect } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterAll, describe, expect, it } from "vitest";
 import {
@@ -13,6 +13,7 @@ import {
   type ChartIdentity,
   PatientSummaryPanel,
   notifyCodeStatusChanged,
+  useChartIdentity,
 } from "./patient-context";
 
 const IDENTITY: ChartIdentity = {
@@ -114,6 +115,29 @@ describe("patient-context DOB rendering", () => {
   });
 });
 
+describe("useChartIdentity", () => {
+  function IdentityProbe(): JSX.Element {
+    const identity = useChartIdentity("p-1");
+    return <p>{identity ? `name:${identity.patient.firstName}` : "loading"}</p>;
+  }
+
+  it("paints the identity without waiting for coverage and allergies", async () => {
+    const never = new Promise<never>(() => {});
+    const client = {
+      GET: async (path: string) =>
+        path === "/api/v1/patients/{id}/payers" || path === "/api/v1/patients/{id}/allergies"
+          ? never
+          : { data: path === "/api/v1/patients/{id}" ? IDENTITY.patient : {}, error: undefined },
+    } as unknown as ComponentProps<typeof ApiClientProvider>["client"];
+    render(
+      <ApiClientProvider client={client}>
+        <IdentityProbe />
+      </ApiClientProvider>,
+    );
+    expect(await screen.findByText("name:Ada")).toBeTruthy();
+  });
+});
+
 describe("patient-context code status chip (ADR-0104)", () => {
   const PATH = "/api/v1/patients/{id}/code-status";
   const entry = (codeStatus: string) => ({
@@ -138,6 +162,46 @@ describe("patient-context code status chip (ADR-0104)", () => {
     renderBanner(IDENTITY, { [PATH]: entry("dnr") });
     const link = (await screen.findByText("DNR")).closest("a");
     expect(link?.getAttribute("href")).toBe("/patients/p-1?view=code-status");
+  });
+
+  it("names the chip link for assistive tech, including where it goes", async () => {
+    renderBanner(IDENTITY, { [PATH]: entry("dnr") });
+    expect(
+      await screen.findByRole("link", { name: "Code status: DNR. Open code status" }),
+    ).toBeTruthy();
+  });
+
+  it("never shows the previous patient's status on a reused banner", async () => {
+    // Patient p-2's read never settles, so any chip on p-2's banner could only be p-1's leftover.
+    const client = {
+      GET: async (path: string, init?: { params?: { path?: { id?: string } } }) =>
+        path === PATH && init?.params?.path?.id === "p-2"
+          ? new Promise(() => {})
+          : { data: path === PATH ? entry("dnr") : undefined, error: undefined },
+    } as unknown as ComponentProps<typeof ApiClientProvider>["client"];
+    // act() flushes effects before any assertion, so sample the DOM at layout-effect time: that is the
+    // committed paint, before a passive reset effect could have run.
+    const painted: string[] = [];
+    function Probe(): null {
+      useLayoutEffect(() => {
+        painted.push(document.body.textContent ?? "");
+      });
+      return null;
+    }
+    const banner = (id: string) => (
+      <ApiClientProvider client={client}>
+        <MemoryRouter>
+          <ChartBanner identity={{ ...IDENTITY, patient: { ...IDENTITY.patient, id } }} />
+          <Probe />
+        </MemoryRouter>
+      </ApiClientProvider>
+    );
+    const { rerender } = render(banner("p-1"));
+    expect(await screen.findByText("DNR")).toBeTruthy();
+    painted.length = 0;
+    rerender(banner("p-2"));
+    expect(painted.length).toBeGreaterThan(0);
+    expect(painted.some((text) => text.includes("DNR"))).toBe(false);
   });
 
   it("labels DNR/DNI and comfort measures only", async () => {
@@ -176,6 +240,40 @@ describe("patient-context code status chip (ADR-0104)", () => {
     });
     expect(await screen.findByText("DNR")).toBeTruthy();
     expect(screen.queryByText("Full code")).toBeNull();
+  });
+
+  it("keeps a known status, marked not refreshed, when a re-read fails; then recovers", async () => {
+    const responses: Record<string, unknown> = { [PATH]: entry("dnr") };
+    renderBanner(IDENTITY, responses);
+    expect(await screen.findByText("DNR")).toBeTruthy();
+    delete responses[PATH]; // the re-read now fails
+    await act(async () => {
+      notifyCodeStatusChanged("p-1");
+    });
+    expect(await screen.findByText("DNR (not refreshed)")).toBeTruthy();
+    expect(screen.queryByText("Code status unavailable")).toBeNull();
+    expect(
+      screen.getByRole("link", { name: "Code status: DNR (not refreshed). Open code status" }),
+    ).toBeTruthy();
+    responses[PATH] = entry("full_code");
+    await act(async () => {
+      notifyCodeStatusChanged("p-1");
+    });
+    expect(await screen.findByText("Full code")).toBeTruthy();
+    expect(screen.queryByText(/not refreshed/)).toBeNull();
+  });
+
+  it("stays marked after two failed re-reads in a row", async () => {
+    const responses: Record<string, unknown> = { [PATH]: entry("dnr") };
+    renderBanner(IDENTITY, responses);
+    await screen.findByText("DNR");
+    delete responses[PATH];
+    for (let i = 0; i < 2; i++) {
+      await act(async () => {
+        notifyCodeStatusChanged("p-1");
+      });
+    }
+    expect(await screen.findByText("DNR (not refreshed)")).toBeTruthy();
   });
 
   it("ignores a change notification for another patient", async () => {

@@ -51,3 +51,7 @@ Architecture documents are **authoritative**; module and UI screen specification
 | [`architecture/`](./architecture/) | Architecture-fitness **enforcement code** (manifest, dependency-cruiser, gates). |
 | `scripts/` | Fitness/report gate scripts (`arch:*`, `docs:ui`, `status:matrix`, coverage/parity reports). |
 | [`audit/`](./audit/) | Point-in-time audit reports + generated status/coverage/parity matrices. |
+
+## License
+
+Proprietary and confidential. Copyright (c) 2026 Engrace Hospice. All rights reserved. No use, copying, modification or distribution without a signed written agreement; see [`LICENSE`](./LICENSE).

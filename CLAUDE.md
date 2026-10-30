@@ -18,6 +18,10 @@ a generated number goes stale and gets repeated back as a finding.
 > The `apps/`+`packages/` tree is **generated from the manifest** via `bun run scaffold`; the
 > `arch:parity` gate keeps tree↔manifest 1:1. See [ADR-0027](./docs/adr/ADR-0027-phase-0-toolchain-and-scaffold.md).
 
+## License
+
+Proprietary, all rights reserved ([`LICENSE`](./LICENSE)); every `package.json` carries `"license": "SEE LICENSE IN LICENSE"` (the scaffold template writes it). Never add an open-source license, or copy third-party code whose license conflicts, without the owner's say-so.
+
 ## Authority rule
 
 Architecture documents are authoritative. Module and UI screen specifications are implementation

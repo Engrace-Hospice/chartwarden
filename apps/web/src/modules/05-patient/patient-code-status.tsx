@@ -28,7 +28,19 @@ interface CodeStatusList {
   history: Entry[];
 }
 
+/** Which control a form error belongs to, so focus can move to it. */
+type FieldError = { field: "value" | "reason" | "form"; message: string };
+
 const VALUES = Object.keys(CODE_STATUS_LABEL) as CodeStatus[];
+
+const FIRST_RADIO_ID = "code-status-first-value";
+const REASON_ID = "code-status-reason";
+const VALUE_ERROR_ID = "code-status-value-error";
+const RETRACT_REASON_ID = "code-status-retract-reason";
+const SUBMIT_ID = "code-status-submit";
+const retractTriggerId = (entryId: string): string => `code-status-retract-${entryId}`;
+
+const focusById = (id: string): void => document.getElementById(id)?.focus();
 
 /** A 403 is a plain refusal; anything else shows the server's own message. */
 function writeError(
@@ -39,50 +51,95 @@ function writeError(
   return (res.error as { error?: { message?: string } } | undefined)?.error?.message ?? fallback;
 }
 
+/** Keyed by patient: another patient's list, half-typed reason or open retraction can never carry over. */
 export function PatientCodeStatusTab({ patientId }: { patientId: string }): JSX.Element {
+  return <CodeStatusPanel key={patientId} patientId={patientId} />;
+}
+
+function CodeStatusPanel({ patientId }: { patientId: string }): JSX.Element {
   const client = useApiClient();
   const [list, setList] = useState<CodeStatusList | "error" | null>(null);
+  const [stale, setStale] = useState(false); // a re-read failed: the list on screen may be out of date
+  const [notice, setNotice] = useState<string | null>(null);
   const [value, setValue] = useState<CodeStatus | null>(null);
   const [reason, setReason] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<FieldError | null>(null);
   const [retractId, setRetractId] = useState<string | null>(null);
   const [retractReason, setRetractReason] = useState("");
   const [retractError, setRetractError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false); // a state flag lags a second Enter press; the ref does not
-  const loadSeq = useRef(0); // only the newest read may set the list (patient switch / post-write re-read)
+  const loadSeq = useRef(0); // only the newest read may set the list (post-write re-read)
+  const restoreFocusTo = useRef<string | null>(null); // the retract trigger to refocus once it is back
+  const refocusAfterWrite = useRef<string | null>(null); // a disabled button drops focus to <body>; put it back on a failed write
+  const currentRef = useRef<HTMLParagraphElement>(null);
 
   const load = useCallback(async () => {
     const seq = ++loadSeq.current;
+    const fail = (): void => {
+      // Keep what is on screen after a failed re-read (a write may well have succeeded); only a first read errors.
+      setList((prev) => (prev && prev !== "error" ? prev : "error"));
+      setStale(true);
+    };
     try {
       const res = await client.GET("/api/v1/patients/{id}/code-status", {
         params: { path: { id: patientId } },
       });
-      if (seq === loadSeq.current) {
-        setList(res.error || !res.data ? "error" : (res.data as CodeStatusList));
-      }
+      if (seq !== loadSeq.current) return;
+      if (res.error || !res.data) return fail();
+      setList(res.data as CodeStatusList);
+      setStale(false);
     } catch {
-      if (seq === loadSeq.current) setList("error");
+      if (seq === loadSeq.current) fail();
     }
   }, [client, patientId]);
 
   useEffect(() => {
-    setList(null);
     void load();
   }, [load]);
 
-  async function afterWrite(): Promise<void> {
+  // Opening the retraction form lands focus in it; closing it returns focus to the row's trigger.
+  useEffect(() => {
+    if (retractId) return focusById(RETRACT_REASON_ID);
+    if (restoreFocusTo.current) {
+      focusById(restoreFocusTo.current);
+      restoreFocusTo.current = null;
+    }
+  }, [retractId]);
+
+  // Runs once `busy` clears and the buttons are enabled again, so the focus call can land.
+  useEffect(() => {
+    if (busy || !refocusAfterWrite.current) return;
+    focusById(refocusAfterWrite.current);
+    refocusAfterWrite.current = null;
+  }, [busy]);
+
+  function closeRetraction(entryId: string): void {
+    restoreFocusTo.current = retractTriggerId(entryId);
+    setRetractId(null);
+  }
+
+  async function afterWrite(message: string): Promise<void> {
     await load();
     notifyCodeStatusChanged(patientId);
+    setNotice(message);
+    currentRef.current?.focus();
   }
 
   async function record(): Promise<void> {
-    if (!value) return setFormError("Choose a code status.");
-    if (!reason.trim()) return setFormError("A reason is required.");
+    if (!value) {
+      setFormError({ field: "value", message: "Choose a code status." });
+      return focusById(FIRST_RADIO_ID);
+    }
+    if (!reason.trim()) {
+      setFormError({ field: "reason", message: "A reason is required." });
+      return focusById(REASON_ID);
+    }
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
     setFormError(null);
+    setNotice(null);
     const res = await client
       .POST("/api/v1/patients/{id}/code-status", {
         params: { path: { id: patientId } },
@@ -90,22 +147,35 @@ export function PatientCodeStatusTab({ patientId }: { patientId: string }): JSX.
       })
       .catch(() => null);
     busyRef.current = false;
+    if (!res || res.error) refocusAfterWrite.current = SUBMIT_ID;
     setBusy(false);
     if (!res) {
-      return setFormError("The code status could not be saved. Check the list before retrying.");
+      return setFormError({
+        field: "form",
+        message: "The code status could not be saved. Check the list before retrying.",
+      });
     }
-    if (res.error) return setFormError(writeError(res, "The code status could not be saved."));
+    if (res.error) {
+      return setFormError({
+        field: "form",
+        message: writeError(res, "The code status could not be saved."),
+      });
+    }
     setValue(null);
     setReason("");
-    await afterWrite();
+    await afterWrite("Code status recorded.");
   }
 
   async function retract(entryId: string): Promise<void> {
-    if (!retractReason.trim()) return setRetractError("A reason is required.");
+    if (!retractReason.trim()) {
+      setRetractError("A reason is required.");
+      return focusById(RETRACT_REASON_ID);
+    }
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
     setRetractError(null);
+    setNotice(null);
     const res = await client
       .POST("/api/v1/patients/{id}/code-status/{entryId}/entered-in-error", {
         params: { path: { id: patientId, entryId } },
@@ -113,6 +183,7 @@ export function PatientCodeStatusTab({ patientId }: { patientId: string }): JSX.
       })
       .catch(() => null);
     busyRef.current = false;
+    if (!res || res.error) refocusAfterWrite.current = RETRACT_REASON_ID;
     setBusy(false);
     if (!res) {
       return setRetractError("The entry could not be retracted. Check the list before retrying.");
@@ -120,18 +191,26 @@ export function PatientCodeStatusTab({ patientId }: { patientId: string }): JSX.
     if (res.error) return setRetractError(writeError(res, "The entry could not be retracted."));
     setRetractId(null);
     setRetractReason("");
-    await afterWrite();
+    await afterWrite("Entry marked entered in error.");
   }
 
   if (list === null) return <p aria-busy="true">Loading code status…</p>;
   if (list === "error") return <InlineAlert>Code status could not be loaded.</InlineAlert>;
 
+  const valueError = formError?.field === "value" ? formError.message : null;
+
   return (
     <div style={{ display: "grid", gap: "1rem" }}>
       <Panel title="Code status" icon="shield">
-        <p style={{ margin: 0, fontWeight: 600 }}>
+        {stale ? (
+          <InlineAlert tone="warning">
+            The list could not be refreshed and may be out of date. Reload before relying on it.
+          </InlineAlert>
+        ) : null}
+        <p ref={currentRef} tabIndex={-1} style={{ margin: 0, fontWeight: 600 }}>
           Current: {list.current ? CODE_STATUS_LABEL[list.current.codeStatus] : "Not recorded"}
         </p>
+        {notice ? <InlineAlert tone="success">{notice}</InlineAlert> : null}
         <form
           noValidate
           onSubmit={(e) => {
@@ -140,31 +219,44 @@ export function PatientCodeStatusTab({ patientId }: { patientId: string }): JSX.
           }}
           style={{ display: "grid", gap: "0.75rem", marginTop: "0.75rem" }}
         >
-          <fieldset style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: "0.35rem" }}>
-            <legend>Record a new code status</legend>
-            {VALUES.map((v) => (
+          <fieldset
+            aria-describedby={valueError ? VALUE_ERROR_ID : undefined}
+            aria-invalid={valueError ? true : undefined}
+            style={{ border: 0, padding: 0, margin: 0, display: "grid", gap: "0.35rem" }}
+          >
+            <legend>Record a new code status (required)</legend>
+            {VALUES.map((v, i) => (
               <label key={v} style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
                 <input
                   type="radio"
+                  id={i === 0 ? FIRST_RADIO_ID : undefined}
                   name="code-status"
                   value={v}
+                  required
                   checked={value === v}
                   onChange={() => setValue(v)}
                 />
                 {CODE_STATUS_LABEL[v]}
               </label>
             ))}
+            {valueError ? (
+              <p id={VALUE_ERROR_ID} role="alert" style={{ margin: 0 }}>
+                {valueError}
+              </p>
+            ) : null}
           </fieldset>
           <TextAreaField
+            id={REASON_ID}
             label="Reason"
             required
             value={reason}
             maxLength={1000}
+            error={formError?.field === "reason" ? formError.message : undefined}
             onChange={(e) => setReason(e.target.value)}
           />
-          {formError ? <InlineAlert>{formError}</InlineAlert> : null}
+          {formError?.field === "form" ? <InlineAlert>{formError.message}</InlineAlert> : null}
           <div>
-            <Button type="submit" disabled={busy}>
+            <Button id={SUBMIT_ID} type="submit" disabled={busy}>
               Record code status
             </Button>
           </div>
@@ -198,26 +290,34 @@ export function PatientCodeStatusTab({ patientId }: { patientId: string }): JSX.
                     ) : retractId === e.id ? (
                       <div style={{ display: "grid", gap: "0.5rem" }}>
                         <TextAreaField
-                          label="Why was this entered in error?"
+                          id={RETRACT_REASON_ID}
+                          label={`Why was this entered in error? (${CODE_STATUS_LABEL[e.codeStatus]}, ${fmtDate(e.recordedAt)})`}
                           required
                           value={retractReason}
                           maxLength={1000}
+                          error={retractError ?? undefined}
                           onChange={(ev) => setRetractReason(ev.target.value)}
                         />
-                        {retractError ? <InlineAlert>{retractError}</InlineAlert> : null}
                         <div style={{ display: "flex", gap: "0.5rem" }}>
                           <Button type="button" disabled={busy} onClick={() => void retract(e.id)}>
                             Confirm entered in error
                           </Button>
-                          <Button type="button" tone="secondary" onClick={() => setRetractId(null)}>
+                          <Button
+                            type="button"
+                            tone="secondary"
+                            disabled={busy}
+                            onClick={() => closeRetraction(e.id)}
+                          >
                             Cancel
                           </Button>
                         </div>
                       </div>
                     ) : (
                       <Button
+                        id={retractTriggerId(e.id)}
                         type="button"
                         tone="secondary"
+                        disabled={busy}
                         onClick={() => {
                           setRetractId(e.id);
                           setRetractReason("");

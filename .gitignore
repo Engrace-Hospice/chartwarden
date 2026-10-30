@@ -100,3 +100,9 @@ scratchpad/
 graphify-out/graph.json
 graphify-out/graph.html
 graphify-out/cache/
+
+# Local scratch files
+/docs/reference/cms/R5P247i.pdf
+/image/
+/jar.txt
+/rita.jar

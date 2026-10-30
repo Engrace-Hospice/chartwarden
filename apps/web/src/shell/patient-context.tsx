@@ -37,6 +37,8 @@ export interface ChartIdentity {
   medicaid?: string | null;
   /** Active allergen names; null when the read failed (unknown, not "none"); undefined when not loaded. */
   allergies?: readonly string[] | null;
+  /** The loader is still reading medicaid/allergies itself, so a banner must not fetch them too. */
+  extrasPending?: boolean;
 }
 
 // ---------- formatting ----------
@@ -114,13 +116,13 @@ export function useChartIdentity(patientId: string | undefined): ChartIdentity |
     setIdentity(null);
     void (async () => {
       try {
-        const [p, demo, ids, extras] = await Promise.all([
+        const [p, demo, ids] = await Promise.all([
           client.GET("/api/v1/patients/{id}", { params: { path: { id: patientId } } }),
           client.GET("/api/v1/patients/{id}/demographics", { params: { path: { id: patientId } } }),
           client.GET("/api/v1/patients/{id}/identifiers", { params: { path: { id: patientId } } }),
-          loadBannerExtras(client, patientId).catch(() => null),
         ]);
         if (!active || p.error || !p.data) return;
+        // The name and identifiers paint first; coverage and allergies follow and never hold them up.
         setIdentity({
           patient: p.data as ChartPatient,
           sex: sexLabel(
@@ -129,8 +131,21 @@ export function useChartIdentity(patientId: string | undefined): ChartIdentity |
           medicare: medicareTail(
             (ids.data as { identifiers?: Identifier[] } | undefined)?.identifiers,
           ),
-          ...(extras ? { medicaid: extras.medicaid, allergies: extras.allergies } : {}),
+          extrasPending: true,
         });
+        const extras = await loadBannerExtras(client, patientId).catch(() => null);
+        if (!active) return;
+        // A failed read is unknown (null), never "none": no Medicaid row and no allergy chip.
+        setIdentity((prev) =>
+          prev
+            ? {
+                ...prev,
+                medicaid: extras ? extras.medicaid : null,
+                allergies: extras ? extras.allergies : null,
+                extrasPending: false,
+              }
+            : prev,
+        );
       } catch {
         // The banner is context, not content: a failed read leaves the placeholder in place.
       }
@@ -222,11 +237,16 @@ const CODE_STATUS_TONE: Record<CodeStatusValue, StatusTone> = {
 };
 
 /** `unknown` = the read failed (no chip, never a guess); `none` = nothing recorded (NOT Full code). */
-type CodeStatusState =
-  | { kind: "unknown" } // not read yet (loading): no chip
-  | { kind: "unavailable" } // the read failed or was unusable: say so, never imply a status
+type KnownCodeStatus =
   | { kind: "none" }
   | { kind: "set"; value: CodeStatusValue; recordedAt: string };
+
+type CodeStatusState =
+  | { kind: "unknown" } // not read yet (loading): no chip
+  | { kind: "unavailable" } // the first read failed or was unusable: say so, never imply a status
+  | KnownCodeStatus
+  // A re-read failed after a value was known: keep showing it, but marked, since a write may have changed it.
+  | { kind: "stale"; last: KnownCodeStatus };
 
 const codeStatusListeners = new Set<(patientId: string) => void>();
 
@@ -249,13 +269,10 @@ async function loadCodeStatus(client: ApiClient, patientId: string): Promise<Cod
 
 function useCodeStatus(patientId: string): CodeStatusState {
   const client = useApiClient();
-  const [state, setState] = useState<CodeStatusState>({ kind: "unknown" });
+  // The state is stamped with its patient and ignored for any other, so a reused banner never shows
+  // the previous patient's status, not even for the render before an effect could reset it.
+  const [entry, setEntry] = useState<{ patientId: string; state: CodeStatusState } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  // A reused banner must not show the previous patient's status while the new read is in flight.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: patientId is the reset trigger
-  useEffect(() => {
-    setState({ kind: "unknown" });
-  }, [patientId]);
   useEffect(() => {
     const listener = (changed: string) => {
       if (changed === patientId) setRefreshKey((k) => k + 1);
@@ -271,13 +288,22 @@ function useCodeStatus(patientId: string): CodeStatusState {
     loadCodeStatus(client, patientId)
       .catch((): CodeStatusState => ({ kind: "unavailable" }))
       .then((next) => {
-        if (active) setState(next);
+        if (!active) return;
+        setEntry((prev) => {
+          if (next.kind !== "unavailable" || !prev || prev.patientId !== patientId) {
+            return { patientId, state: next };
+          }
+          const known = prev.state.kind === "stale" ? prev.state.last : prev.state;
+          return known.kind === "set" || known.kind === "none"
+            ? { patientId, state: { kind: "stale", last: known } }
+            : { patientId, state: next };
+        });
       });
     return () => {
       active = false;
     };
   }, [client, patientId, refreshKey]);
-  return state;
+  return entry && entry.patientId === patientId ? entry.state : { kind: "unknown" };
 }
 
 function CodeStatusChip({
@@ -288,21 +314,39 @@ function CodeStatusChip({
   patientId: string;
 }): JSX.Element | null {
   if (state.kind === "unknown") return null;
-  const recorded = state.kind === "set" && state.recordedAt;
-  const hint = recorded ? `Code status recorded ${fmtDate(state.recordedAt)}` : "Open code status";
+  const stale = state.kind === "stale";
+  const known = state.kind === "stale" ? state.last : state;
+  const recorded = known.kind === "set" && known.recordedAt;
+  const hint = [
+    recorded ? `Code status recorded ${fmtDate(known.recordedAt)}` : "Open code status",
+    stale ? "could not be refreshed, may be out of date" : null,
+  ]
+    .filter(Boolean)
+    .join(" — ");
+  // A value that could not be re-read is shown, but plainly marked: a write may have changed it since.
+  const suffix = stale ? " (not refreshed)" : "";
   let pill: JSX.Element;
-  if (state.kind === "unavailable")
-    pill = <StatusPill label="Code status unavailable" tone="neutral" />;
-  else if (state.kind === "none")
-    pill = <StatusPill label="Code status not recorded" tone="warning" />;
-  else
+  let name: string;
+  if (known.kind === "unavailable") {
+    name = "Code status unavailable";
+    pill = <StatusPill label={name} tone="neutral" />;
+  } else if (known.kind === "none") {
+    name = `Code status not recorded${suffix}`;
+    pill = <StatusPill label={name} tone="warning" />;
+  } else {
+    name = `Code status: ${CODE_STATUS_LABEL[known.value]}${suffix}`;
     pill = (
-      <StatusPill label={CODE_STATUS_LABEL[state.value]} tone={CODE_STATUS_TONE[state.value]} />
+      <StatusPill
+        label={`${CODE_STATUS_LABEL[known.value]}${suffix}`}
+        tone={CODE_STATUS_TONE[known.value]}
+      />
     );
+  }
   return (
     <Link
       to={`/patients/${patientId}?view=code-status`}
       title={hint}
+      aria-label={`${name}. Open code status`}
       style={{ textDecoration: "none" }}
     >
       {pill}
@@ -341,7 +385,10 @@ export function ChartBanner({
 }): JSX.Element {
   const { patient, sex, medicare } = identity;
   const age = ageYears(patient.dob);
-  const loaded = useBannerExtras(patient.id, identity.medicaid === undefined);
+  const loaded = useBannerExtras(
+    patient.id,
+    identity.medicaid === undefined && !identity.extrasPending,
+  );
   const codeStatus = useCodeStatus(patient.id);
   const extras = {
     medicaid: identity.medicaid === undefined ? loaded.medicaid : identity.medicaid,

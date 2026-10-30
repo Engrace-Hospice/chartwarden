@@ -238,7 +238,7 @@ controls:
       - ci: "cosign sign"
       - script: arch:merge-artifacts
     gap:
-      reason: deploy.yml's `verify` job calls the full ci.yml and `release` needs it (#846; arch:release-gate fails if that is removed), so CI gates the deploy path. What is still open is that main has no branch protection and the `production` Environment has no required reviewers (#16, needs a paid plan and an owner decision), so a workflow edit or a re-run can bypass the gate, and the pre-push hook is opt-in per clone. Close with branch protection (required check plus code-owner review) and Environment reviewers, then flip to implemented.
+      reason: deploy.yml's `verify` job calls the full ci.yml and `release` needs it (#846; arch:release-gate fails if that is removed), so CI gates the deploy path — EXCEPT while deploy.yml carries a ci-waived release-gate line (owner decision 2026-10-30, `verify` is commented out so main deploys without tests or live suites, but release still needs the `quality` job running typecheck and lint, which arch:release-gate pins; lift the waiver by restoring `verify`). While it stands arch:fitness, the tests and the live suites (including the NOBYPASSRLS cross-tenant proof) run only through the opt-in pre-push hook, whose e2e step is also disabled (2026-10-30, to be restored). What is still open is that main has no branch protection and the `production` Environment has no required reviewers (#16, needs a paid plan and an owner decision), so a workflow edit or a re-run can bypass the gate, and the pre-push hook is opt-in per clone. Close with branch protection (required check plus code-owner review) and Environment reviewers, then flip to implemented.
       owner: engineering
       review_by: 2026-12-15
 

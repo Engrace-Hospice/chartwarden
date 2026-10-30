@@ -236519,6 +236519,7 @@
                   "reason": {
                     "minLength": 1,
                     "maxLength": 1000,
+                    "pattern": "\\S",
                     "type": "string"
                   },
                   "sourceDocumentId": {
@@ -236657,6 +236658,7 @@
                   "reason": {
                     "minLength": 1,
                     "maxLength": 1000,
+                    "pattern": "\\S",
                     "type": "string"
                   }
                 }

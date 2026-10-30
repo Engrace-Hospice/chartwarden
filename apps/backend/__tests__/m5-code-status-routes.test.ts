@@ -220,6 +220,7 @@ describe("POST /patients/:id/code-status", () => {
     ["not_recorded is not a stored value", { ...BODY, codeStatus: "not_recorded" }],
     ["DNI alone is not a value", { ...BODY, codeStatus: "dni" }],
     ["a blank reason", { ...BODY, reason: "" }],
+    ["a whitespace-only reason (trimmed to empty before the CHECK)", { ...BODY, reason: "   " }],
     ["a missing reason", { codeStatus: "dnr" }],
     ["a reason over 1000 chars", { ...BODY, reason: "x".repeat(1001) }],
     ["a non-uuid source document", { ...BODY, sourceDocumentId: "nope" }],
@@ -260,6 +261,12 @@ describe("POST /patients/:id/code-status/:entryId/entered-in-error", () => {
   it("requires the reason", async () => {
     const { app } = makeServer();
     expect((await app.inject(EIE(MD, {}))).statusCode).toBe(422);
+  });
+
+  it("422s a whitespace-only reason", async () => {
+    const { app, calls } = makeServer();
+    expect((await app.inject(EIE(MD, { reason: "  \n " }))).statusCode).toBe(422);
+    expect(calls.eie).toHaveLength(0);
   });
 
   it("refuses a reader", async () => {

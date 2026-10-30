@@ -28,6 +28,8 @@ const DEPLOY_YML = join(
   ".github/workflows/deploy.yml",
 );
 const CI_WORKFLOW = "./.github/workflows/ci.yml";
+/** `# release-gate: ci-waived — <reason>` in deploy.yml: the owner's recorded decision to deploy without CI. */
+const CI_WAIVER = /^ {0,2}#[ \t]*release-gate:[ \t]*ci-waived[ \t]+\S.*$/m;
 
 interface Job {
   readonly needs: readonly string[];
@@ -105,6 +107,34 @@ function transitiveNeeds(jobs: ReadonlyMap<string, Job>, from: string): Set<stri
   return seen;
 }
 
+/** The text of one top-level job, comment lines dropped; empty when the job is absent. */
+function jobBlock(yaml: string, name: string): string {
+  const lines = yaml.split("\n").filter((l) => !/^\s*#/.test(l));
+  const start = lines.findIndex((l) => l === `  ${name}:`);
+  if (start < 0) return "";
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((l) => /^ {0,2}\S/.test(l));
+  return rest.slice(0, end < 0 ? undefined : end).join("\n");
+}
+
+/** Under a CI waiver the floor is typecheck + lint: `release` must need a real `quality` job and demand its success. */
+function qualityFloorProblems(yaml: string, jobs: ReadonlyMap<string, Job>): string[] {
+  const problems: string[] = [];
+  if (!transitiveNeeds(jobs, "release").has("quality"))
+    return ["`release` has a CI waiver but does not need the `quality` job (typecheck and lint)"];
+  const block = jobBlock(yaml, "quality");
+  for (const cmd of ["bun run typecheck", "bun run lint"])
+    if (!new RegExp(`^\\s+(?:-\\s+)?run:\\s*${cmd}\\s*$`, "m").test(block))
+      problems.push(`the \`quality\` job does not run \`${cmd}\``);
+  if (/^ {4}if:\s*(false|\$\{\{\s*false\s*\}\})\s*$/m.test(block))
+    problems.push("the `quality` job is disabled by a constant `if:`");
+  if (!jobs.get("release")?.cond?.includes("needs.quality.result == 'success'"))
+    problems.push(
+      "`release` has a CI waiver but its `if:` does not require needs.quality.result == 'success'",
+    );
+  return problems;
+}
+
 /** Every way `yaml` lets an unverified commit reach a release or the VPS; empty when the gate holds. */
 export function releaseGateProblems(yaml: string): string[] {
   const jobs = parseJobs(yaml);
@@ -112,10 +142,15 @@ export function releaseGateProblems(yaml: string): string[] {
   if (!jobs.has("release")) problems.push("no `release` job");
   if (!jobs.has("deploy")) problems.push("no `deploy` job");
   if (problems.length > 0) return problems;
+  // An explicit, reasoned waiver (a comment line, so it shows in review and `git blame`) lets a deploy
+  // run without CI. Silently commenting `verify` out still fails; `deploy` still has to need `release`.
+  const waived = CI_WAIVER.test(yaml);
   const verified = [...transitiveNeeds(jobs, "release")].some(
     (j) => jobs.get(j)?.uses === CI_WORKFLOW,
   );
-  if (!verified)
+  // A waiver drops the full CI, not the floor: `release` must still need the `quality` job (typecheck + lint).
+  if (waived) problems.push(...qualityFloorProblems(yaml, jobs));
+  if (!verified && !waived)
     problems.push(`\`release\` does not (transitively) need a job that \`uses: ${CI_WORKFLOW}\``);
   if (!transitiveNeeds(jobs, "deploy").has("release"))
     problems.push("`deploy` does not need `release`");
@@ -126,6 +161,7 @@ export function releaseGateProblems(yaml: string): string[] {
   );
   const releaseIf = jobs.get("release")?.cond;
   if (
+    !waived &&
     releaseIf !== undefined &&
     !ciJobs.some((j) => releaseIf.includes(`needs.${j}.result == 'success'`))
   )
@@ -146,5 +182,10 @@ if (import.meta.main) {
     );
     process.exit(1);
   }
-  console.log("OK release-gate: release needs the full CI (ci.yml) and deploy needs release.");
+  const waived = CI_WAIVER.test(readFileSync(DEPLOY_YML, "utf8"));
+  console.log(
+    waived
+      ? "OK release-gate: CI WAIVED (owner decision) — release still needs typecheck + lint (quality) and deploy needs release."
+      : "OK release-gate: release needs the full CI (ci.yml) and deploy needs release.",
+  );
 }
