@@ -79,15 +79,27 @@ describe("check-release-gate", () => {
     expect(releaseGateProblems(y)).toHaveLength(1);
   });
 
-  const NO_CI = `${DEBOUNCE}  release:\n    needs: debounce\n${DEPLOY}`;
+  const QUALITY = "  quality:\n    needs: debounce\n    runs-on: x\n";
+  const NO_CI = `${DEBOUNCE}${QUALITY}  release:\n    needs: [debounce, quality]\n${DEPLOY}`;
   const WAIVER = "# release-gate: ci-waived — owner decision, test\n";
 
-  it("passes a recorded waiver even though release does not need CI", () => {
+  it("passes a recorded waiver when release still needs the quality job", () => {
     expect(releaseGateProblems(WAIVER + wf(NO_CI))).toEqual([]);
   });
 
+  it("fails a waiver under which release no longer needs the quality job", () => {
+    const y = WAIVER + wf(`${DEBOUNCE}${QUALITY}  release:\n    needs: debounce\n${DEPLOY}`);
+    expect(releaseGateProblems(y)).toEqual([
+      "`release` has a CI waiver but does not need the `quality` job (typecheck and lint)",
+    ]);
+  });
+
   it("still requires deploy to need release under a waiver", () => {
-    const y = WAIVER + wf(`${DEBOUNCE}  release:\n    needs: debounce\n  deploy:\n    runs-on: x\n`);
+    const y =
+      WAIVER +
+      wf(
+        `${DEBOUNCE}${QUALITY}  release:\n    needs: [debounce, quality]\n  deploy:\n    runs-on: x\n`,
+      );
     expect(releaseGateProblems(y)).toEqual(["`deploy` does not need `release`"]);
   });
 

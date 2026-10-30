@@ -120,6 +120,11 @@ export function releaseGateProblems(yaml: string): string[] {
   const verified = [...transitiveNeeds(jobs, "release")].some(
     (j) => jobs.get(j)?.uses === CI_WORKFLOW,
   );
+  // A waiver drops the full CI, not the floor: `release` must still need the `quality` job (typecheck + lint).
+  if (waived && !transitiveNeeds(jobs, "release").has("quality"))
+    problems.push(
+      "`release` has a CI waiver but does not need the `quality` job (typecheck and lint)",
+    );
   if (!verified && !waived)
     problems.push(`\`release\` does not (transitively) need a job that \`uses: ${CI_WORKFLOW}\``);
   if (!transitiveNeeds(jobs, "deploy").has("release"))
