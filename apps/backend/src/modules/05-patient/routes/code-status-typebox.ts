@@ -26,13 +26,16 @@ export const CodeStatusListResponseSchema = Type.Object({
   history: Type.Array(CodeStatusViewSchema),
 });
 
+/** A reason is trimmed before it is stored, so one that is only whitespace must be a 400, not a CHECK violation. */
+const NON_BLANK = "\\S";
+
 export const SetCodeStatusBodySchema = Type.Object({
   codeStatus: CodeStatusValue,
-  reason: Type.String({ minLength: 1, maxLength: 1000 }),
+  reason: Type.String({ minLength: 1, maxLength: 1000, pattern: NON_BLANK }),
   /** The M22 directive document this decision rests on (validated: same patient, a code-status directive). */
   sourceDocumentId: Type.Optional(Type.String({ format: "uuid" })),
 });
 
 export const EnteredInErrorCodeStatusBodySchema = Type.Object({
-  reason: Type.String({ minLength: 1, maxLength: 1000 }),
+  reason: Type.String({ minLength: 1, maxLength: 1000, pattern: NON_BLANK }),
 });

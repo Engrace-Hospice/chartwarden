@@ -5,7 +5,7 @@ process.env.TZ = "America/Los_Angeles";
 
 import { ApiClientProvider } from "@chartwarden/ui";
 import { act, render, screen } from "@testing-library/react";
-import type { ComponentProps } from "react";
+import { type ComponentProps, useLayoutEffect } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterAll, describe, expect, it } from "vitest";
 import {
@@ -138,6 +138,44 @@ describe("patient-context code status chip (ADR-0104)", () => {
     renderBanner(IDENTITY, { [PATH]: entry("dnr") });
     const link = (await screen.findByText("DNR")).closest("a");
     expect(link?.getAttribute("href")).toBe("/patients/p-1?view=code-status");
+  });
+
+  it("names the chip link for assistive tech, including where it goes", async () => {
+    renderBanner(IDENTITY, { [PATH]: entry("dnr") });
+    expect(await screen.findByRole("link", { name: "Code status: DNR. Open code status" })).toBeTruthy();
+  });
+
+  it("never shows the previous patient's status on a reused banner", async () => {
+    // Patient p-2's read never settles, so any chip on p-2's banner could only be p-1's leftover.
+    const client = {
+      GET: async (path: string, init?: { params?: { path?: { id?: string } } }) =>
+        path === PATH && init?.params?.path?.id === "p-2"
+          ? new Promise(() => {})
+          : { data: path === PATH ? entry("dnr") : undefined, error: undefined },
+    } as unknown as ComponentProps<typeof ApiClientProvider>["client"];
+    // act() flushes effects before any assertion, so sample the DOM at layout-effect time: that is the
+    // committed paint, before a passive reset effect could have run.
+    const painted: string[] = [];
+    function Probe(): null {
+      useLayoutEffect(() => {
+        painted.push(document.body.textContent ?? "");
+      });
+      return null;
+    }
+    const banner = (id: string) => (
+      <ApiClientProvider client={client}>
+        <MemoryRouter>
+          <ChartBanner identity={{ ...IDENTITY, patient: { ...IDENTITY.patient, id } }} />
+          <Probe />
+        </MemoryRouter>
+      </ApiClientProvider>
+    );
+    const { rerender } = render(banner("p-1"));
+    expect(await screen.findByText("DNR")).toBeTruthy();
+    painted.length = 0;
+    rerender(banner("p-2"));
+    expect(painted.length).toBeGreaterThan(0);
+    expect(painted.some((text) => text.includes("DNR"))).toBe(false);
   });
 
   it("labels DNR/DNI and comfort measures only", async () => {

@@ -1057,7 +1057,10 @@ export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.E
                   type="button"
                   aria-pressed={taskChip === c.key}
                   className={taskChip === c.key ? "is-selected" : undefined}
-                  onClick={() => setTaskChip(c.key)}
+                  onClick={() => {
+                    setTaskChip(c.key);
+                    setShowAllTasks(false);
+                  }}
                 >
                   {c.label}
                   <span className="wx-seg-count wx-nums">{taskCounts[c.key] ?? 0}</span>

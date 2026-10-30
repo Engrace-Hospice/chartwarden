@@ -249,13 +249,10 @@ async function loadCodeStatus(client: ApiClient, patientId: string): Promise<Cod
 
 function useCodeStatus(patientId: string): CodeStatusState {
   const client = useApiClient();
-  const [state, setState] = useState<CodeStatusState>({ kind: "unknown" });
+  // The state is stamped with its patient and ignored for any other, so a reused banner never shows
+  // the previous patient's status, not even for the render before an effect could reset it.
+  const [entry, setEntry] = useState<{ patientId: string; state: CodeStatusState } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  // A reused banner must not show the previous patient's status while the new read is in flight.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: patientId is the reset trigger
-  useEffect(() => {
-    setState({ kind: "unknown" });
-  }, [patientId]);
   useEffect(() => {
     const listener = (changed: string) => {
       if (changed === patientId) setRefreshKey((k) => k + 1);
@@ -271,13 +268,13 @@ function useCodeStatus(patientId: string): CodeStatusState {
     loadCodeStatus(client, patientId)
       .catch((): CodeStatusState => ({ kind: "unavailable" }))
       .then((next) => {
-        if (active) setState(next);
+        if (active) setEntry({ patientId, state: next });
       });
     return () => {
       active = false;
     };
   }, [client, patientId, refreshKey]);
-  return state;
+  return entry?.patientId === patientId ? entry.state : { kind: "unknown" };
 }
 
 function CodeStatusChip({
@@ -291,18 +288,24 @@ function CodeStatusChip({
   const recorded = state.kind === "set" && state.recordedAt;
   const hint = recorded ? `Code status recorded ${fmtDate(state.recordedAt)}` : "Open code status";
   let pill: JSX.Element;
-  if (state.kind === "unavailable")
-    pill = <StatusPill label="Code status unavailable" tone="neutral" />;
-  else if (state.kind === "none")
-    pill = <StatusPill label="Code status not recorded" tone="warning" />;
-  else
+  let name: string;
+  if (state.kind === "unavailable") {
+    name = "Code status unavailable";
+    pill = <StatusPill label={name} tone="neutral" />;
+  } else if (state.kind === "none") {
+    name = "Code status not recorded";
+    pill = <StatusPill label={name} tone="warning" />;
+  } else {
+    name = `Code status: ${CODE_STATUS_LABEL[state.value]}`;
     pill = (
       <StatusPill label={CODE_STATUS_LABEL[state.value]} tone={CODE_STATUS_TONE[state.value]} />
     );
+  }
   return (
     <Link
       to={`/patients/${patientId}?view=code-status`}
       title={hint}
+      aria-label={`${name}. Open code status`}
       style={{ textDecoration: "none" }}
     >
       {pill}
