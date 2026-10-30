@@ -56,6 +56,7 @@ import { ChartModuleRail, type ChartSection } from "../../shell/chart-module-rai
 import { CareTeamStaffLookupField } from "../../shell/entity-lookups";
 import { useOpenPatientConversation } from "../../shell/open-patient-conversation";
 import { useSession } from "../../shell/session";
+import { PatientCodeStatusTab } from "./patient-code-status";
 
 interface PatientSummary {
   id: string;
@@ -111,9 +112,11 @@ export function PatientChart(): JSX.Element {
             ? "care-team"
             : rawView === "privacy"
               ? "privacy"
-              : rawView === "clinical"
-                ? "clinical"
-                : "summary";
+              : rawView === "code-status"
+                ? "code-status"
+                : rawView === "clinical"
+                  ? "clinical"
+                  : "summary";
 
   const [state, setState] = useState<
     | { kind: "loading" }
@@ -268,6 +271,8 @@ function PatientChartReady({
             <CareTeamTab patientId={p.id} organizationId={p.organizationId} />
           ) : section === "privacy" ? (
             <PrivacyFlagsTab patientId={p.id} />
+          ) : section === "code-status" ? (
+            <PatientCodeStatusTab patientId={p.id} />
           ) : section === "clinical" ? (
             <ClinicalTab patient={p} data={data} clinical={clinical} />
           ) : (

@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1873,
-    "coveredRoutes": 1873,
-    "directRoutesReferenced": 1710
+    "routes": 1876,
+    "coveredRoutes": 1876,
+    "directRoutesReferenced": 1713
   },
   "modules": [
     {
@@ -86,7 +86,7 @@
     },
     {
       "module": "05-patient",
-      "routes": 45,
+      "routes": 48,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
@@ -104,6 +104,8 @@
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
         "apps/backend/__tests__/m5-care-team-staff-routes.test.ts",
         "apps/backend/__tests__/m5-care-team-staff.live.test.ts",
+        "apps/backend/__tests__/m5-code-status-routes.test.ts",
+        "apps/backend/__tests__/m5-code-status.live.test.ts",
         "apps/backend/__tests__/m5-lifecycle-routes.test.ts",
         "apps/backend/__tests__/m5-patient-wristband.live.test.ts",
         "apps/backend/__tests__/m5-privacy-officer.test.ts",
@@ -111,7 +113,7 @@
         "apps/backend/__tests__/patient-routes.test.ts",
         "apps/backend/__tests__/s11-adversarial-stages.live.test.ts"
       ],
-      "directRoutesReferenced": 45
+      "directRoutesReferenced": 48
     },
     {
       "module": "06-admission",
@@ -161,6 +163,8 @@
         "apps/backend/__tests__/m36-role-send.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.live.test.ts",
         "apps/backend/__tests__/m5-assignment-routes.test.ts",
+        "apps/backend/__tests__/m5-code-status-routes.test.ts",
+        "apps/backend/__tests__/m5-code-status.live.test.ts",
         "apps/backend/__tests__/m5-lifecycle-routes.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts",
         "apps/backend/__tests__/orders-caseload-scope.test.ts",

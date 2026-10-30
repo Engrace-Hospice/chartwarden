@@ -807,6 +807,8 @@ jobs:
           # GAP-015 — the §4.3 M5 care-team assignment routes (first production writer of
           # `patient_assignment`): assign/end through the route feeds the real CaseloadProvider store.
           - { name: "M5 assignment routes", scripts: "test:m5:assignment-routes:live" }
+          # ADR-0104 — the clinician-set patient code status: append-only grant, RLS, scrubbed audit, read audit.
+          - { name: "M5 code status", scripts: "test:m5:code-status:live" }
           # Demo finding 2 — the narrow care-team staff lookup (patient.assign, allowlisted fields, org-bound, RLS).
           - { name: "M5 care-team staff", scripts: "test:m5:care-team-staff:live" }
           # GAP-020 — the patient wristband (on-file side of the BCMA wrong_patient arm): digest-only storage,

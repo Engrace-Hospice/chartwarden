@@ -740,6 +740,8 @@ function ChartActions({
 
     { label: "Privacy flags", to: `/patients/${patientId}?view=privacy` },
 
+    { label: "Code status", to: `/patients/${patientId}?view=code-status` },
+
     {
       label: "Election & certification",
 

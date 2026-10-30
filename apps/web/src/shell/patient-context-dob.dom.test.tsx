@@ -4,11 +4,16 @@ const ORIGINAL_TZ = process.env.TZ;
 process.env.TZ = "America/Los_Angeles";
 
 import { ApiClientProvider } from "@chartwarden/ui";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterAll, describe, expect, it } from "vitest";
-import { ChartBanner, type ChartIdentity, PatientSummaryPanel } from "./patient-context";
+import {
+  ChartBanner,
+  type ChartIdentity,
+  PatientSummaryPanel,
+  notifyCodeStatusChanged,
+} from "./patient-context";
 
 const IDENTITY: ChartIdentity = {
   patient: {
@@ -106,6 +111,76 @@ describe("patient-context DOB rendering", () => {
     );
     expect(screen.getByText("Medicaid")).toBeTruthy();
     expect(screen.getByText("...7766")).toBeTruthy();
+  });
+});
+
+describe("patient-context code status chip (ADR-0104)", () => {
+  const PATH = "/api/v1/patients/{id}/code-status";
+  const entry = (codeStatus: string) => ({
+    current: { codeStatus, recordedAt: "2026-10-29T12:00:00.000Z" },
+    history: [],
+  });
+  const bg = (el: HTMLElement) => (el.closest(".wx-status-pill") as HTMLElement).style.background;
+
+  it("shows DNR in the critical tone, like an allergy", async () => {
+    renderBanner(IDENTITY, {
+      [PATH]: entry("dnr"),
+      "/api/v1/patients/{id}/allergies": {
+        allergies: [{ allergenText: "Penicillin", verificationStatus: "verified" }],
+      },
+    });
+    const dnr = await screen.findByText("DNR");
+    const allergy = await screen.findByText("Allergy: Penicillin");
+    expect(bg(dnr)).toBe(bg(allergy));
+  });
+
+  it("labels DNR/DNI and comfort measures only", async () => {
+    renderBanner(IDENTITY, { [PATH]: entry("dnr_dni") });
+    expect(await screen.findByText("DNR / DNI")).toBeTruthy();
+  });
+
+  it("shows Full code in a neutral tone, not the critical one", async () => {
+    renderBanner(IDENTITY, {
+      [PATH]: entry("full_code"),
+      "/api/v1/patients/{id}/allergies": { allergies: [] },
+    });
+    const full = await screen.findByText("Full code");
+    expect(bg(full)).toBe(bg(await screen.findByText("No allergies recorded")));
+  });
+
+  it("says not recorded when no status is on file, and never Full code", async () => {
+    renderBanner(IDENTITY, { [PATH]: { current: null, history: [] } });
+    expect(await screen.findByText("Code status not recorded")).toBeTruthy();
+    expect(screen.queryByText("Full code")).toBeNull();
+  });
+
+  it("shows no code status chip when the read failed", async () => {
+    renderBanner(IDENTITY, {});
+    await screen.findByText("Active");
+    expect(screen.queryByText(/Code status|DNR|Full code/)).toBeNull();
+  });
+
+  it("refreshes the chip after a code status is set (no stale DNR / Full code)", async () => {
+    const responses: Record<string, unknown> = { [PATH]: entry("full_code") };
+    renderBanner(IDENTITY, responses);
+    expect(await screen.findByText("Full code")).toBeTruthy();
+    responses[PATH] = entry("dnr");
+    await act(async () => {
+      notifyCodeStatusChanged("p-1");
+    });
+    expect(await screen.findByText("DNR")).toBeTruthy();
+    expect(screen.queryByText("Full code")).toBeNull();
+  });
+
+  it("ignores a change notification for another patient", async () => {
+    const responses: Record<string, unknown> = { [PATH]: entry("full_code") };
+    renderBanner(IDENTITY, responses);
+    await screen.findByText("Full code");
+    responses[PATH] = entry("dnr");
+    await act(async () => {
+      notifyCodeStatusChanged("someone-else");
+    });
+    expect(screen.queryByText("DNR")).toBeNull();
   });
 });
 

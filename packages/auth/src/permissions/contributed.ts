@@ -556,6 +556,12 @@ export const M5_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "caseload_or_scope",
   },
+  "patient.edit_code_status": {
+    resource: "patient",
+    action: "edit_code_status",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
   "patient.assign": {
     resource: "patient",
     action: "assign",

@@ -1004,6 +1004,12 @@ import {
   CareTeamStaffQuerySchema as M5ECareTeamStaffQuerySchema,
 } from "../../apps/backend/src/modules/05-patient/routes/care-team-staff-typebox";
 import {
+  CodeStatusListResponseSchema as M5ECodeStatusListResponseSchema,
+  CodeStatusViewSchema as M5ECodeStatusViewSchema,
+  EnteredInErrorCodeStatusBodySchema as M5EEnteredInErrorCodeStatusBodySchema,
+  SetCodeStatusBodySchema as M5ESetCodeStatusBodySchema,
+} from "../../apps/backend/src/modules/05-patient/routes/code-status-typebox";
+import {
   CaregiverBodySchema as M5EWCaregiverBodySchema,
   DeceasedBodySchema as M5EWDeceasedBodySchema,
   IdentifierBodySchema as M5EWIdentifierBodySchema,
@@ -7301,6 +7307,23 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Mark an allergy entered-in-error (reason required; the row is kept for the survey trail)",
     body: M5EEnteredInErrorAllergyBodySchema,
     response: M5EPatientAllergyViewSchema,
+  },
+  "GET /api/v1/patients/:id/code-status": {
+    summary:
+      "Patient code status (ADR-0104) — current (newest entry not entered-in-error; null = not recorded, never Full Code) + append-only history",
+    response: M5ECodeStatusListResponseSchema,
+  },
+  "POST /api/v1/patients/:id/code-status": {
+    summary:
+      "Record the patient's code status (patient.edit_code_status; reason required; optional source directive document validated through M22)",
+    body: M5ESetCodeStatusBodySchema,
+    response: M5ECodeStatusViewSchema,
+  },
+  "POST /api/v1/patients/:id/code-status/:entryId/entered-in-error": {
+    summary:
+      "Mark a code-status entry entered-in-error (reason required; the row is kept for the survey trail)",
+    body: M5EEnteredInErrorCodeStatusBodySchema,
+    response: M5ECodeStatusViewSchema,
   },
   "POST /api/v1/patients/:id/wristbands": {
     summary:

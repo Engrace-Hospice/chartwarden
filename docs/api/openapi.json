@@ -236186,6 +236186,486 @@
         }
       }
     },
+    "/api/v1/patients/{id}/code-status": {
+      "get": {
+        "operationId": "getApiV1PatientsByIdCodestatus",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Patient code status (ADR-0104) — current (newest entry not entered-in-error; null = not recorded, never Full Code) + append-only history",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "current",
+                    "history"
+                  ],
+                  "properties": {
+                    "current": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "patientId",
+                            "codeStatus",
+                            "reason",
+                            "sourceDocumentId",
+                            "recordedByMembershipId",
+                            "recordedAt",
+                            "enteredInErrorAt"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "patientId": {
+                              "type": "string"
+                            },
+                            "codeStatus": {
+                              "anyOf": [
+                                {
+                                  "const": "full_code",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "dnr",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "dnr_dni",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "comfort_measures_only",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "reason": {
+                              "type": "string"
+                            },
+                            "sourceDocumentId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "recordedByMembershipId": {
+                              "type": "string"
+                            },
+                            "recordedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "enteredInErrorAt": {
+                              "anyOf": [
+                                {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "patientId",
+                          "codeStatus",
+                          "reason",
+                          "sourceDocumentId",
+                          "recordedByMembershipId",
+                          "recordedAt",
+                          "enteredInErrorAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "type": "string"
+                          },
+                          "codeStatus": {
+                            "anyOf": [
+                              {
+                                "const": "full_code",
+                                "type": "string"
+                              },
+                              {
+                                "const": "dnr",
+                                "type": "string"
+                              },
+                              {
+                                "const": "dnr_dni",
+                                "type": "string"
+                              },
+                              {
+                                "const": "comfort_measures_only",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "sourceDocumentId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "recordedByMembershipId": {
+                            "type": "string"
+                          },
+                          "recordedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "enteredInErrorAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PatientsByIdCodestatus",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Record the patient's code status (patient.edit_code_status; reason required; optional source directive document validated through M22)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "codeStatus",
+                    "reason",
+                    "sourceDocumentId",
+                    "recordedByMembershipId",
+                    "recordedAt",
+                    "enteredInErrorAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "codeStatus": {
+                      "anyOf": [
+                        {
+                          "const": "full_code",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dnr",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dnr_dni",
+                          "type": "string"
+                        },
+                        {
+                          "const": "comfort_measures_only",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "sourceDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recordedByMembershipId": {
+                      "type": "string"
+                    },
+                    "recordedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "enteredInErrorAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "codeStatus",
+                  "reason"
+                ],
+                "properties": {
+                  "codeStatus": {
+                    "anyOf": [
+                      {
+                        "const": "full_code",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dnr",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dnr_dni",
+                        "type": "string"
+                      },
+                      {
+                        "const": "comfort_measures_only",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "sourceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/patients/{id}/code-status/{entryId}/entered-in-error": {
+      "post": {
+        "operationId": "postApiV1PatientsByIdCodestatusByEntryIdEnteredinerror",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Mark a code-status entry entered-in-error (reason required; the row is kept for the survey trail)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entryId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "codeStatus",
+                    "reason",
+                    "sourceDocumentId",
+                    "recordedByMembershipId",
+                    "recordedAt",
+                    "enteredInErrorAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "codeStatus": {
+                      "anyOf": [
+                        {
+                          "const": "full_code",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dnr",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dnr_dni",
+                          "type": "string"
+                        },
+                        {
+                          "const": "comfort_measures_only",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "sourceDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "recordedByMembershipId": {
+                      "type": "string"
+                    },
+                    "recordedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "enteredInErrorAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/patients/{id}/deceased": {
       "post": {
         "operationId": "postApiV1PatientsByIdDeceased",

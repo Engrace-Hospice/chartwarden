@@ -203,6 +203,89 @@ function useBannerExtras(patientId: string, enabled: boolean): BannerExtras {
   return extras;
 }
 
+// ---------- code status (ADR-0104) ----------
+
+type CodeStatusValue = "full_code" | "dnr" | "dnr_dni" | "comfort_measures_only";
+
+export const CODE_STATUS_LABEL: Record<CodeStatusValue, string> = {
+  full_code: "Full code",
+  dnr: "DNR",
+  dnr_dni: "DNR / DNI",
+  comfort_measures_only: "Comfort measures only",
+};
+
+const CODE_STATUS_TONE: Record<CodeStatusValue, StatusTone> = {
+  full_code: "neutral",
+  dnr: "critical",
+  dnr_dni: "critical",
+  comfort_measures_only: "critical",
+};
+
+/** `unknown` = the read failed (no chip, never a guess); `none` = nothing recorded (NOT Full code). */
+type CodeStatusState =
+  | { kind: "unknown" }
+  | { kind: "none" }
+  | { kind: "set"; value: CodeStatusValue; recordedAt: string };
+
+const codeStatusListeners = new Set<(patientId: string) => void>();
+
+/** The setter calls this after a set / retraction so every mounted banner re-reads (no stale DNR / Full code). */
+export function notifyCodeStatusChanged(patientId: string): void {
+  for (const listener of codeStatusListeners) listener(patientId);
+}
+
+async function loadCodeStatus(client: ApiClient, patientId: string): Promise<CodeStatusState> {
+  const res = await client.GET("/api/v1/patients/{id}/code-status", {
+    params: { path: { id: patientId } },
+  });
+  const current = (res.data as { current?: unknown } | undefined)?.current;
+  if (res.error || current === undefined) return { kind: "unknown" };
+  if (current === null) return { kind: "none" };
+  const { codeStatus, recordedAt } = current as { codeStatus?: string; recordedAt?: string };
+  if (!codeStatus || !(codeStatus in CODE_STATUS_LABEL)) return { kind: "unknown" };
+  return { kind: "set", value: codeStatus as CodeStatusValue, recordedAt: recordedAt ?? "" };
+}
+
+function useCodeStatus(patientId: string): CodeStatusState {
+  const client = useApiClient();
+  const [state, setState] = useState<CodeStatusState>({ kind: "unknown" });
+  const [refreshKey, setRefreshKey] = useState(0);
+  useEffect(() => {
+    const listener = (changed: string) => {
+      if (changed === patientId) setRefreshKey((k) => k + 1);
+    };
+    codeStatusListeners.add(listener);
+    return () => {
+      codeStatusListeners.delete(listener);
+    };
+  }, [patientId]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is the re-read trigger
+  useEffect(() => {
+    let active = true;
+    loadCodeStatus(client, patientId)
+      .catch((): CodeStatusState => ({ kind: "unknown" }))
+      .then((next) => {
+        if (active) setState(next);
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, patientId, refreshKey]);
+  return state;
+}
+
+function CodeStatusChip({ state }: { state: CodeStatusState }): JSX.Element | null {
+  if (state.kind === "unknown") return null;
+  if (state.kind === "none") return <StatusPill label="Code status not recorded" tone="warning" />;
+  return (
+    <span
+      title={state.recordedAt ? `Code status recorded ${fmtDate(state.recordedAt)}` : undefined}
+    >
+      <StatusPill label={CODE_STATUS_LABEL[state.value]} tone={CODE_STATUS_TONE[state.value]} />
+    </span>
+  );
+}
+
 /** Medicare / Medicaid rows for whichever the patient has; a single "Coverage —" row when neither. */
 function coverageRows(
   medicare: string | null | undefined,
@@ -235,6 +318,7 @@ export function ChartBanner({
   const { patient, sex, medicare } = identity;
   const age = ageYears(patient.dob);
   const loaded = useBannerExtras(patient.id, identity.medicaid === undefined);
+  const codeStatus = useCodeStatus(patient.id);
   const extras = {
     medicaid: identity.medicaid === undefined ? loaded.medicaid : identity.medicaid,
     allergies: identity.allergies === undefined ? loaded.allergies : identity.allergies,
@@ -260,6 +344,7 @@ export function ChartBanner({
             label={patientStatusLabel(patient.status)}
             tone={PATIENT_STATUS_TONE[patient.status] ?? "neutral"}
           />
+          <CodeStatusChip state={codeStatus} />
           {extras.allergies === null ? null : extras.allergies.length > 0 ? (
             <span title={extras.allergies.join(", ")}>
               <StatusPill label={allergyLabel(extras.allergies)} tone="critical" />
