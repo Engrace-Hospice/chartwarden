@@ -143,7 +143,7 @@ jobs:
   # and a skipped dependency makes the implicit `success()` false, so without it a dispatched deploy
   # skipped every job (run 36995620625, 2026-10-02). The explicit result checks keep the gate:
   # dispatch skips the debounce WAIT, never `verify`.
-  # release-gate: ci-waived — owner decision 2026-10-30: deploy without CI while Actions minutes/artifact quota are constrained; restore `verify` (below) and `release` needs to lift this
+  # release-gate: ci-waived until 2026-11-29 — owner decision 2026-10-30: deploy without CI while Actions minutes/artifact quota are constrained; restore `verify` (below) and `release` needs to lift this
   # verify:
   #   name: Verify (full CI)
   #   needs: debounce
@@ -333,7 +333,8 @@ jobs:
       # uploaded as a workflow artifact: an SBOM that lives in an Actions run expires with the run's
       # retention and cannot be fetched from the host that is actually running the image. The workflow
       # artifact is kept too, because it is the copy a human can download during an incident without
-      # registry credentials.
+      # registry credentials. The artifact upload is best-effort (a full storage quota must not block
+      # signing); the attestation is the authoritative copy and is verified below.
       - name: Generate SBOMs
         env:
           BACKEND_DIGEST: ${{ steps.build_backend.outputs.digest }}
@@ -356,12 +357,17 @@ jobs:
       # Non-fatal: the signed SBOM attestation below is the authoritative copy; a full artifact-storage
       # quota must not stop the images being signed (the deploy verifies the signature).
       - name: Upload SBOMs as release artifacts
+        id: upload_sbom
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: sbom-${{ env.RELEASE_SHA }}
           path: sbom-*.spdx.json
           retention-days: 90
+      # continue-on-error keeps the job green, so say loudly that the downloadable copy is missing.
+      - name: Flag a missing SBOM artifact
+        if: steps.upload_sbom.outcome == 'failure'
+        run: echo "::warning title=SBOM artifact not uploaded::The downloadable SBOM copy is missing (artifact storage quota?). The signed attestation on each image is intact; fetch it with cosign download attestation."
 
       # Keyless: the OIDC token above becomes a short-lived Fulcio certificate and the signature goes to
       # the Rekor transparency log. Nothing here holds a private key, so there is none to leak — and the
@@ -397,6 +403,9 @@ jobs:
             "ghcr.io/engrace-hospice/chartwarden-web@${WEB_DIGEST}" \
             "ghcr.io/engrace-hospice/chartwarden-docling-worker@${DOCLING_DIGEST}"; do
             cosign verify "$ref" \
+              --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/deploy.yml@${GITHUB_REF}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" >/dev/null
+            cosign verify-attestation "$ref" --type spdxjson \
               --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/deploy.yml@${GITHUB_REF}" \
               --certificate-oidc-issuer "https://token.actions.githubusercontent.com" >/dev/null
             echo "verified $ref"

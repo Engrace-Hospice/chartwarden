@@ -84,7 +84,22 @@ describe("check-release-gate", () => {
   const RELEASE_IF = "    if: ${{ !cancelled() && needs.quality.result == 'success' }}\n";
   const RELEASE = `  release:\n    needs: [debounce, quality]\n${RELEASE_IF}`;
   const NO_CI = `${DEBOUNCE}${QUALITY}${RELEASE}${DEPLOY}`;
-  const WAIVER = "# release-gate: ci-waived — owner decision, test\n";
+  const WAIVER = "# release-gate: ci-waived until 2099-01-01 — owner decision, test\n";
+
+  it("fails a waiver with no expiry date", () => {
+    const y = `# release-gate: ci-waived — owner decision, test\n${wf(NO_CI)}`;
+    expect(releaseGateProblems(y)).toEqual([
+      "the CI waiver has no `until YYYY-MM-DD` expiry (a waiver must be time-boxed)",
+    ]);
+  });
+
+  it("fails a waiver whose expiry has passed, and passes on the expiry day itself", () => {
+    const y = `# release-gate: ci-waived until 2026-11-29 — owner decision, test\n${wf(NO_CI)}`;
+    expect(releaseGateProblems(y, new Date("2026-11-29T23:59:59Z"))).toEqual([]);
+    expect(releaseGateProblems(y, new Date("2026-11-30T00:00:00Z"))).toEqual([
+      "the CI waiver expired on 2026-11-29: restore `verify` or renew the waiver deliberately",
+    ]);
+  });
 
   it("passes a recorded waiver when release still needs the quality job", () => {
     expect(releaseGateProblems(WAIVER + wf(NO_CI))).toEqual([]);
