@@ -5,7 +5,7 @@ process.env.TZ = "America/Los_Angeles";
 
 import { ApiClientProvider } from "@chartwarden/ui";
 import { act, render, screen } from "@testing-library/react";
-import { type ComponentProps, useLayoutEffect } from "react";
+import { type ComponentProps, type JSX, useLayoutEffect } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterAll, describe, expect, it } from "vitest";
 import {
@@ -13,6 +13,7 @@ import {
   type ChartIdentity,
   PatientSummaryPanel,
   notifyCodeStatusChanged,
+  useChartIdentity,
 } from "./patient-context";
 
 const IDENTITY: ChartIdentity = {
@@ -114,6 +115,29 @@ describe("patient-context DOB rendering", () => {
   });
 });
 
+describe("useChartIdentity", () => {
+  function IdentityProbe(): JSX.Element {
+    const identity = useChartIdentity("p-1");
+    return <p>{identity ? `name:${identity.patient.firstName}` : "loading"}</p>;
+  }
+
+  it("paints the identity without waiting for coverage and allergies", async () => {
+    const never = new Promise<never>(() => {});
+    const client = {
+      GET: async (path: string) =>
+        path === "/api/v1/patients/{id}/payers" || path === "/api/v1/patients/{id}/allergies"
+          ? never
+          : { data: path === "/api/v1/patients/{id}" ? IDENTITY.patient : {}, error: undefined },
+    } as unknown as ComponentProps<typeof ApiClientProvider>["client"];
+    render(
+      <ApiClientProvider client={client}>
+        <IdentityProbe />
+      </ApiClientProvider>,
+    );
+    expect(await screen.findByText("name:Ada")).toBeTruthy();
+  });
+});
+
 describe("patient-context code status chip (ADR-0104)", () => {
   const PATH = "/api/v1/patients/{id}/code-status";
   const entry = (codeStatus: string) => ({
@@ -142,7 +166,9 @@ describe("patient-context code status chip (ADR-0104)", () => {
 
   it("names the chip link for assistive tech, including where it goes", async () => {
     renderBanner(IDENTITY, { [PATH]: entry("dnr") });
-    expect(await screen.findByRole("link", { name: "Code status: DNR. Open code status" })).toBeTruthy();
+    expect(
+      await screen.findByRole("link", { name: "Code status: DNR. Open code status" }),
+    ).toBeTruthy();
   });
 
   it("never shows the previous patient's status on a reused banner", async () => {

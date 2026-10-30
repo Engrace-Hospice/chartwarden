@@ -164,4 +164,96 @@ describe("PatientCodeStatusTab", () => {
     renderTab(undefined);
     expect(await screen.findByText(/could not be loaded/i)).toBeTruthy();
   });
+
+  it("keeps the list and form, with a warning, when the re-read after a save fails", async () => {
+    const { GET, state } = renderTab({ current: null, history: [] });
+    await fillAndSubmit(/^DNR$/, "Patient request");
+    state.list = undefined; // the write succeeds, the follow-up read does not
+    expect(await screen.findByText(/could not be refreshed/i)).toBeTruthy();
+    expect(screen.queryByText(/could not be loaded/i)).toBeNull();
+    expect(screen.getByRole("button", { name: "Record code status" })).toBeTruthy();
+    expect(GET.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("confirms a successful save", async () => {
+    renderTab({ current: null, history: [] });
+    await fillAndSubmit(/^DNR$/, "Patient request");
+    expect(await screen.findByText("Code status recorded.")).toBeTruthy();
+  });
+
+  it("moves focus to the missing field, and ties the error to it", async () => {
+    renderTab({ current: null, history: [] });
+    fireEvent.click(await screen.findByRole("button", { name: "Record code status" }));
+    const radio = screen.getAllByRole("radio")[0] as HTMLElement;
+    expect(document.activeElement).toBe(radio);
+    expect(radio.closest("fieldset")?.getAttribute("aria-describedby")).toBeTruthy();
+    fireEvent.click(radio);
+    fireEvent.click(screen.getByRole("button", { name: "Record code status" }));
+    const reasonBox = await screen.findByLabelText(/reason/i);
+    expect(document.activeElement).toBe(reasonBox);
+    expect(reasonBox.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("moves focus into the retraction form, then back to its trigger on Cancel", async () => {
+    renderTab({ current: ENTRY, history: [ENTRY] });
+    fireEvent.click(await screen.findByRole("button", { name: "Mark entered in error" }));
+    expect(document.activeElement).toBe(screen.getByLabelText(/why was this entered in error/i));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "Mark entered in error" }),
+    );
+  });
+
+  it("names the entry in the retraction reason label", async () => {
+    renderTab({ current: ENTRY, history: [ENTRY] });
+    fireEvent.click(await screen.findByRole("button", { name: "Mark entered in error" }));
+    expect(screen.getByLabelText(/why was this entered in error\? \(DNR, /i)).toBeTruthy();
+  });
+
+  it("does not let Cancel close the retraction while a write is in flight", async () => {
+    let release: (r: Result) => void = () => {};
+    renderTab(
+      { current: ENTRY, history: [ENTRY] },
+      () =>
+        new Promise<Result>((resolve) => {
+          release = resolve;
+        }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Mark entered in error" }));
+    fireEvent.change(screen.getByLabelText(/why was this entered in error/i), {
+      target: { value: "wrong chart" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm entered in error" }));
+    await waitFor(() =>
+      expect((screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled).toBe(
+        true,
+      ),
+    );
+    release({ data: ENTRY, response: { status: 201 } });
+  });
+
+  it("starts clean when the same mounted tab is given another patient", async () => {
+    const GET = vi.fn(async (_path: string, init: { params: { path: { id: string } } }) => ({
+      data:
+        init.params.path.id === "p-1"
+          ? { current: ENTRY, history: [ENTRY] }
+          : { current: null, history: [] },
+      response: { status: 200 },
+    }));
+    const client = { GET, POST: vi.fn() } as unknown as ComponentProps<
+      typeof ApiClientProvider
+    >["client"];
+    const tab = (id: string) => (
+      <ApiClientProvider client={client}>
+        <PatientCodeStatusTab patientId={id} />
+      </ApiClientProvider>
+    );
+    const { rerender } = render(tab("p-1"));
+    expect(await screen.findByText("Current: DNR")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/^reason/i), { target: { value: "half typed" } });
+    rerender(tab("p-2"));
+    expect(screen.queryByText("Current: DNR")).toBeNull();
+    expect(await screen.findByText("Current: Not recorded")).toBeTruthy();
+    expect((screen.getByLabelText(/^reason/i) as HTMLTextAreaElement).value).toBe("");
+  });
 });

@@ -37,6 +37,8 @@ export interface ChartIdentity {
   medicaid?: string | null;
   /** Active allergen names; null when the read failed (unknown, not "none"); undefined when not loaded. */
   allergies?: readonly string[] | null;
+  /** The loader is still reading medicaid/allergies itself, so a banner must not fetch them too. */
+  extrasPending?: boolean;
 }
 
 // ---------- formatting ----------
@@ -114,13 +116,13 @@ export function useChartIdentity(patientId: string | undefined): ChartIdentity |
     setIdentity(null);
     void (async () => {
       try {
-        const [p, demo, ids, extras] = await Promise.all([
+        const [p, demo, ids] = await Promise.all([
           client.GET("/api/v1/patients/{id}", { params: { path: { id: patientId } } }),
           client.GET("/api/v1/patients/{id}/demographics", { params: { path: { id: patientId } } }),
           client.GET("/api/v1/patients/{id}/identifiers", { params: { path: { id: patientId } } }),
-          loadBannerExtras(client, patientId).catch(() => null),
         ]);
         if (!active || p.error || !p.data) return;
+        // The name and identifiers paint first; coverage and allergies follow and never hold them up.
         setIdentity({
           patient: p.data as ChartPatient,
           sex: sexLabel(
@@ -129,8 +131,21 @@ export function useChartIdentity(patientId: string | undefined): ChartIdentity |
           medicare: medicareTail(
             (ids.data as { identifiers?: Identifier[] } | undefined)?.identifiers,
           ),
-          ...(extras ? { medicaid: extras.medicaid, allergies: extras.allergies } : {}),
+          extrasPending: true,
         });
+        const extras = await loadBannerExtras(client, patientId).catch(() => null);
+        if (!active) return;
+        // A failed read is unknown (null), never "none": no Medicaid row and no allergy chip.
+        setIdentity((prev) =>
+          prev
+            ? {
+                ...prev,
+                medicaid: extras ? extras.medicaid : null,
+                allergies: extras ? extras.allergies : null,
+                extrasPending: false,
+              }
+            : prev,
+        );
       } catch {
         // The banner is context, not content: a failed read leaves the placeholder in place.
       }
@@ -344,7 +359,10 @@ export function ChartBanner({
 }): JSX.Element {
   const { patient, sex, medicare } = identity;
   const age = ageYears(patient.dob);
-  const loaded = useBannerExtras(patient.id, identity.medicaid === undefined);
+  const loaded = useBannerExtras(
+    patient.id,
+    identity.medicaid === undefined && !identity.extrasPending,
+  );
   const codeStatus = useCodeStatus(patient.id);
   const extras = {
     medicaid: identity.medicaid === undefined ? loaded.medicaid : identity.medicaid,
