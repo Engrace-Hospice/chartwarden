@@ -1,6 +1,7 @@
 {
   "name": "chartwarden",
   "private": true,
+  "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "description": "ChartWarden - multi-tenant hospice EHR SaaS. Architecture-fitness kit, spec corpus, and staged implementation monorepo.",
   "engines": {

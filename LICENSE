@@ -1,0 +1,62 @@
+ChartWarden Proprietary Software License
+
+Copyright (c) 2026 Engrace Hospice. All rights reserved.
+
+This software, including its source code, specifications, documentation, designs,
+data models, and all related materials (the "Software"), is proprietary and
+confidential. It is not open source and is not licensed under any open-source
+license. No right or license is granted except as stated in a separate written
+agreement signed by the copyright holder (an "Agreement").
+
+1. NO LICENSE BY DEFAULT. Access to this repository, or possession of a copy of
+   the Software, does not grant any right to use it. Without an Agreement you may
+   not use, run, copy, modify, merge, publish, distribute, sublicense, sell,
+   lease, host, or make the Software available to any third party, in whole or in
+   part.
+
+2. RESTRICTIONS. Even under an Agreement, unless it expressly permits otherwise,
+   you may not: (a) reverse engineer, decompile, or disassemble the Software or
+   attempt to derive its source code or specifications; (b) remove or alter any
+   copyright, confidentiality, or proprietary notice; (c) use the Software to
+   build, train, or benchmark a competing product or service; (d) use the
+   Software, its outputs, or its documentation to train or fine-tune any machine
+   learning model; (e) circumvent any technical, licensing, or access control; or
+   (f) use the Software in violation of applicable law, including HIPAA and other
+   health-privacy laws.
+
+3. CONFIDENTIALITY. The Software is a trade secret and confidential information
+   of the copyright holder. You must keep it confidential, restrict access to
+   individuals bound by written confidentiality obligations who need it for a
+   permitted purpose, and protect it with at least reasonable care.
+
+4. OWNERSHIP. The copyright holder retains all right, title, and interest in the
+   Software and all derivative works, improvements, and feedback. No ownership
+   transfers to you.
+
+5. THIRD-PARTY COMPONENTS. The Software may depend on third-party components that
+   are licensed to you under their own terms. This license does not alter those
+   terms and does not apply to those components.
+
+6. NO PATIENT DATA. The Software is provided without real patient data. You are
+   solely responsible for compliance with HIPAA and all other laws that apply to
+   data you process with it under an Agreement.
+
+7. TERMINATION. Any rights under an Agreement end automatically on breach of this
+   license. On termination you must stop all use and delete or return every copy
+   of the Software. Sections 2 to 4 and 8 to 10 survive termination.
+
+8. DISCLAIMER. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+   PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. THE SOFTWARE IS NOT A MEDICAL
+   DEVICE AND IS NOT A SUBSTITUTE FOR CLINICAL JUDGMENT.
+
+9. LIMITATION OF LIABILITY. TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE COPYRIGHT
+   HOLDER IS NOT LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR
+   PUNITIVE DAMAGES, OR FOR LOSS OF DATA, PROFITS, OR REVENUE, ARISING FROM THE
+   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+10. REMEDIES. Unauthorized use would cause irreparable harm for which damages are
+    an inadequate remedy; the copyright holder may seek injunctive relief in
+    addition to any other remedy.
+
+To request a commercial license, contact the copyright holder.

@@ -98,6 +98,7 @@ function pkgJson(root: string): string {
       name: nameFor(root),
       version: "0.0.0",
       private: true,
+      license: "SEE LICENSE IN LICENSE",
       type: "module",
       exports: { ".": "./src/index.ts" },
       types: "./src/index.ts",
