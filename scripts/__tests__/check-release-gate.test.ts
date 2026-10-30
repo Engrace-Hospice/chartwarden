@@ -12,7 +12,8 @@ const DEPLOY = "  deploy:\n    needs: release\n    runs-on: x\n";
 describe("check-release-gate", () => {
   it("passes the real deploy.yml", () => {
     const real = readFileSync(join(__dirname, "../../.github/workflows/deploy.yml"), "utf8");
-    expect(releaseGateProblems(real)).toEqual([]);
+    // Fixed date: waiver expiry is enforced by `arch:release-gate` (wall clock), not by every unit-test run.
+    expect(releaseGateProblems(real, new Date("2026-10-30T00:00:00Z"))).toEqual([]);
   });
 
   it("passes when release needs verify (flow list form)", () => {
@@ -88,6 +89,13 @@ describe("check-release-gate", () => {
 
   it("fails a waiver with no expiry date", () => {
     const y = `# release-gate: ci-waived — owner decision, test\n${wf(NO_CI)}`;
+    expect(releaseGateProblems(y)).toEqual([
+      "the CI waiver has no `until YYYY-MM-DD` expiry (a waiver must be time-boxed)",
+    ]);
+  });
+
+  it("does not accept an `until <date>` buried in the waiver reason as the expiry", () => {
+    const y = `# release-gate: ci-waived — restore after audit, until 2099-01-01\n${wf(NO_CI)}`;
     expect(releaseGateProblems(y)).toEqual([
       "the CI waiver has no `until YYYY-MM-DD` expiry (a waiver must be time-boxed)",
     ]);
