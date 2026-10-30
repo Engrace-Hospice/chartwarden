@@ -730,6 +730,10 @@
     color: var(--color-muted);
     font-size: 0.75rem;
   }
+  /* A link inside muted text is only a few percent off in color, so it needs a non-color cue (WCAG 1.4.1). */
+  .wx-row-sub a {
+    text-decoration: underline;
+  }
   .wx-sr-only,
   .wx-visually-hidden {
     position: absolute;

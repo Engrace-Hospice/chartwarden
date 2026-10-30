@@ -466,7 +466,14 @@ export function DetailPageLayout({ header, children, aside }: DetailPageLayoutPr
     <div className="wx-detail-page" style={fillColumn}>
       {header}
       <div style={splitRow}>
-        <div style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}>{children}</div>
+        <section
+          aria-label="Content"
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: Scrollable content needs keyboard focus.
+          tabIndex={0}
+          style={{ flex: 1, overflow: "auto", padding: "1.5rem" }}
+        >
+          {children}
+        </section>
         {aside ? (
           <section
             className="wx-context-rail"
