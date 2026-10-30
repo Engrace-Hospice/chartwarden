@@ -100,6 +100,7 @@ export function registerPatientAllergyRoutes(
         auditRead: {
           resourceKind: "patient",
           patientIdParam: "id",
+          resourceIdParam: "id",
           fields: ["allergies"],
         },
       },
