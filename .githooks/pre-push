@@ -19,16 +19,17 @@ while read -r _local_ref _local_sha remote_ref _remote_sha; do
   [ "$remote_ref" = "$PROTECTED" ] && pushing_main=1
 done
 
-# e2e runs on EVERY push (all specs, local stack; no Actions minutes). Bypass: SKIP_E2E=1 git push
-if [ "${SKIP_E2E:-}" != "1" ]; then
-  E2E_URL="${E2E_BASE_URL:-http://localhost:5173}"
-  if ! curl -fsS -o /dev/null --max-time 5 "$E2E_URL"; then
-    echo "pre-push: e2e stack not reachable at $E2E_URL — start the Docker stack, or SKIP_E2E=1 git push." >&2
-    exit 1
-  fi
-  echo "pre-push: running Playwright e2e (all specs) against ${E2E_URL}…"
-  bun run test:e2e
-fi
+# TEMPORARILY DISABLED (owner decision 2026-10-30; to be restored): e2e ran on EVERY push (all specs,
+# local stack; no Actions minutes). Bypass was: SKIP_E2E=1 git push
+# if [ "${SKIP_E2E:-}" != "1" ]; then
+#   E2E_URL="${E2E_BASE_URL:-http://localhost:5173}"
+#   if ! curl -fsS -o /dev/null --max-time 5 "$E2E_URL"; then
+#     echo "pre-push: e2e stack not reachable at $E2E_URL — start the Docker stack, or SKIP_E2E=1 git push." >&2
+#     exit 1
+#   fi
+#   echo "pre-push: running Playwright e2e (all specs) against ${E2E_URL}…"
+#   bun run test:e2e
+# fi
 
 # Only gate pushes that update main with the fitness suite; feature-branch pushes go through PR CI.
 [ "$pushing_main" -eq 0 ] && exit 0
