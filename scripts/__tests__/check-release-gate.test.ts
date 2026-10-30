@@ -78,4 +78,20 @@ describe("check-release-gate", () => {
     const y = wf(`${DEBOUNCE}${other}  release:\n    needs: verify\n${DEPLOY}`);
     expect(releaseGateProblems(y)).toHaveLength(1);
   });
+
+  const NO_CI = `${DEBOUNCE}  release:\n    needs: debounce\n${DEPLOY}`;
+  const WAIVER = "# release-gate: ci-waived — owner decision, test\n";
+
+  it("passes a recorded waiver even though release does not need CI", () => {
+    expect(releaseGateProblems(WAIVER + wf(NO_CI))).toEqual([]);
+  });
+
+  it("still requires deploy to need release under a waiver", () => {
+    const y = WAIVER + wf(`${DEBOUNCE}  release:\n    needs: debounce\n  deploy:\n    runs-on: x\n`);
+    expect(releaseGateProblems(y)).toEqual(["`deploy` does not need `release`"]);
+  });
+
+  it("ignores a waiver with no reason", () => {
+    expect(releaseGateProblems(`# release-gate: ci-waived\n${wf(NO_CI)}`)).not.toEqual([]);
+  });
 });

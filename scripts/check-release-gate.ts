@@ -28,6 +28,8 @@ const DEPLOY_YML = join(
   ".github/workflows/deploy.yml",
 );
 const CI_WORKFLOW = "./.github/workflows/ci.yml";
+/** `# release-gate: ci-waived — <reason>` in deploy.yml: the owner's recorded decision to deploy without CI. */
+const CI_WAIVER = /^[ \t]*#[ \t]*release-gate:[ \t]*ci-waived[ \t]+\S.*$/m;
 
 interface Job {
   readonly needs: readonly string[];
@@ -112,10 +114,13 @@ export function releaseGateProblems(yaml: string): string[] {
   if (!jobs.has("release")) problems.push("no `release` job");
   if (!jobs.has("deploy")) problems.push("no `deploy` job");
   if (problems.length > 0) return problems;
+  // An explicit, reasoned waiver (a comment line, so it shows in review and `git blame`) lets a deploy
+  // run without CI. Silently commenting `verify` out still fails; `deploy` still has to need `release`.
+  const waived = CI_WAIVER.test(yaml);
   const verified = [...transitiveNeeds(jobs, "release")].some(
     (j) => jobs.get(j)?.uses === CI_WORKFLOW,
   );
-  if (!verified)
+  if (!verified && !waived)
     problems.push(`\`release\` does not (transitively) need a job that \`uses: ${CI_WORKFLOW}\``);
   if (!transitiveNeeds(jobs, "deploy").has("release"))
     problems.push("`deploy` does not need `release`");
@@ -126,6 +131,7 @@ export function releaseGateProblems(yaml: string): string[] {
   );
   const releaseIf = jobs.get("release")?.cond;
   if (
+    !waived &&
     releaseIf !== undefined &&
     !ciJobs.some((j) => releaseIf.includes(`needs.${j}.result == 'success'`))
   )
