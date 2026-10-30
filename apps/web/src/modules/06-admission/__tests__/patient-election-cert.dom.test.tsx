@@ -506,7 +506,8 @@ describe("Patient Election & Certification workspace", () => {
 
     const dialog = screen.getByRole("dialog", { name: "CTI details" });
     await waitFor(() => expect(within(dialog).getByText("Initial Certification")).toBeTruthy());
-    // 2 page reads + the FY2027 election-addendum read + 2 CTI detail attempts.
-    expect(client.GET).toHaveBeenCalledTimes(5);
+    // 1 page read + the 5 shared-banner identity reads (patient, demographics, identifiers, payers, allergies)
+    // + the FY2027 election-addendum read + 2 CTI detail attempts.
+    expect(client.GET).toHaveBeenCalledTimes(9);
   });
 });

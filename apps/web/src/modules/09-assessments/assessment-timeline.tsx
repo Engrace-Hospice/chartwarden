@@ -3,10 +3,8 @@ import {
   EmptyState,
   Glyph,
   LoadingSpinner,
-  PatientBanner,
   PatientWorkspaceLayout,
   StatusPill,
-  ageYears,
   cardSurface,
   ghostBorder,
   t,
@@ -37,6 +35,11 @@ import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
+import {
+  ChartPatientBanner,
+  PatientSummaryPanel,
+  useChartIdentity,
+} from "../../shell/patient-context";
 
 import { ASSESSMENT_TONE, stateLabel } from "./assessment-status";
 
@@ -70,18 +73,6 @@ interface AssessmentRow {
   redacted: boolean;
 }
 
-interface PatientSummary {
-  mrn: string;
-
-  lastName: string;
-
-  firstName: string;
-
-  dob: string;
-
-  status: string;
-}
-
 export function AssessmentTimeline(): JSX.Element {
   const client = useApiClient();
 
@@ -90,8 +81,6 @@ export function AssessmentTimeline(): JSX.Element {
   const { patientId } = useParams<{ patientId: string }>();
 
   const [items, setItems] = useState<AssessmentRow[]>([]);
-
-  const [patient, setPatient] = useState<PatientSummary | null>(null);
 
   const [scale, setScale] = useState<string | null>(null);
 
@@ -140,19 +129,11 @@ export function AssessmentTimeline(): JSX.Element {
 
       setError(null);
 
-      const [aRes, pRes] = await Promise.all([
-        client.GET("/api/v1/patients/{patientId}/assessments", {
-          params: { path: { patientId } },
-        }),
-
-        client.GET("/api/v1/patients/{id}", {
-          params: { path: { id: patientId } },
-        }),
-      ]);
+      const aRes = await client.GET("/api/v1/patients/{patientId}/assessments", {
+        params: { path: { patientId } },
+      });
 
       if (!active) return;
-
-      if (pRes.data) setPatient(pRes.data as PatientSummary);
 
       if (aRes.error) {
         setError("Could not load assessments.");
@@ -204,24 +185,10 @@ export function AssessmentTimeline(): JSX.Element {
     if (scale === null && scales.length > 0) setScale(scales[0]!.scaleType);
   }, [scale, scales]);
 
-  const banner = patient ? (
-    <PatientBanner
-      name={`${patient.firstName} ${patient.lastName}`}
-      meta={`DOB ${patient.dob}${ageYears(patient.dob) != null ? ` · ${ageYears(patient.dob)}y` : ""}`}
-      chips={
-        <>
-          <MonoChip>{patient.mrn}</MonoChip>
-
-          <StatusPill
-            label={stateLabel(patient.status)}
-            tone={ASSESSMENT_TONE[patient.status] ?? "neutral"}
-          />
-        </>
-      }
-    />
-  ) : (
-    <PatientBanner name="Assessments" />
-  );
+  // The shared chart banner, so every tab shows the same identity header.
+  const identity = useChartIdentity(patientId);
+  const banner = <ChartPatientBanner patientId={patientId} identity={identity} />;
+  const rail = patientId ? <PatientSummaryPanel identity={identity} /> : undefined;
 
   /** The capture form + its trigger, rendered on every branch below (including the empty state, which is
 
@@ -259,7 +226,7 @@ export function AssessmentTimeline(): JSX.Element {
 
   if (error) {
     return (
-      <PatientWorkspaceLayout banner={banner}>
+      <PatientWorkspaceLayout banner={banner} rail={rail}>
         <div style={workspaceShellStyle}>
           <ChartModuleRail patientId={patientId ?? ""} current="assessments" />
           <main style={fullWidthContentStyle}>
@@ -287,7 +254,7 @@ export function AssessmentTimeline(): JSX.Element {
 
   if (items.length === 0) {
     return (
-      <PatientWorkspaceLayout banner={banner}>
+      <PatientWorkspaceLayout banner={banner} rail={rail}>
         <div style={workspaceShellStyle}>
           <ChartModuleRail patientId={patientId ?? ""} current="assessments" />
 
@@ -332,7 +299,7 @@ export function AssessmentTimeline(): JSX.Element {
   ).length;
 
   return (
-    <PatientWorkspaceLayout banner={banner}>
+    <PatientWorkspaceLayout banner={banner} rail={rail}>
       <div style={workspaceShellStyle}>
         <ChartModuleRail patientId={patientId ?? ""} current="assessments" />
 
@@ -681,10 +648,6 @@ function InlineAlert({
       {action ? <div style={alertActionStyle}>{action}</div> : null}
     </div>
   );
-}
-
-function MonoChip({ children }: { children: ReactNode }): JSX.Element {
-  return <span style={monoChipStyle}>{children}</span>;
 }
 
 function formatScaleName(scaleType: string): string {
@@ -1345,13 +1308,4 @@ const restricted: CSSProperties = {
   color: t.warning,
   fontSize: "0.72rem",
   fontWeight: 650,
-};
-
-const monoChipStyle: CSSProperties = {
-  fontFamily: t.fontMono,
-  fontSize: "0.78rem",
-  color: t.onSurfaceVariant,
-  background: t.surfaceContainer,
-  borderRadius: "9999px",
-  padding: "0.15rem 0.55rem",
 };

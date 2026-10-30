@@ -4,11 +4,9 @@ import {
   EmptyState,
   LoadingSpinner,
   Modal,
-  PatientBanner,
   PatientWorkspaceLayout,
   RightDetailPanel,
   StatusPill,
-  ageYears,
   t,
   useApiClient,
 } from "@chartwarden/ui";
@@ -38,6 +36,11 @@ import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { AdmissionLookupField } from "../../shell/entity-lookups";
+import {
+  ChartPatientBanner,
+  PatientSummaryPanel,
+  useChartIdentity,
+} from "../../shell/patient-context";
 
 import { useSession } from "../../shell/session";
 
@@ -70,18 +73,6 @@ interface EncounterRow {
   signedAt: string | null;
 
   cosignedAt: string | null;
-}
-
-interface PatientSummary {
-  mrn: string;
-
-  lastName: string;
-
-  firstName: string;
-
-  dob: string;
-
-  status: string;
 }
 
 type EncounterCreateField = "admissionId" | "encounterType" | "discipline" | "serviceDate";
@@ -189,8 +180,6 @@ export function PatientEncounters(): JSX.Element {
 
   const [items, setItems] = useState<EncounterRow[]>([]);
 
-  const [patient, setPatient] = useState<PatientSummary | null>(null);
-
   const [status, setStatus] = useState("");
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -208,15 +197,7 @@ export function PatientEncounters(): JSX.Element {
 
     setError(null);
 
-    const [eRes, pRes] = await Promise.all([
-      client.GET("/api/v1/encounters", { params: { query: { patientId } } }),
-
-      client.GET("/api/v1/patients/{id}", {
-        params: { path: { id: patientId } },
-      }),
-    ]);
-
-    if (pRes.data) setPatient(pRes.data as PatientSummary);
+    const eRes = await client.GET("/api/v1/encounters", { params: { query: { patientId } } });
 
     if (eRes.error) {
       setError("Could not load encounters for this patient.");
@@ -243,27 +224,13 @@ export function PatientEncounters(): JSX.Element {
 
   const selected = items.find((e) => e.id === selectedId) ?? null;
 
-  const banner = patient ? (
-    <PatientBanner
-      name={`${patient.firstName} ${patient.lastName}`}
-      meta={`DOB ${patient.dob}${ageYears(patient.dob) != null ? ` · ${ageYears(patient.dob)}y` : ""}`}
-      chips={
-        <>
-          <MonoChip>{patient.mrn}</MonoChip>
-
-          <StatusPill
-            label={stateLabel(patient.status)}
-            tone={ENCOUNTER_TONE[patient.status] ?? "neutral"}
-          />
-        </>
-      }
-    />
-  ) : (
-    <PatientBanner name="Encounters" />
-  );
+  // The shared chart banner, so every tab shows the same identity header.
+  const identity = useChartIdentity(patientId);
+  const banner = <ChartPatientBanner patientId={patientId} identity={identity} />;
+  const rail = patientId ? <PatientSummaryPanel identity={identity} /> : undefined;
 
   return (
-    <PatientWorkspaceLayout banner={banner}>
+    <PatientWorkspaceLayout banner={banner} rail={rail}>
       <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
         <ChartModuleRail patientId={patientId ?? ""} current="encounters" />
 
@@ -700,28 +667,6 @@ function PrnEncounterModal({
         </div>
       </div>
     </Modal>
-  );
-}
-
-function MonoChip({ children }: { children: ReactNode }): JSX.Element {
-  return (
-    <span
-      style={{
-        fontFamily: t.fontMono,
-
-        fontSize: "0.78rem",
-
-        color: t.onSurfaceVariant,
-
-        background: t.surfaceContainer,
-
-        borderRadius: "9999px",
-
-        padding: "0.15rem 0.55rem",
-      }}
-    >
-      {children}
-    </span>
   );
 }
 

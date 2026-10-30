@@ -8,10 +8,22 @@ export interface BreadcrumbItem {
 }
 
 /** One accessible, route-driven breadcrumb for a chromed page. */
-export function Breadcrumbs({ items }: { items: readonly BreadcrumbItem[] }): JSX.Element | null {
+export function Breadcrumbs({
+  items,
+  onBack,
+}: {
+  items: readonly BreadcrumbItem[];
+  /** When set, a "Back" button precedes the trail and calls this (history back). */
+  onBack?: () => void;
+}): JSX.Element | null {
   if (items.length === 0) return null;
   return (
     <nav className="wx-route-breadcrumbs" aria-label="Breadcrumb">
+      {onBack ? (
+        <button type="button" className="wx-route-breadcrumb-back" onClick={onBack}>
+          ← Back
+        </button>
+      ) : null}
       <ol>
         {items.map((item, index) => (
           <li key={`${item.href ?? "current"}-${index}`}>
