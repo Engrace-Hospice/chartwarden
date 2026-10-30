@@ -31,11 +31,9 @@
 //
 // TWO CONTROLS ARE DELIBERATELY ABSENT, because the routes behind them do not do what their names say:
 //
-//   • REMOVE AN AGENDA ITEM. `DELETE /api/v1/idg/agenda/:id` is a tenant-checked NO-OP — the service
-//     comment says so ("no DELETE grant + no tombstone column on the append-only agenda … → tenant-
-//     checked no-op"). It returns `{ removed: true }` and removes nothing. A Remove button over that
-//     route would report success for work the server does not do, which is the F-007 rule #91's own
-//     acceptance criteria set. Removing attendance IS offered: that one soft-excuses the row
+//   • REMOVE AN AGENDA ITEM. `DELETE /api/v1/idg/agenda/:id` answers a typed 501
+//     (`AGENDA_ITEM_REMOVAL_UNSUPPORTED`; the agenda is append-only) and removes nothing. A Remove
+//     button over it could never succeed (the F-007 rule #91's own acceptance criteria set). Removing attendance IS offered: that one soft-excuses the row
 //     (`status: "excused"`, out of the quorum present-set), which is a real, documented effect.
 //   • THE care_plan_update DECISION beyond `problem_add`. Five of its six mutation ops address M7 plan
 //     elements by uuid (`problemId` / `goalId` / `interventionId`), which needs the plan-element picker

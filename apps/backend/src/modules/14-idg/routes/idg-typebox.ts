@@ -762,7 +762,7 @@ export const RecertWindowsResponseSchema = Type.Object({
   items: Type.Array(RecertWindowItemSchema),
 });
 
-/** The `{ id, removed: true }` envelope the DELETE routes return (attendance/agenda/action-items). */
+/** The `{ id, removed: true }` envelope the attendance and action-item DELETE routes return (agenda DELETE is a typed 501). */
 export const RemovedResponseSchema = Type.Object({
   id: Type.String({ format: "uuid" }),
   removed: Type.Literal(true),

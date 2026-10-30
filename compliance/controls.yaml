@@ -108,6 +108,7 @@ controls:
     evidence:
       - script: test:m4:audit-integrity:live
       - script: test:m4:read-audit:live
+      - script: test:m5:code-status:live
       - script: test:audit:nested-redaction:live
       - script: arch:audit-denylist-sync
 

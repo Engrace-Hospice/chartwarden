@@ -85,7 +85,10 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   // destination page rendered off-screen above the viewport (live-browser audit #3).
   const mainRef = useRef<HTMLElement>(null);
   const headerRef = useRef<HTMLElement>(null);
-  const { pathname } = useLocation();
+  const { pathname, key: locationKey } = useLocation();
+  const navigate = useNavigate();
+  // Tabs and sidebar entries are links, so "previous page" is history back; "default" = no earlier entry.
+  const canGoBackInChart = pathname !== "/" && locationKey !== "default";
   // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is the intentional trigger, not read in the body.
   useEffect(() => {
     mainRef.current?.scrollTo(0, 0);
@@ -215,7 +218,10 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
         </header>
         <main id="wx-main" className="wx-main wx-no-scrollbar" ref={mainRef} tabIndex={-1}>
           <ModuleNavigationTabs sections={sections} pathname={pathname} />
-          <Breadcrumbs items={breadcrumbs} />
+          <Breadcrumbs
+            items={breadcrumbs}
+            onBack={canGoBackInChart ? () => navigate(-1) : undefined}
+          />
           <Outlet />
         </main>
       </div>
@@ -366,14 +372,20 @@ function NavLinkList({
   pathname: string;
 }): JSX.Element | null {
   if (links.length === 0 && borrowed.length === 0) return null;
+  // Exact match wins; otherwise the longest owning prefix, so a detail route (/x/:id) keeps /x lit.
+  const highlighted =
+    links.find((c) => c.path === pathname) ??
+    links
+      .filter((c) => pathname.startsWith(`${c.path}/`))
+      .sort((a, b) => b.path.length - a.path.length)[0];
   return (
     <ul className="wx-nav-children">
       {links.map((c) => (
         <li key={c.id}>
           <Link
             to={c.path}
-            className={pathname === c.path ? "wx-nav-child active" : "wx-nav-child"}
-            aria-current={pathname === c.path ? "page" : undefined}
+            className={c === highlighted ? "wx-nav-child active" : "wx-nav-child"}
+            aria-current={c === highlighted ? "page" : undefined}
           >
             {c.title}
           </Link>

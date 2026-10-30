@@ -674,6 +674,7 @@ import {
   createEnvWebhookSecretResolver,
   createWebhookBodyCipher,
   describeM12AdapterPosture,
+  getDoseSpotPhysicianDirectory,
   idgMedicationHistoryForOrg,
   medicationOrderPatientAndDrugForOrg,
   medicationOrderScheduleContextForOrg,
@@ -5271,6 +5272,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           mountDoseSpotRoutes(app, dbHandle.db, m12OutboxPublisher, {
             transmissionEnabledFor: (organizationId) =>
               m12TenantConfig.isConfiguredFor(organizationId),
+            resolvePhysicianDirectory: getDoseSpotPhysicianDirectory,
           }); // M12 — reads + the write lifecycle over Drizzle+RLS, m12.* transactional outbox
           // F-230 (#248) — the public `POST /webhooks/dosespot` (HMAC + replay window + dedup + DEK-encrypted receipt;
           // Dispensed/PickedUp -> `medication_order_dispense` + `m12.medication_order.dispensed_at_pharmacy`).

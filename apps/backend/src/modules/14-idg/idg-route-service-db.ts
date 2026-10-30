@@ -20,8 +20,8 @@
 //   (1) `withOrgContext` runs with `userId:""` → the M4 write-audit trigger fires with a NULL actor (the
 //       acting membership is the passed `userId`, stored on coordinator/recorded_by/etc. where a column exists);
 //   (2) chartwarden_app has DELETE on NO M14 table (append + status-transition, §3.3) — so `removeAttendance`
-//       soft-removes to `excused`, `removeActionItem` transitions to `cancelled`, and `removeAgendaItem` is a
-//       tenant-checked no-op (the append-only agenda has neither a DELETE grant nor a tombstone column);
+//       soft-removes to `excused`, `removeActionItem` transitions to `cancelled`, and `removeAgendaItem` refuses
+//       with a typed 501 (the append-only agenda has neither a DELETE grant nor a tombstone column);
 //   (3) `idg_patient_packet` (PE/location/patient/admission NOT NULL) is built by the §2.4 packet WORKER, not
 //       the route lifecycle — `buildPackets` only drives the meeting state + emits; the build route then enqueues
 //       an `on-demand` job on `idg.packets-cron` (jobs/packet-build-queue.ts) that runs the real build; the decision inclusion
@@ -122,6 +122,7 @@ import {
   NOTE_PRESENT_STATUSES,
   actionItemMeetingAdjournedError,
   actionItemNotAssigneeError,
+  agendaItemRemovalUnsupportedError,
   addendumEligibilityUnavailableError,
   addendumImmutableError,
   assertMayWriteDisciplineNote,
@@ -1817,24 +1818,13 @@ export function createDbIdgBackend(
         };
       });
     },
-    async removeAgendaItem(
-      orgId,
-      _userId,
-      id,
-      expectedVersion?: number,
-    ): Promise<{ id: string; removed: true }> {
-      // No DELETE grant + no tombstone column on the append-only agenda (compromise #2) → tenant-checked no-op.
+    async removeAgendaItem(orgId, _userId, id): Promise<never> {
+      // No DELETE grant + no tombstone column on the append-only agenda (compromise #2) → the tenant-checked
+      // lookup (404 for a missing/foreign id) is followed by a typed 501; nothing is written.
       return withOrg(orgId, async (tx) => {
-        const [row] = await tx
-          .select({ id: AGD.id, meetingId: AGD.idgMeetingId, version: AGD.version })
-          .from(AGD)
-          .where(eq(AGD.id, id))
-          .limit(1);
+        const [row] = await tx.select({ id: AGD.id }).from(AGD).where(eq(AGD.id, id)).limit(1);
         if (!row) throw new NotFoundError("idg_agenda_item");
-        const meeting = await lockMeeting(tx, row.meetingId);
-        assertMeetingWriteAllowed(meeting.status, "agenda");
-        if (expectedVersion !== undefined) assertNoteVersion(expectedVersion, row.version);
-        return { id, removed: true };
+        throw agendaItemRemovalUnsupportedError();
       });
     },
 

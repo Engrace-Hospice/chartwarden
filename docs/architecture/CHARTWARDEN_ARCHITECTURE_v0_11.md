@@ -1310,7 +1310,8 @@ Approved fields commit to:
 |Diagnoses                             |Module 7                                                                                        |Problem                                                               |
 |Medications                           |Module 12                                                                                       |MedicationOrder (held for prescriber confirmation; no auto-prescribe) |
 |Allergies                             |Module 5                                                                                        |Allergy (linked to Patient)                                           |
-|Code status, advance directive content|Module 22                                                                                       |Document + structured CodeStatusDirective                             |
+|Code status (clinician-set)           |Module 5                                                                                        |CodeStatus history (ADR-0104); Module 22 stores the source directive document|
+|Advance directive content             |Module 22                                                                                       |Document                                                              |
 |DPOA agent                            |Module 5                                                                                        |Caregiver with proxy designation; Module 22 stores the source document|
 |Lab values                            |Module 8                                                                                        |Baseline Vitals/Lab                                                   |
 |Imaging findings                      |Module 22                                                                                       |Document with linked impression text                                  |

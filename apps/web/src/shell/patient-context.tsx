@@ -33,6 +33,10 @@ export interface ChartIdentity {
   sex: string | null;
   /** Medicare MBI tail ("...5234"); null when none on file. */
   medicare: string | null;
+  /** Medicaid member-id tail; null when none on file, undefined when the caller did not load it. */
+  medicaid?: string | null;
+  /** Active allergen names; null when the read failed (unknown, not "none"); undefined when not loaded. */
+  allergies?: readonly string[] | null;
 }
 
 // ---------- formatting ----------
@@ -110,10 +114,11 @@ export function useChartIdentity(patientId: string | undefined): ChartIdentity |
     setIdentity(null);
     void (async () => {
       try {
-        const [p, demo, ids] = await Promise.all([
+        const [p, demo, ids, extras] = await Promise.all([
           client.GET("/api/v1/patients/{id}", { params: { path: { id: patientId } } }),
           client.GET("/api/v1/patients/{id}/demographics", { params: { path: { id: patientId } } }),
           client.GET("/api/v1/patients/{id}/identifiers", { params: { path: { id: patientId } } }),
+          loadBannerExtras(client, patientId).catch(() => null),
         ]);
         if (!active || p.error || !p.data) return;
         setIdentity({
@@ -124,6 +129,7 @@ export function useChartIdentity(patientId: string | undefined): ChartIdentity |
           medicare: medicareTail(
             (ids.data as { identifiers?: Identifier[] } | undefined)?.identifiers,
           ),
+          ...(extras ? { medicaid: extras.medicaid, allergies: extras.allergies } : {}),
         });
       } catch {
         // The banner is context, not content: a failed read leaves the placeholder in place.
@@ -138,6 +144,191 @@ export function useChartIdentity(patientId: string | undefined): ChartIdentity |
 
 // ---------- banner ----------
 
+export interface BannerExtras {
+  /** Masked tail of the current Medicaid coverage's member id; null when none is on file. */
+  medicaid: string | null;
+  /** Allergen names that are not entered-in-error (unverified ones count — missing one is the unsafe failure). */
+  allergies: string[] | null;
+}
+
+type ApiClient = ReturnType<typeof useApiClient>;
+
+/** The coverage + allergy facts the banner and summary card show; a failed read yields none, never a guess. */
+async function loadBannerExtras(client: ApiClient, patientId: string): Promise<BannerExtras> {
+  const [payers, allergies] = await Promise.all([
+    client.GET("/api/v1/patients/{id}/payers", { params: { path: { id: patientId } } }),
+    client.GET("/api/v1/patients/{id}/allergies", { params: { path: { id: patientId } } }),
+  ]);
+  const payerRows =
+    (
+      payers.data as
+        | { payers?: { coverageKind: string; subscriberId: string; current: boolean }[] }
+        | undefined
+    )?.payers ?? [];
+  const medicaid = payerRows.find((p) => p.coverageKind === "medicaid" && p.current);
+  // A response that is not the list shape is a failed read: unknown, never "no allergies".
+  const allergyList = (
+    allergies.data as
+      | { allergies?: { allergenText: string; verificationStatus: string }[] }
+      | undefined
+  )?.allergies;
+  const allergyRows = allergies.error || !Array.isArray(allergyList) ? null : allergyList;
+  return {
+    medicaid: medicaid ? maskTail(medicaid.subscriberId) : null,
+    allergies:
+      allergyRows
+        ?.filter((a) => a.verificationStatus !== "entered_in_error")
+        .map((a) => a.allergenText) ?? null,
+  };
+}
+
+/** Loads the extras for a banner whose identity did not already carry them (`enabled` = it did not). */
+function useBannerExtras(patientId: string, enabled: boolean): BannerExtras {
+  const client = useApiClient();
+  const [extras, setExtras] = useState<BannerExtras>({ medicaid: null, allergies: null });
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    void loadBannerExtras(client, patientId)
+      .then((loaded) => {
+        if (active) setExtras(loaded);
+      })
+      .catch(() => {
+        // Context, not content: a failed read leaves the banner without these extras.
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, patientId, enabled]);
+  return extras;
+}
+
+// ---------- code status (ADR-0104) ----------
+
+type CodeStatusValue = "full_code" | "dnr" | "dnr_dni" | "comfort_measures_only";
+
+export const CODE_STATUS_LABEL: Record<CodeStatusValue, string> = {
+  full_code: "Full code",
+  dnr: "DNR",
+  dnr_dni: "DNR / DNI",
+  comfort_measures_only: "Comfort measures only",
+};
+
+const CODE_STATUS_TONE: Record<CodeStatusValue, StatusTone> = {
+  full_code: "neutral",
+  dnr: "critical",
+  dnr_dni: "critical",
+  comfort_measures_only: "critical",
+};
+
+/** `unknown` = the read failed (no chip, never a guess); `none` = nothing recorded (NOT Full code). */
+type CodeStatusState =
+  | { kind: "unknown" } // not read yet (loading): no chip
+  | { kind: "unavailable" } // the read failed or was unusable: say so, never imply a status
+  | { kind: "none" }
+  | { kind: "set"; value: CodeStatusValue; recordedAt: string };
+
+const codeStatusListeners = new Set<(patientId: string) => void>();
+
+/** The setter calls this after a set / retraction so every mounted banner re-reads (no stale DNR / Full code). */
+export function notifyCodeStatusChanged(patientId: string): void {
+  for (const listener of codeStatusListeners) listener(patientId);
+}
+
+async function loadCodeStatus(client: ApiClient, patientId: string): Promise<CodeStatusState> {
+  const res = await client.GET("/api/v1/patients/{id}/code-status", {
+    params: { path: { id: patientId } },
+  });
+  const current = (res.data as { current?: unknown } | undefined)?.current;
+  if (res.error || current === undefined) return { kind: "unavailable" };
+  if (current === null) return { kind: "none" };
+  const { codeStatus, recordedAt } = current as { codeStatus?: string; recordedAt?: string };
+  if (!codeStatus || !(codeStatus in CODE_STATUS_LABEL)) return { kind: "unavailable" };
+  return { kind: "set", value: codeStatus as CodeStatusValue, recordedAt: recordedAt ?? "" };
+}
+
+function useCodeStatus(patientId: string): CodeStatusState {
+  const client = useApiClient();
+  const [state, setState] = useState<CodeStatusState>({ kind: "unknown" });
+  const [refreshKey, setRefreshKey] = useState(0);
+  // A reused banner must not show the previous patient's status while the new read is in flight.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: patientId is the reset trigger
+  useEffect(() => {
+    setState({ kind: "unknown" });
+  }, [patientId]);
+  useEffect(() => {
+    const listener = (changed: string) => {
+      if (changed === patientId) setRefreshKey((k) => k + 1);
+    };
+    codeStatusListeners.add(listener);
+    return () => {
+      codeStatusListeners.delete(listener);
+    };
+  }, [patientId]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey is the re-read trigger
+  useEffect(() => {
+    let active = true;
+    loadCodeStatus(client, patientId)
+      .catch((): CodeStatusState => ({ kind: "unavailable" }))
+      .then((next) => {
+        if (active) setState(next);
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, patientId, refreshKey]);
+  return state;
+}
+
+function CodeStatusChip({
+  state,
+  patientId,
+}: {
+  state: CodeStatusState;
+  patientId: string;
+}): JSX.Element | null {
+  if (state.kind === "unknown") return null;
+  const recorded = state.kind === "set" && state.recordedAt;
+  const hint = recorded ? `Code status recorded ${fmtDate(state.recordedAt)}` : "Open code status";
+  let pill: JSX.Element;
+  if (state.kind === "unavailable")
+    pill = <StatusPill label="Code status unavailable" tone="neutral" />;
+  else if (state.kind === "none")
+    pill = <StatusPill label="Code status not recorded" tone="warning" />;
+  else
+    pill = (
+      <StatusPill label={CODE_STATUS_LABEL[state.value]} tone={CODE_STATUS_TONE[state.value]} />
+    );
+  return (
+    <Link
+      to={`/patients/${patientId}?view=code-status`}
+      title={hint}
+      style={{ textDecoration: "none" }}
+    >
+      {pill}
+    </Link>
+  );
+}
+
+/** Medicare / Medicaid rows for whichever the patient has; a single "Coverage —" row when neither. */
+function coverageRows(
+  medicare: string | null | undefined,
+  medicaid: string | null | undefined,
+): { label: string; value: string }[] {
+  const rows = [
+    medicare ? { label: "Medicare", value: medicare } : null,
+    medicaid ? { label: "Medicaid", value: medicaid } : null,
+  ].filter((r): r is { label: string; value: string } => r !== null);
+  return rows.length > 0 ? rows : [{ label: "Coverage", value: "—" }];
+}
+
+/** "Allergy: Penicillin" for one, "Allergies: Penicillin, Latex" for two, "Allergies: 3" beyond that. */
+function allergyLabel(allergies: readonly string[]): string {
+  if (allergies.length === 1) return `Allergy: ${allergies[0]}`;
+  if (allergies.length === 2) return `Allergies: ${allergies.join(", ")}`;
+  return `Allergies: ${allergies.length}`;
+}
+
 export function ChartBanner({
   identity,
   actions,
@@ -150,11 +341,19 @@ export function ChartBanner({
 }): JSX.Element {
   const { patient, sex, medicare } = identity;
   const age = ageYears(patient.dob);
+  const loaded = useBannerExtras(patient.id, identity.medicaid === undefined);
+  const codeStatus = useCodeStatus(patient.id);
+  const extras = {
+    medicaid: identity.medicaid === undefined ? loaded.medicaid : identity.medicaid,
+    allergies: identity.allergies === undefined ? loaded.allergies : identity.allergies,
+  };
   const meta = [
     `DOB ${fmtDate(patient.dob)}${age != null ? ` (${age}y)` : ""}`,
     sex,
     `MRN: ${maskTail(patient.mrn)}`,
+    // Only the coverage the patient actually has: Medicare, Medicaid, or both.
     medicare ? `Medicare: ${medicare}` : null,
+    extras.medicaid ? `Medicaid: ${extras.medicaid}` : null,
   ].filter((m): m is string => Boolean(m));
   return (
     <PatientBanner
@@ -164,10 +363,20 @@ export function ChartBanner({
         </Link>
       }
       chips={
-        <StatusPill
-          label={patientStatusLabel(patient.status)}
-          tone={PATIENT_STATUS_TONE[patient.status] ?? "neutral"}
-        />
+        <>
+          <StatusPill
+            label={patientStatusLabel(patient.status)}
+            tone={PATIENT_STATUS_TONE[patient.status] ?? "neutral"}
+          />
+          <CodeStatusChip state={codeStatus} patientId={patient.id} />
+          {extras.allergies === null ? null : extras.allergies.length > 0 ? (
+            <span title={extras.allergies.join(", ")}>
+              <StatusPill label={allergyLabel(extras.allergies)} tone="critical" />
+            </span>
+          ) : (
+            <StatusPill label="No allergies recorded" tone="neutral" />
+          )}
+        </>
       }
       meta={
         <span style={{ display: "inline-flex", flexWrap: "wrap", gap: "0.5rem" }}>
@@ -190,12 +399,16 @@ export function ChartPatientBanner({
   patientId,
   actions,
   nameAsHeading,
+  identity: provided,
 }: {
   patientId: string | undefined;
   actions?: ReactNode;
   nameAsHeading?: boolean;
+  /** An identity the screen already loaded (for its rail); skips this banner's own load. */
+  identity?: ChartIdentity | null;
 }): JSX.Element {
-  const identity = useChartIdentity(patientId);
+  const loadedIdentity = useChartIdentity(provided === undefined ? patientId : undefined);
+  const identity = provided === undefined ? loadedIdentity : provided;
   if (!identity) {
     return (
       <div
@@ -244,7 +457,7 @@ export function PatientSummaryPanel({ identity }: { identity: ChartIdentity | nu
               { label: "DOB", value: `${fmtDate(p.dob)}${age != null ? ` (${age}y)` : ""}` },
               { label: "Sex", value: identity?.sex ?? "—" },
               { label: "MRN", value: maskTail(p.mrn) },
-              { label: "Medicare", value: identity?.medicare ?? "—" },
+              ...coverageRows(identity?.medicare, identity?.medicaid),
             ]}
           />
         </>

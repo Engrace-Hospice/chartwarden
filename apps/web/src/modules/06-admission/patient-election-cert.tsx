@@ -1,10 +1,8 @@
 import {
   EmptyState,
   LoadingSpinner,
-  PatientBanner,
   PatientWorkspaceLayout,
   StatusPill,
-  ageYears,
   cardSurface,
   t,
   useApiClient,
@@ -23,6 +21,11 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
+import {
+  ChartPatientBanner,
+  PatientSummaryPanel,
+  useChartIdentity,
+} from "../../shell/patient-context";
 import { useSession } from "../../shell/session";
 import { ADMISSION_TONE, WINDOW_TONE, stateLabel } from "./admission-status";
 import { CtiDetailModal } from "./cti-detail-modal";
@@ -93,14 +96,6 @@ interface ElectionCert {
   periods: Period[];
   complianceWindows: ComplianceWindow[];
 }
-interface PatientSummary {
-  mrn: string;
-  lastName: string;
-  firstName: string;
-  dob: string;
-  status: string;
-}
-
 // A signature/lifecycle sub-status → §6.6 tone (statements, CTIs, F2F, periods share a small taxonomy).
 const SUB_TONE: Record<string, StatusTone> = {
   drafted: "progress",
@@ -117,20 +112,11 @@ const SUB_TONE: Record<string, StatusTone> = {
 };
 const subTone = (s: string): StatusTone => SUB_TONE[s] ?? "neutral";
 
-const PATIENT_TONE: Record<string, StatusTone> = {
-  active: "success",
-  pending: "progress",
-  admitted: "success",
-  discharged: "neutral",
-  deceased: "neutral",
-};
-
 export function PatientElectionCert(): JSX.Element {
   const client = useApiClient();
   const session = useSession();
   const { patientId } = useParams<{ patientId: string }>();
   const [data, setData] = useState<ElectionCert | null>(null);
-  const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -164,15 +150,9 @@ export function PatientElectionCert(): JSX.Element {
     if (!patientId) return;
     setLoading(true);
     setError(null);
-    const [eRes, pRes] = await Promise.all([
-      client.GET("/api/v1/patients/{patientId}/election-certification", {
-        params: { path: { patientId } },
-      }),
-      client.GET("/api/v1/patients/{id}", {
-        params: { path: { id: patientId } },
-      }),
-    ]);
-    if (pRes.data) setPatient(pRes.data as PatientSummary);
+    const eRes = await client.GET("/api/v1/patients/{patientId}/election-certification", {
+      params: { path: { patientId } },
+    });
     if (eRes.error) {
       setError("Could not load election & certification for this patient.");
       setLoading(false);
@@ -252,23 +232,10 @@ export function PatientElectionCert(): JSX.Element {
     [canSignCti, client, load],
   );
 
-  const banner = patient ? (
-    <PatientBanner
-      name={`${patient.firstName} ${patient.lastName}`}
-      meta={`DOB ${patient.dob}${ageYears(patient.dob) != null ? ` · ${ageYears(patient.dob)}y` : ""}`}
-      chips={
-        <>
-          <MonoChip>{patient.mrn}</MonoChip>
-          <StatusPill
-            label={stateLabel(patient.status)}
-            tone={PATIENT_TONE[patient.status] ?? "neutral"}
-          />
-        </>
-      }
-    />
-  ) : (
-    <PatientBanner name="Election & Certification" />
-  );
+  // The shared chart banner, so every tab shows the same identity header.
+  const identity = useChartIdentity(patientId);
+  const banner = <ChartPatientBanner patientId={patientId} identity={identity} />;
+  const rail = patientId ? <PatientSummaryPanel identity={identity} /> : undefined;
 
   // The rail reads the CURRENT period row, so a completion/attestation reload refreshes it in place.
   const f2fSelected =
@@ -279,7 +246,7 @@ export function PatientElectionCert(): JSX.Element {
   const electionStatement = electionPeriod?.electionStatement ?? null;
 
   return (
-    <PatientWorkspaceLayout banner={banner}>
+    <PatientWorkspaceLayout banner={banner} rail={rail}>
       <div style={workspaceBody}>
         <ChartModuleRail patientId={patientId ?? ""} current="election" />
 
@@ -823,23 +790,6 @@ function fmtDate(v: string | null): string {
   if (!v) return "—";
   return v.slice(0, 10);
 }
-function MonoChip({ children }: { children: ReactNode }): JSX.Element {
-  return (
-    <span
-      style={{
-        fontFamily: t.fontMono,
-        fontSize: "0.78rem",
-        color: t.onSurfaceVariant,
-        background: t.surfaceContainer,
-        borderRadius: "9999px",
-        padding: "0.15rem 0.55rem",
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
 const workspaceBody: CSSProperties = {
   display: "flex",
   flexDirection: "column",

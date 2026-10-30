@@ -39,6 +39,7 @@ export * from "./doclens-sud";
 export * from "./doclens-writeback";
 export * from "./doclens-dx-writeback";
 export * from "./doclens-clinical-writeback";
+export * from "./patient-code-status";
 export * from "./portal";
 export * from "./subscription-billing";
 export * from "./inpatient";

@@ -276,6 +276,10 @@ export {
   buildM5ExtractionAllergyConsumer,
 } from "./outbox-consumers/m22-extraction-allergies";
 export {
+  type PatientCodeStatusRouteDeps,
+  registerPatientCodeStatusRoutes,
+} from "./routes/code-status-routes";
+export {
   type PatientAllergyRouteDeps,
   registerPatientAllergyRoutes,
 } from "./routes/allergy-routes";
@@ -379,8 +383,10 @@ export {
 
 import type { DbClient } from "@chartwarden/db";
 import type { FastifyInstance } from "fastify";
+import { getSeam as _getSeam } from "../../bootstrap/index";
 import { createDbAssignmentsPort as _dbAssignmentsPort } from "./assignments-db";
 import { createDbCareTeamStaffPort as _dbCareTeamStaffPort } from "./care-team-staff-db";
+import { createDbCodeStatusPort as _dbCodeStatusPort } from "./code-status-db";
 import type { M5OutboxPort } from "./deceased-db";
 import type { PatientIdentifierCipher } from "./identifiers/identifier-cipher";
 import { rebuildPrivacySnapshotsForOrg as _rebuildPrivacySnapshotsForOrg } from "./jobs/snapshot-rebuild";
@@ -392,6 +398,7 @@ import { createDbPrivacyOfficerService as _dbPrivacyOfficerService } from "./pri
 import { registerPatientAllergyRoutes as _registerPatientAllergyRoutes } from "./routes/allergy-routes";
 import { registerPatientAssignmentRoutes as _registerPatientAssignmentRoutes } from "./routes/assignment-routes";
 import { registerCareTeamStaffRoutes as _registerCareTeamStaffRoutes } from "./routes/care-team-staff-routes";
+import { registerPatientCodeStatusRoutes as _registerPatientCodeStatusRoutes } from "./routes/code-status-routes";
 import { registerPatientLifecycleRoutes as _registerPatientLifecycleRoutes } from "./routes/lifecycle-routes";
 import { registerPatientRoutes as _registerPatientRoutes } from "./routes/patient-routes";
 import { registerPatientPrivacyRoutes as _registerPatientPrivacyRoutes } from "./routes/privacy-routes";
@@ -434,6 +441,21 @@ export function mountPatientRoutes(
   });
   // F-238 — the allergy list (unverified DocLens rows included, labelled) + verify / entered-in-error.
   _registerPatientAllergyRoutes(app, { db });
+  // ADR-0104 — the clinician-set code status history; a source document is checked through the M22 reader seam.
+  _registerPatientCodeStatusRoutes(app, {
+    codeStatus: _dbCodeStatusPort(db, async (organizationId, patientId, documentId) => {
+      const doc = await _getSeam("DocumentReader").documentMetadata({
+        documentId,
+        organizationId,
+      });
+      return (
+        doc !== null &&
+        doc.patientId === patientId &&
+        doc.aggregateType === "code_status_directive" &&
+        (doc.status === "active" || doc.status === "superseded")
+      );
+    }),
+  });
   // GAP-020 -- print / read / void the patient wristband (the on-file side of the BCMA wrong_patient arm).
   _registerPatientWristbandRoutes(app, { db });
   // M5 §4.2 / §5.1 — the Privacy Officer view, the resync, and the restricted-patients queue; §4.5 — the

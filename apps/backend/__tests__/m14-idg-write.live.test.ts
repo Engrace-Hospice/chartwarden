@@ -282,7 +282,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     expect(rows[0].status).toBe("excused");
   });
 
-  it("agenda add/remove", async () => {
+  it("agenda add; remove is a typed 501 and leaves the agenda unchanged", async () => {
     const m = await seedMeeting(ORG_A, "live");
     const agenda = await svc.addAgendaItem(ORG_A, MEMBER, m, {
       kind: "patient_review",
@@ -290,8 +290,11 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     });
     expect(agenda.kind).toBe("patient_review");
     expect(agenda.patientId).toBe(PATIENT);
-    const removed = await svc.removeAgendaItem(ORG_A, MEMBER, agenda.id);
-    expect(removed.removed).toBe(true);
+    await expect(svc.removeAgendaItem(ORG_A, MEMBER, agenda.id)).rejects.toMatchObject({
+      statusCode: 501,
+      code: "AGENDA_ITEM_REMOVAL_UNSUPPORTED",
+    });
+    expect((await svc.listAgenda(ORG_A, m)).map((a) => a.id)).toContain(agenda.id);
   });
 
   it("record decisions + ADJOURN bursts idg.decision_recorded (team_note excluded); minutes finalize", async () => {
@@ -834,9 +837,6 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     await expect(
       svc.updateAttendance(ORG_A, MEMBER, attendance.id, "excused"),
     ).rejects.toMatchObject({
-      code: "ILLEGAL_MEETING_TRANSITION",
-    });
-    await expect(svc.removeAgendaItem(ORG_A, MEMBER, agenda.id)).rejects.toMatchObject({
       code: "ILLEGAL_MEETING_TRANSITION",
     });
     await expect(svc.addAgendaItem(ORG_A, MEMBER, m, { kind: "other" })).rejects.toMatchObject({

@@ -32,6 +32,7 @@ function fakeDb(over: Row = {}) {
     cosignStatus: "pending",
     prescriberMembershipId: "rn_1",
     prescribingPhysicianMdmId: NAMED_MDM,
+    drugName: "Acetaminophen",
     version: 1,
     ...over,
   };

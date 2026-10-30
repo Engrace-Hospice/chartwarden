@@ -39,6 +39,7 @@ import {
   MED_ORDER_TONE,
   advisoryNote,
   controlledLabel,
+  highRiskLabel,
   isHighRisk,
   stateLabel,
 } from "./medication-status";
@@ -772,7 +773,7 @@ function MedicationsRail({
                   >
                     {m.drugName}
                   </Link>
-                  <div style={{ color: t.onSurfaceVariant }}>{controlledLabel(m.deaSchedule)}</div>
+                  <div style={{ color: t.onSurfaceVariant }}>{highRiskLabel(m)}</div>
                 </div>
               </li>
             ))}

@@ -71,6 +71,16 @@ export function isHighRisk(m: {
   return m.isControlledSubstance || !!m.advisoryDeaSchedule;
 }
 
+/** High Risk row label: the class schedule, else the drug-name advisory marked as such, else `C-?`. */
+export function highRiskLabel(m: {
+  deaSchedule: string | null;
+  advisoryDeaSchedule?: string | null;
+}): string {
+  if (m.deaSchedule) return controlledLabel(m.deaSchedule);
+  if (m.advisoryDeaSchedule) return `${controlledLabel(m.advisoryDeaSchedule)} (advisory)`;
+  return controlledLabel(null);
+}
+
 /** Advisory note for a drug the server's class flag did not mark controlled. */
 export function advisoryNote(m: {
   isControlledSubstance: boolean;

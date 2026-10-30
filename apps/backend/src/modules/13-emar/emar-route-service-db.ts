@@ -20,10 +20,10 @@
 //       acting membership is the passed `userId`, stored where a column exists);
 //   (2) siting (provider_entity_id + location_id) is sourced from the `scheduled_dose` when a scheduledDoseId
 //       is supplied, else null (mig 0133). [PARTLY CLOSED, F-031] patient/admission USED to fall back to a
-//       hard-coded sentinel pair whenever no scheduled dose was named — and nothing in production ever
-//       materializes a `scheduled_dose` (the `m12.medication_order.active` -> `m13.materialize-schedule`
-//       consumer is declared and unbound; see scripts/outbox-deferred-consumers.ts), so EVERY administration
-//       this platform can record today took that branch. The row committed, and then
+//       hard-coded sentinel pair whenever no scheduled dose was named — and nothing in production
+//       materialized a `scheduled_dose` then (the `m12.medication_order.active` -> `m13.materialize-schedule`
+//       consumer is now bound: `buildM13MaterializeScheduleConsumer`, `apps/backend/src/index.ts`), so every
+//       administration took that branch. The row committed, and then
 //       `listAdministrations(patient)` filters on `patient_id` — so it was invisible on the patient's own
 //       eMAR, invisible to every seam consumer that joins by patient, and its witness-attestation scope
 //       compare (which binds the resolved patient) could never match a token a witness minted against the

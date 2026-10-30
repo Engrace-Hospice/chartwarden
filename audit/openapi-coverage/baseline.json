@@ -17,7 +17,7 @@
       "mutatingNoBody": 0
     },
     "05-patient": {
-      "routes": 45,
+      "routes": 48,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -172,7 +172,7 @@
       "mutatingNoBody": 1
     },
     "36-messaging": {
-      "routes": 204,
+      "routes": 205,
       "deficit": 0,
       "mutatingNoBody": 0
     },

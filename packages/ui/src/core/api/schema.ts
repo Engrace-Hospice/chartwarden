@@ -12066,7 +12066,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove an agenda item */
+        /** Remove an agenda item (always 501: the agenda is append-only; the item is unchanged) */
         delete: operations["deleteApiV1IdgAgendaById"];
         options?: never;
         head?: never;
@@ -19322,6 +19322,41 @@ export interface paths {
         put?: never;
         /** Add a caregiver — single open primary (409), LR needs authority + proof doc (422) (§4.3; patient.edit) */
         post: operations["postApiV1PatientsByIdCaregivers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/code-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Patient code status (ADR-0104) — current (newest entry not entered-in-error; null = not recorded, never Full Code) + append-only history */
+        get: operations["getApiV1PatientsByIdCodestatus"];
+        put?: never;
+        /** Record the patient's code status (patient.edit_code_status; reason required; optional source directive document validated through M22) */
+        post: operations["postApiV1PatientsByIdCodestatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/patients/{id}/code-status/{entryId}/entered-in-error": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a code-status entry entered-in-error (reason required; the row is kept for the survey trail) */
+        post: operations["postApiV1PatientsByIdCodestatusByEntryIdEnteredinerror"];
         delete?: never;
         options?: never;
         head?: never;
@@ -63470,14 +63505,7 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": {
-                        /** Format: uuid */
-                        id: string;
-                        /** @constant */
-                        removed: true;
-                    };
-                };
+                content?: never;
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -86147,6 +86175,137 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PatientsByIdCodestatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        current: {
+                            id: string;
+                            patientId: string;
+                            codeStatus: "full_code" | "dnr" | "dnr_dni" | "comfort_measures_only";
+                            reason: string;
+                            sourceDocumentId: string | null;
+                            recordedByMembershipId: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            enteredInErrorAt: string | null;
+                        } | null;
+                        history: {
+                            id: string;
+                            patientId: string;
+                            codeStatus: "full_code" | "dnr" | "dnr_dni" | "comfort_measures_only";
+                            reason: string;
+                            sourceDocumentId: string | null;
+                            recordedByMembershipId: string;
+                            /** Format: date-time */
+                            recordedAt: string;
+                            enteredInErrorAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdCodestatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    codeStatus: "full_code" | "dnr" | "dnr_dni" | "comfort_measures_only";
+                    reason: string;
+                    /** Format: uuid */
+                    sourceDocumentId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        codeStatus: "full_code" | "dnr" | "dnr_dni" | "comfort_measures_only";
+                        reason: string;
+                        sourceDocumentId: string | null;
+                        recordedByMembershipId: string;
+                        /** Format: date-time */
+                        recordedAt: string;
+                        enteredInErrorAt: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdCodestatusByEntryIdEnteredinerror: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        codeStatus: "full_code" | "dnr" | "dnr_dni" | "comfort_measures_only";
+                        reason: string;
+                        sourceDocumentId: string | null;
+                        recordedByMembershipId: string;
+                        /** Format: date-time */
+                        recordedAt: string;
+                        enteredInErrorAt: string | null;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

@@ -6,9 +6,11 @@
 // shape as `sud-treatment-drugs.ts` (closed list, generic name, whole word, case-insensitive; brand names are
 // NOT matched).
 //
-// CLINICAL CONTENT — NOT YET PHARMACIST-REVIEWED. The schedules below are a seed list of common hospice
-// comfort-kit and opioid/benzodiazepine drugs; a clinical owner must confirm it before it is relied on.
-// Combination products whose schedule depends on the combination (e.g. codeine/acetaminophen) are left out.
+// CLINICAL CONTENT — NOT YET PHARMACIST-REVIEWED. The schedules below are FEDERAL (21 CFR 1308) schedules for a
+// seed list of common hospice comfort-kit and opioid/benzodiazepine drugs; a clinical owner must confirm it
+// before it is relied on. State schedules can be stricter (some states schedule gabapentin) and are not listed.
+// Drugs whose schedule depends on the product (codeine alone vs. in a combination, dronabinol capsule vs. solution)
+// are left out. `opium` reads II; camphorated tincture of opium (paregoric) is III, so it over-states, the safe way.
 import type { DeaSchedule } from "@chartwarden/types";
 
 export const SCHEDULED_DRUG_SCHEDULES: Readonly<Record<string, DeaSchedule>> = {
@@ -22,7 +24,18 @@ export const SCHEDULED_DRUG_SCHEDULES: Readonly<Record<string, DeaSchedule>> = {
   meperidine: "II",
   tapentadol: "II",
   methylphenidate: "II",
+  opium: "II",
+  levorphanol: "II",
+  amphetamine: "II",
+  dextroamphetamine: "II",
+  lisdexamfetamine: "II",
   buprenorphine: "III",
+  ketamine: "III",
+  chlordiazepoxide: "IV",
+  oxazepam: "IV",
+  clobazam: "IV",
+  eszopiclone: "IV",
+  modafinil: "IV",
   lorazepam: "IV",
   diazepam: "IV",
   alprazolam: "IV",

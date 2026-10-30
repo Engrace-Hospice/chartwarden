@@ -209,6 +209,7 @@
     "test:m39:consent-expiration:live": "vitest run apps/backend/__tests__/m39-consent-expiration-cron.live.test.ts",
     "test:m5:patient-merge:live": "vitest run apps/backend/__tests__/m5-patient-merge.live.test.ts",
     "test:m5:assignment-routes:live": "vitest run apps/backend/__tests__/m5-assignment-routes.live.test.ts",
+    "test:m5:code-status:live": "vitest run apps/backend/__tests__/m5-code-status.live.test.ts",
     "test:m5:care-team-staff:live": "vitest run apps/backend/__tests__/m5-care-team-staff.live.test.ts",
     "test:m5:patient-wristband:live": "vitest run apps/backend/__tests__/m5-patient-wristband.live.test.ts",
     "test:m5:write-outbox:live": "vitest run apps/backend/__tests__/m5-patient-write-outbox.live.test.ts",

@@ -18,6 +18,7 @@ export type ChartSection =
   | "care-team"
   | "hope"
   | "privacy"
+  | "code-status"
   | "care-plan"
   | "discipline-plans"
   | "encounters"
@@ -54,6 +55,7 @@ const SECTION_TAB: Record<ChartSection, ChartTabKey> = {
   coverage: "overview",
   "care-team": "overview",
   privacy: "overview",
+  "code-status": "overview",
   election: "election",
   clinical: "clinical",
   hope: "assessments",
