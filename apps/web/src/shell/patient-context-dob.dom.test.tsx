@@ -134,6 +134,12 @@ describe("patient-context code status chip (ADR-0104)", () => {
     expect(bg(dnr)).toBe(bg(allergy));
   });
 
+  it("links the chip to the code status panel from any tab", async () => {
+    renderBanner(IDENTITY, { [PATH]: entry("dnr") });
+    const link = (await screen.findByText("DNR")).closest("a");
+    expect(link?.getAttribute("href")).toBe("/patients/p-1?view=code-status");
+  });
+
   it("labels DNR/DNI and comfort measures only", async () => {
     renderBanner(IDENTITY, { [PATH]: entry("dnr_dni") });
     expect(await screen.findByText("DNR / DNI")).toBeTruthy();
@@ -154,10 +160,10 @@ describe("patient-context code status chip (ADR-0104)", () => {
     expect(screen.queryByText("Full code")).toBeNull();
   });
 
-  it("shows no code status chip when the read failed", async () => {
+  it("says code status is unavailable when the read failed, never a status", async () => {
     renderBanner(IDENTITY, {});
-    await screen.findByText("Active");
-    expect(screen.queryByText(/Code status|DNR|Full code/)).toBeNull();
+    expect(await screen.findByText("Code status unavailable")).toBeTruthy();
+    expect(screen.queryByText(/DNR|Full code|not recorded/)).toBeNull();
   });
 
   it("refreshes the chip after a code status is set (no stale DNR / Full code)", async () => {

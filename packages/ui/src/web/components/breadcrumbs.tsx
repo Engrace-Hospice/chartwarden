@@ -21,7 +21,7 @@ export function Breadcrumbs({
     <nav className="wx-route-breadcrumbs" aria-label="Breadcrumb">
       {onBack ? (
         <button type="button" className="wx-route-breadcrumb-back" onClick={onBack}>
-          ← Back
+          <span aria-hidden="true">←</span> Back
         </button>
       ) : null}
       <ol>

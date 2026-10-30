@@ -223,7 +223,8 @@ const CODE_STATUS_TONE: Record<CodeStatusValue, StatusTone> = {
 
 /** `unknown` = the read failed (no chip, never a guess); `none` = nothing recorded (NOT Full code). */
 type CodeStatusState =
-  | { kind: "unknown" }
+  | { kind: "unknown" } // not read yet (loading): no chip
+  | { kind: "unavailable" } // the read failed or was unusable: say so, never imply a status
   | { kind: "none" }
   | { kind: "set"; value: CodeStatusValue; recordedAt: string };
 
@@ -239,10 +240,10 @@ async function loadCodeStatus(client: ApiClient, patientId: string): Promise<Cod
     params: { path: { id: patientId } },
   });
   const current = (res.data as { current?: unknown } | undefined)?.current;
-  if (res.error || current === undefined) return { kind: "unknown" };
+  if (res.error || current === undefined) return { kind: "unavailable" };
   if (current === null) return { kind: "none" };
   const { codeStatus, recordedAt } = current as { codeStatus?: string; recordedAt?: string };
-  if (!codeStatus || !(codeStatus in CODE_STATUS_LABEL)) return { kind: "unknown" };
+  if (!codeStatus || !(codeStatus in CODE_STATUS_LABEL)) return { kind: "unavailable" };
   return { kind: "set", value: codeStatus as CodeStatusValue, recordedAt: recordedAt ?? "" };
 }
 
@@ -250,6 +251,11 @@ function useCodeStatus(patientId: string): CodeStatusState {
   const client = useApiClient();
   const [state, setState] = useState<CodeStatusState>({ kind: "unknown" });
   const [refreshKey, setRefreshKey] = useState(0);
+  // A reused banner must not show the previous patient's status while the new read is in flight.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: patientId is the reset trigger
+  useEffect(() => {
+    setState({ kind: "unknown" });
+  }, [patientId]);
   useEffect(() => {
     const listener = (changed: string) => {
       if (changed === patientId) setRefreshKey((k) => k + 1);
@@ -263,7 +269,7 @@ function useCodeStatus(patientId: string): CodeStatusState {
   useEffect(() => {
     let active = true;
     loadCodeStatus(client, patientId)
-      .catch((): CodeStatusState => ({ kind: "unknown" }))
+      .catch((): CodeStatusState => ({ kind: "unavailable" }))
       .then((next) => {
         if (active) setState(next);
       });
@@ -274,15 +280,33 @@ function useCodeStatus(patientId: string): CodeStatusState {
   return state;
 }
 
-function CodeStatusChip({ state }: { state: CodeStatusState }): JSX.Element | null {
+function CodeStatusChip({
+  state,
+  patientId,
+}: {
+  state: CodeStatusState;
+  patientId: string;
+}): JSX.Element | null {
   if (state.kind === "unknown") return null;
-  if (state.kind === "none") return <StatusPill label="Code status not recorded" tone="warning" />;
-  return (
-    <span
-      title={state.recordedAt ? `Code status recorded ${fmtDate(state.recordedAt)}` : undefined}
-    >
+  const recorded = state.kind === "set" && state.recordedAt;
+  const hint = recorded ? `Code status recorded ${fmtDate(state.recordedAt)}` : "Open code status";
+  let pill: JSX.Element;
+  if (state.kind === "unavailable")
+    pill = <StatusPill label="Code status unavailable" tone="neutral" />;
+  else if (state.kind === "none")
+    pill = <StatusPill label="Code status not recorded" tone="warning" />;
+  else
+    pill = (
       <StatusPill label={CODE_STATUS_LABEL[state.value]} tone={CODE_STATUS_TONE[state.value]} />
-    </span>
+    );
+  return (
+    <Link
+      to={`/patients/${patientId}?view=code-status`}
+      title={hint}
+      style={{ textDecoration: "none" }}
+    >
+      {pill}
+    </Link>
   );
 }
 
@@ -344,7 +368,7 @@ export function ChartBanner({
             label={patientStatusLabel(patient.status)}
             tone={PATIENT_STATUS_TONE[patient.status] ?? "neutral"}
           />
-          <CodeStatusChip state={codeStatus} />
+          <CodeStatusChip state={codeStatus} patientId={patient.id} />
           {extras.allergies === null ? null : extras.allergies.length > 0 ? (
             <span title={extras.allergies.join(", ")}>
               <StatusPill label={allergyLabel(extras.allergies)} tone="critical" />

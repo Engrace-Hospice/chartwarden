@@ -89,7 +89,7 @@ export function registerPatientCodeStatusRoutes(
           resourceKind: "patient",
           patientIdParam: "id",
           resourceIdParam: "id",
-          fields: ["code_status"],
+          fields: ["code_status", "reason"],
         },
       },
     },

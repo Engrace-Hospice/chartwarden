@@ -2,10 +2,10 @@
 // Every call runs under `withOrgContext` as the acting user (RLS scopes it, the M4 trigger attributes it). The
 // table is append-only for the app role (column-level UPDATE grant): a set INSERTs, a retraction stamps the
 // entered-in-error columns. A set locks the patient row FOR UPDATE so concurrent sets serialise and `recordedAt`
-// (taken after the lock) orders them.
+// (the DB's clock_timestamp(), taken after the lock) orders them.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import {
   CodeStatusAlreadyEnteredInErrorError,
   CodeStatusEntryNotFoundError,
@@ -70,15 +70,17 @@ export function createDbCodeStatusPort(
     },
 
     async set(organizationId, patientId, input, actor) {
+      // Checked BEFORE the transaction: the M22 seam opens its own connection, and the patient row lock below must
+      // not be held across it (pool pressure). The check is idempotent; the lock only orders the writes.
+      if (
+        input.sourceDocumentId &&
+        !(await isSourceDirective(organizationId, patientId, input.sourceDocumentId))
+      ) {
+        throw new CodeStatusSourceDocumentInvalidError();
+      }
       return withOrgContext(db, { organizationId, userId: actor.userId }, async (txRaw) => {
         const tx = txRaw as DbClient;
         await lockPatient(tx, patientId);
-        if (
-          input.sourceDocumentId &&
-          !(await isSourceDirective(organizationId, patientId, input.sourceDocumentId))
-        ) {
-          throw new CodeStatusSourceDocumentInvalidError();
-        }
         const [row] = await tx
           .insert(CS)
           .values({
@@ -88,7 +90,8 @@ export function createDbCodeStatusPort(
             reason: input.reason.trim(),
             sourceDocumentId: input.sourceDocumentId ?? null,
             recordedByMembershipId: actor.membershipId,
-            recordedAt: new Date(),
+            // The DB clock, taken after the lock: ordering must not depend on an API instance's skewed clock.
+            recordedAt: sql`clock_timestamp()`,
           })
           .returning();
         if (!row) throw new CodeStatusPatientNotFoundError();

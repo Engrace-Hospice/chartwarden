@@ -82,6 +82,34 @@ describe("PatientCodeStatusTab", () => {
     await waitFor(() => expect(GET.mock.calls.length).toBeGreaterThan(1));
   });
 
+  it("survives a thrown write: shows a message and re-enables the form", async () => {
+    renderTab({ current: null, history: [] }, async () => {
+      throw new Error("network down");
+    });
+    await fillAndSubmit(/^DNR$/, "Patient request");
+    expect(await screen.findByText(/could not be saved/i)).toBeTruthy();
+    expect(
+      (screen.getByRole("button", { name: "Record code status" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("sends one write when submitted twice in a row", async () => {
+    let release: (r: Result) => void = () => {};
+    const { POST } = renderTab(
+      { current: null, history: [] },
+      () =>
+        new Promise<Result>((resolve) => {
+          release = resolve;
+        }),
+    );
+    await fillAndSubmit(/^DNR$/, "Patient request");
+    fireEvent.submit(
+      screen.getByRole("button", { name: "Record code status" }).closest("form") as Element,
+    );
+    expect(POST).toHaveBeenCalledTimes(1);
+    release({ data: ENTRY, response: { status: 201 } });
+  });
+
   it("will not submit without a reason", async () => {
     const { POST } = renderTab({ current: null, history: [] });
     fireEvent.click(await screen.findByRole("radio", { name: /^DNR$/ }));

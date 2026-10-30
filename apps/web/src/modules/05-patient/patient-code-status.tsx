@@ -4,7 +4,7 @@
 // enforces who may write (403 → plain message); this screen does not gate on permission. After every write the
 // list is re-read and `notifyCodeStatusChanged` refreshes the chart banner, so the header never shows a stale value.
 import { Button, InlineAlert, Panel, TextAreaField, useApiClient } from "@chartwarden/ui";
-import { type JSX, useCallback, useEffect, useState } from "react";
+import { type JSX, useCallback, useEffect, useRef, useState } from "react";
 import {
   CODE_STATUS_LABEL,
   fmtDate,
@@ -49,19 +49,25 @@ export function PatientCodeStatusTab({ patientId }: { patientId: string }): JSX.
   const [retractReason, setRetractReason] = useState("");
   const [retractError, setRetractError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false); // a state flag lags a second Enter press; the ref does not
+  const loadSeq = useRef(0); // only the newest read may set the list (patient switch / post-write re-read)
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     try {
       const res = await client.GET("/api/v1/patients/{id}/code-status", {
         params: { path: { id: patientId } },
       });
-      setList(res.error || !res.data ? "error" : (res.data as CodeStatusList));
+      if (seq === loadSeq.current) {
+        setList(res.error || !res.data ? "error" : (res.data as CodeStatusList));
+      }
     } catch {
-      setList("error");
+      if (seq === loadSeq.current) setList("error");
     }
   }, [client, patientId]);
 
   useEffect(() => {
+    setList(null);
     void load();
   }, [load]);
 
@@ -73,13 +79,21 @@ export function PatientCodeStatusTab({ patientId }: { patientId: string }): JSX.
   async function record(): Promise<void> {
     if (!value) return setFormError("Choose a code status.");
     if (!reason.trim()) return setFormError("A reason is required.");
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setFormError(null);
-    const res = await client.POST("/api/v1/patients/{id}/code-status", {
-      params: { path: { id: patientId } },
-      body: { codeStatus: value, reason: reason.trim() },
-    });
+    const res = await client
+      .POST("/api/v1/patients/{id}/code-status", {
+        params: { path: { id: patientId } },
+        body: { codeStatus: value, reason: reason.trim() },
+      })
+      .catch(() => null);
+    busyRef.current = false;
     setBusy(false);
+    if (!res) {
+      return setFormError("The code status could not be saved. Check the list before retrying.");
+    }
     if (res.error) return setFormError(writeError(res, "The code status could not be saved."));
     setValue(null);
     setReason("");
@@ -88,13 +102,21 @@ export function PatientCodeStatusTab({ patientId }: { patientId: string }): JSX.
 
   async function retract(entryId: string): Promise<void> {
     if (!retractReason.trim()) return setRetractError("A reason is required.");
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setRetractError(null);
-    const res = await client.POST("/api/v1/patients/{id}/code-status/{entryId}/entered-in-error", {
-      params: { path: { id: patientId, entryId } },
-      body: { reason: retractReason.trim() },
-    });
+    const res = await client
+      .POST("/api/v1/patients/{id}/code-status/{entryId}/entered-in-error", {
+        params: { path: { id: patientId, entryId } },
+        body: { reason: retractReason.trim() },
+      })
+      .catch(() => null);
+    busyRef.current = false;
     setBusy(false);
+    if (!res) {
+      return setRetractError("The entry could not be retracted. Check the list before retrying.");
+    }
     if (res.error) return setRetractError(writeError(res, "The entry could not be retracted."));
     setRetractId(null);
     setRetractReason("");

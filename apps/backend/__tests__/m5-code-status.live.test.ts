@@ -230,6 +230,24 @@ describe.skipIf(!DB_URL)("ADR-0104 patient code status — LIVE Postgres", () =>
     ).rejects.toThrow(/permission denied/);
   });
 
+  it("the database freezes a retracted entry (its entered-in-error fields cannot be rewritten)", async () => {
+    const { id } = (await set("dnr")).json();
+    await retract(id);
+    await appConn.query("SELECT set_config('app.org_id', $1, false)", [ORG_A]);
+    await expect(
+      appConn.query(
+        "UPDATE patient_code_status SET entered_in_error_reason = 'rewritten' WHERE id = $1",
+        [id],
+      ),
+    ).rejects.toThrow(/cannot be changed/);
+    await expect(
+      appConn.query(
+        "UPDATE patient_code_status SET entered_in_error_at = NULL, entered_in_error_by_membership_id = NULL, entered_in_error_reason = NULL WHERE id = $1",
+        [id],
+      ),
+    ).rejects.toThrow(/cannot be changed/);
+  });
+
   it("another tenant sees the patient as absent", async () => {
     await set("dnr");
     expect((await list(asB)).statusCode).toBe(404);

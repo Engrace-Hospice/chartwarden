@@ -385,7 +385,7 @@ function NavLinkList({
           <Link
             to={c.path}
             className={c === highlighted ? "wx-nav-child active" : "wx-nav-child"}
-            aria-current={pathname === c.path ? "page" : undefined}
+            aria-current={c === highlighted ? "page" : undefined}
           >
             {c.title}
           </Link>
