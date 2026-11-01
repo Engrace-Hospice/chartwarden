@@ -157,7 +157,10 @@ export function AlertInboxProvider({ children }: { children: ReactNode }): JSX.E
     if (!scope || !alerts?.some((alert) => alert.readAt === null)) return false;
     const requestScope = scope;
     const readAt = new Date().toISOString();
-    setAlerts((current) => current?.map((alert) => ({ ...alert, readAt: alert.readAt ?? readAt })) ?? current);
+    setAlerts(
+      (current) =>
+        current?.map((alert) => ({ ...alert, readAt: alert.readAt ?? readAt })) ?? current,
+    );
     try {
       const { error } = await client.POST("/api/v1/alerts/read-all");
       if (error) {
@@ -186,7 +189,16 @@ export function AlertInboxProvider({ children }: { children: ReactNode }): JSX.E
 
   return (
     <AlertInboxContext.Provider
-      value={{ alerts, unreadCount, loading, loadFailed, load, markRead, markAllRead, activateAlert }}
+      value={{
+        alerts,
+        unreadCount,
+        loading,
+        loadFailed,
+        load,
+        markRead,
+        markAllRead,
+        activateAlert,
+      }}
     >
       {children}
     </AlertInboxContext.Provider>
