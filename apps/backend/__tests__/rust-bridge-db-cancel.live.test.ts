@@ -35,13 +35,17 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import {
   SHADOW_FRESH_TIMEOUT_MS,
+  SWEEP_OP_TIMEOUT_MS,
   SWEEP_STATEMENT_TIMEOUT_MS,
   bounded,
   createMePermissionsBridge,
   createSweepMembershipReader,
   parseRustBridgeConfig,
 } from "../src/bootstrap/rust-bridge";
-import { FRESH_RECHECK_STATEMENT_TIMEOUT_MS } from "../src/modules/03-authorization";
+import {
+  FRESH_RECHECK_STATEMENT_TIMEOUT_MS,
+  createFreshRecheckStore,
+} from "../src/modules/03-authorization";
 import { appRoleUrl, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -243,7 +247,11 @@ describe.skipIf(!DB_URL)("rust bridge — abandoned database work is cancelled (
 
     // (d) its pool connection went back to the pool and is usable.
     expect(s.pool.waitingCount).toBe(0);
-    expect(s.pool.idleCount).toBe(s.pool.totalCount);
+    await until(
+      async () => s.pool.idleCount === s.pool.totalCount,
+      1_000,
+      "the cancelled query's pool connection was not returned",
+    );
     await s.db.execute(sql`SELECT 1`);
   }
 
@@ -334,8 +342,8 @@ describe.skipIf(!DB_URL)("rust bridge — abandoned database work is cancelled (
     }, 40_000);
 
     it("the cap sits below the sweep's per-operation limit, so PostgreSQL cancels before the wrapper abandons", () => {
-      // SWEEP_OP_TIMEOUT_MS is 15 s: the server-side cap must fire first so the normal outcome is a clean error.
-      expect(SWEEP_STATEMENT_TIMEOUT_MS).toBeLessThan(15_000);
+      // The server-side cap must fire first so the normal outcome is a clean error, not an abandon.
+      expect(SWEEP_STATEMENT_TIMEOUT_MS).toBeLessThan(SWEEP_OP_TIMEOUT_MS);
     });
   });
 
@@ -360,7 +368,8 @@ describe.skipIf(!DB_URL)("rust bridge — abandoned database work is cancelled (
       const s = subject("app", "p6-resolver-shadow");
       const lock = await holdLock(getTableName(schema.memberships));
       try {
-        const store = createDbEffectivePermissionStore(s.db, { statementTimeoutMs: CAP_MS });
+        // The production wiring (3 s cap), not a test-local store: deleting the cap at the call site fails this test.
+        const store = createFreshRecheckStore(s.db);
         const lines: string[] = [];
         const bridge = createMePermissionsBridge({
           config: parseRustBridgeConfig({
@@ -411,13 +420,37 @@ describe.skipIf(!DB_URL)("rust bridge — abandoned database work is cancelled (
         );
         const goneAt = await until(
           async () => (await liveBackends(s.app)) === 0,
-          CAP_MS + SLACK_MS,
+          FRESH_RECHECK_STATEMENT_TIMEOUT_MS + SLACK_MS,
           "abandoned recheck query still running in PostgreSQL — nothing cancelled it",
         );
-        expect(goneAt - startedAt).toBeLessThanOrEqual(CAP_MS + SLACK_MS);
+        expect(goneAt - startedAt).toBeLessThanOrEqual(
+          FRESH_RECHECK_STATEMENT_TIMEOUT_MS + SLACK_MS,
+        );
         expect(s.pool.waitingCount).toBe(0);
-        expect(s.pool.idleCount).toBe(s.pool.totalCount);
+        await until(
+          async () => s.pool.idleCount === s.pool.totalCount,
+          1_000,
+          "the cancelled recheck's pool connection was not returned",
+        );
         bridge.close();
+      } finally {
+        await lock.release();
+      }
+    }, 30_000);
+
+    it("the cap is one budget for the whole read: a blocked SECOND statement is cancelled within the cap, not 2 x the cap", async () => {
+      const s = subject("app", "p6-resolver-second");
+      // `role_permission` is read by the second statement only; the first (grants) passes at once and uses little budget.
+      const lock = await holdLock(getTableName(schema.rolePermissions));
+      try {
+        const store = createDbEffectivePermissionStore(s.db, { statementTimeoutMs: CAP_MS });
+        const startedAt = performance.now();
+        const outcome = await store.loadGrants(ORG, USER).then(
+          () => null,
+          (e: unknown) => e,
+        );
+        expect(sqlState(outcome)).toBe("57014");
+        expect(performance.now() - startedAt).toBeLessThanOrEqual(CAP_MS + 500);
       } finally {
         await lock.release();
       }

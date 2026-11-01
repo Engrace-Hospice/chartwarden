@@ -53,16 +53,22 @@ export interface ActiveOrgEnumeratorDeps {
 export function buildActiveOrgEnumerator(deps: ActiveOrgEnumeratorDeps): ActiveOrgEnumerator {
   const platformDb = deps.platformDb;
   const capMs = deps.statementTimeoutMs;
-  // The cap goes first, so it covers the audit write as well as the read (both run in the one transaction).
-  const auditBypass: PlatformBypassAuditor<DbClient> =
-    capMs === undefined
-      ? deps.auditBypass
-      : async (tx, event) => {
-          await tx.execute(sql`SELECT set_config('statement_timeout', ${String(capMs)}, true)`);
-          await deps.auditBypass(tx, event);
-        };
   return {
     listActiveOrgs: () => {
+      // The cap is one budget for the audit write AND the read (both run in the one transaction): each gets what is left.
+      const deadline = capMs === undefined ? 0 : Date.now() + capMs;
+      const capRemaining = async (tx: DbClient): Promise<void> => {
+        if (capMs === undefined) return;
+        const left = Math.max(1, deadline - Date.now());
+        await tx.execute(sql`SELECT set_config('statement_timeout', ${String(left)}, true)`);
+      };
+      const auditBypass: PlatformBypassAuditor<DbClient> =
+        capMs === undefined
+          ? deps.auditBypass
+          : async (tx, event) => {
+              await capRemaining(tx);
+              await deps.auditBypass(tx, event);
+            };
       // Fail LOUD, never an empty list: without DATABASE_PLATFORM_URL the only pool left is the tenant pool, on which
       // `organization` RLS hides every row — an enumerator bound there "succeeds" with zero orgs and the cron
       // silently does nothing (the M14 packets-cron incident). A thrown error surfaces as a failed job / DLQ alert.
@@ -81,11 +87,13 @@ export function buildActiveOrgEnumerator(deps: ActiveOrgEnumeratorDeps): ActiveO
           crossTenant: true,
         },
         auditBypass,
-        (tx) =>
-          tx
+        async (tx) => {
+          await capRemaining(tx);
+          return tx
             .select({ organizationId: schema.organizations.id })
             .from(schema.organizations)
-            .where(inArray(schema.organizations.status, [...(deps.statuses ?? ["active"])])),
+            .where(inArray(schema.organizations.status, [...(deps.statuses ?? ["active"])]));
+        },
       );
     },
   };
