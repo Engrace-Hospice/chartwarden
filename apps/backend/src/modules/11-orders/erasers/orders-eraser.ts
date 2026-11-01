@@ -40,6 +40,10 @@ export interface OrderEraseCounts {
   readonly transmissionAttestations: number;
   /** F-202 — `order_recovery_request` rows deleted (the two-person recovery requests; cascaded from the orders). */
   readonly recoveryRequests: number;
+  /** #909 — `order_result_review` rows deleted (the append-only review ledger; cascaded from the orders). */
+  readonly resultReviews: number;
+  /** #908/#910 — `critical_lab_result` rows deleted for the patient (the critical-result ledger / quarantine queue). */
+  readonly criticalLabResults: number;
   /** `standing_order` templates deleted for the patient. */
   readonly standingOrders: number;
   /** Whole `order_record` partitions DETACHed + DROPped (the partition-drop path, §3.4 / D12). */
@@ -100,6 +104,8 @@ export async function eraseOrderRecord(
     counts.discontinuations +
     counts.transmissionAttestations +
     counts.recoveryRequests +
+    counts.resultReviews +
+    counts.criticalLabResults +
     counts.standingOrders;
   return { erased, counts };
 }
@@ -123,6 +129,8 @@ export function createInMemoryOrderEraseStore(seed: InMemoryOrderEraseSeed = {})
     discontinuations: 0,
     transmissionAttestations: 0,
     recoveryRequests: 0,
+    resultReviews: 0,
+    criticalLabResults: 0,
     standingOrders: 0,
     partitionsDropped: 0,
   };
@@ -167,6 +175,8 @@ export function createDrizzleOrderEraseStore(db: DbClient): OrderEraseStore {
   const ATTEST = schema.orderTransmissionAttestations;
   const RECOVERY = schema.orderRecoveryRequests;
   const SO = schema.standingOrders;
+  const REVIEW = schema.orderResultReviews;
+  const CLR = schema.criticalLabResults;
 
   /** The patient's erasable order ids (`created_at < boundary`) — the child cascade is keyed on these. */
   const orderIdsFor = async (tx: Tx, patientId: string, boundary: Date): Promise<string[]> =>
@@ -258,6 +268,25 @@ export function createDrizzleOrderEraseStore(db: DbClient): OrderEraseStore {
                   .returning({ id: RECOVERY.id }),
               );
 
+        // #909 -- the append-only lab-result review ledger (its trigger admits a DELETE only from the destruction role).
+        const resultReviews =
+          orderIds.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(REVIEW)
+                  .where(inArray(REVIEW.orderRecordId, orderIds))
+                  .returning({ id: REVIEW.id }),
+              );
+        // #908/#910 -- the patient's critical-result ledger (ON DELETE restrict on the patient FK: left behind it would
+        // block the patient's own destruction). Keyed on the patient, so quarantined no-order rows are reached too.
+        const criticalLabResults = await del(() =>
+          tx
+            .delete(CLR)
+            .where(and(eq(CLR.patientId, patientId), lt(CLR.createdAt, boundary)))
+            .returning({ id: CLR.id }),
+        );
+
         // The partitioned parent, via the partition-key predicate (row-delete arm of D12).
         const orders = await del(() =>
           tx
@@ -283,6 +312,8 @@ export function createDrizzleOrderEraseStore(db: DbClient): OrderEraseStore {
           discontinuations,
           transmissionAttestations,
           recoveryRequests,
+          resultReviews,
+          criticalLabResults,
           standingOrders,
           partitionsDropped: 0,
         };

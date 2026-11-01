@@ -40,6 +40,8 @@ export const criticalLabResults = pgTable(
     disposition: text("disposition").$type<"paged" | "quarantined_no_order">().notNull(),
     orderUnsigned: boolean("order_unsigned").notNull().default(false),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    /** The observation's clinical instant (M29 `observationDatetime`), migration 1298; orders supersede decisions. */
+    observationAt: timestamp("observation_at", { withTimezone: true }),
     respondBy: timestamp("respond_by", { withTimezone: true }),
     escalatedAt: timestamp("escalated_at", { withTimezone: true }),
     supersededAt: timestamp("superseded_at", { withTimezone: true }),
