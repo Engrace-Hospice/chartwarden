@@ -87,6 +87,32 @@ controls:
       - script: test:m36:body-key-ring:live
       - file: docs/architecture/CHARTWARDEN_SECURITY_HARDENING_v0_2.md
 
+  - id: CW-AC-07
+    title: Bun-to-Rust trust boundary (CW-RUST-M02), as enforced in THIS repo — Bun signs an Ed25519 actor assertion only for a request that has already passed authentication and requireSession, or (class parity-sweep) for the daily parity sweep's audited comparison; a client-supplied assertion header is stripped in Bun and nginx; the Rust service is topology-limited to one instance on an internal network with postgres, reachable from api only through a shared socket; the bridge config and key fail closed
+    hipaa: ["164.312(a)(1)", "164.312(d)", "164.312(e)(1)"]
+    soc2: ["CC6.1", "CC6.6"]
+    status: partial
+    evidence:
+      - script: arch:compose-policy
+      - script: arch:request-header-auth
+      - file: apps/backend/src/bootstrap/rust-bridge/header-hygiene.ts
+      - file: apps/backend/src/bootstrap/rust-bridge/__tests__/forwarder.test.ts
+      - file: apps/backend/src/bootstrap/rust-bridge/__tests__/signer-config.test.ts
+      - file: apps/backend/__tests__/m02-rust-bridge-route.test.ts
+      - file: deploy/production/compose.yml
+    gap:
+      reason: >-
+        Merged OFF by default (RUST_ROUTES empty; the rust service behind a compose profile with an unpullable digest
+        placeholder). NOT proven in this repo — enforced and tested only in chartwarden-rust (cw-actor, cw-tenancy,
+        cw-server; run 41263074320): Ed25519 signature verification and key rotation, single-use jti replay rejection,
+        the parity-sweep class accepted on GET /api/v1/me/permissions only, READ ONLY transactions, NOBYPASSRLS
+        chartwarden_app with RLS. Before P2 turns it on: cosign-sign the Rust image and verify/roll it in deploy.sh;
+        provision the signing key as a compose secret on api only (assertProductionEnv refuses the inline variable;
+        never .env.production, which reaches seven containers); set RUST_* on api only; recreate postgres once so it
+        joins the internal rust-db network; and pass the end-to-end Bun+Rust suites AT-M02-05b/09/10/11 on a real stack.
+      owner: platform
+      review_by: 2027-03-31
+
   - id: CW-AC-06
     title: List and audit reads return minimum-necessary facts — computed age (never date of birth) on the admission census; actor names resolved only inside the caller's org
     hipaa: ["164.502(b)", "164.312(b)"]
@@ -238,7 +264,7 @@ controls:
       - ci: "cosign sign"
       - script: arch:merge-artifacts
     gap:
-      reason: deploy.yml's `verify` job calls the full ci.yml and `release` needs it (#846; arch:release-gate fails if that is removed), so CI gates the deploy path — EXCEPT while deploy.yml carries a ci-waived release-gate line (owner decision 2026-10-30, `verify` is commented out so main deploys without tests or live suites, but release still needs the `quality` job running typecheck and lint, which arch:release-gate pins; lift the waiver by restoring `verify`). While it stands arch:fitness, the tests and the live suites (including the NOBYPASSRLS cross-tenant proof) run only through the opt-in pre-push hook, whose e2e step is also disabled (2026-10-30, to be restored). What is still open is that main has no branch protection and the `production` Environment has no required reviewers (#16, needs a paid plan and an owner decision), so a workflow edit or a re-run can bypass the gate, and the pre-push hook is opt-in per clone. Close with branch protection (required check plus code-owner review) and Environment reviewers, then flip to implemented.
+      reason: deploy.yml's `verify` job calls the full ci.yml and `release` needs it (#846; arch:release-gate fails if that is removed), so CI gates the deploy path — EXCEPT while deploy.yml carries a ci-waived release-gate line (owner decision 2026-10-30, `verify` is commented out so main deploys without tests or live suites, but release still needs the `quality` job running typecheck and lint, which arch:release-gate pins; lift the waiver by restoring `verify`). While it stands arch:fitness, the tests and the live suites (including the NOBYPASSRLS cross-tenant proof) run only through the opt-in pre-push hook, whose e2e step is also disabled (2026-10-30, to be restored). What is still open is that main has no branch protection and the `production` Environment has no required reviewers (#16, needs a paid plan and an owner decision), so a workflow edit or a re-run can bypass the gate, and the pre-push hook is opt-in per clone. Close with branch protection (required check plus code-owner review) and Environment reviewers, then flip to implemented. Also open — the CW-RUST-M02 Rust image (ghcr chartwarden-rust, built in that repo) is outside cosign verification; it cannot start today (compose profile + unpullable digest placeholder, arch:compose-policy) and must be signed and verified by deploy.sh before P2 (see CW-AC-07).
       owner: engineering
       review_by: 2026-12-15
 

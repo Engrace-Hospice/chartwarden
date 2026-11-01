@@ -109,7 +109,11 @@ export { M3_OUTBOX_EVENTS } from "./events-by-m3";
 export type { M3OutboxPublisher } from "./authz-ports";
 
 import type { AuditExecutor, NewAuditEvent } from "@chartwarden/audit";
-import type { RbacEngineHandle } from "@chartwarden/auth";
+import {
+  type RbacEngineHandle,
+  createDbEffectivePermissionStore,
+  resolveEffectivePermissions,
+} from "@chartwarden/auth";
 import { organizationSettingsReader, schema } from "@chartwarden/db";
 import type { DbClient } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -193,6 +197,11 @@ export function mountAuthorizationRoutes(
   outbox?: M3OutboxPublisher,
   /** Delivery of the minted auditor link (email). The composition root binds it; absent in slice/tests. */
   auditorLinkDelivery?: AuditorLinkDeliveryPort,
+  /**
+   * CW-RUST-M02 P1 — the Bun→Rust bridge for GET /api/v1/me/permissions. The composition root passes it only
+   * when `bootstrap/rust-bridge` is configured; absent, the route is unchanged.
+   */
+  mePermissionsBridge?: AuthzRouteDeps["mePermissionsBridge"],
 ): void {
   const breakGlass = _dbBreakGlass(db, outbox);
   // §2.2 / §7.4 — wire the break-glass branch over the durable store; the per-access critical row is
@@ -251,6 +260,14 @@ export function mountAuthorizationRoutes(
       }
     },
   };
+  if (mePermissionsBridge) {
+    // An UNCACHED resolver over the same store and fold, used only to explain a shadow difference (spec v0.3).
+    const store = createDbEffectivePermissionStore(db);
+    deps.mePermissionsBridge = mePermissionsBridge;
+    deps.freshPermissions = async ({ organizationId, userId }) =>
+      resolveEffectivePermissions(await store.loadGrants(organizationId, userId), Date.now())
+        .permissions;
+  }
   _registerAuthzRoutes(app, deps);
 }
 export {

@@ -30,6 +30,7 @@ import {
   createInMemorySystemStatusReader,
   registerSystemRoutes,
 } from "./routes/system";
+import { applyAssertionHeaderHygiene } from "./rust-bridge/header-hygiene";
 import { wireSeams } from "./seams/providers";
 import { validateSeams } from "./seams/registry";
 import type { TenantHostGuard } from "./tenant-host";
@@ -302,6 +303,8 @@ export function buildServer(deps: ServerDeps = {}): FastifyInstance {
   });
 
   // --- cross-cutting middleware ---
+  // CW-RUST-M02 P1 — first hook of all: a client can never supply Bun's actor assertion to Rust (always on).
+  applyAssertionHeaderHygiene(app);
   applyRequestContext(app);
   // Mints the double-submit CSRF cookie (onRequest) and verifies it on mutating requests
   // (preHandler). The preHandler phase always runs after every onRequest hook has completed
@@ -371,3 +374,4 @@ export type * from "./interfaces";
 export * from "./tenant-app-origin";
 export * from "./tenant-app-origin-db";
 export * from "./tenant-session-class";
+export * from "./rust-bridge/index";
