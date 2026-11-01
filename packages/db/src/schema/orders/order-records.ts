@@ -111,6 +111,10 @@ export const orderRecords = pgTable(
     resultsStatus: orderResultsStatus("results_status").notNull().default("not_expected"),
     resultsFirstReceivedAt: timestamp("results_first_received_at", { withTimezone: true }),
     lastLabObservationAttachedId: uuid("last_lab_observation_attached_id"), // M29 forward seam; NO SQL FK (D14)
+    // #909 (mig 1296) - when the CURRENT observation arrived (trigger-stamped; the 24 h review-SLA clock) and the
+    // observation the unreviewed-results sweep last alerted on (once per observation).
+    resultsLastReceivedAt: timestamp("results_last_received_at", { withTimezone: true }),
+    resultsReviewAlertedObservationId: uuid("results_review_alerted_observation_id"),
 
     // Document backref (M22 outbox handshake; null until reports rendered).
     documentId: uuid("document_id"),

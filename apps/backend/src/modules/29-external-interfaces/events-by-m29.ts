@@ -389,7 +389,7 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
       loincCode: Type.String(),
       criticalCount: Type.Integer({ minimum: 1 }),
     }),
-    declaredConsumers: [],
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

@@ -620,6 +620,8 @@ export const MODULES: ModuleDef[] = [
       "order_idg_decision_application",
       "order_transmission_attestation",
       "order_recovery_request",
+      "order_result_review",
+      "critical_lab_result",
     ],
   },
   {

@@ -20,7 +20,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M08 Encounters & Visit Notes | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 39/39 ✅ | ✅ | ✅ | — | 10/10 ✅ |
 | M09 Clinical Assessments Suite | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 20/20 ✅ | ✅ | ✅ | — | 6/6 ✅ |
 | M10 HOPE Engine | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 30/30 ✅ | ✅ | ✅ | ✅ | 13/13 ✅ |
-| M11 Orders | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 34/34 ✅ | ✅ | ✅ | — | 10/10 ✅ |
+| M11 Orders | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 35/35 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M12 DoseSpot Integration | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 34/34 ✅ | ✅ | ✅ | ✅ | 14/14 ✅ |
 | M13 eMAR & Med Administration | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 28/28 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M14 IDG | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 39/39 ✅ | ✅ | ✅ | — | 11/11 ✅ |
@@ -45,7 +45,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | M33 Reporting & Dashboards | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 43/43 ✅ | ✅ | ✅ | — | 12/12 ✅ |
 | M34 SaaS Tenant Platform | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 58/58 ✅ | ✅ | ✅ | — | 17/17 ✅ |
 | M35 Subscription Billing | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 54/54 ✅ | ✅ | ✅ | — | 21/21 ✅ |
-| M36 Secure Messaging & Alerts | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 205/205 ✅ | ✅ | ✅ | — | 72/72 ✅ |
+| M36 Secure Messaging & Alerts | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 206/206 ✅ | ✅ | ✅ | — | 72/72 ✅ |
 | M37 Inpatient Unit (IPU) Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 52/52 ✅ | ✅ | ✅ | — | 27/27 ✅ |
 | M38 Clinical Terminology Service | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 19/19 ✅ | ✅ | ✅ | — | 22/22 ✅ |
 | M39 Consent & Authorization Management | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 27/27 ✅ | ✅ | ✅ | — | 11/11 ✅ |

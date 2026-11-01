@@ -30,7 +30,12 @@ export interface CareTeamStore {
    * cosigner, and answering with their stale membership id would route a clinical duty to nobody.
    */
   findPrimaryRnMembership(organizationId: string, patientId: string): Promise<string | null>;
+  /** The clinician user id on the open `attending_clinician` assignment, else the open `md` one, else null (#910). */
+  findAttending(organizationId: string, patientId: string): Promise<string | null>;
 }
+
+/** Assignment roles that mean "the patient's attending physician", most specific first. */
+export const ATTENDING_ASSIGNMENT_ROLES = ["attending_clinician", "md"] as const;
 
 /** Build the real {@link CareTeamProvider} over an injected store (slice in-memory; Drizzle in prod). */
 export function createCareTeamProvider(store: CareTeamStore): CareTeamProvider {
@@ -43,6 +48,9 @@ export function createCareTeamProvider(store: CareTeamStore): CareTeamProvider {
     },
     async primaryRnMembershipId({ organizationId, patientId }) {
       return store.findPrimaryRnMembership(organizationId, patientId);
+    },
+    async attendingUserId({ organizationId, patientId }) {
+      return store.findAttending(organizationId, patientId);
     },
   };
 }
@@ -99,8 +107,12 @@ export function createInMemoryCareTeamStore(seed: readonly SeedCareTeamAssignmen
   const byPatient = new Map<string, Set<string>>();
   const primaryRnByPatient = new Map<string, string>();
   const primaryRnMembershipByPatient = new Map<string, string>();
+  const attendingByPatient = new Map<string, string>();
   for (const a of seed) {
     const k = key(a.organizationId, a.patientId);
+    if (a.role === "attending_clinician" || (a.role === "md" && !attendingByPatient.has(k))) {
+      attendingByPatient.set(k, a.clinicianUserId);
+    }
     (byPatient.get(k) ?? byPatient.set(k, new Set()).get(k)!).add(a.clinicianUserId);
     // First seeded primary_rn wins — mirrors the DB's partial unique index (at most one open row), so a
     // seed that violates it behaves like the DB would rather than silently picking the last writer.
@@ -119,6 +131,9 @@ export function createInMemoryCareTeamStore(seed: readonly SeedCareTeamAssignmen
       },
       async findPrimaryRnMembership(organizationId, patientId) {
         return primaryRnMembershipByPatient.get(key(organizationId, patientId)) ?? null;
+      },
+      async findAttending(organizationId, patientId) {
+        return attendingByPatient.get(key(organizationId, patientId)) ?? null;
       },
     },
   };

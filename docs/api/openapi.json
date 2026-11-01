@@ -228997,6 +228997,94 @@
         }
       }
     },
+    "/api/v1/orders/{id}/review-results": {
+      "post": {
+        "operationId": "postApiV1OrdersByIdReviewresults",
+        "tags": [
+          "11-orders"
+        ],
+        "summary": "Record the clinician's review of a lab order's current returned result (append-only; idempotent) - 403 for a non-prescriber, 409 when no result has been returned or the viewed observation is no longer current",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "orderId",
+                    "observationId",
+                    "reviewerMembershipId",
+                    "reviewerDiscipline",
+                    "reviewedAt",
+                    "alreadyReviewed"
+                  ],
+                  "properties": {
+                    "orderId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "observationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "reviewerMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "reviewerDiscipline": {
+                      "type": "string"
+                    },
+                    "reviewedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "alreadyReviewed": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "observationId"
+                ],
+                "properties": {
+                  "observationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/orders/{id}/sign": {
       "post": {
         "operationId": "postApiV1OrdersByIdSign",

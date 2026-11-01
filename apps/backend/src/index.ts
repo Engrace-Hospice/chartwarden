@@ -278,6 +278,18 @@ const M18_PLATFORM_JOB_ID = "m18-evv-automation";
  * the format and the AAD. `getTenantKeyProvider()` is resolved per call, so this is safe to build before M34
  * registers; until a platform KEK is bound, M34's stub refuses `dekForOrg` and every capture fails closed.
  */
+/** #908/#910 — see critical-lab-wiring.ts; the seams resolve lazily (they bind after this module loads). */
+function criticalLabDepsFor(db: DbClient, app: { log: { warn: (o: object, m: string) => void } }) {
+  return buildCriticalLabDeps(
+    db,
+    {
+      alerts: getSeam("AlertEmitter") as AlertEmitter,
+      careTeam: lazySeamProxy("CareTeamProvider", () => getSeam("CareTeamProvider")),
+    },
+    (message, context) => app.log.warn(context, message),
+  );
+}
+
 function m18CoordsCipher(): EvvCoordsCipher {
   return createEvvCoordsCipher(m18CoordsKeys());
 }
@@ -295,6 +307,9 @@ const M3_ROLE_TEMPLATE_BACKFILL_JOB_ID = "m3-role-template-backfill";
 // expected to exist: a 404 is the healthy answer, and the point is that the request COMPLETED
 // (endpoint reachable, SigV4 accepted, credentials valid). Names are PHI-free and tenant-free by
 // construction, so the probe can never touch a real tenant bucket (`tenant-<orgId>`).
+/** Boot-time registration of the M11 critical-lab escalation schedule: attempts, and the linear backoff step (ms). */
+const CRITICAL_LAB_SCHEDULE_ATTEMPTS = 5;
+const CRITICAL_LAB_SCHEDULE_BACKOFF_MS = 2_000;
 const READINESS_PROBE_BUCKET = "chartwarden-readiness";
 const READINESS_PROBE_KEY = ".probe";
 /** AC-05 — SECURITY_HARDENING §22.1: 5 signup intents per IP per hour on the public surface. */
@@ -344,6 +359,7 @@ import {
   sessionRoom,
   startRealtimeServer,
 } from "./bootstrap/realtime";
+import { buildCriticalLabDeps, buildCriticalLabEscalate } from "./critical-lab-wiring";
 import { buildM36ExportBinding } from "./m36-export-binding";
 import { buildM41OverrideAuditPort } from "./m41-override-audit";
 import { revokeAuditorMagicLinksForEngagement } from "./modules/02-identity/auditor-magic-link-store";
@@ -620,6 +636,7 @@ import {
   wireM10Tenancy,
 } from "./modules/10-hope/index";
 import {
+  M11_CRITICAL_LAB_ESCALATION_PLATFORM_JOB_ID,
   M11_ORDER_SWEEPS_PLATFORM_JOB_ID,
   M11_OUTBOX_EVENTS,
   M11_PLATFORM_JOB_ID,
@@ -648,6 +665,7 @@ import {
   orderPatientAndKindForOrg,
   parseRecoveryBound,
   registerHeldTransmissionRoutes,
+  registerM11CriticalLabEscalationWorker,
   registerM11OrderSweepWorkers,
   registerM11StandingSpawnWorker,
   registerM11StuckTransmissionWorker,
@@ -656,11 +674,13 @@ import {
   registerOrderErasers,
   registerOrderRoutes,
   registerOrderSeams,
+  scheduleM11CriticalLabEscalation,
   scheduleM11OrderSweeps,
   scheduleM11StandingSpawn,
   scheduleM11StuckTransmission,
   scheduleM11VerbalOrderExpiry,
 } from "./modules/11-orders/index";
+import { RESULTS_UNREVIEWED_ALERT_TYPE } from "./modules/11-orders/order-result-review";
 import {
   M12_OUTBOX_EVENTS,
   M12_PLATFORM_JOB_ID,
@@ -1657,6 +1677,7 @@ import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox
 import { buildM36BreakGlassNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/break-glass-notifications";
 import { buildM36CapThresholdAlertConsumer } from "./modules/36-messaging/outbox-consumers/cap-threshold-alerts";
 import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/outbox-consumers/channel-membership-sync";
+import { buildM36CriticalLabAlertConsumers } from "./modules/36-messaging/outbox-consumers/critical-lab-alerts";
 import { buildM36DeathBoardConsumer } from "./modules/36-messaging/outbox-consumers/death-board";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
 import { buildM36ExportNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/export-notifications";
@@ -2564,6 +2585,7 @@ export function wireModuleSeams(
   registerPlatformJob(M11_PLATFORM_JOB_ID);
   registerPlatformJob(M11_VERBAL_TIMER_PLATFORM_JOB_ID); // §2.3 D3 — the verbal-order-expiry hourly sweep fan-out
   registerPlatformJob(M11_ORDER_SWEEPS_PLATFORM_JOB_ID); // GAP-032 — verbal pre-expiry / lab-results-overdue / completion-watcher org enumeration
+  registerPlatformJob(M11_CRITICAL_LAB_ESCALATION_PLATFORM_JOB_ID); // #910 — critical-lab no-order escalation tick org enumeration
   registerPlatformJob(M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID); // F-201 — the stuck lab-order recovery tick's org enumeration
   registerPlatformJob(M22_FORM_RENDER_PLATFORM_JOB_ID); // GAP-140 — the form-render worker's org enumeration
   registerPlatformJob(M22_RETENTION_ROTATION_PLATFORM_JOB_ID); // GAP-141 — the retention-rotation sweep's org enumeration
@@ -10725,6 +10747,50 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     } catch (err) {
       app.log.error(err, "M11 order-sweep schedule registration failed");
     }
+    // #910 — a critical lab result with no order stays quarantined; once its response clock lapses the medical director
+    // and the attending are paged (5-minute tick, per-org fan-out).
+    const m11CriticalLabEscalationWorker = registerM11CriticalLabEscalationWorker({
+      connection: queueConnection,
+      db: dbHandle.db,
+      activeOrgs: buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M11_CRITICAL_LAB_ESCALATION_PLATFORM_JOB_ID,
+        reason: "M11 #910 critical-lab no-order escalation fan-out",
+      }),
+      escalate: buildCriticalLabEscalate(criticalLabDepsFor(dbHandle.db, app)),
+    });
+    attachDlqAlertsToAll([m11CriticalLabEscalationWorker], "m11");
+    app.addHook("onClose", async () => {
+      await m11CriticalLabEscalationWorker.close();
+    });
+    // Unlike the best-effort sweeps above, a missing schedule means a quarantined critical result is never escalated,
+    // silently. Retry a transient Redis blip with backoff, then refuse to boot (fail closed) rather than carry on.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const m11CriticalLabEscalationQueue =
+          await scheduleM11CriticalLabEscalation(queueConnection);
+        app.addHook("onClose", async () => {
+          await m11CriticalLabEscalationQueue.close();
+        });
+        break;
+      } catch (err) {
+        if (attempt >= CRITICAL_LAB_SCHEDULE_ATTEMPTS) {
+          app.log.error(
+            err,
+            "M11 critical-lab escalation schedule registration failed; refusing to boot",
+          );
+          throw err;
+        }
+        app.log.warn(
+          { attempt },
+          "M11 critical-lab escalation schedule registration failed; retrying",
+        );
+        await new Promise((resolve) =>
+          setTimeout(resolve, CRITICAL_LAB_SCHEDULE_BACKOFF_MS * attempt),
+        );
+      }
+    }
     // F-238 — the hourly records-request expiry sweep: an outbound records request nobody answered by its
     // `expires_on` day moves `requested` → `expired`. Same per-org fan-out as the M11 sweeps above; each
     // org's write is its own org-explicit `withOrgContext` transaction (a cron tick is not a request).
@@ -11951,6 +12017,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // events (M30 spec §4.9): previously unconsumed (`declaredConsumers: []`), so none of them paged anyone.
           // GAP-043 - M29's listener-down / listener-recovered events (published by the worker-role watcher): the page.
           buildM36FeedHealthAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // #908/#910 — a critical (HH/LL) lab result pages the caseload RN, the order drafter, the attending and (unsigned
+          // order) the medical director: one alert per observation, tenant admins as the never-zero fallback.
+          ...buildM36CriticalLabAlertConsumers(criticalLabDepsFor(dbHandle.db, app)),
           buildM36QualityAlertConsumer(
             getSeam("AlertEmitter") as AlertEmitter,
             (message, context) => app.log.warn(context, message),
@@ -11960,7 +12029,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM36IpuIvAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
           // M19 §4.8/§4.9 (GAP-057) — `m19.oncall_shift.coverage_gap` (the coverage-gap watchdog cron + the D10
           // reactive arm) -> the system-locked critical `m19.oncall.coverage_gap_detected` page.
-          buildM36OncallAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          buildM36OncallAlertConsumer(getSeam("AlertEmitter") as AlertEmitter, (message, context) =>
+            app.log.warn(context, message),
+          ),
           // M14 §2.7/D8 — the carry-forward COMPLIANCE alert (the count crossing 3): validated against the
           // typed alert-payload catalog (M14's contribution registered on the Foundation registry here, in the
           // composition root — M36 never imports M14), one alert per action item.
@@ -12512,7 +12583,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // GAP-016 — `LabResultsApplier`: the returned-lab half of the M29 handshake. Flips
           // `order_record.results_status` -> `results_received`, stamps `results_first_received_at`, and
           // emits `m11.order.results_received` (M22's `lab_results_pdf` render below) / `_critical`.
-          buildM11LabResultsApplierConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
+          buildM11LabResultsApplierConsumer({
+            db: dbHandle.db,
+            outbox: m11OutboxPublisher,
+            warn: (message, context) => app.log.warn(context, message),
+          }),
           // F-187 (#248) — a lab order discontinued/replaced after its ORM may already be at the laboratory:
           // nothing withdraws the ORM (T-29.08 defines no outbound cancel), so this raises the M36 alert that
           // tells the care team to cancel it with the lab. The M11-side self-consumption of
@@ -12524,7 +12599,24 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // F-203 (#248) — the two-person lab-recovery control's compliance alerts, DURABLE: the recovery's own
           // transaction publishes the intent, this hands it to M36, a failure is retried by the relay and the alert's
           // correlation id makes the redelivery idempotent.
-          buildM11RecoveryAlertConsumer({ alerts: getSeam("AlertEmitter") as AlertEmitter }),
+          buildM11RecoveryAlertConsumer({
+            alerts: {
+              // #909 - an unreviewed-lab page must never reach zero people: when the care team resolves to nobody it
+              // falls back to the tenant admins (GAP-049). Every other recovery alert is emitted as before.
+              emit: (organizationId, input) =>
+                input.eventType === RESULTS_UNREVIEWED_ALERT_TYPE
+                  ? emitWithRecipientFallback(
+                      getSeam("AlertEmitter") as AlertEmitter,
+                      organizationId,
+                      input as Parameters<typeof emitWithRecipientFallback>[2],
+                      (message, context) => app.log.warn(context, message),
+                    )
+                  : (getSeam("AlertEmitter") as AlertEmitter).emit(
+                      organizationId,
+                      input as Parameters<AlertEmitter["emit"]>[1],
+                    ),
+            },
+          }),
           // GAP-010 (M3 §4.5) — break-glass Compliance notification, DURABLE: the invoke's own transaction publishes
           // `m3.breakglass.invoked`, this hands it to M36's AlertEmitter (platform-default rule → compliance_officer).
           buildM36BreakGlassAlertConsumer({ alerts: getSeam("AlertEmitter") as AlertEmitter }),

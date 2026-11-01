@@ -13,7 +13,12 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { OrderKind } from "@chartwarden/types";
-import { and, asc, eq, gt, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lte, notInArray, sql } from "drizzle-orm";
+import {
+  RESULTS_UNREVIEWED_ALERT_TYPE,
+  RESULT_REVIEW_SLA_HOURS,
+  currentResultUnreviewed,
+} from "./order-result-review";
 import type { OrderWriteOutboxPort } from "./orders-route-service-db";
 
 const OR = schema.orderRecords;
@@ -80,7 +85,8 @@ export interface CompletionFacts {
 
 /**
  * Pure: has this active order's clinical intent been discharged (§2.2 `completed`)? Labs are deliberately absent
- * (D17: a clinician reviews the results) and so is `dme` (completes on the monthly-rental close-out).
+ * (D17: a clinician reviews the results; that review is the append-only `order_result_review`, #909, and the manual
+ * `completeOrder` stays the clinician's call) and so is `dme` (completes on the monthly-rental close-out).
  */
 export function completionCriterionMet(kind: OrderKind, facts: CompletionFacts): boolean {
   switch (kind) {
@@ -280,6 +286,90 @@ export async function sweepLabResultsOverdue(
           hoursOverdue,
           deepLink: `/orders/${r.id}`,
         }),
+      );
+      acted += 1;
+    }
+    return { examined: rows.length, acted };
+  });
+}
+
+/**
+ * #909 - `lab-results-unreviewed-sweep`: a returned lab whose CURRENT observation has had no clinician review for more
+ * than {@link RESULT_REVIEW_SLA_HOURS} raises ONE care-team alert per observation (an amended result re-arms it). The
+ * marker UPDATE is the idempotency; the alert intent rides the same transaction (the `recovery-alert` consumer delivers
+ * it, falling back to the tenant admins when the care team resolves to nobody). Ids and hour counts only.
+ */
+export async function sweepLabResultsUnreviewed(
+  deps: OrderSweepDeps,
+  organizationId: string,
+): Promise<OrderSweepSummary> {
+  const now = (deps.now ?? (() => new Date()))();
+  const cutoff = new Date(now.getTime() - RESULT_REVIEW_SLA_HOURS * HOUR_MS);
+  return withOrgContext(deps.db, { organizationId, userId: "" }, async (txRaw) => {
+    const tx = txRaw as unknown as DbClient;
+    // First-deploy flood guard: `results_last_received_at` is stamped by a trigger only from migration 1296 on, so
+    // requiring it NOT NULL alerts only on results that arrived after the review feature shipped; the years of
+    // already-returned, never-reviewed labs from before it are not paged in one burst.
+    const receivedAt = sql<Date>`${OR.resultsLastReceivedAt}`;
+    const rows = await tx
+      .select({
+        id: OR.id,
+        patientId: OR.patientId,
+        observationId: OR.lastLabObservationAttachedId,
+        receivedAt,
+      })
+      .from(OR)
+      .where(
+        and(
+          eq(OR.kind, "lab"),
+          eq(OR.resultsStatus, "results_received"),
+          // A cancelled order (discontinued / expired unsigned) has no clinician left to review its result.
+          notInArray(OR.status, ["discontinued", "expired_unsigned"]),
+          sql`${OR.lastLabObservationAttachedId} IS NOT NULL`,
+          sql`${OR.resultsLastReceivedAt} IS NOT NULL`,
+          sql`${OR.resultsReviewAlertedObservationId} IS DISTINCT FROM ${OR.lastLabObservationAttachedId}`,
+          sql`${receivedAt} <= ${cutoff.toISOString()}::timestamptz`,
+          currentResultUnreviewed(),
+        ),
+      )
+      .orderBy(asc(OR.resultsLastReceivedAt))
+      .limit(SWEEP_BATCH);
+    let acted = 0;
+    for (const r of rows) {
+      if (!r.observationId) continue;
+      const marked = await tx
+        .update(OR)
+        .set({ resultsReviewAlertedObservationId: r.observationId })
+        .where(
+          and(
+            eq(OR.id, r.id),
+            sql`${OR.lastLabObservationAttachedId} = ${r.observationId}::uuid`,
+            sql`${OR.resultsReviewAlertedObservationId} IS DISTINCT FROM ${r.observationId}::uuid`,
+          ),
+        )
+        .returning({ id: OR.id });
+      if (marked.length === 0) continue; // lost the race, or a newer observation arrived: the next tick decides
+      const hoursUnreviewed = Math.floor(
+        (now.getTime() - new Date(r.receivedAt).getTime()) / HOUR_MS,
+      );
+      await emit(
+        deps,
+        tx,
+        organizationId,
+        "m11.order.recovery_alert_requested",
+        r.id,
+        alertIntent(
+          RESULTS_UNREVIEWED_ALERT_TYPE,
+          "warn",
+          `${RESULTS_UNREVIEWED_ALERT_TYPE}:${r.id}:${r.observationId}`,
+          {
+            orderId: r.id,
+            patientId: r.patientId,
+            observationId: r.observationId,
+            hoursUnreviewed,
+            deepLink: `/orders/${r.id}`,
+          },
+        ),
       );
       acted += 1;
     }

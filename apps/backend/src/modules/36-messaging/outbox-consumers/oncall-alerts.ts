@@ -27,6 +27,7 @@ import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
+import { type FallbackWarn, emitWithRecipientFallback } from "../alert-recipient-fallback";
 
 /** The platform `alert_rule` key (an alert-rule key, distinct from the outbox event that triggers it). */
 export const M19_COVERAGE_GAP_ALERT_TYPE = "m19.oncall.coverage_gap_detected" as const;
@@ -137,7 +138,10 @@ const BUILDERS: Readonly<
   "m19.triage_call.escalation_sla_breached": escalationSlaAlert,
 };
 
-export function buildM36OncallAlertConsumer(alerts: AlertEmitter): OutboxConsumerBinding {
+export function buildM36OncallAlertConsumer(
+  alerts: AlertEmitter,
+  warn?: FallbackWarn,
+): OutboxConsumerBinding {
   return {
     consumerName: M36_ONCALL_ALERT_CONSUMER,
     consumerModule: "m36",
@@ -150,7 +154,9 @@ export function buildM36OncallAlertConsumer(alerts: AlertEmitter): OutboxConsume
         throw new Error(`${M36_ONCALL_ALERT_CONSUMER}: unexpected event ${event.eventType}`);
       }
       const p = (event.payload ?? {}) as Payload;
-      await alerts.emit(event.organizationId, build(event, p));
+      // A page that resolves nobody (the tenant never provisioned the roles the rule names) is re-routed to the
+      // tenant admins under its own `:fb` correlation id and logged, never persisted with zero recipients silently.
+      await emitWithRecipientFallback(alerts, event.organizationId, build(event, p), warn);
     },
   };
 }

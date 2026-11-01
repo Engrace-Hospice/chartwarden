@@ -445,7 +445,7 @@ describe.skipIf(!DB_URL)("rust bridge — abandoned database work is cancelled (
       try {
         const store = createDbEffectivePermissionStore(s.db, { statementTimeoutMs: CAP_MS });
         const startedAt = performance.now();
-        const outcome = await store.loadGrants(ORG, USER).then(
+        const outcome = await Promise.resolve(store.loadGrants(ORG, USER)).then(
           () => null,
           (e: unknown) => e,
         );

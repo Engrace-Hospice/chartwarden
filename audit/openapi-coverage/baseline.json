@@ -47,7 +47,7 @@
       "mutatingNoBody": 0
     },
     "11-orders": {
-      "routes": 34,
+      "routes": 35,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -172,7 +172,7 @@
       "mutatingNoBody": 1
     },
     "36-messaging": {
-      "routes": 205,
+      "routes": 206,
       "deficit": 0,
       "mutatingNoBody": 0
     },

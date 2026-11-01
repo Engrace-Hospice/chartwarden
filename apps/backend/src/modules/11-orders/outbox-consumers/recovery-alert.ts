@@ -32,6 +32,8 @@ export const M11_RECOVERY_ALERT_TYPES = [
   // `lab-results-overdue-sweep` (M11 §4.8 / §4.11), published on the sweep's own transaction.
   "m11.order.verbal_expiring_soon",
   "m11.order.results_overdue",
+  // #909 - a returned lab no clinician has reviewed within 24 h.
+  "m11.order.results_unreviewed",
 ] as const;
 
 export interface RecoveryAlertDeps {

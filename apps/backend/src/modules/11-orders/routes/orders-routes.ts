@@ -48,6 +48,7 @@ import {
   RecoveryRequestParamsSchema,
   RegenerateVerbalTimerRequest,
   RequestSignatureRequest,
+  ReviewResultsRequest,
   SignOnBehalfRequest,
   SignOrderRequest,
   SpawnStandingOrderRequest,
@@ -657,6 +658,25 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
         userId,
         id,
         body.reason,
+        await detailActorOf(request),
+      );
+    },
+  );
+
+  // #909 - record the clinician's review of the order's current returned lab result (append-only; a repeat is an
+  // idempotent no-op that returns the original review). `orders.complete` is the existing "Mark reviewed" grant
+  // (D17); the service additionally requires a prescriber discipline (403 otherwise) and a returned result (409).
+  app.post(
+    "/api/v1/orders/:id/review-results",
+    { preHandler: [COMPLETE, ...orderScope("orders.complete")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      const body = parse(ReviewResultsRequest, request.body);
+      return service.reviewLabResults(
+        organizationId,
+        id,
+        body.observationId,
         await detailActorOf(request),
       );
     },

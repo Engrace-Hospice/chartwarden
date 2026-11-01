@@ -421,7 +421,7 @@ describe.skipIf(!DB_URL)("GAP-049 M30 alert repeat cadences - LIVE Postgres", ()
         },
       } as never);
       const base = `outbox:m30.alerts.incident_sentinel:${incident}`;
-      expect(warnings).toEqual(["quality alert resolved no recipients; paging tenant admins"]);
+      expect(warnings).toEqual(["alert resolved no recipients; paging tenant admins"]);
       expect(await deliveriesOf(ORG_C, base)).toEqual([]);
       expect(await deliveriesOf(ORG_C, `${base}:fb`)).toEqual([user.cOrgAdmin]);
 

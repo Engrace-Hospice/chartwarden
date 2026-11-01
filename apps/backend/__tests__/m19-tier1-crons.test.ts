@@ -115,7 +115,7 @@ describe("M36 oncall-alerts consumer (m19.oncall_shift.coverage_gap)", () => {
       createdAt: new Date(createdAt),
     }) satisfies DispatchableOutboxEvent;
   const harness = () => {
-    const emit = vi.fn(async () => ({}) as never);
+    const emit = vi.fn(async () => ({ alertId: "alert-1", resolvedRecipientCount: 1 }) as never);
     return { emit, consumer: buildM36OncallAlertConsumer({ emit } as unknown as AlertEmitter) };
   };
 

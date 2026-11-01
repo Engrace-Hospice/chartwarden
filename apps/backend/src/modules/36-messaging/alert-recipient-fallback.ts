@@ -31,7 +31,7 @@ export async function emitWithRecipientFallback(
 ): Promise<{ readonly alertId: string; readonly resolvedRecipientCount: number }> {
   const first = await alerts.emit(organizationId, input);
   if (first.resolvedRecipientCount > 0) return first;
-  warn?.("quality alert resolved no recipients; paging tenant admins", {
+  warn?.("alert resolved no recipients; paging tenant admins", {
     organizationId,
     eventType: input.eventType,
     correlationId: input.correlationId,
@@ -47,7 +47,7 @@ export async function emitWithRecipientFallback(
     },
   });
   if (fallback.resolvedRecipientCount === 0) {
-    warn?.("quality alert fallback also resolved no recipients; the page reached nobody", {
+    warn?.("alert fallback also resolved no recipients; the page reached nobody", {
       organizationId,
       eventType: input.eventType,
       correlationId: input.correlationId,

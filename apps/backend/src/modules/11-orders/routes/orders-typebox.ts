@@ -447,6 +447,17 @@ export const SuggestionsResponseSchema = Type.Object({
   patientId: Type.String(),
   suggestions: Type.Array(Type.Object({ kind: ORDER_KIND, reason: Type.String() })),
 });
+/** #909 — POST /orders/:id/review-results body: the observation the clinician VIEWED (409 if no longer current). */
+export const ReviewResultsRequest = Type.Object({ observationId: Type.String({ format: "uuid" }) });
+/** #909 — POST /orders/:id/review-results. Ids, an enum-like discipline token and a server-stamped instant only. */
+export const ResultReviewResponseSchema = Type.Object({
+  orderId: Type.String({ format: "uuid" }),
+  observationId: Type.String({ format: "uuid" }),
+  reviewerMembershipId: Type.String({ format: "uuid" }),
+  reviewerDiscipline: Type.String(),
+  reviewedAt: Type.String({ format: "date-time" }),
+  alreadyReviewed: Type.Boolean(),
+});
 /** F-182 — POST /orders/:id/resend-transmission. `refusalReason` is a fixed producer token, never PHI. */
 export const ResendLabTransmissionResponseSchema = Type.Object({
   outcome: Type.Union([Type.Literal("requested"), Type.Literal("still_refused")]),

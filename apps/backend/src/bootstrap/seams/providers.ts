@@ -174,6 +174,9 @@ export const careTeamDenyStub: CareTeamProvider = {
   primaryRnMembershipId() {
     throw new NotImplementedError("CareTeamProvider");
   },
+  attendingUserId() {
+    throw new NotImplementedError("CareTeamProvider");
+  },
 };
 
 export const credentialReaderDenyStub: CredentialReader = {
