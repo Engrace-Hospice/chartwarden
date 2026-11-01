@@ -54,6 +54,8 @@ export interface ParitySweepSummary {
   orgErrors: number;
   /** The active-org list itself failed or timed out (the run is then incomplete). */
   listFailed: boolean;
+  /** Operations abandoned at their timeout or the run deadline (their driver calls may still be running). */
+  abandoned: number;
   aborted: boolean;
   stoppedEarly: boolean;
   durationMs: number;
@@ -80,22 +82,40 @@ class SweepAbort extends Error {
  * Settles with `p`, or rejects when `ms` passes or `signal` aborts, whichever is first. The underlying operation may
  * stay pending (a hung driver call cannot be cancelled from here), but the sweep moves on and still reports.
  */
-export function bounded<T>(p: Promise<T>, ms: number, signal?: AbortSignal): Promise<T> {
+export function bounded<T>(
+  p: Promise<T>,
+  ms: number,
+  signal?: AbortSignal,
+  onAbandon?: () => void,
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     if (signal?.aborted) {
+      onAbandon?.();
       reject(new SweepAbort("aborted"));
       return;
     }
-    const timer = setTimeout(
-      () => reject(Object.assign(new Error("timeout"), { name: "TimeoutError" })),
-      ms,
-    );
-    const onAbort = () => reject(new SweepAbort("aborted"));
-    signal?.addEventListener("abort", onAbort, { once: true });
-    p.then(resolve, reject).finally(() => {
+    // Settle exactly once; every path (success, failure, timeout, abort) clears the timer AND the abort listener, so
+    // nothing stays attached to the run's signal when the underlying operation never settles (review round 4, C).
+    let done = false;
+    const settle = (fn: () => void, abandoned: boolean) => {
+      if (done) return;
+      done = true;
       clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);
-    });
+      if (abandoned) onAbandon?.();
+      fn();
+    };
+    const onAbort = () => settle(() => reject(new SweepAbort("aborted")), true);
+    const timer = setTimeout(
+      () =>
+        settle(() => reject(Object.assign(new Error("timeout"), { name: "TimeoutError" })), true),
+      ms,
+    );
+    signal?.addEventListener("abort", onAbort, { once: true });
+    p.then(
+      (v) => settle(() => resolve(v), false),
+      (e) => settle(() => reject(e), false),
+    );
   });
 }
 
@@ -114,11 +134,17 @@ export async function runParitySweep(deps: ParitySweepDeps): Promise<ParitySweep
     skipped: 0,
     orgErrors: 0,
     listFailed: false,
+    abandoned: 0,
     aborted: false,
     stoppedEarly: false,
     durationMs: 0,
   };
-  const op = <T>(p: Promise<T>) => bounded(p, deps.opTimeoutMs ?? SWEEP_OP_TIMEOUT_MS, deps.signal);
+  // Operations the sweep stopped waiting for. The driver call may still be running (cancellation is not propagated
+  // through the org enumerator or the uncached resolver); the count is logged so P2 can alert on it.
+  const op = <T>(p: Promise<T>) =>
+    bounded(p, deps.opTimeoutMs ?? SWEEP_OP_TIMEOUT_MS, deps.signal, () => {
+      s.abandoned++;
+    });
   const pairs: { org: string; user: string }[] = [];
 
   // Enumeration is inside the deadline too: a hung org list or member query ends the run with a summary.

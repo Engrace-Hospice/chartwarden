@@ -47,7 +47,7 @@ export function createRustClient(
       // stream that stalls after the headers times out too.
       const declared = Number(res.headers.get("content-length") ?? "0");
       if (declared > MAX_BODY_BYTES) {
-        await res.body?.cancel().catch(() => undefined);
+        cancelQuietly(res.body?.cancel());
         return { ok: false, reason: "bad_json" };
       }
       try {
@@ -67,7 +67,15 @@ export function createRustClient(
   };
 }
 
-/** Reads at most `limit` bytes of the body; returns null (after cancelling the stream) if it is longer. */
+/**
+ * Starts a stream cancellation WITHOUT waiting for it: a cancel() that never settles must not delay the fallback
+ * (review round 4, finding A). Rejections are swallowed; the connection is torn down by the runtime either way.
+ */
+function cancelQuietly(p: Promise<void> | undefined): void {
+  p?.catch(() => undefined);
+}
+
+/** Reads at most `limit` bytes of the body; returns null (and starts cancelling the stream) if it is longer. */
 export async function readBounded(res: Response, limit: number): Promise<Uint8Array | null> {
   if (!res.body) return new Uint8Array(0);
   const reader = res.body.getReader();
@@ -78,7 +86,7 @@ export async function readBounded(res: Response, limit: number): Promise<Uint8Ar
     if (done) break;
     total += value.byteLength;
     if (total > limit) {
-      await reader.cancel().catch(() => undefined);
+      cancelQuietly(reader.cancel());
       return null;
     }
     chunks.push(value);

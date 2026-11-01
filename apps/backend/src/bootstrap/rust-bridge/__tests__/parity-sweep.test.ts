@@ -4,6 +4,7 @@ import type { RustClient } from "../client";
 import type { BridgeLogger } from "../forwarder";
 import {
   SWEEP_MAX_IN_FLIGHT,
+  bounded,
   msUntilNextUtc,
   runParitySweep,
   scheduleDailyUtc,
@@ -307,5 +308,89 @@ describe("review round 2 (ChatGPT P1)", () => {
     const s = await runParitySweep(t.d);
     expect(s).toMatchObject({ errors: 1, compared: 4, stoppedEarly: false });
     expect(t.log.lines.at(-1)).toContain('"complete":false');
+  });
+});
+
+describe("review round 4 (ChatGPT focused round 2, finding C)", () => {
+  /** An AbortSignal stand-in that counts live listeners. */
+  function countingSignal() {
+    const ac = new AbortController();
+    let live = 0;
+    const add = ac.signal.addEventListener.bind(ac.signal);
+    const remove = ac.signal.removeEventListener.bind(ac.signal);
+    Object.assign(ac.signal, {
+      addEventListener: (...a: Parameters<AbortSignal["addEventListener"]>) => {
+        live++;
+        add(...a);
+      },
+      removeEventListener: (...a: Parameters<AbortSignal["removeEventListener"]>) => {
+        live--;
+        remove(...a);
+      },
+    });
+    return { ac, live: () => live };
+  }
+
+  it("bounded() removes its abort listener when the TIMEOUT wins over a never-settling promise", async () => {
+    const { ac, live } = countingSignal();
+    let abandoned = 0;
+    await expect(
+      bounded(new Promise(() => {}), 10, ac.signal, () => {
+        abandoned++;
+      }),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(live()).toBe(0);
+    expect(abandoned).toBe(1);
+  });
+
+  it("bounded() removes its listener on success and failure, and never counts those as abandoned", async () => {
+    const { ac, live } = countingSignal();
+    let abandoned = 0;
+    const onAbandon = () => {
+      abandoned++;
+    };
+    await expect(bounded(Promise.resolve(1), 1_000, ac.signal, onAbandon)).resolves.toBe(1);
+    await expect(
+      bounded(Promise.reject(new Error("x")), 1_000, ac.signal, onAbandon),
+    ).rejects.toThrow("x");
+    expect(live()).toBe(0);
+    expect(abandoned).toBe(0);
+  });
+
+  it("bounded() settles once: an abort after the timeout does nothing more", async () => {
+    const { ac, live } = countingSignal();
+    let abandoned = 0;
+    const p = bounded(new Promise(() => {}), 10, ac.signal, () => {
+      abandoned++;
+    });
+    await expect(p).rejects.toMatchObject({ name: "TimeoutError" });
+    ac.abort();
+    expect(abandoned).toBe(1);
+    expect(live()).toBe(0);
+  });
+
+  it("an abort while waiting removes the listener and counts one abandoned operation", async () => {
+    const { ac, live } = countingSignal();
+    let abandoned = 0;
+    const p = bounded(new Promise(() => {}), 60_000, ac.signal, () => {
+      abandoned++;
+    });
+    ac.abort();
+    await expect(p).rejects.toMatchObject({ name: "SweepAbort" });
+    expect(live()).toBe(0);
+    expect(abandoned).toBe(1);
+  });
+
+  it("the sweep summary reports abandoned operations", async () => {
+    const t = deps({});
+    const listActiveMembers = t.d.listActiveMembers;
+    const s = await runParitySweep({
+      ...t.d,
+      listActiveMembers: (org: string) =>
+        org === ORG_A ? new Promise(() => {}) : listActiveMembers(org),
+      opTimeoutMs: 20,
+    });
+    expect(s.abandoned).toBe(1);
+    expect(t.log.lines.at(-1)).toContain('"abandoned":1');
   });
 });

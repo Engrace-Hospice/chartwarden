@@ -578,3 +578,79 @@ describe("review round 2 (ChatGPT P1)", () => {
     bridge.close();
   });
 });
+
+describe("review round 4 (ChatGPT focused round 2, finding A)", () => {
+  // A body whose cancel() never settles: falling back must not wait for it.
+  const neverCancels = (onCancel: () => void) =>
+    new ReadableStream<Uint8Array>({
+      pull(c) {
+        c.enqueue(new Uint8Array(16 * 1024).fill(0x61));
+      },
+      cancel() {
+        onCancel();
+        return new Promise<void>(() => {});
+      },
+    });
+
+  it("an over-cap STREAMED body falls back promptly even when cancel() never settles", async () => {
+    let cancelCalled = false;
+    const client = createRustClient(
+      "/s",
+      5_000,
+      async () =>
+        new Response(
+          neverCancels(() => {
+            cancelCalled = true;
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    );
+    const t0 = performance.now();
+    expect(await client.get("/p", "t")).toEqual({ ok: false, reason: "bad_json" });
+    expect(performance.now() - t0).toBeLessThan(500);
+    expect(cancelCalled).toBe(true);
+  });
+
+  it("an over-cap DECLARED Content-Length falls back promptly even when cancel() never settles", async () => {
+    let cancelCalled = false;
+    const res = new Response(
+      neverCancels(() => {
+        cancelCalled = true;
+      }),
+      {
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(MAX_BODY_BYTES + 1),
+        },
+      },
+    );
+    const client = createRustClient("/s", 5_000, async () => res);
+    const t0 = performance.now();
+    expect(await client.get("/p", "t")).toEqual({ ok: false, reason: "bad_json" });
+    expect(performance.now() - t0).toBeLessThan(500);
+    expect(cancelCalled).toBe(true);
+  });
+
+  it("a cancel() that REJECTS is swallowed (no unhandled rejection)", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (e: unknown) => unhandled.push(e);
+    process.on("unhandledRejection", onUnhandled);
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) {
+        c.enqueue(new Uint8Array(16 * 1024));
+      },
+      cancel() {
+        return Promise.reject(new Error("cancel failed"));
+      },
+    });
+    const client = createRustClient(
+      "/s",
+      5_000,
+      async () => new Response(body, { headers: { "content-type": "application/json" } }),
+    );
+    expect(await client.get("/p", "t")).toEqual({ ok: false, reason: "bad_json" });
+    await new Promise((r) => setTimeout(r, 20));
+    process.off("unhandledRejection", onUnhandled);
+    expect(unhandled).toEqual([]);
+  });
+});

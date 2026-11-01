@@ -62,9 +62,19 @@ class FreshTimeout extends Error {
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new FreshTimeout()), ms);
+    let done = false;
+    const settle = (fn: () => void) => {
+      if (done) return;
+      done = true;
+      clearTimeout(t);
+      fn();
+    };
+    const t = setTimeout(() => settle(() => reject(new FreshTimeout())), ms);
     t.unref?.();
-    p.then(resolve, reject).finally(() => clearTimeout(t));
+    p.then(
+      (v) => settle(() => resolve(v)),
+      (e) => settle(() => reject(e)),
+    );
   });
 }
 
