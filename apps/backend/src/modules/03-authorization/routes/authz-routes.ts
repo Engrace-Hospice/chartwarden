@@ -399,10 +399,33 @@ export function registerAuthorizationRoutes(app: FastifyInstance, deps: AuthzRou
   app.get(
     "/api/v1/me/permissions",
     { preHandler: [requireSession() as PreHandler] },
-    async (request) => {
+    async (request, reply) => {
       const { organizationId, userId } = actorOf(request.context);
-      const permissions = await deps.effectivePermissions({ organizationId, userId });
-      return { permissions: [...permissions] };
+      const bun = async () => ({
+        permissions: [...(await deps.effectivePermissions({ organizationId, userId }))],
+      });
+      // CW-RUST-M02 P1 — optional Bun→Rust bridge (off unless RUST_ROUTES names this route). It runs here, after
+      // authenticate + requireSession, and only ever returns Bun's answer or a validated Rust body.
+      const bridge = deps.mePermissionsBridge;
+      if (!bridge) return bun();
+      const fresh = deps.freshPermissions;
+      const attrs = request.context.attributes;
+      return bridge.handle({
+        actor: {
+          userId,
+          organizationId,
+          sessionId: typeof attrs.sessionId === "string" ? attrs.sessionId : "",
+          sessionClass: typeof attrs.sessionClass === "string" ? attrs.sessionClass : "",
+          requestId: request.id,
+        },
+        bun,
+        fresh: fresh
+          ? async () => ({ permissions: [...(await fresh({ organizationId, userId }))] })
+          : bun,
+        afterResponse: (cb) => {
+          reply.raw.once("finish", cb);
+        },
+      });
     },
   );
 

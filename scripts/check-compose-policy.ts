@@ -10,6 +10,10 @@
  *  2. Nothing bounded memory/CPU, so one runaway service could starve Postgres. Every service must set `mem_limit`
  *     and `cpus` (the keys plain `docker compose up` honours, consistent with the clamav entry) or inherit them
  *     through `extends`; postgres must also set `mem_reservation` so its capacity is reserved.
+ *  3. CW-RUST-M02 P1 topology (`checkRustTopology`): the Rust API's replay protection is per process and its only
+ *     door is a Unix socket shared with `api`. So: at most one service runs the Rust image, it has no `ports`, no
+ *     `scale`/`deploy.replicas` above 1, no `CW_RUST_TCP` (the loopback-TCP development listener), and the socket
+ *     volume is mounted by `api` and `rust` only.
  *
  * Run:  bun run arch:compose-policy   (in `arch:fitness`)
  */
@@ -27,6 +31,11 @@ const MUST_RESERVE = ["postgres"] as const;
 
 interface ComposeService {
   readonly image?: unknown;
+  readonly ports?: unknown;
+  readonly scale?: unknown;
+  readonly deploy?: { readonly replicas?: unknown };
+  readonly environment?: unknown;
+  readonly volumes?: unknown;
   readonly extends?: { readonly service?: string } | string;
   readonly mem_limit?: unknown;
   readonly cpus?: unknown;
@@ -46,11 +55,19 @@ export function checkCompose(doc: ComposeDoc): string[] {
 
   for (const [name, svc] of Object.entries(services)) {
     const base = extendsBase(svc);
-    if (typeof svc.image === "string" && !svc.image.includes("${") && !PINNED_IMAGE.test(svc.image)) {
-      failures.push(`${name}: image "${svc.image}" must be pinned as repo:tag@sha256:<64 hex> (#855)`);
+    if (
+      typeof svc.image === "string" &&
+      !svc.image.includes("${") &&
+      !PINNED_IMAGE.test(svc.image)
+    ) {
+      failures.push(
+        `${name}: image "${svc.image}" must be pinned as repo:tag@sha256:<64 hex> (#855)`,
+      );
     }
-    if (svc.image !== undefined && typeof svc.image !== "string") failures.push(`${name}: image must be a string`);
-    if (svc.image === undefined && base === undefined) failures.push(`${name}: no image and no extends`);
+    if (svc.image !== undefined && typeof svc.image !== "string")
+      failures.push(`${name}: image must be a string`);
+    if (svc.image === undefined && base === undefined)
+      failures.push(`${name}: no image and no extends`);
 
     // An extending service inherits limits from its base, which is checked on its own.
     if (base === undefined || svc.mem_limit !== undefined || svc.cpus !== undefined) {
@@ -59,6 +76,63 @@ export function checkCompose(doc: ComposeDoc): string[] {
     }
     if ((MUST_RESERVE as readonly string[]).includes(name) && svc.mem_reservation === undefined) {
       failures.push(`${name}: missing mem_reservation (capacity must be reserved for it) (#856)`);
+    }
+  }
+  return [...failures, ...checkRustTopology(doc)];
+}
+
+/** The service name and socket volume the Rust topology rules are written against. */
+export const RUST_SERVICE = "rust";
+export const RUST_SOCKET_VOLUME = "rust-sock";
+const RUST_IMAGE_RE = /chartwarden-rust|CHARTWARDEN_RUST_IMAGE/;
+const RUST_SOCKET_CONSUMERS = new Set(["api", RUST_SERVICE]);
+
+function mentionsVolume(svc: ComposeService, volume: string): boolean {
+  if (!Array.isArray(svc.volumes)) return false;
+  return svc.volumes.some((v) =>
+    typeof v === "string"
+      ? v.split(":")[0] === volume
+      : (v as { source?: unknown })?.source === volume,
+  );
+}
+
+function envHas(svc: ComposeService, key: string): boolean {
+  const env = svc.environment;
+  if (Array.isArray(env)) return env.some((e) => typeof e === "string" && e.split("=")[0] === key);
+  return env !== null && typeof env === "object" && key in env;
+}
+
+/** CW-RUST-M02 P1: exactly one Rust instance, reachable only through the socket shared with `api`. */
+export function checkRustTopology(doc: ComposeDoc): string[] {
+  const failures: string[] = [];
+  const services = doc.services ?? {};
+  const rustServices = Object.entries(services).filter(
+    ([, svc]) => typeof svc.image === "string" && RUST_IMAGE_RE.test(svc.image),
+  );
+  if (rustServices.length > 1) {
+    failures.push(
+      `more than one service runs the Rust image (${rustServices.map(([n]) => n).join(", ")}): its replay cache is per process`,
+    );
+  }
+  for (const [name, svc] of rustServices) {
+    if (name !== RUST_SERVICE)
+      failures.push(`${name}: the Rust image must run as the "${RUST_SERVICE}" service`);
+    if (svc.ports !== undefined)
+      failures.push(`${name}: the Rust service must not publish ports (Unix socket only)`);
+    if (svc.scale !== undefined && svc.scale !== 1)
+      failures.push(`${name}: scale must be absent or 1`);
+    if (svc.deploy?.replicas !== undefined && svc.deploy.replicas !== 1)
+      failures.push(`${name}: deploy.replicas must be absent or 1`);
+    if (envHas(svc, "CW_RUST_TCP"))
+      failures.push(`${name}: CW_RUST_TCP (development TCP listener) is not allowed in production`);
+    if (!mentionsVolume(svc, RUST_SOCKET_VOLUME))
+      failures.push(`${name}: must mount the "${RUST_SOCKET_VOLUME}" socket volume`);
+  }
+  for (const [name, svc] of Object.entries(services)) {
+    if (mentionsVolume(svc, RUST_SOCKET_VOLUME) && !RUST_SOCKET_CONSUMERS.has(name)) {
+      failures.push(
+        `${name}: only api and ${RUST_SERVICE} may mount the "${RUST_SOCKET_VOLUME}" socket volume`,
+      );
     }
   }
   return failures;
@@ -78,5 +152,7 @@ if (import.meta.main) {
     for (const f of failures) console.error(`  - ${f}`);
     process.exit(1);
   }
-  console.log("arch:compose-policy OK: every literal image is digest-pinned and every service is resource-bounded.");
+  console.log(
+    "arch:compose-policy OK: every literal image is digest-pinned, every service is resource-bounded, and the Rust topology holds.",
+  );
 }

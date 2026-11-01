@@ -383,6 +383,27 @@ export interface AuthzRouteDeps {
    * reader; the slice/tests bind a constant.
    */
   cosignPolicy: (organizationId: string) => Promise<boolean>;
+  /**
+   * CW-RUST-M02 P1 — the Bun→Rust bridge for GET /api/v1/me/permissions (structural; built by the composition
+   * root from `bootstrap/rust-bridge`). Absent ⇒ the route is exactly as before. Present but not enabled for this
+   * route ⇒ it calls the Bun handler. It never decides authorization: it runs after requireSession.
+   */
+  mePermissionsBridge?: {
+    handle(input: {
+      actor: {
+        userId: string;
+        organizationId: string;
+        sessionId: string;
+        sessionClass: string;
+        requestId: string;
+      };
+      bun: () => Promise<{ permissions: string[] }>;
+      fresh: () => Promise<{ permissions: string[] }>;
+      afterResponse: (cb: () => void) => void;
+    }): Promise<{ permissions: string[] }>;
+  };
+  /** Uncached effective permissions (no §2.5 cache), used only to explain a shadow difference. */
+  freshPermissions?: ActorPermissionResolver;
 }
 
 // --- Slice in-memory adapters ------------------------------------------------------------

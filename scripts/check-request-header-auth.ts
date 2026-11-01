@@ -159,6 +159,11 @@ export const REGISTERED_HEADERS: Readonly<Record<string, RegisteredHeader>> = {
     reason:
       "Machine credential, compared in constant time against the provisioned secret (`timingSafeMatch`, bootstrap/plugins/authenticate.ts). Absent or wrong ⇒ the caller falls through to the ordinary session path with no system privilege.",
   },
+  "x-cw-actor-assertion": {
+    classification: "not-authorization",
+    reason:
+      "Never believed by Bun: DELETED from every incoming request by the first onRequest hook (bootstrap/rust-bridge/header-hygiene.ts) and dropped by nginx. Bun mints its own Ed25519-signed assertion for the outgoing call to Rust, which verifies it (CW-RUST-M02).",
+  },
   "x-internal-org-id": {
     classification: "not-authorization",
     reason:

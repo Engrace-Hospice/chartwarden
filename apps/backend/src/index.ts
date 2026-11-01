@@ -30,6 +30,7 @@ import {
   registerDbEffectivePermissionResolver,
   registerIdentityAuth,
   resolveActorPermissions,
+  resolveEffectivePermissions,
   resolveMfaEnforcement,
   resolveWebTrustedOrigins,
 } from "@chartwarden/auth";
@@ -226,6 +227,16 @@ import {
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
 import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
+import {
+  RUST_PARITY_SWEEP_JOB_ID,
+  createAssertionSigner,
+  createMePermissionsBridge,
+  createRustClient,
+  createSweepMembershipReader,
+  parseRustBridgeConfig,
+  runParitySweep,
+  scheduleDailyUtc,
+} from "./bootstrap/rust-bridge/index";
 import { siteDisplayForOrg } from "./bootstrap/site-display-for-org";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store";
@@ -3489,6 +3500,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // M4-T10 — fail closed if the consolidated audit action catalog has a D9 namespace/uniqueness
   // violation (§4.6.7) before the server serves a single request.
   assertAuditActionCatalog();
+  // CW-RUST-M02 P1 — the Bun→Rust bridge. Everything is OFF unless RUST_ROUTES / RUST_PARITY_SWEEP say otherwise, and a
+  // bad bridge config refuses to boot (fail closed) rather than silently forwarding nothing.
+  const rustBridgeConfig = parseRustBridgeConfig(process.env);
+  const rustSigner = rustBridgeConfig.signingKey
+    ? createAssertionSigner(rustBridgeConfig.signingKey)
+    : undefined;
+  const rustClient = createRustClient(rustBridgeConfig.socketPath, rustBridgeConfig.timeoutMs);
   // AUTH-T01 (ADR-0033): build the production DB client when configured, and inject it. Consumed by
   // the Better Auth mount (AUTH-T02) + repositories. Absent DATABASE_URL → the host still boots
   // (the auth handler is mounted only when a DB client is present).
@@ -3578,6 +3596,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   if (platformDbHandle) registerPlatformJob(M18_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M15_PLATFORM_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M5_GEOCODE_COVERAGE_JOB_ID);
+  // CW-RUST-M02 P1 — the daily parity sweep's active-org list (only when the sweep is switched on).
+  if (platformDbHandle && rustBridgeConfig.sweepEnabled)
+    registerPlatformJob(RUST_PARITY_SWEEP_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M28_BAA_COVERAGE_JOB_ID);
   if (platformDbHandle) registerPlatformJob(M3_ROLE_TEMPLATE_BACKFILL_JOB_ID);
   // GAP-062 — the M21 §4.6 par-monitor / unreturned-kit-monitor / supply-request-monitor active-org fan-out.
@@ -4940,6 +4961,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               baseUrl: webAppBaseUrl,
               ...(appOriginFor ? { baseUrlFor: appOriginFor } : {}),
             }),
+            // CW-RUST-M02 P1 — GET /api/v1/me/permissions through Rust (shadow/serve), only when RUST_ROUTES names it.
+            rustBridgeConfig.routes.has("me-permissions") && rustSigner
+              ? createMePermissionsBridge({
+                  config: rustBridgeConfig,
+                  signer: rustSigner,
+                  client: rustClient,
+                  logger: app.log.child({ component: "rust-bridge" }),
+                })
+              : undefined,
           );
           // GAP-011 — engagements (createDbEngagementStore) and auditor sessions (M2's durable
           // `auditor_magic_link` issuer behind the AuditorSessionMinter seam) are both durable now; the
@@ -13229,6 +13259,45 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     }
   }
   if (realtimeEmitterClient) app.addHook("onClose", () => realtimeEmitterClient.quit());
+  // CW-RUST-M02 P1 — the daily parity sweep (spec v0.3), in the process that holds the signing key and the socket.
+  if (rustBridgeConfig.sweepEnabled && !listenerProcess && (role === "api" || role === "all")) {
+    if (!dbHandle || !platformDbHandle || !rustSigner) {
+      throw new Error(
+        "RUST_PARITY_SWEEP=on requires DATABASE_URL, DATABASE_PLATFORM_URL and CW_ACTOR_SIGNING_KEY",
+      );
+    }
+    const sweepDb = dbHandle.db;
+    const sweepOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: RUST_PARITY_SWEEP_JOB_ID,
+      reason: "CW-RUST-M02 parity sweep: active-org list",
+    });
+    const members = createSweepMembershipReader(sweepDb);
+    const freshStore = createDbEffectivePermissionStore(sweepDb);
+    const sweepLog = app.log.child({ component: "rust-parity-sweep" });
+    const stopSweep = scheduleDailyUtc(
+      rustBridgeConfig.sweepAtUtc,
+      () =>
+        runParitySweep({
+          listActiveOrgs: () => sweepOrgs.listActiveOrgs(),
+          listActiveMembers: members.listActiveMembers,
+          countActiveMembers: members.countActiveMembers,
+          freshPermissions: async (organizationId, userId) => [
+            ...resolveEffectivePermissions(
+              await freshStore.loadGrants(organizationId, userId),
+              Date.now(),
+            ).permissions,
+          ],
+          signer: rustSigner,
+          client: rustClient,
+          logger: sweepLog,
+          runId: `sweep-${randomUUID()}`,
+        }),
+      sweepLog,
+    );
+    app.addHook("onClose", async () => stopSweep());
+  }
   app.listen({ port, host: "0.0.0.0" }).catch((err) => {
     app.log.error(err);
     process.exit(1);

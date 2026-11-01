@@ -171,6 +171,33 @@ services:
       retries: 12
       start_period: 30s
 
+  # CW-RUST-M02 P1 — the Rust API (chartwarden-rust). Behind the `rust` profile: deploy.sh never starts it, so with
+  # the profile off nothing changes. It listens ONLY on a Unix socket in the `rust-sock` tmpfs volume, shared with
+  # `api` alone: no ports, no network listener (enforced by arch:compose-policy). Exactly one replica, because its
+  # replay cache is per process. Image signing + deploy.sh rolling are prerequisites for switching on P2.
+  rust:
+    profiles: ["rust"]
+    image: ${CHARTWARDEN_RUST_IMAGE:-ghcr.io/engrace-hospice/chartwarden-rust:unset}
+    pull_policy: always
+    mem_limit: 256m
+    cpus: 0.5
+    restart: unless-stopped
+    read_only: true
+    user: "65532:1000"
+    environment:
+      DATABASE_URL: postgresql://chartwarden_app:${CHARTWARDEN_APP_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
+      CW_ACTOR_PUBLIC_KEYS: ${CW_ACTOR_PUBLIC_KEYS:-}
+      CW_RUST_SOCKET: /run/cw-rust/cw-rust.sock
+      RUST_LOG: info
+    volumes:
+      - rust-sock:/run/cw-rust
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/cw-server", "--healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 10s
+
   migrate:
     image: ${CHARTWARDEN_IMAGE:?set immutable GHCR image in .env.production}
     pull_policy: always
@@ -279,6 +306,9 @@ services:
       DOCLING_WORKER_TOKEN: ${DOCLING_WORKER_TOKEN:?set in .env.production}
     ports:
       - "127.0.0.1:3000:3000"
+    # CW-RUST-M02 P1 — the Rust socket (used only when RUST_ROUTES / RUST_PARITY_SWEEP are set).
+    volumes:
+      - rust-sock:/run/cw-rust
     # M36: clamd is reachable only over the dedicated `scan` network (joined by clamav, api and worker alone), so a
     # compromised sidecar (postgres, minio, docling, ...) cannot reach it and clamd cannot reach them.
     networks: [default, scan]
@@ -482,6 +512,14 @@ networks:
 # host keeps CHARTWARDEN_VOLUME_PREFIX=wardenx in .env.production so it keeps its existing `wardenx_*` volumes
 # under the renamed `chartwarden` project until Window 2 copies them (volumes-copy.sh) and drops the pin.
 volumes:
+  # CW-RUST-M02 P1 — tmpfs, so the socket never persists, with fixed ownership and mode whichever container mounts it
+  # first: owner cw-rust (65532), group 1000 (the `bun` user `api` runs as), 0750.
+  rust-sock:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "uid=65532,gid=1000,mode=0750"
   postgres-data:
     name: ${CHARTWARDEN_VOLUME_PREFIX:-${CHARTWARDEN_COMPOSE_PROJECT:-chartwarden}}_postgres-data
   valkey-data:
