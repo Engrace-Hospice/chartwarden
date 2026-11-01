@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { RESET, checkCompose, checkRustTopology, loadCompose } from "../check-compose-policy";
+import {
+  RESET,
+  checkCompose,
+  checkRustEnvExample,
+  checkRustEnvScope,
+  checkRustTopology,
+  loadCompose,
+} from "../check-compose-policy";
 
 const DIGEST = `sha256:${"a".repeat(64)}`;
 const bounded = { mem_limit: "1g", cpus: 1 };
@@ -184,5 +191,78 @@ describe("arch:compose-policy — CW-RUST-M02 Rust topology", () => {
 
   it("the real production compose file holds the topology", () => {
     expect(checkRustTopology(loadCompose())).toEqual([]);
+  });
+});
+
+describe("arch:compose-policy — RUST_* settings reach api only (P2 prerequisite 3)", () => {
+  const api = {
+    image: "${CHARTWARDEN_IMAGE:?set}",
+    ...bounded,
+    environment: { RUST_ROUTES: "", RUST_ROUTE_MODE: "shadow", RUST_PARITY_SWEEP: "off" },
+  };
+  const worker = { image: "${CHARTWARDEN_IMAGE:?set}", ...bounded };
+
+  it("accepts RUST_* literals on api and RUST_LOG on rust", () => {
+    const services = { api, worker, rust: { ...worker, environment: { RUST_LOG: "info" } } };
+    expect(checkRustEnvScope({ services } as never)).toEqual([]);
+  });
+
+  it.each([
+    ["map", { environment: { RUST_ROUTES: "/api/v1/me/permissions" } }],
+    ["list", { environment: ["RUST_ROUTES=/api/v1/me/permissions"] }],
+    ["list, no value", { environment: ["RUST_PARITY_SWEEP"] }],
+  ])("rejects RUST_* on worker (%s)", (_label, extra) => {
+    const failures = checkRustEnvScope({
+      services: { api, worker: { ...worker, ...extra } },
+    } as never);
+    expect(failures.join("\n")).toContain("worker: RUST_");
+  });
+
+  it("rejects RUST_LOG anywhere but rust", () => {
+    const failures = checkRustEnvScope({
+      services: { api, worker: { ...worker, environment: { RUST_LOG: "debug" } } },
+    } as never);
+    expect(failures.join("\n")).toContain("worker: RUST_LOG");
+  });
+
+  it("rejects a service that inherits api's RUST_* through extends", () => {
+    const failures = checkRustEnvScope({
+      services: { api, "seed-api": { extends: { service: "api" }, environment: { X: "1" } } },
+    } as never);
+    expect(failures.join("\n")).toContain("seed-api: RUST_ROUTES");
+  });
+
+  it("accepts an extending service that resets the inherited RUST_* keys", () => {
+    const reset = { RUST_ROUTES: RESET, RUST_ROUTE_MODE: RESET, RUST_PARITY_SWEEP: RESET };
+    const failures = checkRustEnvScope({
+      services: { api, "seed-api": { extends: { service: "api" }, environment: reset } },
+    } as never);
+    expect(failures).toEqual([]);
+  });
+
+  it("rejects an interpolated RUST_* value on api (compose would read .env.production)", () => {
+    const failures = checkRustEnvScope({
+      services: { api: { ...api, environment: { RUST_ROUTES: "${RUST_ROUTES:-}" } } },
+    } as never);
+    expect(failures.join("\n")).toContain("api: RUST_ROUTES");
+    expect(failures.join("\n")).toContain("literal");
+  });
+
+  it("the real production compose file keeps RUST_* on api, switched off", () => {
+    const doc = loadCompose();
+    expect(checkRustEnvScope(doc)).toEqual([]);
+    const env = (doc.services?.api?.environment ?? {}) as Record<string, string>;
+    expect(env).toMatchObject({
+      RUST_ROUTES: "",
+      RUST_ROUTE_MODE: "shadow",
+      RUST_SOCKET: "/run/cw-rust/cw-rust.sock",
+      RUST_TIMEOUT_MS: "300",
+      RUST_PARITY_SWEEP: "off",
+    });
+  });
+
+  it("flags an active RUST_* assignment in the env file example, not a comment", () => {
+    expect(checkRustEnvExample("A=1\n# RUST_ROUTES=/x is set in compose.yml\n")).toEqual([]);
+    expect(checkRustEnvExample("A=1\nRUST_ROUTES=/x\n").join("\n")).toContain("RUST_ROUTES");
   });
 });

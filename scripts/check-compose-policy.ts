@@ -14,6 +14,10 @@
  *     door is a Unix socket shared with `api`. So: at most one service runs the Rust image, it has no `ports`, no
  *     `scale`/`deploy.replicas` above 1, no `CW_RUST_TCP` (the loopback-TCP development listener), and the socket
  *     volume is mounted by `api` and `rust` only.
+ *  4. CW-RUST-M02 P2 prerequisite 3 (`checkRustEnvScope`, `checkRustEnvExample`): the bridge settings (`RUST_ROUTES`,
+ *     `RUST_ROUTE_MODE`, ...) are set as literals in `api`'s `environment:` and nowhere else. `.env.production` is
+ *     injected into seven containers, so none of them may find a RUST_* there, and a service that `extends` api must
+ *     `!reset` what it inherits.
  *
  * Run:  bun run arch:compose-policy   (in `arch:fitness`)
  */
@@ -24,6 +28,7 @@ import yaml from "js-yaml";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const COMPOSE_PATH = "deploy/production/compose.yml";
+const ENV_EXAMPLE_PATH = "deploy/production/.env.production.example";
 /** `repo[:port]/name:tag@sha256:<digest>` - a tag is required beside the digest so a human can read the version. */
 const PINNED_IMAGE = /^[^\s@]+:[^\s@/]+@sha256:[0-9a-f]{64}$/;
 /** Services that must reserve memory (capacity guaranteed against the other services on the host). */
@@ -79,7 +84,7 @@ export function checkCompose(doc: ComposeDoc): string[] {
       failures.push(`${name}: missing mem_reservation (capacity must be reserved for it) (#856)`);
     }
   }
-  return [...failures, ...checkRustTopology(doc)];
+  return [...failures, ...checkRustTopology(doc), ...checkRustEnvScope(doc)];
 }
 
 /** The service name and socket volume the Rust topology rules are written against. */
@@ -222,16 +227,89 @@ export function checkRustTopology(doc: ComposeDoc): string[] {
   return failures;
 }
 
+const RUST_ENV_KEY = /^RUST_/;
+/** The one RUST_* that is not bridge config: the Rust service's own tracing filter. */
+const RUST_LOG_OWNER = "rust";
+
+/** `environment` as compose merges it through `extends`: maps and `K=V` lists, a `!reset` value drops the key. */
+function effectiveEnvKeys(
+  services: Readonly<Record<string, Svc>>,
+  name: string,
+  seen = new Set<string>(),
+): Map<string, string> {
+  const svc = services[name] ?? {};
+  const baseName = typeof svc.extends === "string" ? svc.extends : svc.extends?.service;
+  const out =
+    baseName && !seen.has(name) ? effectiveEnvKeys(services, baseName, seen.add(name)) : new Map();
+  const env = svc.environment;
+  if (isReset(env)) return new Map();
+  const entries: [string, unknown][] = Array.isArray(env)
+    ? env.map((e) => {
+        const [k = "", ...v] = String(e).split("=");
+        return [k, v.join("=")];
+      })
+    : env && typeof env === "object"
+      ? Object.entries(env)
+      : [];
+  for (const [k, v] of entries) {
+    if (isReset(v)) out.delete(k);
+    else out.set(k, v === null || v === undefined ? "" : String(v));
+  }
+  return out;
+}
+
+/**
+ * CW-RUST-M02 P2 prerequisite 3: RUST_* reaches `api` and nothing else, and as literals. A `${VAR}` there would be
+ * resolved by `docker compose --env-file .env.production`, which puts the setting back in the file seven containers read.
+ */
+export function checkRustEnvScope(doc: ComposeDoc): string[] {
+  const failures: string[] = [];
+  const raw = (doc.services ?? {}) as Readonly<Record<string, Svc>>;
+  for (const name of Object.keys(raw)) {
+    for (const [key, value] of effectiveEnvKeys(raw, name)) {
+      if (!RUST_ENV_KEY.test(key)) continue;
+      if (name === "api") {
+        if (value.includes("${"))
+          failures.push(
+            `api: ${key} must be a literal, not a \${...} interpolation (it would be read from .env.production)`,
+          );
+      } else if (!(name === RUST_LOG_OWNER && key === "RUST_LOG")) {
+        failures.push(
+          `${name}: ${key} - RUST_* settings belong on api's environment only (a service that extends api must !reset them)`,
+        );
+      }
+    }
+  }
+  return failures;
+}
+
+/** `.env.production` must not carry RUST_* (commented documentation is fine): it reaches every `env_file` service. */
+export function checkRustEnvExample(text: string): string[] {
+  return text
+    .split("\n")
+    .map((l) => l.match(/^\s*(?:export\s+)?(RUST_[A-Z0-9_]*)\s*=/)?.[1])
+    .filter((k): k is string => k !== undefined)
+    .map(
+      (k) =>
+        `.env.production example: ${k} is set; RUST_* belongs in api's environment in compose.yml`,
+    );
+}
+
 export function loadCompose(path = join(REPO_ROOT, COMPOSE_PATH)): ComposeDoc {
   // `!reset` (compose-specific tag) is not in the default schema: treat it as a plain empty value.
   // `!reset` loads as the RESET marker so `extends` resolution (checkRustTopology) can honour it.
-  const resetTag = new yaml.Type("!reset", { kind: "sequence", construct: () => RESET });
-  const schema = yaml.DEFAULT_SCHEMA.extend([resetTag]);
+  const resetTags = (["sequence", "scalar"] as const).map(
+    (kind) => new yaml.Type("!reset", { kind, construct: () => RESET }),
+  );
+  const schema = yaml.DEFAULT_SCHEMA.extend(resetTags);
   return yaml.load(readFileSync(path, "utf8"), { schema }) as ComposeDoc;
 }
 
 if (import.meta.main) {
-  const failures = checkCompose(loadCompose());
+  const failures = [
+    ...checkCompose(loadCompose()),
+    ...checkRustEnvExample(readFileSync(join(REPO_ROOT, ENV_EXAMPLE_PATH), "utf8")),
+  ];
   if (failures.length > 0) {
     console.error(`arch:compose-policy FAILED (${COMPOSE_PATH}):`);
     for (const f of failures) console.error(`  - ${f}`);

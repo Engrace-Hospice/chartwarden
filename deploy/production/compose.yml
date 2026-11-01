@@ -319,6 +319,14 @@ services:
       # GAP-138 — DocLens parse worker (compose-network only).
       DOCLING_WORKER_URL: http://docling-worker:8000
       DOCLING_WORKER_TOKEN: ${DOCLING_WORKER_TOKEN:?set in .env.production}
+      # CW-RUST-M02 P2 prerequisite 3 - the Rust bridge, OFF: no route, sweep off. Literals on purpose and on `api` alone
+      # (arch:compose-policy): .env.production is injected into seven containers, and `${VAR}` here would be read from
+      # it. Turning shadow on is a reviewed edit of RUST_ROUTES below, plus the CW_ACTOR_SIGNING_KEY_FILE secret.
+      RUST_ROUTES: ""
+      RUST_ROUTE_MODE: shadow
+      RUST_SOCKET: /run/cw-rust/cw-rust.sock
+      RUST_TIMEOUT_MS: "300"
+      RUST_PARITY_SWEEP: "off"
     ports:
       - "127.0.0.1:3000:3000"
     # CW-RUST-M02 P1 — the Rust socket (used only when RUST_ROUTES / RUST_PARITY_SWEEP are set). `nocopy`: never seed
@@ -501,6 +509,12 @@ services:
       # because production boot (assertProductionEnv) refuses any other value. Only the seed client
       # (seed-runner below) addresses this api as http://localhost:3000.
       CHARTWARDEN_SIGNUP_REQUIRES_INVITE: "false"
+      # CW-RUST-M02: nor the Rust bridge settings (no socket here); RUST_* lives on `api` alone.
+      RUST_ROUTES: !reset null
+      RUST_ROUTE_MODE: !reset null
+      RUST_SOCKET: !reset null
+      RUST_TIMEOUT_MS: !reset null
+      RUST_PARITY_SWEEP: !reset null
 
   seed-runner:
     profiles: ["seed"]
