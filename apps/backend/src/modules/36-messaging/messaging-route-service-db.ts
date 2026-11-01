@@ -2809,11 +2809,7 @@ export function createDbMessagingRouteService(
           .innerJoin(AL, eq(AL.id, ND.alertId))
           .leftJoin(ARCP, and(eq(ARCP.alertId, AL.id), eq(ARCP.recipientUserId, userId)))
           .where(
-            and(
-              eq(AL.organizationId, orgId),
-              eq(ND.recipientUserId, userId),
-              isNull(ARCP.alertId),
-            ),
+            and(eq(AL.organizationId, orgId), eq(ND.recipientUserId, userId), isNull(ARCP.alertId)),
           );
 
         if (unread.length === 0) return;

@@ -265,13 +265,17 @@ export function NotificationsInbox(): JSX.Element {
                     onClick={() => {
                       setMarkingAllRead(true);
                       setMarkAllReadFailed(false);
-                      void markAllRead().then((ok) => setMarkAllReadFailed(!ok)).finally(() => setMarkingAllRead(false));
+                      void markAllRead()
+                        .then((ok) => setMarkAllReadFailed(!ok))
+                        .finally(() => setMarkingAllRead(false));
                     }}
                   >
                     {markingAllRead ? "Marking all read…" : "Mark all as read"}
                   </Button>
                 ) : null}
-                {markAllReadFailed ? <span role="alert">Could not mark all notifications as read.</span> : null}
+                {markAllReadFailed ? (
+                  <span role="alert">Could not mark all notifications as read.</span>
+                ) : null}
                 <label className="wx-search-field">
                   <Glyph name="search" size={16} />
                   <input
