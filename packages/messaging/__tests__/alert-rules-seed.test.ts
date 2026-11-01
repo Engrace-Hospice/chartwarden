@@ -113,6 +113,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       // F-187 (#248) — a lab order superseded after its ORM may already be at the laboratory (T-29.08 defines no
       // outbound cancel, so this alert is the only signal). A real emitter: M11's `lab-cancellation-required`.
       "m11.order.lab_cancellation_required",
+      // #908/#910 - a critical (HH/LL) lab result; M36's `critical-lab-alerts` consumer.
+      "m11.order.critical_lab_result",
       "m8.encounter.unsigned",
       "m8.encounter.documentation_late",
       "m8.encounter.cosignature_routed",

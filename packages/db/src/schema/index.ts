@@ -383,6 +383,7 @@ export * from "./orders/order-result-reviews";
 export * from "./orders/order-recovery-requests";
 export * from "./orders/order-verbal-policies";
 export * from "./orders/order-idg-decision-applications";
+export * from "./orders/critical-lab-results";
 
 // ---------------------------------------------------------------------------
 // Module 12 — DoseSpot Integration (M12-T02)

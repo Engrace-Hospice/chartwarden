@@ -154,6 +154,12 @@ describe.skipIf(!DB_URL)(
           [USER, ORG_A],
         )
       ).rows[0].id as string;
+      // A critical result is recorded in `critical_lab_result` (#910), which FKs to a real patient.
+      await admin.query(
+        `INSERT INTO patient (id, organization_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth, status)
+         VALUES ($1,$2,'lr-mrn','Pat','Synthetic','1950-01-01','female','active')`,
+        [PATIENT, ORG_A],
+      );
       await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
       handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 

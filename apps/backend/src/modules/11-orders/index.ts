@@ -260,3 +260,15 @@ export {
   buildM11SupplyCancelledConsumer,
   type SupplyCancelledDeps,
 } from "./outbox-consumers/m21-supply-cancelled";
+// #908/#910 -- critical lab result ledger (quarantine / supersede) and its escalation tick.
+export {
+  CRITICAL_LAB_NO_ORDER_RESPOND_WITHIN_MS,
+  type QuarantinedCritical,
+  createCriticalLabLookup,
+  sweepQuarantinedCriticalLabs,
+} from "./critical-lab-result";
+export {
+  M11_CRITICAL_LAB_ESCALATION_PLATFORM_JOB_ID,
+  registerM11CriticalLabEscalationWorker,
+  scheduleM11CriticalLabEscalation,
+} from "./jobs/critical-lab-escalation-worker";

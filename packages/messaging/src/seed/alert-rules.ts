@@ -956,6 +956,24 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // #908/#910 - a critical (HH/LL) lab result. The M36 consumer resolves the people (caseload RN, order drafter,
+  // attending) into `recipientUserIds`; `alertRoleKeys` carries `medical_director` when the order is unsigned or a
+  // no-order quarantine went unresolved. A page that resolves nobody is re-routed to the tenant admins by the consumer.
+  // Ids, a LOINC code and a flag only in the payload.
+  {
+    eventType: "m11.order.critical_lab_result",
+    category: "clinical_urgent",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: {
+      roleKeys: [],
+      roleKeysPath: "alertRoleKeys",
+      userIdPaths: ["recipientUserIds"],
+    },
+    channelsOverride: ["in_app", "push"],
+    systemLocked: false,
+    enabled: true,
+  },
   {
     eventType: "m8.encounter.unsigned",
     category: "clinical_routine",

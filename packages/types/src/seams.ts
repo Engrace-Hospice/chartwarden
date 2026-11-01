@@ -666,6 +666,12 @@ export interface CareTeamProvider {
     organizationId: string;
     patientId: string;
   }): Promise<string | null>;
+  /**
+   * The patient's ATTENDING physician as a user id: the clinician on the open `attending_clinician` assignment,
+   * else the open `md` one; null when the patient has neither (#910). Like {@link primaryRnUserId} this is a
+   * role-filtered read of `patient_assignment`, not the whole roster. Leaf-safe (ids only).
+   */
+  attendingUserId(input: { organizationId: string; patientId: string }): Promise<string | null>;
 }
 
 /**

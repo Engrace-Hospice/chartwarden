@@ -331,6 +331,16 @@ controls:
       - script: test:m36:retention-governance:live
       - file: docs/runbooks/m36-retention-destruction.md
 
+  - id: CW-CS-01
+    title: Critical lab results are never silently dropped — paged, quarantined with a clock, escalated, supersession recorded
+    hipaa: ["164.312(c)(1)"]
+    soc2: ["PI1.3"]
+    status: implemented
+    evidence:
+      - script: test:m11:lab-result-edge-cases:live
+      - script: test:m11:lab-results-applier:live
+      - script: arch:outbox-bindings
+
   - id: CW-AI-01
     title: AI features governed — PHI scope, read-only messaging, kill switch
     hipaa: ["164.502(b)", "164.312(b)"]
