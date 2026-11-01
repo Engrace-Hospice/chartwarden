@@ -13,7 +13,7 @@
 import { audit } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { NotFoundError } from "@chartwarden/types";
+import { NotFoundError, ValidationError } from "@chartwarden/types";
 import { ChartWardenError } from "@chartwarden/types";
 import { type SQL, and, asc, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import {
@@ -975,8 +975,15 @@ export function createDbPatientRouteService(
     patientId: string,
     address: AddAddressInput,
     actorUserId: string,
-  ): Promise<{ addressId: string; cascadeEmitted: "m5.patient.address_changed" }> =>
-    withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+  ): Promise<{ addressId: string; cascadeEmitted: "m5.patient.address_changed" }> => {
+    // patient_address defaults country to US and enforces a state for every US address. Validate
+    // before opening the transaction so an omitted state is a client error, not a database 500.
+    if (!address.state?.trim()) {
+      throw new ValidationError("state is required for a US address", [
+        { field: "state", code: "REQUIRED", message: "state is required for a US address" },
+      ]);
+    }
+    return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
       await assertPatientVisible(tx, patientId);
       const today = new Date().toISOString().slice(0, 10);
       if (address.isPrimary) {
@@ -1008,6 +1015,7 @@ export function createDbPatientRouteService(
       });
       return { addressId, cascadeEmitted: "m5.patient.address_changed" };
     });
+  };
 
   // §7.7: open a record-amendment request; SLA due = received + 60 days. GAP-118 — a demographic request names
   // the ONE field to change and the value it should hold (closed allowlist, `./amendments`); the current value
