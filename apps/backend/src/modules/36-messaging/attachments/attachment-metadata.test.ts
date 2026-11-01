@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inspectImageMetadata } from "./attachment-metadata";
+import { imageMetadataQuarantineSignature, inspectImageMetadata } from "./attachment-metadata";
 
 const enc = (s: string) => Array.from(new TextEncoder().encode(s));
 const segment = (code: number, payload: number[]) => [
@@ -64,6 +64,17 @@ const tiff = (tags: number[], opts: { bigEndian?: boolean } = {}) => {
 };
 
 const le32 = (v: number) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, v >>> 24];
+
+describe("image metadata scan policy", () => {
+  it("allows valid images with ordinary metadata to proceed to antivirus scanning", () => {
+    expect(imageMetadataQuarantineSignature("metadata")).toBeNull();
+    expect(imageMetadataQuarantineSignature("clean")).toBeNull();
+  });
+
+  it("still quarantines image data whose structure cannot be safely parsed", () => {
+    expect(imageMetadataQuarantineSignature("unparseable")).toBe("image-metadata-unparseable");
+  });
+});
 
 describe("inspectImageMetadata: JPEG", () => {
   it("passes a clean JPEG with JFIF + ICC + DQT/DHT/SOF", () => {
