@@ -10,8 +10,7 @@
  *     hour re-pages an unfilled hole (never silence, never a storm);
  *   - tenant isolation, and a malformed event throws (relay retry -> DLQ) instead of being dropped;
  *   - when that page's delivery fails, the `delivery_failed` the settlement publishes carries what M19 needs.
- * "REPORTED, NOT FIXED" cases pin today's behaviour (same convention as m19-inbound-triggers.live) so the day it
- * changes this suite fails and the change is made deliberately.
+ *   - a page that resolves nobody falls back to the tenant admins under a `:fb` id and is logged (issue #911).
  *
  * Drives the writes as the NOBYPASSRLS `chartwarden_app` role with the real catalog-validating publisher.
  *
@@ -25,6 +24,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { registerSeam } from "../src/bootstrap/seams/registry";
 import {
   type Tx,
   applyDeliveryTransition,
@@ -57,6 +57,7 @@ describe.skipIf(!DB_URL)("S09 on-call page chain — LIVE Postgres", () => {
   let consumer: ReturnType<typeof buildM36OncallAlertConsumer>;
   let settleOutbox: Parameters<typeof applyDeliveryTransition>[1];
   const user: Record<string, string> = {};
+  const warnings: { message: string; context: Record<string, string> }[] = [];
 
   async function applyMigrations() {
     for (const f of readdirSync(MIGRATIONS_DIR)
@@ -162,8 +163,15 @@ describe.skipIf(!DB_URL)("S09 on-call page chain — LIVE Postgres", () => {
     });
     const emitter = createDrizzleAlertEmitter(handle.db);
     registerMessagingSeams({ emitter });
+    // An empty roster: the callback-SLA rule resolves `on_call` through this seam and must find nobody.
+    registerSeam("OnCallProvider", {
+      currentOnCallActors: async () => [],
+      activeShiftsAt: async () => [],
+    });
     await wireAlertRuleSeed(handle.db);
-    consumer = buildM36OncallAlertConsumer(emitter);
+    consumer = buildM36OncallAlertConsumer(emitter, (message, context) =>
+      warnings.push({ message, context }),
+    );
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M36_OUTBOX_EVENTS]));
     settleOutbox = {
       publish: (tx: unknown, e: Record<string, unknown>) =>
@@ -270,24 +278,76 @@ describe.skipIf(!DB_URL)("S09 on-call page chain — LIVE Postgres", () => {
     expect(rows.every((r) => r.severity === "critical")).toBe(true);
   });
 
-  it("REPORTED, NOT FIXED: a gap in an org where nobody holds the seeded roles raises the alert but reaches no one", async () => {
-    // ORG_C's only member is a nurse. The rule names org_admin + clinical_supervisor, so the page resolves to nobody.
-    // The raw emitter (what the production consumer is bound to) neither errors nor falls back, so the event is
-    // acknowledged as handled and no human is told. This test builds the consumer itself, so a fix applied only
-    // at the production binding would not trip it: the next test pins that binding's source too.
-    const before = (await alerts(ORG_C, `%${PE_1}%`)).length;
-
+  it("a gap in an org where nobody holds the seeded roles falls back (own :fb id, logged) instead of vanishing silently", async () => {
+    // ORG_C's only member is a nurse, so the rule resolves nobody. The consumer re-emits under the tenant-admins
+    // fallback rule with a `:fb` correlation id and logs ids only. ORG_C has no org_admin either (tenant_admins IS
+    // org_admin, a subset of this rule's role set), so a human is reachable only where an admin exists - see the
+    // callback-SLA case below; here the point is the loud, second-chance record.
+    warnings.length = 0;
     await handleEvent(gapEvent(ORG_C, PE_1, HOUR_10));
 
     const rows = await alerts(ORG_C, `%${PE_1}%`);
-    expect(rows).toHaveLength(before + 1);
+    expect(rows).toHaveLength(1);
     expect(await recipients(rows[0].id)).toEqual([]);
+    const fb = (
+      await admin.query(
+        "SELECT id, event_type, correlation_id FROM alert WHERE organization_id=$1 AND correlation_id=$2",
+        [ORG_C, `${rows[0].correlation_id}:fb`],
+      )
+    ).rows;
+    expect(fb).toHaveLength(1);
+    expect(fb[0].event_type).toBe("m30.alerts.recipient_fallback");
+    expect(warnings.map((w) => w.message)).toEqual([
+      "alert resolved no recipients; paging tenant admins",
+      "alert fallback also resolved no recipients; the page reached nobody",
+    ]);
+    expect(Object.keys(warnings[0].context).sort()).toEqual([
+      "correlationId",
+      "eventType",
+      "organizationId",
+    ]);
   });
 
-  it("REPORTED, NOT FIXED: the production binding hands the consumer the bare emitter (no recipient fallback)", () => {
-    const boot = readFileSync(join(__dirname, "../src/index.ts"), "utf8");
+  it("a callback-SLA page with an empty on-call roster reaches the tenant admin via the fallback", async () => {
+    const id = randomUUID();
+    await handleEvent({
+      id,
+      eventType: "m19.triage_call.callback_sla_breached",
+      organizationId: ORG_A,
+      createdAt: HOUR_10,
+      payload: {
+        providerEntityId: PE_2,
+        triageCallId: randomUUID(),
+        slaTargetMinutes: 15,
+        minutesElapsed: 22,
+      },
+    });
 
-    expect(boot).toContain('buildM36OncallAlertConsumer(getSeam("AlertEmitter") as AlertEmitter)');
+    const base = `outbox:m19.triage.callback_sla_breached:${id}`;
+    const { rows } = await admin.query(
+      "SELECT id, correlation_id FROM alert WHERE organization_id=$1 AND correlation_id IN ($2,$3)",
+      [ORG_A, base, `${base}:fb`],
+    );
+    const fb = rows.find((r) => r.correlation_id === `${base}:fb`);
+    expect(fb).toBeDefined();
+    expect(await recipients(fb.id as string)).toEqual([user.aAdmin]);
+  });
+
+  it("the production binding wraps the consumer in the recipient fallback with a logging warn", () => {
+    const boot = readFileSync(join(__dirname, "../src/index.ts"), "utf8");
+    const consumerSrc = readFileSync(
+      join(__dirname, "../src/modules/36-messaging/outbox-consumers/oncall-alerts.ts"),
+      "utf8",
+    );
+
+    expect(boot).not.toContain(
+      'buildM36OncallAlertConsumer(getSeam("AlertEmitter") as AlertEmitter)',
+    );
+    expect(boot.replace(/\s+/g, " ")).toMatch(
+      /buildM36OncallAlertConsumer\( ?getSeam\("AlertEmitter"\) as AlertEmitter, \(message, context\) => app\.log\.warn\(context, message\),? ?\)/,
+    );
+    expect(consumerSrc).toContain("emitWithRecipientFallback(alerts, event.organizationId");
+    expect(consumerSrc).not.toContain("await alerts.emit(");
   });
 
   it("when the coverage-gap page fails to deliver, the published delivery_failed names the entity and the alert type", async () => {
