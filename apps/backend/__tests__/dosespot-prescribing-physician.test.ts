@@ -1,8 +1,8 @@
 import { NotFoundError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
-  assertPrescribingPhysicianActive,
   type PhysicianDirectoryPort,
+  assertPrescribingPhysicianActive,
 } from "../src/modules/12-dosespot/prescribing-physician-check";
 
 const ORG = "00000000-0000-4000-8000-0000000000a1";

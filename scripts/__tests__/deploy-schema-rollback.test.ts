@@ -103,7 +103,11 @@ interface Scenario {
    * Webhook URL: "env" = process environment, "file" = `.deploy-alert.env`, "legacy-env-file" = `.env.production`
    * (which deploy.sh must NOT honour: compose injects that file into containers). Absent = unset.
    */
-  readonly alert?: { readonly via: "env" | "file" | "legacy-env-file"; readonly url?: string; readonly curlExit?: number };
+  readonly alert?: {
+    readonly via: "env" | "file" | "legacy-env-file";
+    readonly url?: string;
+    readonly curlExit?: number;
+  };
 }
 
 interface Outcome {
@@ -222,8 +226,12 @@ async function deployThenSignal(s: Scenario, signal: NodeJS.Signals): Promise<Ou
   const p = prepare({ ...s, hangProvisionSeconds: 2 });
   const child = spawn("sh", DEPLOY_ARGS, { cwd: p.dir, env: p.env });
   let out = "";
-  child.stdout.on("data", (d: Buffer) => (out += d.toString()));
-  child.stderr.on("data", (d: Buffer) => (out += d.toString()));
+  child.stdout.on("data", (d: Buffer) => {
+    out += d.toString();
+  });
+  child.stderr.on("data", (d: Buffer) => {
+    out += d.toString();
+  });
   const exited = new Promise<number>((res) => child.on("close", (c) => res(c ?? -1)));
   for (let i = 0; i < 100 && !existsSync(join(p.state, "hanging")); i += 1) {
     await new Promise((r) => setTimeout(r, 50));
@@ -352,7 +360,14 @@ describe.skipIf(BUN === "")("deploy.sh failure alert (#866)", () => {
     });
     expect(String(o.alertBody?.text)).toContain("operator decision required");
     expect(Object.keys(o.alertBody ?? {}).sort()).toEqual(
-      ["applied_migrations", "exit_code", "operator_decision_required", "sha", "step", "text"].sort(),
+      [
+        "applied_migrations",
+        "exit_code",
+        "operator_decision_required",
+        "sha",
+        "step",
+        "text",
+      ].sort(),
     );
   });
 
@@ -399,7 +414,9 @@ describe.skipIf(BUN === "")("deploy.sh failure alert (#866)", () => {
     const example = readFileSync(join(REPO, "deploy/production/.env.production.example"), "utf8");
     expect(example).not.toContain("DEPLOY_ALERT_WEBHOOK_URL");
     const compose = readFileSync(join(REPO, "deploy/production/compose.yml"), "utf8");
-    const envFiles = [...compose.matchAll(/^\s*env_file:\s*(.+)$/gm)].map((m) => (m[1] ?? "").trim());
+    const envFiles = [...compose.matchAll(/^\s*env_file:\s*(.+)$/gm)].map((m) =>
+      (m[1] ?? "").trim(),
+    );
     expect(envFiles.length).toBeGreaterThan(0);
     for (const f of envFiles) expect(f).not.toContain("deploy-alert");
     expect(compose).not.toContain(".deploy-alert");

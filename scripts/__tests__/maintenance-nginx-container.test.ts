@@ -11,14 +11,19 @@ const IMAGE = "nginx:stable";
 const NAME = `cw-maint-test-${process.pid}`;
 const FLAG = "/etc/nginx/chartwarden-maintenance.on";
 
-const docker = (...args: string[]) => spawnSync("docker", args, { encoding: "utf8", timeout: 120_000 });
+const docker = (...args: string[]) =>
+  spawnSync("docker", args, { encoding: "utf8", timeout: 120_000 });
 const dockerReady = (): boolean =>
-  docker("info").status === 0 && (docker("image", "inspect", IMAGE).status === 0 || docker("pull", "-q", IMAGE).status === 0);
+  docker("info").status === 0 &&
+  (docker("image", "inspect", IMAGE).status === 0 || docker("pull", "-q", IMAGE).status === 0);
 
 const HAVE_DOCKER = dockerReady();
 let base = "";
 
-async function status(path: string, method = "GET"): Promise<{ code: number; retryAfter: string | null; body: string }> {
+async function status(
+  path: string,
+  method = "GET",
+): Promise<{ code: number; retryAfter: string | null; body: string }> {
   const res = await fetch(`${base}${path}`, { method, redirect: "manual" });
   return { code: res.status, retryAfter: res.headers.get("retry-after"), body: await res.text() };
 }
@@ -26,10 +31,18 @@ async function status(path: string, method = "GET"): Promise<{ code: number; ret
 describe.skipIf(!HAVE_DOCKER)("maintenance snippet on a real nginx", () => {
   beforeAll(async () => {
     const run = docker(
-      "run", "-d", "--name", NAME, "-p", "127.0.0.1::80",
-      "-v", `${NGINX_DIR}/chartwarden-maintenance.conf:/etc/nginx/snippets/chartwarden-maintenance.conf:ro`,
-      "-v", `${NGINX_DIR}/chartwarden-log-format.conf:/etc/nginx/conf.d/00-log-format.conf:ro`,
-      "-v", `${NGINX_DIR}/chartwarden-frontend.conf:/etc/nginx/conf.d/default.conf:ro`,
+      "run",
+      "-d",
+      "--name",
+      NAME,
+      "-p",
+      "127.0.0.1::80",
+      "-v",
+      `${NGINX_DIR}/chartwarden-maintenance.conf:/etc/nginx/snippets/chartwarden-maintenance.conf:ro`,
+      "-v",
+      `${NGINX_DIR}/chartwarden-log-format.conf:/etc/nginx/conf.d/00-log-format.conf:ro`,
+      "-v",
+      `${NGINX_DIR}/chartwarden-frontend.conf:/etc/nginx/conf.d/default.conf:ro`,
       IMAGE,
     );
     expect(run.status, run.stderr).toBe(0);
