@@ -22,7 +22,7 @@ import type {
   AdminMembershipReader,
   OrgScope,
 } from "@chartwarden/types";
-import { and, eq, gt, inArray, isNull, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { effectiveReachWithDiagnostics } from "../roles/grant-scope";
 import { roleConfersKey } from "../roles/platform-reserved";
 import { setEffectivePermissionResolver } from "./require-role";
@@ -34,15 +34,32 @@ import {
 import type { RoleGrant } from "./resolve";
 import { withSessionClassPermissions } from "./session-class-permissions";
 
+export interface DbEffectivePermissionStoreOptions {
+  /**
+   * Opt-in. Caps `statement_timeout` (ms, transaction-local) for each statement of `loadGrants`, so a stuck read is
+   * cancelled by PostgreSQL and its pooled connection released even after the caller stopped waiting for it. Used by the
+   * UNCACHED instances behind the Rust parity sweep and the shadow recheck (CW-RUST-M02 P2 prerequisite 6); the cached
+   * request-path resolver leaves it unset and behaves exactly as before.
+   */
+  readonly statementTimeoutMs?: number;
+}
+
 /**
  * Build the live `EffectivePermissionStore` over the pooled Drizzle client. `loadGrants` is keyed by
  * (orgId, userId) — the request context carries the actor + active org, not a membership id — and only
  * `active` memberships contribute grants (a pending/suspended/revoked membership grants nothing).
  */
-export function createDbEffectivePermissionStore(db: DbClient): EffectivePermissionStore {
+export function createDbEffectivePermissionStore(
+  db: DbClient,
+  opts: DbEffectivePermissionStoreOptions = {},
+): EffectivePermissionStore {
   return {
     async loadGrants(orgId: string, userId: string): Promise<RoleGrant[]> {
       return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        if (opts.statementTimeoutMs !== undefined)
+          await tx.execute(
+            sql`SELECT set_config('statement_timeout', ${String(opts.statementTimeoutMs)}, true)`,
+          );
         // One grant row per membership_role: the role (key + enabled + ownership) and the grant's
         // expiry. RLS + the explicit predicates scope this to the actor's active membership in this org.
         const rawGrantRows = await tx

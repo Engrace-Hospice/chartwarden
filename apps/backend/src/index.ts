@@ -229,6 +229,7 @@ import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
 import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
 import {
   RUST_PARITY_SWEEP_JOB_ID,
+  SWEEP_STATEMENT_TIMEOUT_MS,
   createAssertionSigner,
   createMePermissionsBridge,
   createRustClient,
@@ -13276,9 +13277,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       auditBypass: m34PlatformBypassAuditor,
       jobId: RUST_PARITY_SWEEP_JOB_ID,
       reason: "CW-RUST-M02 parity sweep: active-org list",
+      // P2 prerequisite 6: every sweep read is capped server-side (below the sweep's own per-op limit), so an
+      // operation the sweep abandons is cancelled by PostgreSQL and its pool connection comes back.
+      statementTimeoutMs: SWEEP_STATEMENT_TIMEOUT_MS,
     });
     const members = createSweepMembershipReader(sweepDb);
-    const freshStore = createDbEffectivePermissionStore(sweepDb);
+    const freshStore = createDbEffectivePermissionStore(sweepDb, {
+      statementTimeoutMs: SWEEP_STATEMENT_TIMEOUT_MS,
+    });
     const sweepLog = app.log.child({ component: "rust-parity-sweep" });
     const stopSweep = scheduleDailyUtc(
       rustBridgeConfig.sweepAtUtc,

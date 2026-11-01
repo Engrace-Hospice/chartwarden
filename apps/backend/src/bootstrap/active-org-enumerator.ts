@@ -13,7 +13,7 @@
 // are excluded — a cron must not fan out to a not-yet-activated or suspended tenant).
 import { type DbClient, schema } from "@chartwarden/db";
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
-import { inArray } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 
 /** One active org the enumeration returns (structurally the M30 `ActiveOrg` / any cron's fan-out unit). */
 export interface ActiveOrgRow {
@@ -36,6 +36,13 @@ export interface ActiveOrgEnumeratorDeps {
   readonly reason?: string;
   /** Defaults to ['active']; the outbox relay also includes created/suspended orgs with pending events. */
   readonly statuses?: readonly ("created" | "active" | "suspended" | "closed")[];
+  /**
+   * Opt-in. When set, the transaction's `statement_timeout` is capped to this many ms BEFORE the bypass audit and the org
+   * read run, so a stuck statement is cancelled by PostgreSQL itself and its pooled connection is released, instead of
+   * outliving a caller that stopped waiting for it (CW-RUST-M02 P2 prerequisite 6: the parity sweep). Unset = no cap,
+   * exactly as for every other cron that binds this enumerator.
+   */
+  readonly statementTimeoutMs?: number;
 }
 
 /**
@@ -45,6 +52,15 @@ export interface ActiveOrgEnumeratorDeps {
  */
 export function buildActiveOrgEnumerator(deps: ActiveOrgEnumeratorDeps): ActiveOrgEnumerator {
   const platformDb = deps.platformDb;
+  const capMs = deps.statementTimeoutMs;
+  // The cap goes first, so it covers the audit write as well as the read (both run in the one transaction).
+  const auditBypass: PlatformBypassAuditor<DbClient> =
+    capMs === undefined
+      ? deps.auditBypass
+      : async (tx, event) => {
+          await tx.execute(sql`SELECT set_config('statement_timeout', ${String(capMs)}, true)`);
+          await deps.auditBypass(tx, event);
+        };
   return {
     listActiveOrgs: () => {
       // Fail LOUD, never an empty list: without DATABASE_PLATFORM_URL the only pool left is the tenant pool, on which
@@ -64,7 +80,7 @@ export function buildActiveOrgEnumerator(deps: ActiveOrgEnumeratorDeps): ActiveO
           reason: deps.reason ?? "active-org enumeration (platform cron fan-out)",
           crossTenant: true,
         },
-        deps.auditBypass,
+        auditBypass,
         (tx) =>
           tx
             .select({ organizationId: schema.organizations.id })

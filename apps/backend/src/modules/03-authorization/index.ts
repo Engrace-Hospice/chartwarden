@@ -139,6 +139,14 @@ import { registerAuthorizationRoutes as _registerAuthzRoutes } from "./routes/au
 const DURABLE_VIA_OUTBOX_NOTIFIER: ComplianceNotifier = { notify: () => undefined };
 
 /**
+ * Server-side `statement_timeout` for the shadow recheck's uncached resolution (CW-RUST-M02 P2 prerequisite 6). Must stay
+ * ABOVE `SHADOW_FRESH_TIMEOUT_MS` (2 000, bootstrap/rust-bridge/forwarder.ts) so the recheck's own deadline fires first
+ * and keeps reporting `fresh_timeout`; the gap is how long an abandoned statement can still run (~1 s). It is pinned by
+ * `rust-bridge-db-cancel.live.test.ts`.
+ */
+export const FRESH_RECHECK_STATEMENT_TIMEOUT_MS = 3_000;
+
+/**
  * M3 lifecycle audits are emitted after the individual store transaction has completed.  A raw
  * pooled DB client has no `app.org_id`, so its `audit_event` INSERT is refused under production
  * RLS (while the development BYPASSRLS role hides the defect).  Keep the route-facing AuditExecutor
@@ -262,7 +270,12 @@ export function mountAuthorizationRoutes(
   };
   if (mePermissionsBridge) {
     // An UNCACHED resolver over the same store and fold, used only to explain a shadow difference (spec v0.3).
-    const store = createDbEffectivePermissionStore(db);
+    // P2 prerequisite 6: the recheck stops waiting after SHADOW_FRESH_TIMEOUT_MS (2 s, bootstrap/rust-bridge/forwarder.ts)
+    // and reports `fresh_timeout`; this server-side cap sits just above it, so the label is unchanged and the abandoned
+    // statement is cancelled by PostgreSQL ≤ 1 s later, releasing its pool connection.
+    const store = createDbEffectivePermissionStore(db, {
+      statementTimeoutMs: FRESH_RECHECK_STATEMENT_TIMEOUT_MS,
+    });
     deps.mePermissionsBridge = mePermissionsBridge;
     deps.freshPermissions = async ({ organizationId, userId }) =>
       resolveEffectivePermissions(await store.loadGrants(organizationId, userId), Date.now())
