@@ -30,6 +30,7 @@ interface AlertInboxContextValue {
   readonly loadFailed: boolean;
   load: (options?: { background?: boolean }) => Promise<void>;
   markRead: (alert: AlertInboxItem) => void;
+  markAllRead: () => Promise<boolean>;
   activateAlert: (alert: AlertInboxItem, navigate: NavigateFunction) => void;
 }
 
@@ -152,6 +153,25 @@ export function AlertInboxProvider({ children }: { children: ReactNode }): JSX.E
     [client, load],
   );
 
+  const markAllRead = useCallback(async (): Promise<boolean> => {
+    if (!scope || !alerts?.some((alert) => alert.readAt === null)) return false;
+    const requestScope = scope;
+    const readAt = new Date().toISOString();
+    setAlerts((current) => current?.map((alert) => ({ ...alert, readAt: alert.readAt ?? readAt })) ?? current);
+    try {
+      const { error } = await client.POST("/api/v1/alerts/read-all");
+      if (error) {
+        await load();
+        return false;
+      }
+      if (scopeRef.current === requestScope) await load();
+      return scopeRef.current === requestScope;
+    } catch {
+      if (scopeRef.current === requestScope) await load();
+      return false;
+    }
+  }, [alerts, client, load, scope]);
+
   const activateAlert = useCallback(
     (alert: AlertInboxItem, navigate: NavigateFunction): void => {
       if (alert.readAt === null) markRead(alert);
@@ -166,7 +186,7 @@ export function AlertInboxProvider({ children }: { children: ReactNode }): JSX.E
 
   return (
     <AlertInboxContext.Provider
-      value={{ alerts, unreadCount, loading, loadFailed, load, markRead, activateAlert }}
+      value={{ alerts, unreadCount, loading, loadFailed, load, markRead, markAllRead, activateAlert }}
     >
       {children}
     </AlertInboxContext.Provider>

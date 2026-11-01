@@ -1046,6 +1046,13 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
     return reply.code(204).send();
   });
 
+  // --- mark every alert read for the current actor ----------------------------------------------
+  app.post("/api/v1/alerts/read-all", { preHandler: [OWN_ALERTS] }, async (request, reply) => {
+    const { organizationId, userId } = actorOf(request);
+    await service.markAllAlertsRead(organizationId, userId);
+    return reply.code(204).send();
+  });
+
   // --- tenant + inherited platform alert rules -----------------------------------------------
   app.get("/api/v1/alert-rules", { preHandler: [RULES_READ] }, async (request) => {
     const { organizationId } = actorOf(request);

@@ -79,7 +79,9 @@ function relTime(iso: string): string {
 
 export function NotificationsInbox(): JSX.Element {
   const navigate = useNavigate();
-  const { alerts, loadFailed, markRead, activateAlert } = useAlertInbox();
+  const { alerts, loadFailed, markRead, markAllRead, activateAlert } = useAlertInbox();
+  const [markingAllRead, setMarkingAllRead] = useState(false);
+  const [markAllReadFailed, setMarkAllReadFailed] = useState(false);
   const session = useSession();
   const [searchParams] = useSearchParams();
   const [requestedTab, setTab] = useState<Tab>(
@@ -255,6 +257,21 @@ export function NotificationsInbox(): JSX.Element {
 
             {tab !== "tasks" && tab !== "handoffs" && tab !== "promotions" && tab !== "review" ? (
               <div className="wx-notif-controls">
+                {unreadTotal > 0 ? (
+                  <Button
+                    size="sm"
+                    tone="secondary"
+                    disabled={markingAllRead}
+                    onClick={() => {
+                      setMarkingAllRead(true);
+                      setMarkAllReadFailed(false);
+                      void markAllRead().then((ok) => setMarkAllReadFailed(!ok)).finally(() => setMarkingAllRead(false));
+                    }}
+                  >
+                    {markingAllRead ? "Marking all read…" : "Mark all as read"}
+                  </Button>
+                ) : null}
+                {markAllReadFailed ? <span role="alert">Could not mark all notifications as read.</span> : null}
                 <label className="wx-search-field">
                   <Glyph name="search" size={16} />
                   <input

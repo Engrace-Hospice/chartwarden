@@ -12,18 +12,25 @@
 # deploy of an older release that predates the image still works; without it the already-configured
 # CHARTWARDEN_DOCLING_IMAGE (if any) is left alone.
 #
+# The optional 4th argument is the Rust API image (CW-RUST-M02, built and signed in the chartwarden-rust repository):
+#   ./deploy.sh <backend> <web> '' ghcr.io/owner/chartwarden-rust:sha-<sha>     (pass '' to skip docling-worker)
+# It is verified with cosign against that repository's own workflow identity, and ONLY that image is: neither
+# identity is ever accepted for the other's images. Only the verified digest is written to CHARTWARDEN_RUST_IMAGE; this
+# script never pulls or starts the `rust` compose service. It is never rolled unverified (the opt-out below does not apply).
+#
 # It deliberately never accepts `latest`: a deploy must always be attributable to one commit and
 # a rollback must always name an already-published immutable image.
 set -eu
 
-if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
-  echo "usage: $0 <backend-image-sha-tag> <web-image-sha-tag> [<docling-worker-image-sha-tag>]" >&2
+if [ "$#" -lt 2 ] || [ "$#" -gt 4 ]; then
+  echo "usage: $0 <backend-image-sha-tag> <web-image-sha-tag> [<docling-worker-image-sha-tag> [<rust-image-sha-tag>]]" >&2
   exit 64
 fi
 
 backend_image=$1
 web_image=$2
 docling_image=${3:-}
+rust_image=${4:-}
 case "$backend_image" in
   ghcr.io/[!/]*/chartwarden:sha-*|ghcr.io/[!/]*/wardenx:sha-*) ;;
   *) echo "refusing non-immutable backend image: $backend_image" >&2; exit 64 ;;
@@ -36,6 +43,10 @@ esac
 case "$docling_image" in
   ''|ghcr.io/[!/]*/chartwarden-docling-worker:sha-*|ghcr.io/[!/]*/wardenx-docling-worker:sha-*) ;;
   *) echo "refusing non-immutable docling-worker image: $docling_image" >&2; exit 64 ;;
+esac
+case "$rust_image" in
+  ''|ghcr.io/[!/]*/chartwarden-rust:sha-*) ;;
+  *) echo "refusing non-immutable rust image: $rust_image" >&2; exit 64 ;;
 esac
 
 # Defaults to the directory this script was uploaded to (the workflow's DEPLOY_DIR, /opt/chartwarden unless overridden).
@@ -302,13 +313,17 @@ restore_previous_release() {
 cosign_identities=${CHARTWARDEN_COSIGN_IDENTITY:-$(sed -n 's/^CHARTWARDEN_COSIGN_IDENTITY=//p' .env.production | tail -n 1 | tr -d '\r' | sed -e 's/^"\([^"]*\)".*$/\1/' -e "s/^'\([^']*\)'.*\$/\1/" -e 's/[[:space:]]\{1,\}#.*$//' -e 's/[[:space:]]*$//')}
 cosign_identities=${cosign_identities:-https://github.com/Engrace-Hospice/chartwarden/.github/workflows/deploy.yml@refs/heads/main}
 cosign_issuer=${CHARTWARDEN_COSIGN_ISSUER:-https://token.actions.githubusercontent.com}
+# The Rust image is built and signed by the chartwarden-rust repository's image workflow, so it is verified against THAT
+# identity and no other; it is a fixed value on purpose (no override), and the lists above never apply to it.
+rust_cosign_identity=https://github.com/Engrace-Hospice/chartwarden-rust/.github/workflows/rust-image.yml@refs/heads/main
 
 # `https://github.com/<owner>/<repo>/.github/...` -> `<owner>/<repo>`, so the certificate's repository claim is checked as well.
 identity_repo() { r=${1#https://github.com/}; printf '%s\n' "${r%%/.github/*}"; }
 
 # Prints the verified digest on success; anything else (empty output) is a failure the caller must treat as fatal.
+# $2 is the space-separated list of identities acceptable for this image (default: this repository's own).
 verify_image_digest() {
-  for identity in $cosign_identities; do
+  for identity in ${2:-$cosign_identities}; do
     digest=$(cosign verify "$1" \
       --certificate-identity "$identity" \
       --certificate-github-workflow-repository "$(identity_repo "$identity")" \
@@ -327,6 +342,7 @@ deploy_step=verify-signatures
 backend_ref=$backend_image
 web_ref=$web_image
 docling_ref=$docling_image
+rust_ref=
 
 if [ "${CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED:-}" = "1" ]; then
   # A named opt-out, not a fallback. It exists so a first deploy predating the signing workflow can
@@ -334,6 +350,11 @@ if [ "${CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED:-}" = "1" ]; then
   # indistinguishable from a verified one in the log.
   echo "!! CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED=1 — image signatures were NOT checked for this deploy." >&2
   echo "!! Nothing establishes that these images are the ones CI built." >&2
+  [ -z "$rust_image" ] || {
+    echo "refusing to roll the Rust image without verifying its signature (CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED does not apply to it)" >&2
+    restore_previous_release
+    exit 1
+  }
 elif ! command -v cosign >/dev/null 2>&1; then
   echo "cosign is not installed on this host, so image signatures cannot be verified." >&2
   echo "Install it (see deploy/production/README.md) or set CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED=1." >&2
@@ -367,6 +388,18 @@ else
     echo "verified $docling_image -> $docling_digest"
   fi
 
+  if [ -n "$rust_image" ]; then
+    rust_digest=$(verify_image_digest "$rust_image" "$rust_cosign_identity")
+    case "$rust_digest" in
+      sha256:*) ;;
+      *) echo "signature verification FAILED for $rust_image" >&2
+         echo "expected identity: $rust_cosign_identity" >&2
+         restore_previous_release; exit 1 ;;
+    esac
+    rust_ref="${rust_image%%:sha-*}@${rust_digest}"
+    echo "verified $rust_image -> $rust_digest"
+  fi
+
   # Pin to the digest cosign actually verified. `${image%%:*}` strips the `:sha-<commit>` tag, leaving
   # the repository, so the pull can only resolve to the verified artefact.
   backend_ref="${backend_image%%:sha-*}@${backend_digest}"
@@ -382,6 +415,16 @@ else
     { print }
   ' "$next_file" >"$next_file.pinned" && mv "$next_file.pinned" "$next_file"
   chmod 600 "$next_file"
+
+  # The Rust image: replace in place or append, and only ever by the digest cosign verified. Nothing here pulls or starts it.
+  if [ -n "$rust_ref" ]; then
+    awk -v rust="$rust_ref" '
+      /^CHARTWARDEN_RUST_IMAGE=/ { if (!seen) print "CHARTWARDEN_RUST_IMAGE=" rust; seen = 1; next }
+      { print }
+      END { if (!seen) print "CHARTWARDEN_RUST_IMAGE=" rust }
+    ' "$next_file" >"$next_file.pinned" && mv "$next_file.pinned" "$next_file"
+    chmod 600 "$next_file"
+  fi
 fi
 
 # Make the new release configuration visible only after its image references have been validated.
@@ -482,3 +525,4 @@ fi
 
 rm -f "$backup_file"
 echo "deployed backend=$backend_ref web=$web_ref docling=${docling_ref:-unchanged}"
+[ -z "$rust_ref" ] || echo "rolled rust=$rust_ref (CHARTWARDEN_RUST_IMAGE only; the rust service is not started by this script)"

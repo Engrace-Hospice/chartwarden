@@ -433,6 +433,8 @@ export interface MessagingRouteService extends MessageReactionPinService, Messag
   alertInbox(orgId: string, userId: string): Promise<AlertInboxItem[]>;
   /** Mark one alert as read for the current actor. Idempotent. */
   markAlertRead(orgId: string, userId: string, alertId: string): Promise<void>;
+  /** Mark every unread alert delivered to the current actor as read. Idempotent. */
+  markAllAlertsRead(orgId: string, userId: string): Promise<void>;
   /** Tenant + inherited platform alert rules (§4.2 GET /alert-rules). */
   listAlertRules(orgId: string): Promise<AlertRuleView[]>;
   /** Override a rule: clones a platform default into an org-scoped row on first edit;

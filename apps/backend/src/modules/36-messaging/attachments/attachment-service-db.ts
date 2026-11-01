@@ -37,7 +37,7 @@ import {
 } from "../jobs/retention-hold-sql";
 import { type HintOutboxPort, publishMessageHint } from "../message-hint-events";
 import { isMessageRedacted } from "../message-redaction-mask";
-import { inspectImageMetadata } from "./attachment-metadata";
+import { imageMetadataQuarantineSignature, inspectImageMetadata } from "./attachment-metadata";
 import {
   ATTACHMENT_ACCESS_TTL_SECONDS,
   ATTACHMENT_UPLOAD_TTL_SECONDS,
@@ -695,10 +695,11 @@ export function createAttachmentService(deps: AttachmentServiceDeps): Attachment
       if (sha !== row.sha256Hex || bytes.length !== row.byteSize) {
         return quarantine("checksum-mismatch");
       }
-      // WP 5.3: the client strips EXIF; the server cannot rewrite the (checksum-bound) object, so it fails closed.
+      // Metadata is not itself malware. The object is checksum-bound and immutable, so this worker cannot strip it;
+      // let ClamAV inspect valid metadata-bearing images rather than quarantining them before antivirus scanning.
       const imageVerdict = inspectImageMetadata(bytes);
-      if (imageVerdict === "metadata") return quarantine("image-metadata-present");
-      if (imageVerdict === "unparseable") return quarantine("image-metadata-unparseable");
+      const metadataQuarantineSignature = imageMetadataQuarantineSignature(imageVerdict);
+      if (metadataQuarantineSignature) return quarantine(metadataQuarantineSignature);
       phase = "scanner";
       let result: Awaited<ReturnType<ScanPort["scan"]>>;
       try {

@@ -27,6 +27,15 @@
 
 export type ImageMetadataVerdict = "clean" | "metadata" | "unparseable";
 
+/**
+ * Metadata is not a malware verdict. The attachment bytes are checksum-bound and immutable after upload, so the scan
+ * worker cannot strip metadata in place. Keep rejecting malformed/unparseable image structure, but let ClamAV scan
+ * valid images that contain ordinary EXIF/XMP/PNG metadata instead of quarantining them before the antivirus runs.
+ */
+export function imageMetadataQuarantineSignature(verdict: ImageMetadataVerdict): string | null {
+  return verdict === "unparseable" ? "image-metadata-unparseable" : null;
+}
+
 const CLEAN = "clean";
 const METADATA = "metadata";
 const UNPARSEABLE = "unparseable";
