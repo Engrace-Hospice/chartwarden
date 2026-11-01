@@ -11960,7 +11960,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM36IpuIvAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
           // M19 §4.8/§4.9 (GAP-057) — `m19.oncall_shift.coverage_gap` (the coverage-gap watchdog cron + the D10
           // reactive arm) -> the system-locked critical `m19.oncall.coverage_gap_detected` page.
-          buildM36OncallAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          buildM36OncallAlertConsumer(getSeam("AlertEmitter") as AlertEmitter, (message, context) =>
+            app.log.warn(context, message),
+          ),
           // M14 §2.7/D8 — the carry-forward COMPLIANCE alert (the count crossing 3): validated against the
           // typed alert-payload catalog (M14's contribution registered on the Foundation registry here, in the
           // composition root — M36 never imports M14), one alert per action item.
