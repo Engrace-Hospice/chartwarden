@@ -127,6 +127,7 @@
     "test:m27:elevated-approval:live": "vitest run apps/backend/__tests__/gap-043-m27-elevated-approval.live.test.ts",
     "test:m13:write:live": "vitest run apps/backend/__tests__/m13-emar-write.live.test.ts",
     "test:m11:lab-result-edge-cases:live": "vitest run apps/backend/__tests__/m11-lab-result-edge-cases.live.test.ts",
+    "test:m11:lab-result-review:live": "vitest run apps/backend/__tests__/m11-lab-result-review.live.test.ts",
     "test:m36:oncall-page-chain:live": "vitest run apps/backend/__tests__/m36-oncall-page-chain.live.test.ts",
     "test:m13:prn-concurrency:live": "vitest run apps/backend/__tests__/m13-prn-concurrency.live.test.ts",
     "test:s11:adversarial-stages:live": "vitest run apps/backend/__tests__/s11-adversarial-stages.live.test.ts",

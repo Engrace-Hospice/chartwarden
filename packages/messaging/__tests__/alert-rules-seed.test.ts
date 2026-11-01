@@ -190,6 +190,7 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       // GAP-032 — the verbal pre-expiry and lab-results-overdue sweeps.
       "m11.order.verbal_expiring_soon",
       "m11.order.results_overdue",
+      "m11.order.results_unreviewed",
       // F-201 (#248) — M11's stuck lab-order recovery: a held order aging past its thresholds, and the auto-retry
       // sweep giving up.
       "m11.order.transmission_held_aging",

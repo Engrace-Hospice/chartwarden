@@ -9,6 +9,7 @@ import {
   type OrderSweepDeps,
   sweepCompletionWatcher,
   sweepLabResultsOverdue,
+  sweepLabResultsUnreviewed,
   sweepVerbalPreExpiry,
 } from "../order-sweeps";
 import type { ActiveOrgListPort } from "./standing-spawn-worker";
@@ -59,9 +60,11 @@ export const runVerbalPreExpiryFanout = (deps: OrderSweepWorkerDeps): Promise<vo
   fanOut(deps.activeOrgs, "M11_VERBAL_PRE_EXPIRY", (org) => sweepVerbalPreExpiry(deps.sweep, org));
 
 export const runLabResultsOverdueFanout = (deps: OrderSweepWorkerDeps): Promise<void> =>
-  fanOut(deps.activeOrgs, "M11_LAB_RESULTS_OVERDUE", (org) =>
-    sweepLabResultsOverdue(deps.sweep, org),
-  );
+  fanOut(deps.activeOrgs, "M11_LAB_RESULTS_OVERDUE", async (org) => {
+    await sweepLabResultsOverdue(deps.sweep, org);
+    // #909 - same daily tick: returned labs unreviewed past the 24 h window.
+    await sweepLabResultsUnreviewed(deps.sweep, org);
+  });
 
 export const runCompletionWatcherFanout = (deps: CompletionWatcherWorkerDeps): Promise<void> =>
   fanOut(deps.activeOrgs, "M11_COMPLETION_WATCHER", (org) =>

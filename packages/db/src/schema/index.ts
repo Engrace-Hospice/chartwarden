@@ -379,6 +379,7 @@ export * from "./orders/verbal-orders";
 export * from "./orders/standing-order-instances";
 export * from "./orders/order-discontinuations";
 export * from "./orders/order-transmission-attestations";
+export * from "./orders/order-result-reviews";
 export * from "./orders/order-recovery-requests";
 export * from "./orders/order-verbal-policies";
 export * from "./orders/order-idg-decision-applications";

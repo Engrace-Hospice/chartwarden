@@ -9,7 +9,7 @@
  *     nothing (so nobody can be told);
  *   - CORRECTION, pinned: a later non-critical observation does not withdraw an earlier critical event;
  *   - the two critical signals (`m11.order.results_received_critical`, `m29.lab_observation.abnormal_flag`) have NO
- *     consumer, and a returned lab has NO review/acknowledge step (no state, no service method).
+ *     consumer. (A returned lab now has a review step, #909: proven in m11-lab-result-review.live.)
  * Everything marked "REPORTED, NOT FIXED" pins today's behaviour (convention: m19-inbound-triggers.live) so the day
  * it is built this suite fails and the change is made deliberately. Tracked in the linked GitHub issues.
  *
@@ -247,24 +247,13 @@ describe.skipIf(!DB_URL)("S08 lab-result edge cases — LIVE Postgres", () => {
     expect(declared(M29_OUTBOX_EVENTS, "m29.lab_observation.abnormal_flag")).toEqual([]);
   });
 
-  it("REPORTED, NOT FIXED: a returned lab has no review step: no reviewed state, no review column, no review-named method", async () => {
-    const { rows } = await admin.query(
-      "SELECT unnest(enum_range(NULL::order_results_status))::text AS v",
-    );
-    expect(rows.map((r) => r.v)).toEqual([
-      "not_expected",
-      "awaiting_results",
-      "partial_results_received",
-      "results_received",
-      "results_overdue",
-    ]);
+  it("a returned lab has a review step: a review row and a service method exist, and the review is append-only", async () => {
     const service = createDbOrderBackend(handle.db, outbox);
-    expect(Object.keys(service).filter((k) => /review|acknowledg/i.test(k))).toEqual([
-      "resultsPendingReview",
-    ]);
+    expect(typeof service.reviewLabResults).toBe("function");
     const columns = await admin.query(
-      "SELECT column_name FROM information_schema.columns WHERE table_name='order_record' AND column_name ~* '(review|acknowledg)'",
+      "SELECT column_name FROM information_schema.columns WHERE table_name='order_result_review' AND column_name IN ('reviewer_membership_id','reviewer_discipline','reviewed_at')",
     );
-    expect(columns.rows).toEqual([]);
+    expect(columns.rows).toHaveLength(3);
+    // The full review / amendment / wrong-tenant / role / alert behaviour is m11-lab-result-review.live.
   });
 });
