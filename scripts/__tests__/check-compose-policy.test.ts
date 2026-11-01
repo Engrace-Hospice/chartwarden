@@ -59,10 +59,12 @@ describe("arch:compose-policy", () => {
 
 describe("arch:compose-policy — CW-RUST-M02 Rust topology", () => {
   const rust = {
-    image: "${CHARTWARDEN_RUST_IMAGE:-ghcr.io/engrace-hospice/chartwarden-rust:unset}",
+    image: `\${CHARTWARDEN_RUST_IMAGE:-ghcr.io/engrace-hospice/chartwarden-rust:unset@sha256:${"0".repeat(64)}}`,
     volumes: ["rust-sock:/run/cw-rust"],
+    networks: ["rust-db"],
     ...bounded,
   };
+  const networks = { "rust-db": { internal: true } };
   const api = {
     image: "${CHARTWARDEN_IMAGE:?set}",
     volumes: ["rust-sock:/run/cw-rust"],
@@ -70,7 +72,7 @@ describe("arch:compose-policy — CW-RUST-M02 Rust topology", () => {
   };
 
   it("accepts one rust service on the socket shared with api", () => {
-    expect(checkRustTopology({ services: { api, rust } })).toEqual([]);
+    expect(checkRustTopology({ services: { api, rust }, networks })).toEqual([]);
   });
 
   it.each([
@@ -134,13 +136,48 @@ describe("arch:compose-policy — CW-RUST-M02 Rust topology", () => {
       "seed-api: only api and rust",
     ],
   ])("rejects %s", (_label, services, message) => {
-    const failures = checkRustTopology({ services: { api, ...services } as never });
+    const failures = checkRustTopology({ services: { api, ...services } as never, networks });
+    expect(failures.join("\n")).toContain(message);
+  });
+
+  it.each([
+    [
+      "rust on the default network",
+      { rust: { ...rust, networks: ["default", "rust-db"] } },
+      networks,
+      'exactly the "rust-db" network',
+    ],
+    [
+      "rust with no networks key",
+      { rust: { ...rust, networks: undefined } },
+      networks,
+      'exactly the "rust-db" network',
+    ],
+    [
+      "a mutable rust image tag",
+      { rust: { ...rust, image: "${CHARTWARDEN_RUST_IMAGE:-ghcr.io/x/chartwarden-rust:latest}" } },
+      networks,
+      "digest-pinned",
+    ],
+    ["rust-db not internal", { rust }, { "rust-db": {} }, "internal: true"],
+    [
+      "another service on rust-db",
+      { rust, worker: { image: "${W}", ...bounded, networks: ["default", "rust-db"] } },
+      networks,
+      "worker: only postgres and rust",
+    ],
+  ])("rejects %s", (_label, services, nets, message) => {
+    const failures = checkRustTopology({
+      services: { api, ...services } as never,
+      networks: nets as never,
+    });
     expect(failures.join("\n")).toContain(message);
   });
 
   it("honours !reset when a service extends api", () => {
     const failures = checkRustTopology({
       services: { api, rust, "seed-api": { extends: { service: "api" }, volumes: RESET } } as never,
+      networks,
     });
     expect(failures).toEqual([]);
   });

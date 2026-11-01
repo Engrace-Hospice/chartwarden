@@ -43,6 +43,7 @@ interface ComposeService {
 }
 interface ComposeDoc {
   readonly services?: Readonly<Record<string, ComposeService>>;
+  readonly networks?: Readonly<Record<string, { readonly internal?: unknown } | null>>;
 }
 
 export function checkCompose(doc: ComposeDoc): string[] {
@@ -86,6 +87,18 @@ export const RUST_SERVICE = "rust";
 export const RUST_SOCKET_VOLUME = "rust-sock";
 const RUST_IMAGE_RE = /chartwarden-rust|CHARTWARDEN_RUST_IMAGE/;
 const RUST_SOCKET_CONSUMERS = new Set(["api", RUST_SERVICE]);
+export const RUST_NETWORK = "rust-db";
+/** The only services allowed on the Rust network. */
+const RUST_NETWORK_MEMBERS = new Set(["postgres", RUST_SERVICE]);
+/** The Rust image (literal or the `${VAR:-default}` default) must carry a digest: no mutable tag can be started. */
+const DIGEST_IN_IMAGE = /@sha256:[0-9a-f]{64}(\}|$)/;
+
+function networksOf(svc: Svc): string[] {
+  const n = (svc as { networks?: unknown }).networks;
+  if (Array.isArray(n)) return n.map(String);
+  if (n && typeof n === "object") return Object.keys(n);
+  return [];
+}
 /** What `!reset` loads as, so `extends` resolution can tell "cleared" from "absent". */
 export const RESET = Object.freeze({ __composeReset: true });
 const isReset = (v: unknown): boolean => v === RESET;
@@ -170,11 +183,32 @@ export function checkRustTopology(doc: ComposeDoc): string[] {
     if (!mentionsVolume(svc, RUST_SOCKET_VOLUME)) {
       failures.push(`${name}: must mount the "${RUST_SOCKET_VOLUME}" socket volume`);
     }
+    const nets = networksOf(svc);
+    if (nets.length !== 1 || nets[0] !== RUST_NETWORK) {
+      failures.push(
+        `${name}: must be on exactly the "${RUST_NETWORK}" network (not default: no peers, no egress)`,
+      );
+    }
+    if (typeof svc.image !== "string" || !DIGEST_IN_IMAGE.test(svc.image)) {
+      failures.push(
+        `${name}: image (or its \${VAR:-default}) must be digest-pinned @sha256:<64 hex>`,
+      );
+    }
+  }
+  if (rustServices.length > 0) {
+    const net = doc.networks?.[RUST_NETWORK];
+    if (!net || net.internal !== true)
+      failures.push(`network "${RUST_NETWORK}" must be declared internal: true`);
   }
   for (const [name, svc] of Object.entries(resolved)) {
     if (mentionsVolume(svc, RUST_SOCKET_VOLUME) && !RUST_SOCKET_CONSUMERS.has(name)) {
       failures.push(
         `${name}: only api and ${RUST_SERVICE} may mount the "${RUST_SOCKET_VOLUME}" socket volume`,
+      );
+    }
+    if (networksOf(svc).includes(RUST_NETWORK) && !RUST_NETWORK_MEMBERS.has(name)) {
+      failures.push(
+        `${name}: only postgres and ${RUST_SERVICE} may join the "${RUST_NETWORK}" network`,
       );
     }
     const from = Array.isArray(svc.volumes_from) ? (svc.volumes_from as unknown[]).map(String) : [];

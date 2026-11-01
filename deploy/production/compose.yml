@@ -30,6 +30,9 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env.production}
       POSTGRES_DB: ${CHARTWARDEN_DB_NAME:-chartwarden}
+    # CW-RUST-M02: also on `rust-db` (internal) so the Rust API reaches the database without joining `default`. deploy.sh
+    # never recreates postgres, so this attaches only when postgres is next recreated (a P2 prerequisite).
+    networks: [default, rust-db]
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
@@ -172,19 +175,24 @@ services:
       start_period: 30s
 
   # CW-RUST-M02 P1 — the Rust API (chartwarden-rust). Behind the `rust` profile: deploy.sh never starts it, so with
-  # the profile off nothing changes. It listens ONLY on a Unix socket in the `rust-sock` tmpfs volume, shared with
-  # `api` alone: no ports, no network listener (enforced by arch:compose-policy). Exactly one replica, because its
+  # the profile off nothing changes. cw-server listens only on a Unix socket in the `rust-sock` tmpfs volume, shared with
+  # `api` alone. arch:compose-policy enforces the topology around it: no published ports, no CW_RUST_TCP, no env_file,
+  # only the internal `rust-db` network (postgres alone, no egress), one replica, a digest-pinned image. Exactly one replica, because its
   # replay cache is per process. Image signing + deploy.sh rolling are prerequisites for switching on P2.
   # It takes no env_file: .env.production reaches seven containers, so nothing Rust-related may live there.
   rust:
     profiles: ["rust"]
-    image: ${CHARTWARDEN_RUST_IMAGE:-ghcr.io/engrace-hospice/chartwarden-rust:unset}
+    # The default is digest-pinned to an all-zero digest that cannot be pulled, so the profile can never start an
+    # unpinned or unverified image (arch:compose-policy requires a digest here). P2 sets the verified digest.
+    image: ${CHARTWARDEN_RUST_IMAGE:-ghcr.io/engrace-hospice/chartwarden-rust:unset@sha256:0000000000000000000000000000000000000000000000000000000000000000}
     pull_policy: always
     mem_limit: 256m
     cpus: 0.5
     restart: unless-stopped
     read_only: true
     user: "65532:1000"
+    # Only the internal `rust-db` network (postgres alone): no `default` network, no egress, no other peers.
+    networks: [rust-db]
     environment:
       DATABASE_URL: postgresql://chartwarden_app:${CHARTWARDEN_APP_PASSWORD}@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       CW_ACTOR_PUBLIC_KEYS: ${CW_ACTOR_PUBLIC_KEYS:-}
@@ -519,6 +527,9 @@ services:
 networks:
   # Dedicated clamd network (api, worker, clamav only). Not `internal`: freshclam must reach the signature mirrors.
   scan:
+  # CW-RUST-M02: the Rust API's only network, shared with postgres alone. `internal`: no route out of the host.
+  rust-db:
+    internal: true
 
 # Volume names are explicit (not derived from `name:` above) so the project rename keeps the live data. The prefix
 # defaults to the project name, which on a fresh install gives `<project>_postgres-data` etc.; the production
