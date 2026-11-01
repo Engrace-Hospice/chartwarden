@@ -187,7 +187,7 @@ describe("M36 oncall-alerts consumer (SLA breaches)", () => {
       createdAt: new Date("2026-10-06T02:10:00.000Z"),
     }) satisfies DispatchableOutboxEvent;
   const harness = () => {
-    const emit = vi.fn(async () => ({}) as never);
+    const emit = vi.fn(async () => ({ alertId: "alert-1", resolvedRecipientCount: 1 }) as never);
     return { emit, consumer: buildM36OncallAlertConsumer({ emit } as unknown as AlertEmitter) };
   };
   const callbackPayload = {
