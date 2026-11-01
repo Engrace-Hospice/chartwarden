@@ -42,14 +42,18 @@ export function createRustClient(
       } catch {
         return { ok: false, reason: signal.aborted ? "timeout" : "connect" };
       }
-      // Bounded body: the permission list is small; anything larger is refused rather than buffered. The abort
-      // signal still covers the body read, so a stalled stream times out too.
+      // Bounded body, counted in BYTES while streaming: the reader is cancelled the moment the total passes
+      // MAX_BODY_BYTES, so a huge or endless body is never buffered. The abort signal covers the whole read, so a
+      // stream that stalls after the headers times out too.
       const declared = Number(res.headers.get("content-length") ?? "0");
-      if (declared > MAX_BODY_BYTES) return { ok: false, reason: "bad_json" };
+      if (declared > MAX_BODY_BYTES) {
+        await res.body?.cancel().catch(() => undefined);
+        return { ok: false, reason: "bad_json" };
+      }
       try {
-        const text = await res.text();
-        if (text.length > MAX_BODY_BYTES) return { ok: false, reason: "bad_json" };
-        const body: unknown = JSON.parse(text);
+        const bytes = await readBounded(res, MAX_BODY_BYTES);
+        if (bytes === null) return { ok: false, reason: "bad_json" };
+        const body: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
         return {
           ok: true,
           status: res.status,
@@ -61,4 +65,29 @@ export function createRustClient(
       }
     },
   };
+}
+
+/** Reads at most `limit` bytes of the body; returns null (after cancelling the stream) if it is longer. */
+export async function readBounded(res: Response, limit: number): Promise<Uint8Array | null> {
+  if (!res.body) return new Uint8Array(0);
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) {
+    out.set(c, off);
+    off += c.byteLength;
+  }
+  return out;
 }

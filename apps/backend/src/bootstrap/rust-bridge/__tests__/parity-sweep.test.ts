@@ -238,3 +238,74 @@ describe("scheduleDailyUtc", () => {
     vi.useRealTimers();
   });
 });
+
+describe("review round 2 (ChatGPT P1)", () => {
+  it("a skipped (non-UUID) membership makes the run incomplete", async () => {
+    const t = deps({});
+    const listActiveMembers = t.d.listActiveMembers;
+    const s = await runParitySweep({
+      ...t.d,
+      listActiveMembers: async (org: string) =>
+        org === ORG_B ? ["system", u(5)] : listActiveMembers(org),
+    });
+    expect(s).toMatchObject({ skipped: 1, compared: 4 });
+    expect(t.log.lines.join("\n")).toContain("skipped_non_uuid");
+    expect(t.log.lines.at(-1)).toContain('"complete":false');
+  });
+
+  it("a hung org list ends at the per-operation limit with an INCOMPLETE summary", async () => {
+    const t = deps({});
+    const s = await runParitySweep({
+      ...t.d,
+      listActiveOrgs: () => new Promise(() => {}),
+      opTimeoutMs: 20,
+    });
+    expect(s).toMatchObject({ listFailed: true, compared: 0 });
+    expect(t.log.lines.at(-1)).toContain("summary_incomplete");
+  });
+
+  it("a hung member query on one org is counted, and the other orgs are still compared", async () => {
+    const t = deps({});
+    const listActiveMembers = t.d.listActiveMembers;
+    const s = await runParitySweep({
+      ...t.d,
+      listActiveMembers: (org: string) =>
+        org === ORG_A ? new Promise(() => {}) : listActiveMembers(org),
+      opTimeoutMs: 20,
+    });
+    expect(s).toMatchObject({ orgErrors: 1, compared: 2, match: 2 });
+    expect(t.log.lines.at(-1)).toContain('"complete":false');
+  });
+
+  it("an abort during a hung comparison ends the run immediately with a summary", async () => {
+    const ac = new AbortController();
+    const t = deps({});
+    const run = runParitySweep({
+      ...t.d,
+      freshPermissions: () => new Promise(() => {}),
+      signal: ac.signal,
+      opTimeoutMs: 60_000,
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    ac.abort();
+    const s = await run;
+    expect(s.aborted).toBe(true);
+    expect(t.log.lines.at(-1)).toContain("summary_incomplete");
+  });
+
+  it("an errored comparison makes the run incomplete even below the stop-early threshold", async () => {
+    let first = true;
+    const t = deps({
+      rust: () => {
+        if (first) {
+          first = false;
+          return null;
+        }
+        return ["patient.read"];
+      },
+    });
+    const s = await runParitySweep(t.d);
+    expect(s).toMatchObject({ errors: 1, compared: 4, stoppedEarly: false });
+    expect(t.log.lines.at(-1)).toContain('"complete":false');
+  });
+});

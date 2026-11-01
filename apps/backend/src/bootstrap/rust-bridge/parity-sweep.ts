@@ -33,8 +33,10 @@ export interface ParitySweepDeps {
   readonly client: RustClient;
   readonly logger: BridgeLogger;
   readonly runId: string;
-  /** Aborted on shutdown or when the run deadline passes; the run stops between pairs and reports incomplete. */
+  /** Aborted on shutdown or when the run deadline passes; pending operations are abandoned and the run reports incomplete. */
   readonly signal?: AbortSignal;
+  /** Per-operation limit (default SWEEP_OP_TIMEOUT_MS). */
+  readonly opTimeoutMs?: number;
 }
 
 export interface ParitySweepSummary {
@@ -50,6 +52,8 @@ export interface ParitySweepSummary {
   skipped: number;
   /** Orgs whose member list or count failed (the run is then incomplete). */
   orgErrors: number;
+  /** The active-org list itself failed or timed out (the run is then incomplete). */
+  listFailed: boolean;
   aborted: boolean;
   stoppedEarly: boolean;
   durationMs: number;
@@ -63,6 +67,36 @@ function sameSet(a: readonly string[], b: readonly string[]): { onlyA: number; o
   for (const x of sa) if (!sb.has(x)) onlyA++;
   for (const x of sb) if (!sa.has(x)) onlyB++;
   return { onlyA, onlyB };
+}
+
+/** Hard per-operation limit for every database or Rust call the sweep makes (review round P1-2). */
+export const SWEEP_OP_TIMEOUT_MS = 15_000;
+
+class SweepAbort extends Error {
+  override name = "SweepAbort";
+}
+
+/**
+ * Settles with `p`, or rejects when `ms` passes or `signal` aborts, whichever is first. The underlying operation may
+ * stay pending (a hung driver call cannot be cancelled from here), but the sweep moves on and still reports.
+ */
+export function bounded<T>(p: Promise<T>, ms: number, signal?: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new SweepAbort("aborted"));
+      return;
+    }
+    const timer = setTimeout(
+      () => reject(Object.assign(new Error("timeout"), { name: "TimeoutError" })),
+      ms,
+    );
+    const onAbort = () => reject(new SweepAbort("aborted"));
+    signal?.addEventListener("abort", onAbort, { once: true });
+    p.then(resolve, reject).finally(() => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    });
+  });
 }
 
 export async function runParitySweep(deps: ParitySweepDeps): Promise<ParitySweepSummary> {
@@ -79,21 +113,39 @@ export async function runParitySweep(deps: ParitySweepDeps): Promise<ParitySweep
     errors: 0,
     skipped: 0,
     orgErrors: 0,
+    listFailed: false,
     aborted: false,
     stoppedEarly: false,
     durationMs: 0,
   };
-
+  const op = <T>(p: Promise<T>) => bounded(p, deps.opTimeoutMs ?? SWEEP_OP_TIMEOUT_MS, deps.signal);
   const pairs: { org: string; user: string }[] = [];
-  for (const { organizationId } of await deps.listActiveOrgs()) {
+
+  // Enumeration is inside the deadline too: a hung org list or member query ends the run with a summary.
+  let orgs: readonly { organizationId: string }[] = [];
+  try {
+    orgs = await op(deps.listActiveOrgs());
+  } catch (e) {
+    if (e instanceof SweepAbort) s.aborted = true;
+    else s.listFailed = true;
+  }
+  for (const { organizationId } of orgs) {
+    if (deps.signal?.aborted) {
+      s.aborted = true;
+      break;
+    }
     s.orgs++;
     try {
-      const members = await deps.listActiveMembers(organizationId);
-      const counted = await deps.countActiveMembers(organizationId);
+      const members = await op(deps.listActiveMembers(organizationId));
+      const counted = await op(deps.countActiveMembers(organizationId));
       s.listed += members.length;
       s.counted += counted;
       for (const user of members) pairs.push({ org: organizationId, user });
     } catch (e) {
+      if (e instanceof SweepAbort) {
+        s.aborted = true;
+        break;
+      }
       // One org's failure must not hide every other org's comparison; the run is reported incomplete.
       s.orgErrors++;
       deps.logger.warn(
@@ -125,33 +177,39 @@ export async function runParitySweep(deps: ParitySweepDeps): Promise<ParitySweep
   const maxErrors = Math.max(1, Math.floor(pairs.length * SWEEP_ERROR_STOP_RATIO));
   let next = 0;
   const worker = async (): Promise<void> => {
-    while (next < pairs.length && !s.stoppedEarly) {
+    while (next < pairs.length && !s.stoppedEarly && !s.aborted) {
       if (deps.signal?.aborted) {
         s.aborted = true;
         return;
       }
       const { org, user } = pairs[next++] as { org: string; user: string };
       if (!CANONICAL_UUID_RE.test(org) || !CANONICAL_UUID_RE.test(user)) {
+        // Not comparable (the signer refuses it). Logged and counted; it makes the run incomplete.
         s.skipped++;
+        deps.logger.warn(
+          { run_id: deps.runId, org_id: org, outcome: "skipped_non_uuid" },
+          "parity sweep skipped a membership",
+        );
         continue;
       }
       try {
         const [bun1, rust1] = await Promise.all([
-          deps.freshPermissions(org, user),
-          rust(org, user),
+          op(deps.freshPermissions(org, user)),
+          op(rust(org, user)),
         ]);
         if (rust1 === null) throw new Error("rust");
-        s.compared++;
         const d1 = sameSet(bun1, rust1);
         if (d1.onlyA === 0 && d1.onlyB === 0) {
+          s.compared++;
           s.match++;
           continue;
         }
         const [bun2, rust2] = await Promise.all([
-          deps.freshPermissions(org, user),
-          rust(org, user),
+          op(deps.freshPermissions(org, user)),
+          op(rust(org, user)),
         ]);
         if (rust2 === null) throw new Error("rust");
+        s.compared++;
         const d2 = sameSet(bun2, rust2);
         if (d2.onlyA === 0 && d2.onlyB === 0) {
           s.explainedRace++;
@@ -173,7 +231,11 @@ export async function runParitySweep(deps: ParitySweepDeps): Promise<ParitySweep
             "parity sweep UNEXPLAINED difference",
           );
         }
-      } catch {
+      } catch (e) {
+        if (e instanceof SweepAbort) {
+          s.aborted = true;
+          return;
+        }
         s.errors++;
         if (s.errors > maxErrors) s.stoppedEarly = true;
       }
@@ -182,15 +244,19 @@ export async function runParitySweep(deps: ParitySweepDeps): Promise<ParitySweep
   await Promise.all(Array.from({ length: SWEEP_MAX_IN_FLIGHT }, worker));
 
   s.durationMs = Math.round(performance.now() - started);
+  // Complete means every listed membership was actually compared: nothing skipped, errored, unlisted or cut short.
   const complete =
     !s.aborted &&
+    !s.listFailed &&
     s.orgErrors === 0 &&
     !s.stoppedEarly &&
+    s.skipped === 0 &&
+    s.errors === 0 &&
     s.listed === s.counted &&
-    s.compared + s.errors + s.skipped === s.listed;
+    s.compared === s.listed;
   deps.logger[s.unexplained || !complete ? "warn" : "info"](
-    { ...s, run_id: deps.runId, complete, outcome: "summary" },
-    "parity sweep summary",
+    { ...s, run_id: deps.runId, complete, outcome: complete ? "summary" : "summary_incomplete" },
+    complete ? "parity sweep summary" : "parity sweep INCOMPLETE",
   );
   return s;
 }

@@ -468,3 +468,113 @@ describe("createRustClient body cap", () => {
     expect(await actual.get("/p", "t")).toEqual({ ok: false, reason: "bad_json" });
   });
 });
+
+describe("review round 2 (ChatGPT P1)", () => {
+  const stream = (chunks: Uint8Array[]) =>
+    new ReadableStream<Uint8Array>({
+      start(c) {
+        for (const ch of chunks) c.enqueue(ch);
+        c.close();
+      },
+    });
+
+  it("caps a chunked body with no Content-Length by BYTES while streaming, and cancels the stream", async () => {
+    let pulled = 0;
+    let cancelled = false;
+    const endless = new ReadableStream<Uint8Array>({
+      pull(c) {
+        pulled++;
+        c.enqueue(new Uint8Array(16 * 1024).fill(0x61));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const client = createRustClient(
+      "/s",
+      2_000,
+      async () => new Response(endless, { headers: { "content-type": "application/json" } }),
+    );
+    expect(await client.get("/p", "t")).toEqual({ ok: false, reason: "bad_json" });
+    expect(cancelled).toBe(true);
+    expect(pulled).toBeLessThanOrEqual(MAX_BODY_BYTES / (16 * 1024) + 2);
+  });
+
+  it("counts UTF-8 bytes, not UTF-16 units: 30k three-byte characters (90 KB) are refused", async () => {
+    const body = new TextEncoder().encode(JSON.stringify({ permissions: ["€".repeat(30_000)] }));
+    expect(body.byteLength).toBeGreaterThan(MAX_BODY_BYTES);
+    const client = createRustClient(
+      "/s",
+      2_000,
+      async () => new Response(stream([body]), { headers: { "content-type": "application/json" } }),
+    );
+    expect(await client.get("/p", "t")).toEqual({ ok: false, reason: "bad_json" });
+  });
+
+  it("accepts a multi-chunk body under the cap and rejects invalid UTF-8", async () => {
+    const enc = new TextEncoder();
+    const ok = createRustClient(
+      "/s",
+      2_000,
+      async () =>
+        new Response(stream([enc.encode('{"permissions":["a",'), enc.encode('"b"]}')]), {
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    expect(await ok.get("/p", "t")).toMatchObject({ ok: true, body: { permissions: ["a", "b"] } });
+    const bad = createRustClient(
+      "/s",
+      2_000,
+      async () =>
+        new Response(stream([new Uint8Array([0x7b, 0xff, 0x7d])]), {
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    expect(await bad.get("/p", "t")).toEqual({ ok: false, reason: "bad_json" });
+  });
+
+  it("times out a body that stalls after the headers", async () => {
+    const stalled = createRustClient(
+      "/s",
+      50,
+      async (_u, init) =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(c) {
+              c.enqueue(new TextEncoder().encode('{"permissions":'));
+              init.signal?.addEventListener("abort", () =>
+                c.error(new DOMException("aborted", "AbortError")),
+              );
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    );
+    const t0 = performance.now();
+    expect(await stalled.get("/p", "t")).toEqual({ ok: false, reason: "timeout" });
+    expect(performance.now() - t0).toBeLessThan(1_000);
+  });
+
+  it("a stuck uncached re-check is an error (fresh_timeout), never a classification, and frees its slot", async () => {
+    const logger = capture();
+    const bridge = createMePermissionsBridge({
+      config: parseRustBridgeConfig({
+        RUST_ROUTES: "me-permissions",
+        RUST_ROUTE_MODE: "shadow",
+        CW_ACTOR_SIGNING_KEY: KEY,
+      }),
+      signer,
+      client: { get: async () => okBody(["role.manage"]) },
+      logger,
+      freshTimeoutMs: 20,
+    });
+    const t = input({ fresh: () => new Promise(() => {}) });
+    await bridge.handle(t.i);
+    await t.flush();
+    await new Promise((r) => setTimeout(r, 60));
+    expect(bridge.stats()).toMatchObject({ rustError: 1, staleCache: 0, unexplained: 0 });
+    expect(bridge.inFlight()).toBe(0);
+    expect(logger.lines.join("\n")).toContain("fresh_timeout");
+    bridge.close();
+  });
+});

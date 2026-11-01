@@ -53,6 +53,20 @@ export const CIRCUIT_FAILURES_TO_OPEN = 5;
 export const CIRCUIT_OPEN_MS = 30_000;
 /** How often the counters are logged (P2 evidence; there is no metrics endpoint for the bridge). */
 export const STATS_LOG_INTERVAL_MS = 10 * 60_000;
+/** Shadow: the uncached Bun re-check of a difference gets this long, so a stuck query cannot hold a slot forever. */
+export const SHADOW_FRESH_TIMEOUT_MS = 2_000;
+
+class FreshTimeout extends Error {
+  override name = "FreshTimeout";
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new FreshTimeout()), ms);
+    t.unref?.();
+    p.then(resolve, reject).finally(() => clearTimeout(t));
+  });
+}
 
 export type FallbackReason =
   | "connect"
@@ -111,6 +125,8 @@ export function createMePermissionsBridge(deps: {
   readonly logger: BridgeLogger;
   /** Injected clock (tests). */
   readonly nowMs?: () => number;
+  /** Shadow re-check limit (default SHADOW_FRESH_TIMEOUT_MS). */
+  readonly freshTimeoutMs?: number;
 }): MePermissionsBridge & { stats(): BridgeStats; inFlight(): number; close(): void } {
   const nowMs = deps.nowMs ?? Date.now;
   let consecutiveFailures = 0;
@@ -208,7 +224,10 @@ export function createMePermissionsBridge(deps: {
         );
         return;
       }
-      const fresh = await input.fresh();
+      const fresh = await withTimeout(
+        input.fresh(),
+        deps.freshTimeoutMs ?? SHADOW_FRESH_TIMEOUT_MS,
+      );
       const f = setDiff(fresh.permissions, r.body.permissions);
       if (f.onlyA === 0 && f.onlyB === 0) {
         stats.staleCache++;
@@ -235,10 +254,16 @@ export function createMePermissionsBridge(deps: {
           "rust shadow UNEXPLAINED difference",
         );
       }
-    } catch {
+    } catch (e) {
+      // A timed-out re-check is an ERROR, never a classification: the difference stays unresolved, not explained.
       stats.rustError++;
       deps.logger.warn(
-        { ...base, ...ids(input.actor), outcome: "rust_error", reason: "exception" },
+        {
+          ...base,
+          ...ids(input.actor),
+          outcome: "rust_error",
+          reason: e instanceof FreshTimeout ? "fresh_timeout" : "exception",
+        },
         "rust shadow error",
       );
     } finally {
