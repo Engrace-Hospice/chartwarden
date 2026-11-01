@@ -1562,6 +1562,8 @@ jobs:
         run: bun run test:device-attestation-guc:live
       - name: withOrgContext defaults the write-audit actor to the request user (GAP-111)
         run: bun run test:audit-actor-default:live
+      - name: Rust bridge sweep/recheck — abandoned database work is cancelled server-side (CW-RUST-M02 P2 prereq 6)
+        run: bun run test:rust-bridge-db-cancel:live
 
       - name: Cleanup auth Postgres
         if: always()

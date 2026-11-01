@@ -139,6 +139,24 @@ import { registerAuthorizationRoutes as _registerAuthzRoutes } from "./routes/au
 const DURABLE_VIA_OUTBOX_NOTIFIER: ComplianceNotifier = { notify: () => undefined };
 
 /**
+ * Server-side `statement_timeout` for the shadow recheck's uncached resolution (CW-RUST-M02 P2 prerequisite 6). Must stay
+ * ABOVE `SHADOW_FRESH_TIMEOUT_MS` (2 000, bootstrap/rust-bridge/forwarder.ts) so the recheck's own deadline fires first
+ * and keeps reporting `fresh_timeout`; the gap is how long a STUCK read can still run after that (~1 s). The cap is one
+ * budget for the whole `loadGrants` transaction (each statement gets what is left), so the gap is the whole bound. Pinned by
+ * `rust-bridge-db-cancel.live.test.ts`.
+ */
+export const FRESH_RECHECK_STATEMENT_TIMEOUT_MS = 3_000;
+
+/** The uncached store behind the shadow recheck, with its server-side cap. Exported so the live suite runs the real wiring. */
+export function createFreshRecheckStore(
+  db: DbClient,
+): ReturnType<typeof createDbEffectivePermissionStore> {
+  return createDbEffectivePermissionStore(db, {
+    statementTimeoutMs: FRESH_RECHECK_STATEMENT_TIMEOUT_MS,
+  });
+}
+
+/**
  * M3 lifecycle audits are emitted after the individual store transaction has completed.  A raw
  * pooled DB client has no `app.org_id`, so its `audit_event` INSERT is refused under production
  * RLS (while the development BYPASSRLS role hides the defect).  Keep the route-facing AuditExecutor
@@ -262,7 +280,10 @@ export function mountAuthorizationRoutes(
   };
   if (mePermissionsBridge) {
     // An UNCACHED resolver over the same store and fold, used only to explain a shadow difference (spec v0.3).
-    const store = createDbEffectivePermissionStore(db);
+    // P2 prerequisite 6: the recheck stops waiting after SHADOW_FRESH_TIMEOUT_MS (2 s, bootstrap/rust-bridge/forwarder.ts)
+    // and reports `fresh_timeout`; this server-side cap sits just above it, so the label is unchanged and a stuck
+    // statement is cancelled by PostgreSQL ≤ 1 s later, releasing its pool connection.
+    const store = createFreshRecheckStore(db);
     deps.mePermissionsBridge = mePermissionsBridge;
     deps.freshPermissions = async ({ organizationId, userId }) =>
       resolveEffectivePermissions(await store.loadGrants(organizationId, userId), Date.now())
