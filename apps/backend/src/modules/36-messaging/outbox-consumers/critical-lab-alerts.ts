@@ -25,7 +25,11 @@ import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
-import { type FallbackWarn, emitWithRecipientFallback } from "../alert-recipient-fallback";
+import {
+  type FallbackWarn,
+  QUALITY_RECIPIENT_FALLBACK_EVENT_TYPE,
+  emitWithRecipientFallback,
+} from "../alert-recipient-fallback";
 
 /** The platform `alert_rule` key (packages/messaging seed). */
 export const CRITICAL_LAB_ALERT_TYPE = "m11.order.critical_lab_result";
@@ -56,6 +60,11 @@ export interface CriticalLabDeps {
     organizationId: string,
     membershipId: string,
   ) => Promise<string | null>;
+  /** Active holders (user ids) of any of these role keys: the SAME join the seeded `role_set` rule resolves. */
+  readonly roleHolders: (
+    organizationId: string,
+    roleKeys: readonly string[],
+  ) => Promise<readonly string[]>;
   readonly warn?: FallbackWarn;
 }
 
@@ -88,6 +97,37 @@ function safePayload(
   };
 }
 
+/**
+ * "Medical director ALWAYS": when the tenant has no active medical_director holder the role leg of the page reaches
+ * nobody, and the other recipients may be the only people paged. Page the tenant admins too (distinct correlation id, so
+ * the alert dedupe cannot swallow it) and log a warning with ids only. (When NO recipient at all resolved,
+ * `emitWithRecipientFallback` has already paged the admins, so this is skipped.)
+ */
+async function pageAdminsWhenNoDirector(
+  deps: CriticalLabDeps,
+  organizationId: string,
+  facts: CriticalLabFacts,
+  base: { correlationId: string; stage: string; recipients: readonly string[]; message: string },
+): Promise<void> {
+  if (base.recipients.length === 0) return;
+  if ((await deps.roleHolders(organizationId, [MEDICAL_DIRECTOR_ROLE_KEY])).length > 0) return;
+  deps.warn?.("critical lab result: no active medical director; paging tenant admins", {
+    organizationId,
+    observationId: facts.observationId,
+    stage: base.stage,
+  });
+  await deps.alerts.emit(organizationId, {
+    eventType: QUALITY_RECIPIENT_FALLBACK_EVENT_TYPE,
+    severity: "critical",
+    correlationId: `${base.correlationId}:fb-md`,
+    payload: {
+      ...safePayload(facts, { stage: base.stage, message: base.message }),
+      eventType: QUALITY_RECIPIENT_FALLBACK_EVENT_TYPE,
+      originalEventType: CRITICAL_LAB_ALERT_TYPE,
+    },
+  });
+}
+
 /** The initial page: RN (+ drafter + attending for an order-bound result; + medical director when unsigned). */
 export async function pageCriticalLab(
   deps: CriticalLabDeps,
@@ -109,25 +149,36 @@ export async function pageCriticalLab(
       : null,
     orderBound ? await deps.careTeam.attendingUserId(ref) : null,
   ]);
+  const stage = orderBound ? "result" : "result_no_order";
+  const message = orderBound
+    ? "A critical lab result was received."
+    : "A critical lab result was received with no matching order.";
+  const correlationId = `m11-lab-critical:${observationId}`;
   await emitWithRecipientFallback(
     deps.alerts,
     organizationId,
     {
       eventType: CRITICAL_LAB_ALERT_TYPE,
       severity: "critical",
-      correlationId: `m11-lab-critical:${observationId}`,
+      correlationId,
       payload: safePayload(facts, {
-        stage: orderBound ? "result" : "result_no_order",
+        stage,
         orderUnsigned: facts.orderUnsigned,
         recipientUserIds: recipients,
         alertRoleKeys: facts.orderUnsigned ? [MEDICAL_DIRECTOR_ROLE_KEY] : [],
-        message: orderBound
-          ? "A critical lab result was received."
-          : "A critical lab result was received with no matching order.",
+        message,
       }),
     },
     deps.warn,
   );
+  if (facts.orderUnsigned) {
+    await pageAdminsWhenNoDirector(deps, organizationId, facts, {
+      correlationId,
+      stage,
+      recipients,
+      message,
+    });
+  }
 }
 
 /** The escalation of an unresolved no-order quarantine: medical director (role) + the attending, and the RN again. */
@@ -138,23 +189,32 @@ export function buildCriticalLabEscalator(deps: CriticalLabDeps) {
       await deps.careTeam.primaryRnUserId(ref),
       await deps.careTeam.attendingUserId(ref),
     ]);
+    const correlationId = `m11-lab-critical:${facts.observationId}:escalation`;
+    const stage = "escalation_unresolved_no_order";
+    const message = "A critical lab result with no matching order is still unresolved.";
     await emitWithRecipientFallback(
       deps.alerts,
       organizationId,
       {
         eventType: CRITICAL_LAB_ALERT_TYPE,
         severity: "critical",
-        correlationId: `m11-lab-critical:${facts.observationId}:escalation`,
+        correlationId,
         payload: safePayload(facts, {
-          stage: "escalation_unresolved_no_order",
+          stage,
           orderUnsigned: false,
           recipientUserIds: recipients,
           alertRoleKeys: [MEDICAL_DIRECTOR_ROLE_KEY],
-          message: "A critical lab result with no matching order is still unresolved.",
+          message,
         }),
       },
       deps.warn,
     );
+    await pageAdminsWhenNoDirector(deps, organizationId, facts, {
+      correlationId,
+      stage,
+      recipients,
+      message,
+    });
   };
 }
 

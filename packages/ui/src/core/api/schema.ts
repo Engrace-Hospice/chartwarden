@@ -18696,7 +18696,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record the clinician's review of a lab order's current returned result (append-only; idempotent) - 403 for a non-prescriber, 409 when no result has been returned */
+        /** Record the clinician's review of a lab order's current returned result (append-only; idempotent) - 403 for a non-prescriber, 409 when no result has been returned or the viewed observation is no longer current */
         post: operations["postApiV1OrdersByIdReviewresults"];
         delete?: never;
         options?: never;
@@ -84267,7 +84267,14 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    observationId: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {

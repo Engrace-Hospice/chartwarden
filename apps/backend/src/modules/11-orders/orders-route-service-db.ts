@@ -973,8 +973,13 @@ export function createDbOrderBackend(
         scope,
       );
     },
-    async reviewLabResults(organizationId, id, actor = EMPTY_ORDER_DETAIL_ACTOR) {
-      return reviewLabResults(db, organizationId, id, actor, (patientId) =>
+    async reviewLabResults(
+      organizationId,
+      id,
+      viewedObservationId,
+      actor = EMPTY_ORDER_DETAIL_ACTOR,
+    ) {
+      return reviewLabResults(db, organizationId, id, viewedObservationId, actor, (patientId) =>
         assertInScope(actor, organizationId, patientId),
       );
     },

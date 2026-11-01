@@ -14,6 +14,7 @@ import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { createDrizzleOrderEraseStore } from "../src/modules/11-orders/erasers/orders-eraser";
 import { M11_OUTBOX_EVENTS, type OrderWriteOutboxPort } from "../src/modules/11-orders/index";
 import { sweepLabResultsUnreviewed } from "../src/modules/11-orders/order-sweeps";
 import { createDbOrderBackend } from "../src/modules/11-orders/orders-route-service-db";
@@ -177,7 +178,7 @@ describe.skipIf(!DB_URL)("#909 lab result review — LIVE Postgres", () => {
     expect(await queueIds()).toContain(order);
 
     const before = Date.now();
-    const review = await service.reviewLabResults(ORG_A, order, physician());
+    const review = await service.reviewLabResults(ORG_A, order, obs(1), physician());
 
     expect(review).toMatchObject({
       orderId: order,
@@ -197,14 +198,15 @@ describe.skipIf(!DB_URL)("#909 lab result review — LIVE Postgres", () => {
   it("a double review is an idempotent no-op that returns the original review", async () => {
     const order = await seedLab();
     await attach(order, obs(2));
-    const first = await service.reviewLabResults(ORG_A, order, physician());
+    const first = await service.reviewLabResults(ORG_A, order, obs(2), physician());
     const second = await service.reviewLabResults(
       ORG_A,
       order,
+      obs(2),
       actor(memberA, USER, ["np"]), // a different discipline must not rewrite history
     );
     const racers = await Promise.all(
-      [1, 2, 3].map(() => service.reviewLabResults(ORG_A, order, physician())),
+      [1, 2, 3].map(() => service.reviewLabResults(ORG_A, order, obs(2), physician())),
     );
 
     expect(second.alreadyReviewed).toBe(true);
@@ -217,13 +219,13 @@ describe.skipIf(!DB_URL)("#909 lab result review — LIVE Postgres", () => {
   it("an AMENDED result re-opens review: the order re-enters the queue and needs a new review", async () => {
     const order = await seedLab();
     await attach(order, obs(3));
-    await service.reviewLabResults(ORG_A, order, physician());
+    await service.reviewLabResults(ORG_A, order, obs(3), physician());
     expect(await queueIds()).not.toContain(order);
 
     await attach(order, obs(4)); // the amendment
 
     expect(await queueIds()).toContain(order);
-    const second = await service.reviewLabResults(ORG_A, order, physician());
+    const second = await service.reviewLabResults(ORG_A, order, obs(4), physician());
     expect(second.observationId).toBe(obs(4));
     expect(second.alreadyReviewed).toBe(false);
     expect(await reviewCount(order)).toBe(2);
@@ -235,15 +237,17 @@ describe.skipIf(!DB_URL)("#909 lab result review — LIVE Postgres", () => {
     await attach(order, obs(5));
 
     await expect(
-      service.reviewLabResults(ORG_A, order, actor(memberA, USER, ["rn_case_manager"])),
+      service.reviewLabResults(ORG_A, order, obs(5), actor(memberA, USER, ["rn_case_manager"])),
     ).rejects.toMatchObject({ statusCode: 403 });
     await expect(
-      service.reviewLabResults(ORG_A, order, actor(memberA, USER, ["social_worker"])),
+      service.reviewLabResults(ORG_A, order, obs(5), actor(memberA, USER, ["social_worker"])),
     ).rejects.toMatchObject({ statusCode: 403 });
     expect(await reviewCount(order)).toBe(0);
 
     const awaiting = await seedLab();
-    await expect(service.reviewLabResults(ORG_A, awaiting, physician())).rejects.toMatchObject({
+    await expect(
+      service.reviewLabResults(ORG_A, awaiting, obs(99), physician()),
+    ).rejects.toMatchObject({
       statusCode: 409,
     });
   });
@@ -253,7 +257,7 @@ describe.skipIf(!DB_URL)("#909 lab result review — LIVE Postgres", () => {
     await attach(order, obs(6));
 
     await expect(
-      service.reviewLabResults(ORG_B, order, actor(memberB, USER_B, ["hospice_physician"])),
+      service.reviewLabResults(ORG_B, order, obs(6), actor(memberB, USER_B, ["hospice_physician"])),
     ).rejects.toMatchObject({ statusCode: 404 });
     expect((await service.resultsPendingReview(ORG_B)).orders).toEqual([]);
     expect(await reviewCount(order)).toBe(0);
@@ -275,7 +279,7 @@ describe.skipIf(!DB_URL)("#909 lab result review — LIVE Postgres", () => {
   it("the review table is append-only for the app role and for the superuser", async () => {
     const order = await seedLab();
     await attach(order, obs(7));
-    await service.reviewLabResults(ORG_A, order, physician());
+    await service.reviewLabResults(ORG_A, order, obs(7), physician());
 
     await expect(
       admin.query(
@@ -289,12 +293,108 @@ describe.skipIf(!DB_URL)("#909 lab result review — LIVE Postgres", () => {
     expect(await reviewCount(order)).toBe(1);
   });
 
+  it("review must name the observation the clinician viewed: view A, amendment B lands, review(A) is 409 and B stays unreviewed", async () => {
+    const order = await seedLab();
+    await attach(order, obs(20)); // A: what the clinician opened
+    await attach(order, obs(21)); // B: the amendment lands before they click
+
+    await expect(
+      service.reviewLabResults(ORG_A, order, obs(20), physician()),
+    ).rejects.toMatchObject({ statusCode: 409 });
+
+    expect(await reviewCount(order)).toBe(0);
+    expect(await queueIds()).toContain(order);
+    const ok = await service.reviewLabResults(ORG_A, order, obs(21), physician());
+    expect(ok.observationId).toBe(obs(21));
+  });
+
+  it("the sweep skips a discontinued order, and an order whose result predates the review feature (no received stamp)", async () => {
+    const cancelled = await seedLab();
+    await attach(cancelled, obs(22));
+    await admin.query("UPDATE order_record SET status='discontinued' WHERE id=$1", [cancelled]);
+    const legacy = await seedLab();
+    await attach(legacy, obs(23));
+    await admin.query("UPDATE order_record SET results_last_received_at=NULL WHERE id=$1", [
+      legacy,
+    ]);
+
+    await sweepAt(40 * HOUR_MS);
+
+    expect(await unreviewedAlerts(cancelled)).toHaveLength(0);
+    expect(await unreviewedAlerts(legacy)).toHaveLength(0);
+  });
+
+  it("DESTRUCTION: a destruction-role erase removes the review rows and critical_lab_result rows it would otherwise be blocked by; the app role and superuser still cannot delete", async () => {
+    const order = await seedLab();
+    await attach(order, obs(24));
+    await service.reviewLabResults(ORG_A, order, obs(24), physician());
+    const patient = "44444444-4444-4444-4444-4444444444d1";
+    await admin.query(
+      `INSERT INTO patient (id, organization_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth, status)
+       VALUES ($1,$2,'r909-d1','Dee','Synthetic','1950-01-01','female','active')`,
+      [patient, ORG_A],
+    );
+    await admin.query(
+      `INSERT INTO critical_lab_result (organization_id, patient_id, observation_id, loinc_code, critical_flag, disposition, respond_by)
+       VALUES ($1,$2,$3,'2345-7','HH','quarantined_no_order', now())`,
+      [ORG_A, patient, obs(25)],
+    );
+    await expect(admin.query("DELETE FROM patient WHERE id=$1", [patient])).rejects.toThrow();
+    const orderPatient = (
+      await admin.query("SELECT patient_id FROM order_record WHERE id=$1", [order])
+    ).rows[0].patient_id as string;
+    await admin.query(
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='r909_destroyer') THEN
+       CREATE ROLE r909_destroyer LOGIN PASSWORD 'r909_destroyer_pw' IN ROLE chartwarden_destruction;
+     END IF; END $$;`,
+    );
+    const url = new URL(DB_URL as string);
+    url.username = "r909_destroyer";
+    url.password = "r909_destroyer_pw";
+    const destroyer = createDbClient({ connectionString: url.toString() });
+    const { withOrgContext } = await import("@chartwarden/tenancy");
+    const { sql } = await import("drizzle-orm");
+    try {
+      await expect(
+        withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+          tx.execute(sql`DELETE FROM critical_lab_result WHERE patient_id = ${patient}`),
+        ),
+      ).rejects.toThrow();
+      await expect(
+        admin.query("DELETE FROM order_result_review WHERE order_record_id=$1", [order]),
+      ).rejects.toThrow(/append-only/);
+      await expect(
+        withOrgContext(destroyer.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+          tx.execute(
+            sql`UPDATE order_result_review SET reviewer_discipline='np' WHERE order_record_id = ${order}`,
+          ),
+        ),
+      ).rejects.toThrow();
+
+      const store = createDrizzleOrderEraseStore(destroyer.db as never);
+      const boundary = new Date(Date.now() + 86_400_000).toISOString();
+      const foreign = await store.eraseOrdersSubtree(ORG_B, orderPatient, boundary);
+      expect(foreign).toMatchObject({ resultReviews: 0, criticalLabResults: 0, orders: 0 });
+      const counts = await store.eraseOrdersSubtree(ORG_A, orderPatient, boundary);
+      expect(counts.resultReviews).toBeGreaterThanOrEqual(1);
+      const dee = await store.eraseOrdersSubtree(ORG_A, patient, boundary);
+      expect(dee.criticalLabResults).toBe(1);
+    } finally {
+      await destroyer.close();
+      await admin.query("DROP OWNED BY r909_destroyer");
+      await admin.query("DROP ROLE r909_destroyer");
+    }
+    expect(await reviewCount(order)).toBe(0);
+    // With the ledger rows gone the patient row is deletable (the restrict FK no longer blocks destruction).
+    await admin.query("DELETE FROM patient WHERE id=$1", [patient]);
+  });
+
   it("the 24 h sweep alerts once per observation, never early, never for a reviewed result; an amendment re-arms it", async () => {
     const stale = await seedLab();
     await attach(stale, obs(8));
     const reviewed = await seedLab();
     await attach(reviewed, obs(9));
-    await service.reviewLabResults(ORG_A, reviewed, physician());
+    await service.reviewLabResults(ORG_A, reviewed, obs(9), physician());
 
     await sweepAt(HOUR_MS); // inside the 24 h window
     expect(await unreviewedAlerts(stale)).toHaveLength(0);

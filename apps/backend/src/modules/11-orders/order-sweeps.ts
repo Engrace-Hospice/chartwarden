@@ -13,7 +13,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { OrderKind } from "@chartwarden/types";
-import { and, asc, eq, gt, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, lte, notInArray, sql } from "drizzle-orm";
 import {
   RESULTS_UNREVIEWED_ALERT_TYPE,
   RESULT_REVIEW_SLA_HOURS,
@@ -307,7 +307,10 @@ export async function sweepLabResultsUnreviewed(
   const cutoff = new Date(now.getTime() - RESULT_REVIEW_SLA_HOURS * HOUR_MS);
   return withOrgContext(deps.db, { organizationId, userId: "" }, async (txRaw) => {
     const tx = txRaw as unknown as DbClient;
-    const receivedAt = sql<Date>`COALESCE(${OR.resultsLastReceivedAt}, ${OR.resultsFirstReceivedAt})`;
+    // First-deploy flood guard: `results_last_received_at` is stamped by a trigger only from migration 1296 on, so
+    // requiring it NOT NULL alerts only on results that arrived after the review feature shipped; the years of
+    // already-returned, never-reviewed labs from before it are not paged in one burst.
+    const receivedAt = sql<Date>`${OR.resultsLastReceivedAt}`;
     const rows = await tx
       .select({
         id: OR.id,
@@ -320,13 +323,16 @@ export async function sweepLabResultsUnreviewed(
         and(
           eq(OR.kind, "lab"),
           eq(OR.resultsStatus, "results_received"),
+          // A cancelled order (discontinued / expired unsigned) has no clinician left to review its result.
+          notInArray(OR.status, ["discontinued", "expired_unsigned"]),
           sql`${OR.lastLabObservationAttachedId} IS NOT NULL`,
+          sql`${OR.resultsLastReceivedAt} IS NOT NULL`,
           sql`${OR.resultsReviewAlertedObservationId} IS DISTINCT FROM ${OR.lastLabObservationAttachedId}`,
           sql`${receivedAt} <= ${cutoff.toISOString()}::timestamptz`,
           currentResultUnreviewed(),
         ),
       )
-      .orderBy(asc(OR.signedAt))
+      .orderBy(asc(OR.resultsLastReceivedAt))
       .limit(SWEEP_BATCH);
     let acted = 0;
     for (const r of rows) {

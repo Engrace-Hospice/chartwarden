@@ -48,6 +48,7 @@ import {
   RecoveryRequestParamsSchema,
   RegenerateVerbalTimerRequest,
   RequestSignatureRequest,
+  ReviewResultsRequest,
   SignOnBehalfRequest,
   SignOrderRequest,
   SpawnStandingOrderRequest,
@@ -671,7 +672,13 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
-      return service.reviewLabResults(organizationId, id, await detailActorOf(request));
+      const body = parse(ReviewResultsRequest, request.body);
+      return service.reviewLabResults(
+        organizationId,
+        id,
+        body.observationId,
+        await detailActorOf(request),
+      );
     },
   );
 

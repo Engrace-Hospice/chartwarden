@@ -51,9 +51,12 @@ export interface LabResultsApplierDeps {
   /** The bound publisher — `Value.Check`s `m11.*` against the boot catalog. */
   readonly outbox: OrderWriteOutboxPort;
   readonly now?: () => Date;
+  /** Structured warning sink (ids only, never PHI). */
+  readonly warn?: (message: string, context: Record<string, string>) => void;
 }
 
 interface AttachedFacts {
+  readonly observationAt: Date | null;
   readonly observationId: string;
   readonly orderRecordId: string | null;
   readonly abnormalFlag: string | null;
@@ -73,7 +76,10 @@ function factsOf(payload: unknown): AttachedFacts {
       `${M11_LAB_RESULTS_APPLIER_CONSUMER.consumerName}: payload has no observationId`,
     );
   }
+  const parsedAt =
+    typeof p.observationDatetime === "string" ? new Date(p.observationDatetime) : null;
   return {
+    observationAt: parsedAt && !Number.isNaN(parsedAt.getTime()) ? parsedAt : null,
     observationId,
     orderRecordId: nonEmptyString(p.orderRecordId),
     abnormalFlag: nonEmptyString(p.abnormalFlag),
@@ -101,28 +107,30 @@ export function buildM11LabResultsApplierConsumer(deps: LabResultsApplierDeps) {
           : null;
       // A result bound to a patient but to no order changes no order's state, but a CRITICAL one is quarantined
       // (visible queue + clock) rather than dropped; the M36 page for it comes from `m29.lab_observation.abnormal_flag`.
-      if (facts.orderRecordId === null) {
+      const quarantine = async (tx: DbClient, receivedAt: Date): Promise<void> => {
         if (criticalFlag === null) return;
         if (facts.patientId === null || facts.loincCode === null) {
           throw new Error(
             `${M11_LAB_RESULTS_APPLIER_CONSUMER.consumerName}: critical payload has no patientId/loincCode`,
           );
         }
-        const { patientId, loincCode } = facts;
+        await recordCriticalLabResult(tx, organizationId, {
+          observationId: facts.observationId,
+          patientId: facts.patientId,
+          orderRecordId: null,
+          loincCode: facts.loincCode,
+          criticalFlag,
+          orderUnsigned: false,
+          receivedAt,
+          observationAt: facts.observationAt,
+        });
+      };
+      if (facts.orderRecordId === null) {
+        if (criticalFlag === null) return;
         await withOrgContext(
           deps.db,
           { organizationId, userId: CONSUMER_USER_ID },
-          async (scoped) => {
-            await recordCriticalLabResult(scoped as unknown as DbClient, organizationId, {
-              observationId: facts.observationId,
-              patientId,
-              orderRecordId: null,
-              loincCode,
-              criticalFlag,
-              orderUnsigned: false,
-              receivedAt: now(),
-            });
-          },
+          async (scoped) => quarantine(scoped as unknown as DbClient, now()),
         );
         return;
       }
@@ -154,29 +162,58 @@ export function buildM11LabResultsApplierConsumer(deps: LabResultsApplierDeps) {
             .returning({
               orderingPhysicianMdmId: ORDER.orderingPhysicianMdmId,
               signedAt: ORDER.signedAt,
+              patientId: ORDER.patientId,
             });
-          // No such lab order in this tenant, or a redelivery of an observation already applied.
           const order = updated[0];
-          if (!order) return;
+          if (!order) {
+            // Either a redelivery of an observation already applied (a no-op) or an order this tenant cannot use. A
+            // critical result naming an unusable order must not vanish: quarantine it like a no-order critical.
+            if (criticalFlag === null) return;
+            const [existing] = await tx
+              .select({ kind: ORDER.kind })
+              .from(ORDER)
+              .where(and(eq(ORDER.organizationId, organizationId), eq(ORDER.id, orderId)))
+              .limit(1);
+            if (existing?.kind === "lab") return; // redelivery
+            deps.warn?.("critical lab result names an unusable order; quarantined", {
+              organizationId,
+              observationId: facts.observationId,
+              orderId,
+            });
+            await quarantine(tx, receivedAt);
+            return;
+          }
+          // The patient comes from the locked order row, not the payload; a disagreement is logged and the order wins.
+          if (facts.patientId !== null && facts.patientId !== order.patientId) {
+            deps.warn?.(
+              "lab observation patient differs from its order's patient; using the order's",
+              {
+                organizationId,
+                observationId: facts.observationId,
+                orderId,
+              },
+            );
+          }
 
           // #910: an unsigned order (e.g. a verbal order transmitted before signature) still emits -- a critical
           // result must never go quiet -- and the ledger row below marks it so the page reaches the medical director.
           // (`ordering_physician_mdm_id` is NOT NULL, so the old null-physician half of this guard was dead.)
           const loincCode = facts.loincCode;
           if (criticalFlag !== null) {
-            if (facts.patientId === null || loincCode === null) {
+            if (loincCode === null) {
               throw new Error(
                 `${M11_LAB_RESULTS_APPLIER_CONSUMER.consumerName}: critical payload has no patientId/loincCode`,
               );
             }
             await recordCriticalLabResult(tx, organizationId, {
               observationId: facts.observationId,
-              patientId: facts.patientId,
+              patientId: order.patientId,
               orderRecordId: orderId,
               loincCode,
               criticalFlag,
               orderUnsigned: order.signedAt === null,
               receivedAt,
+              observationAt: facts.observationAt,
             });
           } else if (loincCode !== null) {
             // A later non-critical observation of the same test withdraws earlier criticals on this order.
@@ -185,6 +222,7 @@ export function buildM11LabResultsApplierConsumer(deps: LabResultsApplierDeps) {
               loincCode,
               supersededByObservationId: facts.observationId,
               at: receivedAt,
+              observationAt: facts.observationAt,
             });
           }
 

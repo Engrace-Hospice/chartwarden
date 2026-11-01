@@ -674,11 +674,12 @@ export interface OrderRouteService extends OrderAbacResolver {
   ): Promise<{ orders: OrderView[] }>;
   /**
    * #909 — record the actor's review of the order's CURRENT returned lab result (append-only, per order; a repeat is an
-   * idempotent no-op). 403 unless the actor holds a prescriber discipline; 409 when nothing has been returned.
+   * idempotent no-op). 409 when `viewedObservationId` is no longer the order's current observation. 403 unless the actor holds a prescriber discipline; 409 when nothing has been returned.
    */
   reviewLabResults(
     organizationId: string,
     id: string,
+    viewedObservationId: string,
     actor?: OrderDetailActor,
   ): Promise<ResultReviewView>;
   suggestions(
@@ -1501,7 +1502,12 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
           .map(view),
       };
     },
-    async reviewLabResults(organizationId, id, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+    async reviewLabResults(
+      organizationId,
+      id,
+      viewedObservationId,
+      actor = EMPTY_ORDER_DETAIL_ACTOR,
+    ) {
       const discipline = reviewerDisciplineOf(actor);
       if (discipline === null || actor.kind === "system") {
         throw new ForbiddenError("only a prescriber may review lab results");
@@ -1510,6 +1516,10 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       await assertInScope(actor, organizationId, r.patientId);
       if (r.kind !== "lab" || r.resultsStatus !== "results_received") {
         throw new ConflictError("order has no returned lab result to review");
+      }
+      // The in-memory backend has one synthetic observation per order (its id is the order id).
+      if (viewedObservationId !== id) {
+        throw new ConflictError("the viewed result is no longer the order's current result");
       }
       const prior = reviewedLabs.get(id);
       const review = prior ?? {

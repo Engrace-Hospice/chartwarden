@@ -2085,6 +2085,7 @@ import {
   RequestSignatureRequest as M11RequestSignatureRequest,
   ResendLabTransmissionResponseSchema as M11ResendLabTransmissionResponseSchema,
   ResultReviewResponseSchema as M11ResultReviewResponseSchema,
+  ReviewResultsRequest as M11ReviewResultsRequest,
   SignOnBehalfRequest as M11SignOnBehalfRequest,
   SignOrderRequest as M11SignOrderRequest,
   SpawnResponseSchema as M11SpawnResponseSchema,
@@ -5566,7 +5567,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/orders/:id/review-results": {
     summary:
-      "Record the clinician's review of a lab order's current returned result (append-only; idempotent) - 403 for a non-prescriber, 409 when no result has been returned",
+      "Record the clinician's review of a lab order's current returned result (append-only; idempotent) - 403 for a non-prescriber, 409 when no result has been returned or the viewed observation is no longer current",
+    body: M11ReviewResultsRequest,
     response: M11ResultReviewResponseSchema,
   },
   "POST /api/v1/orders/:id/resend-transmission": {

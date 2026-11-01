@@ -22,6 +22,7 @@ import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { buildCriticalLabDeps, buildCriticalLabEscalate } from "../src/critical-lab-wiring";
 import { createCareTeamProvider } from "../src/modules/05-patient/seams/care-team-provider";
 import { createDrizzleCareTeamStore } from "../src/modules/05-patient/seams/drizzle-stores";
 import {
@@ -30,12 +31,12 @@ import {
   sweepQuarantinedCriticalLabs,
 } from "../src/modules/11-orders/critical-lab-result";
 import { M11_OUTBOX_EVENTS, type OrderWriteOutboxPort } from "../src/modules/11-orders/index";
+import { runCriticalLabEscalationFanout } from "../src/modules/11-orders/jobs/critical-lab-escalation-worker";
 import { createDbOrderBackend } from "../src/modules/11-orders/orders-route-service-db";
 import { buildM11LabResultsApplierConsumer } from "../src/modules/11-orders/outbox-consumers/m29-lab-results-applier";
 import { M29_OUTBOX_EVENTS } from "../src/modules/29-external-interfaces/index";
 import {
   createDrizzleAlertEmitter,
-  createDrizzleMembershipUserLookup,
   registerMessagingSeams,
   wireAlertRuleSeed,
 } from "../src/modules/36-messaging/index";
@@ -67,6 +68,7 @@ describe.skipIf(!DB_URL)("S08 lab-result edge cases — LIVE Postgres", () => {
   let criticalDeps: CriticalLabDeps;
   let criticalConsumers: ReturnType<typeof buildM36CriticalLabAlertConsumers>;
   const who: Record<string, string> = {};
+  const warnings: { message: string; context: Record<string, string> }[] = [];
 
   /**
    * A transmitted lab order awaiting results. `signed: false` clears `signed_at` (a verbal order not yet signed can
@@ -95,17 +97,19 @@ describe.skipIf(!DB_URL)("S08 lab-result edge cases — LIVE Postgres", () => {
     orderRecordId: string | null,
     observationId: string,
     flag: string | null = null,
+    observationDatetime = "2026-10-08T11:30:00.000Z",
+    patientId = PATIENT,
   ) => ({
     eventType: "m29.lab_observation.attached",
     organizationId: ORG,
     payload: {
       observationId,
       organizationId: ORG,
-      patientId: PATIENT,
+      patientId,
       orderRecordId,
       loincCode: "2345-7",
       abnormalFlag: flag,
-      observationDatetime: "2026-10-08T11:30:00.000Z",
+      observationDatetime,
     },
   });
   const handleEvent = (e: ReturnType<typeof attached>) => consumer.handle(e as never);
@@ -269,12 +273,12 @@ describe.skipIf(!DB_URL)("S08 lab-result edge cases — LIVE Postgres", () => {
     const emitter = createDrizzleAlertEmitter(handle.db);
     registerMessagingSeams({ emitter });
     await wireAlertRuleSeed(handle.db);
-    criticalDeps = {
-      alerts: emitter,
-      careTeam: createCareTeamProvider(createDrizzleCareTeamStore(handle.db)),
-      lookup: createCriticalLabLookup(handle.db),
-      membershipUserId: createDrizzleMembershipUserLookup(handle.db),
-    };
+    // The SAME builder the boot (index.ts) uses -- not a hand-assembled deps object.
+    criticalDeps = buildCriticalLabDeps(
+      handle.db,
+      { alerts: emitter, careTeam: createCareTeamProvider(createDrizzleCareTeamStore(handle.db)) },
+      (message, context) => warnings.push({ message, context }),
+    );
     criticalConsumers = buildM36CriticalLabAlertConsumers(criticalDeps);
   }, 300_000);
 
@@ -479,5 +483,214 @@ describe.skipIf(!DB_URL)("S08 lab-result edge cases — LIVE Postgres", () => {
     );
     expect(columns.rows).toHaveLength(3);
     // The full review / amendment / wrong-tenant / role / alert behaviour is m11-lab-result-review.live.
+  });
+
+  // ── review follow-up ────────────────────────────────────────────────────────────────────────────────────
+  const setMembership = (userId: string, status: string) =>
+    admin.query("UPDATE membership SET status=$2 WHERE user_id=$1 AND organization_id=$3", [
+      userId,
+      status,
+      ORG,
+    ]);
+  const auditCount = async (type: string, resourceId: string): Promise<number> =>
+    (
+      await admin.query(
+        "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind='critical_lab_result' AND event_type=$1 AND resource_id=$2",
+        [type, resourceId],
+      )
+    ).rows[0].n as number;
+
+  it("a critical naming an order that does not exist is quarantined (not dropped); a redelivery of an applied critical stays a no-op", async () => {
+    const missing = "bbbbbbbb-5008-4000-8000-000000000001";
+    await handleEvent(attached(missing, obs(30), "HH"));
+
+    const row = await criticalRow(obs(30));
+    expect(row.disposition).toBe("quarantined_no_order");
+    expect(row.order_record_id).toBeNull();
+    expect(row.patient_id).toBe(PATIENT);
+    await handleEvent(attached(missing, obs(30), "HH")); // redelivery of the quarantined one
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int n FROM critical_lab_result WHERE observation_id=$1",
+          [obs(30)],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+
+    const order = await seedLabOrder();
+    await handleEvent(attached(order, obs(31), "HH"));
+    await handleEvent(attached(order, obs(31), "HH")); // redelivery of an applied one
+    expect((await criticalRow(obs(31))).disposition).toBe("paged");
+    expect(await eventsFor("m11.order.results_received_critical", order)).toBe(1);
+  });
+
+  it("one poison row does not roll back or block the others: the rest are escalated, the failure is rethrown", async () => {
+    await handleEvent(attached(null, obs(32), "HH"));
+    await handleEvent(attached(null, obs(33), "HH"));
+    const escalate = buildCriticalLabEscalate(criticalDeps);
+    const later = new Date(NOW.getTime() + 3 * CRITICAL_LAB_NO_ORDER_RESPOND_WITHIN_MS);
+
+    const run = sweepQuarantinedCriticalLabs(
+      {
+        db: handle.db,
+        now: () => later,
+        escalate: async (org, r) => {
+          if (r.observationId === obs(32)) throw new Error("poison");
+          await escalate(org, r);
+        },
+      },
+      ORG,
+    );
+
+    await expect(run).rejects.toBeInstanceOf(AggregateError);
+    expect((await criticalRow(obs(32))).escalated_at).toBeNull(); // retried next tick
+    expect((await criticalRow(obs(33))).escalated_at).not.toBeNull();
+    expect(
+      (await pageAlerts(obs(33))).filter((a) => a.correlation_id.endsWith(":escalation")),
+    ).toHaveLength(1);
+  });
+
+  it("no active medical director: an unsigned-order critical also pages the tenant admins (distinct :fb-md alert) and warns", async () => {
+    const order = await seedLabOrder(false);
+    await handleEvent(attached(order, obs(34), "LL"));
+    await setMembership(who.medicalDirector, "suspended");
+    warnings.length = 0;
+    try {
+      await pageFrom("m11", critEvent("m11", obs(34), order));
+    } finally {
+      await setMembership(who.medicalDirector, "active");
+    }
+
+    const pages = await pageAlerts(obs(34));
+    expect(pages.map((p) => p.correlation_id)).toEqual([
+      `m11-lab-critical:${obs(34)}`,
+      `m11-lab-critical:${obs(34)}:fb-md`,
+    ]);
+    expect(await pageRecipients(pages[1].id)).toContain(who.admin);
+    expect(await pageRecipients(pages[0].id)).toEqual(
+      [who.rn, who.drafterUser, who.attending].sort(),
+    );
+    expect(warnings.some((w) => w.context.observationId === obs(34))).toBe(true);
+    expect(JSON.stringify(warnings)).not.toMatch(/Pat|Synthetic|1950/);
+  });
+
+  it("a suspended attending is not paged (only an ACTIVE membership counts) and the other recipients still are", async () => {
+    const order = await seedLabOrder(true);
+    await handleEvent(attached(order, obs(35), "HH"));
+    await setMembership(who.attending, "suspended");
+    try {
+      await pageFrom("m11", critEvent("m11", obs(35), order));
+    } finally {
+      await setMembership(who.attending, "active");
+    }
+
+    const pages = await pageAlerts(obs(35));
+    expect(pages).toHaveLength(1);
+    expect(await pageRecipients(pages[0].id)).toEqual([who.rn, who.drafterUser].sort());
+  });
+
+  it("a suspended attending is the ONLY care-team contact: the page falls back to the tenant admins", async () => {
+    await admin.query(
+      "UPDATE patient_assignment SET unassigned_at = CURRENT_DATE WHERE patient_id=$1 AND role='primary_rn'",
+      [PATIENT],
+    );
+    await setMembership(who.attending, "suspended");
+    try {
+      await handleEvent(attached(null, obs(44), "HH"));
+      await pageFrom("m29", critEvent("m29", obs(44), null));
+    } finally {
+      await setMembership(who.attending, "active");
+      await admin.query("UPDATE patient_assignment SET unassigned_at = NULL WHERE patient_id=$1", [
+        PATIENT,
+      ]);
+    }
+
+    const pages = await pageAlerts(obs(44));
+    expect(pages.map((p) => p.correlation_id)).toEqual([
+      `m11-lab-critical:${obs(44)}`,
+      `m11-lab-critical:${obs(44)}:fb`,
+    ]);
+    expect(await pageRecipients(pages[1].id)).toContain(who.admin);
+  });
+
+  it("the ledger patient comes from the locked order, not the payload (a mismatch warns with ids only)", async () => {
+    const order = await seedLabOrder();
+    const warned: { message: string; context: Record<string, string> }[] = [];
+    const checking = buildM11LabResultsApplierConsumer({
+      db: handle.db,
+      outbox,
+      now: () => NOW,
+      warn: (message, context) => warned.push({ message, context }),
+    });
+    const other = "44444444-4444-4444-4444-4444444444ff";
+
+    await checking.handle(attached(order, obs(36), "HH", undefined, other) as never);
+
+    expect((await criticalRow(obs(36))).patient_id).toBe(PATIENT);
+    expect(warned).toHaveLength(1);
+    expect(warned[0].context).toMatchObject({ observationId: obs(36), orderId: order });
+  });
+
+  it("supersede is order-aware: a late redelivery of an OLDER non-critical does not withdraw a newer critical", async () => {
+    const order = await seedLabOrder();
+    await handleEvent(attached(order, obs(37), "HH", "2026-10-08T11:30:00.000Z"));
+
+    await handleEvent(attached(order, obs(38), null, "2026-10-08T10:00:00.000Z")); // older, arrives late
+
+    expect((await criticalRow(obs(37))).superseded_at).toBeNull();
+    await handleEvent(attached(order, obs(39), null, "2026-10-08T12:30:00.000Z")); // genuinely newer
+    expect((await criticalRow(obs(37))).superseded_by_observation_id).toBe(obs(39));
+  });
+
+  it("critical_lab_result insert and the escalated / superseded stamps land in audit_event", async () => {
+    const order = await seedLabOrder();
+    await handleEvent(attached(order, obs(40), "HH"));
+    await handleEvent(attached(order, obs(41), null, "2026-10-08T12:45:00.000Z"));
+    await handleEvent(attached(null, obs(42), "LL"));
+    await sweepQuarantinedCriticalLabs(
+      {
+        db: handle.db,
+        now: () => new Date(NOW.getTime() + 5 * CRITICAL_LAB_NO_ORDER_RESPOND_WITHIN_MS),
+        escalate: async () => undefined,
+      },
+      ORG,
+    );
+
+    const superseded = await criticalRow(obs(40));
+    const escalated = await criticalRow(obs(42));
+    expect(await auditCount("critical_lab_result.insert", superseded.id)).toBe(1);
+    expect(await auditCount("critical_lab_result.update", superseded.id)).toBeGreaterThanOrEqual(1);
+    expect(await auditCount("critical_lab_result.insert", escalated.id)).toBe(1);
+    expect(await auditCount("critical_lab_result.update", escalated.id)).toBeGreaterThanOrEqual(1);
+    const after = (
+      await admin.query(
+        "SELECT after FROM audit_event WHERE resource_id=$1 AND event_type='critical_lab_result.update' ORDER BY created_at DESC LIMIT 1",
+        [escalated.id],
+      )
+    ).rows[0].after as Record<string, unknown>;
+    expect(after.escalated_at).toBeTruthy();
+  });
+
+  it("worker level: runCriticalLabEscalationFanout over the boot's deps-builder escalates a lapsed quarantine once", async () => {
+    await handleEvent(attached(null, obs(43), "HH"));
+    const deps = {
+      connection: {} as never,
+      db: handle.db,
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG }] },
+      escalate: buildCriticalLabEscalate(criticalDeps),
+    };
+
+    await runCriticalLabEscalationFanout(deps); // real clock: obs(43)'s 1 h clock (from 2026-10-08) has lapsed
+    await runCriticalLabEscalationFanout(deps); // second tick is a no-op
+
+    expect((await criticalRow(obs(43))).escalated_at).not.toBeNull();
+    const escalation = (await pageAlerts(obs(43))).filter((a) =>
+      a.correlation_id.endsWith(":escalation"),
+    );
+    expect(escalation).toHaveLength(1);
+    expect(await pageRecipients(escalation[0].id)).toEqual(
+      [who.rn, who.attending, who.medicalDirector].sort(),
+    );
   });
 });

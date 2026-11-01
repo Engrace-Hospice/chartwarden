@@ -278,18 +278,16 @@ const M18_PLATFORM_JOB_ID = "m18-evv-automation";
  * the format and the AAD. `getTenantKeyProvider()` is resolved per call, so this is safe to build before M34
  * registers; until a platform KEK is bound, M34's stub refuses `dekForOrg` and every capture fails closed.
  */
-/** #908/#910 — the ports M36's critical-lab alert reads: M11's ledger, the care-team seam, membership -> user. */
-function buildCriticalLabDeps(
-  db: DbClient,
-  warn: (message: string, context: Record<string, string>) => void,
-): CriticalLabDeps {
-  return {
-    alerts: getSeam("AlertEmitter") as AlertEmitter,
-    careTeam: lazySeamProxy("CareTeamProvider", () => getSeam("CareTeamProvider")),
-    lookup: createCriticalLabLookup(db),
-    membershipUserId: createDrizzleMembershipUserLookup(db),
-    warn,
-  };
+/** #908/#910 — see critical-lab-wiring.ts; the seams resolve lazily (they bind after this module loads). */
+function criticalLabDepsFor(db: DbClient, app: { log: { warn: (o: object, m: string) => void } }) {
+  return buildCriticalLabDeps(
+    db,
+    {
+      alerts: getSeam("AlertEmitter") as AlertEmitter,
+      careTeam: lazySeamProxy("CareTeamProvider", () => getSeam("CareTeamProvider")),
+    },
+    (message, context) => app.log.warn(context, message),
+  );
 }
 
 function m18CoordsCipher(): EvvCoordsCipher {
@@ -358,6 +356,7 @@ import {
   sessionRoom,
   startRealtimeServer,
 } from "./bootstrap/realtime";
+import { buildCriticalLabDeps, buildCriticalLabEscalate } from "./critical-lab-wiring";
 import { buildM36ExportBinding } from "./m36-export-binding";
 import { buildM41OverrideAuditPort } from "./m41-override-audit";
 import { revokeAuditorMagicLinksForEngagement } from "./modules/02-identity/auditor-magic-link-store";
@@ -653,7 +652,6 @@ import {
   buildM11OrmRequestedPorts,
   buildM11RecoveryAlertConsumer,
   buildM11SupplyCancelledConsumer,
-  createCriticalLabLookup,
   createDbOrderBackend,
   createDrizzleOrderEraseStore,
   createDrizzleOrderSeamStore,
@@ -1676,11 +1674,7 @@ import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox
 import { buildM36BreakGlassNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/break-glass-notifications";
 import { buildM36CapThresholdAlertConsumer } from "./modules/36-messaging/outbox-consumers/cap-threshold-alerts";
 import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/outbox-consumers/channel-membership-sync";
-import {
-  type CriticalLabDeps,
-  buildCriticalLabEscalator,
-  buildM36CriticalLabAlertConsumers,
-} from "./modules/36-messaging/outbox-consumers/critical-lab-alerts";
+import { buildM36CriticalLabAlertConsumers } from "./modules/36-messaging/outbox-consumers/critical-lab-alerts";
 import { buildM36DeathBoardConsumer } from "./modules/36-messaging/outbox-consumers/death-board";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
 import { buildM36ExportNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/export-notifications";
@@ -10761,15 +10755,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         jobId: M11_CRITICAL_LAB_ESCALATION_PLATFORM_JOB_ID,
         reason: "M11 #910 critical-lab no-order escalation fan-out",
       }),
-      escalate: (organizationId, row) =>
-        buildCriticalLabEscalator(
-          buildCriticalLabDeps(dbHandle.db, (message, context) => app.log.warn(context, message)),
-        )(organizationId, {
-          ...row,
-          orderId: null,
-          orderUnsigned: false,
-          drafterMembershipId: null,
-        }),
+      escalate: buildCriticalLabEscalate(criticalLabDepsFor(dbHandle.db, app)),
     });
     attachDlqAlertsToAll([m11CriticalLabEscalationWorker], "m11");
     app.addHook("onClose", async () => {
@@ -10781,7 +10767,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         await m11CriticalLabEscalationQueue.close();
       });
     } catch (err) {
-      app.log.error(err, "M11 critical-lab escalation schedule registration failed");
+      // Unlike the best-effort sweeps above, a missing schedule means a quarantined critical result is never
+      // escalated, silently: refuse to boot (fail closed) rather than log and carry on.
+      app.log.error(
+        err,
+        "M11 critical-lab escalation schedule registration failed; refusing to boot",
+      );
+      throw err;
     }
     // F-238 — the hourly records-request expiry sweep: an outbound records request nobody answered by its
     // `expires_on` day moves `requested` → `expired`. Same per-org fan-out as the M11 sweeps above; each
@@ -12011,9 +12003,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM36FeedHealthAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
           // #908/#910 — a critical (HH/LL) lab result pages the caseload RN, the order drafter, the attending and (unsigned
           // order) the medical director: one alert per observation, tenant admins as the never-zero fallback.
-          ...buildM36CriticalLabAlertConsumers(
-            buildCriticalLabDeps(dbHandle.db, (message, context) => app.log.warn(context, message)),
-          ),
+          ...buildM36CriticalLabAlertConsumers(criticalLabDepsFor(dbHandle.db, app)),
           buildM36QualityAlertConsumer(
             getSeam("AlertEmitter") as AlertEmitter,
             (message, context) => app.log.warn(context, message),
@@ -12577,7 +12567,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // GAP-016 — `LabResultsApplier`: the returned-lab half of the M29 handshake. Flips
           // `order_record.results_status` -> `results_received`, stamps `results_first_received_at`, and
           // emits `m11.order.results_received` (M22's `lab_results_pdf` render below) / `_critical`.
-          buildM11LabResultsApplierConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
+          buildM11LabResultsApplierConsumer({
+            db: dbHandle.db,
+            outbox: m11OutboxPublisher,
+            warn: (message, context) => app.log.warn(context, message),
+          }),
           // F-187 (#248) — a lab order discontinued/replaced after its ORM may already be at the laboratory:
           // nothing withdraws the ORM (T-29.08 defines no outbound cancel), so this raises the M36 alert that
           // tells the care team to cancel it with the lab. The M11-side self-consumption of

@@ -69,6 +69,7 @@ export async function reviewLabResults(
   db: DbClient,
   organizationId: string,
   orderId: string,
+  viewedObservationId: string,
   actor: ResultReviewActor,
   assertInScope: (patientId: string) => Promise<void>,
 ): Promise<ResultReviewView> {
@@ -103,6 +104,11 @@ export async function reviewLabResults(
         !order.observationId
       ) {
         throw new ConflictError("order has no returned lab result to review");
+      }
+      // The clinician reviews what they SAW: an amendment that landed after they opened the result is a different
+      // observation and stays unreviewed (they must look again).
+      if (order.observationId !== viewedObservationId) {
+        throw new ConflictError("the viewed result is no longer the order's current result");
       }
       const inserted = await tx
         .insert(RV)

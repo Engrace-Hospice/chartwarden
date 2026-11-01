@@ -5,7 +5,7 @@
 // non-critical observation of the same test marks the earlier critical row superseded (it is never deleted).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, asc, eq, isNull, lte } from "drizzle-orm";
+import { and, asc, eq, isNull, lte, sql } from "drizzle-orm";
 
 const CLR = schema.criticalLabResults;
 const ORDER = schema.orderRecords;
@@ -24,6 +24,8 @@ export interface RecordCriticalInput {
   readonly criticalFlag: "HH" | "LL";
   readonly orderUnsigned: boolean;
   readonly receivedAt: Date;
+  /** The observation's clinical instant (M29 observationDatetime); null when the payload carried none. */
+  readonly observationAt?: Date | null;
 }
 
 /** Insert the ledger row (idempotent per observation). `tx` is the applier's org-scoped transaction. */
@@ -45,6 +47,7 @@ export async function recordCriticalLabResult(
       disposition: quarantined ? "quarantined_no_order" : "paged",
       orderUnsigned: input.orderUnsigned,
       receivedAt: input.receivedAt,
+      observationAt: input.observationAt ?? null,
       respondBy: quarantined
         ? new Date(input.receivedAt.getTime() + CRITICAL_LAB_NO_ORDER_RESPOND_WITHIN_MS)
         : null,
@@ -61,6 +64,8 @@ export async function supersedeCriticalLabResults(
     readonly loincCode: string;
     readonly supersededByObservationId: string;
     readonly at: Date;
+    /** The superseding observation's clinical instant; only criticals OLDER than it are withdrawn. */
+    readonly observationAt: Date | null;
   },
 ): Promise<void> {
   await tx
@@ -76,6 +81,11 @@ export async function supersedeCriticalLabResults(
         eq(CLR.orderRecordId, input.orderRecordId),
         eq(CLR.loincCode, input.loincCode),
         isNull(CLR.supersededAt),
+        // Order-aware: a late redelivery of an older non-critical must not withdraw a newer critical. Without a
+        // clinical instant on either side, fall back to the receive instants (the superseder is "now").
+        input.observationAt
+          ? sql`COALESCE(${CLR.observationAt}, ${CLR.receivedAt}) <= ${input.observationAt.toISOString()}::timestamptz`
+          : sql`${CLR.receivedAt} <= ${input.at.toISOString()}::timestamptz`,
       ),
     );
 }
@@ -126,9 +136,11 @@ export interface QuarantinedCritical {
 }
 
 /**
- * Escalate every quarantined (no-order) critical whose response clock has lapsed, once: the guarded UPDATE stamps
- * `escalated_at`, and `escalate` (the M36 page) runs in the same transaction, so a failed page rolls the stamp back and
- * the next tick retries (the alert's correlation id keeps a retry from paging twice).
+ * Escalate every quarantined (no-order) critical whose response clock has lapsed, once. Each row is stamped and
+ * escalated in ITS OWN transaction: the guarded UPDATE stamps `escalated_at` and `escalate` (the M36 page) runs in the
+ * same transaction, so a failed page rolls back only that row's stamp and the next tick retries it (the alert's
+ * correlation id keeps a retry from paging twice). One poison row never blocks or rolls back the others; failures are
+ * collected and rethrown as an AggregateError after the loop so the tick still fails loudly.
  */
 export async function sweepQuarantinedCriticalLabs(
   deps: {
@@ -139,45 +151,65 @@ export async function sweepQuarantinedCriticalLabs(
   organizationId: string,
 ): Promise<{ readonly examined: number; readonly acted: number }> {
   const now = (deps.now ?? (() => new Date()))();
-  return withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
-    const tx = scoped as unknown as DbClient;
-    const due = await tx
-      .select({
-        id: CLR.id,
-        observationId: CLR.observationId,
-        patientId: CLR.patientId,
-        loincCode: CLR.loincCode,
-        criticalFlag: CLR.criticalFlag,
-        receivedAt: CLR.receivedAt,
-      })
-      .from(CLR)
-      .where(
-        and(
-          eq(CLR.organizationId, organizationId),
-          eq(CLR.disposition, "quarantined_no_order"),
-          isNull(CLR.escalatedAt),
-          lte(CLR.respondBy, now),
-        ),
-      )
-      .orderBy(asc(CLR.respondBy))
-      .limit(ESCALATION_BATCH);
-    let acted = 0;
-    for (const r of due) {
-      const stamped = await tx
-        .update(CLR)
-        .set({ escalatedAt: now, updatedAt: now })
-        .where(and(eq(CLR.id, r.id), isNull(CLR.escalatedAt)))
-        .returning({ id: CLR.id });
-      if (stamped.length === 0) continue;
-      await deps.escalate(organizationId, {
-        observationId: r.observationId,
-        patientId: r.patientId,
-        loincCode: r.loincCode,
-        criticalFlag: r.criticalFlag,
-        receivedAt: r.receivedAt.toISOString(),
-      });
-      acted += 1;
+  const due = await withOrgContext(
+    deps.db,
+    { organizationId, userId: CONSUMER_USER_ID },
+    async (scoped) =>
+      (scoped as unknown as DbClient)
+        .select({
+          id: CLR.id,
+          observationId: CLR.observationId,
+          patientId: CLR.patientId,
+          loincCode: CLR.loincCode,
+          criticalFlag: CLR.criticalFlag,
+          receivedAt: CLR.receivedAt,
+        })
+        .from(CLR)
+        .where(
+          and(
+            eq(CLR.organizationId, organizationId),
+            eq(CLR.disposition, "quarantined_no_order"),
+            isNull(CLR.escalatedAt),
+            lte(CLR.respondBy, now),
+          ),
+        )
+        .orderBy(asc(CLR.respondBy))
+        .limit(ESCALATION_BATCH),
+  );
+  let acted = 0;
+  const failures: unknown[] = [];
+  for (const r of due) {
+    try {
+      const didAct = await withOrgContext(
+        deps.db,
+        { organizationId, userId: CONSUMER_USER_ID },
+        async (scoped) => {
+          const stamped = await (scoped as unknown as DbClient)
+            .update(CLR)
+            .set({ escalatedAt: now, updatedAt: now })
+            .where(and(eq(CLR.id, r.id), isNull(CLR.escalatedAt)))
+            .returning({ id: CLR.id });
+          if (stamped.length === 0) return false;
+          await deps.escalate(organizationId, {
+            observationId: r.observationId,
+            patientId: r.patientId,
+            loincCode: r.loincCode,
+            criticalFlag: r.criticalFlag,
+            receivedAt: r.receivedAt.toISOString(),
+          });
+          return true;
+        },
+      );
+      if (didAct) acted += 1;
+    } catch (error) {
+      failures.push(error);
     }
-    return { examined: due.length, acted };
-  });
+  }
+  if (failures.length > 0) {
+    throw new AggregateError(
+      failures,
+      `critical-lab escalation: ${failures.length} of ${due.length} row(s) failed (others were escalated)`,
+    );
+  }
+  return { examined: due.length, acted };
 }
