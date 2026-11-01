@@ -381,6 +381,8 @@ jobs:
               name: "M11 lab-result edge cases + M36 on-call page chain",
               scripts: "test:m11:lab-result-edge-cases:live test:m36:oncall-page-chain:live",
             }
+          # #909 - clinician review of a returned lab (append-only, amendment re-opens, 24 h unreviewed alert).
+          - { name: "M11 lab result review", scripts: "test:m11:lab-result-review:live" }
           # F-152 (#248) — the §2.8 D17 medication-reconciliation worksheet, opened from all four M6
           # trigger events.
           - { name: "M13 reconciliation triggers", scripts: "test:m13:reconciliation-triggers:live" }

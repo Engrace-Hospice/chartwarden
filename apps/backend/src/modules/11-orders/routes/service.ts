@@ -40,7 +40,8 @@ import type {
   StandingOrderCadence,
   StandingOrderStatus,
 } from "@chartwarden/types";
-import { ConflictError, NotFoundError, ValidationError } from "@chartwarden/types";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@chartwarden/types";
+import { type ResultReviewView, reviewerDisciplineOf } from "../order-result-review";
 import {
   type RecoveryAttestation,
   type RecoveryEvidence,
@@ -671,6 +672,15 @@ export interface OrderRouteService extends OrderAbacResolver {
     organizationId: string,
     scope?: OrderReadScope,
   ): Promise<{ orders: OrderView[] }>;
+  /**
+   * #909 — record the actor's review of the order's CURRENT returned lab result (append-only, per order; a repeat is an
+   * idempotent no-op). 403 unless the actor holds a prescriber discipline; 409 when nothing has been returned.
+   */
+  reviewLabResults(
+    organizationId: string,
+    id: string,
+    actor?: OrderDetailActor,
+  ): Promise<ResultReviewView>;
   suggestions(
     organizationId: string,
     patientId: string,
@@ -916,6 +926,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     const { organizationId: _o, signerDiscipline: _s, data: _d, ...v } = r;
     return v;
   };
+  const reviewedLabs = new Map<string, Omit<ResultReviewView, "alreadyReviewed">>();
   const find = (organizationId: string, id: string): OrderRecord => {
     const r = orders.get(id);
     if (!r || r.organizationId !== organizationId) throw new NotFoundError(`order ${id} not found`);
@@ -1483,11 +1494,33 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
               r.organizationId === organizationId &&
               inReadScope(scope, r.patientId) &&
               r.kind === "lab" &&
-              r.resultsStatus === "results_received",
+              r.resultsStatus === "results_received" &&
+              !reviewedLabs.has(r.id),
           )
           .slice(0, ORDER_LIST_LIMIT)
           .map(view),
       };
+    },
+    async reviewLabResults(organizationId, id, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+      const discipline = reviewerDisciplineOf(actor);
+      if (discipline === null || actor.kind === "system") {
+        throw new ForbiddenError("only a prescriber may review lab results");
+      }
+      const r = find(organizationId, id);
+      await assertInScope(actor, organizationId, r.patientId);
+      if (r.kind !== "lab" || r.resultsStatus !== "results_received") {
+        throw new ConflictError("order has no returned lab result to review");
+      }
+      const prior = reviewedLabs.get(id);
+      const review = prior ?? {
+        orderId: id,
+        observationId: id,
+        reviewerMembershipId: actor.membershipId,
+        reviewerDiscipline: discipline,
+        reviewedAt: now(),
+      };
+      reviewedLabs.set(id, review);
+      return { ...review, alreadyReviewed: prior !== undefined };
     },
     async suggestions(_organizationId, patientId) {
       return { patientId, suggestions: [] };

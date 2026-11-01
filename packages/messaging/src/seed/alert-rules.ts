@@ -1327,6 +1327,18 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     enabled: true,
   },
   {
+    // #909 - a returned lab unreviewed for 24 h. The consumer falls back to the tenant admins when the care team
+    // resolves to nobody (it must never reach zero people).
+    eventType: "m11.order.results_unreviewed",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "care_team",
+    resolverArgs: { patientIdPath: "patientId" },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
     eventType: "m11.order.transmission_held_aging",
     category: "operational",
     severityFloor: "warn",

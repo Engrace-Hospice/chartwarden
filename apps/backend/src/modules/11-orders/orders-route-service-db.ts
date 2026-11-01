@@ -83,6 +83,7 @@ import {
   createRenderBuildCtx,
   logRenderPayload,
 } from "../../bootstrap/render-payload-sources";
+import { currentResultUnreviewed, reviewLabResults } from "./order-result-review";
 import {
   RECOVERY_ANOMALY_THRESHOLD,
   RECOVERY_ANOMALY_WINDOW_MS,
@@ -964,8 +965,17 @@ export function createDbOrderBackend(
     async resultsPendingReview(organizationId, scope) {
       return listWhere(
         organizationId,
-        and(eq(OR.kind, "lab"), eq(OR.resultsStatus, "results_received")),
+        and(
+          eq(OR.kind, "lab"),
+          eq(OR.resultsStatus, "results_received"),
+          currentResultUnreviewed(),
+        ),
         scope,
+      );
+    },
+    async reviewLabResults(organizationId, id, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+      return reviewLabResults(db, organizationId, id, actor, (patientId) =>
+        assertInScope(actor, organizationId, patientId),
       );
     },
     async suggestions(_organizationId, patientId) {

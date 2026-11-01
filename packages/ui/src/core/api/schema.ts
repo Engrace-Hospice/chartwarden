@@ -18687,6 +18687,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/{id}/review-results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record the clinician's review of a lab order's current returned result (append-only; idempotent) - 403 for a non-prescriber, 409 when no result has been returned */
+        post: operations["postApiV1OrdersByIdReviewresults"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/{id}/sign": {
         parameters: {
             query?: never;
@@ -84234,6 +84251,41 @@ export interface operations {
                                 resend_transmission: boolean;
                             };
                         };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrdersByIdReviewresults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        orderId: string;
+                        /** Format: uuid */
+                        observationId: string;
+                        /** Format: uuid */
+                        reviewerMembershipId: string;
+                        reviewerDiscipline: string;
+                        /** Format: date-time */
+                        reviewedAt: string;
+                        alreadyReviewed: boolean;
                     };
                 };
             };

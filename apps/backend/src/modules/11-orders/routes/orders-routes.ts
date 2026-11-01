@@ -662,6 +662,19 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     },
   );
 
+  // #909 - record the clinician's review of the order's current returned lab result (append-only; a repeat is an
+  // idempotent no-op that returns the original review). `orders.complete` is the existing "Mark reviewed" grant
+  // (D17); the service additionally requires a prescriber discipline (403 otherwise) and a returned result (409).
+  app.post(
+    "/api/v1/orders/:id/review-results",
+    { preHandler: [COMPLETE, ...orderScope("orders.complete")] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      return service.reviewLabResults(organizationId, id, await detailActorOf(request));
+    },
+  );
+
   // F-182 (#248) — re-run the outbound lab-ORM producer for a signed lab order whose HL7 request was REFUSED at
   // sign time (`orm_refused:*`) after someone fixed the missing fact. `orders.amend` (RN Case Manager, MD/NP/PA,
   // Medical Director, Clinical Supervisor — the roles that can correct an order, hence fix its facts); no step-up

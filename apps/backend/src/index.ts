@@ -661,6 +661,7 @@ import {
   scheduleM11StuckTransmission,
   scheduleM11VerbalOrderExpiry,
 } from "./modules/11-orders/index";
+import { RESULTS_UNREVIEWED_ALERT_TYPE } from "./modules/11-orders/order-result-review";
 import {
   M12_OUTBOX_EVENTS,
   M12_PLATFORM_JOB_ID,
@@ -12524,7 +12525,24 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // F-203 (#248) — the two-person lab-recovery control's compliance alerts, DURABLE: the recovery's own
           // transaction publishes the intent, this hands it to M36, a failure is retried by the relay and the alert's
           // correlation id makes the redelivery idempotent.
-          buildM11RecoveryAlertConsumer({ alerts: getSeam("AlertEmitter") as AlertEmitter }),
+          buildM11RecoveryAlertConsumer({
+            alerts: {
+              // #909 - an unreviewed-lab page must never reach zero people: when the care team resolves to nobody it
+              // falls back to the tenant admins (GAP-049). Every other recovery alert is emitted as before.
+              emit: (organizationId, input) =>
+                input.eventType === RESULTS_UNREVIEWED_ALERT_TYPE
+                  ? emitWithRecipientFallback(
+                      getSeam("AlertEmitter") as AlertEmitter,
+                      organizationId,
+                      input as Parameters<typeof emitWithRecipientFallback>[2],
+                      (message, context) => app.log.warn(context, message),
+                    )
+                  : (getSeam("AlertEmitter") as AlertEmitter).emit(
+                      organizationId,
+                      input as Parameters<AlertEmitter["emit"]>[1],
+                    ),
+            },
+          }),
           // GAP-010 (M3 §4.5) — break-glass Compliance notification, DURABLE: the invoke's own transaction publishes
           // `m3.breakglass.invoked`, this hands it to M36's AlertEmitter (platform-default rule → compliance_officer).
           buildM36BreakGlassAlertConsumer({ alerts: getSeam("AlertEmitter") as AlertEmitter }),
