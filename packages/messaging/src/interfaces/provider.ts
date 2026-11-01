@@ -157,6 +157,7 @@ export interface MessagingProvider {
     },
   ): Promise<{ messages: readonly ResolvedMessage[]; nextCursor?: string }>;
 
+
   /** Auto-sync hooks consumed by M5/M17/M19/M16 outbox events (§2.3). */
   syncCareTeamChannel(
     orgId: string,
