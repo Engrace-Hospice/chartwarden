@@ -1344,11 +1344,12 @@ export function createInMemoryMessagingService(
 
     async markAllAlertsRead(orgId, userId) {
       const key = `${orgId}:${userId}`;
+      const items = inbox.get(key);
+      if (!items) return;
       const readAt = new Date().toISOString();
-
       inbox.set(
         key,
-        (inbox.get(key) ?? []).map((item) => (item.readAt === null ? { ...item, readAt } : item)),
+        items.map((item) => (item.readAt ? item : { ...item, readAt })),
       );
     },
 
