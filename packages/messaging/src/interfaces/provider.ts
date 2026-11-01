@@ -157,6 +157,19 @@ export interface MessagingProvider {
     },
   ): Promise<{ messages: readonly ResolvedMessage[]; nextCursor?: string }>;
 
+  /** Portal-only history read. M31 must authorize the session's active patient grant before calling this. */
+  listPortalMessages(
+    orgId: string,
+    input: {
+      channelId: string;
+      patientId: string;
+      userId: string;
+      cursor?: string;
+      limit?: number;
+      direction?: "forward" | "backward";
+    },
+  ): Promise<{ messages: readonly ResolvedMessage[]; nextCursor?: string }>;
+
   /** Auto-sync hooks consumed by M5/M17/M19/M16 outbox events (§2.3). */
   syncCareTeamChannel(
     orgId: string,
