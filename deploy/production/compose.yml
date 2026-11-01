@@ -175,6 +175,7 @@ services:
   # the profile off nothing changes. It listens ONLY on a Unix socket in the `rust-sock` tmpfs volume, shared with
   # `api` alone: no ports, no network listener (enforced by arch:compose-policy). Exactly one replica, because its
   # replay cache is per process. Image signing + deploy.sh rolling are prerequisites for switching on P2.
+  # It takes no env_file: .env.production reaches seven containers, so nothing Rust-related may live there.
   rust:
     profiles: ["rust"]
     image: ${CHARTWARDEN_RUST_IMAGE:-ghcr.io/engrace-hospice/chartwarden-rust:unset}
@@ -190,7 +191,13 @@ services:
       CW_RUST_SOCKET: /run/cw-rust/cw-rust.sock
       RUST_LOG: info
     volumes:
-      - rust-sock:/run/cw-rust
+      - type: volume
+        source: rust-sock
+        target: /run/cw-rust
+        volume: { nocopy: true }
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "/usr/local/bin/cw-server", "--healthcheck"]
       interval: 15s
@@ -306,9 +313,13 @@ services:
       DOCLING_WORKER_TOKEN: ${DOCLING_WORKER_TOKEN:?set in .env.production}
     ports:
       - "127.0.0.1:3000:3000"
-    # CW-RUST-M02 P1 — the Rust socket (used only when RUST_ROUTES / RUST_PARITY_SWEEP are set).
+    # CW-RUST-M02 P1 — the Rust socket (used only when RUST_ROUTES / RUST_PARITY_SWEEP are set). `nocopy`: never seed
+    # the volume from an image directory, so the tmpfs uid/gid/mode below always apply.
     volumes:
-      - rust-sock:/run/cw-rust
+      - type: volume
+        source: rust-sock
+        target: /run/cw-rust
+        volume: { nocopy: true }
     # M36: clamd is reachable only over the dedicated `scan` network (joined by clamav, api and worker alone), so a
     # compromised sidecar (postgres, minio, docling, ...) cannot reach it and clamd cannot reach them.
     networks: [default, scan]
@@ -475,6 +486,8 @@ services:
     container_name: chartwarden-seed-api
     restart: "no"
     ports: !reset []
+    # CW-RUST-M02: the seed api must not inherit api's Rust socket mount (arch:compose-policy enforces it).
+    volumes: !reset []
     environment:
       # BETTER_AUTH_URL is deliberately NOT overridden: it stays the https origin from .env.production,
       # because production boot (assertProductionEnv) refuses any other value. Only the seed client

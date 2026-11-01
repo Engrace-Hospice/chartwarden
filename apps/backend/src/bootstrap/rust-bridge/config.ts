@@ -6,7 +6,9 @@
 // Fail closed: turning a route or the sweep on without a signing key or a socket path is a boot error, never a
 // silent no-op, and an unknown route name or mode is refused (a typo must not look like "on").
 import { type KeyObject, createPrivateKey } from "node:crypto";
-import type { EnvLike } from "../env";
+import { readFileSync } from "node:fs";
+/** Same shape as `EnvLike` in ../env.ts, declared here because env.ts imports this module (no import cycle). */
+type EnvLike = Record<string, string | undefined>;
 
 /** Routes the bridge knows how to forward. M02 has exactly one. */
 export const RUST_BRIDGE_ROUTES = {
@@ -44,17 +46,23 @@ export class RustBridgeConfigError extends Error {
 const KID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 /**
- * `CW_ACTOR_SIGNING_KEY` is `kid=<base64url PKCS#8 DER Ed25519 private key>`. The value is never logged and never
- * echoed in an error (problems name the variable, not its content).
+ * The signing key is `kid=<base64url PKCS#8 DER Ed25519 private key>`, read from the file named by
+ * `CW_ACTOR_SIGNING_KEY_FILE` (production: a compose secret mounted on `api` ONLY) or, for local development, from
+ * `CW_ACTOR_SIGNING_KEY`. It must never be put in `.env.production`: that file is injected into seven containers.
+ * The value is never logged and never echoed in an error (problems name the variable, not its content).
  */
 function parseSigningKey(
   raw: string | undefined,
   problems: string[],
 ): RustBridgeConfig["signingKey"] {
   if (!raw) {
-    problems.push(
-      "CW_ACTOR_SIGNING_KEY is required when a Rust route or the parity sweep is enabled",
-    );
+    if (
+      !problems.some((p) => p.startsWith("CW_ACTOR_SIGNING_KEY") || p.startsWith("set CW_ACTOR"))
+    ) {
+      problems.push(
+        "CW_ACTOR_SIGNING_KEY is required when a Rust route or the parity sweep is enabled",
+      );
+    }
     return null;
   }
   const eq = raw.indexOf("=");
@@ -90,7 +98,36 @@ function parseSigningKey(
   }
 }
 
-export function parseRustBridgeConfig(env: EnvLike): RustBridgeConfig {
+export interface ParseOptions {
+  /** Reads CW_ACTOR_SIGNING_KEY_FILE. Default: fs.readFileSync. */
+  readonly readFile?: (path: string) => string;
+  /**
+   * false = validate structure only and do not load the key (deploy-time validation runs in a container that does
+   * not mount the key file). Default true.
+   */
+  readonly loadKey?: boolean;
+}
+
+function keySource(env: EnvLike, opts: ParseOptions, problems: string[]): string | undefined {
+  const file = env.CW_ACTOR_SIGNING_KEY_FILE;
+  if (file && env.CW_ACTOR_SIGNING_KEY) {
+    problems.push("set CW_ACTOR_SIGNING_KEY_FILE or CW_ACTOR_SIGNING_KEY, not both");
+    return undefined;
+  }
+  if (!file) return env.CW_ACTOR_SIGNING_KEY;
+  if (!file.startsWith("/")) {
+    problems.push("CW_ACTOR_SIGNING_KEY_FILE must be an absolute path");
+    return undefined;
+  }
+  try {
+    return (opts.readFile ?? ((p: string) => readFileSync(p, "utf8")))(file).trim();
+  } catch {
+    problems.push("CW_ACTOR_SIGNING_KEY_FILE cannot be read");
+    return undefined;
+  }
+}
+
+export function parseRustBridgeConfig(env: EnvLike, opts: ParseOptions = {}): RustBridgeConfig {
   const problems: string[] = [];
 
   const routes = new Set<RustBridgeRoute>();
@@ -125,7 +162,16 @@ export function parseRustBridgeConfig(env: EnvLike): RustBridgeConfig {
   }
 
   const active = routes.size > 0 || sweepEnabled;
-  const signingKey = active ? parseSigningKey(env.CW_ACTOR_SIGNING_KEY, problems) : null;
+  let signingKey: RustBridgeConfig["signingKey"] = null;
+  if (active && opts.loadKey === false) {
+    if (!env.CW_ACTOR_SIGNING_KEY_FILE && !env.CW_ACTOR_SIGNING_KEY) {
+      problems.push(
+        "CW_ACTOR_SIGNING_KEY_FILE is required when a Rust route or the parity sweep is enabled",
+      );
+    }
+  } else if (active) {
+    signingKey = parseSigningKey(keySource(env, opts, problems), problems);
+  }
 
   if (problems.length) throw new RustBridgeConfigError(problems);
   return { routes, mode, socketPath, timeoutMs, sweepEnabled, sweepAtUtc, signingKey };
@@ -134,4 +180,20 @@ export function parseRustBridgeConfig(env: EnvLike): RustBridgeConfig {
 /** True when the bridge does anything at all. */
 export function rustBridgeActive(c: RustBridgeConfig): boolean {
   return c.routes.size > 0 || c.sweepEnabled;
+}
+
+/**
+ * Deploy-time check (called from assertProductionEnv, which deploy.sh runs before migrating): the same structural
+ * rules as boot, without loading the key, so a typo in RUST_ROUTES fails the deploy before anything changes instead
+ * of crash-looping `api` after the recreate. Returns problem strings; empty = OK.
+ */
+export function rustBridgeEnvProblems(env: EnvLike): string[] {
+  try {
+    parseRustBridgeConfig(env, { loadKey: false });
+    return [];
+  } catch (e) {
+    return e instanceof RustBridgeConfigError
+      ? [...e.problems]
+      : ["Rust bridge configuration is invalid"];
+  }
 }

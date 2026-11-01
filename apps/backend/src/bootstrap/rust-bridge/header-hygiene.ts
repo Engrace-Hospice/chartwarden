@@ -5,11 +5,12 @@
 // not the bridge is enabled. Bun never reads the incoming value; the forwarder mints its own for the outgoing call
 // to Rust (and Rust verifies its Ed25519 signature). nginx also drops it on every public vhost (defence in depth).
 import type { FastifyInstance } from "fastify";
-import { ASSERTION_HEADER } from "./signer";
 
 export function applyAssertionHeaderHygiene(app: FastifyInstance): void {
   app.addHook("onRequest", async (request) => {
-    // Header names arrive lower-cased (Fastify/Node), so one delete covers every casing a client sends.
-    delete request.headers[ASSERTION_HEADER];
+    // Header names arrive lower-cased (Fastify/Node), so one delete covers every casing a client sends. Spelled as a
+    // literal (= ASSERTION_HEADER) so arch:request-header-auth can see which header this touches.
+    // biome-ignore lint/performance/noDelete: the header must be ABSENT, not present-with-undefined (downstream `in` checks and forwarding).
+    delete request.headers["x-cw-actor-assertion"];
   });
 }

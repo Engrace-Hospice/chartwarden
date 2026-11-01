@@ -33,6 +33,8 @@ export interface ParitySweepDeps {
   readonly client: RustClient;
   readonly logger: BridgeLogger;
   readonly runId: string;
+  /** Aborted on shutdown or when the run deadline passes; the run stops between pairs and reports incomplete. */
+  readonly signal?: AbortSignal;
 }
 
 export interface ParitySweepSummary {
@@ -46,6 +48,9 @@ export interface ParitySweepSummary {
   unexplained: number;
   errors: number;
   skipped: number;
+  /** Orgs whose member list or count failed (the run is then incomplete). */
+  orgErrors: number;
+  aborted: boolean;
   stoppedEarly: boolean;
   durationMs: number;
 }
@@ -73,6 +78,8 @@ export async function runParitySweep(deps: ParitySweepDeps): Promise<ParitySweep
     unexplained: 0,
     errors: 0,
     skipped: 0,
+    orgErrors: 0,
+    aborted: false,
     stoppedEarly: false,
     durationMs: 0,
   };
@@ -80,10 +87,25 @@ export async function runParitySweep(deps: ParitySweepDeps): Promise<ParitySweep
   const pairs: { org: string; user: string }[] = [];
   for (const { organizationId } of await deps.listActiveOrgs()) {
     s.orgs++;
-    const members = await deps.listActiveMembers(organizationId);
-    s.listed += members.length;
-    s.counted += await deps.countActiveMembers(organizationId);
-    for (const user of members) pairs.push({ org: organizationId, user });
+    try {
+      const members = await deps.listActiveMembers(organizationId);
+      const counted = await deps.countActiveMembers(organizationId);
+      s.listed += members.length;
+      s.counted += counted;
+      for (const user of members) pairs.push({ org: organizationId, user });
+    } catch (e) {
+      // One org's failure must not hide every other org's comparison; the run is reported incomplete.
+      s.orgErrors++;
+      deps.logger.warn(
+        {
+          run_id: deps.runId,
+          org_id: organizationId,
+          outcome: "org_error",
+          error: (e as Error)?.name ?? "Error",
+        },
+        "parity sweep could not list an org",
+      );
+    }
   }
 
   const rust = async (org: string, user: string): Promise<readonly string[] | null> => {
@@ -104,6 +126,10 @@ export async function runParitySweep(deps: ParitySweepDeps): Promise<ParitySweep
   let next = 0;
   const worker = async (): Promise<void> => {
     while (next < pairs.length && !s.stoppedEarly) {
+      if (deps.signal?.aborted) {
+        s.aborted = true;
+        return;
+      }
       const { org, user } = pairs[next++] as { org: string; user: string };
       if (!CANONICAL_UUID_RE.test(org) || !CANONICAL_UUID_RE.test(user)) {
         s.skipped++;
@@ -157,7 +183,11 @@ export async function runParitySweep(deps: ParitySweepDeps): Promise<ParitySweep
 
   s.durationMs = Math.round(performance.now() - started);
   const complete =
-    !s.stoppedEarly && s.listed === s.counted && s.compared + s.errors + s.skipped === s.listed;
+    !s.aborted &&
+    s.orgErrors === 0 &&
+    !s.stoppedEarly &&
+    s.listed === s.counted &&
+    s.compared + s.errors + s.skipped === s.listed;
   deps.logger[s.unexplained || !complete ? "warn" : "info"](
     { ...s, run_id: deps.runId, complete, outcome: "summary" },
     "parity sweep summary",
@@ -175,26 +205,68 @@ export function msUntilNextUtc(hhmm: string, now: Date = new Date()): number {
   return next.getTime() - now.getTime();
 }
 
-/** Runs `run` daily at HH:MM UTC. Returns a stop function. A failed run is logged and does not stop the schedule. */
+/** A run longer than this is aborted (it stops between pairs and reports incomplete). */
+export const SWEEP_RUN_DEADLINE_MS = 3 * 60 * 60_000;
+
+/**
+ * Runs `run` daily at HH:MM UTC with an AbortSignal that fires on `stop()` or after `deadlineMs`.
+ * - The schedule re-arms on its own clock, so a run that never settles (e.g. a hung database call that ignores the
+ *   signal) cannot silently end the schedule; the next day's run is skipped and logged while one is still running.
+ * - A failed run logs the error's name/code only (no message: it could carry data) and the schedule continues.
+ * Returns a stop function that aborts an in-flight run and clears the timer.
+ */
 export function scheduleDailyUtc(
   hhmm: string,
-  run: () => Promise<unknown>,
+  run: (signal: AbortSignal) => Promise<unknown>,
   logger: BridgeLogger,
+  deadlineMs: number = SWEEP_RUN_DEADLINE_MS,
 ): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
+  let current: AbortController | undefined;
+  let running = false;
+  const fire = (): void => {
+    if (stopped) return;
+    if (running) {
+      logger.warn(
+        { outcome: "sweep_skipped_still_running" },
+        "parity sweep skipped: previous run still running",
+      );
+    } else {
+      running = true;
+      const ac = new AbortController();
+      current = ac;
+      const deadline = setTimeout(() => ac.abort(), deadlineMs);
+      deadline.unref?.();
+      run(ac.signal)
+        .catch((e: unknown) => {
+          const err = e as { name?: unknown; code?: unknown };
+          logger.warn(
+            {
+              outcome: "sweep_failed",
+              error: typeof err?.name === "string" ? err.name : "Error",
+              ...(typeof err?.code === "string" ? { code: err.code } : {}),
+            },
+            "parity sweep run failed",
+          );
+        })
+        .finally(() => {
+          clearTimeout(deadline);
+          running = false;
+          current = undefined;
+        });
+    }
+    arm();
+  };
   const arm = (): void => {
     if (stopped) return;
-    timer = setTimeout(() => {
-      run()
-        .catch(() => logger.warn({ outcome: "sweep_failed" }, "parity sweep run failed"))
-        .finally(arm);
-    }, msUntilNextUtc(hhmm));
+    timer = setTimeout(fire, msUntilNextUtc(hhmm));
     timer.unref?.();
   };
   arm();
   return () => {
     stopped = true;
+    current?.abort();
     if (timer) clearTimeout(timer);
   };
 }

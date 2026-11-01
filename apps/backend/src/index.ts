@@ -3503,6 +3503,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // CW-RUST-M02 P1 — the Bun→Rust bridge. Everything is OFF unless RUST_ROUTES / RUST_PARITY_SWEEP say otherwise, and a
   // bad bridge config refuses to boot (fail closed) rather than silently forwarding nothing.
   const rustBridgeConfig = parseRustBridgeConfig(process.env);
+  // The key now lives only in the KeyObject; drop the raw value from this process's environment (child processes and
+  // any later env dump must not see it). Production reads it from CW_ACTOR_SIGNING_KEY_FILE instead.
+  // biome-ignore lint/performance/noDelete: process.env values stringify — `= undefined` sets the string "undefined", not an absent key.
+  delete process.env.CW_ACTOR_SIGNING_KEY;
   const rustSigner = rustBridgeConfig.signingKey
     ? createAssertionSigner(rustBridgeConfig.signingKey)
     : undefined;
@@ -13278,8 +13282,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     const sweepLog = app.log.child({ component: "rust-parity-sweep" });
     const stopSweep = scheduleDailyUtc(
       rustBridgeConfig.sweepAtUtc,
-      () =>
+      (signal) =>
         runParitySweep({
+          signal,
           listActiveOrgs: () => sweepOrgs.listActiveOrgs(),
           listActiveMembers: members.listActiveMembers,
           countActiveMembers: members.countActiveMembers,

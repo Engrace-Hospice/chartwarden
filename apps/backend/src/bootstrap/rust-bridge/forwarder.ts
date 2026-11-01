@@ -12,7 +12,7 @@ import type { RustCallResult, RustClient } from "./client";
 //
 // Logs carry ids, outcome, reason and counts. Never a permission key, never the assertion (spec §Logging).
 import { RUST_BRIDGE_ROUTES, type RustBridgeConfig } from "./config";
-import { type AssertionSigner, CANONICAL_UUID_RE } from "./signer";
+import { type AssertionSigner, CANONICAL_UUID_RE, SWEEP_CLASS } from "./signer";
 
 export interface BridgedActor {
   readonly userId: string;
@@ -46,6 +46,13 @@ export interface BridgeLogger {
 }
 
 export const SHADOW_MAX_IN_FLIGHT = 8;
+/** Serve mode: Rust calls in flight before further requests go straight to Bun (no unbounded socket pile-up). */
+export const SERVE_MAX_IN_FLIGHT = 32;
+/** Serve mode: consecutive failures that open the circuit, and how long it stays open (Bun answers meanwhile). */
+export const CIRCUIT_FAILURES_TO_OPEN = 5;
+export const CIRCUIT_OPEN_MS = 30_000;
+/** How often the counters are logged (P2 evidence; there is no metrics endpoint for the bridge). */
+export const STATS_LOG_INTERVAL_MS = 10 * 60_000;
 
 export type FallbackReason =
   | "connect"
@@ -54,7 +61,9 @@ export type FallbackReason =
   | "status"
   | "content_type"
   | "schema"
-  | "sign";
+  | "sign"
+  | "busy"
+  | "circuit_open";
 
 /** Exactly `{ permissions: string[] }` with unique strings; anything else is refused. */
 export function validPermissionsBody(
@@ -100,7 +109,12 @@ export function createMePermissionsBridge(deps: {
   readonly signer: AssertionSigner;
   readonly client: RustClient;
   readonly logger: BridgeLogger;
-}): MePermissionsBridge & { stats(): BridgeStats; inFlight(): number } {
+  /** Injected clock (tests). */
+  readonly nowMs?: () => number;
+}): MePermissionsBridge & { stats(): BridgeStats; inFlight(): number; close(): void } {
+  const nowMs = deps.nowMs ?? Date.now;
+  let consecutiveFailures = 0;
+  let circuitOpenUntil = 0;
   const route = RUST_BRIDGE_ROUTES["me-permissions"];
   const enabled = deps.config.routes.has("me-permissions");
   const mode = deps.config.mode;
@@ -121,10 +135,21 @@ export function createMePermissionsBridge(deps: {
     org_id: a.organizationId,
   });
   const base = { route: route.path, mode };
+  // Periodic counters: the only P2 evidence channel besides per-request lines. Counts only, never keys.
+  const statsTimer = setInterval(() => {
+    if (enabled)
+      deps.logger.info(
+        { ...base, outcome: "stats", ...structuredClone(stats) },
+        "rust bridge stats",
+      );
+  }, STATS_LOG_INTERVAL_MS);
+  statsTimer.unref?.();
 
   function forwardable(a: BridgedActor): boolean {
-    // A machine principal (e.g. "system") or a half-bound session is served by Bun, never forwarded.
+    // A machine principal (e.g. "system") or a half-bound session is served by Bun, never forwarded. The sweep's
+    // session class is reserved for the sweep: a request carrying it is never signed as one.
     return (
+      a.sessionClass !== SWEEP_CLASS &&
       CANONICAL_UUID_RE.test(a.userId) &&
       CANONICAL_UUID_RE.test(a.organizationId) &&
       a.sessionId !== "" &&
@@ -142,7 +167,12 @@ export function createMePermissionsBridge(deps: {
     } catch {
       return { reason: "sign" };
     }
-    return validPermissionsBody(await deps.client.get(route.path, assertion));
+    try {
+      return validPermissionsBody(await deps.client.get(route.path, assertion));
+    } catch {
+      // The client contract is "never throws"; an implementation that does must still never reach a client.
+      return { reason: "connect" };
+    }
   }
 
   async function shadow(input: MePermissionsBridgeInput, bunBody: PermissionsBody): Promise<void> {
@@ -230,11 +260,33 @@ export function createMePermissionsBridge(deps: {
         });
         return body;
       }
-      const r = await callRust(input.actor);
-      if ("body" in r) {
-        stats.served++;
-        return r.body;
+      let r: Awaited<ReturnType<typeof callRust>>;
+      if (nowMs() < circuitOpenUntil) {
+        r = { reason: "circuit_open" };
+      } else if (inFlight >= SERVE_MAX_IN_FLIGHT) {
+        r = { reason: "busy" };
+      } else {
+        inFlight++;
+        try {
+          r = await callRust(input.actor);
+        } finally {
+          inFlight--;
+        }
+        if ("body" in r) {
+          consecutiveFailures = 0;
+          stats.served++;
+          return r.body;
+        }
+        if (++consecutiveFailures >= CIRCUIT_FAILURES_TO_OPEN) {
+          circuitOpenUntil = nowMs() + CIRCUIT_OPEN_MS;
+          consecutiveFailures = 0;
+          deps.logger.warn(
+            { ...base, outcome: "circuit_open", open_ms: CIRCUIT_OPEN_MS },
+            "rust serve circuit opened",
+          );
+        }
       }
+      if (!("reason" in r)) return input.bun();
       stats.fallback[r.reason] = (stats.fallback[r.reason] ?? 0) + 1;
       deps.logger.warn(
         { ...base, ...ids(input.actor), outcome: `fallback:${r.reason}` },
@@ -244,5 +296,6 @@ export function createMePermissionsBridge(deps: {
     },
     stats: () => structuredClone(stats),
     inFlight: () => inFlight,
+    close: () => clearInterval(statsTimer),
   };
 }

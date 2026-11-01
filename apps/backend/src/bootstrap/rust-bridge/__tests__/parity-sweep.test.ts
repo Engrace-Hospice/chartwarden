@@ -1,8 +1,13 @@
 // CW-RUST-M02 P1 — the daily parity sweep (AT-M02-11 unit level; the end-to-end version runs on the local stack).
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { RustClient } from "../client";
 import type { BridgeLogger } from "../forwarder";
-import { SWEEP_MAX_IN_FLIGHT, msUntilNextUtc, runParitySweep } from "../parity-sweep";
+import {
+  SWEEP_MAX_IN_FLIGHT,
+  msUntilNextUtc,
+  runParitySweep,
+  scheduleDailyUtc,
+} from "../parity-sweep";
 import { type AssertionSigner, SWEEP_CLASS } from "../signer";
 
 const ORG_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -157,5 +162,79 @@ describe("msUntilNextUtc", () => {
     expect(msUntilNextUtc("09:00", now)).toBe(23 * 3_600_000);
     expect(msUntilNextUtc("10:00", now)).toBe(24 * 3_600_000);
     expect(() => msUntilNextUtc("7:00", now)).toThrow();
+  });
+});
+
+describe("review round 1 hardening", () => {
+  it("counts an org whose member list fails, keeps comparing the others, and reports incomplete", async () => {
+    const t = deps({});
+    const listActiveMembers = t.d.listActiveMembers;
+    const s = await runParitySweep({
+      ...t.d,
+      listActiveMembers: async (org: string) => {
+        if (org === ORG_B) throw Object.assign(new Error("db"), { name: "DatabaseError" });
+        return listActiveMembers(org);
+      },
+    });
+    expect(s).toMatchObject({ orgErrors: 1, compared: 3, match: 3 });
+    expect(t.log.lines.join("\n")).toContain('"error":"DatabaseError"');
+    expect(t.log.lines.at(-1)).toContain('"complete":false');
+  });
+
+  it("stops between pairs when aborted and reports incomplete", async () => {
+    const ac = new AbortController();
+    ac.abort();
+    const t = deps({});
+    const s = await runParitySweep({ ...t.d, signal: ac.signal });
+    expect(s.aborted).toBe(true);
+    expect(s.compared).toBe(0);
+    expect(t.log.lines.at(-1)).toContain('"complete":false');
+  });
+});
+
+describe("scheduleDailyUtc", () => {
+  it("fires daily, skips while a run is still going, aborts at the deadline and on stop, logs failures by name", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-01T10:00:00Z"));
+    const log = logger();
+    const signals: AbortSignal[] = [];
+    let settle: (() => void) | undefined;
+    let runs = 0;
+    const stop = scheduleDailyUtc(
+      "10:17",
+      (signal) => {
+        runs++;
+        signals.push(signal);
+        if (runs === 2)
+          return Promise.reject(
+            Object.assign(new Error("secret detail"), { name: "TimeoutError" }),
+          );
+        return new Promise<void>((r) => {
+          settle = r;
+        });
+      },
+      log,
+      60 * 60_000,
+    );
+    await vi.advanceTimersByTimeAsync(17 * 60_000);
+    expect(runs).toBe(1);
+    await vi.advanceTimersByTimeAsync(60 * 60_000);
+    expect(signals[0]?.aborted).toBe(true); // deadline
+    await vi.advanceTimersByTimeAsync(23 * 3_600_000);
+    expect(runs).toBe(1); // still running (never settled): skipped, schedule alive
+    expect(log.lines.join("\n")).toContain("sweep_skipped_still_running");
+    settle?.();
+    await vi.advanceTimersByTimeAsync(24 * 3_600_000);
+    expect(runs).toBe(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(log.lines.join("\n")).toContain('"error":"TimeoutError"');
+    expect(log.lines.join("\n")).not.toContain("secret detail");
+    await vi.advanceTimersByTimeAsync(24 * 3_600_000);
+    expect(runs).toBe(3);
+    stop();
+    expect(signals[2]?.aborted).toBe(true); // stop aborts the in-flight run
+    await vi.advanceTimersByTimeAsync(48 * 3_600_000);
+    expect(runs).toBe(3);
+    vi.useRealTimers();
   });
 });

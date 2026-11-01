@@ -98,9 +98,10 @@ controls:
       - file: apps/backend/src/bootstrap/rust-bridge/header-hygiene.ts
       - file: apps/backend/src/bootstrap/rust-bridge/__tests__/forwarder.test.ts
       - file: apps/backend/src/bootstrap/rust-bridge/__tests__/signer-config.test.ts
+      - file: apps/backend/__tests__/m02-rust-bridge-route.test.ts
       - file: deploy/production/compose.yml
     gap:
-      reason: Merged OFF by default (RUST_ROUTES empty, the rust service behind a compose profile). Before P2 turns it on, the Rust image must be cosign-signed and rolled by deploy.sh, and the end-to-end Bun+Rust suites (AT-M02-05b/09/10/11) must pass on a real stack. The Rust-side verifier and RLS tests live in chartwarden-rust.
+      reason: Merged OFF by default (RUST_ROUTES empty, the rust service behind a compose profile). Before P2 turns it on, the Rust image must be cosign-signed and rolled by deploy.sh, the signing key provisioned as a compose secret on api only (never .env.production, which reaches seven containers; assertProductionEnv refuses the inline variable), and the end-to-end Bun+Rust suites (AT-M02-05b/09/10/11) must pass on a real stack. The Rust-side verifier and RLS tests live in chartwarden-rust.
       owner: platform
       review_by: 2027-03-31
 

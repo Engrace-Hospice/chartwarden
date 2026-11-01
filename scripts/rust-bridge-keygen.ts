@@ -6,8 +6,10 @@
  *   bun scripts/rust-bridge-keygen.ts [kid]
  *
  * Prints two lines:
- *   CW_ACTOR_SIGNING_KEY=<kid>=<base64url PKCS#8>   → .env.production for `api` ONLY. Never commit, never paste anywhere.
- *   CW_ACTOR_PUBLIC_KEYS=<kid>=<base64url raw key>  → the `rust` service; safe to share.
+ *   CW_ACTOR_SIGNING_KEY=<kid>=<base64url PKCS#8>   → write ONLY the part after the first `=` (i.e. `<kid>=<…>`) to a
+ *       0600 file mounted as a compose secret on `api` alone, and point CW_ACTOR_SIGNING_KEY_FILE at it. NEVER put it in
+ *       .env.production: compose injects that file into seven containers. Never commit, never paste anywhere.
+ *   CW_ACTOR_PUBLIC_KEYS=<kid>=<base64url raw key>  → the `rust` service's environment; safe to share.
  * Rotation: generate with a new kid, add the new public key to CW_ACTOR_PUBLIC_KEYS (comma-separated), switch
  * CW_ACTOR_SIGNING_KEY, then drop the old public key once every api instance has restarted.
  */

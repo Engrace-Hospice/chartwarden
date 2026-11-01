@@ -1,7 +1,13 @@
 // CW-RUST-M02 P1 — assertion signer and bridge configuration.
 import { createPrivateKey, createPublicKey, generateKeyPairSync, verify } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { RustBridgeConfigError, parseRustBridgeConfig, rustBridgeActive } from "../config";
+import { collectEnvProblems } from "../../env";
+import {
+  RustBridgeConfigError,
+  parseRustBridgeConfig,
+  rustBridgeActive,
+  rustBridgeEnvProblems,
+} from "../config";
 import { ASSERTION_LIFETIME_SECS, createAssertionSigner } from "../signer";
 
 // Deterministic test key: PKCS#8 DER prefix for Ed25519 + a fixed 32-byte seed. Not a real credential.
@@ -152,5 +158,60 @@ describe("parseRustBridgeConfig", () => {
     }
     expect(corrupted).toContain("CW_ACTOR_SIGNING_KEY");
     expect(corrupted).not.toContain(goodKey.slice(3, 30));
+  });
+});
+
+describe("signing key from a file (production) and deploy-time validation", () => {
+  const goodValue = `k1=${pkcs8(11).toString("base64url")}`;
+  const on = { RUST_ROUTES: "me-permissions" };
+
+  it("reads CW_ACTOR_SIGNING_KEY_FILE (trimming a trailing newline)", () => {
+    const c = parseRustBridgeConfig(
+      { ...on, CW_ACTOR_SIGNING_KEY_FILE: "/run/secrets/cw_actor_signing_key" },
+      { readFile: (p) => (p === "/run/secrets/cw_actor_signing_key" ? `${goodValue}\n` : "") },
+    );
+    expect(c.signingKey?.kid).toBe("k1");
+  });
+
+  it.each([
+    [{ ...on, CW_ACTOR_SIGNING_KEY_FILE: "/x", CW_ACTOR_SIGNING_KEY: goodValue }, "not both"],
+    [{ ...on, CW_ACTOR_SIGNING_KEY_FILE: "relative/key" }, "absolute path"],
+    [{ ...on, CW_ACTOR_SIGNING_KEY_FILE: "/missing" }, "cannot be read"],
+  ])("refuses %j", (env, message) => {
+    expect(() =>
+      parseRustBridgeConfig(env, {
+        readFile: () => {
+          throw new Error("ENOENT");
+        },
+      }),
+    ).toThrow(message);
+  });
+
+  it("rustBridgeEnvProblems validates structure without loading the key", () => {
+    expect(rustBridgeEnvProblems({})).toEqual([]);
+    expect(rustBridgeEnvProblems({ ...on, CW_ACTOR_SIGNING_KEY_FILE: "/run/secrets/k" })).toEqual(
+      [],
+    );
+    expect(rustBridgeEnvProblems({ RUST_ROUTES: "me-permission" }).join()).toContain(
+      "unknown route",
+    );
+    expect(rustBridgeEnvProblems({ ...on }).join()).toContain(
+      "CW_ACTOR_SIGNING_KEY_FILE is required",
+    );
+  });
+
+  it("assertProductionEnv carries the bridge rules and forbids the raw key variable in production", () => {
+    const base = { NODE_ENV: "production" };
+    const keys = (env: Record<string, string>) =>
+      collectEnvProblems(env).map((p) => `${p.key}: ${p.problem}`);
+    expect(keys({ ...base, RUST_ROUTES: "me-permission" }).join()).toContain(
+      "RUST_BRIDGE: RUST_ROUTES names an unknown route",
+    );
+    expect(keys({ ...base, CW_ACTOR_SIGNING_KEY: goodValue }).join()).toContain(
+      "CW_ACTOR_SIGNING_KEY: must not be set in production",
+    );
+    expect(
+      keys(base).filter((k) => k.startsWith("RUST_BRIDGE") || k.startsWith("CW_ACTOR")),
+    ).toEqual([]);
   });
 });

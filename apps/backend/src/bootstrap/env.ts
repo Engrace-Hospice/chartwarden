@@ -8,6 +8,7 @@
 // present and meet its strength rule, or the server throws before serving a single request. Dev/test
 // keep their safe fallbacks (the check is a no-op outside production).
 import { Buffer } from "node:buffer";
+import { rustBridgeEnvProblems } from "./rust-bridge/config";
 
 /** Environment surface this validator reads — `process.env` in production, an injected map in tests. */
 export type EnvLike = Record<string, string | undefined>;
@@ -509,6 +510,17 @@ export function collectEnvProblems(env: EnvLike): EnvProblem[] {
     }
     const placeholder = reservedPlaceholderProblem(value);
     if (placeholder) problems.push({ key, problem: placeholder });
+  }
+  // CW-RUST-M02 P1 — the Bun→Rust bridge: same structural rules as boot (deploy.sh runs this before migrating), and in
+  // production the signing key may only come from a file (a compose secret on `api`), never from an env var that
+  // .env.production would copy into seven containers.
+  for (const problem of rustBridgeEnvProblems(env)) problems.push({ key: "RUST_BRIDGE", problem });
+  if (env.CW_ACTOR_SIGNING_KEY?.trim()) {
+    problems.push({
+      key: "CW_ACTOR_SIGNING_KEY",
+      problem:
+        "must not be set in production; mount the key as a secret on api and set CW_ACTOR_SIGNING_KEY_FILE",
+    });
   }
   return problems;
 }

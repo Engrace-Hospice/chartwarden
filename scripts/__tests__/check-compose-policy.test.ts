@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkCompose, checkRustTopology, loadCompose } from "../check-compose-policy";
+import { RESET, checkCompose, checkRustTopology, loadCompose } from "../check-compose-policy";
 
 const DIGEST = `sha256:${"a".repeat(64)}`;
 const bounded = { mem_limit: "1g", cpus: 1 };
@@ -107,9 +107,42 @@ describe("arch:compose-policy — CW-RUST-M02 Rust topology", () => {
       },
       "web: only api and rust",
     ],
+    [
+      "a service extending rust",
+      { rust, shadow: { extends: { service: "rust" }, ports: ["9:9"] } },
+      "more than one service",
+    ],
+    [
+      "a rust-named service with another image",
+      { rust: { ...rust, image: "${OTHER}", ports: ["1:1"] } },
+      "must not publish ports",
+    ],
+    ["env_file on rust", { rust: { ...rust, env_file: [".env.production"] } }, "takes no env_file"],
+    [
+      "volumes_from api",
+      { rust, sidecar: { ...bounded, image: "${S}", volumes_from: ["api"] } },
+      "volumes_from api",
+    ],
+    [
+      "volumes_from service:rust:ro",
+      { rust, sidecar: { ...bounded, image: "${S}", volumes_from: ["service:rust:ro"] } },
+      "volumes_from rust",
+    ],
+    [
+      "a service inheriting api's socket mount",
+      { rust, "seed-api": { extends: { service: "api" } } },
+      "seed-api: only api and rust",
+    ],
   ])("rejects %s", (_label, services, message) => {
     const failures = checkRustTopology({ services: { api, ...services } as never });
     expect(failures.join("\n")).toContain(message);
+  });
+
+  it("honours !reset when a service extends api", () => {
+    const failures = checkRustTopology({
+      services: { api, rust, "seed-api": { extends: { service: "api" }, volumes: RESET } } as never,
+    });
+    expect(failures).toEqual([]);
   });
 
   it("the real production compose file holds the topology", () => {

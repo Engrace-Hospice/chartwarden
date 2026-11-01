@@ -2,11 +2,14 @@
 // level; the end-to-end versions run on the local Bun+Rust stack).
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
-import { type RustCallResult, type RustClient, createRustClient } from "../client";
+import { MAX_BODY_BYTES, type RustCallResult, type RustClient, createRustClient } from "../client";
 import { parseRustBridgeConfig } from "../config";
 import {
   type BridgeLogger,
+  CIRCUIT_FAILURES_TO_OPEN,
+  CIRCUIT_OPEN_MS,
   type MePermissionsBridgeInput,
+  SERVE_MAX_IN_FLIGHT,
   SHADOW_MAX_IN_FLIGHT,
   createMePermissionsBridge,
 } from "../forwarder";
@@ -350,5 +353,118 @@ describe("applyAssertionHeaderHygiene", () => {
       expect(seenInHook).toBeUndefined();
     }
     await app.close();
+  });
+});
+
+describe("review round 1 hardening", () => {
+  const serveCfg = () =>
+    parseRustBridgeConfig({
+      RUST_ROUTES: "me-permissions",
+      RUST_ROUTE_MODE: "serve",
+      CW_ACTOR_SIGNING_KEY: KEY,
+    });
+
+  it("falls back to Bun when the client throws instead of returning a reason", async () => {
+    const bridge = createMePermissionsBridge({
+      config: serveCfg(),
+      signer,
+      client: {
+        get: async () => {
+          throw new Error("boom");
+        },
+      },
+      logger: capture(),
+    });
+    const t = input();
+    expect(await bridge.handle(t.i)).toEqual({ permissions: ["patient.read", "visit.read"] });
+    expect(bridge.stats().fallback.connect).toBe(1);
+    bridge.close();
+  });
+
+  it("opens the circuit after consecutive failures, answers from Bun meanwhile, then retries", async () => {
+    let now = 1_000;
+    let calls = 0;
+    const bridge = createMePermissionsBridge({
+      config: serveCfg(),
+      signer,
+      client: {
+        get: async () => {
+          calls++;
+          return { ok: false, reason: "timeout" };
+        },
+      },
+      logger: capture(),
+      nowMs: () => now,
+    });
+    for (let i = 0; i < CIRCUIT_FAILURES_TO_OPEN; i++) await bridge.handle(input().i);
+    expect(calls).toBe(CIRCUIT_FAILURES_TO_OPEN);
+    await bridge.handle(input().i);
+    expect(calls).toBe(CIRCUIT_FAILURES_TO_OPEN);
+    expect(bridge.stats().fallback.circuit_open).toBe(1);
+    now += CIRCUIT_OPEN_MS + 1;
+    await bridge.handle(input().i);
+    expect(calls).toBe(CIRCUIT_FAILURES_TO_OPEN + 1);
+    bridge.close();
+  });
+
+  it(`sends at most ${SERVE_MAX_IN_FLIGHT} serve calls at once and answers the rest from Bun immediately`, async () => {
+    const pending: ((r: RustCallResult) => void)[] = [];
+    const bridge = createMePermissionsBridge({
+      config: serveCfg(),
+      signer,
+      client: { get: () => new Promise((res) => pending.push(res)) },
+      logger: capture(),
+    });
+    const inflight = Array.from({ length: SERVE_MAX_IN_FLIGHT }, () => bridge.handle(input().i));
+    await tick();
+    expect(await bridge.handle(input().i)).toEqual({ permissions: ["patient.read", "visit.read"] });
+    expect(bridge.stats().fallback.busy).toBe(1);
+    for (const res of pending) res(okBody(["x"]));
+    await Promise.all(inflight);
+    expect(bridge.inFlight()).toBe(0);
+    bridge.close();
+  });
+
+  it("never signs a request-path actor carrying the reserved sweep class", async () => {
+    let signed = 0;
+    const bridge = createMePermissionsBridge({
+      config: serveCfg(),
+      signer: {
+        sign: () => {
+          signed++;
+          return "t";
+        },
+      },
+      client: { get: async () => okBody([]) },
+      logger: capture(),
+    });
+    await bridge.handle(input({ actor: { ...ACTOR, sessionClass: "parity-sweep" } }).i);
+    expect(signed).toBe(0);
+    expect(bridge.stats().skipped).toBe(1);
+    bridge.close();
+  });
+});
+
+describe("createRustClient body cap", () => {
+  it("refuses an oversized body by declared length and by actual length", async () => {
+    const big = JSON.stringify({ permissions: ["x".repeat(MAX_BODY_BYTES)] });
+    const declared = createRustClient(
+      "/s",
+      300,
+      async () =>
+        new Response("{}", {
+          headers: {
+            "content-length": String(MAX_BODY_BYTES + 1),
+            "content-type": "application/json",
+          },
+        }),
+    );
+    expect(await declared.get("/p", "t")).toEqual({ ok: false, reason: "bad_json" });
+    const actual = createRustClient(
+      "/s",
+      300,
+      async () => new Response(big, { headers: { "content-type": "application/json" } }),
+    );
+    expect(await actual.get("/p", "t")).toEqual({ ok: false, reason: "bad_json" });
   });
 });
