@@ -42410,6 +42410,27 @@
         }
       }
     },
+    "/api/v1/alerts/read-all": {
+      "post": {
+        "operationId": "postApiV1AlertsReadall",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Mark every unread alert read for the current actor (204)",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/amendments": {
       "get": {
         "operationId": "getApiV1Amendments",

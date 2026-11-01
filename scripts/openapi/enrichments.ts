@@ -11415,6 +11415,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/alerts/:id/read": {
     summary: "Mark one alert read for the current actor (204)",
   },
+  "POST /api/v1/alerts/read-all": {
+    summary: "Mark every unread alert read for the current actor (204)",
+    status: 204,
+  },
   // Platform-ops cross-tenant delivery drill (§4.1, GAP-165) — metadata only, audited per read.
   "GET /api/v1/admin/messaging/alert-deliveries": {
     summary:

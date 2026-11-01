@@ -2801,6 +2801,35 @@ export function createDbMessagingRouteService(
       });
     },
 
+    async markAllAlertsRead(orgId, userId): Promise<void> {
+      return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        const unread = await tx
+          .select({ alertId: AL.id })
+          .from(ND)
+          .innerJoin(AL, eq(AL.id, ND.alertId))
+          .leftJoin(ARCP, and(eq(ARCP.alertId, AL.id), eq(ARCP.recipientUserId, userId)))
+          .where(
+            and(
+              eq(AL.organizationId, orgId),
+              eq(ND.recipientUserId, userId),
+              isNull(ARCP.alertId),
+            ),
+          );
+
+        if (unread.length === 0) return;
+        await tx
+          .insert(ARCP)
+          .values(
+            unread.map(({ alertId }) => ({
+              alertId,
+              recipientUserId: userId,
+              readAt: new Date(),
+            })),
+          )
+          .onConflictDoNothing({ target: [ARCP.alertId, ARCP.recipientUserId] });
+      });
+    },
+
     async listAlertRules(orgId): Promise<AlertRuleView[]> {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
         // §7.4 alert_rule_read: platform defaults (org IS NULL) are read-all; own-org rows are the
