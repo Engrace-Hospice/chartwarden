@@ -41,7 +41,9 @@ import type {
   ChannelMemberSource,
   ChannelSummary,
   DeliveryEndpointChannel,
+  DeliveryEndpointInput,
   DeliveryEndpointVerification,
+  DeliveryEndpointView,
   MessageBodyKind,
   MessageReferenceInput,
   MessagingProvider,
@@ -496,6 +498,59 @@ const DEFAULT_QUIET_HOURS: QuietHoursConfig = {
   ranges: [],
   severityOverride: "critical",
 };
+
+/**
+ * ADR-0105: a native install re-registering. If this (user, provider, install) already has a row, move it to the new token in place
+ * (rotation) and drop any other row of the user that already holds that token (a legacy registration made before install ids), so the
+ * phone has exactly one endpoint. Returns null when the install is new, so the caller inserts.
+ */
+async function rotateInstallToken(
+  tx: Parameters<typeof channelOr404>[0],
+  userId: string,
+  input: DeliveryEndpointInput,
+): Promise<DeliveryEndpointView | null> {
+  const existing = (await tx
+    .select({ id: DE.id, endpointValue: DE.endpointValue })
+    .from(DE)
+    .where(
+      and(
+        eq(DE.userId, userId),
+        eq(DE.provider, input.provider!),
+        eq(DE.installId, input.installId!),
+      ),
+    )
+    .limit(1)) as Array<{ id: string; endpointValue: string }>;
+  const row = existing[0];
+  if (!row) return null;
+  const rotated = row.endpointValue !== input.target;
+  if (rotated)
+    await tx
+      .delete(DE)
+      .where(
+        and(
+          eq(DE.userId, userId),
+          eq(DE.channel, input.channel),
+          eq(DE.endpointValue, input.target),
+          sql`${DE.id} <> ${row.id}`,
+        ),
+      );
+  await tx
+    .update(DE)
+    .set({
+      endpointValue: input.target,
+      verificationStatus: "verified",
+      verifiedAt: new Date(),
+      sessionId: input.sessionId ?? null,
+      consecutiveFailures: 0,
+      lastFailureCode: null,
+      environment: input.environment ?? null,
+      appVersion: input.appVersion ?? null,
+      appBuild: input.appBuild ?? null,
+      ...(rotated ? { rotatedAt: new Date() } : {}),
+    })
+    .where(eq(DE.id, row.id));
+  return { endpointId: row.id, channel: input.channel, verificationStatus: "verified" };
+}
 
 function iso(d: Date | null | undefined): string | null {
   return d == null ? null : d.toISOString();
@@ -2501,6 +2556,11 @@ export function createDbMessagingRouteService(
       }
       return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
         const verified = input.channel === "push";
+        // ADR-0105: the same native install re-registering with a rotated token replaces its token in place (one endpoint per phone).
+        if (verified && input.provider && input.provider !== "web" && input.installId) {
+          const rotated = await rotateInstallToken(tx, userId, input);
+          if (rotated) return rotated;
+        }
         const insert = tx.insert(DE).values({
           userId,
           channel: input.channel,
@@ -2509,6 +2569,10 @@ export function createDbMessagingRouteService(
           verifiedAt: verified ? new Date() : null,
           sessionId: input.sessionId ?? null,
           provider: input.provider ?? "web",
+          installId: input.installId ?? null,
+          environment: input.environment ?? null,
+          appVersion: input.appVersion ?? null,
+          appBuild: input.appBuild ?? null,
         });
         // WP 5.5: a browser re-subscribing with the same push endpoint after its session was revoked (the row is `expired`) must re-register
         // against the NEW session rather than fail on the unique index. Push only (it is browser-verified); sms/email keep the plain insert.
@@ -2521,6 +2585,10 @@ export function createDbMessagingRouteService(
                 provider: sql`excluded.provider`,
                 sessionId: sql`excluded.session_id`, // never keep a link to a session that may no longer exist
                 consecutiveFailures: 0,
+                installId: sql`excluded.install_id`,
+                environment: sql`excluded.environment`,
+                appVersion: sql`excluded.app_version`,
+                appBuild: sql`excluded.app_build`,
               },
             })
           : insert;
@@ -2556,6 +2624,30 @@ export function createDbMessagingRouteService(
           channel: r.channel,
           verificationStatus: r.verificationStatus,
         };
+      });
+    },
+
+    // --- the actor's own endpoints (ADR-0105); the token / subscription is never returned ------------
+    async listEndpoints(orgId, userId) {
+      return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        const rows = await tx
+          .select()
+          .from(DE)
+          .where(eq(DE.userId, userId))
+          .orderBy(desc(DE.createdAt));
+        return rows.map((r) => ({
+          endpointId: r.id,
+          channel: r.channel,
+          provider: r.provider,
+          verificationStatus: r.verificationStatus,
+          installId: r.installId,
+          environment: (r.environment as "sandbox" | "production" | null) ?? null,
+          appVersion: r.appVersion,
+          appBuild: r.appBuild,
+          lastFailureCode: r.lastFailureCode,
+          rotatedAt: r.rotatedAt ? r.rotatedAt.toISOString() : null,
+          createdAt: r.createdAt.toISOString(),
+        }));
       });
     },
 

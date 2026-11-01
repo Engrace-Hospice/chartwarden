@@ -137,11 +137,31 @@ export interface DeliveryEndpointInput {
   readonly target: string;
   /** WP 5.11: push only. Absent = `web` (a browser subscription). `fcm`/`apns` carry a bare native device token in `target`. */
   readonly provider?: DeliveryEndpointProvider;
+  /** ADR-0105: native push only. Re-registering the same install with a new token replaces the old token in place. */
+  readonly installId?: string;
+  readonly environment?: "sandbox" | "production";
+  readonly appVersion?: string;
+  readonly appBuild?: string;
   /**
    * WP 5.5 (ADR-0083): the session that registers the endpoint, stamped by the route from the authenticated request (never the body).
    * A session revoke expires the endpoints linked to it. Absent = not linked (a revoke never touches it).
    */
   readonly sessionId?: string;
+}
+
+/** One of the actor's own endpoints (ADR-0105 GET /notifications/endpoints). Never carries the token or subscription. */
+export interface DeliveryEndpointSummary {
+  readonly endpointId: string;
+  readonly channel: DeliveryEndpointChannel;
+  readonly provider: DeliveryEndpointProvider;
+  readonly verificationStatus: DeliveryEndpointVerification;
+  readonly installId: string | null;
+  readonly environment: "sandbox" | "production" | null;
+  readonly appVersion: string | null;
+  readonly appBuild: string | null;
+  readonly lastFailureCode: string | null;
+  readonly rotatedAt: string | null;
+  readonly createdAt: string;
 }
 
 /** One row in the actor's alert inbox (§4.2 GET /alerts/inbox) — sanitizer summary, no PHI. */
@@ -418,6 +438,8 @@ export interface MessagingRouteService extends MessageReactionPinService, Messag
     userId: string,
     input: DeliveryEndpointInput,
   ): Promise<DeliveryEndpointView>;
+  /** The actor's own endpoints, newest first (ADR-0105 GET /notifications/endpoints). */
+  listEndpoints(orgId: string, userId: string): Promise<DeliveryEndpointSummary[]>;
   /** Confirm a verification token (§4.2 POST /notifications/endpoints/:id/verify). */
   verifyEndpoint(
     orgId: string,

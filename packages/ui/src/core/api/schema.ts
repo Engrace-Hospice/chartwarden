@@ -18109,9 +18109,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List the caller's own delivery endpoints (provider, install, environment, status); never the token */
+        get: operations["getApiV1NotificationsEndpoints"];
         put?: never;
-        /** Register a push/sms/email delivery endpoint (201) */
+        /** Register a push/sms/email delivery endpoint (201); a native install (installId) re-registering with a rotated token replaces its token in place (ADR-0105) */
         post: operations["postApiV1NotificationsEndpoints"];
         delete?: never;
         options?: never;
@@ -82030,6 +82031,42 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1NotificationsEndpoints: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        endpoints: {
+                            endpointId: string;
+                            channel: "push" | "sms" | "email";
+                            provider: "web" | "fcm" | "apns";
+                            verificationStatus: "verified" | "pending" | "expired";
+                            installId: string | null;
+                            environment: "sandbox" | "production" | null;
+                            appVersion: string | null;
+                            appBuild: string | null;
+                            lastFailureCode: string | null;
+                            rotatedAt: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1NotificationsEndpoints: {
         parameters: {
             query?: never;
@@ -82043,6 +82080,10 @@ export interface operations {
                     channel: "push" | "sms" | "email";
                     target: string;
                     provider?: "web" | "fcm" | "apns";
+                    installId?: string;
+                    environment?: "sandbox" | "production";
+                    appVersion?: string;
+                    appBuild?: string;
                 };
             };
         };

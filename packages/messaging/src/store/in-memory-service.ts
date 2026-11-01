@@ -34,6 +34,7 @@ import type {
   ChannelMemberRole,
   ChannelMemberSource,
   DeliveryEndpointChannel,
+  DeliveryEndpointProvider,
   MessageBodyKind,
   NotificationChannel,
 } from "../interfaces/kinds";
@@ -194,6 +195,11 @@ interface EndpointRow {
   userId: string;
   channel: DeliveryEndpointChannel;
   target: string;
+  provider: DeliveryEndpointProvider;
+  installId: string | null;
+  environment: "sandbox" | "production" | null;
+  appVersion: string | null;
+  appBuild: string | null;
   verificationStatus: "verified" | "pending" | "expired";
   token: string | null;
 }
@@ -1278,6 +1284,28 @@ export function createInMemoryMessagingService(
     },
 
     async registerEndpoint(orgId, userId, input: DeliveryEndpointInput) {
+      // ADR-0105: the same native install re-registering with a rotated token keeps its single endpoint.
+      if (input.installId && input.provider && input.provider !== "web") {
+        const same = [...endpoints.values()].find(
+          (e) =>
+            e.userId === userId && e.provider === input.provider && e.installId === input.installId,
+        );
+        if (same) {
+          for (const e of endpoints.values())
+            if (e !== same && e.userId === userId && e.target === input.target)
+              endpoints.delete(e.endpointId);
+          same.target = input.target;
+          same.verificationStatus = "verified";
+          same.environment = input.environment ?? null;
+          same.appVersion = input.appVersion ?? null;
+          same.appBuild = input.appBuild ?? null;
+          return {
+            endpointId: same.endpointId,
+            channel: same.channel,
+            verificationStatus: same.verificationStatus,
+          };
+        }
+      }
       const endpointId = id("ep");
       // push is browser-issued → immediately verified; sms/email need a verification token.
       const verified = input.channel === "push";
@@ -1287,6 +1315,11 @@ export function createInMemoryMessagingService(
         userId,
         channel: input.channel,
         target: input.target,
+        provider: input.provider ?? "web",
+        installId: input.installId ?? null,
+        environment: input.environment ?? null,
+        appVersion: input.appVersion ?? null,
+        appBuild: input.appBuild ?? null,
         verificationStatus: verified ? "verified" : "pending",
         token: verified ? null : "000000", // deterministic slice token; prod sends a real code
       };
@@ -1308,6 +1341,25 @@ export function createInMemoryMessagingService(
       row.verificationStatus = "verified";
       row.token = null;
       return { endpointId, channel: row.channel, verificationStatus: row.verificationStatus };
+    },
+
+    async listEndpoints(orgId, userId) {
+      return [...endpoints.values()]
+        .filter((e) => e.orgId === orgId && e.userId === userId)
+        .reverse()
+        .map((e) => ({
+          endpointId: e.endpointId,
+          channel: e.channel,
+          provider: e.provider,
+          verificationStatus: e.verificationStatus,
+          installId: e.installId,
+          environment: e.environment,
+          appVersion: e.appVersion,
+          appBuild: e.appBuild,
+          lastFailureCode: null,
+          rotatedAt: null,
+          createdAt: new Date(0).toISOString(),
+        }));
     },
 
     async removeEndpoint(orgId, userId, endpointId) {
