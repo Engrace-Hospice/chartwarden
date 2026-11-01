@@ -392,6 +392,14 @@ from. It is **not** a substitute for #16 — someone able to edit workflows can 
 signed; it means they cannot do it invisibly, because the Rekor entry records which workflow signed
 what, and when.
 
+**The Rust image (CW-RUST-M02).** `deploy.sh` accepts it as an optional 4th argument
+(`./deploy.sh <backend> <web> '' ghcr.io/<owner>/chartwarden-rust:sha-<sha>`; pass `''` to skip docling-worker). It is
+verified against `https://github.com/Engrace-Hospice/chartwarden-rust/.github/workflows/rust-image.yml@refs/heads/main`
+and nothing else, and that identity is never accepted for the other images either. The identity is fixed in the script
+(no override), `CHARTWARDEN_COSIGN_IDENTITY` does not apply to it, and `CHARTWARDEN_DEPLOY_ALLOW_UNVERIFIED` does not
+apply either: a Rust image is never rolled unverified. Only the verified digest is written, to `CHARTWARDEN_RUST_IMAGE` in
+`.env.production`. `deploy.sh` never pulls or starts the `rust` compose service.
+
 ## Rolling back
 
 To roll back application code, run **Release and deploy** manually from the commit to restore (or add a
