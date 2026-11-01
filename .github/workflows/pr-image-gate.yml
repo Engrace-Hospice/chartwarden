@@ -28,7 +28,7 @@ concurrency:
 jobs:
   deploy-path:
     name: Deploy script and compose dry run
-    runs-on: [self-hosted, Linux, X64, hostinger]
+    runs-on: [self-hosted, Linux, X64, ci]
     steps:
       - uses: actions/checkout@v7
       - name: Shell syntax
@@ -49,7 +49,7 @@ jobs:
   # #854: behaviour gate before the image is built or scanned (ci.yml runs the same suite in its main job, #853, so `release` is gated too).
   docling-pytest:
     name: Docling worker pytest
-    runs-on: [self-hosted, Linux, X64, hostinger]
+    runs-on: [self-hosted, Linux, X64, ci]
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v6
@@ -60,7 +60,7 @@ jobs:
   docling-scan:
     name: Docling image CVE scan
     needs: docling-pytest
-    runs-on: [self-hosted, Linux, X64, hostinger]
+    runs-on: [self-hosted, Linux, X64, ci]
     if: ${{ !cancelled() && needs.docling-pytest.result == 'success' }}
     steps:
       - uses: actions/checkout@v7

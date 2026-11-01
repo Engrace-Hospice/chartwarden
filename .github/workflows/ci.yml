@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   build-and-verify:
-    runs-on: [self-hosted, Linux, X64, hostinger]
+    runs-on: [self-hosted, Linux, X64, ci]
     # Build batches run as separate tsc processes with a 4 GiB heap ceiling; other Node tools
     # retain their existing limit.
     env:
@@ -127,7 +127,7 @@ jobs:
   # the release (#846; `arch:release-gate` fails if that wiring is removed).
   # Pinned binary + checksum verified against the release's own checksums file.
   secret-and-phi-scan:
-    runs-on: [self-hosted, Linux, X64, hostinger]
+    runs-on: [self-hosted, Linux, X64, ci]
     env:
       GITLEAKS_VERSION: "8.30.1"
       GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
@@ -154,7 +154,7 @@ jobs:
 
   rls-live:
     name: RLS isolation — ${{ matrix.suite.name }} (live Postgres)
-    runs-on: [self-hosted, Linux, X64, hostinger]
+    runs-on: [self-hosted, Linux, X64, ci]
     strategy:
       fail-fast: false
       matrix:
@@ -262,7 +262,7 @@ jobs:
     # schema and replays the migrations itself, so they compose sequentially, and 13 runners instead of 25
     # halves the per-job migration replay for identical coverage.
     name: Lifecycle — ${{ matrix.suite.name }} (live Postgres)
-    runs-on: [self-hosted, Linux, X64, hostinger]
+    runs-on: [self-hosted, Linux, X64, ci]
     strategy:
       fail-fast: false
       matrix:
@@ -1464,7 +1464,7 @@ jobs:
     # and the failure path (a deliberately corrupted checksum on an already-applied file fails the
     # pipeline under --strict, not just a warning).
     name: Production migration path (scripts/db/migrate.ts)
-    runs-on: [self-hosted, Linux, X64, hostinger]
+    runs-on: [self-hosted, Linux, X64, ci]
     env:
       CHARTWARDEN_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_migration_gate
       DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_migration_gate
@@ -1523,7 +1523,7 @@ jobs:
 
   auth-live:
     name: Better Auth live (Postgres) — schema reconciliation + sign-in (AUTH-T06)
-    runs-on: [self-hosted, Linux, X64, hostinger]
+    runs-on: [self-hosted, Linux, X64, ci]
     env:
       CHARTWARDEN_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_test
       BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
@@ -1581,7 +1581,7 @@ jobs:
     # covers the rest of the branch — the platform pool, the audited active-org enumerator, the relay
     # start — by doing the one thing a gate cannot do: running the process the way production runs it.
     name: Production-configuration boot (DATABASE_PLATFORM_URL + outbox relay)
-    runs-on: [self-hosted, Linux, X64, hostinger]
+    runs-on: [self-hosted, Linux, X64, ci]
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_boot
       DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/chartwarden_boot
@@ -1633,7 +1633,7 @@ jobs:
   # jobs this needs no command arguments and replays no migrations.
   rate-limit-store-live:
     name: Rate-limit store live (Valkey) — cluster-wide counter (WX-PR-017)
-    runs-on: [self-hosted, Linux, X64, hostinger]
+    runs-on: [self-hosted, Linux, X64, ci]
     services:
       valkey:
         image: valkey/valkey:8-alpine
@@ -1675,7 +1675,7 @@ jobs:
     # seed chain runs here through the very `db:seed:all` script `db:reset` composes, so the two cannot
     # drift apart.
     name: Critical-workflow E2E + accessibility (Playwright, full stack)
-    runs-on: [self-hosted, Linux, X64, hostinger]
+    runs-on: [self-hosted, Linux, X64, ci]
     services:
       # `db:seed:scenario-billing` drives M27 `refresh-inputs`, which enqueues a trial-balance pull —
       # with no queue connection that port is unbound and the step fails (docs/DEVELOPMENT.md). A
