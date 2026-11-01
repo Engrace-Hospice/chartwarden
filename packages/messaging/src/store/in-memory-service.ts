@@ -1342,6 +1342,16 @@ export function createInMemoryMessagingService(
       inbox.set(key, items);
     },
 
+    async markAllAlertsRead(orgId, userId) {
+      const key = `${orgId}:${userId}`;
+      const readAt = new Date().toISOString();
+
+      inbox.set(
+        key,
+        (inbox.get(key) ?? []).map((item) => (item.readAt === null ? { ...item, readAt } : item)),
+      );
+    },
+
     async listAlertRules(orgId) {
       return PLATFORM_DEFAULT_ALERT_RULES.map<AlertRuleView>((seed) => {
         const override = overrides.get(`${orgId}:${seed.eventType}`);
