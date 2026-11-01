@@ -423,7 +423,7 @@ describe.skipIf(!DB_URL)("rust bridge — abandoned database work is cancelled (
       }
     }, 30_000);
 
-    it("the recheck's production cap sits just above its own deadline (label unchanged, abandoned work ≤ 1 s)", () => {
+    it("the recheck's production cap sits just above its own deadline (label unchanged; a stuck statement ends ≤ 1 s later)", () => {
       expect(FRESH_RECHECK_STATEMENT_TIMEOUT_MS).toBeGreaterThan(SHADOW_FRESH_TIMEOUT_MS);
       expect(FRESH_RECHECK_STATEMENT_TIMEOUT_MS - SHADOW_FRESH_TIMEOUT_MS).toBeLessThanOrEqual(
         1_000,

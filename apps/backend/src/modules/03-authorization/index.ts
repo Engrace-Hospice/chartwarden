@@ -141,7 +141,8 @@ const DURABLE_VIA_OUTBOX_NOTIFIER: ComplianceNotifier = { notify: () => undefine
 /**
  * Server-side `statement_timeout` for the shadow recheck's uncached resolution (CW-RUST-M02 P2 prerequisite 6). Must stay
  * ABOVE `SHADOW_FRESH_TIMEOUT_MS` (2 000, bootstrap/rust-bridge/forwarder.ts) so the recheck's own deadline fires first
- * and keeps reporting `fresh_timeout`; the gap is how long an abandoned statement can still run (~1 s). It is pinned by
+ * and keeps reporting `fresh_timeout`; the gap is how long a STUCK statement can still run after that (~1 s). The cap is per
+ * statement and `loadGrants` issues two, so the whole transaction is bounded by 2 × this value, not by the gap. Pinned by
  * `rust-bridge-db-cancel.live.test.ts`.
  */
 export const FRESH_RECHECK_STATEMENT_TIMEOUT_MS = 3_000;
@@ -271,7 +272,7 @@ export function mountAuthorizationRoutes(
   if (mePermissionsBridge) {
     // An UNCACHED resolver over the same store and fold, used only to explain a shadow difference (spec v0.3).
     // P2 prerequisite 6: the recheck stops waiting after SHADOW_FRESH_TIMEOUT_MS (2 s, bootstrap/rust-bridge/forwarder.ts)
-    // and reports `fresh_timeout`; this server-side cap sits just above it, so the label is unchanged and the abandoned
+    // and reports `fresh_timeout`; this server-side cap sits just above it, so the label is unchanged and a stuck
     // statement is cancelled by PostgreSQL ≤ 1 s later, releasing its pool connection.
     const store = createDbEffectivePermissionStore(db, {
       statementTimeoutMs: FRESH_RECHECK_STATEMENT_TIMEOUT_MS,
