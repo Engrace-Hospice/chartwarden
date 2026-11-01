@@ -50,6 +50,7 @@ import { decodeStoredBody } from "./rich-body-codec";
 const CH = schema.channels;
 const CM = schema.channelMembers;
 const MSG = schema.messages;
+const USER = schema.users;
 
 /** The seam envelope's actor id — a roster-reconcile write has no acting membership (M4 NULLIFs it). */
 const SYNC_SYSTEM_USER_ID = "";
@@ -101,6 +102,101 @@ export function createDbMessagingProvider(
       `${hook} is driven by a source-module outbox event (M5/M16/M17/M19) not wired in Phase 1`,
       501,
     );
+  }
+
+  async function readMessagesPage(
+    orgId: string,
+    input: {
+      channelId: string;
+      userId: string;
+      cursor?: string;
+      limit?: number;
+      direction?: "forward" | "backward";
+    },
+    authorize?: (tx: Parameters<typeof channelOr404>[0]) => Promise<boolean>,
+  ) {
+    return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
+      await channelOr404(tx, orgId, input.channelId);
+      if (authorize && !(await authorize(tx))) {
+        throw new NotFoundError("channel", input.channelId);
+      }
+      const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
+      const backward = input.direction === "backward";
+      const cursor = input.cursor ? decodeCursor(input.cursor) : null;
+      const where = [eq(MSG.organizationId, orgId), eq(MSG.channelId, input.channelId)];
+      if (cursor) {
+        where.push(
+          backward
+            ? sql`(${MSG.createdAt}, ${MSG.id}) < (${cursor.createdAt}, ${cursor.id})`
+            : sql`(${MSG.createdAt}, ${MSG.id}) > (${cursor.createdAt}, ${cursor.id})`,
+        );
+      }
+      const rows = (await tx
+        .select({
+          id: MSG.id,
+          channelId: MSG.channelId,
+          authorUserId: MSG.authorUserId,
+          bodyCipher: MSG.bodyCipher,
+          bodyKind: MSG.bodyKind,
+          status: MSG.status,
+          createdAt: MSG.createdAt,
+          parentMessageId: MSG.parentMessageId,
+        })
+        .from(MSG)
+        .where(and(...where))
+        .orderBy(
+          backward ? desc(MSG.createdAt) : asc(MSG.createdAt),
+          backward ? desc(MSG.id) : asc(MSG.id),
+        )
+        .limit(limit + 1)) as Array<{
+        id: string;
+        channelId: string;
+        authorUserId: string | null;
+        bodyCipher: Buffer;
+        bodyKind: string;
+        status: string;
+        createdAt: Date;
+        parentMessageId: string | null;
+      }>;
+      const hasMore = rows.length > limit;
+      const pageRows = rows.slice(0, limit);
+      if (backward) pageRows.reverse();
+      // WP 5.6: an approved redaction masks the body for portal and staff readers alike.
+      const redactions = await loadApprovedRedactions(
+        tx,
+        orgId,
+        pageRows.map((message) => message.id),
+      );
+      const messages = await Promise.all(
+        pageRows.map(
+          async (message): Promise<ResolvedMessage> => ({
+            messageId: message.id,
+            channelId: message.channelId,
+            authorUserId: message.authorUserId,
+            authorDisplayName: null,
+            body:
+              message.status === "deleted" || redactions.has(message.id)
+                ? ""
+                : decodeStoredBody(
+                    message.bodyKind as MessageBodyKind,
+                    await cipher.open(orgId, message.bodyCipher),
+                  ).body,
+            bodyKind: message.bodyKind as MessageBodyKind,
+            createdAt: message.createdAt.toISOString(),
+            parentMessageId: message.parentMessageId,
+            references: [],
+          }),
+        ),
+      );
+      const cursorRow = backward ? pageRows[0] : pageRows.at(-1);
+      return {
+        messages,
+        nextCursor:
+          hasMore && cursorRow
+            ? encodeCursor(cursorRow.createdAt.toISOString(), cursorRow.id)
+            : undefined,
+      };
+    });
   }
 
   return {
@@ -218,84 +314,39 @@ export function createDbMessagingProvider(
       if (!(await access.canViewChannel(orgId, input.userId, input.channelId))) {
         throw new NotFoundError("channel", input.channelId);
       }
-      return withOrgContext(db, { organizationId: orgId, userId: input.userId }, async (tx) => {
-        await channelOr404(tx, orgId, input.channelId);
-        const limit = Math.min(Math.max(input.limit ?? 50, 1), 200);
-        const backward = input.direction === "backward";
-        const cursor = input.cursor ? decodeCursor(input.cursor) : null;
-        const where = [eq(MSG.organizationId, orgId), eq(MSG.channelId, input.channelId)];
-        if (cursor) {
-          where.push(
-            backward
-              ? sql`(${MSG.createdAt}, ${MSG.id}) < (${cursor.createdAt}, ${cursor.id})`
-              : sql`(${MSG.createdAt}, ${MSG.id}) > (${cursor.createdAt}, ${cursor.id})`,
-          );
-        }
-        const rows = (await tx
-          .select({
-            id: MSG.id,
-            channelId: MSG.channelId,
-            authorUserId: MSG.authorUserId,
-            bodyCipher: MSG.bodyCipher,
-            bodyKind: MSG.bodyKind,
-            status: MSG.status,
-            createdAt: MSG.createdAt,
-            parentMessageId: MSG.parentMessageId,
-          })
-          .from(MSG)
-          .where(and(...where))
-          .orderBy(
-            backward ? desc(MSG.createdAt) : asc(MSG.createdAt),
-            backward ? desc(MSG.id) : asc(MSG.id),
+      return readMessagesPage(orgId, input);
+    },
+
+    async listPortalMessages(orgId, input) {
+      // M31 has already checked the active portal grant and its consent. Recheck the session's exact
+      // auto portal_caregiver membership against the requested patient in this same transaction as
+      // the PHI read; staff membership and roster authorization are intentionally not substituted.
+      return readMessagesPage(orgId, input, async (tx) => {
+        const rows = await tx
+          .select({ channelId: CH.id })
+          .from(CH)
+          .innerJoin(
+            CM,
+            and(
+              eq(CM.organizationId, CH.organizationId),
+              eq(CM.channelId, CH.id),
+              eq(CM.userId, input.userId),
+              eq(CM.role, "portal_caregiver"),
+              eq(CM.source, "auto"),
+              isNull(CM.removedAt),
+            ),
           )
-          .limit(limit + 1)) as Array<{
-          id: string;
-          channelId: string;
-          authorUserId: string | null;
-          bodyCipher: Buffer;
-          bodyKind: string;
-          status: string;
-          createdAt: Date;
-          parentMessageId: string | null;
-        }>;
-        const hasMore = rows.length > limit;
-        const pageRows = rows.slice(0, limit);
-        if (backward) pageRows.reverse();
-        // WP 5.6: an approved redaction masks the body here too (this seam serves other modules).
-        const redactions = await loadApprovedRedactions(
-          tx,
-          orgId,
-          pageRows.map((m) => m.id),
-        );
-        const messages = await Promise.all(
-          pageRows.map(
-            async (m): Promise<ResolvedMessage> => ({
-              messageId: m.id,
-              channelId: m.channelId,
-              authorUserId: m.authorUserId,
-              authorDisplayName: null,
-              body:
-                m.status === "deleted" || redactions.has(m.id)
-                  ? ""
-                  : decodeStoredBody(
-                      m.bodyKind as MessageBodyKind,
-                      await cipher.open(orgId, m.bodyCipher),
-                    ).body,
-              bodyKind: m.bodyKind as MessageBodyKind,
-              createdAt: m.createdAt.toISOString(),
-              parentMessageId: m.parentMessageId,
-              references: [],
-            }),
-          ),
-        );
-        const cursorRow = backward ? pageRows[0] : pageRows.at(-1);
-        return {
-          messages,
-          nextCursor:
-            hasMore && cursorRow
-              ? encodeCursor(cursorRow.createdAt.toISOString(), cursorRow.id)
-              : undefined,
-        };
+          .innerJoin(USER, and(eq(USER.id, input.userId), eq(USER.status, "active")))
+          .where(
+            and(
+              eq(CH.organizationId, orgId),
+              eq(CH.id, input.channelId),
+              eq(CH.channelKind, "care_team"),
+              eq(CH.subjectId, input.patientId),
+            ),
+          )
+          .limit(1);
+        return rows.length > 0;
       });
     },
 

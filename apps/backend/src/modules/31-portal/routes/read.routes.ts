@@ -62,10 +62,11 @@ interface MessagingArm {
     orgId: string,
     spec: { kind: string; subjectId?: string; creatorUserId: string },
   ): Promise<{ channelId: string }>;
-  listMessages(
+  listPortalMessages(
     orgId: string,
     input: {
       channelId: string;
+      patientId: string;
       userId: string;
       cursor?: string;
       limit?: number;
@@ -411,8 +412,9 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
       );
       if (!channel)
         throw new ChartWardenError("MESSAGING_UNAVAILABLE", "messaging is unavailable", 503);
-      const page = await provider.listMessages(actor.organizationId, {
+      const page = await provider.listPortalMessages(actor.organizationId, {
         channelId: channel.channelId,
+        patientId,
         userId: actor.userId,
         cursor: q.cursor,
         limit: q.limit ?? 30,

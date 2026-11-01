@@ -751,7 +751,7 @@ function makeServer(
       messagingCalls.sendMessage += 1;
       return { messageId: "msg-1" };
     },
-    async listMessages(_orgId: string, input: unknown) {
+    async listPortalMessages(_orgId: string, input: unknown) {
       messagingCalls.listMessages += 1;
       messagingCalls.lastListInput = input;
       return {
@@ -1100,6 +1100,7 @@ describe("M31 route smoke — the M1 boundary", () => {
     });
     expect(messagingCalls.lastListInput).toMatchObject({
       channelId: "channel-1",
+      patientId: PATIENT,
       userId: "caregiver_user",
       cursor: "opaque",
       limit: 12,
