@@ -693,4 +693,38 @@ describe.skipIf(!DB_URL)("S08 lab-result edge cases — LIVE Postgres", () => {
       [who.rn, who.attending, who.medicalDirector].sort(),
     );
   });
+
+  it("migration 1298 backfills observation_at on a 1297-era critical from the source observation, idempotently", async () => {
+    const order = await seedLabOrder();
+    await handleEvent(attached(order, obs(60), "HH", "2026-10-08T09:15:00.000Z"));
+    await admin.query(
+      "UPDATE critical_lab_result SET observation_at=NULL WHERE organization_id=$1 AND observation_id=$2",
+      [ORG, obs(60)],
+    ); // the row as 1297 left it
+    await admin.query(
+      `INSERT INTO lab_observation
+         (id, organization_id, provider_entity_id, source_message_id, patient_id, order_id, observation_date,
+          result_status, loinc_code, loinc_display_text, terminology_validation, abnormal_summary)
+       VALUES ($1,$2,$3,gen_random_uuid(),$4,$5,'2026-10-08T09:15:00.000Z','final','2345-7','Glucose',
+               'valid','any_critical')`,
+      [obs(60), ORG, provider, PATIENT, order],
+    );
+    const migration = readFileSync(
+      join(MIGRATIONS_DIR, "1298_m11_critical_lab_destruction_and_observation_at.sql"),
+      "utf8",
+    );
+    const backfill = migration
+      .split("--> statement-breakpoint")
+      .find((chunk) => chunk.includes('UPDATE "critical_lab_result"'));
+    expect(backfill).toBeTruthy();
+
+    await admin.query(backfill as string);
+    const stamped = (await criticalRow(obs(60))).observation_at as Date;
+    expect(stamped.toISOString()).toBe("2026-10-08T09:15:00.000Z");
+
+    await admin.query(backfill as string);
+    expect(((await criticalRow(obs(60))).observation_at as Date).toISOString()).toBe(
+      "2026-10-08T09:15:00.000Z",
+    );
+  });
 });

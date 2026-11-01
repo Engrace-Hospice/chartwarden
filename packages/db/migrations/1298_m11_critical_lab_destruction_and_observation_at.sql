@@ -10,6 +10,15 @@
 --      chartwarden_destruction (an UPDATE is refused for everyone; the app role is not widened).
 ALTER TABLE "critical_lab_result" ADD COLUMN IF NOT EXISTS "observation_at" timestamp with time zone;--> statement-breakpoint
 
+-- Backfill rows written under 1297 from the source observation's clinical instant, so a correcting result with an
+-- earlier clinical time can still supersede them (a NULL falls back to received_at, a different clock). Idempotent.
+UPDATE "critical_lab_result" AS c
+   SET "observation_at" = lo."observation_date"
+  FROM "lab_observation" AS lo
+ WHERE c."observation_at" IS NULL
+   AND lo."id" = c."observation_id"
+   AND lo."organization_id" = c."organization_id";--> statement-breakpoint
+
 CREATE OR REPLACE FUNCTION order_result_review_append_only() RETURNS trigger
 LANGUAGE plpgsql
 AS $$

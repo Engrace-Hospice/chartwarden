@@ -307,6 +307,9 @@ const M3_ROLE_TEMPLATE_BACKFILL_JOB_ID = "m3-role-template-backfill";
 // expected to exist: a 404 is the healthy answer, and the point is that the request COMPLETED
 // (endpoint reachable, SigV4 accepted, credentials valid). Names are PHI-free and tenant-free by
 // construction, so the probe can never touch a real tenant bucket (`tenant-<orgId>`).
+/** Boot-time registration of the M11 critical-lab escalation schedule: attempts, and the linear backoff step (ms). */
+const CRITICAL_LAB_SCHEDULE_ATTEMPTS = 5;
+const CRITICAL_LAB_SCHEDULE_BACKOFF_MS = 2_000;
 const READINESS_PROBE_BUCKET = "chartwarden-readiness";
 const READINESS_PROBE_KEY = ".probe";
 /** AC-05 — SECURITY_HARDENING §22.1: 5 signup intents per IP per hour on the public surface. */
@@ -10761,19 +10764,32 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     app.addHook("onClose", async () => {
       await m11CriticalLabEscalationWorker.close();
     });
-    try {
-      const m11CriticalLabEscalationQueue = await scheduleM11CriticalLabEscalation(queueConnection);
-      app.addHook("onClose", async () => {
-        await m11CriticalLabEscalationQueue.close();
-      });
-    } catch (err) {
-      // Unlike the best-effort sweeps above, a missing schedule means a quarantined critical result is never
-      // escalated, silently: refuse to boot (fail closed) rather than log and carry on.
-      app.log.error(
-        err,
-        "M11 critical-lab escalation schedule registration failed; refusing to boot",
-      );
-      throw err;
+    // Unlike the best-effort sweeps above, a missing schedule means a quarantined critical result is never escalated,
+    // silently. Retry a transient Redis blip with backoff, then refuse to boot (fail closed) rather than carry on.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const m11CriticalLabEscalationQueue =
+          await scheduleM11CriticalLabEscalation(queueConnection);
+        app.addHook("onClose", async () => {
+          await m11CriticalLabEscalationQueue.close();
+        });
+        break;
+      } catch (err) {
+        if (attempt >= CRITICAL_LAB_SCHEDULE_ATTEMPTS) {
+          app.log.error(
+            err,
+            "M11 critical-lab escalation schedule registration failed; refusing to boot",
+          );
+          throw err;
+        }
+        app.log.warn(
+          { attempt },
+          "M11 critical-lab escalation schedule registration failed; retrying",
+        );
+        await new Promise((resolve) =>
+          setTimeout(resolve, CRITICAL_LAB_SCHEDULE_BACKOFF_MS * attempt),
+        );
+      }
     }
     // F-238 — the hourly records-request expiry sweep: an outbound records request nobody answered by its
     // `expires_on` day moves `requested` → `expired`. Same per-org fan-out as the M11 sweeps above; each
