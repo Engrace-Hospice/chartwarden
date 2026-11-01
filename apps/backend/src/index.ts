@@ -278,6 +278,20 @@ const M18_PLATFORM_JOB_ID = "m18-evv-automation";
  * the format and the AAD. `getTenantKeyProvider()` is resolved per call, so this is safe to build before M34
  * registers; until a platform KEK is bound, M34's stub refuses `dekForOrg` and every capture fails closed.
  */
+/** #908/#910 — the ports M36's critical-lab alert reads: M11's ledger, the care-team seam, membership -> user. */
+function buildCriticalLabDeps(
+  db: DbClient,
+  warn: (message: string, context: Record<string, string>) => void,
+): CriticalLabDeps {
+  return {
+    alerts: getSeam("AlertEmitter") as AlertEmitter,
+    careTeam: lazySeamProxy("CareTeamProvider", () => getSeam("CareTeamProvider")),
+    lookup: createCriticalLabLookup(db),
+    membershipUserId: createDrizzleMembershipUserLookup(db),
+    warn,
+  };
+}
+
 function m18CoordsCipher(): EvvCoordsCipher {
   return createEvvCoordsCipher(m18CoordsKeys());
 }
@@ -620,6 +634,7 @@ import {
   wireM10Tenancy,
 } from "./modules/10-hope/index";
 import {
+  M11_CRITICAL_LAB_ESCALATION_PLATFORM_JOB_ID,
   M11_ORDER_SWEEPS_PLATFORM_JOB_ID,
   M11_OUTBOX_EVENTS,
   M11_PLATFORM_JOB_ID,
@@ -638,6 +653,7 @@ import {
   buildM11OrmRequestedPorts,
   buildM11RecoveryAlertConsumer,
   buildM11SupplyCancelledConsumer,
+  createCriticalLabLookup,
   createDbOrderBackend,
   createDrizzleOrderEraseStore,
   createDrizzleOrderSeamStore,
@@ -648,6 +664,7 @@ import {
   orderPatientAndKindForOrg,
   parseRecoveryBound,
   registerHeldTransmissionRoutes,
+  registerM11CriticalLabEscalationWorker,
   registerM11OrderSweepWorkers,
   registerM11StandingSpawnWorker,
   registerM11StuckTransmissionWorker,
@@ -656,6 +673,7 @@ import {
   registerOrderErasers,
   registerOrderRoutes,
   registerOrderSeams,
+  scheduleM11CriticalLabEscalation,
   scheduleM11OrderSweeps,
   scheduleM11StandingSpawn,
   scheduleM11StuckTransmission,
@@ -1657,6 +1675,11 @@ import { buildM36AmendmentSlaAlertConsumer } from "./modules/36-messaging/outbox
 import { buildM36BreakGlassNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/break-glass-notifications";
 import { buildM36CapThresholdAlertConsumer } from "./modules/36-messaging/outbox-consumers/cap-threshold-alerts";
 import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/outbox-consumers/channel-membership-sync";
+import {
+  type CriticalLabDeps,
+  buildCriticalLabEscalator,
+  buildM36CriticalLabAlertConsumers,
+} from "./modules/36-messaging/outbox-consumers/critical-lab-alerts";
 import { buildM36DeathBoardConsumer } from "./modules/36-messaging/outbox-consumers/death-board";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
 import { buildM36ExportNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/export-notifications";
@@ -2564,6 +2587,7 @@ export function wireModuleSeams(
   registerPlatformJob(M11_PLATFORM_JOB_ID);
   registerPlatformJob(M11_VERBAL_TIMER_PLATFORM_JOB_ID); // §2.3 D3 — the verbal-order-expiry hourly sweep fan-out
   registerPlatformJob(M11_ORDER_SWEEPS_PLATFORM_JOB_ID); // GAP-032 — verbal pre-expiry / lab-results-overdue / completion-watcher org enumeration
+  registerPlatformJob(M11_CRITICAL_LAB_ESCALATION_PLATFORM_JOB_ID); // #910 — critical-lab no-order escalation tick org enumeration
   registerPlatformJob(M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID); // F-201 — the stuck lab-order recovery tick's org enumeration
   registerPlatformJob(M22_FORM_RENDER_PLATFORM_JOB_ID); // GAP-140 — the form-render worker's org enumeration
   registerPlatformJob(M22_RETENTION_ROTATION_PLATFORM_JOB_ID); // GAP-141 — the retention-rotation sweep's org enumeration
@@ -10725,6 +10749,39 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     } catch (err) {
       app.log.error(err, "M11 order-sweep schedule registration failed");
     }
+    // #910 — a critical lab result with no order stays quarantined; once its response clock lapses the medical director
+    // and the attending are paged (5-minute tick, per-org fan-out).
+    const m11CriticalLabEscalationWorker = registerM11CriticalLabEscalationWorker({
+      connection: queueConnection,
+      db: dbHandle.db,
+      activeOrgs: buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M11_CRITICAL_LAB_ESCALATION_PLATFORM_JOB_ID,
+        reason: "M11 #910 critical-lab no-order escalation fan-out",
+      }),
+      escalate: (organizationId, row) =>
+        buildCriticalLabEscalator(
+          buildCriticalLabDeps(dbHandle.db, (message, context) => app.log.warn(context, message)),
+        )(organizationId, {
+          ...row,
+          orderId: null,
+          orderUnsigned: false,
+          drafterMembershipId: null,
+        }),
+    });
+    attachDlqAlertsToAll([m11CriticalLabEscalationWorker], "m11");
+    app.addHook("onClose", async () => {
+      await m11CriticalLabEscalationWorker.close();
+    });
+    try {
+      const m11CriticalLabEscalationQueue = await scheduleM11CriticalLabEscalation(queueConnection);
+      app.addHook("onClose", async () => {
+        await m11CriticalLabEscalationQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "M11 critical-lab escalation schedule registration failed");
+    }
     // F-238 — the hourly records-request expiry sweep: an outbound records request nobody answered by its
     // `expires_on` day moves `requested` → `expired`. Same per-org fan-out as the M11 sweeps above; each
     // org's write is its own org-explicit `withOrgContext` transaction (a cron tick is not a request).
@@ -11951,6 +12008,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // events (M30 spec §4.9): previously unconsumed (`declaredConsumers: []`), so none of them paged anyone.
           // GAP-043 - M29's listener-down / listener-recovered events (published by the worker-role watcher): the page.
           buildM36FeedHealthAlertConsumer(getSeam("AlertEmitter") as AlertEmitter),
+          // #908/#910 — a critical (HH/LL) lab result pages the caseload RN, the order drafter, the attending and (unsigned
+          // order) the medical director: one alert per observation, tenant admins as the never-zero fallback.
+          ...buildM36CriticalLabAlertConsumers(
+            buildCriticalLabDeps(dbHandle.db, (message, context) => app.log.warn(context, message)),
+          ),
           buildM36QualityAlertConsumer(
             getSeam("AlertEmitter") as AlertEmitter,
             (message, context) => app.log.warn(context, message),

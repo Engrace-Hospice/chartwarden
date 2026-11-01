@@ -567,6 +567,7 @@ exports.MODULES = [
       "order_idg_decision_application",
       "order_transmission_attestation",
       "order_recovery_request",
+      "critical_lab_result",
     ],
   },
   {

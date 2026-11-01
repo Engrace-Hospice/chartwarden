@@ -489,7 +489,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       observationId: id,
       attachmentKind: Type.Union([Type.Literal("full"), Type.Literal("partial")]),
       orderingPhysicianMdmId: id,
-      signedAt: isoInstant,
+      // Absent when results arrive on an order not yet signed (e.g. a verbal order) -- #910: still emitted.
+      signedAt: Type.Optional(isoInstant),
     }),
     declaredConsumers: ["m22"],
     seamConsumers: ["m33", "m36"],
@@ -507,8 +508,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       criticalFlags: Type.Array(Type.String()),
       orderingPhysicianMdmId: id,
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m33", "m36"],
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {

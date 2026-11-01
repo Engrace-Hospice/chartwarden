@@ -16,6 +16,7 @@ import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { OutboxPublishPort } from "../../../bootstrap/outbox-persister";
 import {
   ADMITTING_STAFF_ASSIGNMENT_ROLE,
+  ATTENDING_ASSIGNMENT_ROLES,
   type CareTeamStore,
   PRIMARY_RN_ASSIGNMENT_ROLE,
 } from "./care-team-provider";
@@ -559,6 +560,30 @@ export function createDrizzleCareTeamStore(db: DbClient): CareTeamStore {
           )
           .limit(1);
         return row?.membershipId ?? null;
+      });
+    },
+
+    // #910 -- the attending physician as a user id: an open `attending_clinician` assignment wins over an open `md`
+    // one; among several, the longest-standing assignment. Null when the patient has neither.
+    async findAttending(organizationId, patientId) {
+      return withOrgContext(db, { organizationId, userId: SEAM_SYSTEM_USER_ID }, async (tx) => {
+        const rows = await tx
+          .select({ clinicianUserId: PA.clinicianUserId, role: PA.role })
+          .from(PA)
+          .where(
+            and(
+              eq(PA.organizationId, organizationId),
+              eq(PA.patientId, patientId),
+              inArray(PA.role, [...ATTENDING_ASSIGNMENT_ROLES]),
+              isNull(PA.unassignedAt),
+            ),
+          )
+          .orderBy(PA.assignedAt);
+        for (const role of ATTENDING_ASSIGNMENT_ROLES) {
+          const hit = rows.find((r) => r.role === role);
+          if (hit) return hit.clinicianUserId;
+        }
+        return null;
       });
     },
   };
