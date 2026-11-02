@@ -157,6 +157,8 @@ describe.skipIf(!DB_URL)("M36 transactional email provider, LIVE Postgres + fake
       audit: createInMemoryAuditExecutor().executor,
       outbox: { async publish() {} },
       deceasedPatients: { isDeceased: async (_org, id) => id === DECEASED },
+      funeralHomeBaaActive: async () => true, // the BAA rule itself is proven in gap-115 / m2-link-redemption
+
       // The exact gate index.ts applies: delivery port only when the binding says it is available.
       ...(binding.linkDeliveryAvailable
         ? {
@@ -177,7 +179,7 @@ describe.skipIf(!DB_URL)("M36 transactional email provider, LIVE Postgres + fake
       method: "POST",
       url: "/api/v1/funeral/invite",
       headers: { "x-test-user": "rn_1" },
-      payload: { patientId: DECEASED, recipientEmail },
+      payload: { patientId: DECEASED, funeralHomeId: "5f5f5f5f-5f5f-45f5-85f5-5f5f5f5f5f01", recipientEmail },
     });
 
   beforeAll(async () => {

@@ -41,6 +41,7 @@ import {
 
 const DEFAULT_COLLAB_SESSION_TTL_SEC = 8 * 3600; // §7.6 — up to 8h
 const MAX_EMAIL_LENGTH = 254;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type LinkKind = "external_collaborator" | "funeral_home";
@@ -198,6 +199,12 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
       throw new ChartWardenError("FORBIDDEN", "an org-bound staff session is required", 403);
     }
     const patientId = readString(request.body, "patientId");
+    const funeralHomeId = readString(request.body, "funeralHomeId");
+    if (!UUID_RE.test(funeralHomeId)) {
+      throw new ValidationError("invalid funeralHomeId", [
+        { field: "funeralHomeId", code: "INVALID", message: "funeralHomeId must be a uuid" },
+      ]);
+    }
     if (!deps.deceasedPatients) {
       throw unavailable(
         "DECEASED_STATUS_UNAVAILABLE",
@@ -208,6 +215,23 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
       throw new ChartWardenError(
         "PATIENT_NOT_DECEASED",
         "a funeral-home link can only be issued for a deceased patient",
+        409,
+      );
+    }
+    // The same stricter-than-M40 rule as the M36 death notice: an executed, unexpired BAA for THIS funeral home, or no link.
+    if (!deps.funeralHomeBaaActive) {
+      throw unavailable(
+        "FUNERAL_BAA_UNAVAILABLE",
+        "the BAA register is not bound; a funeral-home link cannot be minted until it is",
+      );
+    }
+    const baaInForce = await deps
+      .funeralHomeBaaActive(actor.organizationId, funeralHomeId, new Date())
+      .catch(() => false); // a throw reads as no BAA (fail closed)
+    if (!baaInForce) {
+      throw new ChartWardenError(
+        "FUNERAL_HOME_BAA_REQUIRED",
+        "no executed Business Associate Agreement is on file for this funeral home; no link was issued",
         409,
       );
     }

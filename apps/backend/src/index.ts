@@ -5115,6 +5115,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               isDeceased: (organizationId, patientId) =>
                 patientIsDeceasedForOrg(dbHandle.db, organizationId, patientId),
             },
+            // The executed-BAA rule shared with the M36 death notice (bootstrap/death-notification-baa-gate.ts).
+            funeralHomeBaaActive: (organizationId, funeralHomeId, asOf) =>
+              executedBaaGate(() => createDbBaaStore(dbHandle.db))(
+                organizationId,
+                "funeral_home",
+                funeralHomeId,
+                asOf,
+              ),
             // GAP-115 follow-up - the DURABLE collaborator / funeral link store (migration 0521): M6's siting of the
             // patient (the ARCH-011 columns), the server-only Better Auth session mint a redemption ends in, the
             // delivery channel (UNBOUND in production until the email provider is - see above), the redemption

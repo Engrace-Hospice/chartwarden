@@ -473,6 +473,8 @@ export function mountIdentityRoutes(
      * `POST /funeral/invite` refuses 503 `DECEASED_STATUS_UNAVAILABLE`.
      */
     deceasedPatients?: IdentityRouteDeps["deceasedPatients"];
+    /** The executed-BAA rule for a funeral home (see IdentityRouteDeps). Omitted -> `POST /funeral/invite` refuses 503. */
+    funeralHomeBaaActive?: IdentityRouteDeps["funeralHomeBaaActive"];
     /**
      * GAP-115 follow-up - M6's patient siting, injected as a port. PRESENT => the DURABLE `collaborator_link` store
      * backs the collaborator / funeral links (and the invite routes then require `recipientEmail`); ABSENT => the
@@ -528,6 +530,7 @@ export function mountIdentityRoutes(
     userIdentity: _dbUserIdentity(db),
     ...(invite?.dashboardSeeder ? { dashboardSeeder: invite.dashboardSeeder } : {}),
     ...(invite?.deceasedPatients ? { deceasedPatients: invite.deceasedPatients } : {}),
+    ...(invite?.funeralHomeBaaActive ? { funeralHomeBaaActive: invite.funeralHomeBaaActive } : {}),
     ...(invite?.linkPatientSite ? { linkRecipientRequired: true } : {}),
     ...(invite?.linkSessions ? { linkSessions: invite.linkSessions } : {}),
     ...(invite?.linkDelivery ? { linkDelivery: invite.linkDelivery } : {}),

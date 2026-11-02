@@ -74,12 +74,17 @@ import {
 import { funeralCaseForOrg } from "../src/modules/05-patient/seams/funeral-case-for-org";
 import { patientIsDeceasedForOrg } from "../src/modules/05-patient/seams/patient-deceased-for-org";
 import { patientSiteForOrg } from "../src/modules/06-admission/seams/patient-site-for-org";
+import { executedBaaGate } from "../src/bootstrap/death-notification-baa-gate";
+import { createDbBaaStore } from "../src/modules/40-mdm/mdm-store-db";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ROLES = LIVE_DROP_ROLES;
 const ORG_A = "11111111-1111-4111-8111-111111121001";
+// The funeral home every invite names: an executed BAA is seeded for it in each org; FH_NO_BAA has none.
+const FH = "5f5f5f5f-5f5f-45f5-85f5-5f5f5f5f5f01";
+const FH_NO_BAA = "5f5f5f5f-5f5f-45f5-85f5-5f5f5f5f5f02";
 const ORG_B = "22222222-2222-4222-8222-222222221002";
 const ORIGIN = "http://localhost:3000";
 const FUNERAL_CASE_SECONDS = 72 * 3600;
@@ -200,7 +205,7 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
         "x-csrf-token": staff.csrf,
         "idempotency-key": randomUUID(),
       },
-      payload: body,
+      payload: { funeralHomeId: FH, ...body },
     });
 
   const redeem = (token: unknown, target: FastifyInstance = app) =>
@@ -266,6 +271,13 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
       await admin.query(
         "INSERT INTO permission (key,resource,action,category) VALUES ($1,'x','y','clinical') ON CONFLICT (key) DO NOTHING",
         [key],
+      );
+    }
+    for (const org of [ORG_A, ORG_B]) {
+      await admin.query(
+        `INSERT INTO mdm_baa_record (organization_id, entity_kind, canonical_id, baa_status, executed_on)
+         VALUES ($1,'funeral_home',$2,'executed','2026-01-01')`,
+        [org, FH],
       );
     }
     deceasedA.id = await seedPatient(ORG_A, "deceased", "Lovelace");
@@ -370,6 +382,8 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
           isDeceased: (org: string, patient: string) =>
             patientIsDeceasedForOrg(handle.db, org, patient),
         },
+        funeralHomeBaaActive: (org: string, funeralHomeId: string, asOf: Date) =>
+          executedBaaGate(() => createDbBaaStore(handle.db))(org, "funeral_home", funeralHomeId, asOf),
         audit: createOrgScopedAuditExecutor(handle.db),
         outbox,
         linkRecipientRequired: true,
@@ -790,6 +804,17 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
         ])
       ).rows[0].n,
     ).toBe(0);
+
+    // No executed BAA for the named funeral home: refused with the stable code, no link row, no email.
+    const baseBeforeBaa = await count();
+    const noBaa = await invite(staffA, {
+      patientId: deceasedA.id,
+      funeralHomeId: FH_NO_BAA,
+      recipientEmail: "a@b.test",
+    });
+    expect(noBaa.statusCode).toBe(409);
+    expect(noBaa.json().error.code).toBe("FUNERAL_HOME_BAA_REQUIRED");
+    expect(await count()).toBe(baseBeforeBaa);
 
     const noRecipient = await invite(staffA, { patientId: deceasedA.id });
     expect(noRecipient.statusCode).toBe(422);

@@ -670,6 +670,12 @@ export interface IdentityRouteDeps {
    */
   deceasedPatients?: DeceasedPatientReader;
   /**
+   * An executed, unexpired BAA is on file for this funeral home as of `asOf` (M40's register, injected: M2 may not import it; the
+   * composition root binds the SAME rule the M36 death notice uses). Unbound -> `POST /funeral/invite` refuses 503
+   * `FUNERAL_BAA_UNAVAILABLE`; false or a throw -> 409 `FUNERAL_HOME_BAA_REQUIRED`. Fail closed.
+   */
+  funeralHomeBaaActive?: (organizationId: string, funeralHomeId: string, asOf: Date) => Promise<boolean>;
+  /**
    * GAP-115 follow-up - the server-only Better Auth session mint behind link redemption. Unbound ->
    * `POST /collaborators/consume` keeps its legacy slice behaviour (no session row); a durable mount ALWAYS binds
    * it, and a durable store with no minter refuses 503 `LINK_SESSION_UNAVAILABLE` WITHOUT consuming the link.

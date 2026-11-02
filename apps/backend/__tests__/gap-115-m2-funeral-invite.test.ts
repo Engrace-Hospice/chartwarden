@@ -39,8 +39,12 @@ const NURSE = { "x-test-user": "rn_1", "x-test-org": "org_a" };
 const NOBODY = { "x-test-user": "nobody", "x-test-org": "org_a" };
 const DECEASED = "11111111-1111-4111-8111-111111111111";
 const LIVING = "22222222-2222-4222-8222-222222222222";
+const FH = "33333333-3333-4333-8333-333333333333";
+const FH_NO_BAA = "44444444-4444-4444-8444-444444444444";
 
-function makeServer(opts: { deceasedReader?: boolean; onCaseload?: boolean } = {}) {
+function makeServer(
+  opts: { deceasedReader?: boolean; onCaseload?: boolean; baaReader?: "ok" | "unbound" | "throws" } = {},
+) {
   registerEffectivePermissionResolver(
     createInMemoryEffectivePermissionStore([
       {
@@ -73,6 +77,14 @@ function makeServer(opts: { deceasedReader?: boolean; onCaseload?: boolean } = {
         published.push(e.eventName);
       },
     },
+    ...(opts.baaReader === "unbound"
+      ? {}
+      : {
+          funeralHomeBaaActive: async (_org: string, funeralHomeId: string) => {
+            if (opts.baaReader === "throws") throw new Error("mdm down");
+            return funeralHomeId === FH;
+          },
+        }),
     ...(opts.deceasedReader === false
       ? {}
       : { deceasedPatients: { isDeceased: async (_org, id) => id === DECEASED } }),
@@ -97,7 +109,7 @@ describe("POST /api/v1/funeral/invite", () => {
       method: "POST",
       url: "/api/v1/funeral/invite",
       headers: NURSE,
-      payload: { patientId: DECEASED },
+      payload: { patientId: DECEASED, funeralHomeId: FH },
     });
     expect(res.statusCode).toBe(201);
     const body = res.json();
@@ -132,7 +144,7 @@ describe("POST /api/v1/funeral/invite", () => {
       method: "POST",
       url: "/api/v1/funeral/invite",
       headers: NURSE,
-      payload: { patientId: LIVING },
+      payload: { patientId: LIVING, funeralHomeId: FH },
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().error.code).toBe("PATIENT_NOT_DECEASED");
@@ -146,7 +158,7 @@ describe("POST /api/v1/funeral/invite", () => {
       method: "POST",
       url: "/api/v1/funeral/invite",
       headers: NURSE,
-      payload: { patientId: DECEASED },
+      payload: { patientId: DECEASED, funeralHomeId: FH },
     });
     expect(res.statusCode).toBe(503);
     expect(res.json().error.code).toBe("DECEASED_STATUS_UNAVAILABLE");
@@ -161,7 +173,7 @@ describe("POST /api/v1/funeral/invite", () => {
           method: "POST",
           url: "/api/v1/funeral/invite",
           headers: NOBODY,
-          payload: { patientId: DECEASED },
+          payload: { patientId: DECEASED, funeralHomeId: FH },
         })
       ).statusCode,
     ).toBe(403);
@@ -176,11 +188,63 @@ describe("POST /api/v1/funeral/invite", () => {
           method: "POST",
           url: "/api/v1/funeral/invite",
           headers: NURSE,
-          payload: { patientId: DECEASED },
+          payload: { patientId: DECEASED, funeralHomeId: FH },
         })
       ).statusCode,
     ).toBe(403);
     await offCaseload.app.close();
+  });
+
+  it("refuses 409 FUNERAL_HOME_BAA_REQUIRED without an executed BAA for that funeral home, and writes no link, audit or event", async () => {
+    const { app, collaborators, auditSink, published } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/funeral/invite",
+      headers: NURSE,
+      payload: { patientId: DECEASED, funeralHomeId: FH_NO_BAA },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error.code).toBe("FUNERAL_HOME_BAA_REQUIRED");
+    expect(collaborators.tokenFor(DECEASED)).toBeUndefined();
+    expect(auditSink.rows).toHaveLength(0);
+    expect(published).toEqual([]);
+    await app.close();
+  });
+
+  it("fails closed (503 FUNERAL_BAA_UNAVAILABLE) when the BAA reader is unbound, and (409) when it throws", async () => {
+    const unbound = makeServer({ baaReader: "unbound" });
+    const a = await unbound.app.inject({
+      method: "POST",
+      url: "/api/v1/funeral/invite",
+      headers: NURSE,
+      payload: { patientId: DECEASED, funeralHomeId: FH },
+    });
+    expect(a.statusCode).toBe(503);
+    expect(a.json().error.code).toBe("FUNERAL_BAA_UNAVAILABLE");
+    expect(unbound.collaborators.tokenFor(DECEASED)).toBeUndefined();
+    await unbound.app.close();
+    resetAuthorizationContract();
+    resetRbacEngine();
+    const throws = makeServer({ baaReader: "throws" });
+    const b = await throws.app.inject({
+      method: "POST",
+      url: "/api/v1/funeral/invite",
+      headers: NURSE,
+      payload: { patientId: DECEASED, funeralHomeId: FH },
+    });
+    expect(b.statusCode).toBe(409);
+    expect(b.json().error.code).toBe("FUNERAL_HOME_BAA_REQUIRED");
+    expect(throws.collaborators.tokenFor(DECEASED)).toBeUndefined();
+    await throws.app.close();
+  });
+
+  it("a missing or malformed funeralHomeId is 422", async () => {
+    const { app } = makeServer();
+    for (const payload of [{ patientId: DECEASED }, { patientId: DECEASED, funeralHomeId: "not-a-uuid" }]) {
+      const res = await app.inject({ method: "POST", url: "/api/v1/funeral/invite", headers: NURSE, payload });
+      expect(res.statusCode).toBe(422);
+    }
+    await app.close();
   });
 
   it("a missing patientId is 422", async () => {
