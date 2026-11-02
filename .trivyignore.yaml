@@ -76,3 +76,13 @@ vulnerabilities:
       Debian 13's systemd 257.13-1~deb13u1 has no DSA or fixed package yet; Debian records this as a
       minor no-DSA issue and upstream fixed systemd-homed in 261.2 (GHSA-jm29-p7hh-vjhv). Remove this
       when the Bun base image carries the patched systemd package, or re-examine by the expiry.
+  - id: CVE-2026-119373
+    expired_at: 2026-12-31
+    statement: >
+      Heap buffer overflow in sqlite's FTS5 (denial of service) in Debian 13.7's libsqlite3-0
+      3.46.1-7+deb13u2, which Trivy reports as `affected` with no fixed version yet
+      (https://avd.aquasec.com/nvd/cve-2026-119373). It first failed the release scan on 2026-11-02 and
+      blocked every release, not one change. The backend runs Bun against Postgres and no application
+      source uses sqlite (bun:sqlite, sqlite3, better-sqlite3), so the FTS5 path is not reachable from
+      request handling; the library is only a transitive Debian dependency of the base image. Remove
+      this when the Bun base image carries a patched libsqlite3-0, or re-examine by the expiry.
