@@ -195,6 +195,12 @@ services:
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}
+      APNS_KEY_P8: ${APNS_KEY_P8:-}
+      APNS_KEY_ID: ${APNS_KEY_ID:-}
+      APNS_TEAM_ID: ${APNS_TEAM_ID:-}
+      APNS_BUNDLE_ID: ${APNS_BUNDLE_ID:-}
+      APNS_ENVIRONMENT: ${APNS_ENVIRONMENT:-}
     ports:
       - "3000:3000"
     # M36: clamd is reachable only over the dedicated `scan` network (joined by clamav, api and worker alone), so a

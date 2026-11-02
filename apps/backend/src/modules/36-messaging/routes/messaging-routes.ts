@@ -990,9 +990,31 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
         channel: body.channel,
         target: body.target,
         ...(provider !== "web" ? { provider } : {}),
+        // ADR-0105: install identity is native-only; a web / sms / email row never carries it.
+        ...(provider !== "web" && body.installId ? { installId: body.installId } : {}),
+        ...(provider !== "web" && body.environment ? { environment: body.environment } : {}),
+        ...(provider !== "web" && body.appVersion ? { appVersion: body.appVersion } : {}),
+        ...(provider !== "web" && body.appBuild ? { appBuild: body.appBuild } : {}),
         ...(typeof sessionId === "string" && sessionId !== "" ? { sessionId } : {}),
       });
       return reply.code(201).send(result);
+    },
+  );
+
+  // --- the actor's own endpoints: install status for the app and settings (never the token) ---------
+  app.get(
+    "/api/v1/notifications/endpoints",
+    {
+      preHandler: [ENDPOINT],
+      config: {
+        auditRead: {
+          none: "self-only delivery endpoints (provider, install, status); the token and subscription are never returned",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      return { endpoints: await service.listEndpoints(organizationId, userId) };
     },
   );
 

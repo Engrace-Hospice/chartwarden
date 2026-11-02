@@ -217218,12 +217218,183 @@
       }
     },
     "/api/v1/notifications/endpoints": {
+      "get": {
+        "operationId": "getApiV1NotificationsEndpoints",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "List the caller's own delivery endpoints (provider, install, environment, status); never the token",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "endpoints"
+                  ],
+                  "properties": {
+                    "endpoints": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "endpointId",
+                          "channel",
+                          "provider",
+                          "verificationStatus",
+                          "installId",
+                          "environment",
+                          "appVersion",
+                          "appBuild",
+                          "lastFailureCode",
+                          "rotatedAt",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "endpointId": {
+                            "type": "string"
+                          },
+                          "channel": {
+                            "anyOf": [
+                              {
+                                "const": "push",
+                                "type": "string"
+                              },
+                              {
+                                "const": "sms",
+                                "type": "string"
+                              },
+                              {
+                                "const": "email",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "provider": {
+                            "anyOf": [
+                              {
+                                "const": "web",
+                                "type": "string"
+                              },
+                              {
+                                "const": "fcm",
+                                "type": "string"
+                              },
+                              {
+                                "const": "apns",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "verificationStatus": {
+                            "anyOf": [
+                              {
+                                "const": "verified",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "expired",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "installId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "environment": {
+                            "anyOf": [
+                              {
+                                "const": "sandbox",
+                                "type": "string"
+                              },
+                              {
+                                "const": "production",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "appVersion": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "appBuild": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastFailureCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "rotatedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
       "post": {
         "operationId": "postApiV1NotificationsEndpoints",
         "tags": [
           "36-messaging"
         ],
-        "summary": "Register a push/sms/email delivery endpoint (201)",
+        "summary": "Register a push/sms/email delivery endpoint (201); a native install (installId) re-registering with a rotated token replaces its token in place (ADR-0105)",
         "parameters": [],
         "responses": {
           "200": {
@@ -217332,6 +217503,32 @@
                         "type": "string"
                       }
                     ]
+                  },
+                  "installId": {
+                    "pattern": "^[A-Za-z0-9_-]{8,128}$",
+                    "type": "string"
+                  },
+                  "environment": {
+                    "anyOf": [
+                      {
+                        "const": "sandbox",
+                        "type": "string"
+                      },
+                      {
+                        "const": "production",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "appVersion": {
+                    "minLength": 1,
+                    "maxLength": 32,
+                    "type": "string"
+                  },
+                  "appBuild": {
+                    "minLength": 1,
+                    "maxLength": 32,
+                    "type": "string"
                   }
                 }
               }

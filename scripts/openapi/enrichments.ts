@@ -1653,6 +1653,7 @@ import {
   DmStaffSearchResponseSchema as M36DmStaffSearchResponseSchema,
   EditMessageBodySchema as M36EditMessageBodySchema,
   EditMessageResponseSchema as M36EditMessageResponseSchema,
+  EndpointListResponseSchema as M36EndpointListResponseSchema,
   ListMessagesQuerySchema as M36ListMessagesQuerySchema,
   ListThreadQuerySchema as M36ListThreadQuerySchema,
   MentionCandidateQuerySchema as M36MentionCandidateQuerySchema,
@@ -10986,9 +10987,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M36PutPreferencesResponseSchema,
   },
   "POST /api/v1/notifications/endpoints": {
-    summary: "Register a push/sms/email delivery endpoint (201)",
+    summary:
+      "Register a push/sms/email delivery endpoint (201); a native install (installId) re-registering with a rotated token replaces its token in place (ADR-0105)",
     body: M36RegisterEndpointBodySchema,
     response: M36DeliveryEndpointResponseSchema,
+  },
+  "GET /api/v1/notifications/endpoints": {
+    summary:
+      "List the caller's own delivery endpoints (provider, install, environment, status); never the token",
+    response: M36EndpointListResponseSchema,
   },
   "POST /api/v1/notifications/endpoints/:id/verify": {
     summary: "Confirm an endpoint verification token",

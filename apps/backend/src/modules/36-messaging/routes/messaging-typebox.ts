@@ -227,6 +227,11 @@ export const RegisterEndpointBodySchema = Type.Object({
   provider: Type.Optional(
     Type.Union([Type.Literal("web"), Type.Literal("fcm"), Type.Literal("apns")]),
   ),
+  // ADR-0105: native push only. The app-minted opaque install id lets a rotated token replace the old row instead of adding a second endpoint.
+  installId: Type.Optional(Type.String({ pattern: "^[A-Za-z0-9_-]{8,128}$" })),
+  environment: Type.Optional(Type.Union([Type.Literal("sandbox"), Type.Literal("production")])),
+  appVersion: Type.Optional(Type.String({ minLength: 1, maxLength: 32 })),
+  appBuild: Type.Optional(Type.String({ minLength: 1, maxLength: 32 })),
 });
 
 export const EndpointParamsSchema = Type.Object({ id: Id });
@@ -512,6 +517,24 @@ export const DeliveryEndpointResponseSchema = Type.Object({
   endpointId: Type.String(),
   channel: EndpointChannelSchema,
   verificationStatus: EndpointVerificationSchema,
+});
+
+export const EndpointListResponseSchema = Type.Object({
+  endpoints: Type.Array(
+    Type.Object({
+      endpointId: Type.String(),
+      channel: EndpointChannelSchema,
+      provider: Type.Union([Type.Literal("web"), Type.Literal("fcm"), Type.Literal("apns")]),
+      verificationStatus: EndpointVerificationSchema,
+      installId: Type.Union([Type.String(), Type.Null()]),
+      environment: Type.Union([Type.Literal("sandbox"), Type.Literal("production"), Type.Null()]),
+      appVersion: Type.Union([Type.String(), Type.Null()]),
+      appBuild: Type.Union([Type.String(), Type.Null()]),
+      lastFailureCode: Type.Union([Type.String(), Type.Null()]),
+      rotatedAt: Type.Union([Type.String(), Type.Null()]),
+      createdAt: Type.String(),
+    }),
+  ),
 });
 
 // ── alerts ───────────────────────────────────────────────────────────────────────────────────

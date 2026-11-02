@@ -37,6 +37,13 @@ export const deliveryEndpoints = pgTable(
     // WP 5.5 (migration 1130): the session that registered the endpoint. No FK on purpose (`session` is M2's table); a session revoke expires
     // the endpoints linked to it in the same transaction. NULL = registered before the link or without a session.
     sessionId: text("session_id"),
+    // ADR-0105 (migration 1299): native push installation identity. NULL for web/sms/email rows.
+    installId: text("install_id"),
+    environment: text("environment"), // 'sandbox' | 'production' (CHECK-pinned); which APNs host / FCM project issued the token
+    appVersion: text("app_version"),
+    appBuild: text("app_build"),
+    lastFailureCode: text("last_failure_code"), // the provider's reason code, never a message body
+    rotatedAt: timestamp("rotated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
@@ -45,6 +52,9 @@ export const deliveryEndpoints = pgTable(
       t.channel,
       t.endpointValue,
     ),
+    uniquePerInstall: uniqueIndex("delivery_endpoint_install_unique")
+      .on(t.userId, t.provider, t.installId)
+      .where(sql`${t.installId} IS NOT NULL`),
     byUserChannel: index("delivery_endpoint_user_channel_idx").on(t.userId, t.channel),
     bySession: index("delivery_endpoint_session_idx")
       .on(t.userId, t.sessionId)
