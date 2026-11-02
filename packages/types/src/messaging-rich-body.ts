@@ -9,6 +9,7 @@
 // a pass-through. Links accept `https:` and `mailto:` only. See docs/messaging-hub/03-phases-0-to-3.md WP 2.1.
 
 import { CLINICAL_LINK_KINDS, type ClinicalLinkKind } from "./clinical-link";
+import { MENTION_KINDS, type MentionKind } from "./messaging-group-tags";
 
 /** Bumped only by a breaking change to the node set; readers refuse versions they do not know. */
 export const RICH_BODY_SCHEMA_VERSION = 1;
@@ -49,7 +50,8 @@ export interface RichText {
 }
 export interface RichMention {
   readonly type: "mention";
-  readonly kind: "staff" | "patient";
+  /** ADR-0107: `role` / `team` / `on_call` are group tags, resolved to people by the server at send. */
+  readonly kind: MentionKind;
   readonly entityId: string;
   /** Display label at write time; the server rejects a label that is not the directory name, readers prefer the server's. */
   readonly label: string;
@@ -344,7 +346,11 @@ function cleanInline(node: unknown, depth: number, budget: Budget): RichInline {
       return { type: "hardBreak" };
     case "mention": {
       exactKeys(node, ["type", "kind", "entityId", "label"], "mention");
-      if (node.kind !== "staff" && node.kind !== "patient") reject("mention: unknown kind");
+      if (
+        typeof node.kind !== "string" ||
+        !(MENTION_KINDS as readonly string[]).includes(node.kind)
+      )
+        reject("mention: unknown kind");
       if (typeof node.entityId !== "string" || !UUID.test(node.entityId))
         reject("mention: bad entityId");
       if (typeof node.label !== "string") reject("mention: bad label");
@@ -354,7 +360,7 @@ function cleanInline(node: unknown, depth: number, budget: Budget): RichInline {
       spend(budget, `@${label}`);
       return {
         type: "mention",
-        kind: node.kind as "staff" | "patient",
+        kind: node.kind as MentionKind,
         entityId: (node.entityId as string).toLowerCase(),
         label,
       };
@@ -524,7 +530,7 @@ export function parseStoredRichBody(plaintext: string): RichBodyResult {
 // --- plain-text projection ------------------------------------------------------------------------------------
 
 export interface RichMentionSpan {
-  readonly kind: "staff" | "patient";
+  readonly kind: MentionKind;
   readonly entityId: string;
   readonly label: string;
   /** Offsets into `richBodyToPlainText`, covering the `@label` token (what message_entity_reference stores). */

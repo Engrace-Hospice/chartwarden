@@ -144,8 +144,10 @@ export {
 } from "@chartwarden/messaging";
 
 import type { DbClient } from "@chartwarden/db";
+import { GROUP_TAGS_FLAG_KEY } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { createAckBroadcastService as _createAckBroadcastService } from "./ack-broadcast/ack-broadcast-service";
+import { guardEscalationRouter as _guardEscalationRouter } from "./ack-escalation/escalation-router-guard";
 import { createDbAckStore as _createDbAckStore } from "./ack-requests/ack-store-db";
 import { createOpenRequestLookup as _createOpenRequestLookup } from "./ack-requests/open-request-lookup";
 import { createDbUnacknowledgedReader as _createDbUnacknowledgedReader } from "./ack-requests/unacknowledged-reader-db";
@@ -256,6 +258,7 @@ import { registerTemplateRoutes as _registerTemplateRoutes } from "./routes/temp
 import type { UrgentRouteDeps as _UrgentRouteDeps } from "./routes/urgent-routes";
 import type { buildSbarDeps as _buildSbarDeps } from "./sbar/binding";
 import { createDbScheduledSendService as _createDbScheduledSendService } from "./scheduled/scheduled-send-service-db";
+import { getEscalationRouter as _getEscalationRouter } from "./seams";
 import {
   type SessionDeviceBindingInput as _SessionDeviceBindingInput,
   buildSessionDeviceService as _buildSessionDeviceService,
@@ -315,6 +318,10 @@ export function mountMessagingRoutes(
     ackBroadcast?: {
       flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
       rateLimit?: ((request: FastifyRequest, reply: FastifyReply) => Promise<void>) | undefined;
+    };
+    /** ADR-0107 (PROPOSED): group tags. `flags` reads `messaging.group_tags` (absent = off: the group kinds are refused on write and never offered). */
+    groupTags?: {
+      flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
     };
     /** ADR-0106 (PROPOSED): emergency message. `flags` reads `messaging.emergency` (absent = off); `rateLimit` is the optional route budget. */
     emergency?: {
@@ -399,7 +406,20 @@ export function mountMessagingRoutes(
   } = {},
 ): void {
   // GAP-063 — the §4.2 OTP sender; with none bound, sms/email endpoint registration answers 503.
+  const groupTagFlags = opts.groupTags?.flags;
   const service = _createDbMessagingRouteService(db, {
+    ...(groupTagFlags
+      ? {
+          groupTags: {
+            isEnabled: async (orgId: string) =>
+              (await groupTagFlags.forOrg(orgId))[GROUP_TAGS_FLAG_KEY] === true,
+            // The same org-checking guard as the role send (ADR-0081): a test source or a malformed answer is refused.
+            router: _guardEscalationRouter({
+              resolveTier: (orgId, request) => _getEscalationRouter().resolveTier(orgId, request),
+            }),
+          },
+        }
+      : {}),
     ...(opts.breakGlass ? { breakGlass: opts.breakGlass } : {}),
     ...(opts.outbox ? { outbox: opts.outbox } : {}),
     ...(opts.sendEndpointVerificationCode

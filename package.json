@@ -626,6 +626,7 @@
     "test:m36:response-analytics:live": "vitest run apps/backend/__tests__/m36-response-analytics.live.test.ts",
     "test:m36:ack-broadcast:live": "vitest run apps/backend/__tests__/m36-ack-broadcast.live.test.ts",
     "test:m36:emergency:live": "vitest run --no-file-parallelism apps/backend/__tests__/m36-message-emergency.live.test.ts apps/backend/__tests__/m36-emergency-service.live.test.ts",
+    "test:m36:group-tags:live": "vitest run --no-file-parallelism apps/backend/__tests__/m36-group-tags.live.test.ts",
     "test:m36:alarm-ingest:live": "vitest run apps/backend/__tests__/m36-alarm-ingest.live.test.ts",
     "test:m36:ack-escalation:live": "vitest run apps/backend/__tests__/m36-ack-escalation.live.test.ts",
     "test:m36:delivery-target:live": "vitest run apps/backend/__tests__/m36-delivery-target.live.test.ts",

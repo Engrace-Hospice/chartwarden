@@ -73,6 +73,7 @@ import {
   ForbiddenError,
   NotFoundError,
   formatMrn,
+  isGroupTagKind,
   richBodySbar,
 } from "@chartwarden/types";
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
@@ -101,6 +102,7 @@ import {
   hashVerificationCode,
 } from "./endpoint-verification";
 import { MESSAGE_UNDER_LEGAL_HOLD_CODE } from "./governance/under-hold";
+import { type GroupTagPorts, groupTagCandidates, resolveGroupTags } from "./group-tags/group-tags";
 import { isMessageHeldNow } from "./jobs/retention-hold-sql";
 import { assertMemberCategoryAllowed, excludedMemberUserIds } from "./member-category-gate";
 import { createDbMentionNonMemberSearch } from "./mention-non-member-service-db";
@@ -129,6 +131,7 @@ const CM = schema.channelMembers;
 const MSG = schema.messages;
 const MR = schema.messageReceipts;
 const MER = schema.messageEntityReferences;
+const GTR = schema.messageGroupTagRecipients;
 const MREV = schema.messageRevisions;
 const MATT = schema.messageAttachments;
 const MPIN = schema.messagePins;
@@ -722,6 +725,8 @@ export function createDbMessagingRouteService(
       /** Whether the user still holds messaging.break_glass.invoke (checked at every read under a grant). Absent => grants are not honoured. */
       holdsInvoke?: ((orgId: string, userId: string) => Promise<boolean>) | undefined;
     };
+    /** ADR-0107 (PROPOSED): group tags (`@role`, `@care-team`, `@on-call`). Omitted => the group kinds are refused (422) and never offered. */
+    groupTags?: GroupTagPorts;
     /** Operational warning sink (ids only); default: silent. */
     warn?: (message: string, context: Record<string, string>) => void;
     outbox?: MessagingOutboxPort;
@@ -832,6 +837,7 @@ export function createDbMessagingRouteService(
     userId: string,
     channelId: string,
     query: string,
+    withGroups = false,
   ) {
     const channel = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
       await assertActiveMessagingUser(tx, orgId, userId);
@@ -929,11 +935,22 @@ export function createDbMessagingRouteService(
       if (needle && staff.length >= 20) break;
     }
 
+    // ADR-0107: group tags are offered by the picker only (the send path validates them itself).
+    const groups = withGroups
+      ? await withOrgContext(db, { organizationId: orgId, userId }, (tx) =>
+          groupTagCandidates(
+            tx,
+            opts.groupTags,
+            { orgId, channel: { id: channelId, kind: channel.kind, subjectId: channel.subjectId } },
+            needle,
+          ),
+        )
+      : [];
     const patients = [];
     if (channel.kind === "care_team" && channel.subjectId) {
       try {
         const authorizedLabel = await patientMentionLabel(orgId, userId, channel.subjectId);
-        if (!authorizedLabel) return staff;
+        if (!authorizedLabel) return [...groups, ...staff];
         const patient = await getSeam("PatientReader").findById({
           organizationId: orgId,
           id: channel.subjectId,
@@ -957,7 +974,7 @@ export function createDbMessagingRouteService(
         // M5 identity is an authorization dependency: fail closed for patient candidates.
       }
     }
-    return [...staff, ...patients];
+    return [...groups, ...staff, ...patients];
   }
   async function canViewChannelFor(
     orgId: string,
@@ -1596,13 +1613,14 @@ export function createDbMessagingRouteService(
       const clinicalLinks = assertLinksMatchBody(input.richBody, input.clinicalLinks);
       const references = input.references ?? [];
       validateReferenceRanges(input.body, references);
-      const candidates = references.length
+      const candidates = references.some((reference) => !isGroupTagKind(reference.kind))
         ? await mentionCandidates(orgId, input.authorUserId, input.channelId, "")
         : [];
       const candidateByKey = new Map(
         candidates.map((candidate) => [`${candidate.kind}:${candidate.entityId}`, candidate]),
       );
       for (const reference of references) {
+        if (isGroupTagKind(reference.kind)) continue; // ADR-0107: resolved and validated inside the send transaction
         if (reference.kind === "patient") {
           if (
             input.body.slice(reference.start, reference.end) !== "@Patient" ||
@@ -1698,6 +1716,14 @@ export function createDbMessagingRouteService(
           // WP 3.10: a caller-supplied write that must commit or roll back with the message (never run on a replay).
           await input.inTransaction?.(tx, { messageId, createdAt });
           if (references.length > 0) {
+            // ADR-0107: group tags become people here, frozen in the same transaction (a refusal rolls the message back).
+            const groupTags = await resolveGroupTags(tx, opts.groupTags, {
+              orgId,
+              authorUserId: input.authorUserId,
+              channel: ch,
+              body: input.body,
+              references,
+            });
             await tx.insert(MER).values(
               references.map((reference) => ({
                 organizationId: orgId,
@@ -1708,14 +1734,31 @@ export function createDbMessagingRouteService(
                 endOffset: reference.end,
               })),
             );
-            for (const mentionedUserId of new Set(
-              references
+            if (groupTags.length > 0) {
+              await tx
+                .insert(GTR)
+                .values(
+                  groupTags.flatMap((tag) =>
+                    tag.userIds.map((userId) => ({
+                      organizationId: orgId,
+                      messageId,
+                      tagKind: tag.kind,
+                      tagEntityId: tag.reference.entityId.toLowerCase(),
+                      userId,
+                    })),
+                  ),
+                )
+                .onConflictDoNothing();
+            }
+            for (const mentionedUserId of new Set([
+              ...references
                 .filter(
                   (reference) =>
                     reference.kind === "staff" && reference.entityId !== input.authorUserId,
                 )
                 .map((reference) => reference.entityId),
-            )) {
+              ...groupTags.flatMap((tag) => tag.userIds),
+            ])) {
               await opts.outbox?.publish(tx, {
                 eventName: "m36.message.mentioned",
                 organizationId: orgId,
@@ -1767,7 +1810,31 @@ export function createDbMessagingRouteService(
         const candidateByKey = new Map(
           candidates.map((candidate) => [`${candidate.kind}:${candidate.entityId}`, candidate]),
         );
+        // ADR-0107: an edit may keep a group tag the message was sent with (the snapshot is untouched, nobody is alerted again); it cannot add one.
+        const keptTags = await withOrgContext(
+          db,
+          { organizationId: orgId, userId: input.userId },
+          async (tx) =>
+            new Set(
+              (
+                await tx
+                  .select({ kind: GTR.tagKind, entityId: GTR.tagEntityId })
+                  .from(GTR)
+                  .where(and(eq(GTR.organizationId, orgId), eq(GTR.messageId, input.messageId)))
+              ).map((row) => `${row.kind}:${row.entityId}`),
+            ),
+        );
         for (const reference of references) {
+          if (isGroupTagKind(reference.kind)) {
+            if (!keptTags.has(`${reference.kind}:${reference.entityId.toLowerCase()}`)) {
+              throw new ChartWardenError(
+                "INVALID_MESSAGE_REFERENCES",
+                "a group tag cannot be added by an edit",
+                422,
+              );
+            }
+            continue;
+          }
           if (reference.kind === "patient") {
             if (
               input.body.slice(reference.start, reference.end) !== "@Patient" ||
@@ -2085,7 +2152,7 @@ export function createDbMessagingRouteService(
     },
 
     async searchMentionCandidates(orgId, userId, channelId, query) {
-      return mentionCandidates(orgId, userId, channelId, query);
+      return mentionCandidates(orgId, userId, channelId, query, true);
     },
 
     // --- open/find a 1:1 DM channel (membership-validated + concurrency-safe) -------------------
