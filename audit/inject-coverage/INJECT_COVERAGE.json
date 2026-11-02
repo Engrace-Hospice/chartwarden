@@ -4,7 +4,7 @@
     "covered": 40,
     "routes": 1884,
     "coveredRoutes": 1884,
-    "directRoutesReferenced": 1717
+    "directRoutesReferenced": 1720
   },
   "modules": [
     {
@@ -590,6 +590,7 @@
         "apps/backend/__tests__/m36-delivery-target.live.test.ts",
         "apps/backend/__tests__/m36-delivery-target.test.ts",
         "apps/backend/__tests__/m36-drafts-routes.test.ts",
+        "apps/backend/__tests__/m36-emergency-service.live.test.ts",
         "apps/backend/__tests__/m36-export-routes.test.ts",
         "apps/backend/__tests__/m36-export.live.test.ts",
         "apps/backend/__tests__/m36-external-share-proxy.test.ts",
@@ -648,7 +649,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 157
+      "directRoutesReferenced": 160
     },
     {
       "module": "37-ipu",
