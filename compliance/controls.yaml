@@ -360,6 +360,16 @@ controls:
       - script: test:m30:phi-scope:live
       - script: test:m32:kill-switch-role-key:live
 
+  - id: CW-DD-01
+    title: Death notifications — external disclosure gated on a BAA and explicit selection; internal notices fixed-text and explicitly acknowledged
+    hipaa: ["164.502(e)", "164.308(b)(1)", "164.312(b)"]
+    soc2: ["CC6.7", "CC9.2"]
+    status: implemented
+    evidence:
+      - script: test:m36:death-notifications:live
+      - script: arch:outbox-bindings
+      - file: apps/backend/src/modules/36-messaging/death-notification/death-notification-service.ts
+
 # Every one of these must be cited by at least one row (the gate enforces it), so a row cannot be
 # deleted to make a gap disappear.
 required:

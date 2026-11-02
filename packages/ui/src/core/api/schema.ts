@@ -16302,6 +16302,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/death-boards/{boardId}/funeral-home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Staff SELECT the funeral home (funeral.invite) to receive the existing M2 funeral-home secure link. Sent only when a BAA is on file for that MDM funeral_home entity (fail closed): otherwise the notice is recorded blocked_no_baa, a supervisor is alerted and nothing is sent. The address is used once and never stored or echoed. The message is fixed text with no PHI. Repeating it never sends a second link. 503 when the transactional email provider is not bound */
+        post: operations["postApiV1MessagingDeathboardsByBoardIdFuneralhome"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/death-boards/{boardId}/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The board's death notices and their state (internal in-app notices plus any funeral-home notice). Ids, enums and instants only; can_ack is the server's verdict for the caller. A missing, foreign or Part 2-restricted board is the same 404 */
+        get: operations["getApiV1MessagingDeathboardsByBoardIdNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/death-notifications/{notificationId}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The recipient (or a messaging.review holder) EXPLICITLY acknowledges an internal death notice; never a read receipt. Repeating it as the same person is a no-op; someone else is 403 DEATH_NOTIFICATION_NOT_RECIPIENT; an external notice is 409 */
+        post: operations["postApiV1MessagingDeathnotificationsByNotificationIdAck"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/deliveries/{id}/target": {
         parameters: {
             query?: never;
@@ -76786,6 +76837,122 @@ export interface operations {
                                 completed_by_user_id: string | null;
                                 actions: ("complete" | "reassign")[];
                             }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingDeathboardsByBoardIdFuneralhome: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                boardId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    funeral_home_entity_id: string;
+                    recipient_email: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        notification: {
+                            id: string;
+                            board_id: string;
+                            recipient_kind: "attending" | "medical_director" | "bereavement_coordinator" | "billing_lead" | "pharmacy_liaison" | "dme_liaison" | "funeral_home" | "pharmacy_vendor" | "dme_vendor";
+                            state: "pending" | "sent" | "acked" | "failed" | "blocked_no_baa" | "not_applicable";
+                            /** Format: date-time */
+                            created_at: string;
+                            acked_at: string | null;
+                            acked_by: string | null;
+                            can_ack: boolean;
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingDeathboardsByBoardIdNotifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                boardId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        enabled: boolean;
+                        notifications: {
+                            id: string;
+                            board_id: string;
+                            recipient_kind: "attending" | "medical_director" | "bereavement_coordinator" | "billing_lead" | "pharmacy_liaison" | "dme_liaison" | "funeral_home" | "pharmacy_vendor" | "dme_vendor";
+                            state: "pending" | "sent" | "acked" | "failed" | "blocked_no_baa" | "not_applicable";
+                            /** Format: date-time */
+                            created_at: string;
+                            acked_at: string | null;
+                            acked_by: string | null;
+                            can_ack: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingDeathnotificationsByNotificationIdAck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notificationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        notification: {
+                            id: string;
+                            board_id: string;
+                            recipient_kind: "attending" | "medical_director" | "bereavement_coordinator" | "billing_lead" | "pharmacy_liaison" | "dme_liaison" | "funeral_home" | "pharmacy_vendor" | "dme_vendor";
+                            state: "pending" | "sent" | "acked" | "failed" | "blocked_no_baa" | "not_applicable";
+                            /** Format: date-time */
+                            created_at: string;
+                            acked_at: string | null;
+                            acked_by: string | null;
+                            can_ack: boolean;
                         };
                     };
                 };

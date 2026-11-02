@@ -46,7 +46,7 @@ const READ = requirePermission("messaging.read") as PreHandler;
 const PATIENT_READ = requirePermission("patient.read") as PreHandler;
 const SUPERVISOR = requirePermission("messaging.review") as PreHandler;
 
-async function actorOf(request: FastifyRequest, reply: FastifyReply): Promise<DeathBoardActor> {
+export async function actorOf(request: FastifyRequest, reply: FastifyReply): Promise<DeathBoardActor> {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
   let supervisor = true;

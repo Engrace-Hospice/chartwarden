@@ -195387,6 +195387,526 @@
         }
       }
     },
+    "/api/v1/messaging/death-boards/{boardId}/funeral-home": {
+      "post": {
+        "operationId": "postApiV1MessagingDeathboardsByBoardIdFuneralhome",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Staff SELECT the funeral home (funeral.invite) to receive the existing M2 funeral-home secure link. Sent only when a BAA is on file for that MDM funeral_home entity (fail closed): otherwise the notice is recorded blocked_no_baa, a supervisor is alerted and nothing is sent. The address is used once and never stored or echoed. The message is fixed text with no PHI. Repeating it never sends a second link. 503 when the transactional email provider is not bound",
+        "parameters": [
+          {
+            "name": "boardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "notification"
+                  ],
+                  "properties": {
+                    "notification": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "board_id",
+                        "recipient_kind",
+                        "state",
+                        "created_at",
+                        "acked_at",
+                        "acked_by",
+                        "can_ack"
+                      ],
+                      "properties": {
+                        "id": {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "board_id": {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "recipient_kind": {
+                          "anyOf": [
+                            {
+                              "const": "attending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "medical_director",
+                              "type": "string"
+                            },
+                            {
+                              "const": "bereavement_coordinator",
+                              "type": "string"
+                            },
+                            {
+                              "const": "billing_lead",
+                              "type": "string"
+                            },
+                            {
+                              "const": "pharmacy_liaison",
+                              "type": "string"
+                            },
+                            {
+                              "const": "dme_liaison",
+                              "type": "string"
+                            },
+                            {
+                              "const": "funeral_home",
+                              "type": "string"
+                            },
+                            {
+                              "const": "pharmacy_vendor",
+                              "type": "string"
+                            },
+                            {
+                              "const": "dme_vendor",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sent",
+                              "type": "string"
+                            },
+                            {
+                              "const": "acked",
+                              "type": "string"
+                            },
+                            {
+                              "const": "failed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "blocked_no_baa",
+                              "type": "string"
+                            },
+                            {
+                              "const": "not_applicable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "created_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "acked_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "acked_by": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "can_ack": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "funeral_home_entity_id",
+                  "recipient_email"
+                ],
+                "properties": {
+                  "funeral_home_entity_id": {
+                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "type": "string"
+                  },
+                  "recipient_email": {
+                    "minLength": 3,
+                    "maxLength": 254,
+                    "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/death-boards/{boardId}/notifications": {
+      "get": {
+        "operationId": "getApiV1MessagingDeathboardsByBoardIdNotifications",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The board's death notices and their state (internal in-app notices plus any funeral-home notice). Ids, enums and instants only; can_ack is the server's verdict for the caller. A missing, foreign or Part 2-restricted board is the same 404",
+        "parameters": [
+          {
+            "name": "boardId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "enabled",
+                    "notifications"
+                  ],
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "notifications": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "board_id",
+                          "recipient_kind",
+                          "state",
+                          "created_at",
+                          "acked_at",
+                          "acked_by",
+                          "can_ack"
+                        ],
+                        "properties": {
+                          "id": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "board_id": {
+                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "type": "string"
+                          },
+                          "recipient_kind": {
+                            "anyOf": [
+                              {
+                                "const": "attending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "medical_director",
+                                "type": "string"
+                              },
+                              {
+                                "const": "bereavement_coordinator",
+                                "type": "string"
+                              },
+                              {
+                                "const": "billing_lead",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pharmacy_liaison",
+                                "type": "string"
+                              },
+                              {
+                                "const": "dme_liaison",
+                                "type": "string"
+                              },
+                              {
+                                "const": "funeral_home",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pharmacy_vendor",
+                                "type": "string"
+                              },
+                              {
+                                "const": "dme_vendor",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "sent",
+                                "type": "string"
+                              },
+                              {
+                                "const": "acked",
+                                "type": "string"
+                              },
+                              {
+                                "const": "failed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "blocked_no_baa",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_applicable",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "created_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "acked_at": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "acked_by": {
+                            "anyOf": [
+                              {
+                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "can_ack": {
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/messaging/death-notifications/{notificationId}/ack": {
+      "post": {
+        "operationId": "postApiV1MessagingDeathnotificationsByNotificationIdAck",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "The recipient (or a messaging.review holder) EXPLICITLY acknowledges an internal death notice; never a read receipt. Repeating it as the same person is a no-op; someone else is 403 DEATH_NOTIFICATION_NOT_RECIPIENT; an external notice is 409",
+        "parameters": [
+          {
+            "name": "notificationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "notification"
+                  ],
+                  "properties": {
+                    "notification": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "board_id",
+                        "recipient_kind",
+                        "state",
+                        "created_at",
+                        "acked_at",
+                        "acked_by",
+                        "can_ack"
+                      ],
+                      "properties": {
+                        "id": {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "board_id": {
+                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "type": "string"
+                        },
+                        "recipient_kind": {
+                          "anyOf": [
+                            {
+                              "const": "attending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "medical_director",
+                              "type": "string"
+                            },
+                            {
+                              "const": "bereavement_coordinator",
+                              "type": "string"
+                            },
+                            {
+                              "const": "billing_lead",
+                              "type": "string"
+                            },
+                            {
+                              "const": "pharmacy_liaison",
+                              "type": "string"
+                            },
+                            {
+                              "const": "dme_liaison",
+                              "type": "string"
+                            },
+                            {
+                              "const": "funeral_home",
+                              "type": "string"
+                            },
+                            {
+                              "const": "pharmacy_vendor",
+                              "type": "string"
+                            },
+                            {
+                              "const": "dme_vendor",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "state": {
+                          "anyOf": [
+                            {
+                              "const": "pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sent",
+                              "type": "string"
+                            },
+                            {
+                              "const": "acked",
+                              "type": "string"
+                            },
+                            {
+                              "const": "failed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "blocked_no_baa",
+                              "type": "string"
+                            },
+                            {
+                              "const": "not_applicable",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "created_at": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "acked_at": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "acked_by": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "can_ack": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/messaging/deliveries/{id}/target": {
       "get": {
         "operationId": "getApiV1MessagingDeliveriesByIdTarget",

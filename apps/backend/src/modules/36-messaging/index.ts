@@ -230,6 +230,10 @@ import {
   type DeathBoardRouteDeps as _DeathBoardRouteDeps,
   registerDeathBoardRoutes as _registerDeathBoardRoutes,
 } from "./routes/death-board-routes";
+import {
+  type DeathNotificationRouteDeps as _DeathNotificationRouteDeps,
+  registerDeathNotificationRoutes as _registerDeathNotificationRoutes,
+} from "./routes/death-notification-routes";
 import { registerDraftRoutes as _registerDraftRoutes } from "./routes/draft-routes";
 import { registerExportRoutes as _registerExportRoutes } from "./routes/export-routes";
 import { registerExternalShareRoutes as _registerExternalShareRoutes } from "./routes/external-share-routes";
@@ -387,6 +391,8 @@ export function mountMessagingRoutes(
     family?: Omit<_FamilyBindingInput, "outbox">;
     /** WP 6.9 (ADR-0098, PROPOSED): the death-event coordination board (flag `messaging.death_board` + service). Omitted => not mounted. */
     deathBoard?: _DeathBoardRouteDeps;
+    /** M36 death-notification cascade (flag `messaging.death_notifications`): list / acknowledge / select the funeral home. Omitted => not mounted. */
+    deathNotifications?: _DeathNotificationRouteDeps;
     /**
      * WP 6.10 (ADR-0102, PROPOSED): alarm ingest, WATCH ONLY. `flags` is the M1 reader for `messaging.alarm_ingest` (absent or off => the inbound
      * route and create / rotate are refused; list and disable never depend on it). `alerts` is the lazy AlertEmitter seam; the limiters are the
@@ -605,6 +611,7 @@ export function mountMessagingRoutes(
   }
   // WP 6.9 (ADR-0098, PROPOSED) - death-event coordination board; every route is the uniform 404 while the tenant flag is off.
   if (opts.deathBoard) _registerDeathBoardRoutes(app, opts.deathBoard);
+  if (opts.deathNotifications) _registerDeathNotificationRoutes(app, opts.deathNotifications);
   // WP 6.10 (ADR-0102, PROPOSED) - alarm ingest, WATCH ONLY: a signed third-party alarm becomes an ordinary alert. Never an acknowledgment request,
   // never an escalation, never a page by itself. The inbound route and create / rotate are behind the tenant flag `messaging.alarm_ingest`.
   if (opts.alarmIngest) {
@@ -631,6 +638,7 @@ export { buildTaskDeps } from "./tasks/deps";
 export { buildHandoffDeps } from "./handoffs/deps";
 export { buildReviewDeps } from "./review/deps";
 export { buildDeathBoardDeps } from "./death-board/deps";
+export { buildDeathNotificationDeps } from "./death-notification/deps";
 // WP 6.5 (ADR-0095): AI summaries and reply drafts. The port is injected by the boot (M32's governed pipeline); absent = "AI unavailable".
 export { buildAiDeps } from "./ai/binding";
 export { UNAVAILABLE_AI_PORT } from "./ai/unavailable-ai-port";

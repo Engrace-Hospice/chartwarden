@@ -1542,6 +1542,12 @@ import {
   ListDeathBoardsQuerySchema as M36ListDeathBoardsQuerySchema,
   ReassignDeathBoardItemBodySchema as M36ReassignDeathBoardItemBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/death-board-typebox";
+// M36 death-notification cascade (builds on ADR-0098, PROPOSED).
+import {
+  DeathNotificationListResponseSchema as M36DeathNotificationListResponseSchema,
+  DeathNotificationResponseSchema as M36DeathNotificationResponseSchema,
+  SendFuneralHomeBodySchema as M36SendFuneralHomeBodySchema,
+} from "../../apps/backend/src/modules/36-messaging/routes/death-notification-typebox";
 // M36 WP 4.8 deep-link resolver.
 import { DeliveryTargetResponseSchema as M36DeliveryTargetResponseSchema } from "../../apps/backend/src/modules/36-messaging/routes/delivery-target-typebox";
 import {
@@ -11269,6 +11275,24 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Reassign a checklist item (WP 6.9; the owner, or a messaging.review holder). The target must be an active user the Part 2 gate admits for the patient (422 DEATH_BOARD_OWNER_INVALID). Audited with the actor and reason, tells the new owner with fixed text, clears the no-owner flag. Repeating it is a no-op; a finished item is 409",
     body: M36ReassignDeathBoardItemBodySchema,
     response: M36DeathBoardItemResponseSchema,
+  },
+
+  // M36 death-notification cascade (flag messaging.death_notifications; 404 while off, the list answers enabled:false)
+  "GET /api/v1/messaging/death-boards/:boardId/notifications": {
+    summary:
+      "The board's death notices and their state (internal in-app notices plus any funeral-home notice). Ids, enums and instants only; can_ack is the server's verdict for the caller. A missing, foreign or Part 2-restricted board is the same 404",
+    response: M36DeathNotificationListResponseSchema,
+  },
+  "POST /api/v1/messaging/death-notifications/:notificationId/ack": {
+    summary:
+      "The recipient (or a messaging.review holder) EXPLICITLY acknowledges an internal death notice; never a read receipt. Repeating it as the same person is a no-op; someone else is 403 DEATH_NOTIFICATION_NOT_RECIPIENT; an external notice is 409",
+    response: M36DeathNotificationResponseSchema,
+  },
+  "POST /api/v1/messaging/death-boards/:boardId/funeral-home": {
+    summary:
+      "Staff SELECT the funeral home (funeral.invite) to receive the existing M2 funeral-home secure link. Sent only when a BAA is on file for that MDM funeral_home entity (fail closed): otherwise the notice is recorded blocked_no_baa, a supervisor is alerted and nothing is sent. The address is used once and never stored or echoed. The message is fixed text with no PHI. Repeating it never sends a second link. 503 when the transactional email provider is not bound",
+    body: M36SendFuneralHomeBodySchema,
+    response: M36DeathNotificationResponseSchema,
   },
 
   // external partner share (WP 6.6, ADR-0096 PROPOSED)
