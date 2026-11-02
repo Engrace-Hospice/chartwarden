@@ -353,26 +353,8 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
-  {
-    eventType: "m36.death_notification.pharmacy_liaison",
-    category: "clinical_routine",
-    severityFloor: "info",
-    recipientResolver: "role_set",
-    resolverArgs: { roleKeys: ["pharmacy_liaison"] },
-    channelsOverride: ["in_app"],
-    systemLocked: false,
-    enabled: true,
-  },
-  {
-    eventType: "m36.death_notification.dme_liaison",
-    category: "clinical_routine",
-    severityFloor: "info",
-    recipientResolver: "role_set",
-    resolverArgs: { roleKeys: ["dme_liaison"] },
-    channelsOverride: ["in_app"],
-    systemLocked: false,
-    enabled: true,
-  },
+  // pharmacy_liaison / dme_liaison: NO rule on purpose. Their role keys are undecided, so the service sends those two notices straight to the
+  // tenant-admin fallback (death-notification-alerts.ts DEATH_NOTIFICATION_DEFERRED_ROLE_KINDS). Re-add a role_set rule here when the keys are decided.
   {
     eventType: "m36.death_notification.blocked_no_baa",
     category: "clinical_routine",

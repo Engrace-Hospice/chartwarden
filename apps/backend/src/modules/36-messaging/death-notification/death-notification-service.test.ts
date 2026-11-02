@@ -5,6 +5,7 @@ import { PLATFORM_DEFAULT_ALERT_RULES } from "@chartwarden/messaging";
 import { describe, expect, it, vi } from "vitest";
 import type { DeathBoardActor } from "../death-board/death-board-service";
 import {
+  DEATH_NOTIFICATION_DEFERRED_ROLE_KINDS,
   DEATH_NOTIFICATION_ROLE_KEYS,
   DEATH_NOTIFICATION_TEXT,
 } from "./death-notification-alerts";
@@ -128,11 +129,25 @@ describe("fanOutInternal", () => {
     await expect(service.fanOutInternal(ORG, "00000000-0000-4000-8000-0000000000ff", "e")).rejects.toThrow();
   });
 
-  it("role keys in the notices match the seeded alert rules", () => {
+  it("role keys in the notices match the seeded alert rules (deferred kinds have none)", () => {
     for (const [kind, keys] of Object.entries(DEATH_NOTIFICATION_ROLE_KEYS)) {
       const rule = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === `m36.death_notification.${kind}`);
-      expect(rule?.resolverArgs).toMatchObject({ roleKeys: keys });
+      if (DEATH_NOTIFICATION_DEFERRED_ROLE_KINDS.includes(kind as never)) {
+        expect(keys).toEqual([]);
+        expect(rule).toBeUndefined();
+      } else {
+        expect(rule?.resolverArgs).toMatchObject({ roleKeys: keys });
+      }
     }
+  });
+
+  it("sends pharmacy and DME straight to the tenant-admin fallback, never a role lookup", async () => {
+    const { service, emit } = build();
+    await service.fanOutInternal(ORG, BOARD, "e");
+    const types = emit.mock.calls.map((c) => c[1].eventType as string);
+    expect(types).not.toContain("m36.death_notification.pharmacy_liaison");
+    expect(types).not.toContain("m36.death_notification.dme_liaison");
+    expect(types.filter((t) => t === "m30.alerts.recipient_fallback")).toHaveLength(2);
   });
 });
 

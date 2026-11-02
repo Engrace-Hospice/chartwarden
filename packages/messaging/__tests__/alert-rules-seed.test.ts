@@ -52,8 +52,6 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m36.death_notification.medical_director",
       "m36.death_notification.bereavement_coordinator",
       "m36.death_notification.billing_lead",
-      "m36.death_notification.pharmacy_liaison",
-      "m36.death_notification.dme_liaison",
       "m36.death_notification.blocked_no_baa",
       "m36.death_notification.unacked",
       "alarm_ingest.nurse_call",

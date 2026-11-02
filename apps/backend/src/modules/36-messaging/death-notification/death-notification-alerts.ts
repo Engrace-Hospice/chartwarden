@@ -5,7 +5,7 @@
 import { createHash } from "node:crypto";
 import type { AlertEmitter } from "@chartwarden/messaging";
 import type { DeathNotificationInternalKind } from "@chartwarden/types";
-import { emitWithRecipientFallback } from "../alert-recipient-fallback";
+import { QUALITY_RECIPIENT_FALLBACK_EVENT_TYPE, emitWithRecipientFallback } from "../alert-recipient-fallback";
 
 export const DEATH_NOTIFICATION_ALERT_PREFIX = "m36.death_notification" as const;
 export const DEATH_NOTIFICATION_BLOCKED_ALERT = "m36.death_notification.blocked_no_baa" as const;
@@ -26,9 +26,18 @@ export const DEATH_NOTIFICATION_ROLE_KEYS: Readonly<
   medical_director: ["medical_director"],
   bereavement_coordinator: ["bereavement_coordinator"],
   billing_lead: ["billing_manager", "biller"],
-  pharmacy_liaison: ["pharmacy_liaison"],
-  dme_liaison: ["dme_liaison"],
+  // DEFERRED: the role keys for pharmacy and DME are undecided (no confirmed real roles). Empty = no role holder is looked up; the notice goes
+  // straight to the tenant admins (see DEATH_NOTIFICATION_DEFERRED_ROLE_KINDS). To switch back on: put the confirmed keys here, re-add the two
+  // `m36.death_notification.<kind>` role_set rules in packages/messaging/src/seed/alert-rules.ts, and drop the kind from the deferred list.
+  pharmacy_liaison: [],
+  dme_liaison: [],
 };
+
+/** Kinds whose role is not yet decided: no role lookup, tenant-admin fallback only. */
+export const DEATH_NOTIFICATION_DEFERRED_ROLE_KINDS: readonly DeathNotificationInternalKind[] = [
+  "pharmacy_liaison",
+  "dme_liaison",
+];
 
 export type DeathNotificationWarn = (message: string, context: Record<string, string>) => void;
 
@@ -51,19 +60,26 @@ export async function emitInternalNotice(
   },
   warn?: DeathNotificationWarn,
 ): Promise<number> {
+  const correlationId = `death-notification:${deathNotificationCorrelationKey(input.notificationId)}:notice`;
+  const payload = {
+    ...(input.recipientUserId ? { recipientUserId: input.recipientUserId } : {}),
+    message: DEATH_NOTIFICATION_TEXT.notice,
+    deepLink: DEATH_NOTIFICATION_DEEP_LINK,
+  };
+  if (DEATH_NOTIFICATION_DEFERRED_ROLE_KINDS.includes(input.kind)) {
+    // Role undecided: go straight to the tenant admins (same fallback event emitWithRecipientFallback uses), no role holder lookup.
+    const sent = await alerts.emit(orgId, {
+      eventType: QUALITY_RECIPIENT_FALLBACK_EVENT_TYPE,
+      severity: "info",
+      correlationId: `${correlationId}:fb`,
+      payload: { ...payload, eventType: QUALITY_RECIPIENT_FALLBACK_EVENT_TYPE, originalEventType: deathNotificationAlertType(input.kind) },
+    });
+    return sent.resolvedRecipientCount;
+  }
   const { resolvedRecipientCount } = await emitWithRecipientFallback(
     alerts,
     orgId,
-    {
-      eventType: deathNotificationAlertType(input.kind),
-      severity: "info",
-      correlationId: `death-notification:${deathNotificationCorrelationKey(input.notificationId)}:notice`,
-      payload: {
-        ...(input.recipientUserId ? { recipientUserId: input.recipientUserId } : {}),
-        message: DEATH_NOTIFICATION_TEXT.notice,
-        deepLink: DEATH_NOTIFICATION_DEEP_LINK,
-      },
-    },
+    { eventType: deathNotificationAlertType(input.kind), severity: "info", correlationId, payload },
     warn,
   );
   return resolvedRecipientCount;

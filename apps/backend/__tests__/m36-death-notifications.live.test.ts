@@ -34,7 +34,7 @@ import { buildDeathBoardDeps } from "../src/modules/36-messaging/death-board/dep
 import { createDbDeathBoardStore } from "../src/modules/36-messaging/death-board/death-board-store";
 import { executedBaaGate } from "../src/bootstrap/death-notification-baa-gate";
 import { withBoardOpenedEvent } from "../src/modules/36-messaging/death-notification/death-board-opened-store";
-import { DEATH_NOTIFICATION_TEXT } from "../src/modules/36-messaging/death-notification/death-notification-alerts";
+import { DEATH_NOTIFICATION_TEXT, deathNotificationCorrelationKey } from "../src/modules/36-messaging/death-notification/death-notification-alerts";
 import { buildDeathNotificationDeps } from "../src/modules/36-messaging/death-notification/deps";
 import {
   createDrizzleAlertEmitter,
@@ -315,6 +315,24 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
         [ORG_A],
       );
       expect(fallbacks.length).toBeGreaterThan(0);
+    });
+
+    it("pharmacy and DME notices (role keys undecided) go straight to the tenant-admin fallback, no role-rule alert", async () => {
+      const { boardId, opened } = await newDeath();
+      await deliverOpened(opened);
+      expect(await alertRows("m36.death_notification.pharmacy_liaison")).toHaveLength(0);
+      expect(await alertRows("m36.death_notification.dme_liaison")).toHaveLength(0);
+      const rows = await noticeRows(boardId);
+      for (const kind of ["pharmacy_liaison", "dme_liaison"]) {
+        const row = rows.find((r) => r.recipient_kind === kind);
+        expect(row?.state).toBe("sent");
+        const key = deathNotificationCorrelationKey(row?.id as string);
+        const fb = await kit.one(
+          "SELECT 1 FROM alert WHERE organization_id=$1 AND event_type='m30.alerts.recipient_fallback' AND correlation_id=$2",
+          [ORG_A, `death-notification:${key}:notice:fb`],
+        );
+        expect(fb).toHaveLength(1);
+      }
     });
 
     it("flag off writes no notification at all", async () => {
