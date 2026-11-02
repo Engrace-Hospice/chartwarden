@@ -148,6 +148,7 @@ describe("POST /api/v1/collaborators/consume over a durable-shaped store", () =>
     consume: CollaboratorLinkStore["consume"];
     minter?: IdentityRouteDeps["linkSessions"];
     stillDeceased?: boolean;
+    baa?: () => Promise<boolean>;
   }) {
     const released: string[] = [];
     const audited: string[] = [];
@@ -175,6 +176,7 @@ describe("POST /api/v1/collaborators/consume over a durable-shaped store", () =>
       },
       sessions: { revokeAllForUser: async () => 0 },
       deceasedPatients: { isDeceased: async () => over.stillDeceased ?? true },
+      ...(over.baa ? { funeralHomeBaaActive: over.baa } : {}),
       audit: {
         insert: () => ({
           values: (row: { eventType?: string }) => {
@@ -246,6 +248,39 @@ describe("POST /api/v1/collaborators/consume over a durable-shaped store", () =>
     expect(minted).toBe(0);
     expect(released).toEqual([scope.linkId]);
     expect(audited).toContain("m2.link.redemption_refused");
+  });
+
+  it.each([
+    ["the BAA has lapsed", async () => false],
+    ["the BAA lookup throws", async () => Promise.reject(new Error("mdm down"))],
+  ])("re-checks the BAA at redemption for a link bound to a funeral home: %s => 410, use handed back, no session", async (_n, baa) => {
+    let minted = 0;
+    const { app, released, audited } = build({
+      consume: async () => ({ ...scope, funeralHomeEntityId: "55555555-5555-4555-8555-555555555555" }),
+      baa,
+      minter: {
+        mint: async () => {
+          minted += 1;
+          return { sessionId: "s", setCookies: ["a=b"] };
+        },
+      },
+    });
+    expect((await call(app)).statusCode).toBe(410);
+    expect(minted).toBe(0);
+    expect(released).toEqual([scope.linkId]);
+    expect(audited).toContain("m2.link.redemption_refused");
+  });
+
+  it("a funeral link bound to a funeral home with the BAA still in force redeems; one minted before the binding existed is not blocked by it", async () => {
+    const mint = { mint: async () => ({ sessionId: "s", setCookies: ["a=b"] }) };
+    const bound = build({
+      consume: async () => ({ ...scope, funeralHomeEntityId: "55555555-5555-4555-8555-555555555555" }),
+      baa: async () => true,
+      minter: mint,
+    });
+    expect((await call(bound.app)).statusCode).toBe(200);
+    const legacy = build({ consume: async () => scope, baa: async () => false, minter: mint });
+    expect((await call(legacy.app)).statusCode).toBe(200);
   });
 
   it("a minter that throws gives the use back; success sets the cookie and returns no token and no session id", async () => {

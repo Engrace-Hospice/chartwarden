@@ -195496,6 +195496,10 @@
                               "type": "string"
                             },
                             {
+                              "const": "sending",
+                              "type": "string"
+                            },
+                            {
                               "const": "failed",
                               "type": "string"
                             },
@@ -195695,6 +195699,10 @@
                                 "type": "string"
                               },
                               {
+                                "const": "sending",
+                                "type": "string"
+                              },
+                              {
                                 "const": "failed",
                                 "type": "string"
                               },
@@ -195855,6 +195863,10 @@
                             },
                             {
                               "const": "acked",
+                              "type": "string"
+                            },
+                            {
+                              "const": "sending",
                               "type": "string"
                             },
                             {

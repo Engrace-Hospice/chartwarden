@@ -30,6 +30,7 @@ export interface DeathNotificationBindingInput {
   readonly attendingUserId: DeathNotificationDeps["attendingUserId"];
   readonly roleKeysForUser: DeathNotificationDeps["roleKeysForUser"];
   readonly isBaaActive: DeathNotificationDeps["isBaaActive"];
+  readonly isKnownFuneralHome: DeathNotificationDeps["isKnownFuneralHome"];
   readonly funeralLinks?: FuneralLinkPort | undefined;
   readonly warn?: DeathNotificationWarn | undefined;
   readonly now?: () => Date;
@@ -80,6 +81,7 @@ export function buildDeathNotificationDeps(
         ),
       roleKeysForUser: input.roleKeysForUser,
       isBaaActive: input.isBaaActive,
+      isKnownFuneralHome: input.isKnownFuneralHome,
       ...(input.funeralLinks ? { funeralLinks: input.funeralLinks } : {}),
       isEnabled,
       ...(input.warn ? { warn: input.warn } : {}),

@@ -15,6 +15,7 @@ export const ORG_ADMIN_AUDIT_EVENTS = {
   stepUpOverrideConfigured: "m2.session.step_up_policy_override.configured",
   stepUpOverrideRemoved: "m2.session.step_up_policy_override.removed",
   funeralInvited: "m2.funeral.invited",
+  funeralInviteRefused: "m2.funeral.invite_refused",
 } as const;
 
 type AdminEvent = (typeof ORG_ADMIN_AUDIT_EVENTS)[keyof typeof ORG_ADMIN_AUDIT_EVENTS];
@@ -26,12 +27,13 @@ async function record(
   resourceKind: string,
   resourceId: string,
   context: Record<string, unknown>,
+  outcome: "success" | "denied" = "success",
 ): Promise<void> {
   await audit(tx, ctx, {
     eventType,
     resourceKind,
     resourceId,
-    outcome: "success",
+    outcome,
     retentionClass: "compliance",
     context,
   });
@@ -147,3 +149,27 @@ export const auditFuneralInvited = (
     organizationId: input.organizationId,
     patientId: input.patientId,
   });
+
+/**
+ * A funeral-home disclosure that was REFUSED (unknown funeral home, or no executed BAA in force): nothing left the perimeter, but the
+ * attempt is evidence for the accounting of disclosures. Ids and a reason code only.
+ */
+export const auditFuneralInviteRefused = (
+  tx: AuditExecutor,
+  ctx: AuditContext,
+  input: {
+    organizationId: string;
+    patientId: string;
+    funeralHomeId: string;
+    reason: "unknown_funeral_home" | "no_baa";
+  },
+) =>
+  record(
+    tx,
+    ctx,
+    ORG_ADMIN_AUDIT_EVENTS.funeralInviteRefused,
+    "funeral_link",
+    input.funeralHomeId,
+    { organizationId: input.organizationId, patientId: input.patientId, reason: input.reason },
+    "denied",
+  );

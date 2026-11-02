@@ -30,6 +30,7 @@ export const DEATH_NOTIFICATION_STATES = [
   "pending",
   "sent",
   "acked",
+  "sending",
   "failed",
   "blocked_no_baa",
   "not_applicable",

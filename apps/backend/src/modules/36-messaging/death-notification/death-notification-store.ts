@@ -18,8 +18,23 @@ export interface DeathNotificationStore {
       patientId: string;
       kind: DeathNotificationKind;
       ref: string;
+      /** The MDM funeral_home entity (funeral_home rows only). */
+      funeralHomeEntityId?: string | undefined;
     },
   ): Promise<{ created: boolean; row: DeathNotificationRow }>;
+  /** Compare-and-set pending|failed|blocked_no_baa -> `sending`. Exactly one concurrent caller gets the row; every other gets null. */
+  claim(tx: Tx, a: { orgId: string; id: string }): Promise<DeathNotificationRow | null>;
+  /** `sending` -> sent|failed, recording the minted link and the recipient hash on `sent`. Null when the row is not `sending`. */
+  settle(
+    tx: Tx,
+    a: {
+      orgId: string;
+      id: string;
+      to: "sent" | "failed";
+      linkId?: string | undefined;
+      recipientEmailHash?: string | undefined;
+    },
+  ): Promise<DeathNotificationRow | null>;
   get(tx: Tx, orgId: string, id: string): Promise<DeathNotificationRow | null>;
   listForBoard(tx: Tx, orgId: string, boardId: string): Promise<DeathNotificationRow[]>;
   /** pending|failed|blocked_no_baa -> `state`. Never touches an acked row. Returns the row, or null when nothing changed. */
@@ -66,6 +81,7 @@ export function createDbDeathNotificationStore(): DeathNotificationStore {
           patientId: a.patientId,
           recipientKind: a.kind,
           recipientRef: a.ref,
+          ...(a.funeralHomeEntityId ? { funeralHomeEntityId: a.funeralHomeEntityId } : {}),
         })
         .onConflictDoNothing()
         .returning();
@@ -102,6 +118,35 @@ export function createDbDeathNotificationStore(): DeathNotificationStore {
         .from(N)
         .where(and(eq(N.organizationId, orgId), eq(N.boardId, boardId)))
         .orderBy(asc(N.createdAt), asc(N.id));
+    },
+
+    async claim(tx, a) {
+      const [row] = await tx
+        .update(N)
+        .set({ state: "sending" })
+        .where(
+          and(
+            eq(N.organizationId, a.orgId),
+            eq(N.id, a.id),
+            inArray(N.state, ["pending", "failed", "blocked_no_baa"]),
+          ),
+        )
+        .returning();
+      return row ?? null;
+    },
+
+    async settle(tx, a) {
+      const [row] = await tx
+        .update(N)
+        .set({
+          state: a.to,
+          ...(a.to === "sent" ? { sentAt: sql`now()` } : {}),
+          ...(a.linkId ? { linkId: a.linkId } : {}),
+          ...(a.recipientEmailHash ? { recipientEmailHash: a.recipientEmailHash } : {}),
+        })
+        .where(and(eq(N.organizationId, a.orgId), eq(N.id, a.id), eq(N.state, "sending")))
+        .returning();
+      return row ?? null;
     },
 
     async transition(tx, a) {

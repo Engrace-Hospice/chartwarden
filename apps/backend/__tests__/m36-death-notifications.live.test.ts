@@ -20,7 +20,13 @@
  * Use a PRIVATE pgvector/pgvector:pg18 container: the suite resets the public schema and the chartwarden_* roles.
  */
 import { randomUUID } from "node:crypto";
-import { resetAbacRegistry, resetAuthorizationContract, resetRbacEngine } from "@chartwarden/auth";
+import {
+  createPredicateRegistry,
+  registerAbacRegistry,
+  resetAbacRegistry,
+  resetAuthorizationContract,
+  resetRbacEngine,
+} from "@chartwarden/auth";
 import {
   DEATH_BOARD_FLAG_KEY,
   DEATH_NOTIFICATIONS_FLAG_KEY,
@@ -29,6 +35,9 @@ import {
 import type { FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { buildFuneralLinkPort } from "../src/bootstrap/death-notification-funeral-link";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { M2_OUTBOX_EVENTS, createFuneralDisclosureRecorder } from "../src/modules/02-identity/index";
 import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import { buildDeathBoardDeps } from "../src/modules/36-messaging/death-board/deps";
 import { createDbDeathBoardStore } from "../src/modules/36-messaging/death-board/death-board-store";
@@ -73,6 +82,7 @@ interface NoticeJson {
 }
 
 describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () => {
+  const m2Publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M2_OUTBOX_EVENTS]));
   let kit: LiveKit;
   let appOn: FastifyInstance;
   let appOff: FastifyInstance;
@@ -88,7 +98,11 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
 
   const careTeam = new Map<string, { rn: string; members: string[] }>();
   const attendingOf = new Map<string, string>();
-  const linkCalls: Array<{ orgId: string; patientId: string; actorUserId: string }> = [];
+  // What the REAL funeral-link adapter handed its (faked) store and delivery: the mint input and the delivery, never the token.
+  const linkCalls: Array<{ orgId: string; email: string }> = [];
+  const linkCreates: Array<Record<string, unknown>> = [];
+  const linkRevokes: string[] = [];
+  const caseload = new Set<string>(); // `${userId}:${patientId}`; the M3 caseload_membership predicate over it
 
   const call = (
     user: string,
@@ -152,6 +166,7 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
       )
     )[0];
     const boardId = board?.id as string;
+    caseload.add(`${supervisor}:${patientId}`);
     const opened = (await outboxRows("m36.death_board.opened", boardId))[0];
     return { patientId, boardId, opened, flagOn };
   }
@@ -223,12 +238,32 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
         attendingUserId: async (_org, patientId) => attendingOf.get(patientId) ?? null,
         roleKeysForUser: async () => null,
         isBaaActive: executedBaaGate(() => createDbBaaStore(kit.handle.db)),
-        funeralLinks: {
-          issue: async (a) => {
-            linkCalls.push({ orgId: a.orgId, patientId: a.patientId, actorUserId: a.actorUserId });
+        isKnownFuneralHome: async (orgId, entityId) =>
+          (await createDbBaaStore(kit.handle.db).baaRecords(orgId, "funeral_home", entityId)).length > 0,
+        // The REAL adapter and the REAL M2 recorder (audit_event + the catalog-validating m2 publisher); only the link store and the mail are faked.
+        funeralLinks: buildFuneralLinkPort({
+          db: kit.handle.db,
+          collaborators: {
+            create: async (i) => {
+              linkCreates.push(i);
+              return { linkId: randomUUID(), token: "tok-secret", expiresAt: new Date(Date.now() + 3_600_000).toISOString() };
+            },
+            revoke: async ({ linkId }) => void linkRevokes.push(linkId),
           },
-        },
+          delivery: { deliver: async (d) => void linkCalls.push({ orgId: d.organizationId, email: d.email }) },
+          isDeceased: async () => true,
+          sessionTtlSec: 100,
+          activeMembershipId: async () => randomUUID(),
+          recorder: createFuneralDisclosureRecorder(kit.handle.db, {
+            publish: (tx, e) => m2Publisher.publish(tx as never, { ...e, callerModule: "m2" } as never),
+          }),
+        }),
       });
+    registerAbacRegistry(
+      createPredicateRegistry({
+        caseload_membership: async (ctx, target) => caseload.has(`${ctx.userId}:${String(target.patientId)}`),
+      }),
+    );
     on = binding(true);
     off = binding(false);
     const server = (n: ReturnType<typeof binding>) => {
@@ -238,7 +273,7 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
         security: { rateLimitEnabled: false },
       });
       registerDeathBoardRoutes(s, boardOn);
-      registerDeathNotificationRoutes(s, n);
+      registerDeathNotificationRoutes(s, { ...n, rateLimit: async () => undefined });
       return s;
     };
     appOn = server(on);
@@ -434,10 +469,28 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
         funeral_home_entity_id: entity,
         recipient_email: FUNERAL_EMAIL,
       }, org);
+    /** A funeral home exists for the tenant when M40's register holds a record for it; pending = no executed BAA yet. */
+    const registerHome = async (entity: string) => {
+      await kit.admin.query(
+        `INSERT INTO mdm_baa_record (organization_id, entity_kind, canonical_id, baa_status) VALUES ($1,'funeral_home',$2,'pending')`,
+        [ORG_A, entity],
+      );
+    };
+    const executeBaa = (entity: string) =>
+      kit.admin.query(
+        "UPDATE mdm_baa_record SET baa_status='executed', executed_on='2026-01-01' WHERE organization_id=$1 AND canonical_id=$2",
+        [ORG_A, entity],
+      );
+    const audits = (eventType: string, resourceId: string) =>
+      kit.one<{ actor_user_id: string; outcome: string; context: Record<string, unknown> }>(
+        "SELECT actor_user_id, outcome, context FROM audit_event WHERE event_type=$1 AND resource_id=$2",
+        [eventType, resourceId],
+      );
 
-    it("without a recorded BAA the notice is blocked_no_baa, a supervisor is alerted, nothing is sent and the board items stay open", async () => {
+    it("without an executed BAA the notice is blocked_no_baa, a supervisor is alerted, nothing is sent and the board items stay open", async () => {
       const { boardId } = await newDeath();
       const entity = randomUUID();
+      await registerHome(entity);
       const before = linkCalls.length;
       const res = await send(supervisor, boardId, entity);
       expect(res.statusCode).toBe(200);
@@ -458,30 +511,65 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
       expect(JSON.stringify(stored)).not.toContain(FUNERAL_EMAIL);
     });
 
-    it("a funeral home the M40 policy does not gate (n_a, no record) is still blocked: only a recorded, executed BAA sends", async () => {
-      const { boardId } = await newDeath();
+    it("a blocked disclosure is audited as refused (m2.funeral.invite_refused, denied) with the actor, the funeral home and the patient", async () => {
+      const { boardId, patientId } = await newDeath();
       const entity = randomUUID();
+      await registerHome(entity);
+      await send(supervisor, boardId, entity);
+      const rows = await audits("m2.funeral.invite_refused", entity);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.actor_user_id).toBe(supervisor);
+      expect(rows[0]?.outcome).toBe("denied");
+      expect(rows[0]?.context).toMatchObject({ reason: "no_baa", patientId });
+      expect(JSON.stringify(rows)).not.toContain(FUNERAL_EMAIL);
+    });
+
+    it("a funeral home the tenant has no record of (junk id) creates no row, sends nothing, answers 404 and is audited as refused", async () => {
+      const { boardId, patientId } = await newDeath();
+      const junk = randomUUID();
+      const before = linkCalls.length;
+      const res = await send(supervisor, boardId, junk);
+      expect(res.statusCode).toBe(404);
+      expect(code(res)).toBe("DEATH_NOTIFICATION_FUNERAL_HOME_UNKNOWN");
+      expect(await noticeRows(boardId)).toHaveLength(0);
+      expect(linkCalls.length).toBe(before);
+      const rows = await audits("m2.funeral.invite_refused", junk);
+      expect(rows[0]?.context).toMatchObject({ reason: "unknown_funeral_home", patientId });
+      // a record in ANOTHER tenant is not a funeral home here
+      const foreign = randomUUID();
       await kit.admin.query(
-        "INSERT INTO mdm_baa_required (organization_id, kind, required) VALUES ($1,'funeral_home',false) ON CONFLICT DO NOTHING",
-        [ORG_A],
+        `INSERT INTO mdm_baa_record (organization_id, entity_kind, canonical_id, baa_status, executed_on) VALUES ($1,'funeral_home',$2,'executed','2026-01-01')`,
+        [ORG_B, foreign],
       );
-      const res = await send(supervisor, boardId, entity);
-      expect(res.json().notification.state).toBe("blocked_no_baa");
+      expect((await send(supervisor, boardId, foreign)).statusCode).toBe(404);
+      expect(await noticeRows(boardId)).toHaveLength(0);
+    });
+
+    it("the blocked supervisor alert is deduped per board, so a run of different funeral homes raises one alert", async () => {
+      const { boardId } = await newDeath();
+      const [a, b] = [randomUUID(), randomUUID()];
+      await registerHome(a);
+      await registerHome(b);
+      await send(supervisor, boardId, a);
+      await send(supervisor, boardId, b);
+      const key = `death-notification:${deathNotificationCorrelationKey(`${boardId}:funeral_home`)}:m36.death_notification.blocked_no_baa`;
+      const rows = (await alertRows("m36.death_notification.blocked_no_baa")).filter((r) => r.correlation_id === key);
+      expect(rows).toHaveLength(1);
+      expect(await noticeRows(boardId)).toHaveLength(2);
     });
 
     it("with an executed BAA the link is sent once, a repeat sends no second, and a later BAA unblocks a blocked row", async () => {
       const { patientId, boardId } = await newDeath();
       const entity = randomUUID();
+      await registerHome(entity);
       expect((await send(supervisor, boardId, entity)).json().notification.state).toBe("blocked_no_baa");
-      await kit.admin.query(
-        `INSERT INTO mdm_baa_record (organization_id, entity_kind, canonical_id, baa_status, executed_on)
-         VALUES ($1,'funeral_home',$2,'executed','2026-01-01')`,
-        [ORG_A, entity],
-      );
+      await executeBaa(entity);
       const before = linkCalls.length;
       const sent = await send(supervisor, boardId, entity);
       expect(sent.json().notification.state).toBe("sent");
-      expect(linkCalls.slice(before)).toEqual([{ orgId: ORG_A, patientId, actorUserId: supervisor }]);
+      expect(linkCalls.slice(before)).toEqual([{ orgId: ORG_A, email: FUNERAL_EMAIL }]);
+      // the link is bound to the funeral home and the patient, for the redemption-time BAA re-check
+      expect(linkCreates.at(-1)).toMatchObject({ kind: "funeral_home", patientId, funeralHomeEntityId: entity });
       await send(supervisor, boardId, entity);
       expect(linkCalls.length).toBe(before + 1);
       const rows = await kit.one(
@@ -489,6 +577,47 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
         [boardId],
       );
       expect(rows).toEqual([{ state: "sent" }]);
+    });
+
+    it("a sent disclosure leaves the same M2 trail as /funeral/invite and a row that joins to the patient (entity, link, recipient hash - no address, no token)", async () => {
+      const { patientId, boardId } = await newDeath();
+      const entity = randomUUID();
+      await registerHome(entity);
+      await executeBaa(entity);
+      expect((await send(supervisor, boardId, entity)).json().notification.state).toBe("sent");
+      const row = (
+        await kit.one<{ patient_id: string; funeral_home_entity_id: string; link_id: string; recipient_email_hash: string }>(
+          "SELECT patient_id, funeral_home_entity_id, link_id, recipient_email_hash FROM death_notification WHERE board_id=$1",
+          [boardId],
+        )
+      )[0];
+      expect(row?.patient_id).toBe(patientId);
+      expect(row?.funeral_home_entity_id).toBe(entity);
+      expect(row?.recipient_email_hash).toMatch(/^[0-9a-f]{64}$/);
+      const invited = await audits("m2.funeral.invited", row?.link_id as string);
+      expect(invited).toHaveLength(1);
+      expect(invited[0]?.actor_user_id).toBe(supervisor);
+      expect(invited[0]?.context).toMatchObject({ patientId });
+      const events = await kit.one(
+        "SELECT payload FROM outbox_event WHERE organization_id=$1 AND event_type='m2.funeral.invited' AND aggregate_id=$2",
+        [ORG_A, row?.link_id],
+      );
+      expect(events).toHaveLength(1);
+      const everything = JSON.stringify([row, invited, events]);
+      expect(everything).not.toContain(FUNERAL_EMAIL);
+      expect(everything).not.toContain("tok-secret");
+    });
+
+    it("two concurrent sends mint exactly one link", async () => {
+      const { boardId } = await newDeath();
+      const entity = randomUUID();
+      await registerHome(entity);
+      await executeBaa(entity);
+      const before = linkCalls.length;
+      const results = await Promise.all([send(supervisor, boardId, entity), send(supervisor, boardId, entity), send(supervisor, boardId, entity)]);
+      expect(results.every((r) => r.statusCode === 200)).toBe(true);
+      expect(linkCalls.length).toBe(before + 1);
+      expect(await noticeRows(boardId)).toHaveLength(1);
     });
 
     it("an expired BAA blocks", async () => {
@@ -509,6 +638,19 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
       expect(
         await kit.count("SELECT count(*)::int AS n FROM death_notification WHERE organization_id=$1", [ORG_B]),
       ).toBe(0);
+    });
+
+    it("needs the decedent on the caller's caseload (as /funeral/invite): off the caseload is 403 and nothing is written or sent", async () => {
+      const { boardId, patientId } = await newDeath();
+      const entity = randomUUID();
+      await registerHome(entity);
+      await executeBaa(entity);
+      caseload.delete(`${supervisor}:${patientId}`);
+      const before = linkCalls.length;
+      const res = await send(supervisor, boardId, entity);
+      expect(res.statusCode).toBe(403);
+      expect(linkCalls.length).toBe(before);
+      expect(await noticeRows(boardId)).toHaveLength(0);
     });
 
     it("a malformed body is a validation error before anything is written", async () => {
@@ -602,6 +744,70 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
       expect(afterFirst).toBeGreaterThanOrEqual(1);
       await on.service.flagUnackedForOrg(ORG_A);
       expect(await escalations()).toBe(afterFirst);
+    });
+  });
+  describe("7. database backstop as chartwarden_app (legal transitions, actor)", () => {
+    const insertSql = `INSERT INTO death_notification (organization_id, board_id, patient_id, recipient_kind, recipient_ref, state)
+                       VALUES ($1,$2,$3,$4,$5,$6)`;
+    /** Runs `fn` in one app-role transaction as `userId` in ORG_A (app.user_id set), always rolled back. */
+    async function asUser<T>(userId: string | null, fn: () => Promise<T>): Promise<T> {
+      await kit.appConn.query("BEGIN");
+      await kit.appConn.query("SELECT set_config('app.org_id',$1,true)", [ORG_A]);
+      await kit.appConn.query("SELECT set_config('app.user_id',$1,true)", [userId ?? ""]);
+      try {
+        return await fn();
+      } finally {
+        await kit.appConn.query("ROLLBACK");
+      }
+    }
+
+    it("a notification cannot be born sent, sending or acknowledged", async () => {
+      const { boardId, patientId } = await newDeath();
+      await asUser(supervisor, async () => {
+        for (const state of ["sent", "sending", "acked"]) {
+          expect(await attempt(insertSql, [ORG_A, boardId, patientId, "funeral_home", randomUUID(), state])).toBe("23514");
+        }
+        expect(await attempt(insertSql, [ORG_A, boardId, patientId, "funeral_home", randomUUID(), "pending"])).toBe("ok");
+      });
+    });
+
+    it("an external notice cannot jump to sent, and a sent one cannot move back; only internal kinds are acknowledged", async () => {
+      const { boardId, patientId, opened } = await newDeath();
+      await deliverOpened(opened);
+      const internal = (await noticeRows(boardId))[0];
+      const ref = randomUUID();
+      await asUser(supervisor, async () => {
+        await kit.appConn.query(insertSql, [ORG_A, boardId, patientId, "funeral_home", ref, "pending"]);
+        expect(await attempt("UPDATE death_notification SET state='sent' WHERE recipient_ref=$1", [ref])).toBe("23514");
+        expect(await attempt("UPDATE death_notification SET state='acked', acked_by=$2 WHERE recipient_ref=$1", [ref, supervisor])).toBe("23514");
+        expect(await attempt("UPDATE death_notification SET state='sending' WHERE recipient_ref=$1", [ref])).toBe("ok");
+        // claimed but no link / recipient hash recorded: still refused
+        expect(await attempt("UPDATE death_notification SET state='sent' WHERE recipient_ref=$1", [ref])).toBe("23514");
+        expect(
+          await attempt("UPDATE death_notification SET state='sent', link_id=$2, recipient_email_hash=$3 WHERE recipient_ref=$1", [
+            ref,
+            randomUUID(),
+            "a".repeat(64),
+          ]),
+        ).toBe("ok");
+        expect(await attempt("UPDATE death_notification SET state='pending' WHERE recipient_ref=$1", [ref])).toBe("23514");
+        // an internal notice may not be pushed through the external claim
+        expect(await attempt("UPDATE death_notification SET state='sending' WHERE id=$1", [internal?.id])).toBe("23514");
+      });
+    });
+
+    it("acked_by is forced to the session user whatever the client sends, and an acknowledgment without a user is refused", async () => {
+      const { boardId, opened } = await newDeath();
+      await deliverOpened(opened);
+      const row = (await noticeRows(boardId))[0];
+      await asUser(supervisor, async () => {
+        await kit.appConn.query("UPDATE death_notification SET state='acked', acked_by=$2 WHERE id=$1", [row?.id, attending]);
+        const after = await kit.appConn.query("SELECT acked_by FROM death_notification WHERE id=$1", [row?.id]);
+        expect(after.rows[0].acked_by).toBe(supervisor);
+      });
+      await asUser(null, async () => {
+        expect(await attempt("UPDATE death_notification SET state='acked', acked_by=$2 WHERE id=$1", [row?.id, attending])).toBe("23514");
+      });
     });
   });
 });

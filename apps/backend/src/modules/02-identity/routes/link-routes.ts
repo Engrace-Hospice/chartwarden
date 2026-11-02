@@ -102,7 +102,13 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
    */
   async function issueLink(
     request: FastifyRequest,
-    input: { kind: LinkKind; organizationId: string; membershipId: string; patientId: string },
+    input: {
+      kind: LinkKind;
+      organizationId: string;
+      membershipId: string;
+      patientId: string;
+      funeralHomeEntityId?: string;
+    },
   ): Promise<{ linkId: string; expiresAt: string }> {
     const recipient = readRecipientEmail(request.body);
     if (deps.linkRecipientRequired && recipient === null) {
@@ -123,6 +129,7 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
       invitedByMembershipId: input.membershipId,
       kind: input.kind,
       sessionTtlSec: input.kind === "funeral_home" ? FUNERAL_LINK_TTL_SEC : collabSessionTtlSec,
+      ...(input.funeralHomeEntityId ? { funeralHomeEntityId: input.funeralHomeEntityId } : {}),
     });
     if (recipient !== null && deps.linkDelivery && link.token) {
       try {
@@ -240,6 +247,7 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
       organizationId: actor.organizationId,
       membershipId: actor.membershipId,
       patientId,
+      funeralHomeEntityId: funeralHomeId,
     });
     await auditFuneralInvited(
       deps.audit,
@@ -310,7 +318,16 @@ export function registerLinkRoutes(app: FastifyInstance, deps: IdentityRouteDeps
       const stillDeceased = deps.deceasedPatients
         ? await deps.deceasedPatients.isDeceased(scope.organizationId, scope.patientId)
         : false;
-      if (!stillDeceased) {
+      // ...and so is the BAA of the funeral home the link was minted for (a link bound to a funeral home, i.e. minted from migration 1306 on).
+      // A lapsed or unreadable BAA reads as not eligible (fail closed); an older, unbound link has nothing to re-check.
+      const baaStillInForce =
+        !scope.funeralHomeEntityId ||
+        (deps.funeralHomeBaaActive
+          ? await deps
+              .funeralHomeBaaActive(scope.organizationId, scope.funeralHomeEntityId, new Date())
+              .catch(() => false)
+          : false);
+      if (!stillDeceased || !baaStillInForce) {
         await giveBack();
         await deps.linkRedeemThrottle?.record({ username: null, ip, outcome: "failure" });
         await auditLinkRedemptionRefused(

@@ -45,6 +45,7 @@ export {
   registerAuditorRedeemRoutes,
 } from "./routes/auditor-redeem";
 export { M2_OUTBOX_EVENTS } from "./events-by-m2";
+export { createFuneralDisclosureRecorder } from "./audit/funeral-disclosure";
 export { type UnlockGuard, createUnlockGuard } from "./unlock-guard";
 // F-142 (#248) — M2's first outbox consumer: the §2.6/D7 M39 `m39.consent.revoked` → portal-session
 // termination cascade (`portal_access` only; see the file's own header for why `family_caregiver_access`

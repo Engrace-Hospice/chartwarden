@@ -117,6 +117,10 @@ export const M2_ACTION_CATALOG: ModuleActionCatalog = [
     "A tenant step-up policy override was removed (the platform floor applies again).",
   ),
   compliance("m2.funeral.invited", "A per-deceased funeral-home magic-link was issued."),
+  compliance(
+    "m2.funeral.invite_refused",
+    "A funeral-home disclosure was refused (unknown funeral home, or no executed BAA in force); nothing was sent.",
+  ),
   // GAP-115 follow-up — redemption of a collaborator / funeral-home link, and portal invitee sign-in. Ids only: the
   // token, the hash and the invitee's address never enter a payload.
   compliance("m2.link.redeemed", "A collaborator / funeral-home link was redeemed into a scoped session."),

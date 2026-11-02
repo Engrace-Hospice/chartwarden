@@ -101,12 +101,13 @@ async function emitSupervisorAlert(
   return resolvedRecipientCount;
 }
 
-export const emitBlockedNoBaaAlert = (alerts: AlertEmitter, orgId: string, notificationId: string) =>
+/** Deduped per (board, kind) - not per funeral-home id - so a run of junk ids cannot flood the supervisors. */
+export const emitBlockedNoBaaAlert = (alerts: AlertEmitter, orgId: string, boardId: string) =>
   emitSupervisorAlert(
     alerts,
     orgId,
     DEATH_NOTIFICATION_BLOCKED_ALERT,
-    notificationId,
+    `${boardId}:funeral_home`,
     DEATH_NOTIFICATION_TEXT.blockedNoBaa,
   );
 

@@ -371,6 +371,7 @@ import {
   createAuditorLinkEmailDelivery,
   createDbPublicTenantLookups,
   createDrizzleIdentityEraserStore,
+  createFuneralDisclosureRecorder,
   createLinkDelivery,
   createOrgScopedAuditExecutor,
   createPortalInviteeUserPort,
@@ -4746,7 +4747,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           roleKeysForUser: (orgId, userId) =>
             buildF2fClinicianRoleReader(dbHandle.db).roleKeysForUser(orgId, userId),
           isBaaActive: executedBaaGate(() => createDbBaaStore(dbHandle.db)),
+          // The funeral-home registry is M40's BAA register: a funeral home exists for the tenant when it has a record there (any status).
+          isKnownFuneralHome: async (orgId, entityId) =>
+            (await createDbBaaStore(dbHandle.db).baaRecords(orgId, "funeral_home", entityId)).length > 0,
           funeralLinks: buildFuneralLinkPort({
+            recorder: createFuneralDisclosureRecorder(dbHandle.db, m2OutboxPublisher),
             db: dbHandle.db,
             collaborators: createDbCollaboratorLinkStore(dbHandle.db, {
               site: {

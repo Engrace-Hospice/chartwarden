@@ -46,6 +46,9 @@ export function createMemoryDeathNotificationStore(now: () => Date): MemoryDeath
         ackedAt: null,
         ackedBy: null,
         sentOutboxEventId: null,
+        funeralHomeEntityId: a.funeralHomeEntityId ?? null,
+        linkId: null,
+        recipientEmailHash: null,
         createdAt: now(),
         updatedAt: now(),
       };
@@ -58,6 +61,22 @@ export function createMemoryDeathNotificationStore(now: () => Date): MemoryDeath
     },
     async listForBoard(_tx, orgId, boardId) {
       return [...rows.values()].filter((r) => r.organizationId === orgId && r.boardId === boardId);
+    },
+    async claim(_tx, a) {
+      const r = rows.get(a.id);
+      if (!r || r.organizationId !== a.orgId) return null;
+      if (!["pending", "failed", "blocked_no_baa"].includes(r.state)) return null;
+      return patch(r, { state: "sending" });
+    },
+    async settle(_tx, a) {
+      const r = rows.get(a.id);
+      if (!r || r.organizationId !== a.orgId || r.state !== "sending") return null;
+      return patch(r, {
+        state: a.to,
+        ...(a.to === "sent" ? { sentAt: now() } : {}),
+        ...(a.linkId ? { linkId: a.linkId } : {}),
+        ...(a.recipientEmailHash ? { recipientEmailHash: a.recipientEmailHash } : {}),
+      });
     },
     async transition(_tx, a) {
       const r = rows.get(a.id);

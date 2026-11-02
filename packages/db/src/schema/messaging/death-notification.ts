@@ -31,6 +31,10 @@ export const deathNotifications = pgTable(
     ackedAt: timestamp("acked_at", { withTimezone: true }),
     ackedBy: uuid("acked_by"),
     sentOutboxEventId: uuid("sent_outbox_event_id"),
+    /** External funeral-home notices (migration 1306): the MDM entity, the minted M2 link and a salted hash of the recipient address (never the address). */
+    funeralHomeEntityId: uuid("funeral_home_entity_id"),
+    linkId: uuid("link_id"),
+    recipientEmailHash: text("recipient_email_hash"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -55,7 +59,7 @@ export const deathNotifications = pgTable(
     ),
     stateShape: check(
       "death_notification_state_shape",
-      sql`${t.state} IN ('pending', 'sent', 'acked', 'failed', 'blocked_no_baa', 'not_applicable')`,
+      sql`${t.state} IN ('pending', 'sending', 'sent', 'acked', 'failed', 'blocked_no_baa', 'not_applicable')`,
     ),
     refShape: check("death_notification_ref_shape", sql`length(${t.recipientRef}) BETWEEN 1 AND 64`),
     ackedShape: check(

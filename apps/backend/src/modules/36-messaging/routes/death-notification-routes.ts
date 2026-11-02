@@ -3,13 +3,14 @@
 //   GET  /api/v1/messaging/death-boards/:boardId/notifications       the board's notices and their state      (messaging.read + patient.read)
 //   POST /api/v1/messaging/death-notifications/:notificationId/ack   the RECIPIENT explicitly acknowledges   (same guards; never a read receipt)
 //   POST /api/v1/messaging/death-boards/:boardId/funeral-home        {funeral_home_entity_id, recipient_email}: staff SELECTS the funeral home
-//                                                                    (funeral.invite); sent only when a BAA is on file, else blocked_no_baa
+//                                                                    (funeral.invite + the caseload_membership ABAC on the board's patient, as
+//                                                                    M2's /funeral/invite); sent only when a BAA is on file, else blocked_no_baa
 //
 // The tenant flag `messaging.death_notifications` is checked right after the auth guards, before any param or body is parsed: off => the uniform 404 on
 // everything but the list, which answers `200 {enabled:false, notifications:[]}`. Org and actor are always the request context. A missing, foreign,
 // Part 2-restricted or flag-off board is ONE 404 (the board service's own visibility rule is reused). Typed ChartWardenError throughout; nothing is
 // deleted; no request header is read. The recipient address is used once to send and is never stored or echoed.
-import { requirePermission } from "@chartwarden/auth";
+import { requireAbac, requirePermission } from "@chartwarden/auth";
 import { NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { DeathNotificationService } from "../death-notification/death-notification-service";
@@ -30,7 +31,8 @@ export interface DeathNotificationRouteDeps {
   /** The tenant flag `messaging.death_notifications` (and `messaging.death_board`). A throw reads as off (fail closed). */
   readonly isEnabled: (organizationId: string) => Promise<boolean>;
   readonly service: DeathNotificationService;
-  readonly rateLimit?: PreHandler | undefined;
+  /** Required: this route set discloses outside the perimeter, so it is never mounted without a limiter. */
+  readonly rateLimit: PreHandler;
 }
 
 const READ = requirePermission("messaging.read") as PreHandler;
@@ -42,7 +44,7 @@ export function registerDeathNotificationRoutes(
   deps: DeathNotificationRouteDeps,
 ): void {
   const { service } = deps;
-  const limited: PreHandler[] = deps.rateLimit ? [deps.rateLimit] : [];
+  const limited: PreHandler[] = [deps.rateLimit];
   const flagOn = (request: FastifyRequest): Promise<boolean> => {
     const orgId = request.context?.organizationId;
     if (!orgId) throw new UnauthorizedError();
@@ -105,10 +107,16 @@ export function registerDeathNotificationRoutes(
     async (request, reply) => {
       const { boardId } = parse(DeathNotificationBoardParamsSchema, request.params);
       const body = parse(SendFuneralHomeBodySchema, request.body);
+      const actor = await actorOf(request, reply);
+      // The same caseload ABAC as M2's `POST /funeral/invite`: the actor must have the decedent on their caseload. The patient comes from the board
+      // (never the body), after the board's own visibility check.
+      const patientId = await service.patientOf(actor, boardId);
+      await requireAbac("funeral.invite", "caseload_membership", { getTarget: () => ({ patientId }) })(request);
       return noStore(reply).send({
-        notification: await service.sendFuneralHome(await actorOf(request, reply), boardId, {
+        notification: await service.sendFuneralHome(actor, boardId, {
           funeralHomeEntityId: body.funeral_home_entity_id,
           recipientEmail: body.recipient_email,
+          correlationId: request.context?.correlationId,
         }),
       });
     },

@@ -142,6 +142,7 @@ export function createDbCollaboratorLinkStore(
               expiresAt,
               sessionTtlSec,
               maxUses,
+              ...(input.funeralHomeEntityId ? { funeralHomeEntityId: input.funeralHomeEntityId } : {}),
             })
             .returning({ id: LINKS.id, expiresAt: LINKS.expiresAt }),
       );
@@ -180,6 +181,7 @@ export function createDbCollaboratorLinkStore(
             sessionTtlSec: LINKS.sessionTtlSec,
             useCount: LINKS.useCount,
             principalUserId: LINKS.principalUserId,
+            funeralHomeEntityId: LINKS.funeralHomeEntityId,
           });
         const row = claimed[0];
         if (!row) {
@@ -218,6 +220,7 @@ export function createDbCollaboratorLinkStore(
           principalUserId: row.principalUserId,
           sessionTtlSec: row.sessionTtlSec,
           useCount: row.useCount,
+          ...(row.funeralHomeEntityId ? { funeralHomeEntityId: row.funeralHomeEntityId } : {}),
         };
       }
       const known = outcome.known;

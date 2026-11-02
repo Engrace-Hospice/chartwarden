@@ -44,6 +44,8 @@ export const collaboratorLinks = pgTable(
     firstRedeemedAt: timestamp("first_redeemed_at", { withTimezone: true }),
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    /** Funeral-home links (migration 1306): the MDM funeral_home entity the BAA was checked for, re-checked at redemption. Null for older links. */
+    funeralHomeEntityId: uuid("funeral_home_entity_id"),
     principalUserId: uuid("principal_user_id").references(() => users.id, { onDelete: "restrict" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

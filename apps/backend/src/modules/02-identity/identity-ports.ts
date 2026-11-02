@@ -433,6 +433,8 @@ export interface CollaboratorScope {
   readonly sessionTtlSec?: number;
   /** Redemptions spent including this one (durable store only). */
   readonly useCount?: number;
+  /** The funeral_home entity a funeral link was minted for (durable store; absent on links minted before migration 1306). */
+  readonly funeralHomeEntityId?: string;
 }
 
 /** What a durable store reports about a refused redemption of a link it KNOWS (audit-only; never sent to a client). */
@@ -457,6 +459,8 @@ export interface CollaboratorLinkStore {
     sessionTtlSec?: number;
     /** Redemptions the link allows (default 1 - single use). Durable store only. */
     maxUses?: number;
+    /** Funeral links: the MDM funeral_home entity whose BAA was checked; re-checked at redemption. Durable store only. */
+    funeralHomeEntityId?: string;
   }): Promise<CreatedLink> | CreatedLink;
   /** Atomically consume a token → its scope. Throws on expired/used (route maps to 410/409). */
   consume(token: string): Promise<CollaboratorScope> | CollaboratorScope;

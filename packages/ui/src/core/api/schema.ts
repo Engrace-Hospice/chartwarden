@@ -76876,7 +76876,7 @@ export interface operations {
                             id: string;
                             board_id: string;
                             recipient_kind: "attending" | "medical_director" | "bereavement_coordinator" | "billing_lead" | "pharmacy_liaison" | "dme_liaison" | "funeral_home" | "pharmacy_vendor" | "dme_vendor";
-                            state: "pending" | "sent" | "acked" | "failed" | "blocked_no_baa" | "not_applicable";
+                            state: "pending" | "sent" | "acked" | "sending" | "failed" | "blocked_no_baa" | "not_applicable";
                             /** Format: date-time */
                             created_at: string;
                             acked_at: string | null;
@@ -76914,7 +76914,7 @@ export interface operations {
                             id: string;
                             board_id: string;
                             recipient_kind: "attending" | "medical_director" | "bereavement_coordinator" | "billing_lead" | "pharmacy_liaison" | "dme_liaison" | "funeral_home" | "pharmacy_vendor" | "dme_vendor";
-                            state: "pending" | "sent" | "acked" | "failed" | "blocked_no_baa" | "not_applicable";
+                            state: "pending" | "sent" | "acked" | "sending" | "failed" | "blocked_no_baa" | "not_applicable";
                             /** Format: date-time */
                             created_at: string;
                             acked_at: string | null;
@@ -76950,7 +76950,7 @@ export interface operations {
                             id: string;
                             board_id: string;
                             recipient_kind: "attending" | "medical_director" | "bereavement_coordinator" | "billing_lead" | "pharmacy_liaison" | "dme_liaison" | "funeral_home" | "pharmacy_vendor" | "dme_vendor";
-                            state: "pending" | "sent" | "acked" | "failed" | "blocked_no_baa" | "not_applicable";
+                            state: "pending" | "sent" | "acked" | "sending" | "failed" | "blocked_no_baa" | "not_applicable";
                             /** Format: date-time */
                             created_at: string;
                             acked_at: string | null;

@@ -19,6 +19,7 @@ const ATT = "00000000-0000-4000-8000-00000000aaa1";
 const OTHER = "00000000-0000-4000-8000-00000000fff1";
 const SUP = "00000000-0000-4000-8000-00000000eee1";
 const FH = "00000000-0000-4000-8000-00000000f001";
+const LINK = "00000000-0000-4000-8000-00000000c001";
 const NOW = new Date("2026-10-14T12:00:00.000Z");
 
 const fakeDb = {
@@ -35,16 +36,26 @@ interface Opts {
   roles?: string[];
   flag?: boolean;
   viewDenied?: boolean;
+  unknownHome?: boolean;
+  settleThrows?: boolean;
 }
 
 function build(o: Opts = {}) {
   let clock = NOW;
   const store = createMemoryDeathNotificationStore(() => clock);
+  if (o.settleThrows) {
+    store.settle = async () => {
+      throw new Error("db down");
+    };
+  }
   const emit = vi.fn().mockResolvedValue({ alertId: "a", resolvedRecipientCount: o.resolved ?? 1 });
   const publish = vi.fn().mockResolvedValue(undefined);
-  const issue = vi.fn(async () => {
+  const issue = vi.fn(async (_a: { funeralHomeEntityId: string; recipientEmail: string }) => {
     if (o.linkThrows) throw new Error("mail down");
+    return { linkId: LINK };
   });
+  const refused = vi.fn().mockResolvedValue(undefined);
+  const warn = vi.fn();
   const service = createDeathNotificationService({
     db: fakeDb,
     store,
@@ -62,11 +73,13 @@ function build(o: Opts = {}) {
       if (o.baaThrows) throw new Error("mdm down");
       return o.baa ?? true;
     },
-    ...(o.noLinks ? {} : { funeralLinks: { issue } }),
+    isKnownFuneralHome: async () => !o.unknownHome,
+    ...(o.noLinks ? {} : { funeralLinks: { issue, refused } }),
+    warn,
     isEnabled: async () => o.flag ?? true,
     now: () => clock,
   });
-  return { service, store, emit, publish, issue, advance: (ms: number) => (clock = new Date(clock.getTime() + ms)) };
+  return { service, store, emit, publish, issue, refused, warn, advance: (ms: number) => (clock = new Date(clock.getTime() + ms)) };
 }
 const actor = (userId: string, supervisor = false): DeathBoardActor => ({ orgId: ORG, userId, supervisor });
 const code = async (p: Promise<unknown>) => {
@@ -250,6 +263,59 @@ describe("sendFuneralHome", () => {
     const { service, store } = build({ linkThrows: true });
     expect(await code(service.sendFuneralHome(actor(SUP, true), BOARD, input))).toBe("503:DEATH_NOTIFICATION_LINK_FAILED");
     expect([...store.rows.values()][0]?.state).toBe("failed");
+  });
+
+  it("two concurrent sends mint exactly one link", async () => {
+    const { service, issue } = build({ baa: true });
+    const [a, b] = await Promise.all([
+      service.sendFuneralHome(actor(SUP, true), BOARD, input),
+      service.sendFuneralHome(actor(SUP, true), BOARD, input),
+    ]);
+    expect(issue).toHaveBeenCalledTimes(1);
+    expect([a.state, b.state]).toContain("sent");
+  });
+
+  it("persists the entity id, link id and a recipient hash (never the address) on the row", async () => {
+    const { service, store } = build({ baa: true });
+    await service.sendFuneralHome(actor(SUP, true), BOARD, input);
+    const row = [...store.rows.values()][0]!;
+    expect(row.funeralHomeEntityId).toBe(FH);
+    expect(row.linkId).toBe(LINK);
+    expect(row.recipientEmailHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.stringify(row)).not.toContain("funeral.example");
+  });
+
+  it("when the sent transition fails after issue, the row stays sending (not re-sendable) and the error is logged without PHI", async () => {
+    const { service, store, issue, warn } = build({ baa: true, settleThrows: true });
+    expect(await code(service.sendFuneralHome(actor(SUP, true), BOARD, input))).toBe("503:DEATH_NOTIFICATION_SEND_UNCONFIRMED");
+    expect([...store.rows.values()][0]?.state).toBe("sending");
+    await service.sendFuneralHome(actor(SUP, true), BOARD, input);
+    expect(issue).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalled();
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("funeral.example");
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(PATIENT);
+  });
+
+  it("an unknown funeral home creates no row, is audited as refused and answers 404", async () => {
+    const { service, store, refused, issue } = build({ unknownHome: true });
+    expect(await code(service.sendFuneralHome(actor(SUP, true), BOARD, input))).toBe("404:DEATH_NOTIFICATION_FUNERAL_HOME_UNKNOWN");
+    expect(store.rows.size).toBe(0);
+    expect(issue).not.toHaveBeenCalled();
+    expect(refused).toHaveBeenCalledWith(expect.objectContaining({ reason: "unknown_funeral_home", funeralHomeEntityId: FH }));
+  });
+
+  it("a blocked_no_baa disclosure is audited as refused", async () => {
+    const { service, refused } = build({ baa: false });
+    await service.sendFuneralHome(actor(SUP, true), BOARD, input);
+    expect(refused).toHaveBeenCalledWith(expect.objectContaining({ reason: "no_baa", patientId: PATIENT }));
+  });
+
+  it("dedupes the supervisor alert per board, not per funeral-home id", async () => {
+    const { service, emit } = build({ baa: false });
+    await service.sendFuneralHome(actor(SUP, true), BOARD, input);
+    await service.sendFuneralHome(actor(SUP, true), BOARD, { ...input, funeralHomeEntityId: "00000000-0000-4000-8000-00000000f002" });
+    const keys = emit.mock.calls.map((c) => c[1].correlationId);
+    expect(new Set(keys).size).toBe(1);
   });
 
   it("carries no PHI in the blocked alert", async () => {

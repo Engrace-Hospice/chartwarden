@@ -714,6 +714,28 @@ describe.skipIf(!DB_URL)("M2 funeral / collaborator link redemption, LIVE Postgr
     expect(refused.rows[0].r).toBe("not_eligible");
   });
 
+  it("a funeral link is bound to its funeral home, and a BAA that lapses before redemption blocks it (410, use handed back)", async () => {
+    const patient = await seedPatient(ORG_A, "deceased", "Lapsed");
+    const token = await issue(patient);
+    const row = await linkRow(token);
+    expect(row.funeral_home_entity_id).toBe(FH);
+    await admin.query(
+      "UPDATE mdm_baa_record SET expires_on='2020-01-01' WHERE organization_id=$1 AND canonical_id=$2",
+      [ORG_A, FH],
+    );
+    try {
+      const res = await redeem(token);
+      expect(res.statusCode).toBe(410);
+      expect((await linkRow(token)).use_count).toBe(0);
+    } finally {
+      await admin.query(
+        "UPDATE mdm_baa_record SET expires_on=NULL WHERE organization_id=$1 AND canonical_id=$2",
+        [ORG_A, FH],
+      );
+    }
+    expect((await redeem(token)).statusCode).toBe(200); // BAA back in force: the same, unspent link redeems
+  });
+
   it("a failed session mint hands the use back: the link is NOT burned and a retry succeeds", async () => {
     const token = await issue(deceasedA.id);
     failNextMint = true;
