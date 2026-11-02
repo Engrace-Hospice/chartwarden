@@ -71,7 +71,10 @@ export interface DeathNotificationDeps {
 
 export interface DeathNotificationService {
   fanOutInternal(orgId: string, boardId: string, openedEventId: string): Promise<{ notified: number }>;
-  list(actor: DeathBoardActor, boardId: string): Promise<DeathNotificationDto[]>;
+  list(
+    actor: DeathBoardActor,
+    boardId: string,
+  ): Promise<{ patient_id: string; notifications: DeathNotificationDto[] }>;
   ack(actor: DeathBoardActor, notificationId: string): Promise<DeathNotificationDto>;
   sendFuneralHome(
     actor: DeathBoardActor,
@@ -208,9 +211,12 @@ export function createDeathNotificationService(deps: DeathNotificationDeps): Dea
     },
 
     async list(actor, boardId) {
-      await deps.viewBoard(actor, boardId);
+      const board = await deps.viewBoard(actor, boardId);
       const rows = await asUser(actor, (tx) => store.listForBoard(tx, actor.orgId, boardId));
-      return Promise.all(rows.map(async (r) => toDto(r, await canAck(actor, r))));
+      return {
+        patient_id: board.patient_id,
+        notifications: await Promise.all(rows.map(async (r) => toDto(r, await canAck(actor, r)))),
+      };
     },
 
     async ack(actor, notificationId) {

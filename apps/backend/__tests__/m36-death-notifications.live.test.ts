@@ -560,15 +560,30 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
 
   describe("5. read audit", () => {
     it("the list read lands a death_board.viewed event naming the reader and the board", async () => {
-      const { boardId, opened } = await newDeath();
+      const { boardId, patientId, opened } = await newDeath();
       await deliverOpened(opened);
       const res = await call(attending, "GET", `${BOARDS}/${boardId}/notifications`);
       expect(res.statusCode).toBe(200);
-      const viewed = await kit.one(
-        "SELECT actor_user_id FROM audit_event WHERE event_type='death_board.viewed' AND resource_id=$1 AND actor_user_id=$2",
+      const viewed = await kit.one<{ patient: string | null }>(
+        "SELECT context->>'patientId' AS patient FROM audit_event WHERE event_type='death_board.viewed' AND resource_id=$1 AND actor_user_id=$2",
         [boardId, attending],
       );
       expect(viewed.length).toBeGreaterThan(0);
+      // HIPAA 164.528 accounting: the read is attributed to the patient (id only, never a name).
+      expect(viewed.every((r) => r.patient === patientId)).toBe(true);
+    });
+
+    it("a viewer the board refuses (404) leaves no patient-attributed read event and learns nothing", async () => {
+      const { boardId, patientId, opened } = await newDeath();
+      await deliverOpened(opened);
+      const res = await call(stranger, "GET", `${BOARDS}/${boardId}/notifications`);
+      expect(res.statusCode).toBe(404);
+      expect(JSON.stringify(res.json())).not.toContain(patientId);
+      const rows = await kit.one(
+        "SELECT 1 FROM audit_event WHERE event_type='death_board.viewed' AND resource_id=$1 AND actor_user_id=$2 AND context->>'patientId' IS NOT NULL",
+        [boardId, stranger],
+      );
+      expect(rows).toHaveLength(0);
     });
   });
 

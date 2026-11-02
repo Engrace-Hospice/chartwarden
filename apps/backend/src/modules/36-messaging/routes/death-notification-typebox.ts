@@ -42,6 +42,7 @@ export const DeathNotificationSchema = Type.Object({
 
 export const DeathNotificationListResponseSchema = Type.Object({
   enabled: Type.Boolean(),
+  patient_id: Type.Optional(Uuid),
   notifications: Type.Array(DeathNotificationSchema),
 });
 export const DeathNotificationResponseSchema = Type.Object({

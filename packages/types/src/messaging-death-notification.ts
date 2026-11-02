@@ -60,5 +60,7 @@ export interface DeathNotificationDto {
 
 export interface DeathNotificationListDto {
   readonly enabled: boolean;
+  /** The board's patient, for the read audit's 164.528 accounting. Present only when `enabled` (flag-off answers stay byte-identical). */
+  readonly patient_id?: string;
   readonly notifications: readonly DeathNotificationDto[];
 }

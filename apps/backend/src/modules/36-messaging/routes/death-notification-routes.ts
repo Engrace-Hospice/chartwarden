@@ -58,16 +58,20 @@ export function registerDeathNotificationRoutes(
     {
       preHandler: [READ, PATIENT_READ, requireUuidParams("boardId"), ...limited],
       schema: { response: { 200: DeathNotificationListResponseSchema } },
-      config: { auditRead: { resourceKind: "death_board", resourceIdParam: "boardId" } },
+      // patient_id is the board's patient (HIPAA 164.528 accounting); an id only, and only after the board's own visibility check.
+      config: {
+        auditRead: {
+          resourceKind: "death_board",
+          resourceIdParam: "boardId",
+          patientIdPayloadPath: "patient_id",
+        },
+      },
     },
     async (request, reply) => {
       if (!(await flagOn(request))) return { enabled: false, notifications: [] };
       const { boardId } = parse(DeathNotificationBoardParamsSchema, request.params);
       const actor = await actorOf(request, reply);
-      return noStore(reply).send({
-        enabled: true,
-        notifications: await service.list(actor, boardId),
-      });
+      return noStore(reply).send({ enabled: true, ...(await service.list(actor, boardId)) });
     },
   );
 
