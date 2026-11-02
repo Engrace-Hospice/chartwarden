@@ -790,10 +790,75 @@ describe.skipIf(!DB_URL)("GAP-101 — M36 out-of-band delivery, LIVE Postgres", 
         )
       ).rows;
       expect(bound.every((r) => r.endpoint_id !== null)).toBe(true);
-      // one fan-out sibling for the other device, not one per delivery
-      expect(
-        (await admin.query("SELECT count(*)::int AS n FROM notification_delivery WHERE alert_id=$1", [alert])).rows[0].n,
-      ).toBe(3);
+      // Both devices are covered. The other device gets a sibling (carrying its parent's forwarded_from): one when the two resolves run
+      // in order (NOT EXISTS sees the first), two when they overlap (one per logical copy, like the newest device which both bind to).
+      const total = (
+        await admin.query(
+          "SELECT count(*)::int AS n, count(DISTINCT endpoint_id)::int AS devices FROM notification_delivery WHERE alert_id=$1",
+          [alert],
+        )
+      ).rows[0] as { n: number; devices: number };
+      expect(total.devices).toBe(2);
+      expect(total.n).toBeGreaterThanOrEqual(3);
+      expect(total.n).toBeLessThanOrEqual(4);
+    });
+
+    // Review of 12052709c (MEDIUM): the forwarded copy resolves first (binds the newest device E1, fans out a sibling to E2); E1 then stops
+    // being verified, so E2 is the newest when the DIRECT delivery resolves. Its bind targets (alert, recipient, E2) - the key the forwarded
+    // copy's sibling holds unless that sibling carries the forwarded_from it came from. Otherwise the bind throws on every retry.
+    it("a direct delivery still binds after the newest device changed under a forwarded copy's fan-out", async () => {
+      const USER_F = "88888888-8888-8888-8888-888888888888";
+      await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'f@x.test')`, [USER_F]);
+      const E1 = `${"5".repeat(40)}:chg`;
+      const E2 = `${"6".repeat(40)}:chg`;
+      await device(USER_F, "fcm", E2, 20, null);
+      await device(USER_F, "fcm", E1, 10, null);
+      const alert = (
+        await admin.query(
+          `INSERT INTO alert (organization_id, event_type, severity, payload, correlation_id, outcome)
+           VALUES ($1,'m19.triage.case_opened','critical','{"sourceAggregateId":"call-chg"}','g101-chg','pending') RETURNING id`,
+          [ORG_A],
+        )
+      ).rows[0].id as string;
+      const insertDelivery = async (forwardedFrom: string | null) =>
+        (
+          await admin.query(
+            `INSERT INTO notification_delivery (alert_id, recipient_user_id, forwarded_from_user_id, alert_category, alert_severity, channel, status)
+             VALUES ($1,$2,$3,'clinical_urgent','critical','push','pending') RETURNING id`,
+            [alert, USER_F, forwardedFrom],
+          )
+        ).rows[0].id as string;
+      const direct = await insertDelivery(null);
+      const forwarded = await insertDelivery(USER_A);
+      const claimOf = (id: string) =>
+        ({
+          organizationId: ORG_A,
+          deliveryId: id,
+          channel: "push",
+          alertSeverity: "critical",
+        }) as unknown as Parameters<typeof store.resolveDestination>[0];
+
+      await store.resolveDestination(claimOf(forwarded)); // binds E1, sibling for E2
+      await admin.query(
+        "UPDATE delivery_endpoint SET verification_status='expired' WHERE user_id=$1 AND endpoint_value=$2",
+        [USER_F, E1],
+      );
+      const outcome = await Promise.allSettled([store.resolveDestination(claimOf(direct))]);
+
+      expect(outcome[0]?.status).toBe("fulfilled");
+      const rows = (
+        await admin.query(
+          `SELECT nd.id, nd.forwarded_from_user_id, e.endpoint_value
+             FROM notification_delivery nd JOIN delivery_endpoint e ON e.id = nd.endpoint_id
+            WHERE nd.alert_id=$1 ORDER BY nd.queued_at, nd.id`,
+          [alert],
+        )
+      ).rows as { id: string; forwarded_from_user_id: string | null; endpoint_value: string }[];
+      // the direct delivery is bound to E2, and the forwarded copy's sibling for E2 kept its provenance
+      expect(rows.find((r) => r.id === direct)?.endpoint_value).toBe(E2);
+      const siblingOfForwarded = rows.find((r) => r.id !== direct && r.id !== forwarded);
+      expect(siblingOfForwarded?.endpoint_value).toBe(E2);
+      expect(siblingOfForwarded?.forwarded_from_user_id).toBe(USER_A);
     });
   });
 });

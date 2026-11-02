@@ -80,8 +80,11 @@ export interface DeliveryDispatchStore {
  */
 async function fanOutToOtherDevices(tx: Tx, claim: ClaimedDelivery): Promise<void> {
   await tx.execute(sql`
-    INSERT INTO notification_delivery (alert_id, recipient_user_id, alert_category, alert_severity, channel, endpoint_id)
-    SELECT nd.alert_id, nd.recipient_user_id, nd.alert_category, nd.alert_severity, nd.channel, f.endpoint_id
+    -- A sibling carries its parent's forwarded_from_user_id: the parent's provenance follows it to the other devices, and (the unique index
+    -- keys on it) a forwarded copy's siblings never share a key with the direct delivery's, so the direct delivery can still bind to
+    -- whichever device became the newest after this fan-out ran.
+    INSERT INTO notification_delivery (alert_id, recipient_user_id, forwarded_from_user_id, alert_category, alert_severity, channel, endpoint_id)
+    SELECT nd.alert_id, nd.recipient_user_id, nd.forwarded_from_user_id, nd.alert_category, nd.alert_severity, nd.channel, f.endpoint_id
       FROM notification_delivery nd
      CROSS JOIN delivery_endpoint_fan_out(${claim.organizationId}, ${claim.deliveryId}) f
      WHERE nd.id = ${claim.deliveryId}
