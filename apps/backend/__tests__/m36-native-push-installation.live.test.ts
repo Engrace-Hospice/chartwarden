@@ -141,14 +141,21 @@ describe.skipIf(!DB_URL)("M36 native push installation (ADR-0105) - LIVE Postgre
     expect(all.filter((r) => r.endpoint_value === tokenOf("c"))).toHaveLength(1);
   });
 
-  it("two simultaneous registrations of one install both succeed and leave one row", async () => {
+  it("simultaneous registrations of one install all succeed and leave one row", async () => {
+    // Warm the pool first: with one warm connection the calls never overlap and the race cannot occur.
+    const warmUser = await seedUser("warm");
+    await Promise.all(
+      Array.from({ length: 10 }, (_, i) =>
+        service.registerEndpoint(org, warmUser, apns(String(i).repeat(64), freshInstall())),
+      ),
+    );
     const install = freshInstall();
-    const results = await Promise.allSettled([
-      service.registerEndpoint(org, phoneUser, apns(tokenOf("e"), install)),
-      service.registerEndpoint(org, phoneUser, apns(tokenOf("f"), install)),
-    ]);
+    const tokens = ["1", "2", "3", "4", "5", "6", "7", "8"].map((c) => tokenOf(c));
+    const results = await Promise.allSettled(
+      tokens.map((t) => service.registerEndpoint(org, phoneUser, apns(t, install))),
+    );
 
-    expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+    expect(results.filter((r) => r.status === "rejected")).toEqual([]);
     expect((await rows(phoneUser)).filter((r) => r.install_id === install)).toHaveLength(1);
   });
 
