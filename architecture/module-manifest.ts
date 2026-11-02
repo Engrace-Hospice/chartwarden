@@ -311,6 +311,8 @@ export const MODULES: ModuleDef[] = [
       "message_family_access",
       "message_ack_broadcast",
       "message_ack_broadcast_recipient",
+      "message_emergency",
+      "message_emergency_recipient",
       "death_board",
       "death_board_item",
       "death_board_item_event",
