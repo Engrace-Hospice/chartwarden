@@ -182,6 +182,7 @@ const ROUTES: Record<string, Verdict> = {
   "DELETE /api/v1/messaging/messages/:id": { kind: "idor" },
   "POST /api/v1/messaging/messages/:id/read": { kind: "idor" },
   "POST /api/v1/messaging/dm": { kind: "idor" },
+  "POST /api/v1/messaging/groups": { kind: "idor" }, // member ids in the body: a foreign-org user is the answer a random id gets (asserted below)
   // WP 1.5 attachments: the id is an attachment's (or a body channelId); every refusal must be a random id's answer.
   "POST /api/v1/messaging/attachments/uploads": { kind: "idor" },
   "POST /api/v1/messaging/attachments/:id/complete": { kind: "idor" },
@@ -291,10 +292,12 @@ const ROUTES: Record<string, Verdict> = {
   "POST /api/v1/messaging/department-channels": { kind: "idor" },
   "GET /api/v1/notifications/preferences": { kind: "scoped" },
   "PUT /api/v1/notifications/preferences": { kind: "idor" },
+  "GET /api/v1/notifications/endpoints": { kind: "scoped" }, // ADR-0105 (#935): the caller's own endpoints, compared across orgs below
   "POST /api/v1/notifications/endpoints": { kind: "scoped" },
   "POST /api/v1/notifications/endpoints/:id/verify": { kind: "idor" },
   "DELETE /api/v1/notifications/endpoints/:id": { kind: "idor" },
   "GET /api/v1/alerts/inbox": { kind: "scoped" },
+  "POST /api/v1/alerts/read-all": { kind: "scoped" }, // own alerts only: org B reading all leaves org A's alert unread (asserted below)
   "POST /api/v1/alerts/:id/read": { kind: "idor" },
   "GET /api/v1/alert-rules": { kind: "scoped" },
   "PATCH /api/v1/alert-rules/:id": { kind: "idor" },
@@ -438,6 +441,8 @@ const REGISTRAR_FILES = [
   "afterhours-triage-routes.ts", // ADR-0082 S4/S5 triage line: a foreign-tenant or non-member channel id gets the unknown-id answer from the guards - m36-tenant-idor "channel-id routes"
   "ai-routes.ts", // WP 6.5 AI summaries / drafts / outcomes, mounted by registerMessagingRoutes: attacked in "AI routes" below; the full proof is m36-ai.live
   "ai-typebox.ts", // schemas only
+  "emergency-routes.ts", // ADR-0106 emergency message (flag off): org B gets the random-id 404 and empty lists, nothing is touched - m36-emergency-service.live "gives another organisation's user nothing"
+  "emergency-typebox.ts", // schemas only
   "ack-broadcast-routes.ts", // WP 6.8 ack-required broadcast: org B gets 404 by id and an empty list, RLS hides the rows as chartwarden_app, a non-creator announcer gets the uniform 404 - m36-ack-broadcast.live "tenancy"
   "ack-broadcast-typebox.ts", // schemas only
   "death-board-routes.ts", // WP 6.9 death-event board (flag off): a foreign-tenant or non-viewer id is the missing-board 404, byte-identical body, FORCEd RLS hides the rows - m36-death-board.live "3. routes"
@@ -2124,6 +2129,23 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       expect(real.statusCode).toBe(404);
       expect(shape(real)).toBe(shape(ctl));
     });
+    it("org B cannot put an org A user in a group, same answer as for a random user", async () => {
+      attackers.add(bUser.name);
+      const withForeign = await call(
+        "POST /api/v1/messaging/groups",
+        bUser,
+        {},
+        { title: "wp17 group", userIds: [u1.userId, randomUUID()] },
+      );
+      const withRandom = await call(
+        "POST /api/v1/messaging/groups",
+        bUser,
+        {},
+        { title: "wp17 group", userIds: [randomUUID(), randomUUID()] },
+      );
+      expect(withForeign.statusCode).toBeGreaterThanOrEqual(400);
+      expect(shape(withForeign)).toBe(shape(withRandom));
+    });
     it("the staff directory never lists the other org", async () => {
       for (const [who, foreignToken] of [
         [bUser, A_NAME_TOKEN],
@@ -3027,6 +3049,20 @@ describe.skipIf(!DB_URL)("M36 WP 1.7 tenant & IDOR proof — LIVE Postgres", () 
       expect(inbox.body).not.toContain(alertA);
       await expectNoOracle("POST /api/v1/alerts/:id/read", bUser, { id: alertA });
       await expectNoOracle("POST /api/v1/alerts/:id/read", outsider, { id: alertA });
+    });
+    it("read-all by org B leaves org A's alert unread, and B's endpoint list never shows A's", async () => {
+      attackers.add(bUser.name);
+      const readAll = await call("POST /api/v1/alerts/read-all", bUser);
+      expect(readAll.statusCode).toBe(204);
+      const receipts = await admin.query(
+        `SELECT 1 FROM alert_receipt WHERE alert_id = $1 AND recipient_user_id = $2`,
+        [alertA, u1.userId],
+      );
+      expect(receipts.rowCount).toBe(0);
+      const endpoints = await call("GET /api/v1/notifications/endpoints", bUser);
+      expect(endpoints.statusCode).toBe(200);
+      expect(endpoints.body).not.toContain("wp17-u1@x.test");
+      expect(endpoints.body).not.toContain(endpointA);
     });
     it("alert rules: B never sees or patches A's override", async () => {
       attackers.add(adminB.name);
