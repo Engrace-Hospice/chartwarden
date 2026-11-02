@@ -78,6 +78,31 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     enabled: true,
   },
   {
+    eventType: "m36.emergency.sent",
+    category: "clinical_urgent",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    // ADR-0106: each frozen recipient of an emergency message is alarmed in-app AND by push (critical severity: never quieted; the native
+    // transport sends it time-sensitive / on the Android emergency channel). The text is fixed and names no channel, patient or sender.
+    // The repeat every minute and the 15-minute escalation are the sweep's (ADR-0106 B), not this rule's.
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserId"] },
+    channelsOverride: ["in_app", "push"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m36.emergency.escalated",
+    category: "clinical_urgent",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    // ADR-0106 B: at the 15-minute deadline the sender AND the supervisors (role keys as m36.ack.supervisor_attention) are told that
+    // people have not acknowledged, in-app and by push. The fixed text names no one.
+    resolverArgs: { roleKeys: ["clinical_supervisor", "don"], userIdPaths: ["authorUserId"] },
+    channelsOverride: ["in_app", "push"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
     eventType: "m36.ack.requested",
     category: "clinical_urgent",
     severityFloor: "warn",

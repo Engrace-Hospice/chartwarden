@@ -65,6 +65,7 @@ import {
   type DeliveryTargetRouteDeps,
   registerDeliveryTargetRoutes,
 } from "./delivery-target-routes";
+import { type EmergencyRouteDeps, registerEmergencyRoutes } from "./emergency-routes";
 import { DISABLED_HANDOFFS, type HandoffRouteDeps, registerHandoffRoutes } from "./handoff-routes";
 import {
   DISABLED_IDG_DISCUSSIONS,
@@ -192,6 +193,8 @@ export interface MessagingRouteDeps {
   inbox?: InboxRouteDeps;
   /** WP 6.8 (ADR-0097): acknowledge-required broadcast (tenant flag `messaging.ack_broadcast`). Omitted => the routes are not registered (404). */
   ackBroadcast?: AckBroadcastRouteDeps;
+  /** ADR-0106 (PROPOSED): emergency message (tenant flag `messaging.emergency`). Omitted => the routes are not registered (404). */
+  emergency?: EmergencyRouteDeps;
   /** ADR-0082: the budget of the after-hours thread-line read. */
   afterHoursTriageRateLimit?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
   /** WP 6.5 (ADR-0095): AI summaries and reply drafts (tenant flag `messaging.ai.enabled`). Omitted => the panel is absent and every call is the uniform 404. */
@@ -545,6 +548,8 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
   registerInboxRoutes(app, deps.inbox ?? DISABLED_INBOX, { read: READ });
   // --- WP 6.8: acknowledge-required broadcast (flag-gated inside; routes exist only when the boot supplies the service) ---
   if (deps.ackBroadcast) registerAckBroadcastRoutes(app, deps.ackBroadcast);
+  // --- ADR-0106: emergency message (flag-gated inside) ---
+  if (deps.emergency) registerEmergencyRoutes(app, deps.emergency);
 
   // --- WP 4.12: the on-call directory (read-only; flag-gated in the service) ---
   registerOnCallRoutes(app, deps.oncall ?? DISABLED_ONCALL, { read: READ });

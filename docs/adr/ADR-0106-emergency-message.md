@@ -18,26 +18,42 @@ acknowledge, see who has, and have it escalate if nobody does within 15 minutes.
 
 - **D1. A sibling, not a stretch.** `message_emergency` and `message_emergency_recipient` (migration 1300) follow the ADR-0097 guard/RLS/audit pattern
   but allow any channel and carry a deadline. They are not a widening of `message_ack_broadcast`, whose announcement-only invariants stay intact.
-- **D2. Declaring an emergency.** The author of a live message marks it an emergency; one row per message. The send route (ADR-0106 A2) posts the
-  message and creates the emergency + audience in one transaction, so a committed emergency always has its audience. `urgency` is not used (it is 1:1).
+- **D2. Declaring an emergency.** The author of a live message marks it an emergency; one row per message. The declare route
+  (`POST /messaging/messages/:messageId/emergency`) creates the emergency, freezes the audience and publishes one `m36.emergency.sent` event per
+  recipient in ONE transaction, so a committed emergency always has its audience and its events. It acts on a message the author already posted (the
+  composer posts, then declares; if the second call fails the message stays an ordinary message and the client retries the declare, which is
+  idempotent). `urgency` is not used (it is 1:1).
 - **D3. Audience frozen at send.** Recipients are written only in the transaction that created the emergency (`created_at = now()`), never include the
-  author, and are never reduced or added to afterwards. The route resolves them: channel members plus explicitly tagged people (roles/teams in a later
-  step, via the escalation router). Eligibility is re-checked when alerting, not by editing the frozen rows.
+  author, and are never reduced or added to afterwards. The route resolves them: the active members of the message's channel, at most 500, at least one
+  (typed 422 otherwise). Tagging does not widen the audience beyond the channel; role/team tags (step C) are resolved to people before the send and
+  those people are channel members. Eligibility is re-checked when alerting, not by editing the frozen rows.
 - **D4. Acknowledgment.** Each recipient acknowledges only for themself; NULL → database clock once, never withdrawn. A late acknowledgment (after the
   deadline) is recorded; the deadline drives escalation, not acceptance.
 - **D5. Deadline.** Fixed at 15 minutes after creation on the database clock (the `urgent` default in `ACK_DEADLINE_POLICY`). A client cannot choose it.
 - **D6. Visibility.** Only the author reads who has and has not acknowledged (the same uniform 404 as ADR-0097 D5). A recipient sees their own state.
 - **D7. Gating.** Tenant flag `messaging.emergency`, absent = off, checked before the request is parsed (uniform 404). No new permission: sending needs
   `messaging.send`, acknowledging `messaging.read`.
-- **D8. Alerts are PHI-free.** The alert text is "Emergency message from {channel name}" and nothing else; the details show only after unlock in the app. The
-  event types join the designated set so quiet hours and preferences cannot suppress the platform floor (ADR-0106 A2).
-- **D9. Not an SLA.** An OS push is best-effort. The server-side deadline and escalation (ADR-0106 B) are the safety net.
+- **D8. Alerts are PHI-free.** The alert text is fixed ("Emergency message. Open ChartWarden now.") and names no channel, patient or sender: a
+  channel title can be a patient's name, and the push transport only ever sends fixed text, so the channel name appears only after unlock, in the app.
+  This is stricter than the "from {channel name}" wording first agreed, deliberately. `m36.emergency.sent` joins the designated set (class always
+  critical), so quiet hours and vacation forwarding cannot suppress or redirect it; its seeded rule carries `in_app` + `push` itself so the alarm does not
+  depend on the optional notification-policy flag (the policy floor adds SMS on top when that flag is on). A CRITICAL alert is sent to native devices
+  loud: FCM on the Android `emergency` channel, APNs `interruption-level: time-sensitive` (no Critical Alerts entitlement yet).
+- **D9. Not an SLA.** An OS push is best-effort. The server-side deadline and escalation are the safety net.
+- **D10. Re-alarm and escalation (step B).** A queue `messaging.emergency_sweep` runs every minute and stores nothing. For each recipient who has not
+  acknowledged and whose emergency is under an hour old it raises the alarm for the current tick (whole minutes since the send, alert id
+  `emergency:<id>:<user>:<tick>`, so a repeated tick converges on one alert). Once the deadline has passed with anyone unacknowledged it raises ONE
+  `m36.emergency.escalated` alert (id `emergency-escalated:<id>`) to the sender and to the `clinical_supervisor` / `don` roles. The sweep needs no new
+  columns: the tick and the deadline come from the existing rows and the clock. iOS cannot loop a sound from a push, so the repeated push is the alarm;
+  the mobile app plays its own looping alarm while it is open.
 
 ## Consequences
 
-- Two tables, no new permission, no new queue in this step. Re-alarm every 60 s to people who have not acknowledged and the 15-minute escalation to the
-  sender and next on-call are step B (an expand migration adds their bookkeeping columns).
-- Role/team tags (`@on-call`) are step C and need a new mention kind.
-- The audience is immutable by design: someone who joins the channel after the send is not alarmed. That is deliberate (a frozen, auditable list) and is
-  the first thing to revisit if clinicians expect late joiners to be alerted.
-- ADRs are immutable once Accepted; this one is Proposed until step A2 ships.
+- Two tables, no new permission, one new queue (`messaging.emergency_sweep`).
+- The audience is immutable by design: someone who joins the channel after the send is not alarmed. Decided with the product owner on 2026-11-01:
+  a frozen, auditable list is the right behaviour.
+- The sweep re-alarms by raising a new alert each minute; each alert is its own delivery row, so the sender's roster and the audit trail show every
+  repeat. Re-alarming stops after one hour whatever happened (the escalation fires at 15 minutes).
+- The native push transport still targets one verified endpoint per user (no multi-device fan-out) and the APNs host is global; both are follow-ups
+  from ADR-0105 and matter more for an alarm than for a normal alert.
+- ADRs are immutable once Accepted; this one stays Proposed until reviewed.

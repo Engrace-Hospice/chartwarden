@@ -346,6 +346,7 @@ import {
   AI_ROUTE_RATE_LIMIT,
   ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
   DEATH_BOARD_ROUTE_RATE_LIMIT,
+  EMERGENCY_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
   MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
   createRouteRateLimit,
@@ -1571,6 +1572,11 @@ import {
 } from "./modules/36-messaging/body-legacy-key-check";
 import { buildCareTeamReviewRouter } from "./modules/36-messaging/care-team-sync/binding";
 import { cronAlertCorrelationId } from "./modules/36-messaging/cron-alert-correlation";
+import { sweepEmergenciesForOrg } from "./modules/36-messaging/emergency/emergency-sweep";
+import {
+  registerM36EmergencySweepWorker,
+  scheduleM36EmergencySweepJobs,
+} from "./modules/36-messaging/emergency/emergency-sweep-worker";
 import {
   buildM36ExportBuildConsumer,
   createExportBuildEnqueuer,
@@ -1680,6 +1686,7 @@ import { buildM36ChannelMembershipSyncConsumer } from "./modules/36-messaging/ou
 import { buildM36CriticalLabAlertConsumers } from "./modules/36-messaging/outbox-consumers/critical-lab-alerts";
 import { buildM36DeathBoardConsumer } from "./modules/36-messaging/outbox-consumers/death-board";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";
+import { buildM36EmergencyNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/emergency-notifications";
 import { buildM36ExportNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/export-notifications";
 import { buildM36FeedHealthAlertConsumer } from "./modules/36-messaging/outbox-consumers/feed-health-alerts";
 import { buildM36FieldSafetyAlertConsumer } from "./modules/36-messaging/outbox-consumers/field-safety-alerts";
@@ -5678,6 +5685,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 store: rateLimitStore ?? createInMemoryRateLimitStore(),
                 limit: ACK_BROADCAST_ROUTE_RATE_LIMIT,
                 keyPrefix: "m36-ack-broadcast",
+              }),
+            },
+            // ADR-0106 (PROPOSED) - emergency message; off unless the tenant flag `messaging.emergency` is on.
+            emergency: {
+              flags: featureFlagReader,
+              rateLimit: createRouteRateLimit({
+                store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                limit: EMERGENCY_ROUTE_RATE_LIMIT,
+                keyPrefix: "m36-emergency",
               }),
             },
             // WP 3.7 - chart promotion; off unless the tenant flag `messaging.promotions` is on.
@@ -10431,6 +10447,53 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       );
     }
 
+    // ── M36 ADR-0106 B — `messaging.emergency_sweep` (every minute): re-alarms each recipient of an emergency message who has not
+    // acknowledged, and raises the one escalation past the 15-minute deadline. A tenant with `messaging.emergency` off is skipped.
+    if (platformDbHandle && dbHandle && featureFlagReader) {
+      const m36EmergencyOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M36_INTEGRITY_PLATFORM_JOB_ID,
+        reason: "M36 ADR-0106 emergency_sweep active-org fan-out",
+      });
+      const m36EmergencyWorkers = registerM36EmergencySweepWorker({
+        connection: queueConnection,
+        sweep: (orgId) =>
+          sweepEmergenciesForOrg(
+            {
+              db: dbHandle.db,
+              isEnabled: async (id) =>
+                (await featureFlagReader.forOrg(id))["messaging.emergency"] === true,
+              alerts: getSeam("AlertEmitter") as AlertEmitter,
+            },
+            orgId,
+          ),
+        activeOrgs: m36EmergencyOrgs,
+        // Ids and the error class only: a database error can carry statement parameters.
+        onError: (context, err) =>
+          app.log.error(
+            { ...context, reason: err instanceof Error ? err.name : "unknown" },
+            "M36 emergency sweep error",
+          ),
+      });
+      attachDlqAlertsToAll(m36EmergencyWorkers, "m36");
+      app.addHook("onClose", async () => {
+        await Promise.all(m36EmergencyWorkers.map((w) => w.close()));
+      });
+      try {
+        const m36EmergencyQueues = await scheduleM36EmergencySweepJobs(queueConnection);
+        app.addHook("onClose", async () => {
+          await Promise.all(m36EmergencyQueues.map((q) => q.close()));
+        });
+      } catch (err) {
+        app.log.error(err, "M36 emergency-sweep schedule registration failed");
+      }
+    } else {
+      app.log.warn(
+        "M36 emergency sweep disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required; emergency re-alarms and escalation will not run",
+      );
+    }
+
     // ── M36 WP 4.4 — durable escalation timers. `messaging.ack_escalation_timer` runs the delayed job armed per (request,
     // tier, window); `messaging.ack_escalation_sweep` (every minute) finds the requests the DATABASE says are past their
     // deadline whether or not a job exists (a flushed Redis, a lost job, a request nobody could route yet). Both run the same
@@ -11799,6 +11862,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 }),
               ]
             : []),
+          // ADR-0106 - the first alarm (tick 0) for each frozen recipient of an emergency message; the re-alarm is the sweep's.
+          buildM36EmergencyNotificationsConsumer({
+            alerts: getSeam("AlertEmitter") as AlertEmitter,
+            messaging: createDbMessagingRouteService(dbHandle.db),
+            warn: (message, context) => app.log.warn(context, message),
+          }),
           // WP 4.2 - one fixed-text in-app alert for the assignee of an important request, or the new assignee of a reassign.
           ...(m36Ack
             ? [

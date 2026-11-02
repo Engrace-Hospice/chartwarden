@@ -160,6 +160,8 @@ export function createDrizzleDeliveryDispatchStore(
                 provider: row.provider,
                 token: row.endpoint_value,
                 alertId: row.alert_id,
+                // ADR-0106: a CRITICAL alert (an emergency message) is sent loud: the Android emergency channel, iOS time-sensitive.
+                ...(claim.alertSeverity === "critical" ? { emergency: true } : {}),
               });
         return { endpointId: row.endpoint_id, value };
       });

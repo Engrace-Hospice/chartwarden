@@ -16370,6 +16370,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/messaging/emergencies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The caller's OWN emergencies, newest first, with counts (ADR-0106; messaging.send; uniform 404 while the tenant flag `messaging.emergency` is off). Never cached */
+        get: operations["getApiV1MessagingEmergencies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/emergencies/{emergencyId}/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Acknowledge an emergency for yourself (ADR-0106 D4; messaging.read; idempotent: a repeat is `already:true` with the first instant; not in the frozen audience, the author included, is the uniform 404; uniform 404 while the tenant flag `messaging.emergency` is off). No user field: nobody acknowledges for someone else. Never cached */
+        post: operations["postApiV1MessagingEmergenciesByEmergencyIdAck"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/emergencies/mine": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The alarms addressed to the caller, waiting first (ADR-0106; messaging.read; uniform 404 while the tenant flag `messaging.emergency` is off). Ids and instants only. Never cached */
+        get: operations["getApiV1MessagingEmergenciesMine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/messaging/escalations": {
         parameters: {
             query?: never;
@@ -17411,6 +17462,24 @@ export interface paths {
         post?: never;
         /** Cancel the caller's reminder on a message (idempotent; cleared=false when none was set) */
         delete: operations["deleteApiV1MessagingMessagesByIdReminder"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/messaging/messages/{messageId}/emergency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Who has and has not acknowledged an emergency (ADR-0106 D6; messaging.send; only the AUTHOR, anyone else and an unknown id are the uniform 404, as is a tenant with the flag off). Counts plus every recipient with their acknowledgment instant. Never cached */
+        get: operations["getApiV1MessagingMessagesByMessageIdEmergency"];
+        put?: never;
+        /** Declare a message an EMERGENCY (ADR-0106, PROPOSED; messaging.send; only the AUTHOR of a live message, else the uniform 404). Freezes the audience (every other active member of the channel, at most 500, none = typed 422 EMERGENCY_NO_RECIPIENTS) and alarms each of them until they acknowledge; the 15-minute deadline is the database's. A repeat is 200 `created:false` and leaves the audience untouched. The uniform 404 while the tenant flag `messaging.emergency` is off, before the request is parsed. The lock-screen text is fixed and names no channel, patient or sender. Never cached */
+        post: operations["postApiV1MessagingMessagesByMessageIdEmergency"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -76849,6 +76918,101 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1MessagingEmergencies: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        emergencies: {
+                            emergencyId: string;
+                            messageId: string;
+                            channelId: string;
+                            createdAt: string;
+                            deadlineAt: string;
+                            counts: {
+                                audience: number;
+                                acknowledged: number;
+                                pending: number;
+                            };
+                            pastDeadline: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingEmergenciesByEmergencyIdAck: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                emergencyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        emergencyId: string;
+                        acknowledgedAt: string;
+                        already: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingEmergenciesMine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            emergencyId: string;
+                            messageId: string;
+                            channelId: string;
+                            createdAt: string;
+                            deadlineAt: string;
+                            acknowledgedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1MessagingEscalations: {
         parameters: {
             query?: never;
@@ -80019,6 +80183,84 @@ export interface operations {
                 content: {
                     "application/json": {
                         cleared: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1MessagingMessagesByMessageIdEmergency: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        emergencyId: string;
+                        messageId: string;
+                        channelId: string;
+                        createdAt: string;
+                        deadlineAt: string;
+                        counts: {
+                            audience: number;
+                            acknowledged: number;
+                            pending: number;
+                        };
+                        pastDeadline: boolean;
+                        people: {
+                            userId: string;
+                            displayName: string;
+                            acknowledgedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MessagingMessagesByMessageIdEmergency: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                messageId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        emergencyId: string;
+                        messageId: string;
+                        channelId: string;
+                        createdAt: string;
+                        deadlineAt: string;
+                        counts: {
+                            audience: number;
+                            acknowledged: number;
+                            pending: number;
+                        };
+                        pastDeadline: boolean;
+                        created: boolean;
                     };
                 };
             };

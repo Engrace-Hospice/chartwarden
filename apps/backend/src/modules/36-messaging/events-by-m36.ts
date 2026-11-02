@@ -433,6 +433,26 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
+  {
+    eventName: "m36.emergency.sent",
+    moduleOwner: "m36",
+    description:
+      "A message author declared a message an EMERGENCY (ADR-0106, PROPOSED, flag messaging.emergency): one event per frozen recipient, published in the same transaction that froze the audience. PHI-free: ids and one instant - no channel name, no text, no person's name. M36 alarms the recipient with one fixed-text critical alert (push time-sensitive); the minute re-alarm and the 15-minute escalation are a sweep, not events.",
+    payloadSchema: Type.Object(
+      {
+        organizationId: id,
+        emergencyId: id,
+        channelId: id,
+        messageId: id,
+        authorUserId: id,
+        recipientUserId: id,
+        at: isoInstant,
+      },
+      { additionalProperties: false },
+    ),
+    declaredConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
   ...ACK_EVENT_ENTRIES,
   {
     eventName: "m36.afterhours_triage.requested",

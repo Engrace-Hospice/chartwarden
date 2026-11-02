@@ -3,6 +3,9 @@ import { generateKeyPairSync, verify } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   type ApnsRequest,
+  NATIVE_EMERGENCY_ANDROID_CHANNEL,
+  NATIVE_EMERGENCY_BODY,
+  NATIVE_EMERGENCY_TITLE,
   NATIVE_PUSH_BODY,
   NATIVE_PUSH_TITLE,
   NATIVE_PUSH_TYPE,
@@ -91,6 +94,25 @@ describe("native destination", () => {
     expect(bad({ provider: "fcm", token: FCM_TOKEN, alertId: "nope" })).toBeNull();
   });
 
+  it("keeps the emergency marker through a round trip and omits it otherwise", () => {
+    const loud = encodeNativeDestination({
+      provider: "apns",
+      token: APNS_TOKEN,
+      alertId: ALERT_ID,
+      emergency: true,
+    });
+    expect(parseNativeDestination(loud)?.emergency).toBe(true);
+    expect(parseNativeDestination(apnsDestination)).not.toHaveProperty("emergency");
+    // Only a literal `true` counts: a stored string never turns an ordinary alert loud.
+    const forged = JSON.stringify({
+      provider: "apns",
+      token: APNS_TOKEN,
+      alertId: ALERT_ID,
+      emergency: "true",
+    });
+    expect(parseNativeDestination(forged)).not.toHaveProperty("emergency");
+  });
+
   it("validates token shape per provider", () => {
     expect(isValidNativePushToken("fcm", FCM_TOKEN)).toBe(true);
     expect(isValidNativePushToken("fcm", "has space and is long enough to pass the floor!!")).toBe(
@@ -164,6 +186,30 @@ describe("FCM v1 transport", () => {
     // Nothing from the sanitized notification (its text or link) reaches a native payload.
     expect(JSON.stringify(body)).not.toContain(NOTIFICATION.short);
     expect(JSON.stringify(body)).not.toContain("app.example.test");
+  });
+
+  it("sends an emergency on the Android emergency channel with the fixed emergency line and nothing else", async () => {
+    const { transport, calls } = setup(() => json(200, { name: "projects/p/messages/m-2" }));
+    await transport.send({
+      notification: NOTIFICATION,
+      destination: encodeNativeDestination({
+        provider: "fcm",
+        token: FCM_TOKEN,
+        alertId: ALERT_ID,
+        emergency: true,
+      }),
+    });
+    const body = JSON.parse(String(calls.find((c) => c.url.includes("messages:send"))!.init.body));
+    expect(body.message.notification).toEqual({
+      title: NATIVE_EMERGENCY_TITLE,
+      body: NATIVE_EMERGENCY_BODY,
+    });
+    expect(body.message.android).toEqual({
+      priority: "HIGH",
+      ttl: "3600s",
+      notification: { channel_id: NATIVE_EMERGENCY_ANDROID_CHANNEL },
+    });
+    expect(body.message.data).toEqual({ type: NATIVE_PUSH_TYPE, alertId: ALERT_ID });
   });
 
   it("maps a dead token to a terminal reason that never carries the token", async () => {
@@ -272,6 +318,29 @@ describe("APNs transport", () => {
       type: NATIVE_PUSH_TYPE,
       alertId: ALERT_ID,
     });
+  });
+
+  it("delivers an emergency time-sensitive with the fixed emergency line", async () => {
+    const { transport, calls } = setup(() => ({ status: 200, apnsId: "apns-id-2" }));
+    await transport.send({
+      notification: NOTIFICATION,
+      destination: encodeNativeDestination({
+        provider: "apns",
+        token: APNS_TOKEN,
+        alertId: ALERT_ID,
+        emergency: true,
+      }),
+    });
+    expect(JSON.parse(calls[0]!.body)).toEqual({
+      aps: {
+        alert: { title: NATIVE_EMERGENCY_TITLE, body: NATIVE_EMERGENCY_BODY },
+        sound: "default",
+        "interruption-level": "time-sensitive",
+      },
+      type: NATIVE_PUSH_TYPE,
+      alertId: ALERT_ID,
+    });
+    expect(calls[0]!.headers["apns-priority"]).toBe("10");
   });
 
   it("uses the sandbox host when asked", async () => {

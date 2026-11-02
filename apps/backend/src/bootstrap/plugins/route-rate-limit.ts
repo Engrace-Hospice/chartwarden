@@ -63,6 +63,14 @@ export const ACK_BROADCAST_ROUTE_RATE_LIMIT: RouteRateLimit = {
   failMode: "open",
 };
 
+/** M36 ADR-0106 (PROPOSED): the emergency message routes (the alarm screen polls its own list), 60/min/user and 600/min/org. Fail-open: an availability control; an acknowledgment must never be refused by the limiter itself. */
+export const EMERGENCY_ROUTE_RATE_LIMIT: RouteRateLimit = {
+  perUser: 60,
+  perOrg: 600,
+  windowMs: 60_000,
+  failMode: "open",
+};
+
 /** M36 ADR-0082 `GET /messaging/channels/:id/afterhours-triage` (a card polls it): 60/min/user and 600/min/org. Fail-open: an availability control. */
 export const AFTERHOURS_TRIAGE_LINES_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perUser: 60,

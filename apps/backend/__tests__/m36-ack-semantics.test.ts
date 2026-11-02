@@ -17,6 +17,14 @@ const FILES = ["apps/web/src/shell/alert-inbox.tsx", "apps/web/src/shell/notific
 
 /** Files allowed to use the words, each WITH a reason (a ratchet: add only for a real, different meaning). */
 const WORDING_ALLOWLIST: Readonly<Record<string, string>> = {
+  "apps/backend/src/modules/36-messaging/emergency/emergency-service.ts":
+    "ADR-0106 the emergency message service: each frozen recipient's explicit, self-only acknowledgment instant and the author's who-has-not-acknowledged read; opening a message still writes only a read receipt",
+  "apps/backend/src/modules/36-messaging/emergency/emergency-sweep.ts":
+    "ADR-0106 the re-alarm sweep: it alarms the recipients who have not taken the explicit acknowledgment and stops when they do; it labels no delivery, open or read receipt",
+  "apps/backend/src/modules/36-messaging/routes/emergency-routes.ts":
+    "ADR-0106 the routes of the emergency message: an explicit per-person acknowledgment action; opening a message never acknowledges an emergency",
+  "apps/backend/src/modules/36-messaging/routes/emergency-typebox.ts":
+    "ADR-0106 the request and response shapes of the emergency message; they carry the explicit acknowledgment instant, never a receipt state",
   "apps/backend/src/modules/36-messaging/routes/ack-broadcast-routes.ts":
     "WP 6.8 (ADR-0097) the routes of the acknowledge-required broadcast: an explicit per-person acknowledgment action; opening an announcement still writes only a read receipt and never an acknowledgment",
   "apps/backend/src/modules/36-messaging/routes/ack-broadcast-typebox.ts":

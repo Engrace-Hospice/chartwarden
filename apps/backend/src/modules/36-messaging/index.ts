@@ -165,6 +165,7 @@ import { createDbDeliveryTargetReader as _createDbDeliveryTargetReader } from ".
 import { createDeliveryTargetService as _createDeliveryTargetService } from "./delivery-target/delivery-target-service";
 import type { EndpointVerificationSender } from "./delivery/transport-binding";
 import { createDbDraftService as _createDbDraftService } from "./drafts/draft-service-db";
+import { createEmergencyService as _createEmergencyService } from "./emergency/emergency-service";
 import type {
   ExportArtefactReader as _ExportArtefactReader,
   ExportFlagReader as _ExportFlagReader,
@@ -315,6 +316,11 @@ export function mountMessagingRoutes(
       flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
       rateLimit?: ((request: FastifyRequest, reply: FastifyReply) => Promise<void>) | undefined;
     };
+    /** ADR-0106 (PROPOSED): emergency message. `flags` reads `messaging.emergency` (absent = off); `rateLimit` is the optional route budget. */
+    emergency?: {
+      flags?: { forOrg(organizationId: string): Promise<Record<string, boolean>> } | undefined;
+      rateLimit?: ((request: FastifyRequest, reply: FastifyReply) => Promise<void>) | undefined;
+    };
     /** WP 6.5 (ADR-0095, PROPOSED): AI summaries and reply drafts (flag `messaging.ai.enabled`). Omitted => the panel is absent and every call is the uniform 404. */
     ai?: _AiRouteDeps;
     /** ADR-0082: the optional budget of the after-hours thread-line read. */
@@ -452,6 +458,15 @@ export function mountMessagingRoutes(
     ackBroadcast: {
       service: _createAckBroadcastService({ db, flags: opts.ackBroadcast?.flags }),
       ...(opts.ackBroadcast?.rateLimit ? { rateLimit: opts.ackBroadcast.rateLimit } : {}),
+    },
+    // ADR-0106 (PROPOSED): emergency message; every route answers the uniform 404 while the tenant flag is off.
+    emergency: {
+      service: _createEmergencyService({
+        db,
+        flags: opts.emergency?.flags,
+        outbox: opts.outbox,
+      }),
+      ...(opts.emergency?.rateLimit ? { rateLimit: opts.emergency.rateLimit } : {}),
     },
     ...(opts.afterHoursTriageRateLimit
       ? { afterHoursTriageRateLimit: opts.afterHoursTriageRateLimit }

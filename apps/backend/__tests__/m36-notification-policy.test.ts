@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { DESIGNATED_EVENT_TYPES, PLATFORM_DEFAULT_ALERT_RULES } from "@chartwarden/messaging";
 import {
   ACK_REQUESTS_FLAG_KEY,
+  M36_EMERGENCY_SENT,
   NOTIFICATION_POLICY_FLAG_KEY,
   URGENT_CLINICAL_FLAG_KEY,
 } from "@chartwarden/types";
@@ -28,9 +29,15 @@ const sql = readFileSync(
 ).replace(/\s+/g, " ");
 
 describe("WP 4.6 notification policy wiring", () => {
-  it("the designated event types are exactly the four assignee-facing request events the backend emits", () => {
+  it("the designated event types are exactly the four assignee-facing request events plus the emergency alarm (ADR-0106)", () => {
     expect([...DESIGNATED_EVENT_TYPES].sort()).toEqual(
-      [M36_URGENT_MESSAGE_SENT, M36_ACK_REQUESTED, M36_ACK_REASSIGNED, M36_ACK_ESCALATED].sort(),
+      [
+        M36_URGENT_MESSAGE_SENT,
+        M36_ACK_REQUESTED,
+        M36_ACK_REASSIGNED,
+        M36_ACK_ESCALATED,
+        M36_EMERGENCY_SENT,
+      ].sort(),
     );
   });
 
@@ -38,7 +45,12 @@ describe("WP 4.6 notification policy wiring", () => {
     for (const eventType of DESIGNATED_EVENT_TYPES) {
       const rule = PLATFORM_DEFAULT_ALERT_RULES.find((r) => r.eventType === eventType);
       expect(rule, eventType).toBeDefined();
-      expect(rule?.channelsOverride).toEqual(["in_app"]);
+      // ADR-0106: an emergency alarm must reach the phone whether or not the optional notification-policy ops flag is on, so its
+      // seeded rule carries push itself. It is the ONE designated event with an out-of-band channel in its rule; the platform floor
+      // (push + sms, class critical) still applies on top when the policy flags are on.
+      expect(rule?.channelsOverride).toEqual(
+        eventType === M36_EMERGENCY_SENT ? ["in_app", "push"] : ["in_app"],
+      );
     }
   });
 
