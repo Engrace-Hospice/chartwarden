@@ -706,5 +706,37 @@ describe.skipIf(!DB_URL)("GAP-101 — M36 out-of-band delivery, LIVE Postgres", 
         sentTokens(f.calls.filter((c) => c.request.destination.includes(d.alert))),
       ).toHaveLength(1);
     });
+
+    // PR #937 review (HIGH): a slow resolve that outlives its lease is re-claimed, so two resolveDestination runs overlap on the SAME
+    // unbound critical delivery. Neither sees the other's uncommitted siblings; without the DB-level guard (migration 1303 + ON CONFLICT
+    // DO NOTHING) each phone gets the emergency push twice. A fresh user keeps this independent of the devices earlier tests left behind.
+    it("overlapping fan-outs of one critical delivery create each sibling exactly once", async () => {
+      const USER_D = "66666666-6666-6666-6666-666666666666";
+      await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'d@x.test')`, [USER_D]);
+      await device(USER_D, "fcm", `${"1".repeat(40)}:race`, 40, null);
+      await device(USER_D, "apns", "c3".repeat(32), 30, "production");
+      await device(USER_D, "apns", "d4".repeat(32), 20, "sandbox");
+      await device(USER_D, "fcm", `${"2".repeat(40)}:race`, 10, null);
+
+      // Repeated so the pool is warm after the first round: with one warm connection the runs never overlap.
+      for (let round = 0; round < 3; round += 1) {
+        const d = await delivery(ORG_A, USER_D, "push", { endpoint: false });
+        const claim = {
+          organizationId: ORG_A,
+          deliveryId: d.id,
+          channel: "push",
+          alertSeverity: "critical",
+        } as unknown as Parameters<typeof store.resolveDestination>[0];
+
+        const results = await Promise.allSettled(
+          Array.from({ length: 6 }, () => store.resolveDestination(claim)),
+        );
+
+        expect(results.filter((r) => r.status === "rejected")).toEqual([]);
+        const rows = await siblings(d.alert);
+        expect(rows).toHaveLength(4);
+        expect(new Set(rows.map((r) => r.endpoint_id)).size).toBe(4);
+      }
+    });
   });
 });

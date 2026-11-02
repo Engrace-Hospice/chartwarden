@@ -85,6 +85,7 @@ async function fanOutToOtherDevices(tx: Tx, claim: ClaimedDelivery): Promise<voi
       FROM notification_delivery nd
      CROSS JOIN delivery_endpoint_fan_out(${claim.organizationId}, ${claim.deliveryId}) f
      WHERE nd.id = ${claim.deliveryId}
+    ON CONFLICT DO NOTHING
   `);
 }
 
