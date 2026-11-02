@@ -35,6 +35,7 @@ const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER_A = "33333333-3333-3333-3333-333333333333";
 const USER_B = "44444444-4444-4444-4444-444444444444";
+const USER_C = "55555555-5555-5555-5555-555555555555";
 let fakeSeq = 0;
 /** A fake transport whose vendor ids are unique across the whole database (vendor ids are globally unique). */
 const fakes = (opts?: Parameters<typeof createFakeTransports>[0]) => {
@@ -148,10 +149,10 @@ describe.skipIf(!DB_URL)("GAP-101 — M36 out-of-band delivery, LIVE Postgres", 
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'a@x.test'),($2,'b@x.test')`, [
-      USER_A,
-      USER_B,
-    ]);
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'a@x.test'),($2,'b@x.test'),($3,'c@x.test')`,
+      [USER_A, USER_B, USER_C],
+    );
     await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M36_OUTBOX_EVENTS]));
@@ -476,6 +477,7 @@ describe.skipIf(!DB_URL)("GAP-101 — M36 out-of-band delivery, LIVE Postgres", 
       provider: "fcm",
       token: FCM,
       alertId: d.alert,
+      emergency: true, // the helper's default severity is critical (ADR-0106)
     });
     expect((await row(d.id)).status).toBe("delivered");
 
@@ -595,5 +597,114 @@ describe.skipIf(!DB_URL)("GAP-101 — M36 out-of-band delivery, LIVE Postgres", 
         )
       ).rows[0].verification_status,
     ).toBe("verified");
+  });
+  // ADR-0106 follow-ups: an emergency push reaches EVERY verified native device; the APNs host follows each token's environment.
+  describe("multi-device emergency fan-out and per-token APNs environment", () => {
+    const APNS_DEV = "a1".repeat(32);
+    const APNS_PROD = "b2".repeat(32);
+    const FCM_TOK = `${"c".repeat(40)}:multi`;
+    async function device(
+      user: string,
+      provider: "fcm" | "apns",
+      value: string,
+      ageMinutes: number,
+      environment: "sandbox" | "production" | null,
+    ) {
+      await admin.query(
+        `INSERT INTO delivery_endpoint (user_id, channel, provider, endpoint_value, environment, verification_status, verified_at, created_at)
+         VALUES ($1,'push',$2,$3,$4,'verified', now(), now() - ($5 || ' minutes')::interval)`,
+        [user, provider, value, environment, String(ageMinutes)],
+      );
+    }
+    const siblings = async (alert: string) =>
+      (
+        await admin.query(
+          "SELECT id, status, endpoint_id, fail_reason FROM notification_delivery WHERE alert_id=$1 ORDER BY queued_at, id",
+          [alert],
+        )
+      ).rows;
+    const sentTokens = (calls: { request: { destination: string } }[]) =>
+      calls.map((c) => JSON.parse(c.request.destination) as Record<string, unknown>);
+
+    it("a critical push goes to every verified device once, loud, with each APNs token's own environment", async () => {
+      await device(USER_C, "fcm", FCM_TOK, 30, null);
+      await device(USER_C, "apns", APNS_DEV, 20, "sandbox");
+      await device(USER_C, "apns", APNS_PROD, 10, "production");
+      const d = await delivery(ORG_A, USER_C, "push", { endpoint: false });
+
+      const first = fakes();
+      await runDeliverySweep(sweepDeps(first.transports), "push");
+      const second = fakes();
+      await runDeliverySweep(sweepDeps(second.transports), "push");
+      const third = fakes();
+      await runDeliverySweep(sweepDeps(third.transports), "push");
+
+      const all = sentTokens([...first.calls, ...second.calls]);
+      expect(all.map((c) => c.token).sort()).toEqual([APNS_DEV, APNS_PROD, FCM_TOK].sort());
+      expect(all.every((c) => c.emergency === true && c.alertId === d.alert)).toBe(true);
+      const byToken = Object.fromEntries(all.map((c) => [c.token as string, c]));
+      expect(byToken[APNS_DEV]?.environment).toBe("sandbox");
+      expect(byToken[APNS_PROD]?.environment).toBe("production");
+      expect(byToken[FCM_TOK]).not.toHaveProperty("environment");
+      // Idempotent per (alert, device): the third sweep and a re-run add neither sends nor rows.
+      expect(third.calls).toHaveLength(0);
+      const rows = await siblings(d.alert);
+      expect(rows).toHaveLength(3);
+      expect(rows.every((r) => r.status === "delivered")).toBe(true);
+      expect(new Set(rows.map((r) => r.endpoint_id)).size).toBe(3);
+    });
+
+    it("a failing or dead device token does not block the others and expires only itself", async () => {
+      const DEAD = `${"e".repeat(40)}:dead2`;
+      const LIVE = `${"f".repeat(40)}:live2`;
+      await device(USER_C, "fcm", LIVE, 5, null);
+      await device(USER_C, "fcm", DEAD, 1, null); // newest = the original delivery's device
+      const d = await delivery(ORG_A, USER_C, "push", { endpoint: false });
+      // Earlier tests left USER_C three more verified devices, so five in all; kill whichever send carries DEAD.
+      for (let sweep = 0; sweep < 2; sweep += 1) {
+        const f = createFakeTransports({
+          idPrefix: `d${sweep}-${seq}`,
+          failWith: (_channel, n) =>
+            f.calls[n - 1]?.request.destination.includes(DEAD)
+              ? new TransportError(PUSH_TOKEN_UNREGISTERED, false)
+              : undefined,
+        });
+        await runDeliverySweep(sweepDeps(f.transports), "push");
+      }
+      const rows = await siblings(d.alert);
+      expect(rows).toHaveLength(5);
+      expect(rows.filter((r) => r.status === "failed").map((r) => r.fail_reason)).toEqual([
+        PUSH_TOKEN_UNREGISTERED,
+      ]);
+      expect(rows.filter((r) => r.status === "delivered")).toHaveLength(4);
+      const states = (
+        await admin.query(
+          "SELECT endpoint_value, verification_status FROM delivery_endpoint WHERE user_id=$1 AND endpoint_value = ANY($2)",
+          [USER_C, [DEAD, LIVE]],
+        )
+      ).rows;
+      expect(
+        Object.fromEntries(states.map((r) => [r.endpoint_value, r.verification_status])),
+      ).toEqual({
+        [DEAD]: "expired",
+        [LIVE]: "verified",
+      });
+    });
+
+    it("a non-critical push still goes to the newest device only, with no fan-out", async () => {
+      const d = await delivery(ORG_A, USER_C, "push", {
+        endpoint: false,
+        severity: "info",
+        category: "clinical_routine",
+      });
+      const f = fakes();
+      await runDeliverySweep(sweepDeps(f.transports), "push");
+      await runDeliverySweep(sweepDeps(fakes().transports), "push");
+      expect(await siblings(d.alert)).toHaveLength(1);
+      expect(f.calls.some((c) => c.request.destination.includes(d.alert))).toBe(true);
+      expect(
+        sentTokens(f.calls.filter((c) => c.request.destination.includes(d.alert))),
+      ).toHaveLength(1);
+    });
   });
 });

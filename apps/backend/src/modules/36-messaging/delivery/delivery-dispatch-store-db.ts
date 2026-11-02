@@ -74,6 +74,20 @@ export interface DeliveryDispatchStore {
   ): Promise<void>;
 }
 
+/**
+ * One pending sibling delivery per OTHER verified native device of a critical push's recipient, bound to that device. The DB function lists
+ * only devices without a delivery yet (and only while this delivery is unbound), so a retry or a concurrent sweep adds nothing.
+ */
+async function fanOutToOtherDevices(tx: Tx, claim: ClaimedDelivery): Promise<void> {
+  await tx.execute(sql`
+    INSERT INTO notification_delivery (alert_id, recipient_user_id, alert_category, alert_severity, channel, endpoint_id)
+    SELECT nd.alert_id, nd.recipient_user_id, nd.alert_category, nd.alert_severity, nd.channel, f.endpoint_id
+      FROM notification_delivery nd
+     CROSS JOIN delivery_endpoint_fan_out(${claim.organizationId}, ${claim.deliveryId}) f
+     WHERE nd.id = ${claim.deliveryId}
+  `);
+}
+
 export function createDrizzleDeliveryDispatchStore(
   db: DbClient,
   outbox: DeliveryOutboxPort,
@@ -140,12 +154,17 @@ export function createDrizzleDeliveryDispatchStore(
           endpoint_value: string;
           provider: "web" | "fcm" | "apns";
           alert_id: string;
+          environment: "sandbox" | "production" | null;
         }>(sql`
-          SELECT endpoint_id, endpoint_value, provider, alert_id
+          SELECT endpoint_id, endpoint_value, provider, alert_id, environment
             FROM delivery_endpoint_for_delivery(${claim.organizationId}, ${claim.deliveryId})
         `);
         const row = res.rows[0];
         if (!row) return null;
+        // ADR-0106: a critical push reaches EVERY verified native device. This delivery takes the newest; each other device gets its own
+        // sibling delivery (own status, retry budget, dead-token handling). Done before the bind below, which is what marks it as handled.
+        if (claim.channel === "push" && claim.alertSeverity === "critical")
+          await fanOutToOtherDevices(tx, claim);
         // Remember which endpoint this attempt targets, so the health bookkeeping (and the webhook's audit
         // trail) can name it.
         await tx.update(ND).set({ endpointId: row.endpoint_id }).where(eq(ND.id, claim.deliveryId));
@@ -162,6 +181,10 @@ export function createDrizzleDeliveryDispatchStore(
                 alertId: row.alert_id,
                 // ADR-0106: a CRITICAL alert (an emergency message) is sent loud: the Android emergency channel, iOS time-sensitive.
                 ...(claim.alertSeverity === "critical" ? { emergency: true } : {}),
+                // ADR-0105/0106: the APNs host follows the token's own build environment; unrecorded falls back to APNS_ENVIRONMENT.
+                ...(row.provider === "apns" && row.environment
+                  ? { environment: row.environment }
+                  : {}),
               });
         return { endpointId: row.endpoint_id, value };
       });
