@@ -509,6 +509,12 @@ async function rotateInstallToken(
   userId: string,
   input: DeliveryEndpointInput,
 ): Promise<DeliveryEndpointView | null> {
+  // Serialise concurrent registrations of the same install (app double-fire, refresh racing a foreground re-register): without this both
+  // see "no row" and both INSERT, and the loser hits delivery_endpoint_install_unique (23505 -> 500 whose logged error embeds the token).
+  // Transaction-scoped, so it is released at commit and the loser then finds the winner's row and rotates it.
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`delivery_endpoint_install:${userId}:${input.provider}:${input.installId}`}, 0))`,
+  );
   const existing = (await tx
     .select({ id: DE.id, endpointValue: DE.endpointValue })
     .from(DE)
@@ -2585,7 +2591,8 @@ export function createDbMessagingRouteService(
                 provider: sql`excluded.provider`,
                 sessionId: sql`excluded.session_id`, // never keep a link to a session that may no longer exist
                 consecutiveFailures: 0,
-                installId: sql`excluded.install_id`,
+                // an older client re-registering without an install id must not wipe the identity of an install-bound row
+                installId: sql`coalesce(excluded.install_id, ${DE.installId})`,
                 environment: sql`excluded.environment`,
                 appVersion: sql`excluded.app_version`,
                 appBuild: sql`excluded.app_build`,
