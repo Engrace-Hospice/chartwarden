@@ -136,6 +136,7 @@ export * from "./messaging/message-family";
 export * from "./messaging/message-ack-broadcast";
 export * from "./messaging/message-emergency";
 export * from "./messaging/death-board";
+export * from "./messaging/death-notification";
 export * from "./messaging/alarm-ingest";
 export * from "./messaging/legal-hold-messages";
 export * from "./messaging/message-redactions";

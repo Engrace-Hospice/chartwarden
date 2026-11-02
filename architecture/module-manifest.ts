@@ -316,6 +316,7 @@ export const MODULES: ModuleDef[] = [
       "death_board",
       "death_board_item",
       "death_board_item_event",
+      "death_notification",
       "alarm_source",
       "alarm_source_mapping",
       "alarm_ingest_event",
