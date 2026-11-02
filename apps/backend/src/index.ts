@@ -1690,7 +1690,7 @@ import { buildM36DeathBoardConsumer } from "./modules/36-messaging/outbox-consum
 import { buildM36DeathNotificationsConsumer } from "./modules/36-messaging/outbox-consumers/death-notifications";
 import { withBoardOpenedEvent } from "./modules/36-messaging/death-notification/death-board-opened-store";
 import { createDbDeathBoardStore } from "./modules/36-messaging/death-board/death-board-store";
-import { executedBaaGate } from "./modules/36-messaging/death-notification/baa-gate";
+import { executedBaaGate } from "./bootstrap/death-notification-baa-gate";
 import { buildFuneralLinkPort } from "./bootstrap/death-notification-funeral-link";
 import { FUNERAL_LINK_TTL_SEC } from "./modules/02-identity/identity-ports";
 import { buildM36EmarAlertConsumer } from "./modules/36-messaging/outbox-consumers/emar-alerts";

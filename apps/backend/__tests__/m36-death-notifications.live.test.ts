@@ -32,7 +32,7 @@ import { buildServer } from "../src/bootstrap/index";
 import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import { buildDeathBoardDeps } from "../src/modules/36-messaging/death-board/deps";
 import { createDbDeathBoardStore } from "../src/modules/36-messaging/death-board/death-board-store";
-import { executedBaaGate } from "../src/modules/36-messaging/death-notification/baa-gate";
+import { executedBaaGate } from "../src/bootstrap/death-notification-baa-gate";
 import { withBoardOpenedEvent } from "../src/modules/36-messaging/death-notification/death-board-opened-store";
 import { DEATH_NOTIFICATION_TEXT } from "../src/modules/36-messaging/death-notification/death-notification-alerts";
 import { buildDeathNotificationDeps } from "../src/modules/36-messaging/death-notification/deps";
@@ -104,7 +104,7 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
   const ev = (
     eventType: string,
     payload: Record<string, unknown>,
-    id = randomUUID(),
+    id: DispatchableOutboxEvent["id"] = randomUUID(),
   ): DispatchableOutboxEvent => ({
     id,
     organizationId: ORG_A,
@@ -156,7 +156,7 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
     return { patientId, boardId, opened, flagOn };
   }
   const deliverOpened = (opened: { id: string; payload: Record<string, unknown> } | undefined) =>
-    noticeConsumer.handle(ev("m36.death_board.opened", opened?.payload ?? {}, opened?.id));
+    noticeConsumer.handle(ev("m36.death_board.opened", opened?.payload ?? {}, opened?.id as DispatchableOutboxEvent["id"]));
 
   async function asApp<T>(org: string, fn: () => Promise<T>): Promise<T> {
     await kit.appConn.query("BEGIN");
@@ -320,7 +320,7 @@ describe.skipIf(!DB_URL)("M36 death-notification cascade - LIVE Postgres", () =>
     it("flag off writes no notification at all", async () => {
       const { boardId, opened } = await newDeath();
       const offConsumer = buildM36DeathNotificationsConsumer({ service: off.service });
-      await offConsumer.handle(ev("m36.death_board.opened", opened?.payload ?? {}, opened?.id));
+      await offConsumer.handle(ev("m36.death_board.opened", opened?.payload ?? {}, opened?.id as DispatchableOutboxEvent["id"]));
       expect(await noticeRows(boardId)).toHaveLength(0);
     });
 

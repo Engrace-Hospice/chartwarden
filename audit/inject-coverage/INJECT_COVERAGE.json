@@ -586,6 +586,7 @@
         "apps/backend/__tests__/m36-clinical-link.live.test.ts",
         "apps/backend/__tests__/m36-death-board-routes.test.ts",
         "apps/backend/__tests__/m36-death-board.live.test.ts",
+        "apps/backend/__tests__/m36-death-notifications.live.test.ts",
         "apps/backend/__tests__/m36-delivery-sweep-and-webhooks.test.ts",
         "apps/backend/__tests__/m36-delivery-target.live.test.ts",
         "apps/backend/__tests__/m36-delivery-target.test.ts",
@@ -698,6 +699,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m25-payer-appeal.live.test.ts",
+        "apps/backend/__tests__/m36-death-notifications.live.test.ts",
         "apps/backend/__tests__/mdm-routes-mount.test.ts",
         "apps/backend/__tests__/mdm-routes.test.ts"
       ],

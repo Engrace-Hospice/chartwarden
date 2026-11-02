@@ -719,7 +719,7 @@
       "adapter": null,
       "liveInfra": {
         "tables": 75,
-        "covered": 74
+        "covered": 75
       }
     },
     {
