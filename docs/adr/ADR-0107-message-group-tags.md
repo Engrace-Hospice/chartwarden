@@ -48,7 +48,7 @@ Each staff mention produces one `m36.message.mentioned` event and one in-app not
 - **D8. Privacy of the roster.** The wire message carries the tag's label and range only, never the resolved list. The snapshot table has no read route
   in this change and is org-isolated by RLS; it holds ids and instants (no names, no text) and is audited like the other M36 PHI-adjacent tables.
   The candidate list shows labels and a kind, not who is behind them, and only roles that at least one channel member holds.
-- **D9. Migration (1301, additive).** Widen the `message_entity_reference_kind_shape` CHECK to the five kinds (drop and re-add; every existing row
+- **D9. Migration (1302, additive).** Widen the `message_entity_reference_kind_shape` CHECK to the five kinds (drop and re-add; every existing row
   satisfies the wider set) and create `message_group_tag_recipient`. No data is rewritten. The compat gate reads a widened CHECK as `contract` (migrations README), so the file declares that; it is backward compatible in fact. Rolling back the application leaves the wider CHECK harmlessly in place.
 
 ## Consequences
