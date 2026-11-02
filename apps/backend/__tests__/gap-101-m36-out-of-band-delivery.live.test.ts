@@ -738,5 +738,62 @@ describe.skipIf(!DB_URL)("GAP-101 — M36 out-of-band delivery, LIVE Postgres", 
         expect(new Set(rows.map((r) => r.endpoint_id)).size).toBe(4);
       }
     });
+
+    // Review of the fix above (HIGH): a vacation-forwarded copy is a SECOND critical push row for the same (alert, recipient) when the
+    // backup is also a direct recipient. Both bind to the recipient's newest device; the unique index must not make the second bind throw
+    // (it would error on every retry and the delivery would stay pending for ever).
+    it("a forwarded copy and a direct delivery for one recipient both resolve and bind", async () => {
+      const USER_E = "77777777-7777-7777-7777-777777777777";
+      await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'e@x.test')`, [USER_E]);
+      await device(USER_E, "fcm", `${"3".repeat(40)}:fwd`, 20, null);
+      await device(USER_E, "fcm", `${"4".repeat(40)}:fwd`, 10, null);
+      const alert = (
+        await admin.query(
+          `INSERT INTO alert (organization_id, event_type, severity, payload, correlation_id, outcome)
+           VALUES ($1,'m19.triage.case_opened','critical','{"sourceAggregateId":"call-fwd"}','g101-fwd','pending') RETURNING id`,
+          [ORG_A],
+        )
+      ).rows[0].id as string;
+      const insertDelivery = async (forwardedFrom: string | null) =>
+        (
+          await admin.query(
+            `INSERT INTO notification_delivery (alert_id, recipient_user_id, forwarded_from_user_id, alert_category, alert_severity, channel, status)
+             VALUES ($1,$2,$3,'clinical_urgent','critical','push','pending') RETURNING id`,
+            [alert, USER_E, forwardedFrom],
+          )
+        ).rows[0].id as string;
+      const direct = await insertDelivery(null);
+      const forwarded = await insertDelivery(USER_A);
+      const claimOf = (id: string) =>
+        ({
+          organizationId: ORG_A,
+          deliveryId: id,
+          channel: "push",
+          alertSeverity: "critical",
+        }) as unknown as Parameters<typeof store.resolveDestination>[0];
+
+      const results = await Promise.allSettled([
+        store.resolveDestination(claimOf(direct)),
+        store.resolveDestination(claimOf(forwarded)),
+      ]);
+      // A second pass is what a lease-lapse re-claim does; it must still not throw.
+      const again = await Promise.allSettled([
+        store.resolveDestination(claimOf(direct)),
+        store.resolveDestination(claimOf(forwarded)),
+      ]);
+
+      expect([...results, ...again].filter((r) => r.status === "rejected")).toEqual([]);
+      const bound = (
+        await admin.query(
+          "SELECT id, endpoint_id FROM notification_delivery WHERE alert_id=$1 AND id = ANY($2)",
+          [alert, [direct, forwarded]],
+        )
+      ).rows;
+      expect(bound.every((r) => r.endpoint_id !== null)).toBe(true);
+      // one fan-out sibling for the other device, not one per delivery
+      expect(
+        (await admin.query("SELECT count(*)::int AS n FROM notification_delivery WHERE alert_id=$1", [alert])).rows[0].n,
+      ).toBe(3);
+    });
   });
 });

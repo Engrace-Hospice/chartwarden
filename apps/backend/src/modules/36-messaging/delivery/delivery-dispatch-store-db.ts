@@ -85,7 +85,10 @@ async function fanOutToOtherDevices(tx: Tx, claim: ClaimedDelivery): Promise<voi
       FROM notification_delivery nd
      CROSS JOIN delivery_endpoint_fan_out(${claim.organizationId}, ${claim.deliveryId}) f
      WHERE nd.id = ${claim.deliveryId}
-    ON CONFLICT DO NOTHING
+    ON CONFLICT (alert_id, recipient_user_id, endpoint_id,
+                 (COALESCE(forwarded_from_user_id, '00000000-0000-0000-0000-000000000000'::uuid)))
+      WHERE endpoint_id IS NOT NULL AND channel = 'push' AND alert_severity = 'critical'
+      DO NOTHING
   `);
 }
 
