@@ -379,5 +379,35 @@ describe.skipIf(!DB_URL)(
         (await call("GET", "/api/v1/messaging/emergencies", author)).json().emergencies.length,
       ).toBeGreaterThan(0);
     });
+
+    it("gives another organisation's user nothing: the same 404 a random id gets, an empty list, no rows touched", async () => {
+      const outsider = await kit.seedUser("outsider", ORG_B, KEYS);
+      const asB = (method: "GET" | "POST", url: string) =>
+        app.inject({ method, url, headers: as(outsider, ORG_B) });
+      const stripCorrelation = (body: string) => body.replace(/"correlationId":"[^"]*"/, "");
+      const random = "00000000-0000-4000-8000-0000000000aa";
+      const declare = `/api/v1/messaging/messages/${routeMessage}/emergency`;
+      const foreign = [
+        await asB("POST", declare),
+        await asB("GET", declare),
+        await asB("POST", `/api/v1/messaging/emergencies/${routeEmergency}/ack`),
+      ];
+      const unknown = [
+        await asB("POST", `/api/v1/messaging/messages/${random}/emergency`),
+        await asB("GET", `/api/v1/messaging/messages/${random}/emergency`),
+        await asB("POST", `/api/v1/messaging/emergencies/${random}/ack`),
+      ];
+      for (const [i, res] of foreign.entries()) {
+        expect(res.statusCode).toBe(404);
+        expect(stripCorrelation(res.body)).toBe(stripCorrelation(unknown[i]?.body ?? ""));
+      }
+      expect((await asB("GET", "/api/v1/messaging/emergencies/mine")).json().items).toEqual([]);
+      expect((await asB("GET", "/api/v1/messaging/emergencies")).json().emergencies).toEqual([]);
+      const still = await kit.one<{ user_id: string }>(
+        `SELECT user_id FROM message_emergency_recipient WHERE emergency_id = $1 AND acknowledged_at IS NULL`,
+        [routeEmergency],
+      );
+      expect(still.map((r) => r.user_id)).toEqual([alice]);
+    });
   },
 );
