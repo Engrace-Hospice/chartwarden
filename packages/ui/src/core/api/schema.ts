@@ -62162,6 +62162,8 @@ export interface operations {
             content: {
                 "application/json": {
                     patientId: string;
+                    /** Format: uuid */
+                    funeralHomeId: string;
                     recipientEmail?: string;
                 };
             };
@@ -76907,6 +76909,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         enabled: boolean;
+                        patient_id?: string;
                         notifications: {
                             id: string;
                             board_id: string;

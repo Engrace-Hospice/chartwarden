@@ -139244,11 +139244,16 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "patientId"
+                  "patientId",
+                  "funeralHomeId"
                 ],
                 "properties": {
                   "patientId": {
                     "minLength": 1,
+                    "type": "string"
+                  },
+                  "funeralHomeId": {
+                    "format": "uuid",
                     "type": "string"
                   },
                   "recipientEmail": {
@@ -195607,6 +195612,10 @@
                   "properties": {
                     "enabled": {
                       "type": "boolean"
+                    },
+                    "patient_id": {
+                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "type": "string"
                     },
                     "notifications": {
                       "type": "array",

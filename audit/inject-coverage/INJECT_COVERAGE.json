@@ -698,6 +698,7 @@
       "routes": 25,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/m2-link-redemption.live.test.ts",
         "apps/backend/__tests__/m25-payer-appeal.live.test.ts",
         "apps/backend/__tests__/m36-death-notifications.live.test.ts",
         "apps/backend/__tests__/mdm-routes-mount.test.ts",
