@@ -39,3 +39,9 @@ id = "stripe-access-token"
 [[rules.allowlists]]
 description = "Stripe adapter tests use sk_test_ fixture keys"
 paths = ['''^packages/subscription-billing/__tests__/''']
+
+[[rules]]
+id = "jwt"
+[[rules.allowlists]]
+description = "Cross-language golden vector in the M02-P1 Rust-bridge signer test: a signature over a fixed test subject by a deterministic Ed25519 key (fixed seed, 'Not a real credential'); the Rust verifier test checks the same token. Nothing else is exempt from the jwt rule."
+paths = ['''^apps/backend/src/bootstrap/rust-bridge/__tests__/signer-config\.test\.ts$''']
