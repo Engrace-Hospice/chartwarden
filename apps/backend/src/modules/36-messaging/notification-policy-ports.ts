@@ -10,6 +10,8 @@ import type { NotificationChannel } from "@chartwarden/messaging";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ACK_REQUESTS_FLAG_KEY,
+  EMERGENCY_FLAG_KEY,
+  M36_EMERGENCY_SENT,
   NOTIFICATION_POLICY_FLAG_KEY,
   URGENT_CLINICAL_FLAG_KEY,
 } from "@chartwarden/types";
@@ -23,6 +25,7 @@ const URGENT_SENT = "m36.message.urgent_sent";
 
 /** The flag that gates the event's own family: urgent_sent -> urgent_clinical, any other designated event (m36.ack.*) -> ack_requests. */
 function familyFlagFor(eventType: string): string {
+  if (eventType === M36_EMERGENCY_SENT) return EMERGENCY_FLAG_KEY;
   return eventType === URGENT_SENT ? URGENT_CLINICAL_FLAG_KEY : ACK_REQUESTS_FLAG_KEY;
 }
 

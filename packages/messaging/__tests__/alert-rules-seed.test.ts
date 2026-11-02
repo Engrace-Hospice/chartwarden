@@ -28,6 +28,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m36.task.reassigned",
       "m36.task.needs_owner",
       "m36.message.urgent_sent",
+      "m36.emergency.sent",
+      "m36.emergency.escalated",
       "m36.ack.requested",
       "m36.ack.reassigned",
       "m36.ack.supervisor_reassigned",

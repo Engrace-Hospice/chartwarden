@@ -286,6 +286,12 @@ describe("designatedClassOf", () => {
       ackClass: "critical",
       defaulted: false,
     });
+    // ADR-0106: an emergency message is always critical, whatever the payload says.
+    expect(designatedClassOf("m36.emergency.sent", { ackClass: "important" })).toEqual({
+      ackClass: "critical",
+      defaulted: false,
+    });
+    expect(designatedClassOf("m36.emergency.escalated", {})).toBeNull();
     expect(designatedClassOf("m36.ack.failed_unreachable", { ackClass: "urgent" })).toBeNull();
     expect(designatedClassOf("m36.ack.route_unavailable", {})).toBeNull();
     expect(designatedClassOf("m10.hope.sfv_created", {})).toBeNull();

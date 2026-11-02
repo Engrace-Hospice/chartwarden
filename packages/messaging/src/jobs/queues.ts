@@ -51,6 +51,7 @@ export const MESSAGING_QUEUES = {
   ackEscalationTimer: "messaging.ack_escalation_timer",
   ackEscalationSweep: "messaging.ack_escalation_sweep",
   reminderSweep: "messaging.reminder_sweep",
+  emergencySweep: "messaging.emergency_sweep",
   breakGlassReviewSweep: "messaging.break_glass_review_sweep",
   exportBuild: "messaging.export_build",
   exportExpirySweep: "messaging.export_expiry_sweep",
@@ -305,6 +306,19 @@ export const MESSAGING_QUEUE_PARAMETERS: { readonly [K in MessagingQueueName]: Q
   // WP 4.10 (ADR-0077): every minute, raises the alert of each due reminder and deletes the row. The alert's correlation id is the
   // reminder id, so a retry, an overlapping tick or a second worker is absorbed by the emitter. Concurrency 1: one sweeper; a missed
   // tick is made up by the next. A tenant with the flag off is skipped (rows wait).
+  // ADR-0106 B: every minute, per org with the flag on: re-raises the alarm of each recipient who has not acknowledged (alert id
+  // `emergency:<id>:<user>:<tick>`) and, past the 15-minute deadline, raises the one escalation (`emergency-escalated:<id>`). It stores
+  // nothing, so a lost job is made up by the next tick.
+  "messaging.emergency_sweep": {
+    name: "messaging.emergency_sweep",
+    priority: 1,
+    attempts: 2,
+    backoff: { type: "fixed", baseMs: 30000 },
+    concurrency: 1,
+    dlq: "messaging.emergency_sweep.dlq",
+    idempotency:
+      "alert correlation id: `emergency:<emergencyId>:<userId>:<minute tick>` per alarm and `emergency-escalated:<emergencyId>` per escalation; unique per organisation",
+  },
   "messaging.reminder_sweep": {
     name: "messaging.reminder_sweep",
     priority: 6,
@@ -341,6 +355,8 @@ export const MESSAGING_JOB_SCHEDULES = {
   ackEscalationSweep: "* * * * *",
   /** reminder_sweep: every minute (raises the alert of each reminder that came due). */
   reminderSweep: "* * * * *",
+  /** emergency_sweep: every minute (re-alarms each unacknowledged emergency recipient; escalates past the 15-minute deadline). */
+  emergencySweep: "* * * * *",
   /** break_glass_review_sweep: hourly at :20 (alerts the compliance reviewers to a review still open three days after its grant ended). */
   breakGlassReviewSweep: "20 * * * *",
   /** export_expiry_sweep: hourly at :40 (deletes the artefact of each export past its 24 h link and marks it expired). */

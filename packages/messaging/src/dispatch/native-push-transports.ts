@@ -26,6 +26,11 @@ export type NativePushProvider = "fcm" | "apns";
 export const NATIVE_PUSH_TYPE = "wardenx.alert";
 export const NATIVE_PUSH_TITLE = "ChartWarden";
 export const NATIVE_PUSH_BODY = "You have a new alert";
+/** ADR-0106: the fixed emergency line. It names no channel, patient or sender; details show only after unlock. */
+export const NATIVE_EMERGENCY_TITLE = "Emergency message";
+export const NATIVE_EMERGENCY_BODY = "Open ChartWarden now";
+/** The Android notification channel the app creates (MAX importance, bypass Do Not Disturb). Must match the mobile app. */
+export const NATIVE_EMERGENCY_ANDROID_CHANNEL = "emergency";
 /** The reason a dead device token settles with: terminal, PHI-free, stable for ops dashboards. */
 export const PUSH_TOKEN_UNREGISTERED = "push_token_unregistered";
 
@@ -45,6 +50,12 @@ export interface NativeDestination {
   readonly provider: NativePushProvider;
   readonly token: string;
   readonly alertId: string;
+  /**
+   * ADR-0106: the alert is CRITICAL (an emergency message). The wording and routing change, never the content: Android uses the
+   * `emergency` notification channel, iOS delivers it time-sensitive (breaking Focus; Critical Alerts needs an Apple entitlement), and the
+   * title/body are the fixed emergency line. Absent = a normal alert, byte-for-byte as before.
+   */
+  readonly emergency?: boolean;
 }
 
 export function encodeNativeDestination(destination: NativeDestination): string {
@@ -60,11 +71,13 @@ export function parseNativeDestination(raw: string): NativeDestination | null {
     return null;
   }
   if (typeof value !== "object" || value === null) return null;
-  const { provider, token, alertId } = value as Record<string, unknown>;
+  const { provider, token, alertId, emergency } = value as Record<string, unknown>;
   if (provider !== "fcm" && provider !== "apns") return null;
   if (typeof token !== "string" || !isValidNativePushToken(provider, token)) return null;
   if (typeof alertId !== "string" || !UUID.test(alertId)) return null;
-  return { provider, token, alertId };
+  return emergency === true
+    ? { provider, token, alertId, emergency: true }
+    : { provider, token, alertId };
 }
 
 const b64u = (input: Buffer | string): string => Buffer.from(input).toString("base64url");
@@ -171,9 +184,17 @@ export function createFcmTransport(opts: FcmOptions): OutOfBandTransport {
           body: JSON.stringify({
             message: {
               token: destination.token,
-              notification: { title: NATIVE_PUSH_TITLE, body: NATIVE_PUSH_BODY },
+              notification: destination.emergency
+                ? { title: NATIVE_EMERGENCY_TITLE, body: NATIVE_EMERGENCY_BODY }
+                : { title: NATIVE_PUSH_TITLE, body: NATIVE_PUSH_BODY },
               data: { type: NATIVE_PUSH_TYPE, alertId: destination.alertId },
-              android: { priority: "HIGH", ttl: `${NATIVE_TTL_SECONDS}s` },
+              android: {
+                priority: "HIGH",
+                ttl: `${NATIVE_TTL_SECONDS}s`,
+                ...(destination.emergency
+                  ? { notification: { channel_id: NATIVE_EMERGENCY_ANDROID_CHANNEL } }
+                  : {}),
+              },
             },
           }),
           fetch: doFetch,
@@ -311,7 +332,13 @@ export function createApnsTransport(opts: ApnsOptions): OutOfBandTransport {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          aps: { alert: { title: NATIVE_PUSH_TITLE, body: NATIVE_PUSH_BODY }, sound: "default" },
+          aps: destination.emergency
+            ? {
+                alert: { title: NATIVE_EMERGENCY_TITLE, body: NATIVE_EMERGENCY_BODY },
+                sound: "default",
+                "interruption-level": "time-sensitive",
+              }
+            : { alert: { title: NATIVE_PUSH_TITLE, body: NATIVE_PUSH_BODY }, sound: "default" },
           type: NATIVE_PUSH_TYPE,
           alertId: destination.alertId,
         }),

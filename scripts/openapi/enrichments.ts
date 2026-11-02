@@ -1549,6 +1549,11 @@ import {
   DraftResponseSchema as M36DraftResponseSchema,
   SaveDraftBodySchema as M36SaveDraftBodySchema,
 } from "../../apps/backend/src/modules/36-messaging/routes/draft-typebox";
+import { EmergencyAcknowledgedSchema as M36EmergencyAcknowledgedSchema } from "../../apps/backend/src/modules/36-messaging/routes/emergency-typebox";
+import { EmergencyCreatedSchema as M36EmergencyCreatedSchema } from "../../apps/backend/src/modules/36-messaging/routes/emergency-typebox";
+import { EmergencyDetailSchema as M36EmergencyDetailSchema } from "../../apps/backend/src/modules/36-messaging/routes/emergency-typebox";
+import { EmergencyListSchema as M36EmergencyListSchema } from "../../apps/backend/src/modules/36-messaging/routes/emergency-typebox";
+import { EmergencyMineSchema as M36EmergencyMineSchema } from "../../apps/backend/src/modules/36-messaging/routes/emergency-typebox";
 // M36 WP 5.7 restricted messaging export (ADR-0089, PROPOSED).
 import {
   CreateExportBodySchema as M36ExportCreateBodySchema,
@@ -10936,6 +10941,31 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Who has read one announcement: counts plus capped reader / unread lists (messaging.announce; 404 outside the announcement channel)",
     response: M36AnnouncementReceiptsResponseSchema,
+  },
+  "POST /api/v1/messaging/messages/:messageId/emergency": {
+    summary:
+      "Declare a message an EMERGENCY (ADR-0106, PROPOSED; messaging.send; only the AUTHOR of a live message, else the uniform 404). Freezes the audience (every other active member of the channel, at most 500, none = typed 422 EMERGENCY_NO_RECIPIENTS) and alarms each of them until they acknowledge; the 15-minute deadline is the database's. A repeat is 200 `created:false` and leaves the audience untouched. The uniform 404 while the tenant flag `messaging.emergency` is off, before the request is parsed. The lock-screen text is fixed and names no channel, patient or sender. Never cached",
+    response: M36EmergencyCreatedSchema,
+  },
+  "GET /api/v1/messaging/messages/:messageId/emergency": {
+    summary:
+      "Who has and has not acknowledged an emergency (ADR-0106 D6; messaging.send; only the AUTHOR, anyone else and an unknown id are the uniform 404, as is a tenant with the flag off). Counts plus every recipient with their acknowledgment instant. Never cached",
+    response: M36EmergencyDetailSchema,
+  },
+  "GET /api/v1/messaging/emergencies": {
+    summary:
+      "The caller's OWN emergencies, newest first, with counts (ADR-0106; messaging.send; uniform 404 while the tenant flag `messaging.emergency` is off). Never cached",
+    response: M36EmergencyListSchema,
+  },
+  "GET /api/v1/messaging/emergencies/mine": {
+    summary:
+      "The alarms addressed to the caller, waiting first (ADR-0106; messaging.read; uniform 404 while the tenant flag `messaging.emergency` is off). Ids and instants only. Never cached",
+    response: M36EmergencyMineSchema,
+  },
+  "POST /api/v1/messaging/emergencies/:emergencyId/ack": {
+    summary:
+      "Acknowledge an emergency for yourself (ADR-0106 D4; messaging.read; idempotent: a repeat is `already:true` with the first instant; not in the frozen audience, the author included, is the uniform 404; uniform 404 while the tenant flag `messaging.emergency` is off). No user field: nobody acknowledges for someone else. Never cached",
+    response: M36EmergencyAcknowledgedSchema,
   },
   "POST /api/v1/messaging/announcements/:messageId/ack-broadcast": {
     summary:

@@ -52,6 +52,8 @@ export const DESIGNATED_EVENT_TYPES: ReadonlySet<string> = new Set([
   "m36.ack.requested",
   "m36.ack.reassigned",
   "m36.ack.escalated",
+  // ADR-0106: an emergency message alarms each frozen recipient; never quieted, never forwarded, recipients pinned, class always critical.
+  "m36.emergency.sent",
 ]);
 
 /**
@@ -95,6 +97,7 @@ export function designatedClassOf(
     return null;
   }
   if (eventType === "m36.message.urgent_sent") return { ackClass: "urgent", defaulted: false };
+  if (eventType === "m36.emergency.sent") return { ackClass: "critical", defaulted: false };
   const raw = payload.ackClass;
   if (typeof raw === "string" && CLASSES.has(raw)) {
     return { ackClass: raw as PolicyAckClass, defaulted: false };
