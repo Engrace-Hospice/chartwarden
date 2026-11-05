@@ -86,10 +86,14 @@ const ENROLL_TYPES = new Set(["era", "1500", "500", "ub", "elig", "attach"]);
 type Json = Record<string, unknown>;
 const obj = (v: unknown): Json =>
   typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Json) : {};
-const text = (v: unknown, max = 64): string | null => {
+// Printable values only: a NUL or control character would fail the row's write on every attempt.
+export const vendorText = (v: unknown, max = 64): string | null => {
   const s = typeof v === "number" && Number.isSafeInteger(v) ? String(v) : v;
-  return typeof s === "string" && s.trim().length > 0 && s.length <= max ? s.trim() : null;
+  if (typeof s !== "string" || s.length > max) return null;
+  const t = s.trim();
+  return t.length > 0 && !/[\u0000-\u001f\u007f]/.test(t) ? t : null;
 };
+const text = vendorText;
 
 /** ONE vendor status word, lower-case, bounded; anything else is `unrecognized` (never the vendor's text). */
 export function vendorStatusWord(v: unknown): string {
