@@ -37,6 +37,7 @@ native. L’EVV offline, les notifications natives et les écrans métier resten
 - [Matrice Web → Mobile](./web-mobile-parity.csv)
 - [Parcours utilisateurs](./user-journeys.md)
 - [Préparation backend](./backend-mobile-readiness.md)
+- [Signature des documents d’admission par le portail (ADR-0107, brouillon)](./portal-signing-mobile-handoff.md)
 - [Baseline vérifiée de PR B](./PR-B-BASELINE.md)
 - [Contrat backend Expo/Better Auth pour PR C](./backend-expo-auth-contract.md)
 - [Checklist et résultats PR B](./PR-B-CHECKLIST.md)
