@@ -318,7 +318,16 @@ async function main(): Promise<void> {
       // so the attester, the time and the note can never be rewritten. REVOKE first so a re-provision takes back a table grant.
       await run('REVOKE UPDATE ON "tenant_go_live_attestation" FROM chartwarden_platform;');
       await run(
-        'GRANT UPDATE ("status", "approved_by_membership_id", "approved_at", "approval_reason", "revoked_by_membership_id", "revoked_at", "revoke_reason", "updated_at") ON "tenant_go_live_attestation" TO chartwarden_platform;',
+        'GRANT UPDATE ("status", "approved_by_membership_id", "approved_by_user_id", "approved_at", "approval_reason", "revoked_by_membership_id", "revoked_at", "revoke_reason", "updated_at") ON "tenant_go_live_attestation" TO chartwarden_platform;',
+      );
+      // Approval re-checks the attester against the membership as it is NOW (still active, still holds compliance_officer).
+      // Role grants are not a platform-wide read: COLUMN grants on exactly the columns that question needs (membership
+      // itself is already in PLATFORM_READ_TABLES), never the role scope, grantor or permission rows.
+      await run(
+        'GRANT SELECT ("membership_id", "role_id", "organization_id", "expires_at") ON "membership_role" TO chartwarden_platform;',
+      );
+      await run(
+        'GRANT SELECT ("id", "key", "enabled", "organization_id") ON "role" TO chartwarden_platform;',
       );
       await run(
         'GRANT SELECT ("organization_id", "provider_entity_id", "usage", "control_number", "status") ON "clearinghouse_submission_attempt" TO chartwarden_platform;',

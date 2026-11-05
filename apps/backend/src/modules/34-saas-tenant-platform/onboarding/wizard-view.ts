@@ -6,6 +6,7 @@
 // no task row yet is shown pending with a null id (it still gates; nothing can act on it until provisioning writes it).
 import {
   type GoLiveState,
+  attestationExpiresAt,
   evaluateGoLiveGuards,
   goLiveStateOf,
   latestAttestation,
@@ -59,6 +60,8 @@ export interface GoLiveAttestationView {
   readonly status: GoLiveAttestation["status"];
   readonly attestedByMembershipId: string;
   readonly attestedAt: string;
+  /** A pending attestation can be approved until this instant; null once it is approved or revoked. */
+  readonly expiresAt: string | null;
   readonly attestationNote: string | null;
   readonly approvedByMembershipId: string | null;
   readonly approvedAt: string | null;
@@ -133,6 +136,7 @@ function toAttestationView(a: GoLiveAttestation): GoLiveAttestationView {
     status: a.status,
     attestedByMembershipId: a.attestedByMembershipId,
     attestedAt: a.attestedAt.toISOString(),
+    expiresAt: a.status === "pending" ? attestationExpiresAt(a).toISOString() : null,
     attestationNote: a.attestationNote,
     approvedByMembershipId: a.approvedByMembershipId,
     approvedAt: iso(a.approvedAt),

@@ -26,6 +26,7 @@ import {
   createMemoryWizardRunner,
   createMemoryWizardState,
   createOnboardingWizard,
+  memoryMember,
   memoryTask,
   mountTenantPlatformRoutes,
 } from "../src/modules/34-saas-tenant-platform/index";
@@ -106,7 +107,7 @@ function makeServer() {
     ],
     templates: TEMPLATES,
     tasks: TEMPLATES.map((t) => memoryTask(TENANT, t.key)),
-    activeMembers: new Set([OFFICER_MEMBERSHIP]),
+    members: new Map([memoryMember(TENANT_ORG, OFFICER_MEMBERSHIP, "co", ["compliance_officer"])]),
     baa: new Map([[TENANT, { baaStatus: "executed", expiresOn: "2028-01-01" }]]),
     profiles: new Map([[TENANT_ORG, { displayName: "Acme", orgTimezone: "America/New_York" }]]),
   });

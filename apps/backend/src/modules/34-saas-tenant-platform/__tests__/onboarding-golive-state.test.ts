@@ -3,14 +3,23 @@
 import type { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
+  GO_LIVE_ATTESTATION_TTL_DAYS,
+  assertAttesterStillValid,
   assertCanApprove,
   assertCanAttest,
   assertCanRevoke,
   assertGuardsPass,
+  attestationExpiresAt,
   evaluateGoLiveGuards,
   goLiveStateOf,
 } from "../onboarding/go-live";
-import type { GoLiveAttestation, StepTask, StepTemplate, TaskStatus } from "../onboarding/model";
+import type {
+  GoLiveAttestation,
+  StepTask,
+  StepTemplate,
+  TaskStatus,
+  WizardMember,
+} from "../onboarding/model";
 
 const tpl = (key: string, sequence: number, over: Partial<StepTemplate> = {}): StepTemplate => ({
   key,
@@ -54,9 +63,11 @@ const att = (over: Partial<GoLiveAttestation> = {}): GoLiveAttestation => ({
   tenantAccountId: "ta",
   status: "pending",
   attestedByMembershipId: "m-co",
+  attestedByUserId: "u-co",
   attestedAt: NOW,
   attestationNote: null,
   approvedByMembershipId: null,
+  approvedByUserId: null,
   approvedAt: null,
   approvalReason: null,
   revokedByMembershipId: null,
@@ -234,6 +245,7 @@ describe("assertCanAttest", () => {
     attestations: [] as GoLiveAttestation[],
     assignedOfficer: null as string | null,
     actorMembershipId: "m-co",
+    now: NOW,
   };
 
   it("passes for an onboarding tenant whose earlier steps are settled", () => {
@@ -259,6 +271,12 @@ describe("assertCanAttest", () => {
       "GO_LIVE_ALREADY_ATTESTED",
     );
   });
+  it("says an expired pending attestation must be revoked by platform operations, not that it awaits approval", () => {
+    const later = new Date(NOW.getTime() + (GO_LIVE_ATTESTATION_TTL_DAYS * 24 * 3600 + 1) * 1000);
+    const r = code(() => assertCanAttest({ ...base, attestations: [att()], now: later }));
+    expect(r.code).toBe("GO_LIVE_ATTESTATION_EXPIRED");
+    expect(r.status).toBe(409);
+  });
   it("when an officer is assigned, only that officer may attest", () => {
     const r = code(() => assertCanAttest({ ...base, assignedOfficer: "m-other" }));
     expect(r.code).toBe("GO_LIVE_NOT_ASSIGNED_OFFICER");
@@ -267,62 +285,103 @@ describe("assertCanAttest", () => {
   });
 });
 
+const OPS = { membershipId: "m-ops", userId: "u-ops" };
+const DAY_MS = 24 * 3600 * 1000;
+
+describe("attestationExpiresAt", () => {
+  it("is the attestation time plus the named time to live (14 days)", () => {
+    expect(GO_LIVE_ATTESTATION_TTL_DAYS).toBe(14);
+    expect(attestationExpiresAt(att()).getTime()).toBe(NOW.getTime() + 14 * DAY_MS);
+  });
+});
+
 describe("assertCanApprove / assertCanRevoke", () => {
+  const base = { tenantStatus: "onboarding", attestations: [att()], approver: OPS, now: NOW };
+
   it("approve without an attestation is refused", () => {
-    const r = code(() =>
-      assertCanApprove({
-        tenantStatus: "onboarding",
-        attestations: [],
-        approverMembershipId: "m-ops",
-      }),
-    );
+    const r = code(() => assertCanApprove({ ...base, attestations: [] }));
     expect(r.code).toBe("GO_LIVE_NOT_ATTESTED");
     expect(r.status).toBe(409);
   });
   it("approve refuses a revoked attestation and a tenant that is not onboarding", () => {
     expect(
-      code(() =>
-        assertCanApprove({
-          tenantStatus: "onboarding",
-          attestations: [att({ status: "revoked" })],
-          approverMembershipId: "m-ops",
-        }),
-      ).code,
+      code(() => assertCanApprove({ ...base, attestations: [att({ status: "revoked" })] })).code,
     ).toBe("GO_LIVE_NOT_ATTESTED");
-    expect(
-      code(() =>
-        assertCanApprove({
-          tenantStatus: "active",
-          attestations: [att()],
-          approverMembershipId: "m-ops",
-        }),
-      ).code,
-    ).toBe("TENANT_NOT_ONBOARDING");
+    expect(code(() => assertCanApprove({ ...base, tenantStatus: "active" })).code).toBe(
+      "TENANT_NOT_ONBOARDING",
+    );
   });
-  it("the approver cannot be the attester", () => {
-    expect(
-      code(() =>
-        assertCanApprove({
-          tenantStatus: "onboarding",
-          attestations: [att()],
-          approverMembershipId: "m-co",
-        }),
-      ).code,
-    ).toBe("GO_LIVE_SELF_APPROVAL");
+  it("the approver cannot be the attester's membership", () => {
+    const r = code(() =>
+      assertCanApprove({ ...base, approver: { membershipId: "m-co", userId: "u-other" } }),
+    );
+    expect(r.code).toBe("GO_LIVE_SAME_PERSON");
+    expect(r.status).toBe(409);
+  });
+  it("nor the same human holding a different membership (one user, a tenant membership and a platform one)", () => {
+    const r = code(() =>
+      assertCanApprove({
+        ...base,
+        approver: { membershipId: "m-ops-of-the-same-person", userId: "u-co" },
+      }),
+    );
+    expect(r.code).toBe("GO_LIVE_SAME_PERSON");
+    expect(r.status).toBe(409);
   });
   it("approve returns the pending attestation", () => {
-    expect(
-      assertCanApprove({
-        tenantStatus: "onboarding",
-        attestations: [att()],
-        approverMembershipId: "m-ops",
-      }).id,
-    ).toBe("att-1");
+    expect(assertCanApprove(base).id).toBe("att-1");
+  });
+  it("an attestation is approvable up to exactly 14 days after it was filed, and not a moment later", () => {
+    const edge = new Date(NOW.getTime() + 14 * DAY_MS);
+    expect(assertCanApprove({ ...base, now: edge }).id).toBe("att-1");
+    const r = code(() => assertCanApprove({ ...base, now: new Date(edge.getTime() + 1) }));
+    expect(r.code).toBe("GO_LIVE_ATTESTATION_EXPIRED");
+    expect(r.status).toBe(409);
   });
   it("revoke needs a pending attestation", () => {
     expect(code(() => assertCanRevoke({ tenantStatus: "onboarding", attestations: [] })).code).toBe(
       "GO_LIVE_NOT_ATTESTED",
     );
     expect(assertCanRevoke({ tenantStatus: "onboarding", attestations: [att()] }).id).toBe("att-1");
+  });
+});
+
+describe("assertAttesterStillValid", () => {
+  const officer: WizardMember = {
+    membershipId: "m-co",
+    userId: "u-co",
+    active: true,
+    roleKeys: ["compliance_officer"],
+  };
+  const base = { pending: att(), attester: officer, assignedOfficer: "m-co" as string | null };
+
+  it("passes while the attester is an active member, still a compliance officer, and still the assigned one", () => {
+    expect(() => assertAttesterStillValid(base)).not.toThrow();
+  });
+  it("passes when no officer is assigned (the attester then held the role by itself)", () => {
+    expect(() => assertAttesterStillValid({ ...base, assignedOfficer: null })).not.toThrow();
+  });
+  it.each([
+    ["is gone from the organisation", { ...base, attester: null }, "attester_not_active"],
+    [
+      "is no longer active",
+      { ...base, attester: { ...officer, active: false } },
+      "attester_not_active",
+    ],
+    [
+      "no longer holds compliance_officer",
+      { ...base, attester: { ...officer, roleKeys: ["org_admin"] } },
+      "attester_not_compliance_officer",
+    ],
+    [
+      "is no longer the assigned officer",
+      { ...base, assignedOfficer: "m-someone-else" },
+      "attester_not_assigned_officer",
+    ],
+  ])("refuses when the attester %s", (_label, input, detail) => {
+    const r = code(() => assertAttesterStillValid(input));
+    expect(r.code).toBe("GO_LIVE_ATTESTATION_STALE");
+    expect(r.status).toBe(409);
+    expect(r.details).toEqual([`attestation:${detail}`]);
   });
 });

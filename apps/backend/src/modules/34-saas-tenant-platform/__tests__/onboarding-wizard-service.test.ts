@@ -10,6 +10,7 @@ import {
   createMemoryOrgProfile,
   createMemoryWizardRunner,
   createMemoryWizardState,
+  memoryMember,
   memoryTask,
 } from "../onboarding/wizard-store-memory";
 
@@ -59,12 +60,12 @@ const statusOf = (key: string): string =>
   (state.tasks.find((t) => t.templateKey === key) as { status: string }).status;
 const tenant = (): TenantRef => state.tenants[0] as TenantRef;
 
-function wizard() {
+function wizard(at: Date = NOW) {
   return createOnboardingWizard({
     runner: createMemoryWizardRunner(state),
     orgProfile: createMemoryOrgProfile(state),
     advance,
-    now: () => NOW,
+    now: () => at,
   });
 }
 
@@ -108,7 +109,10 @@ beforeEach(() => {
     tenants: [ref],
     templates: TEMPLATES,
     tasks: TEMPLATES.map((t) => memoryTask(TENANT, t.key)),
-    activeMembers: new Set(["co-m", "admin-m"]),
+    members: new Map([
+      memoryMember(ORG, "co-m", "co-u", ["compliance_officer"]),
+      memoryMember(ORG, "admin-m", "admin-u", ["org_admin"]),
+    ]),
     baa: new Map([[TENANT, { baaStatus: "executed", expiresOn: "2028-01-01" }]]),
     profiles: new Map([[ORG, { displayName: "Acme", orgTimezone: "America/New_York" }]]),
   });
@@ -550,6 +554,149 @@ describe("two-party go-live", () => {
     expect((await wizard().attestGoLive(OFFICER, ORG, undefined)).goLive.state).toBe(
       "awaiting_approval",
     );
+  });
+});
+
+describe("go-live: two people, a live attester, a fresh attestation", () => {
+  beforeEach(() => settle("organisation", "billing", "locations", "baa_auto"));
+  const DAY_MS = 24 * 3600 * 1000;
+
+  it("records both parties as a membership and as the user behind it", async () => {
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    expect(state.goLive[0]).toMatchObject({
+      organizationId: ORG,
+      attestedByMembershipId: "co-m",
+      attestedByUserId: "co-u",
+    });
+    await wizard().approveGoLive("acme", OPS, "reviewed the evidence and the BAA");
+    expect(state.goLive[0]).toMatchObject({
+      status: "approved",
+      approvedByMembershipId: "ops-m",
+      approvedByUserId: "ops-u",
+    });
+  });
+
+  it("refuses to let one human attest and approve, even through two memberships, and changes nothing", async () => {
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    // The platform operator is ALSO invited into the tenant as its compliance officer: a different membership, one user.
+    const samePerson: PlatformActor = {
+      kind: "platform",
+      membershipId: "ops-membership-of-the-officer",
+      userId: OFFICER.userId,
+    };
+
+    const refused = await code(
+      wizard().approveGoLive("acme", samePerson, "reviewed everything twice"),
+    );
+
+    expect(refused).toBe("GO_LIVE_SAME_PERSON");
+    expect(tenant().status).toBe("onboarding");
+    expect(state.goLive[0]?.status).toBe("pending");
+    expect(state.activations).toHaveLength(0);
+  });
+
+  it("refuses an approval by the attester's own membership as well", async () => {
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    const sameMembership: PlatformActor = {
+      kind: "platform",
+      membershipId: "co-m",
+      userId: "ops-u",
+    };
+    expect(
+      await code(wizard().approveGoLive("acme", sameMembership, "reviewed everything twice")),
+    ).toBe("GO_LIVE_SAME_PERSON");
+  });
+
+  it.each([
+    ["has left the organization", () => state.members.delete("co-m"), "attester_not_active"],
+    [
+      "was deactivated",
+      () => state.members.set(...memoryMember(ORG, "co-m", "co-u", ["compliance_officer"], false)),
+      "attester_not_active",
+    ],
+    [
+      "lost the compliance_officer role",
+      () => state.members.set(...memoryMember(ORG, "co-m", "co-u", ["org_admin"])),
+      "attester_not_compliance_officer",
+    ],
+    [
+      "is no longer the assigned officer",
+      () => {
+        state.tenants = [{ ...tenant(), complianceOfficerMembershipId: "someone-else" }];
+      },
+      "attester_not_assigned_officer",
+    ],
+  ])("refuses to approve once the attester %s", async (_label, change, detail) => {
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    change();
+
+    try {
+      await wizard().approveGoLive("acme", OPS, "reviewed the evidence and the BAA");
+      expect.unreachable("approval should have been refused");
+    } catch (e) {
+      const err = e as ChartWardenError;
+      expect(err.code).toBe("GO_LIVE_ATTESTATION_STALE");
+      expect(err.statusCode).toBe(409);
+      expect(err.details?.map((d) => d.code)).toEqual([detail]);
+    }
+    expect(tenant().status).toBe("onboarding");
+    expect(state.goLive[0]?.status).toBe("pending");
+  });
+
+  it("approves up to 14 days after the attestation and refuses after, until platform operations revoke it", async () => {
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    const filedAt = (state.goLive[0] as { attestedAt: Date }).attestedAt;
+    const afterTtl = new Date(filedAt.getTime() + 14 * DAY_MS + 1);
+
+    expect(
+      await code(wizard(afterTtl).approveGoLive("acme", OPS, "reviewed the evidence and the BAA")),
+    ).toBe("GO_LIVE_ATTESTATION_EXPIRED");
+    // The officer cannot simply attest again: the expired one still holds the tenant's only pending slot.
+    expect(await code(wizard(afterTtl).attestGoLive(OFFICER, ORG, undefined))).toBe(
+      "GO_LIVE_ATTESTATION_EXPIRED",
+    );
+    await wizard(afterTtl).revokeGoLive("acme", OPS, "the attestation expired after fourteen days");
+    expect((await wizard(afterTtl).attestGoLive(OFFICER, ORG, undefined)).goLive.state).toBe(
+      "awaiting_approval",
+    );
+  });
+
+  it("an attestation filed exactly 14 days ago is still approvable", async () => {
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    const filedAt = (state.goLive[0] as { attestedAt: Date }).attestedAt;
+
+    const live = await wizard(new Date(filedAt.getTime() + 14 * DAY_MS)).approveGoLive(
+      "acme",
+      OPS,
+      "reviewed the evidence and the BAA",
+    );
+
+    expect(live.goLive.state).toBe("live");
+  });
+
+  it("shows when a pending attestation stops being approvable", async () => {
+    const view = await wizard().attestGoLive(OFFICER, ORG, undefined);
+    const filedAt = (state.goLive[0] as { attestedAt: Date }).attestedAt;
+    expect(view.goLive.attestation?.expiresAt).toBe(
+      new Date(filedAt.getTime() + 14 * DAY_MS).toISOString(),
+    );
+  });
+
+  it("scopes the attestations it reads to the organization as well as the tenant", async () => {
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    // A row of ANOTHER organisation that names this tenant account (the shape the composite FK now forbids in the real table).
+    state.goLive = [
+      ...state.goLive,
+      {
+        ...(state.goLive[0] as (typeof state.goLive)[number]),
+        id: "foreign",
+        organizationId: "other-org",
+      },
+    ];
+
+    const view = await wizard(NOW).getPlatform("acme");
+
+    expect(view.goLive.attestation?.id).not.toBe("foreign");
   });
 });
 

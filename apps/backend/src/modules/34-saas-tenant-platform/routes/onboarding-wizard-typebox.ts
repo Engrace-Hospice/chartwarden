@@ -89,6 +89,7 @@ const GoLiveAttestationViewSchema = Type.Object({
   status: lit(["pending", "approved", "revoked"] as const),
   attestedByMembershipId: Type.String(),
   attestedAt: Instant,
+  expiresAt: Nullable(Instant),
   attestationNote: Nullable(Type.String()),
   approvedByMembershipId: Nullable(Type.String()),
   approvedAt: Nullable(Instant),

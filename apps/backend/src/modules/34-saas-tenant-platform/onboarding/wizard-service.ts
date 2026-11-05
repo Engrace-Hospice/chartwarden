@@ -23,6 +23,7 @@ import {
   normalizeReason,
 } from "./evidence";
 import {
+  assertAttesterStillValid,
   assertCanApprove,
   assertCanAttest,
   assertCanRevoke,
@@ -245,7 +246,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
 
   async function view(ctx: Loaded): Promise<WizardView> {
     const [attestations, latestBaa] = await Promise.all([
-      ctx.store.listGoLive(ctx.tenant.tenantAccountId),
+      ctx.store.listGoLive(ctx.tenant),
       ctx.store.latestBaa(ctx.tenant.tenantAccountId),
     ]);
     return buildWizardView({
@@ -381,9 +382,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
         "only a done or skipped step can be re-opened",
         409,
       );
-    if (
-      (await ctx.store.listGoLive(ctx.tenant.tenantAccountId)).some((a) => a.status === "pending")
-    ) {
+    if ((await ctx.store.listGoLive(ctx.tenant)).some((a) => a.status === "pending")) {
       throw refuse(
         "GO_LIVE_PENDING",
         "a go-live attestation is pending: revoke it before re-opening a step",
@@ -473,7 +472,8 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     membershipId: string,
   ): Promise<{ complianceOfficerMembershipId: string }> {
     requireOnboarding(ctx.tenant);
-    if (!(await ctx.store.isActiveMember(ctx.tenant.organizationId, membershipId))) {
+    const member = await ctx.store.loadMember(ctx.tenant.organizationId, membershipId);
+    if (!member?.active) {
       throw refuse(
         "COMPLIANCE_OFFICER_NOT_A_MEMBER",
         "the compliance officer must be an active member of this organization",
@@ -499,7 +499,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
       );
     }
     const attestationNote = normalizeOptionalNote(note);
-    const attestations = await ctx.store.listGoLive(ctx.tenant.tenantAccountId);
+    const attestations = await ctx.store.listGoLive(ctx.tenant);
     assertCanAttest({
       tenantStatus: ctx.tenant.status,
       templates: ctx.templates,
@@ -507,6 +507,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
       attestations,
       assignedOfficer: ctx.tenant.complianceOfficerMembershipId,
       actorMembershipId: actor.membershipId,
+      now: now(),
     });
     const latestBaa = await ctx.store.latestBaa(ctx.tenant.tenantAccountId);
     assertGuardsPass(
@@ -518,6 +519,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
       organizationId: ctx.tenant.organizationId,
       tenantAccountId: ctx.tenant.tenantAccountId,
       attestedByMembershipId: actor.membershipId,
+      attestedByUserId: actor.userId,
       attestationNote,
     });
     const goLiveTask = ctx.tasks.find((t) => t.templateKey === GO_LIVE_TEMPLATE_KEY);
@@ -542,11 +544,22 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     reasonInput: string,
   ): Promise<WizardView> {
     const reason = normalizeReason(reasonInput);
-    const attestations = await ctx.store.listGoLive(ctx.tenant.tenantAccountId);
+    const attestations = await ctx.store.listGoLive(ctx.tenant);
     const pending = assertCanApprove({
       tenantStatus: ctx.tenant.status,
       attestations,
-      approverMembershipId: actor.membershipId,
+      approver: { membershipId: actor.membershipId, userId: actor.userId },
+      now: now(),
+    });
+    // The attestation is the officer's statement: it only counts while that officer is still active, still holds the
+    // role and is still the assigned officer. Judged against the membership as it is at this instant.
+    assertAttesterStillValid({
+      pending,
+      attester: await ctx.store.loadMember(
+        ctx.tenant.organizationId,
+        pending.attestedByMembershipId,
+      ),
+      assignedOfficer: ctx.tenant.complianceOfficerMembershipId,
     });
     const latestBaa = await ctx.store.latestBaa(ctx.tenant.tenantAccountId);
     const guards = evaluateGoLiveGuards({
@@ -557,9 +570,10 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     });
     assertGuardsPass(guards, ctx.templates, ctx.tasks);
 
-    const settled = await ctx.store.settleGoLive(pending.id, {
+    const settled = await ctx.store.settleGoLive(ctx.tenant.organizationId, pending.id, {
       status: "approved",
       approvedByMembershipId: actor.membershipId,
+      approvedByUserId: actor.userId,
       approvalReason: reason,
     });
     if (!settled)
@@ -582,7 +596,9 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
           goLive: {
             attestationId: pending.id,
             attestedByMembershipId: pending.attestedByMembershipId,
+            attestedByUserId: pending.attestedByUserId,
             approvedByMembershipId: actor.membershipId,
+            approvedByUserId: actor.userId,
           },
         },
       });
@@ -607,9 +623,9 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     const reason = normalizeReason(reasonInput);
     const pending = assertCanRevoke({
       tenantStatus: ctx.tenant.status,
-      attestations: await ctx.store.listGoLive(ctx.tenant.tenantAccountId),
+      attestations: await ctx.store.listGoLive(ctx.tenant),
     });
-    const settled = await ctx.store.settleGoLive(pending.id, {
+    const settled = await ctx.store.settleGoLive(ctx.tenant.organizationId, pending.id, {
       status: "revoked",
       revokedByMembershipId: actor.membershipId,
       revokeReason: reason,

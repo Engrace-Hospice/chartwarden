@@ -11,6 +11,7 @@ import type {
   TaskStatus,
   TenantActor,
   TenantRef,
+  WizardMember,
 } from "./model";
 
 /** Columns a service call may change on a task. `completionEvidence` replaces the jsonb bag (the caller merges). */
@@ -26,6 +27,9 @@ export interface TaskPatch {
   readonly attestedAt?: Date | null;
   readonly completionEvidence?: Record<string, unknown>;
 }
+
+/** What scopes a tenant's attestations: the tenant account AND its organisation. */
+export type GoLiveScope = Pick<TenantRef, "tenantAccountId" | "organizationId">;
 
 export interface WizardStore {
   loadTenant(
@@ -43,20 +47,24 @@ export interface WizardStore {
     expectedStatus: TaskStatus,
     patch: TaskPatch,
   ): Promise<StepTask | null>;
-  listGoLive(tenantAccountId: string): Promise<GoLiveAttestation[]>;
+  /** The tenant's go-live attestations, newest first. Scoped by organisation as well as tenant, whatever the connection. */
+  listGoLive(tenant: GoLiveScope): Promise<GoLiveAttestation[]>;
   insertGoLive(input: {
     readonly organizationId: string;
     readonly tenantAccountId: string;
     readonly attestedByMembershipId: string;
+    readonly attestedByUserId: string;
     readonly attestationNote: string | null;
   }): Promise<GoLiveAttestation>;
-  /** Moves a PENDING attestation to approved or revoked; null when it was no longer pending. */
+  /** Moves a PENDING attestation of the organisation to approved or revoked; null when it was no longer pending. */
   settleGoLive(
+    organizationId: string,
     id: string,
     patch:
       | {
           readonly status: "approved";
           readonly approvedByMembershipId: string;
+          readonly approvedByUserId: string;
           readonly approvalReason: string;
         }
       | {
@@ -69,8 +77,8 @@ export interface WizardStore {
     tenantAccountId: string,
   ): Promise<{ readonly baaStatus: string; readonly expiresOn: string | null } | undefined>;
   setComplianceOfficer(tenantAccountId: string, membershipId: string): Promise<void>;
-  /** The membership exists in the organisation and is active. */
-  isActiveMember(organizationId: string, membershipId: string): Promise<boolean>;
+  /** The membership as it is now (user, liveness, roles), or null when it is not a membership of the organisation. */
+  loadMember(organizationId: string, membershipId: string): Promise<WizardMember | null>;
   /**
    * onboarding -> active through the lifecycle machine, inside this same transaction (platform stores only: a tenant
    * store refuses). Publishes `m34.tenant.onboarding_completed`.
