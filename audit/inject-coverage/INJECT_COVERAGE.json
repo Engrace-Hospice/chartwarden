@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1884,
-    "coveredRoutes": 1884,
-    "directRoutesReferenced": 1720
+    "routes": 1890,
+    "coveredRoutes": 1890,
+    "directRoutesReferenced": 1725
   },
   "modules": [
     {
@@ -134,6 +134,7 @@
         "apps/backend/__tests__/election-addendum-upload-routes.test.ts",
         "apps/backend/__tests__/m10-s04-hope-override.live.test.ts",
         "apps/backend/__tests__/m2-link-redemption.live.test.ts",
+        "apps/backend/__tests__/m31-signature-requests.live.test.ts",
         "apps/backend/__tests__/m36-promotion-targets.live.test.ts",
         "apps/backend/__tests__/m6-nomnc-expedited.live.test.ts",
         "apps/backend/__tests__/m6-physician-authority.test.ts",
@@ -504,16 +505,17 @@
     },
     {
       "module": "31-portal",
-      "routes": 59,
+      "routes": 65,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts",
         "apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts",
         "apps/backend/__tests__/m31-portal-signin-decision.test.ts",
         "apps/backend/__tests__/m31-portal-signin.live.test.ts",
+        "apps/backend/__tests__/m31-signature-requests.live.test.ts",
         "apps/backend/__tests__/portal-inject.test.ts"
       ],
-      "directRoutesReferenced": 59
+      "directRoutesReferenced": 62
     },
     {
       "module": "32-ai-platform",
@@ -649,7 +651,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 160
+      "directRoutesReferenced": 162
     },
     {
       "module": "37-ipu",
@@ -688,6 +690,7 @@
         "apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts",
         "apps/backend/__tests__/gap-094-m31-portal-telehealth-authz.live.test.ts",
         "apps/backend/__tests__/m16-routes.live.test.ts",
+        "apps/backend/__tests__/m31-signature-requests.live.test.ts",
         "apps/backend/__tests__/m36-tenant-idor.live.test.ts"
       ],
       "directRoutesReferenced": 27
