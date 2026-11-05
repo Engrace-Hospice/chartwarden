@@ -174,4 +174,17 @@ describe("platform NPI verification routes", () => {
     expect(calls).toEqual([]);
     await app.close();
   });
+
+  it("422s whitespace-only evidence (it would trim to '' and hit the DB CHECK as a 500)", async () => {
+    const { app, calls } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: VERIFY,
+      headers: fresh(),
+      payload: { npi: "1234567893", evidence: "     " },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(calls).toEqual([]);
+    await app.close();
+  });
 });

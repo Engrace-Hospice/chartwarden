@@ -503,7 +503,8 @@ export const GrantAddonBodySchema = Type.Object({
   mode: Type.Union([Type.Literal("grant"), Type.Literal("trial")]),
   /** Required for `trial`, refused for `grant`. */
   trialEndsAt: Type.Optional(Type.String({ format: "date-time" })),
-  reason: Type.String({ minLength: 3, maxLength: 500 }),
+  // Not whitespace-only: the service trims, and the DB CHECK refuses ''.
+  reason: Type.String({ minLength: 3, maxLength: 500, pattern: "\\S" }),
 });
 export const SubscriptionAddonParamsSchema = Type.Object({ id: uuid(), addonId: uuid() });
 /** The add-on census line on the admin usage drill-down (null when the org never held the add-on). */

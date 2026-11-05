@@ -1712,6 +1712,18 @@ describe("ADR-0108 — the add-on routes and the billing-status block", () => {
     expect(noPerm.statusCode).toBe(403);
     await app.close();
   });
+
+  it("422s a whitespace-only grant reason (it would trim to '' and hit the DB CHECK as a 500)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/admin/subscriptions/${SUB_ID}/addons`,
+      headers: { ...SUPER_HEADERS, ...IDEMP() },
+      payload: { addonSlug: "claims_billing", mode: "grant", reason: "    " },
+    });
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
 });
 
 describe("M35 route smoke — the /api/admin `platform_billing_scope` lock", () => {
