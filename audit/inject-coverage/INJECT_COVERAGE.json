@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1900,
-    "coveredRoutes": 1900,
-    "directRoutesReferenced": 1732
+    "routes": 1903,
+    "coveredRoutes": 1903,
+    "directRoutesReferenced": 1733
   },
   "modules": [
     {
@@ -386,7 +386,7 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 98,
+      "routes": 101,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-clinical-site-scope.test.ts",
@@ -403,6 +403,7 @@
         "apps/backend/__tests__/m23-dde-queue.live.test.ts",
         "apps/backend/__tests__/m23-eligibility-read-audit.live.test.ts",
         "apps/backend/__tests__/m23-mac-credential-cipher.live.test.ts",
+        "apps/backend/__tests__/m23-npi-verification-routes.test.ts",
         "apps/backend/__tests__/m23-rate-table-routes.test.ts",
         "apps/backend/__tests__/m23-sequestration-policy-routes.test.ts",
         "apps/backend/__tests__/m23-validation-override.live.test.ts",
@@ -418,7 +419,7 @@
         "apps/backend/__tests__/m41-enrollment-reports.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 70
+      "directRoutesReferenced": 71
     },
     {
       "module": "24-billing-medicaid",
@@ -558,6 +559,7 @@
       "routes": 58,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/m23-npi-verification-routes.test.ts",
         "apps/backend/__tests__/m35-stripe-webhook-route.test.ts",
         "apps/backend/__tests__/subscription-inject.test.ts"
       ],

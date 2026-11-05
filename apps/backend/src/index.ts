@@ -1067,6 +1067,7 @@ import {
 import {
   type M23BootAssemblyPorts,
   type M23HetsConfig,
+  M23_NPI_VERIFICATION_JOB_ID,
   M23_OUTBOX_EVENTS,
   M23_PLATFORM_JOB_ID,
   M23_QUEUES,
@@ -6134,6 +6135,26 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 // F-211 — the tenant-entered CMS wage index (`/billing/wage-indexes`), read by the same boot assembly.
                 wageIndexService: buildDrizzleWageIndexService(dbHandle.db),
                 platformAdminService: buildDrizzlePlatformAdminService(dbHandle.db),
+                // ADR-0053 amendment precondition 2 — platform-verified NPI ownership. Cross-tenant list and platform-only
+                // writes, so one allowlisted, audited withPlatformContext per call; no platform pool => 503, never a
+                // tenant-pool read.
+                npiVerificationService: buildDrizzleNpiVerificationService(
+                  platformDbHandle
+                    ? {
+                        runner: (fn) =>
+                          withPlatformContext(
+                            platformDbHandle.db,
+                            {
+                              jobId: M23_NPI_VERIFICATION_JOB_ID,
+                              reason: "M23 platform NPI-ownership verification (Claim.MD routing)",
+                              crossTenant: true,
+                            },
+                            m34PlatformBypassAuditor,
+                            fn,
+                          ),
+                      }
+                    : {},
+                ),
                 ddeProviderVendor: ddeBinding.vendor,
                 // F-212 — the tenant-entered sequestration policy (`/billing/sequestration-policies`); the SAME table the
                 // assembly service's `referenceData.activeSequestrationPolicy` reads (M23-owned, over `dbHandle.db`).
