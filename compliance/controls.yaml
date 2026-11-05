@@ -87,6 +87,18 @@ controls:
       - script: test:m36:body-key-ring:live
       - file: docs/architecture/CHARTWARDEN_SECURITY_HARDENING_v0_2.md
 
+  - id: CW-AC-05B
+    title: Clearinghouse webhook payloads (which may carry provider tax ids and vendor free text) are AES-256-GCM encrypted at rest in a platform-only, RLS-forced table with no tenant grant, and the ciphertext is cleared 90 days after processing; tenants receive ids and one bounded status word only
+    hipaa: ["164.312(a)(2)(iv)", "164.312(a)(1)", "164.502(b)"]
+    soc2: ["CC6.1", "C1.1", "C1.2"]
+    status: implemented
+    evidence:
+      - script: test:m23:claimmd-webhook:live
+      - script: arch:tenancy
+      - file: packages/db/migrations/1322_m23_claimmd_webhook_event.sql
+      - file: packages/shared/src/crypto/webhook-payload-cipher.ts
+      - ci: "M23 Claim.MD webhook"
+
   - id: CW-AC-07
     title: Bun-to-Rust trust boundary (CW-RUST-M02), as enforced in THIS repo — Bun signs an Ed25519 actor assertion only for a request that has already passed authentication and requireSession, or (class parity-sweep) for the daily parity sweep's audited comparison; a client-supplied assertion header is stripped in Bun and nginx; the Rust service is topology-limited to one instance on an internal network with postgres, reachable from api only through a shared socket; the bridge config and key fail closed
     hipaa: ["164.312(a)(1)", "164.312(d)", "164.312(e)(1)"]
@@ -152,6 +164,39 @@ controls:
       owner: platform
       review_by: 2027-01-31
 
+  - id: CW-AC-10
+    title: Paid-module entitlement is platform-controlled — only platform operators (platform credential, subscription.admin.write, fresh step-up, Idempotency-Key) can grant or cancel the claims-billing add-on; a tenant can read but never write its own entitlement; when enforced, new claims and eligibility work without the add-on is refused (CMS-deadline NOE/NOTR, voids and in-flight work still run) and fails closed when the entitlement cannot be read
+    hipaa: ["164.312(a)(1)", "164.312(b)", "164.308(a)(4)"]
+    soc2: ["CC6.1", "CC6.3", "CC8.1"]
+    status: partial
+    evidence:
+      - script: test:m35:claims-billing-addon:live
+      - script: test:claims-billing:worker-hold:live
+      - script: arch:tenancy
+      - script: arch:migration-compat
+      - ci: "M35 claims-billing add-on"
+      - file: packages/db/migrations/1321_m35_claims_billing_addon.sql
+      - file: apps/backend/src/modules/35-subscription/addon/addon-service.ts
+      - file: apps/backend/src/bootstrap/claims-billing-gate.ts
+      - file: apps/backend/__tests__/claims-billing-route-classes.test.ts
+    gap:
+      reason: Enforcement ships in shadow mode (CLAIMS_BILLING_ENFORCEMENT defaults to shadow), so a missing add-on is logged, not refused, until an operator sets enforce. The grant audit row's actor is the system (the operator is recorded in granted_by_membership_id). Stripe charging is deferred (count now, charge later).
+      owner: engineering
+      review_by: 2027-01-31
+
+  - id: CW-AC-11
+    title: Vendor-reported state never applies itself — Claim.MD enrollment reports are advisory (the commercial send gate opens only after staff record the enrollment through the existing step-up-guarded routes) and Claim.MD appeal reports open or link a draft appeal level but never decide, close or withdraw an appeal case
+    hipaa: ["164.312(c)(1)", "164.308(a)(4)(ii)(B)"]
+    soc2: ["CC5.2", "CC8.1", "PI1.3"]
+    status: implemented
+    evidence:
+      - script: test:m41:enrollment-reports:live
+      - script: test:m25:appeal-reports:live
+      - ci: "M41 enrollment reports"
+      - ci: "M25 Claim.MD appeal reports"
+      - file: apps/backend/src/modules/41-billing-commercial/services/enrollment-report-service.ts
+      - file: apps/backend/src/modules/25-remittance/outbox-consumers/m23-appeal-reported.ts
+
   - id: CW-AU-01
     title: Audit controls — PHI reads and writes leave an integrity-checked trail
     hipaa: ["164.312(b)", "164.312(c)(1)"]
@@ -199,6 +244,22 @@ controls:
     gap:
       reason: TLS configuration of the Pangolin edge and internal service-to-service hops is documented but not asserted by any gate; add a TLS scan (e.g. testssl.sh) against staging to CI.
       owner: platform
+      review_by: 2027-01-31
+
+  - id: CW-TX-02
+    title: Inbound clearinghouse webhooks are authenticated before anything is stored (Claim.MD HMAC-SHA256 over the raw body bytes, canonical base64, timing-safe compare; unsigned or bad deliveries refused), stored once (deduplicated) and encrypted before the 200 reply, and the ingress is off unless explicitly enabled
+    hipaa: ["164.312(c)(1)", "164.312(d)", "164.312(e)(1)"]
+    soc2: ["CC6.1", "CC6.6", "CC6.7"]
+    status: partial
+    evidence:
+      - script: test:m23:claimmd-webhook:live
+      - script: arch:request-header-auth
+      - ci: "M23 Claim.MD webhook"
+      - file: packages/x12-837-client/src/clearinghouse/claimmd-webhook.test.ts
+      - file: apps/backend/src/modules/23-billing-medicare/claimmd-webhook/routes.ts
+    gap:
+      reason: The signature scheme and payload shape follow Claim.MD's documentation and are proven against our own signed fixtures only; no real Claim.MD delivery has been captured yet (questions sent to Claim.MD). CLAIMMD_WEBHOOK_ENABLED stays false until one is.
+      owner: engineering
       review_by: 2027-01-31
 
   # ---------------------------------------------------------------- §164.308 administrative (engineering-side)
