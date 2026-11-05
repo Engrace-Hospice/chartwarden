@@ -146,7 +146,8 @@ export function rawFiles(body: ClaimMdRecord, name: string): RawFiles {
   const result = isRecord(body.result) ? body.result : null;
   const raw = body[name] ?? result?.[name];
   const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
-  if (!Array.isArray(raw)) return nonEmpty(raw) ? { ok: true, files: [raw] } : { ok: false, elements: null };
+  if (!Array.isArray(raw))
+    return nonEmpty(raw) ? { ok: true, files: [raw] } : { ok: false, elements: null };
   const fail = { ok: false, elements: raw.length } as const;
   if (raw.length === 0 || !raw.every(nonEmpty)) return fail;
   if (raw.length === 1 || raw.every(isOneInterchange)) return { ok: true, files: raw };
@@ -187,7 +188,8 @@ export function vendorError(body: ClaimMdRecord): VendorError | null {
   return {
     codes,
     // Observed 2026-11-04: a bad key answers HTTP 200 {"error":{"error_code":"21","error_mesg":"Invalid AccountKey."}}.
-    credential: codes.includes(INVALID_KEY_CODE) || messages.some((m) => /account\s*key|api\s*key/i.test(m)),
+    credential:
+      codes.includes(INVALID_KEY_CODE) || messages.some((m) => /account\s*key|api\s*key/i.test(m)),
   };
 }
 

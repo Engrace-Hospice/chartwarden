@@ -66,7 +66,6 @@ function fakeService(initial: View[] = []) {
     },
   };
   return {
-    // biome-ignore lint/suspicious/noExplicitAny: a structural fake of the narrow service surface
     signer: createPortalConsentSigner(service as any, () => "2026-11-04T12:00:00.000Z"),
     calls,
     rows,

@@ -209,7 +209,13 @@ describe.skipIf(!DB_URL)("GAP-016 M5 write outbox — LIVE Postgres", () => {
     const { addressId: firstPrimary } = await service.addAddress(
       ORG_A,
       patientId,
-      { line1: "1 Main", city: "Austin", state: "TX", postalCode: "78701", isPrimary: true } as never,
+      {
+        line1: "1 Main",
+        city: "Austin",
+        state: "TX",
+        postalCode: "78701",
+        isPrimary: true,
+      } as never,
       STAFF,
     );
     await admin.query("DELETE FROM outbox_event");
@@ -220,7 +226,14 @@ describe.skipIf(!DB_URL)("GAP-016 M5 write outbox — LIVE Postgres", () => {
       .addAddress(
         ORG_A,
         patientId,
-        { kind: "bogus", line1: "2", city: "A", state: "TX", postalCode: "1", isPrimary: true } as never,
+        {
+          kind: "bogus",
+          line1: "2",
+          city: "A",
+          state: "TX",
+          postalCode: "1",
+          isPrimary: true,
+        } as never,
         STAFF,
       )
       .then(

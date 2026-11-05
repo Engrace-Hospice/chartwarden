@@ -34,12 +34,16 @@ function fakeClaimMd() {
   const sent: string[] = [];
   const keysSeen: string[] = [];
   const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
-    const path = String(input).replace(/^https:\/\/svc\.claim\.md\/services\//, "").replace(/\/$/, "");
+    const path = String(input)
+      .replace(/^https:\/\/svc\.claim\.md\/services\//, "")
+      .replace(/\/$/, "");
     sent.push(path);
     const body = init?.body as URLSearchParams | FormData;
     keysSeen.push(String(body.get("AccountKey")));
     if (path === "upload") {
-      const doc = JSON.parse(await (body.get("File") as Blob).text()) as { claim: { pcn: string }[] };
+      const doc = JSON.parse(await (body.get("File") as Blob).text()) as {
+        claim: { pcn: string }[];
+      };
       return Response.json({ claim: [{ pcn: doc.claim[0]?.pcn, claimid: `C${sent.length}` }] });
     }
     return Response.json({});
@@ -58,7 +62,13 @@ function scriptedCounter() {
       return state === "exhausted" ? CLAIMMD_REQUESTS_PER_WINDOW + 1 : 1;
     },
   };
-  return { counter, keys, set: (s: typeof state) => (state = s) };
+  return {
+    counter,
+    keys,
+    set: (s: typeof state) => {
+      state = s;
+    },
+  };
 }
 
 function transport(fetchImpl: typeof fetch, requestCounter: ClaimMdRequestCounter) {
@@ -162,8 +172,12 @@ describe("Claim.MD request budget", () => {
   it("waits briefly for the next window instead of refusing a sequential caller", async () => {
     let clock = 0;
     const server = fakeClaimMd();
-    const t = transport(server.fetchImpl, createInProcessClaimMdCounter(() => clock));
-    for (let i = 0; i < CLAIMMD_REQUESTS_PER_WINDOW; i += 1) await t.fetchAcknowledgments(ctx(), "1");
+    const t = transport(
+      server.fetchImpl,
+      createInProcessClaimMdCounter(() => clock),
+    );
+    for (let i = 0; i < CLAIMMD_REQUESTS_PER_WINDOW; i += 1)
+      await t.fetchAcknowledgments(ctx(), "1");
 
     const next = t.fetchAcknowledgments(ctx(), "1");
     clock = CLAIMMD_RATE_WINDOW_MS; // the window rolls over while the caller waits

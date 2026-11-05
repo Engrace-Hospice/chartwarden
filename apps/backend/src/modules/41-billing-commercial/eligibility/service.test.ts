@@ -230,11 +230,14 @@ describe("EligibilityService.check", () => {
       billingProviderTaxId: "999999999",
     });
     const kept = JSON.stringify([view, h.store.checks, h.logs]);
-    for (const value of ["Jane", "Doe", "1940-03-15", "999999999"]) expect(kept).not.toContain(value);
+    for (const value of ["Jane", "Doe", "1940-03-15", "999999999"])
+      expect(kept).not.toContain(value);
   });
 
   it("sends no search facts it does not have (unknown patient, no EIN on file)", async () => {
-    const h = harness({ searchFacts: { subscriber: async () => null, billingTaxId: async () => null } });
+    const h = harness({
+      searchFacts: { subscriber: async () => null, billingTaxId: async () => null },
+    });
     await h.service.check(ACTOR, ARGS);
     expect(h.calls[0]?.req).toEqual({ memberId: MEMBER_ID, serviceDate: "2026-10-25" });
   });

@@ -9,7 +9,11 @@ import { CH, type ClearinghouseContext } from "./types";
 
 const KEY = "claimmd_remit_key_do_not_leak";
 const NPI = DEFAULT_SCOPE.billingNpi as string;
-const ctx: ClearinghouseContext = { ...DEFAULT_SCOPE, payerId: "15004", correlationId: "corr-remit" };
+const ctx: ClearinghouseContext = {
+  ...DEFAULT_SCOPE,
+  payerId: "15004",
+  correlationId: "corr-remit",
+};
 
 /** A whole (empty-bodied) 835 interchange with control number `ctl`. */
 const interchange = (ctl: string): string =>
@@ -20,7 +24,9 @@ const interchange = (ctl: string): string =>
 function setup(eras: Record<string, unknown>) {
   const anomalies: ClaimMdAnomaly[] = [];
   const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
-    const path = String(input).replace(/^https:\/\/svc\.claim\.md\/services\//, "").replace(/\/$/, "");
+    const path = String(input)
+      .replace(/^https:\/\/svc\.claim\.md\/services\//, "")
+      .replace(/\/$/, "");
     const body = init?.body as URLSearchParams;
     if (path === "eralist") {
       const after = Number(body.get("ERAID"));
@@ -81,19 +87,26 @@ describe("Claim.MD era835 `data` shapes", () => {
     ["a non-string element", [a, 7], 2],
     ["an empty element", [a, ""], 2],
     ["an empty array", [], 0],
-  ])("delivers the ERAs before it, never passes it and flags the ERA for %s", async (_label, data, elements) => {
-    const s = setup({ "700": a, "701": data });
-    // The good ERA before it is delivered, the cursor stops on it (never past the bad one) and more is signalled.
-    const r = await s.transport.fetchRemittances(ctx, "699");
-    expect(r.ok && r.data).toEqual({ items: [expect.objectContaining({ remittanceId: "claimmd-700" })], nextCursor: "700", hasMore: true });
-    // Next call: the bad ERA comes first and fails alone, so the M25 pull keeps its stored cursor and retries.
-    const again = await s.transport.fetchRemittances(ctx, "700");
-    expect(!again.ok && again.degraded.code).toBe(CH.UNAVAILABLE);
-    expect(s.anomalies).toEqual([
-      { type: "era_unreadable", eraid: "701", elements },
-      { type: "era_unreadable", eraid: "701", elements },
-    ]);
-  });
+  ])(
+    "delivers the ERAs before it, never passes it and flags the ERA for %s",
+    async (_label, data, elements) => {
+      const s = setup({ "700": a, "701": data });
+      // The good ERA before it is delivered, the cursor stops on it (never past the bad one) and more is signalled.
+      const r = await s.transport.fetchRemittances(ctx, "699");
+      expect(r.ok && r.data).toEqual({
+        items: [expect.objectContaining({ remittanceId: "claimmd-700" })],
+        nextCursor: "700",
+        hasMore: true,
+      });
+      // Next call: the bad ERA comes first and fails alone, so the M25 pull keeps its stored cursor and retries.
+      const again = await s.transport.fetchRemittances(ctx, "700");
+      expect(!again.ok && again.degraded.code).toBe(CH.UNAVAILABLE);
+      expect(s.anomalies).toEqual([
+        { type: "era_unreadable", eraid: "701", elements },
+        { type: "era_unreadable", eraid: "701", elements },
+      ]);
+    },
+  );
 
   it("raises no anomaly when the ERA has no `data` at all (still fails closed)", async () => {
     const s = setup({ "701": undefined });

@@ -500,7 +500,11 @@ describe("CLEARINGHOUSE_VENDOR (ADR-0053 D3)", () => {
       "CLAIMMD_ACCOUNT_USAGE",
     ]);
     expect(
-      keysFor({ CLEARINGHOUSE_VENDOR: "claimmd", CLAIMMD_ACCOUNT_KEY: "a-real-looking-key-0001", CLAIMMD_ACCOUNT_USAGE: "live" }),
+      keysFor({
+        CLEARINGHOUSE_VENDOR: "claimmd",
+        CLAIMMD_ACCOUNT_KEY: "a-real-looking-key-0001",
+        CLAIMMD_ACCOUNT_USAGE: "live",
+      }),
     ).toEqual(["CLAIMMD_ACCOUNT_USAGE"]);
     expect(
       keysFor({

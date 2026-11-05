@@ -36,7 +36,10 @@ export function createInProcessClaimMdCounter(now: () => number = Date.now): Cla
     async increment(key, windowMs) {
       const t = now();
       const w = windows.get(key);
-      const next = !w || t - w.start >= windowMs ? { count: 1, start: t } : { count: w.count + 1, start: w.start };
+      const next =
+        !w || t - w.start >= windowMs
+          ? { count: 1, start: t }
+          : { count: w.count + 1, start: w.start };
       windows.set(key, next);
       return next.count;
     },

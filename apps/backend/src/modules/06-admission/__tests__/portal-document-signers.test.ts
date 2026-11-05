@@ -22,7 +22,6 @@ function setup(opts: { esState?: string; nor?: boolean } = {}) {
     },
   };
   const signers = createPortalAdmissionSigners({
-    // biome-ignore lint/suspicious/noExplicitAny: a structural fake of the narrow service surface
     service: service as any,
     readPatientName: async () => "Pat Patient",
     nowIso: () => "2026-11-04T12:00:00.000Z",
