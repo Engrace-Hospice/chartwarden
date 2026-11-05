@@ -130,6 +130,19 @@ describe("sanitizeRichBody", () => {
     ]);
   });
 
+  it("ADR-0107: accepts the group tag kinds and projects them like any mention", () => {
+    for (const kind of ["role", "team", "on_call"]) {
+      const value = ok(doc(para({ type: "mention", kind, entityId: ID, label: "Care team" })));
+      expect(richBodyMentions(value)).toEqual([
+        { kind, entityId: ID, label: "Care team", start: 0, end: 10 },
+      ]);
+    }
+    expect(
+      sanitizeRichBody(doc(para({ type: "mention", kind: "everyone", entityId: ID, label: "x" })))
+        .ok,
+    ).toBe(false);
+  });
+
   describe.each(XSS_CORPUS)("corpus payload $id", ({ payload }) => {
     it("never survives as a link target", () => {
       const result = sanitizeRichBody(doc(para(text("x", { type: "link", href: payload }))));
