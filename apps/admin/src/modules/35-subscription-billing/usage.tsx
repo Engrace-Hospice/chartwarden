@@ -101,6 +101,13 @@ export function Usage(): JSX.Element {
             <p className="wx-source-line wx-nums">
               Current period: {formatDate(usage.periodStart)} — {formatDate(usage.periodEnd)}
             </p>
+            {usage.claimsBillingAddon ? (
+              <p className="wx-source-line wx-nums">
+                Claims-billing add-on:{" "}
+                {usage.claimsBillingAddon.activePatientCount.toLocaleString()} active patients this
+                period (counted, not billed yet)
+              </p>
+            ) : null}
             {usage.meters.length === 0 ? (
               <StateEmpty icon="bar-chart">
                 This tenant has no metered usage this period.

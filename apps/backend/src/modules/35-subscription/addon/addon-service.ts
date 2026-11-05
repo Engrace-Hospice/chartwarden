@@ -21,6 +21,7 @@ import {
   latestSubscriptionWindow,
 } from "../billing-runtime/census";
 import { usageWindowFor } from "../billing-runtime/jobs";
+import { claimsBillingEnforcementMode } from "../../../bootstrap/claims-billing-gate";
 import type { M35WriteActor } from "../routes/actor";
 import type { PlatformRunner, WriteOutboxPort, WriteTx } from "../routes/service-drizzle";
 import {
@@ -64,6 +65,8 @@ export interface ClaimsBillingStatusView {
   readonly reason: ClaimsBillingDenyReason | null;
   readonly trialEndsAt: string | null;
   readonly activePatientCount: number | null;
+  /** True when the server is in `enforce` mode (a not-entitled org is refused); false in off/shadow. */
+  readonly enforced: boolean;
 }
 
 export interface GrantAddonArgs {
@@ -350,6 +353,7 @@ export function buildDrizzleAddonService(db: DbClient, deps: AddonServiceDeps = 
         reason: decision.entitled ? null : decision.reason,
         trialEndsAt: iso(latest?.trialEndsAt),
         activePatientCount,
+        enforced: claimsBillingEnforcementMode() === "enforce",
       };
     },
 

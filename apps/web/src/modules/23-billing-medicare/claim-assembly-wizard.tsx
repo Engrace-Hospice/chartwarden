@@ -1,4 +1,10 @@
-import { Glyph, PageHeader, useApiClient } from "@chartwarden/ui";
+import {
+  ClaimsBillingNotice,
+  Glyph,
+  PageHeader,
+  useApiClient,
+  useClaimsBilling,
+} from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the CLAIM ASSEMBLY screen (R2, §5.1 #4).
 // One compact screen (it was a four-step stepper): provider entity + patient + service-date range + Type-of-Bill on
 // the left, what the server will assemble on the right. The single server action is the existing route #1 POST
@@ -63,6 +69,8 @@ export function ClaimAssemblyWizard(): JSX.Element {
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // ADR-0108 — assembling a new claim is new claims-billing work: paused without the add-on (when enforced).
+  const claimsBilling = useClaimsBilling();
 
   useEffect(() => {
     saveDraft(DRAFT_KEY, { form });
@@ -136,6 +144,7 @@ export function ClaimAssemblyWizard(): JSX.Element {
       <PageHeader title="Assemble Claim">
         <BillingTabs />
       </PageHeader>
+      <ClaimsBillingNotice />
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -240,8 +249,10 @@ export function ClaimAssemblyWizard(): JSX.Element {
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             <button
               type="submit"
-              style={!valid || busy ? disabledButtonStyle : primaryButtonStyle}
-              disabled={!valid || busy}
+              style={
+                !valid || busy || claimsBilling.blocked ? disabledButtonStyle : primaryButtonStyle
+              }
+              disabled={!valid || busy || claimsBilling.blocked}
               aria-describedby={
                 payerBlocked
                   ? "payer-preflight"

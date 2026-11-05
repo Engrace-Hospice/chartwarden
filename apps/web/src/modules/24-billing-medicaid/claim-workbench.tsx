@@ -1,5 +1,6 @@
 import {
   Button,
+  ClaimsBillingNotice,
   CursorPagination,
   EmptyState,
   FilterBar,
@@ -245,6 +246,9 @@ export function MedicaidClaimWorkbench(): JSX.Element {
           </div>
           <div style={{ marginTop: "0.75rem" }}>
             <MedicaidBillingTabs />
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <ClaimsBillingNotice />
           </div>
         </PageHeader>
       }

@@ -4,7 +4,15 @@
 // The member id is resolved on the server from the patient's coverage; it is not a field here and is never sent or shown. A refusal
 // is shown in our own fixed words chosen by status and code (describeCheckFailure), never the server's text, and leaves the previous
 // result on the page. A `replayed` answer is the EARLIER result for the same request, not a new check, and is announced as such.
-import { Button, InlineAlert, SelectField, TextField, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  ClaimsBillingNotice,
+  InlineAlert,
+  SelectField,
+  TextField,
+  useApiClient,
+  useClaimsBilling,
+} from "@chartwarden/ui";
 import { useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -40,6 +48,8 @@ export function EligibilityCheckForm({
   onChecked: (result: { planId: string; replayed: boolean }) => void;
 }): JSX.Element {
   const client = useApiClient();
+  // ADR-0108 — a new eligibility check is new claims-billing work: paused without the add-on (when enforced).
+  const claimsBilling = useClaimsBilling();
   const navigate = useNavigate();
   const [fields, setFields] = useState<Fields>({
     planId: null,
@@ -154,8 +164,9 @@ export function EligibilityCheckForm({
           ) : null}
         </InlineAlert>
       ) : null}
+      <ClaimsBillingNotice />
       <div className="wx-modal-actions">
-        <Button type="submit" size="sm" disabled={busy}>
+        <Button type="submit" size="sm" disabled={busy || claimsBilling.blocked}>
           {busy ? "Checking…" : "Run eligibility check"}
         </Button>
       </div>

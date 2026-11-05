@@ -1117,6 +1117,7 @@ const fakeAddons: AddonService = {
     reason: "never_purchased",
     trialEndsAt: null,
     activePatientCount: null,
+    enforced: false,
   }),
 };
 

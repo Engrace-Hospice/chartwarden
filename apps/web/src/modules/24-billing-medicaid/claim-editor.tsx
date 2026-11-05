@@ -1,5 +1,6 @@
 import {
   CeremonyModal,
+  ClaimsBillingNotice,
   DetailPageLayout,
   EmptyState,
   Glyph,
@@ -7,6 +8,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
+  useClaimsBilling,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
@@ -122,6 +124,8 @@ export function MedicaidClaimEditor(): JSX.Element {
   const [reason, setReason] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // ADR-0108 — submit / replace are new claims-billing work (void stays open): paused without the add-on.
+  const claimsBilling = useClaimsBilling();
 
   const load = useCallback(async () => {
     if (!claimId) return;
@@ -227,17 +231,21 @@ export function MedicaidClaimEditor(): JSX.Element {
               </a>
               <button
                 type="button"
-                disabled={!canSubmit}
+                disabled={!canSubmit || claimsBilling.blocked}
                 onClick={() => setCeremony("submit")}
-                style={canSubmit ? primaryButtonStyle : disabledButtonStyle}
+                style={
+                  canSubmit && !claimsBilling.blocked ? primaryButtonStyle : disabledButtonStyle
+                }
               >
                 Submit
               </button>
               <button
                 type="button"
-                disabled={!canReplaceVoid}
+                disabled={!canReplaceVoid || claimsBilling.blocked}
                 onClick={() => setCeremony("replace")}
-                style={canReplaceVoid ? ghostButtonStyle : disabledButtonStyle}
+                style={
+                  canReplaceVoid && !claimsBilling.blocked ? ghostButtonStyle : disabledButtonStyle
+                }
               >
                 Replace
               </button>
@@ -254,6 +262,9 @@ export function MedicaidClaimEditor(): JSX.Element {
         >
           <div style={{ marginTop: "0.75rem" }}>
             <MedicaidBillingTabs />
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <ClaimsBillingNotice />
           </div>
         </PageHeader>
       }

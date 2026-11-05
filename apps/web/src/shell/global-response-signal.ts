@@ -4,6 +4,7 @@
 // (401 → /expired, 503 → /maintenance). Kept outside React so it can be fed from `main.tsx` before
 // the router exists, and read with `useSyncExternalStore` from anywhere inside it.
 
+import { noteClaimsBillingRefusal } from "@chartwarden/ui";
 import { clearAllDrafts } from "./ceremony-drafts";
 
 /** Why a tenant address cannot be used (ADR-0049): the organization left, is suspended, or never existed. */
@@ -128,6 +129,13 @@ export function handleObservedResponse(
     });
   } else if (signal) {
     setGlobalResponseSignal(signal); // only 401/503 notify - don't re-render on every 2xx
+  } else if (status === 402) {
+    // ADR-0108 — a claims-billing add-on refusal flips every ClaimsBillingNotice / gated action at once.
+    void response
+      .clone()
+      .json()
+      .then((body: unknown) => noteClaimsBillingRefusal(body))
+      .catch(() => undefined);
   } else if (mayCarryTenantRefusal(status, url)) {
     void tenantSignalFromResponse(response).then((tenantSignal) => {
       if (tenantSignal) setGlobalResponseSignal(tenantSignal);

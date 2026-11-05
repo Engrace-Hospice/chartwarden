@@ -48596,6 +48596,7 @@ export interface operations {
                             reason: ("never_purchased" | "lapsed" | "subscription_suspended" | "subscription_canceled" | "subscription_paused") | null;
                             trialEndsAt: string | null;
                             activePatientCount: number | null;
+                            enforced: boolean;
                         };
                     };
                 };

@@ -330,6 +330,8 @@ export const ClaimsBillingStatusDto = Type.Object({
   reason: Type.Union([ClaimsBillingDenyReasonLit, Type.Null()]),
   trialEndsAt: isoNull(),
   activePatientCount: intNull(),
+  /** True when the server enforces the add-on (`CLAIMS_BILLING_ENFORCEMENT=enforce`); false in off/shadow. */
+  enforced: Type.Boolean(),
 });
 
 export const BillingStatusDto = Type.Object({
