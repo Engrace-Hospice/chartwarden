@@ -85,8 +85,7 @@ const CLAIMMD_REPORT_EVENTS: ModuleEventContribution = [
       ]),
       clearinghousePayerId: nullableStr,
     }),
-    // The M41 enrollment-report consumer is added with its table (migration 1323).
-    declaredConsumers: [],
+    declaredConsumers: ["m41"],
     isOutboxOnly: true,
   },
   {

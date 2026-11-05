@@ -352,6 +352,33 @@ export interface EnrollmentView {
   readonly evidenceRef: string | null;
 }
 
+/** An ADVISORY enrollment status a clearinghouse reported (Claim.MD webhook). It changes nothing until staff confirm it. */
+export interface EnrollmentReportView {
+  readonly id: string;
+  readonly payerId: string | null;
+  readonly clearinghouseKey: string;
+  readonly clearinghousePayerId: string | null;
+  readonly enrollType: string;
+  readonly vendorStatus: string;
+  readonly suggestedStatus: "enrolled" | null;
+  readonly vendorEnrollId: string | null;
+  readonly reportedAt: string;
+}
+
+const CLEARINGHOUSE_NAMES: Readonly<Record<string, string>> = { claimmd: "Claim.MD" };
+
+/** "Claim.MD reports enrolled (era) — confirm": the vendor's one bounded status word, never its free text. */
+export function enrollmentReportLine(r: EnrollmentReportView): string {
+  const who = CLEARINGHOUSE_NAMES[r.clearinghouseKey] ?? r.clearinghouseKey;
+  return `${who} reports ${r.vendorStatus.replace(/_/g, " ")} (${r.enrollType}) — confirm`;
+}
+
+/** The evidence reference a confirmed report pre-fills: `<clearinghouse>:<vendor enroll id>` when that fits the pattern. */
+export function enrollmentReportEvidence(r: EnrollmentReportView): string {
+  const ref = r.vendorEnrollId ? `${r.clearinghouseKey}:${r.vendorEnrollId}` : "";
+  return ENROLLMENT_EVIDENCE_PATTERN.test(ref) ? ref : "";
+}
+
 /** The server's clearinghouse-key and evidence-reference patterns (routes/typebox.ts); a model test keeps them equal. */
 export const ENROLLMENT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,39}$/;
 export const ENROLLMENT_EVIDENCE_PATTERN = /^[A-Za-z0-9._:/#-]{1,200}$/;

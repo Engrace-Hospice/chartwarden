@@ -73641,6 +73641,418 @@
         }
       }
     },
+    "/api/v1/billing/commercial/enrollment-reports": {
+      "get": {
+        "operationId": "getApiV1BillingCommercialEnrollmentreports",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Advisory enrollment statuses a clearinghouse reported for a provider entity (Claim.MD webhook), newest first (commercial_billing.read; provider entity scope). A report never changes a send gate: staff apply it through the enrollments routes",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "const": "open",
+                  "type": "string"
+                },
+                {
+                  "const": "applied",
+                  "type": "string"
+                },
+                {
+                  "const": "dismissed",
+                  "type": "string"
+                },
+                {
+                  "const": "superseded",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "providerEntityId",
+                          "payerId",
+                          "clearinghouseKey",
+                          "clearinghousePayerId",
+                          "enrollType",
+                          "vendorStatus",
+                          "suggestedStatus",
+                          "vendorEnrollId",
+                          "reportedAt",
+                          "state",
+                          "resolvedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "type": "string"
+                          },
+                          "payerId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "clearinghouseKey": {
+                            "type": "string"
+                          },
+                          "clearinghousePayerId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "enrollType": {
+                            "anyOf": [
+                              {
+                                "const": "era",
+                                "type": "string"
+                              },
+                              {
+                                "const": "1500",
+                                "type": "string"
+                              },
+                              {
+                                "const": "500",
+                                "type": "string"
+                              },
+                              {
+                                "const": "ub",
+                                "type": "string"
+                              },
+                              {
+                                "const": "elig",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attach",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unrecognized",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "vendorStatus": {
+                            "type": "string"
+                          },
+                          "suggestedStatus": {
+                            "anyOf": [
+                              {
+                                "const": "enrolled",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "vendorEnrollId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reportedAt": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "applied",
+                                "type": "string"
+                              },
+                              {
+                                "const": "dismissed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "superseded",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "resolvedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/commercial/enrollment-reports/{id}/resolve": {
+      "post": {
+        "operationId": "postApiV1BillingCommercialEnrollmentreportsByIdResolve",
+        "tags": [
+          "41-billing-commercial"
+        ],
+        "summary": "Close an enrollment report as applied (after the enrollment was recorded through the enrollments routes) or dismissed (commercial_billing.manage_enrollment; provider entity scope). Idempotent; 409 when it was already resolved the other way or superseded",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "providerEntityId",
+                    "payerId",
+                    "clearinghouseKey",
+                    "clearinghousePayerId",
+                    "enrollType",
+                    "vendorStatus",
+                    "suggestedStatus",
+                    "vendorEnrollId",
+                    "reportedAt",
+                    "state",
+                    "resolvedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "payerId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "clearinghouseKey": {
+                      "type": "string"
+                    },
+                    "clearinghousePayerId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "enrollType": {
+                      "anyOf": [
+                        {
+                          "const": "era",
+                          "type": "string"
+                        },
+                        {
+                          "const": "1500",
+                          "type": "string"
+                        },
+                        {
+                          "const": "500",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ub",
+                          "type": "string"
+                        },
+                        {
+                          "const": "elig",
+                          "type": "string"
+                        },
+                        {
+                          "const": "attach",
+                          "type": "string"
+                        },
+                        {
+                          "const": "unrecognized",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "vendorStatus": {
+                      "type": "string"
+                    },
+                    "suggestedStatus": {
+                      "anyOf": [
+                        {
+                          "const": "enrolled",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "vendorEnrollId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reportedAt": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "anyOf": [
+                        {
+                          "const": "open",
+                          "type": "string"
+                        },
+                        {
+                          "const": "applied",
+                          "type": "string"
+                        },
+                        {
+                          "const": "dismissed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "superseded",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "resolvedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "resolution"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                    "type": "string"
+                  },
+                  "resolution": {
+                    "anyOf": [
+                      {
+                        "const": "applied",
+                        "type": "string"
+                      },
+                      {
+                        "const": "dismissed",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/billing/commercial/enrollments": {
       "get": {
         "operationId": "getApiV1BillingCommercialEnrollments",

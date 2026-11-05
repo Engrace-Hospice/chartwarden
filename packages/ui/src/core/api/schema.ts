@@ -5979,6 +5979,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/commercial/enrollment-reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Advisory enrollment statuses a clearinghouse reported for a provider entity (Claim.MD webhook), newest first (commercial_billing.read; provider entity scope). A report never changes a send gate: staff apply it through the enrollments routes */
+        get: operations["getApiV1BillingCommercialEnrollmentreports"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/commercial/enrollment-reports/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close an enrollment report as applied (after the enrollment was recorded through the enrollments routes) or dismissed (commercial_billing.manage_enrollment; provider entity scope). Idempotent; 409 when it was already resolved the other way or superseded */
+        post: operations["postApiV1BillingCommercialEnrollmentreportsByIdResolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/commercial/enrollments": {
         parameters: {
             query?: never;
@@ -46000,6 +46034,90 @@ export interface operations {
                                 checkedAt: string | null;
                             };
                         };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingCommercialEnrollmentreports: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                state?: "open" | "applied" | "dismissed" | "superseded";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            providerEntityId: string;
+                            payerId: string | null;
+                            clearinghouseKey: string;
+                            clearinghousePayerId: string | null;
+                            enrollType: "era" | "1500" | "500" | "ub" | "elig" | "attach" | "unrecognized";
+                            vendorStatus: string;
+                            suggestedStatus: "enrolled" | null;
+                            vendorEnrollId: string | null;
+                            reportedAt: string;
+                            state: "open" | "applied" | "dismissed" | "superseded";
+                            resolvedAt: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingCommercialEnrollmentreportsByIdResolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    providerEntityId: string;
+                    resolution: "applied" | "dismissed";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        payerId: string | null;
+                        clearinghouseKey: string;
+                        clearinghousePayerId: string | null;
+                        enrollType: "era" | "1500" | "500" | "ub" | "elig" | "attach" | "unrecognized";
+                        vendorStatus: string;
+                        suggestedStatus: "enrolled" | null;
+                        vendorEnrollId: string | null;
+                        reportedAt: string;
+                        state: "open" | "applied" | "dismissed" | "superseded";
+                        resolvedAt: string | null;
                     };
                 };
             };

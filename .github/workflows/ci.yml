@@ -859,6 +859,8 @@ jobs:
           - { name: "M41 commercial claim", scripts: "test:m41:commercial-claim:live" }
           # M41 commercial routes (#722) - the HTTP layer: guards, step-up, AI block, idempotency, error envelope, read audit.
           - { name: "M41 commercial routes", scripts: "test:m41:commercial-routes:live" }
+          # ADR-0053 amendment D7 - advisory Claim.MD enrollment reports: real publisher + dispatcher, payer mapping, supersede, send gate unchanged until staff apply, route chain.
+          - { name: "M41 enrollment reports", scripts: "test:m41:enrollment-reports:live" }
           # M41 commercial eligibility (270/271) and enrollment (#724) - tenant isolation as chartwarden_app, append-only checks, no member id column, the send gate end to end (unbound / not routed / not enrolled never reach the transport).
           - { name: "M41 eligibility", scripts: "test:m41:eligibility:live" }
           # M41 commercial submission (ADR-0053 D10) - the send gate, the submit transaction (queued row + event, claim stays ready), the drain through the in-memory transport (ready -> submitted only on a receipt), idempotency, RLS as chartwarden_app.

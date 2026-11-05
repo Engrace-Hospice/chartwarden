@@ -425,6 +425,7 @@ export const MODULES: ModuleDef[] = [
       "commercial_payer_route", // #721 - the payer id each clearinghouse routes a plan on
       "commercial_contract_rate", // #721 - contract rate terms per level of care
       "commercial_payer_enrollment",
+      "commercial_enrollment_report", // ADR-0053 D7 - advisory clearinghouse enrollment reports (staff confirm)
       "commercial_authorization",
       "commercial_eligibility_check",
       "commercial_claim",

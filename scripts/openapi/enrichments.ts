@@ -15075,6 +15075,10 @@ import {
   EligibilityPolicyResponseSchema as M41EligibilityPolicyResponseSchema,
   EnrollmentListQuerySchema as M41EnrollmentListQuerySchema,
   EnrollmentListResponseSchema as M41EnrollmentListResponseSchema,
+  EnrollmentReportListQuerySchema as M41EnrollmentReportListQuerySchema,
+  EnrollmentReportListResponseSchema as M41EnrollmentReportListResponseSchema,
+  EnrollmentReportResponseSchema as M41EnrollmentReportResponseSchema,
+  ResolveEnrollmentReportBodySchema as M41ResolveEnrollmentReportBodySchema,
   EnrollmentResponseSchema as M41EnrollmentResponseSchema,
   LatestEligibilityResponseSchema as M41LatestEligibilityResponseSchema,
   LatestQuerySchema as M41LatestQuerySchema,
@@ -15122,6 +15126,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
     headers: IDEMPOTENCY_KEY_HEADER,
     response: M41EnrollmentResponseSchema,
     status: 201,
+  },
+  "GET /api/v1/billing/commercial/enrollment-reports": {
+    summary:
+      "Advisory enrollment statuses a clearinghouse reported for a provider entity (Claim.MD webhook), newest first (commercial_billing.read; provider entity scope). A report never changes a send gate: staff apply it through the enrollments routes",
+    query: M41EnrollmentReportListQuerySchema,
+    response: M41EnrollmentReportListResponseSchema,
+  },
+  "POST /api/v1/billing/commercial/enrollment-reports/:id/resolve": {
+    summary:
+      "Close an enrollment report as applied (after the enrollment was recorded through the enrollments routes) or dismissed (commercial_billing.manage_enrollment; provider entity scope). Idempotent; 409 when it was already resolved the other way or superseded",
+    body: M41ResolveEnrollmentReportBodySchema,
+    response: M41EnrollmentReportResponseSchema,
   },
   "PATCH /api/v1/billing/commercial/enrollments/:id": {
     summary:

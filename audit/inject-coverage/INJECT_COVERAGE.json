@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1898,
-    "coveredRoutes": 1898,
-    "directRoutesReferenced": 1731
+    "routes": 1900,
+    "coveredRoutes": 1900,
+    "directRoutesReferenced": 1732
   },
   "modules": [
     {
@@ -415,6 +415,7 @@
         "apps/backend/__tests__/m25-payer-appeal.live.test.ts",
         "apps/backend/__tests__/m25-qic.live.test.ts",
         "apps/backend/__tests__/m25-submission.live.test.ts",
+        "apps/backend/__tests__/m41-enrollment-reports.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
       "directRoutesReferenced": 70
@@ -711,16 +712,17 @@
     },
     {
       "module": "41-billing-commercial",
-      "routes": 26,
+      "routes": 28,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/m41-ack-quarantine-routes.test.ts",
         "apps/backend/__tests__/m41-commercial-eligibility-routes.test.ts",
         "apps/backend/__tests__/m41-commercial-queue-routes.test.ts",
         "apps/backend/__tests__/m41-commercial-routes.live.test.ts",
-        "apps/backend/__tests__/m41-commercial-submission-routes.test.ts"
+        "apps/backend/__tests__/m41-commercial-submission-routes.test.ts",
+        "apps/backend/__tests__/m41-enrollment-reports.live.test.ts"
       ],
-      "directRoutesReferenced": 18
+      "directRoutesReferenced": 19
     }
   ]
 }
