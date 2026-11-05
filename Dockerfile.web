@@ -14,6 +14,9 @@ RUN bun run --cwd apps/web build:app
 # ADR-0049 Phase 5: the patient/family portal ships in this image under /portal/ (its default Vite base), so one
 # web tier answers every tenant host. Staff app at /, portal at /portal/ - see web-nginx.conf.
 RUN bun run --cwd apps/portal build:app
+# The Platform Ops console is a third SPA in this image. The host Nginx keeps its public surface on a
+# dedicated hostname; the web container selects this root only when that Host is forwarded through.
+RUN bun run --cwd apps/admin build:app
 
 FROM nginxinc/nginx-unprivileged:1.29-alpine
 
@@ -38,5 +41,6 @@ USER nginx
 
 COPY --from=build /app/apps/web/dist/app /usr/share/nginx/html
 COPY --from=build /app/apps/portal/dist/app /usr/share/nginx/html/portal
+COPY --from=build /app/apps/admin/dist/app /usr/share/nginx/html/admin
 
 EXPOSE 8080
