@@ -13,6 +13,11 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 export const CLAIMMD_SIGNATURE_HEADER = "auth-signature-base64";
 /** Longest eventid kept as given; anything longer is keyed on the element digest instead. */
 export const CLAIMMD_EVENT_ID_MAX = 128;
+/**
+ * Claim.MD documents at most 100 events a delivery; we split up to ten times that and store anything larger whole (one
+ * malformed row), so a hostile-but-signed body can never turn into an unbounded multi-row insert that fails forever.
+ */
+export const CLAIMMD_MAX_SPLIT_EVENTS = 1000;
 
 const SIGNATURE_RE = /^[A-Za-z0-9+/]{43}=$/;
 const SHA256_BYTES = 32;
@@ -114,7 +119,12 @@ export function parseClaimMdDelivery(rawBody: Uint8Array): ClaimMdDelivery {
   const body = isObject(parsed) ? parsed : {};
   const acctNumber = accountOf(body.acct_number);
   const events = body.events;
-  if (acctNumber === null || !Array.isArray(events) || events.length === 0) {
+  if (
+    acctNumber === null ||
+    !Array.isArray(events) ||
+    events.length === 0 ||
+    events.length > CLAIMMD_MAX_SPLIT_EVENTS
+  ) {
     return { kind: "unsplittable", acctNumber, bodySha256: sha256(rawBody) };
   }
   return {

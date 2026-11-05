@@ -91,8 +91,8 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 49,
-        "enriched": 49
+        "routes": 48,
+        "enriched": 48
       },
       "screens": true,
       "tests": true,
@@ -311,15 +311,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 82,
-        "enriched": 82
+        "routes": 34,
+        "enriched": 34
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
-        "tables": 24,
-        "covered": 24
+        "tables": 11,
+        "covered": 11
       }
     },
     {
@@ -458,8 +458,8 @@
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 46,
-        "covered": 38
+        "tables": 35,
+        "covered": 35
       }
     },
     {
@@ -491,15 +491,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 177,
-        "enriched": 177
+        "routes": 158,
+        "enriched": 158
       },
       "screens": true,
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 60,
-        "covered": 58
+        "tables": 45,
+        "covered": 45
       }
     },
     {
@@ -611,8 +611,8 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 72,
-        "enriched": 72
+        "routes": 67,
+        "enriched": 67
       },
       "screens": true,
       "tests": true,
@@ -711,15 +711,15 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 215,
-        "enriched": 215
+        "routes": 212,
+        "enriched": 212
       },
       "screens": true,
       "tests": true,
       "adapter": null,
       "liveInfra": {
-        "tables": 76,
-        "covered": 76
+        "tables": 75,
+        "covered": 75
       }
     },
     {
@@ -811,8 +811,8 @@
       "migration": true,
       "routes": true,
       "enriched": {
-        "routes": 29,
-        "enriched": 29
+        "routes": 26,
+        "enriched": 26
       },
       "screens": true,
       "tests": true,

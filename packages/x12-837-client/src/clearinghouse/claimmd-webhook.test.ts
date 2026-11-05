@@ -3,6 +3,7 @@ import { createHash, createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   CLAIMMD_EVENT_ID_MAX,
+  CLAIMMD_MAX_SPLIT_EVENTS,
   parseClaimMdDelivery,
   verifyClaimMdSignature,
 } from "./claimmd-webhook";
@@ -90,6 +91,13 @@ describe("parseClaimMdDelivery", () => {
       acctNumber: "99999",
       bodySha256: sha(raw),
     });
+  });
+
+  it("stores a batch beyond the split bound whole instead of splitting it", () => {
+    const raw = body(
+      Array.from({ length: CLAIMMD_MAX_SPLIT_EVENTS + 1 }, (_, i) => element(String(i))),
+    );
+    expect(parseClaimMdDelivery(raw).kind).toBe("unsplittable");
   });
 
   it("accepts a numeric eventid as its decimal string", () => {

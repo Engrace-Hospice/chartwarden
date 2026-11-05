@@ -7,10 +7,14 @@ import { registerPlatformJob } from "@chartwarden/tenancy";
 /** The platform job id M23's per-org watchdog crons enumerate active orgs under. */
 export const M23_PLATFORM_JOB_ID = "m23.platform_crons";
 
+/** The platform job id the Claim.MD webhook receipt store and its sweep run under (platform-only receipt table). */
+export const M23_CLAIMMD_WEBHOOK_JOB_ID = "m23.claimmd_webhook";
+
 /**
  * Register M23's platform job id on the allowlist (idempotent `Set.add`). Called once at boot by the
  * composition root, alongside the other `wireM*Tenancy` calls.
  */
 export function wireM23Tenancy(): void {
   registerPlatformJob(M23_PLATFORM_JOB_ID);
+  registerPlatformJob(M23_CLAIMMD_WEBHOOK_JOB_ID);
 }

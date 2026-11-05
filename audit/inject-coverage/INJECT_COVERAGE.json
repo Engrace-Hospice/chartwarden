@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1896,
-    "coveredRoutes": 1896,
-    "directRoutesReferenced": 1729
+    "routes": 1898,
+    "coveredRoutes": 1898,
+    "directRoutesReferenced": 1731
   },
   "modules": [
     {
@@ -386,12 +386,14 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 96,
+      "routes": 98,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-clinical-site-scope.test.ts",
         "apps/backend/__tests__/admission-intake-scope.test.ts",
         "apps/backend/__tests__/billing-medicare-inject.test.ts",
+        "apps/backend/__tests__/m23-claimmd-webhook-route.test.ts",
+        "apps/backend/__tests__/m23-claimmd-webhook.live.test.ts",
         "apps/backend/__tests__/m23-clearinghouse-attempt-routes.test.ts",
         "apps/backend/__tests__/m23-dde-daily-change.live.test.ts",
         "apps/backend/__tests__/m23-dde-provider-identity-aging.live.test.ts",
@@ -415,7 +417,7 @@
         "apps/backend/__tests__/m25-submission.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 68
+      "directRoutesReferenced": 70
     },
     {
       "module": "24-billing-medicaid",

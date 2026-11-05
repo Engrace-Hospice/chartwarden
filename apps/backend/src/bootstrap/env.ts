@@ -44,6 +44,11 @@ export function parseClaimsBillingEnforcement(
     `${CLAIMS_BILLING_ENFORCEMENT_ENV} must be one of ${CLAIMS_BILLING_ENFORCEMENT_MODES.join(", ")} (got '${raw}')`,
   );
 }
+/** Claim.MD webhook intake switch: only the exact value `true` turns it on (default off until a real delivery is seen). */
+export const CLAIMMD_WEBHOOK_ENABLED_ENV = "CLAIMMD_WEBHOOK_ENABLED";
+export function claimMdWebhookEnabled(env: EnvLike): boolean {
+  return env[CLAIMMD_WEBHOOK_ENABLED_ENV] === "true";
+}
 
 /** One unmet production requirement. */
 export interface EnvProblem {
@@ -232,6 +237,30 @@ const REQUIREMENTS: readonly Requirement[] = [
     key: "CLAIMMD_ACCOUNT_USAGE",
     rule: (v) => (v === "test" || v === "production" ? null : "must be 'test' or 'production'"),
     when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
+  },
+  // Claim.MD webhook intake (ADR-0053 amendment, D7). Off unless CLAIMMD_WEBHOOK_ENABLED=true; once on it needs the
+  // account key (the HMAC key), its usage, and the 32-byte key that encrypts each stored event at rest.
+  {
+    key: CLAIMMD_WEBHOOK_ENABLED_ENV,
+    rule: (v) => (v === "true" || v === "false" ? null : "must be 'true' or 'false'"),
+    when: (env) =>
+      env[CLAIMMD_WEBHOOK_ENABLED_ENV] !== undefined && env[CLAIMMD_WEBHOOK_ENABLED_ENV] !== "",
+  },
+  {
+    key: "CLAIMMD_ACCOUNT_KEY",
+    when: (env) =>
+      claimMdWebhookEnabled(env) && env[CLEARINGHOUSE_VENDOR_ENV]?.trim() !== "claimmd",
+  },
+  {
+    key: "CLAIMMD_ACCOUNT_USAGE",
+    rule: (v) => (v === "test" || v === "production" ? null : "must be 'test' or 'production'"),
+    when: (env) =>
+      claimMdWebhookEnabled(env) && env[CLEARINGHOUSE_VENDOR_ENV]?.trim() !== "claimmd",
+  },
+  {
+    key: "CLAIMMD_WEBHOOK_PAYLOAD_KEY",
+    rule: (v) => (Buffer.from(v, "base64").length === 32 ? null : "must decode to 32 base64 bytes"),
+    when: claimMdWebhookEnabled,
   },
   {
     key: "M23_X12_GATEWAY_URL",
