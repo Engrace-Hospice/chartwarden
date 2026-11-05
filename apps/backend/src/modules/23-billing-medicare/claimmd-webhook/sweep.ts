@@ -47,6 +47,16 @@ export interface ClaimMdSweepDeps {
   readonly now?: () => Date;
   /** Ids and outcome words only. */
   readonly log?: (event: string, detail: Record<string, unknown>) => void;
+  /**
+   * A receipt went terminal `failed`: Claim.MD already has its 200 and will not resend, so the event is lost unless an
+   * operator acts. Bound to the ops alert sink (error level). Ids and the error class only, never the payload.
+   */
+  readonly onFailed?: (detail: {
+    readonly usage: string;
+    readonly eventId: string;
+    readonly attempts: number;
+    readonly errorClass: string;
+  }) => void;
 }
 
 export const CLAIMMD_WEBHOOK_SWEEP_QUEUE = "claimmd-webhook-sweep";
@@ -223,12 +233,13 @@ async function record(tx: DbClient, row: PendingRow, s: Settlement, now: Date): 
     attempt_count = attempt_count + 1, last_error_class = NULL WHERE ${keyOf(row)}`);
 }
 
+/** Count a failed attempt. Returns the error class when this attempt made the row terminal `failed`, else null. */
 async function recordFailure(
   tx: DbClient,
   row: PendingRow,
   err: unknown,
   now: Date,
-): Promise<boolean> {
+): Promise<string | null> {
   const errorClass = String(
     (err as { errorClass?: unknown }).errorClass ?? (err as Error)?.name ?? "Error",
   ).slice(0, 64);
@@ -239,7 +250,7 @@ async function recordFailure(
     WHERE ${keyOf(row)} RETURNING processing_outcome`)) as unknown as {
     rows: { processing_outcome: string | null }[];
   };
-  return res.rows[0]?.processing_outcome === "failed";
+  return res.rows[0]?.processing_outcome === "failed" ? errorClass : null;
 }
 
 /** Clear expired ciphers (terminal rows) and close out entitlement waits past the retention window. */
@@ -259,7 +270,7 @@ export interface ClaimMdSweepResult {
   readonly outcomes: Readonly<Record<string, number>>;
 }
 
-/** One sweep. Never throws for one row's failure; a row failing 5 times is terminal `failed`. */
+/** One sweep. Never throws for one row's failure; a row failing 5 times is terminal `failed` and raises `onFailed`. */
 export async function runClaimMdWebhookSweep(deps: ClaimMdSweepDeps): Promise<ClaimMdSweepResult> {
   const now = (deps.now ?? (() => new Date()))();
   const recheckBefore = new Date(now.getTime() - CLAIMMD_ENTITLEMENT_RECHECK_MINUTES * 60_000);
@@ -288,7 +299,16 @@ export async function runClaimMdWebhookSweep(deps: ClaimMdSweepDeps): Promise<Cl
         });
         outcome = s.outcome;
       } catch (err) {
-        outcome = (await recordFailure(tx, row, err, now)) ? "failed" : "retry";
+        const failedClass = await recordFailure(tx, row, err, now);
+        outcome = failedClass === null ? "retry" : "failed";
+        if (failedClass !== null) {
+          deps.onFailed?.({
+            usage: row.usage,
+            eventId: row.event_id,
+            attempts: CLAIMMD_SWEEP_MAX_ATTEMPTS,
+            errorClass: failedClass,
+          });
+        }
       }
       outcomes[outcome] = (outcomes[outcome] ?? 0) + 1;
       if (outcome !== "published") {

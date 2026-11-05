@@ -7923,6 +7923,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         entitlement: { isEntitled: async () => true },
         outbox: m23OutboxPublisher,
         log: (event, detail) => app.log.info({ claimmd: detail }, event),
+        // A receipt that went terminal `failed` is lost (Claim.MD already got 200): the ops alert sink, error level.
+        onFailed: ({ usage, eventId, attempts, errorClass }) =>
+          dlqPromotionSink({
+            source: "m23:claimmd-webhook-receipt",
+            jobId: `${usage}:${eventId}`,
+            attempts,
+            error: errorClass,
+            occurredAt: new Date().toISOString(),
+          }),
       });
       attachDlqAlertsToAll([claimMdSweepWorker], "m23");
       app.addHook("onClose", () => claimMdSweepWorker.close());

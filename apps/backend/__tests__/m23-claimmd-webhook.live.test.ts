@@ -31,6 +31,7 @@ import { registerClaimMdWebhookRoutes } from "../src/modules/23-billing-medicare
 import {
   type BillingEntitlementPort,
   CLAIMMD_PAYLOAD_RETENTION_DAYS,
+  type ClaimMdSweepDeps,
   runClaimMdWebhookSweep,
 } from "../src/modules/23-billing-medicare/claimmd-webhook/sweep";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/events-by-m23";
@@ -362,8 +363,13 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
       },
     },
   });
-  const sweep = (entitlement: BillingEntitlementPort = { isEntitled: async () => true }, at = T0) =>
+  const sweep = (
+    entitlement: BillingEntitlementPort = { isEntitled: async () => true },
+    at = T0,
+    extra: Partial<ClaimMdSweepDeps> = {},
+  ) =>
     runClaimMdWebhookSweep({
+      ...extra,
       runner,
       cipher,
       entitlement,
@@ -493,11 +499,17 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
       await admin.query(
         "UPDATE claimmd_webhook_event SET payload_cipher = 'v1.AAAA.AAAA.AAAA' WHERE event_id = 'p1'",
       );
-      const first = await sweep();
+      const alerts: Array<Record<string, unknown>> = [];
+      const onFailed: ClaimMdSweepDeps["onFailed"] = (detail) => alerts.push({ ...detail });
+      const first = await sweep(undefined, T0, { onFailed });
       expect(first.outcomes).toEqual({ retry: 1, published: 1 });
-      for (let i = 0; i < 4; i += 1) await sweep();
+      for (let i = 0; i < 4; i += 1) await sweep(undefined, T0, { onFailed });
       expect(await outcome("p1")).toMatchObject({ processing_outcome: "failed", attempt_count: 5 });
       expect((await outcome("p1")).processed_at).not.toBeNull();
+      // Claim.MD already got its 200, so a terminal failure raises an ops alert once, with ids only.
+      expect(alerts).toEqual([
+        { usage: expect.any(String), eventId: "p1", attempts: 5, errorClass: expect.any(String) },
+      ]);
     });
 
     it("clears ciphers after the retention window and closes out entitlement waits", async () => {
