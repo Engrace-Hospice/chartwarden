@@ -50,17 +50,31 @@ const LEGAL_ENTITY_SUFFIXES: ReadonlySet<string> = new Set([
   "company",
 ]);
 
+/** Latin letters NFKD leaves whole (no base letter + mark), spelled the way they are usually romanised. Lower-case keys only. */
+const TRANSLITERATIONS: Readonly<Record<string, string>> = {
+  ø: "o",
+  æ: "ae",
+  œ: "oe",
+  ß: "ss",
+  ł: "l",
+  đ: "d",
+  ð: "d",
+  þ: "th",
+};
+const TRANSLITERATION_PATTERN = new RegExp(`[${Object.keys(TRANSLITERATIONS).join("")}]`, "g");
+
 /**
  * A proposed host label for a legal business name, or "" when no valid one can be made (too short, reserved, no
- * Latin letters). Lower-case, accents folded, periods and apostrophes dropped, other punctuation becomes a hyphen,
+ * Latin letters). Lower-case, accents folded (ø, æ, ß, ł and the like are transliterated), periods and apostrophes dropped, other punctuation becomes a hyphen,
  * trailing entity words (LLC, Inc, Corp, Ltd, PLLC, LP, Co ...) removed. It only suggests: the operator edits it,
  * and the server's availability check and the database rules still decide.
  */
 export function suggestTenantSlug(legalName: string): string {
   const tokens = legalName
+    .toLowerCase() // before the map, so "Ø", "Æ", "ẞ" ... need no entries of their own
+    .replace(TRANSLITERATION_PATTERN, (letter) => TRANSLITERATIONS[letter] ?? "")
     .normalize("NFKD")
     .replace(/\p{M}/gu, "")
-    .toLowerCase()
     .replace(/[.'\u2019]/g, "")
     .split(/[^a-z0-9]+/)
     .filter((token) => token !== "");
