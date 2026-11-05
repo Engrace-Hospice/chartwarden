@@ -312,6 +312,7 @@
     "test:m25:audit-response:live": "vitest run apps/backend/__tests__/m25-audit-response.live.test.ts",
     "test:m25:adr-readiness:live": "vitest run apps/backend/__tests__/m25-adr-readiness.live.test.ts",
     "test:m25:payer-appeal:live": "vitest run apps/backend/__tests__/m25-payer-appeal.live.test.ts",
+    "test:m25:appeal-reports:live": "vitest run apps/backend/__tests__/m25-appeal-reports.live.test.ts",
     "test:m25:payer-seam:live": "vitest run apps/backend/__tests__/m25-payer-seam.live.test.ts",
     "test:m25:beneficiary-representative:live": "vitest run apps/backend/__tests__/m25-beneficiary-representative.live.test.ts",
     "test:m41:payer-plan:live": "vitest run apps/backend/__tests__/m41-payer-plan.live.test.ts",

@@ -148,6 +148,7 @@ export {
 } from "./services/enrollment-report-service";
 export type { EnrollmentReportService } from "./services/enrollment-report-service";
 export {
+  CLEARINGHOUSE_ENROLLMENT_ALERT,
   M41_ENROLLMENT_REPORT_EVENT,
   buildM41EnrollmentReportConsumer,
 } from "./outbox-consumers/m23-enrollment-reported";

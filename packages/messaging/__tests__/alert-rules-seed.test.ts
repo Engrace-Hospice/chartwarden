@@ -156,6 +156,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "audit.no_deadline_recorded",
       "payer_appeal.deadline_approaching",
       "payer_appeal.no_deadline",
+      "clearinghouse.enrollment_reported",
+      "clearinghouse.appeal_reported",
       "m26.cap.agency_watch_90",
       "m26.cap.agency_warn_95",
       "m26.cap.agency_breach_100",

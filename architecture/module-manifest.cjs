@@ -965,6 +965,7 @@ exports.MODULES = [
       "payer_appeal_path_level",
       "payer_appeal_case",
       "payer_appeal_case_event",
+      "payer_appeal_vendor_report", // ADR-0053 D7 - clearinghouse-reported appeal events and the case each bound
       "representative_form_version",
       "representative_appointment",
       "beneficiary_appeal",

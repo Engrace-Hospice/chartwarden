@@ -1228,6 +1228,7 @@ import {
   buildM23BackedClaimMatchCandidateProvider,
   buildM23ClaimRejectedConsumer,
   buildM24BackedClaimMatchCandidateProvider,
+  buildM25AppealReportConsumer,
   buildM25EdiReceivedConsumer,
   buildM25WorkerDeps,
   buildM41BackedClaimMatchCandidateProvider,
@@ -11798,6 +11799,36 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       for (const w of m36GlobalSearch.workers)
         attachDlqPromotionAlert(w, `m36:${w.name}`, dlqPromotionSink);
       app.addHook("onClose", () => m36GlobalSearch.close());
+      // ADR-0053 amendment D7 — the Claim.MD report notices (M41 enrollment, M25 appeal) over the live M36 AlertEmitter seam,
+      // resolved per call (the seam registers later in boot). Ids and closed-set words only.
+      const clearinghouseReportAlert = async (input: {
+        readonly alertCode: string;
+        readonly severity: string;
+        readonly organizationId: string;
+        readonly payload: Record<string, unknown>;
+      }): Promise<void> => {
+        const emitter = getSeam("AlertEmitter") as {
+          emit(
+            orgId: string,
+            alert: {
+              eventType: string;
+              payload: Record<string, unknown>;
+              severity: string;
+              correlationId: string;
+            },
+          ): Promise<unknown>;
+        };
+        await emitter.emit(input.organizationId, {
+          eventType: input.alertCode,
+          payload: input.payload,
+          severity: input.severity,
+          correlationId: cronAlertCorrelationId(
+            "clearinghouse-report",
+            input.alertCode,
+            input.payload,
+          ),
+        });
+      };
       const outboxDispatcher = createOutboxDispatcher({
         db: dbHandle.db,
         orgs: outboxRelayOrgs,
@@ -12620,10 +12651,32 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // writes commercial_payer_enrollment, so no send gate opens on a vendor's word.
           buildM41EnrollmentReportConsumer({
             db: dbHandle.db,
+            alerts: { dispatch: clearinghouseReportAlert },
             onSkipped: (info) =>
               app.log.warn(
                 { reason: info.reason, org: info.organizationId },
                 "M41 enrollment report skipped",
+              ),
+            onAlertFailed: (info) =>
+              app.log.warn(
+                { org: info.organizationId, error: info.error },
+                "M41 enrollment report alert failed",
+              ),
+          }),
+          // ADR-0053 amendment D7 — M25 records every Claim.MD appeal report, alerts billing staff, and opens or links a
+          // draft payer appeal level only in the narrow cases its consumer names; it never decides, closes or withdraws.
+          buildM25AppealReportConsumer({
+            db: dbHandle.db,
+            alerts: { dispatch: clearinghouseReportAlert },
+            onSkipped: (info) =>
+              app.log.warn(
+                { reason: info.reason, org: info.organizationId },
+                "M25 appeal report skipped",
+              ),
+            onAlertFailed: (info) =>
+              app.log.warn(
+                { org: info.organizationId, error: info.error },
+                "M25 appeal report alert failed",
               ),
           }),
           // #835 (ADR-0100 D8) — M41's consumer of the same three 835 posting events: moves a COMMERCIAL claim to
