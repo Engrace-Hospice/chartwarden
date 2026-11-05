@@ -11,6 +11,7 @@ import { createHash } from "node:crypto";
 import { ChartWardenError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { type PortalSigningGrantKind, decideSigningAuthority } from "../portal-signing-authority";
+import { SIGNATURE_TEMPLATES, type SignatureDocumentText } from "../signature-templates";
 import { type SignDenyCode, signAdmissionDocument } from "../write-paths/sign-admission-document";
 import { actorOf, portalAccountIdOf, portalPatientIdOf, portalSessionIdOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
@@ -24,6 +25,18 @@ const IDEMPOTENT = requireIdempotencyKey();
 /** The exact sentence a signer agrees to. The server shows it and hashes it; a client-supplied text is never trusted. */
 export function attestationTextFor(docKind: string, templateVersion: string): string {
   return `By typing my name and checking this box I confirm that I have read this document (${docKind.replaceAll("_", " ")}, version ${templateVersion}), that the information I gave about myself is true, and that I understand my typed name is my legal electronic signature.`;
+}
+/** The wording registered for this kind, or null (the M06 documents carry theirs in the admission record). The version is the request's own, so a later template never rewrites an old request. */
+export function documentTextFor(docKind: string): SignatureDocumentText | null {
+  return (
+    (SIGNATURE_TEMPLATES as Record<string, { text?: SignatureDocumentText }>)[docKind]?.text ?? null
+  );
+}
+/** What the evidence hash covers: the document wording the person was shown plus the attestation sentence. */
+export function signedContentFor(docKind: string, templateVersion: string): string {
+  const doc = documentTextFor(docKind);
+  const body = doc ? `${doc.title}\n\n${doc.paragraphs.join("\n\n")}\n\n` : "";
+  return body + attestationTextFor(docKind, templateVersion);
 }
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 
@@ -108,7 +121,12 @@ export function registerPortalSignatureRoutes(app: FastifyInstance, deps: Portal
         requestId,
       );
       if (!view) throw new NotFoundError("signature request", requestId);
-      return { ...view, attestationText: attestationTextFor(view.docKind, view.templateVersion) };
+      const doc = documentTextFor(view.docKind);
+      return {
+        ...view,
+        attestationText: attestationTextFor(view.docKind, view.templateVersion),
+        ...(doc ? { documentTitle: doc.title, documentParagraphs: doc.paragraphs } : {}),
+      };
     },
   );
 
@@ -170,7 +188,7 @@ export function registerPortalSignatureRoutes(app: FastifyInstance, deps: Portal
               ? { signerRelationshipText: body.signerRelationshipText }
               : {}),
             ...(body.patientUnableReason ? { patientUnableReason: body.patientUnableReason } : {}),
-            attestationSha256: sha256(attestationTextFor(view.docKind, view.templateVersion)),
+            attestationSha256: sha256(signedContentFor(view.docKind, view.templateVersion)),
             idempotencyKey,
           },
         },

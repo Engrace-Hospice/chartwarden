@@ -97,7 +97,12 @@ interface DialogProps {
 
 function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
   const client = useApiClient();
-  const [detail, setDetail] = useState<{ docKind: string; attestationText: string } | null>(null);
+  const [detail, setDetail] = useState<{
+    docKind: string;
+    attestationText: string;
+    documentTitle?: string;
+    documentParagraphs?: readonly string[];
+  } | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [name, setName] = useState("");
   const [attested, setAttested] = useState(false);
@@ -129,7 +134,7 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
       });
       if (!current) return;
       if (res.error || !res.data) setLoadFailed(true);
-      else setDetail({ docKind: res.data.docKind, attestationText: res.data.attestationText });
+      else setDetail(res.data);
     })().catch(() => current && setLoadFailed(true));
     return () => {
       current = false;
@@ -293,6 +298,14 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
         ) : (
           <>
             <form className="wx-signatures-form" onSubmit={(event) => void sign(event)}>
+              {detail.documentParagraphs ? (
+                <section className="wx-signatures-document" aria-label={detail.documentTitle}>
+                  {detail.documentTitle ? <h3>{detail.documentTitle}</h3> : null}
+                  {detail.documentParagraphs.map((paragraph) => (
+                    <p key={paragraph}>{paragraph}</p>
+                  ))}
+                </section>
+              ) : null}
               <p className="wx-signatures-attestation">{detail.attestationText}</p>
               <TextField
                 label="Your full name"

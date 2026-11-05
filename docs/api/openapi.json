@@ -257648,6 +257648,18 @@
                     },
                     "attestationText": {
                       "type": "string"
+                    },
+                    "documentTitle": {
+                      "type": "string"
+                    },
+                    "documentParagraphs": {
+                      "maxItems": 20,
+                      "type": "array",
+                      "items": {
+                        "minLength": 1,
+                        "maxLength": 2000,
+                        "type": "string"
+                      }
                     }
                   }
                 }

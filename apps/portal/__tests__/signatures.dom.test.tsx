@@ -100,7 +100,12 @@ const server =
     if (answered) return answered;
     if (seen.path === "/api/v1/portal/signature-requests") return json({ items: ITEMS });
     if (seen.path === `/api/v1/portal/signature-requests/${REQ_PENDING}`)
-      return json({ ...ITEMS[0], attestationText: ATTEST });
+      return json({
+        ...ITEMS[0],
+        attestationText: ATTEST,
+        documentTitle: "Notice of Privacy Practices",
+        documentParagraphs: ["You received a copy of the Notice."],
+      });
     if (seen.path === "/api/v1/portal/sessions/step-up") return json({ ok: true });
     return json({}, 404);
   };
@@ -155,6 +160,7 @@ describe("portal documents to sign (ADR-0107)", () => {
     render(<PortalApp client={clientFor(server(), seen)} />);
     const dialog = await openSigning();
     expect(await within(dialog).findByText(ATTEST)).toBeTruthy();
+    expect(within(dialog).getByText("You received a copy of the Notice.")).toBeTruthy();
     const submit = within(dialog).getByRole("button", { name: "Sign" }) as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
 

@@ -25,7 +25,7 @@ or withdrawn.
 | Route | Permission | Purpose |
 |---|---|---|
 | `GET /api/v1/portal/signature-requests` | `portal.signature.read` | The session patient's requests, newest first (`id`, `docKind`, `status`, `templateVersion`, `requestedAt`, `signedAt`, `signerRole`). |
-| `GET /api/v1/portal/signature-requests/{requestId}` | `portal.signature.read` | One request plus `attestationText`, the exact sentence the signer agrees to. Show it verbatim; never substitute your own wording. |
+| `GET /api/v1/portal/signature-requests/{requestId}` | `portal.signature.read` | One request plus `attestationText`, the exact sentence the signer agrees to, and for the privacy notice and Consent to Treat also `documentTitle` and `documentParagraphs` (the document wording). Show all of it verbatim, wording first, then the attestation; never substitute your own. The Election Statement and Notice of Patient Rights carry no wording here: the app shows the M06 document the care team sent. |
 | `POST /api/v1/portal/sessions/step-up` | portal session | Body `{ totpCode }` (6 to 8 digits). A fresh step-up is required immediately before signing. |
 | `POST /api/v1/portal/signature-requests/{requestId}/sign` | `portal.signature.sign` | Body `{ signedTypedName, attested: true, signerRelationshipText?, patientUnableReason? }`. Returns `{ request, alreadySigned }`. |
 | `POST /api/v1/portal/documents/upload-init`, `PUT .../uploads/{uploadId}/content`, `POST .../upload-complete/{uploadId}` | `portal.documents.upload` | The existing three-step upload, with `purpose: "signed_admission_document"`. |

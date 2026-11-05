@@ -49,7 +49,10 @@ import {
 import { mountM31Routes } from "../src/modules/31-portal/routes/mount";
 import { buildStaffSignatureStore } from "../src/modules/31-portal/routes/signature-staff-store";
 import { buildPortalSignatureStore } from "../src/modules/31-portal/routes/signature-store";
-import { attestationTextFor } from "../src/modules/31-portal/routes/signature.routes";
+import {
+  attestationTextFor,
+  signedContentFor,
+} from "../src/modules/31-portal/routes/signature.routes";
 import { buildDrizzlePortalStore } from "../src/modules/31-portal/routes/store";
 import { M39_OUTBOX_EVENTS, createDbConsentRouteService } from "../src/modules/39-consent";
 import { createPortalConsentSigner } from "../src/modules/39-consent/portal-consent-signer";
@@ -509,12 +512,13 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     const publisher = buildTxOutboxPublisher(
       buildBootOutboxCatalog([M39_OUTBOX_EVENTS, M31_OUTBOX_EVENTS]),
     );
-    const m31Events = (m31EventsForTests = createM31EventEmitter({
+    const m31Events = createM31EventEmitter({
       db: handle.db,
       publisher: {
         publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m31" }),
       },
-    }));
+    });
+    m31EventsForTests = m31Events;
     const consentService = createDbConsentRouteService(handle.db, {
       outbox: {
         publish: (tx, input) =>
@@ -656,6 +660,8 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     const res = await get(self, `/${mine}`);
     expect(res.statusCode).toBe(200);
     expect(res.json().attestationText).toBe(attestationTextFor(NPP, "1.0.0"));
+    expect(res.json().documentTitle).toMatch(/Notice of Privacy Practices/);
+    expect(res.json().documentParagraphs.join(" ")).toMatch(/164\.520/);
     const audit = await admin.query(
       "SELECT 1 FROM audit_event WHERE organization_id=$1 AND resource_kind='portal_signature_request' AND resource_id=$2",
       [ORG_A, mine],
@@ -681,7 +687,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     });
     expect(r.signed_at).toBeInstanceOf(Date);
     expect(r.attestation_sha256).toBe(
-      createHash("sha256").update(attestationTextFor(NPP, "1.0.0")).digest("hex"),
+      createHash("sha256").update(signedContentFor(NPP, "1.0.0")).digest("hex"),
     );
     const consent = (await admin.query("SELECT * FROM consent_record WHERE id=$1", [r.target_ref]))
       .rows[0];

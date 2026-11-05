@@ -415,7 +415,13 @@ export const PortalSignatureRequestListResponse = Type.Object({
 /** The detail adds the exact attestation sentence the signer agrees to; the server hashes THIS text, never a client-supplied one. */
 export const PortalSignatureRequestDetailResponse = Type.Composite([
   PortalSignatureRequestView,
-  Type.Object({ attestationText: LayStr }),
+  Type.Object({
+    attestationText: LayStr,
+    documentTitle: Type.Optional(LayStr),
+    documentParagraphs: Type.Optional(
+      Type.Array(Type.String({ minLength: 1, maxLength: 2000 }), { maxItems: 20 }),
+    ),
+  }),
 ]);
 export const PortalSignatureSignRequest = Type.Object(
   {

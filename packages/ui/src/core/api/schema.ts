@@ -92550,6 +92550,8 @@ export interface operations {
                         signedAt: string | null;
                         signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
                         attestationText: string;
+                        documentTitle?: string;
+                        documentParagraphs?: string[];
                     };
                 };
             };
