@@ -26,10 +26,43 @@ import type { PortalStaffSigningDeps } from "./signature-deps";
 
 const IDEMPOTENT = requireIdempotencyKey();
 
+const COPY_CHANGED =
+  "The uploaded copy changed since this list was loaded. Reload, open the new copy, then decide.";
+
+/**
+ * After a reject or void has COMMITTED: revoke any uploaded-copy consent an earlier accept left active for the request (M39 signed, then
+ * M31 failed to record it). A failure here does not undo the decision the caller already has: it is logged with ids only, and the next
+ * accept on the request revokes the same orphan before it signs.
+ */
+async function revokeOrphans(
+  request: FastifyRequest,
+  staff: PortalStaffSigningDeps,
+  patientId: string,
+  requestId: string,
+  onlyDocumentId?: string,
+): Promise<void> {
+  const actor = actorOf(request);
+  try {
+    await staff.revokeUploadedCopyOrphans({
+      organizationId: actor.organizationId,
+      patientId,
+      requestId,
+      reviewerUserId: actor.userId,
+      ...(onlyDocumentId === undefined ? {} : { onlyDocumentId }),
+    });
+  } catch (err) {
+    request.log.error(
+      { err, requestId, organizationId: actor.organizationId },
+      "m31.signature_request.orphan_consent_revoke_failed",
+    );
+  }
+}
+
 /**
  * ADR-0107 D6: accepting an uploaded copy signs an M39 consent with the reviewer as signer, so it carries
- * M39's own sign gate (`consent.sign` + a fresh step-up, as `POST /api/v1/consents/:id/sign`). Reject only
- * reopens the request and stays on the review permission alone.
+ * M39's own sign gate (`consent.sign` + a fresh step-up, as `POST /api/v1/consents/:id/sign`). Reject stays on the
+ * review permission alone (void on the void permission): besides reopening (or closing) the request it revokes only a
+ * consent a failed accept of THIS request left active, which the caller cannot choose, so M39's revoke gate is not asked.
  */
 const ACCEPT_SIGN_GATE: readonly PreHandler[] = [P("consent.sign"), STEP_UP("consent.sign")];
 const acceptSignGate: PreHandler = async (request, reply) => {
@@ -65,6 +98,7 @@ const ACCEPT_DENY: Readonly<Record<AcceptDenyCode, { status: number; message: st
       "Record this paper signature in the admission workflow, then void the request as signed on paper.",
   },
   uploaded_copy_missing: { status: 409, message: "The uploaded copy is not available to review." },
+  uploaded_copy_changed: { status: 409, message: COPY_CHANGED },
   uploader_grant_missing: {
     status: 409,
     message: "The person who uploaded this copy no longer has access to this patient.",
@@ -209,19 +243,29 @@ export function registerPortalSignatureStaffRoutes(
       const staff = staffOf(deps);
       const actor = actorOf(request);
       const { requestId } = request.params as { requestId: string };
-      const { decision } = parse(StaffSignatureRequestReview, request.body);
+      const { decision, uploadedDocumentId } = parse(StaffSignatureRequestReview, request.body);
 
       if (decision === "rejected") {
         const rejected = await staff.store.rejectUpload(
           actor.organizationId,
           requestId,
           actor.userId,
+          uploadedDocumentId,
         );
         if (!rejected.ok) {
           if (rejected.reason === "not_found")
             throw new NotFoundError("signature request", requestId);
+          if (rejected.reason === "copy_changed")
+            throw new ChartWardenError("UPLOADED_COPY_CHANGED", COPY_CHANGED, 409);
           throw new ConflictError("That request has no uploaded copy waiting for review.");
         }
+        await revokeOrphans(
+          request,
+          staff,
+          rejected.request.patientId,
+          requestId,
+          uploadedDocumentId,
+        );
         return rejected.request;
       }
 
@@ -242,7 +286,12 @@ export function registerPortalSignatureStaffRoutes(
           readConsent: (org, id) => consents.read(org, id),
           markAccepted: (org, id, input) => staff.store.markAccepted(org, id, input),
         },
-        { organizationId: actor.organizationId, requestId, reviewerUserId: actor.userId },
+        {
+          organizationId: actor.organizationId,
+          requestId,
+          reviewerUserId: actor.userId,
+          reviewedDocumentId: uploadedDocumentId,
+        },
       );
       if (!outcome.ok) {
         const refusal = ACCEPT_DENY[outcome.code];
@@ -272,6 +321,7 @@ export function registerPortalSignatureStaffRoutes(
         if (outcome.reason === "not_found") throw new NotFoundError("signature request", requestId);
         throw new ConflictError("Only an open request can be voided.");
       }
+      await revokeOrphans(request, staffOf(deps), outcome.request.patientId, requestId);
       return outcome.request;
     },
   );

@@ -37,6 +37,7 @@ import {
   VOID_REASONS,
   VOID_REASON_LABEL,
   type VoidReason,
+  errorCode,
   refusalMessage,
   sendOptions,
 } from "./signatures-model";
@@ -232,13 +233,14 @@ function PatientSignaturesInner(): JSX.Element {
   };
 
   const reviewOnce = async (row: SignatureRequestRow, decision: "accepted" | "rejected") => {
-    const action = `review:${row.id}:${decision}`;
+    const action = `review:${row.id}:${row.uploadedDocumentId}:${decision}`;
     const res = await client.POST(
       `${BASE}/{requestId}/review` as never,
       {
         params: { path: { requestId: row.id } },
         headers: { "Idempotency-Key": keyFor(action) },
-        body: { decision },
+        // The copy this row showed: the server refuses a decision on a copy that was replaced since (UPLOADED_COPY_CHANGED).
+        body: { decision, uploadedDocumentId: row.uploadedDocumentId },
       } as never,
     );
     settle(action, res);
@@ -251,6 +253,8 @@ function PatientSignaturesInner(): JSX.Element {
         return;
       }
       setNotice({ tone: "error", text: refusalMessage(r.error, "The review could not be saved.") });
+      // A different copy is waiting now: show it, so the next decision is about the copy on screen.
+      if (errorCode(r.error) === "UPLOADED_COPY_CHANGED") await load();
     } else {
       setNotice({
         tone: "success",

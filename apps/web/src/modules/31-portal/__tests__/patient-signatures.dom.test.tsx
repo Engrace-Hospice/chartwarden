@@ -226,10 +226,16 @@ describe("PatientSignatures", () => {
     expect(link.getAttribute("href")).toBe("/documents/doc-9/versions");
     await confirmAccept();
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
-    expect((post.mock.calls[0]?.[1] as { body: unknown }).body).toEqual({ decision: "accepted" });
+    expect((post.mock.calls[0]?.[1] as { body: unknown }).body).toEqual({
+      decision: "accepted",
+      uploadedDocumentId: "doc-9",
+    });
     fireEvent.click(await screen.findByRole("button", { name: /^Reject/ }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
-    expect((post.mock.calls[1]?.[1] as { body: unknown }).body).toEqual({ decision: "rejected" });
+    expect((post.mock.calls[1]?.[1] as { body: unknown }).body).toEqual({
+      decision: "rejected",
+      uploadedDocumentId: "doc-9",
+    });
   });
 
   it("sends the reviewer to step-up when accepting needs a fresh second factor, then back here", async () => {
@@ -239,6 +245,21 @@ describe("PatientSignatures", () => {
     });
     await confirmAccept();
     expect(await screen.findByText("step-up /patients/p-1/signatures")).toBeTruthy();
+  });
+
+  it("says the copy changed and reloads the list when a different copy is waiting now", async () => {
+    const { get } = mount({
+      items: [row({ id: "u-1", status: "uploaded_pending_review", uploadedDocumentId: "doc-9" })],
+      post: () => ({ error: { error: { code: "UPLOADED_COPY_CHANGED", message: "x" } } }),
+    });
+    await confirmAccept();
+    expect(
+      await screen.findByText(/A different copy was uploaded since this list was loaded/),
+    ).toBeTruthy();
+    // The first load plus the reload after the refusal.
+    await waitFor(() =>
+      expect(get.mock.calls.filter(([url]) => url === BASE).length).toBeGreaterThanOrEqual(2),
+    );
   });
 
   it("explains the M06 refusal when an election or notice copy is accepted here", async () => {

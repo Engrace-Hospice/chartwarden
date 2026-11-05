@@ -643,6 +643,9 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
             return signed;
           },
           revokeUploadedCopyConsent: (i) => consentSigner.revokeUploadedCopy(i),
+          revokeUploadedCopyOrphans: async (i) => {
+            await consentSigner.revokeUploadedCopyOrphans({ ...i, keepDocumentId: null });
+          },
           patientSite: async (organizationId, patientId) => {
             const r = await admin.query(
               "SELECT provider_entity_id, location_id FROM patient WHERE id=$1 AND organization_id=$2",
@@ -1490,11 +1493,26 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       headers: headers(a, { "idempotency-key": `k-3107-${++seq}` }),
       payload: { uploadId },
     });
-  const review = (requestId: string, decision: string, user = staff.admin) =>
+  /** The M22 document of the copy a request is parked with now: what the staff list shows the reviewer. */
+  const shownDocument = async (requestId: string): Promise<string> =>
+    ((
+      await admin.query(
+        `SELECT u.document_id FROM portal_signature_request r
+           JOIN portal_document_upload u ON u.id = r.uploaded_document_upload_id WHERE r.id=$1`,
+        [requestId],
+      )
+    ).rows[0]?.document_id as string | undefined) ?? randomUUID();
+  /** A review of the copy on screen; `documentId` overrides it to act on a stale list. */
+  const review = async (
+    requestId: string,
+    decision: string,
+    user = staff.admin,
+    documentId?: string,
+  ) =>
     staffPost(
       user,
       `${ADMIN}/${requestId}/review`,
-      { decision },
+      { decision, uploadedDocumentId: documentId ?? (await shownDocument(requestId)) },
       { "x-test-roles": "administrator" },
     );
   /** Send an NPP request as staff, then park it with an uploaded copy, returning the ids. */
@@ -1763,6 +1781,99 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     // Rejecting only reopens the request: the review permission alone is enough.
     expect((await review(id, "rejected", staff.reviewOnly)).statusCode).toBe(200);
     expect((await reqRow(id)).status).toBe("pending");
+  });
+
+  /** Uploaded-copy consents recorded for a request, by status. */
+  const copyConsents = async (requestId: string) =>
+    (
+      await admin.query(
+        `SELECT id, status, scope_descriptor->>'uploadedDocumentId' AS doc FROM consent_record
+          WHERE scope_descriptor->>'requestId' = $1 AND capture_method = 'uploaded_signed_pdf'`,
+        [requestId],
+      )
+    ).rows as { id: string; status: string; doc: string | null }[];
+  /** What a crash between M39 and M31 leaves (D2): a consent signed from `documentId`, the request untouched. */
+  const orphanFromCopy = (requestId: string, patientId: string, documentId: string) =>
+    createPortalConsentSigner(consentServiceForTests, () => new Date().toISOString())
+      .acceptUploadedCopy({
+        organizationId: ORG_A,
+        patientId,
+        typeKey: NPP,
+        grantorKind: "patient_self",
+        actingConsentId: null,
+        grantorRelationshipText: null,
+        requestId,
+        reviewerUserId: staff.admin,
+        uploadedPdfDocumentId: documentId,
+      })
+      .then((r) => r.recordId);
+
+  it("a decision lands only on the copy the reviewer saw: a replaced copy answers UPLOADED_COPY_CHANGED", async () => {
+    const { id, actor } = await sentWithCopy("staffNpp");
+    const seen = await shownDocument(id);
+    // Another reviewer refuses that copy and the patient uploads a new one while this reviewer's list still shows the first.
+    expect((await review(id, "rejected")).statusCode).toBe(200);
+    expect((await attach(actor, id, await seedUpload(actor))).statusCode).toBe(200);
+    for (const decision of ["accepted", "rejected"]) {
+      const stale = await review(id, decision, staff.admin, seen);
+      expect(stale.statusCode, stale.body).toBe(409);
+      expect(stale.json().error?.code ?? stale.json().code).toBe("UPLOADED_COPY_CHANGED");
+      expect((await reqRow(id)).status).toBe("uploaded_pending_review");
+    }
+    expect(await copyConsents(id)).toEqual([]);
+    // The copy on screen now is accepted normally.
+    expect((await review(id, "accepted")).statusCode).toBe(200);
+    expect((await reqRow(id)).status).toBe("signed");
+  });
+
+  it("rejecting a copy revokes the consent a failed accept of it left active", async () => {
+    const { id, patientId } = await sentWithCopy("staffNpp");
+    const orphan = await orphanFromCopy(id, patientId, await shownDocument(id));
+    expect((await copyConsents(id)).map((c) => c.status)).toEqual(["active"]);
+    expect((await review(id, "rejected")).statusCode).toBe(200);
+    expect((await copyConsents(id)).find((c) => c.id === orphan)?.status).toBe("revoked");
+  });
+
+  it("rejecting a copy revokes only that copy's consent, never one signed from another copy", async () => {
+    const { id, patientId } = await sentWithCopy("staffNpp");
+    // A consent from some other copy of this request (e.g. one accepted after this reject was decided, or an older orphan).
+    const other = await orphanFromCopy(id, patientId, randomUUID());
+    expect((await review(id, "rejected")).statusCode).toBe(200);
+    expect((await copyConsents(id)).find((c) => c.id === other)?.status).toBe("active");
+  });
+
+  it("withdrawing a request revokes the consent a failed accept left active", async () => {
+    const { id, patientId } = await sentWithCopy("staffNpp");
+    const orphan = await orphanFromCopy(id, patientId, await shownDocument(id));
+    const voided = await staffPost(staff.admin, `${ADMIN}/${id}/void`, {
+      reason: "sent_in_error",
+    });
+    expect(voided.statusCode, voided.body).toBe(200);
+    expect((await copyConsents(id)).find((c) => c.id === orphan)?.status).toBe("revoked");
+  });
+
+  it("a later accept never reuses a consent signed from an earlier copy: it revokes it and signs from the copy reviewed", async () => {
+    const { id, patientId, actor } = await sentWithCopy("staffNpp");
+    const first = await shownDocument(id);
+    const orphan = await orphanFromCopy(id, patientId, first);
+    // The first copy is refused without the route (so its orphan survives, as before this fix), and a new copy arrives.
+    await admin.query(
+      "UPDATE portal_signature_request SET status='pending', uploaded_document_upload_id=NULL WHERE id=$1",
+      [id],
+    );
+    expect((await attach(actor, id, await seedUpload(actor))).statusCode).toBe(200);
+    const second = await shownDocument(id);
+    expect((await review(id, "accepted")).statusCode).toBe(200);
+    const row = await reqRow(id);
+    expect(row.status).toBe("signed");
+    expect(row.target_ref).not.toBe(orphan);
+    const consents = await copyConsents(id);
+    expect(consents.find((c) => c.id === orphan)?.status).toBe("revoked");
+    expect(consents.find((c) => c.id === row.target_ref)).toMatchObject({
+      status: "active",
+      doc: second,
+    });
+    expect(second).not.toBe(first);
   });
 
   it("the DB refuses a signed request that has neither portal signer evidence nor an accepted review", async () => {

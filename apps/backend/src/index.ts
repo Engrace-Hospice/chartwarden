@@ -6808,6 +6808,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 store: buildStaffSignatureStore(dbHandle.db, m31Events ?? undefined),
                 uploadedCopyConsent: (input) => portalConsentSigner.acceptUploadedCopy(input),
                 revokeUploadedCopyConsent: (input) => portalConsentSigner.revokeUploadedCopy(input),
+                revokeUploadedCopyOrphans: async (input) => {
+                  await portalConsentSigner.revokeUploadedCopyOrphans({
+                    ...input,
+                    keepDocumentId: null,
+                  });
+                },
                 patientSite: async (organizationId, patientId) => {
                   const patient = await getSeam("PatientReader").findById({
                     organizationId,

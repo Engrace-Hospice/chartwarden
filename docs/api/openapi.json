@@ -13158,7 +13158,8 @@
                 "additionalProperties": false,
                 "type": "object",
                 "required": [
-                  "decision"
+                  "decision",
+                  "uploadedDocumentId"
                 ],
                 "properties": {
                   "decision": {
@@ -13172,6 +13173,10 @@
                         "type": "string"
                       }
                     ]
+                  },
+                  "uploadedDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
                   }
                 }
               }

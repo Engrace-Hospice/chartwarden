@@ -17,6 +17,7 @@ export type AcceptDenyCode =
   | "m06_document_recorded_in_admission"
   | "template_pending_legal_review"
   | "uploaded_copy_missing"
+  | "uploaded_copy_changed"
   | "uploader_grant_missing"
   | "uploader_not_authorized"
   | "dpoa_consent_not_active";
@@ -87,7 +88,13 @@ const deny = (code: AcceptDenyCode): AcceptOutcome => ({ ok: false, code });
 
 export async function acceptUploadedCopy(
   deps: AcceptUploadedCopyDeps,
-  input: { organizationId: string; requestId: string; reviewerUserId: string },
+  input: {
+    organizationId: string;
+    requestId: string;
+    reviewerUserId: string;
+    /** The M22 document the reviewer was shown: a copy replaced since then is never accepted unseen. */
+    reviewedDocumentId: string;
+  },
 ): Promise<AcceptOutcome> {
   const { organizationId, requestId, reviewerUserId } = input;
   const target = await deps.loadForReview(organizationId, requestId);
@@ -102,6 +109,7 @@ export async function acceptUploadedCopy(
   )
     return deny("template_pending_legal_review");
   if (!target.uploadId || !target.documentId) return deny("uploaded_copy_missing");
+  if (target.documentId !== input.reviewedDocumentId) return deny("uploaded_copy_changed");
   if (!target.uploaderGrant) return deny("uploader_grant_missing");
 
   const grantKind = target.uploaderGrant.grantKind as PortalSigningGrantKind;
