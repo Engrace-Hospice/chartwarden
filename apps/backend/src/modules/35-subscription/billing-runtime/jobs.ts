@@ -289,6 +289,30 @@ export function usageWindowFor(
   return { start, end: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)) };
 }
 
+/**
+ * The window that ended where `current` starts: one calendar month back on the same UTC day/time, clamped to the
+ * shorter month's last day (a 31st anchor gives Feb 28/29, as Stripe does). Never `start - (end - start)`: months
+ * differ in length, so a duration lands on Jan 29 for March and on Mar 31 for May.
+ */
+export function previousUsageWindow(current: UsageWindow): UsageWindow {
+  const s = current.start;
+  const year = s.getUTCFullYear();
+  const month = s.getUTCMonth() - 1;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const start = new Date(
+    Date.UTC(
+      year,
+      month,
+      Math.min(s.getUTCDate(), lastDay),
+      s.getUTCHours(),
+      s.getUTCMinutes(),
+      s.getUTCSeconds(),
+      s.getUTCMilliseconds(),
+    ),
+  );
+  return { start, end: current.start };
+}
+
 async function meterTotal(
   tx: Tx,
   organizationId: string,
@@ -350,12 +374,7 @@ export async function runUsageAggregationForOrg(
         .from(schema.planMeter)
         .where(eq(schema.planMeter.planId, sub.planId));
       const current = usageWindowFor(sub, now);
-      const previous: UsageWindow = {
-        start: new Date(
-          current.start.getTime() - (current.end.getTime() - current.start.getTime()),
-        ),
-        end: current.start,
-      };
+      const previous = previousUsageWindow(current);
       for (const [window, finalize] of [
         [previous, true],
         [current, false],

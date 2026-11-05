@@ -246,6 +246,33 @@ describe.skipIf(!DB_URL)("ADR-0108 claims-billing census — LIVE Postgres", () 
     }
   });
 
+  it("finalizes the previous CALENDAR month (Feb from March, Apr from May), never a duration-shifted window", async () => {
+    for (const [ym, pseudo] of [
+      ["2026-02", "f".repeat(32)],
+      ["2026-04", "e".repeat(32)],
+    ] as const) {
+      await admin.query(
+        `INSERT INTO patient_active_period (organization_id, patient_pseudonym, pseudonym_key_epoch,
+           period_year_month, was_active) VALUES ($1,$2,$3,$4,true)`,
+        [ORG_B, pseudo, KEY.keyEpoch, ym],
+      );
+    }
+    const at = (iso: string) => ({ db: app.db, now: () => new Date(iso) });
+    await aggregateAddonForOrg(at("2026-03-10T12:00:00Z"), ORG_B);
+    await aggregateAddonForOrg(at("2026-05-10T12:00:00Z"), ORG_B);
+    const rows = await q<{ s: string; e: string; total_quantity: string }>(
+      `SELECT to_char(period_start AT TIME ZONE 'UTC','YYYY-MM-DD') s,
+              to_char(period_end AT TIME ZONE 'UTC','YYYY-MM-DD') e, total_quantity
+         FROM usage_period_aggregate
+        WHERE organization_id=$1 AND event_type='billing_addon_patient' ORDER BY period_start`,
+      [ORG_B],
+    );
+    expect(rows).toEqual([
+      { s: "2026-02-01", e: "2026-03-01", total_quantity: "1" },
+      { s: "2026-04-01", e: "2026-05-01", total_quantity: "1" },
+    ]);
+  });
+
   it("reports a census that disagrees with M5's own count by more than 1%", async () => {
     const logs: Array<Record<string, unknown>> = [];
     const reader = buildPatientCensusReader(app.db);
