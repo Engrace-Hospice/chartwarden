@@ -4,6 +4,7 @@
 export type { M24ReadService } from "./read-service";
 export type { M24WriteService, WriteOutboxPort, OutboxEmission } from "./write-service";
 export { buildDrizzleM24ReadService } from "./read-service-drizzle";
+export { buildMedicaidOnboardingCredentialPort } from "./onboarding-credential-port";
 export {
   buildDrizzleM24WriteService,
   buildM24MedicaidCoverageResolver,

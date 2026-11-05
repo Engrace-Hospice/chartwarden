@@ -10,6 +10,7 @@
 // (D2 outbox-only); the MAC-portal dispatch + the X12 generation are deferred to the §4.8 workers (the
 // service emits the `*_requested` outbox row + records the submission attempt; the worker uploads and emits
 // the terminal `submitted`/`accepted`/`rejected`).
+import type { repositories } from "@chartwarden/billing";
 import type { PriorLiveEndedStayPort } from "../services/prior-election-closure";
 import type { M23WriteActor } from "./actor";
 import type {
@@ -419,6 +420,15 @@ export interface M23WriteRouteService {
 
   // ── MAC credentials (step-up; secret encrypted at the boundary) ──
   upsertMacCredential(
+    actor: M23WriteActor,
+    args: UpsertMacCredentialArgs,
+  ): Promise<MacCredentialView>;
+  /**
+   * The same upsert on the CALLER'S transaction (`tx` is already scoped to `actor.organizationId`). The platform
+   * onboarding route (M34) uses it so the write, its tenant-status check and its audit row commit together.
+   */
+  upsertMacCredentialOnTx(
+    tx: repositories.BillingDb,
     actor: M23WriteActor,
     args: UpsertMacCredentialArgs,
   ): Promise<MacCredentialView>;

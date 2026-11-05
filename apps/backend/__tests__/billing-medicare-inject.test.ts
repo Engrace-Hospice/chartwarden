@@ -791,6 +791,10 @@ function createM23TestBackend(): {
       macCredentials.set(args.providerEntityId, row);
       return row;
     },
+    // The platform onboarding route's in-transaction variant; its own suites (m34-onboarding-data.*) exercise it.
+    async upsertMacCredentialOnTx() {
+      throw new Error("upsertMacCredentialOnTx is not exercised by the inject suite");
+    },
   };
 
   const assemblyService: ClaimAssemblyService = {

@@ -70,6 +70,7 @@ export {
   buildDrizzleWageIndexService,
   buildDrizzlePlatformAdminService,
   buildDrizzleNpiVerificationService,
+  buildMacOnboardingCredentialPort,
   buildDrizzleSequestrationPolicyService,
   buildDrizzleEdiProfileService,
 } from "./routes/index";

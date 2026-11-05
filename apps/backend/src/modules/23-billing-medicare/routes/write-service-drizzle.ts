@@ -454,6 +454,90 @@ export function buildDrizzleM23WriteService(
     );
   };
 
+  /** Insert or version-checked update of one provider entity's MAC credential, on `tx` (RLS already scoped to the org). */
+  const upsertMacCredentialRow = async (
+    tx: BillingDb,
+    actor: M23WriteActor,
+    args: UpsertMacCredentialArgs,
+  ): Promise<MacCredentialView> => {
+    const repo = new repositories.MacSubmitterCredentialRepository(tx);
+    const existing = await repo.findByProviderEntity(args.providerEntityId);
+    if (existing && existing.organizationId !== actor.organizationId) {
+      throw new NotFoundError("mac credential");
+    }
+    // A credential row is bound to one provider entity AND one MAC jurisdiction (both are in the cipher's AAD);
+    // changing the jurisdiction is a new credential, not an update of this one.
+    if (existing && existing.macJurisdiction !== args.macJurisdiction) {
+      throw new ConflictError(
+        "this provider entity's MAC credential is for a different MAC jurisdiction",
+      );
+    }
+    const { cipher, dekVersion } = await secretCipher.encrypt(
+      actor.organizationId,
+      args.clientSecret,
+      // The database stores uuids lowercase; bind the same spelling the worker will read back.
+      {
+        providerEntityId: args.providerEntityId.toLowerCase(),
+        macJurisdiction: args.macJurisdiction,
+      },
+    );
+    let row: repositories.MacSubmitterCredentialSafeRecord;
+    if (existing) {
+      if (existing.organizationId !== actor.organizationId) {
+        throw new NotFoundError("mac credential");
+      }
+      if (args.expectedVersion === undefined) {
+        throw new ChartWardenError(
+          "IF_MATCH_REQUIRED",
+          "an If-Match version is required to update an existing MAC credential",
+          428,
+        );
+      }
+      const res = await repo.updateWithVersion(existing.id, args.expectedVersion, {
+        submitterId: args.submitterId,
+        tradingPartnerId: args.tradingPartnerId,
+        clientId: args.clientId,
+        clientSecretCipher: cipher,
+        clientSecretDekVersion: dekVersion,
+        ...(args.baaRecordRef !== undefined ? { baaRecordRef: args.baaRecordRef } : {}),
+        ...(args.credentialExpiresAt !== undefined
+          ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
+          : {}),
+      });
+      if (!res.ok) throw conflict412(res.currentVersion);
+      row = res.row;
+    } else {
+      row = await repo.create({
+        organizationId: actor.organizationId,
+        providerEntityId: args.providerEntityId,
+        macJurisdiction:
+          args.macJurisdiction as schema.NewMacSubmitterCredential["macJurisdiction"],
+        submitterId: args.submitterId,
+        tradingPartnerId: args.tradingPartnerId,
+        clientId: args.clientId,
+        clientSecretCipher: cipher,
+        clientSecretDekVersion: dekVersion,
+        setByMembershipId: actor.membershipId,
+        ...(args.baaRecordRef !== undefined ? { baaRecordRef: args.baaRecordRef } : {}),
+        ...(args.credentialExpiresAt !== undefined
+          ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
+          : {}),
+      });
+    }
+    await emit(tx, {
+      eventName: "m23.mac_credential.updated",
+      organizationId: actor.organizationId,
+      aggregateKind: "mac_submitter_credential",
+      aggregateId: row.id,
+      payload: {
+        providerEntityId: args.providerEntityId,
+        macJurisdiction: args.macJurisdiction,
+        version: row.version,
+      },
+    });
+    return mapMacCredential(row);
+  };
+
   const loadClaim = async (
     tx: BillingDb,
     actor: M23WriteActor,
@@ -1205,86 +1289,21 @@ export function buildDrizzleM23WriteService(
       requireStepUp(actor);
       return mapUniqueViolation(
         "a MAC credential already exists for this provider entity; send its current version in If-Match to update it",
-      )(() =>
-        inOrgCtx(actor, async (tx) => {
-          const repo = new repositories.MacSubmitterCredentialRepository(tx);
-          const existing = await repo.findByProviderEntity(args.providerEntityId);
-          if (existing && existing.organizationId !== actor.organizationId) {
-            throw new NotFoundError("mac credential");
-          }
-          // A credential row is bound to one provider entity AND one MAC jurisdiction (both are in the cipher's AAD);
-          // changing the jurisdiction is a new credential, not an update of this one.
-          if (existing && existing.macJurisdiction !== args.macJurisdiction) {
-            throw new ConflictError(
-              "this provider entity's MAC credential is for a different MAC jurisdiction",
-            );
-          }
-          const { cipher, dekVersion } = await secretCipher.encrypt(
-            actor.organizationId,
-            args.clientSecret,
-            // The database stores uuids lowercase; bind the same spelling the worker will read back.
-            {
-              providerEntityId: args.providerEntityId.toLowerCase(),
-              macJurisdiction: args.macJurisdiction,
-            },
-          );
-          let row: repositories.MacSubmitterCredentialSafeRecord;
-          if (existing) {
-            if (existing.organizationId !== actor.organizationId) {
-              throw new NotFoundError("mac credential");
-            }
-            if (args.expectedVersion === undefined) {
-              throw new ChartWardenError(
-                "IF_MATCH_REQUIRED",
-                "an If-Match version is required to update an existing MAC credential",
-                428,
-              );
-            }
-            const res = await repo.updateWithVersion(existing.id, args.expectedVersion, {
-              submitterId: args.submitterId,
-              tradingPartnerId: args.tradingPartnerId,
-              clientId: args.clientId,
-              clientSecretCipher: cipher,
-              clientSecretDekVersion: dekVersion,
-              ...(args.baaRecordRef !== undefined ? { baaRecordRef: args.baaRecordRef } : {}),
-              ...(args.credentialExpiresAt !== undefined
-                ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
-                : {}),
-            });
-            if (!res.ok) throw conflict412(res.currentVersion);
-            row = res.row;
-          } else {
-            row = await repo.create({
-              organizationId: actor.organizationId,
-              providerEntityId: args.providerEntityId,
-              macJurisdiction:
-                args.macJurisdiction as schema.NewMacSubmitterCredential["macJurisdiction"],
-              submitterId: args.submitterId,
-              tradingPartnerId: args.tradingPartnerId,
-              clientId: args.clientId,
-              clientSecretCipher: cipher,
-              clientSecretDekVersion: dekVersion,
-              setByMembershipId: actor.membershipId,
-              ...(args.baaRecordRef !== undefined ? { baaRecordRef: args.baaRecordRef } : {}),
-              ...(args.credentialExpiresAt !== undefined
-                ? { credentialExpiresAt: new Date(args.credentialExpiresAt) }
-                : {}),
-            });
-          }
-          await emit(tx, {
-            eventName: "m23.mac_credential.updated",
-            organizationId: actor.organizationId,
-            aggregateKind: "mac_submitter_credential",
-            aggregateId: row.id,
-            payload: {
-              providerEntityId: args.providerEntityId,
-              macJurisdiction: args.macJurisdiction,
-              version: row.version,
-            },
-          });
-          return mapMacCredential(row);
-        }),
-      );
+      )(() => inOrgCtx(actor, (tx) => upsertMacCredentialRow(tx, actor, args)));
+    },
+
+    // The SAME upsert on the CALLER'S transaction: the platform onboarding route keeps the write, the tenant-status
+    // check and its audit row in one unit of work. The caller owns the org context (`app.org_id`) of `tx`, and maps a
+    // lost first-create race (this throws the raw unique violation) the way `upsertMacCredential` does.
+    async upsertMacCredentialOnTx(
+      tx,
+      actor,
+      args: UpsertMacCredentialArgs,
+    ): Promise<MacCredentialView> {
+      requireStepUp(actor);
+      return mapUniqueViolation(
+        "a MAC credential already exists for this provider entity; send its current version in If-Match to update it",
+      )(() => upsertMacCredentialRow(tx, actor, args));
     },
 
     async testMacCredential(actor, providerEntityId): Promise<MacCredentialTestView> {

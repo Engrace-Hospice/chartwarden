@@ -193,6 +193,15 @@ export interface M24WriteService {
   ): Promise<RbArrangementView>;
   overrideRbDay(actor: M24WriteActor, rbDayId: string, input: OverrideRbDayInput): Promise<void>;
   upsertCredential(actor: M24WriteActor, input: UpsertCredentialInput): Promise<{ id: string }>;
+  /**
+   * The same upsert on the CALLER'S transaction (`tx` is already scoped to `actor.organizationId`). The platform
+   * onboarding route (M34) uses it so the write, its tenant-status check and its audit row commit together.
+   */
+  upsertCredentialOnTx(
+    tx: unknown,
+    actor: M24WriteActor,
+    input: UpsertCredentialInput,
+  ): Promise<{ id: string }>;
   testCredential(
     actor: M24WriteActor,
     credentialId: string,
