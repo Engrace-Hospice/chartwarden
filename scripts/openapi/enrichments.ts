@@ -1482,6 +1482,7 @@ import {
   PlatformAttestStepRequest as M34PlatformAttestStepRequest,
   PlatformReasonRequest as M34PlatformReasonRequest,
   PlatformWizardResponseSchema as M34PlatformWizardResponseSchema,
+  SetComplianceOfficerPlatformRequest as M34SetComplianceOfficerPlatformRequest,
   SetComplianceOfficerRequest as M34SetComplianceOfficerRequest,
   TenantAttestStepRequest as M34TenantAttestStepRequest,
   TenantCompleteStepRequest as M34TenantCompleteStepRequest,
@@ -10240,7 +10241,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/tenant/onboarding/:taskId/reopen": {
     summary:
-      "Re-open a done or skipped step to edit it (later steps keep their state; refused while a go-live attestation is pending)",
+      "Re-open a done or skipped step to edit it, with a required written reason (later steps keep their state; refused while a go-live attestation is pending)",
     body: M34TenantReopenStepRequest,
     response: M34WizardStepViewSchema,
   },
@@ -10256,7 +10257,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "PUT /api/v1/tenant/compliance-officer": {
     summary:
-      "Assign the compliance officer (an active member of this organization) who attests go-live readiness (org_admin; step-up)",
+      "Assign the compliance officer (an active member of this organization holding the compliance_officer role) who attests go-live readiness (org_admin; step-up). Allowed while the tenant is onboarding or active; a pending go-live attestation by another officer is voided. 422 COMPLIANCE_OFFICER_NOT_A_MEMBER, 422 COMPLIANCE_OFFICER_LACKS_ROLE, 409 COMPLIANCE_OFFICER_LOCKED",
     body: M34SetComplianceOfficerRequest,
     response: M34ComplianceOfficerResponseSchema,
   },
@@ -14861,13 +14862,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "PUT /api/v1/platform/tenants/:orgSlug/compliance-officer": {
     summary:
-      "Assign the tenant's compliance officer, an active member of that organization (platform ops; step-up)",
-    body: M34SetComplianceOfficerRequest,
+      "Assign the tenant's compliance officer, an active member of that organization holding the compliance_officer role, with a required reason of 8 to 500 characters (platform ops; step-up). The operator and the reason are recorded in the audit trail; a pending go-live attestation by another officer is voided. 422 COMPLIANCE_OFFICER_NOT_A_MEMBER, 422 COMPLIANCE_OFFICER_LACKS_ROLE, 409 COMPLIANCE_OFFICER_LOCKED",
+    body: M34SetComplianceOfficerPlatformRequest,
     response: M34ComplianceOfficerResponseSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/go-live/approve": {
     summary:
-      "Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED",
+      "Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). The approver must be a different PERSON than the attester (409 GO_LIVE_SAME_PERSON), the attestation must be at most 14 days old (409 GO_LIVE_ATTESTATION_EXPIRED) and its attester still an active compliance officer and the assigned one (409 GO_LIVE_ATTESTATION_STALE). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED",
     body: M34PlatformReasonRequest,
     response: M34GoLiveResponseSchema,
   },

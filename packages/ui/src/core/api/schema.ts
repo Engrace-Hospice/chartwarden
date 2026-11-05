@@ -21004,7 +21004,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Assign the tenant's compliance officer, an active member of that organization (platform ops; step-up) */
+        /** Assign the tenant's compliance officer, an active member of that organization holding the compliance_officer role, with a required reason of 8 to 500 characters (platform ops; step-up). The operator and the reason are recorded in the audit trail; a pending go-live attestation by another officer is voided. 422 COMPLIANCE_OFFICER_NOT_A_MEMBER, 422 COMPLIANCE_OFFICER_LACKS_ROLE, 409 COMPLIANCE_OFFICER_LOCKED */
         put: operations["putApiV1PlatformTenantsByOrgSlugComplianceofficer"];
         post?: never;
         delete?: never;
@@ -21039,7 +21039,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED */
+        /** Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). The approver must be a different PERSON than the attester (409 GO_LIVE_SAME_PERSON), the attestation must be at most 14 days old (409 GO_LIVE_ATTESTATION_EXPIRED) and its attester still an active compliance officer and the assigned one (409 GO_LIVE_ATTESTATION_STALE). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED */
         post: operations["postApiV1PlatformTenantsByOrgSlugGoliveApprove"];
         delete?: never;
         options?: never;
@@ -26749,7 +26749,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Assign the compliance officer (an active member of this organization) who attests go-live readiness (org_admin; step-up) */
+        /** Assign the compliance officer (an active member of this organization holding the compliance_officer role) who attests go-live readiness (org_admin; step-up). Allowed while the tenant is onboarding or active; a pending go-live attestation by another officer is voided. 422 COMPLIANCE_OFFICER_NOT_A_MEMBER, 422 COMPLIANCE_OFFICER_LACKS_ROLE, 409 COMPLIANCE_OFFICER_LOCKED */
         put: operations["putApiV1TenantComplianceofficer"];
         post?: never;
         delete?: never;
@@ -26972,7 +26972,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Re-open a done or skipped step to edit it (later steps keep their state; refused while a go-live attestation is pending) */
+        /** Re-open a done or skipped step to edit it, with a required written reason (later steps keep their state; refused while a go-live attestation is pending) */
         post: operations["postApiV1TenantOnboardingByTaskIdReopen"];
         delete?: never;
         options?: never;
@@ -91632,6 +91632,7 @@ export interface operations {
                 "application/json": {
                     /** Format: uuid */
                     membershipId: string;
+                    reason: string;
                 };
             };
         };
@@ -91729,8 +91730,9 @@ export interface operations {
                                 ref: string | null;
                             } | null;
                             attestedBy: {
-                                membershipId: string;
+                                membershipId: string | null;
                                 actorKind: "platform_ops" | "tenant";
+                                label: string | null;
                                 /** Format: date-time */
                                 at: string;
                             } | null;
@@ -91753,11 +91755,14 @@ export interface operations {
                                 attestedByMembershipId: string;
                                 /** Format: date-time */
                                 attestedAt: string;
+                                expiresAt: string | null;
                                 attestationNote: string | null;
                                 approvedByMembershipId: string | null;
+                                approvedByLabel: string | null;
                                 approvedAt: string | null;
                                 approvalReason: string | null;
                                 revokedByMembershipId: string | null;
+                                revokedByLabel: string | null;
                                 revokedAt: string | null;
                                 revokeReason: string | null;
                             } | null;
@@ -91816,8 +91821,9 @@ export interface operations {
                                 ref: string | null;
                             } | null;
                             attestedBy: {
-                                membershipId: string;
+                                membershipId: string | null;
                                 actorKind: "platform_ops" | "tenant";
+                                label: string | null;
                                 /** Format: date-time */
                                 at: string;
                             } | null;
@@ -91840,11 +91846,14 @@ export interface operations {
                                 attestedByMembershipId: string;
                                 /** Format: date-time */
                                 attestedAt: string;
+                                expiresAt: string | null;
                                 attestationNote: string | null;
                                 approvedByMembershipId: string | null;
+                                approvedByLabel: string | null;
                                 approvedAt: string | null;
                                 approvalReason: string | null;
                                 revokedByMembershipId: string | null;
+                                revokedByLabel: string | null;
                                 revokedAt: string | null;
                                 revokeReason: string | null;
                             } | null;
@@ -91966,8 +91975,9 @@ export interface operations {
                                 ref: string | null;
                             } | null;
                             attestedBy: {
-                                membershipId: string;
+                                membershipId: string | null;
                                 actorKind: "platform_ops" | "tenant";
+                                label: string | null;
                                 /** Format: date-time */
                                 at: string;
                             } | null;
@@ -91990,11 +92000,14 @@ export interface operations {
                                 attestedByMembershipId: string;
                                 /** Format: date-time */
                                 attestedAt: string;
+                                expiresAt: string | null;
                                 attestationNote: string | null;
                                 approvedByMembershipId: string | null;
+                                approvedByLabel: string | null;
                                 approvedAt: string | null;
                                 approvalReason: string | null;
                                 revokedByMembershipId: string | null;
+                                revokedByLabel: string | null;
                                 revokedAt: string | null;
                                 revokeReason: string | null;
                             } | null;
@@ -92023,8 +92036,9 @@ export interface operations {
                                 ref: string | null;
                             } | null;
                             attestedBy: {
-                                membershipId: string;
+                                membershipId: string | null;
                                 actorKind: "platform_ops" | "tenant";
+                                label: string | null;
                                 /** Format: date-time */
                                 at: string;
                             } | null;
@@ -92089,8 +92103,9 @@ export interface operations {
                             ref: string | null;
                         } | null;
                         attestedBy: {
-                            membershipId: string;
+                            membershipId: string | null;
                             actorKind: "platform_ops" | "tenant";
+                            label: string | null;
                             /** Format: date-time */
                             at: string;
                         } | null;
@@ -92152,8 +92167,9 @@ export interface operations {
                             ref: string | null;
                         } | null;
                         attestedBy: {
-                            membershipId: string;
+                            membershipId: string | null;
                             actorKind: "platform_ops" | "tenant";
+                            label: string | null;
                             /** Format: date-time */
                             at: string;
                         } | null;
@@ -92215,8 +92231,9 @@ export interface operations {
                             ref: string | null;
                         } | null;
                         attestedBy: {
-                            membershipId: string;
+                            membershipId: string | null;
                             actorKind: "platform_ops" | "tenant";
+                            label: string | null;
                             /** Format: date-time */
                             at: string;
                         } | null;
@@ -108614,8 +108631,9 @@ export interface operations {
                                 ref: string | null;
                             } | null;
                             attestedBy: {
-                                membershipId: string;
+                                membershipId: string | null;
                                 actorKind: "platform_ops" | "tenant";
+                                label: string | null;
                                 /** Format: date-time */
                                 at: string;
                             } | null;
@@ -108638,11 +108656,14 @@ export interface operations {
                                 attestedByMembershipId: string;
                                 /** Format: date-time */
                                 attestedAt: string;
+                                expiresAt: string | null;
                                 attestationNote: string | null;
                                 approvedByMembershipId: string | null;
+                                approvedByLabel: string | null;
                                 approvedAt: string | null;
                                 approvalReason: string | null;
                                 revokedByMembershipId: string | null;
+                                revokedByLabel: string | null;
                                 revokedAt: string | null;
                                 revokeReason: string | null;
                             } | null;
@@ -108696,8 +108717,9 @@ export interface operations {
                                 ref: string | null;
                             } | null;
                             attestedBy: {
-                                membershipId: string;
+                                membershipId: string | null;
                                 actorKind: "platform_ops" | "tenant";
+                                label: string | null;
                                 /** Format: date-time */
                                 at: string;
                             } | null;
@@ -108720,11 +108742,14 @@ export interface operations {
                                 attestedByMembershipId: string;
                                 /** Format: date-time */
                                 attestedAt: string;
+                                expiresAt: string | null;
                                 attestationNote: string | null;
                                 approvedByMembershipId: string | null;
+                                approvedByLabel: string | null;
                                 approvedAt: string | null;
                                 approvalReason: string | null;
                                 revokedByMembershipId: string | null;
+                                revokedByLabel: string | null;
                                 revokedAt: string | null;
                                 revokeReason: string | null;
                             } | null;
@@ -108752,8 +108777,9 @@ export interface operations {
                                 ref: string | null;
                             } | null;
                             attestedBy: {
-                                membershipId: string;
+                                membershipId: string | null;
                                 actorKind: "platform_ops" | "tenant";
+                                label: string | null;
                                 /** Format: date-time */
                                 at: string;
                             } | null;
@@ -108818,8 +108844,9 @@ export interface operations {
                             ref: string | null;
                         } | null;
                         attestedBy: {
-                            membershipId: string;
+                            membershipId: string | null;
                             actorKind: "platform_ops" | "tenant";
+                            label: string | null;
                             /** Format: date-time */
                             at: string;
                         } | null;
@@ -108880,8 +108907,9 @@ export interface operations {
                             ref: string | null;
                         } | null;
                         attestedBy: {
-                            membershipId: string;
+                            membershipId: string | null;
                             actorKind: "platform_ops" | "tenant";
+                            label: string | null;
                             /** Format: date-time */
                             at: string;
                         } | null;
@@ -108946,8 +108974,9 @@ export interface operations {
                             ref: string | null;
                         } | null;
                         attestedBy: {
-                            membershipId: string;
+                            membershipId: string | null;
                             actorKind: "platform_ops" | "tenant";
+                            label: string | null;
                             /** Format: date-time */
                             at: string;
                         } | null;
@@ -108980,7 +109009,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    reason?: string;
+                    reason: string;
                 };
             };
         };
@@ -109008,8 +109037,9 @@ export interface operations {
                             ref: string | null;
                         } | null;
                         attestedBy: {
-                            membershipId: string;
+                            membershipId: string | null;
                             actorKind: "platform_ops" | "tenant";
+                            label: string | null;
                             /** Format: date-time */
                             at: string;
                         } | null;
@@ -109068,8 +109098,9 @@ export interface operations {
                             ref: string | null;
                         } | null;
                         attestedBy: {
-                            membershipId: string;
+                            membershipId: string | null;
                             actorKind: "platform_ops" | "tenant";
+                            label: string | null;
                             /** Format: date-time */
                             at: string;
                         } | null;
