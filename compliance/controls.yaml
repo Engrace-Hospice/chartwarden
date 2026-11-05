@@ -340,9 +340,10 @@ controls:
     evidence:
       - file: docs/architecture/CHARTWARDEN_INTEGRATIONS_v0_1.md
       - file: docs/architecture/CHARTWARDEN_AI_GOVERNANCE_v0.2.md
+      - file: docs/audits/clearinghouse-integration/CLAIMMD_TRANSPORT_CONTRACT_20261104.md
       - script: arch:ai-governance
     gap:
-      reason: BAA status is prose in the integration and AI-governance docs (Anthropic BAA "in progress"); there is no machine-checked vendor register with BAA date and scope per vendor (OVH, Hostinger, Postmark, DoseSpot, Stedi, Anthropic, GitHub).
+      reason: BAA status is prose in the integration and AI-governance docs (Anthropic BAA "in progress"; Claim.MD BAA received 2026-11-04 per its portal, recorded in the Claim.MD transport contract); there is no machine-checked vendor register with BAA date and scope per vendor (OVH, Hostinger, Postmark, DoseSpot, Stedi, Claim.MD, Anthropic, GitHub).
       owner: privacy-officer
       review_by: 2027-01-31
 

@@ -3715,21 +3715,6 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // POST /billing/eligibility/check keeps answering 503: never a fabricated eligibility result. A present but
   // invalid configuration throws here, so a typo fails the boot instead of silently disabling eligibility.
   const m23HetsConfig = m23HetsConfigFromEnv(process.env);
-  // ADR-0053 D3 - the platform's clearinghouse binding. Unset keeps every transport call at CH_NOT_WIRED; a vendor
-  // named with no adapter in this build throws here, so a misconfigured deploy refuses to boot.
-  const clearinghouseBinding = bindPlatformClearinghouse(process.env, {
-    attempts: dbHandle ? createDrizzleAttemptStore(dbHandle.db) : null,
-    // #706 - direct_mac is the launch gateway re-expressed behind the port (it needs the gateway AND a database).
-    directMacGateway:
-      m23LaunchGateway && dbHandle
-        ? buildDirectMacGateway({
-            x12: m23LaunchGateway.x12,
-            macPortal: m23LaunchGateway.macPortal,
-            controlNumberOf: buildSubmissionControlNumberReader(dbHandle.db),
-          })
-        : null,
-    onAnomaly: (anomaly) => app.log.warn({ anomaly }, "Clearinghouse anomaly"),
-  });
   // ADR-0103 D2 - which DdeAccessProvider the DDE queue's send route uses. Unset / `manual` binds the fail-closed
   // provider (every call answers DDE_NOT_WIRED); a vendor with no adapter in this build throws here (no adapter exists
   // yet, so naming one refuses to boot rather than silently behaving as manual).
@@ -3887,6 +3872,23 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const rateLimitStore = rateLimitRedisClient
     ? createRedisRateLimitStore(rateLimitRedisClient)
     : undefined;
+  // ADR-0053 D3 - the platform's clearinghouse binding. Unset keeps every transport call at CH_NOT_WIRED; a vendor
+  // named with no adapter in this build throws here, so a misconfigured deploy refuses to boot.
+  const clearinghouseBinding = bindPlatformClearinghouse(process.env, {
+    attempts: dbHandle ? createDrizzleAttemptStore(dbHandle.db) : null,
+    // #706 - direct_mac is the launch gateway re-expressed behind the port (it needs the gateway AND a database).
+    directMacGateway:
+      m23LaunchGateway && dbHandle
+        ? buildDirectMacGateway({
+            x12: m23LaunchGateway.x12,
+            macPortal: m23LaunchGateway.macPortal,
+            controlNumberOf: buildSubmissionControlNumberReader(dbHandle.db),
+          })
+        : null,
+    onAnomaly: (anomaly) => app.log.warn({ anomaly }, "Clearinghouse anomaly"),
+    // Claim.MD's 100-a-minute limit is per account, shared by every process: spend it from the cluster-wide store.
+    claimMdRequestCounter: rateLimitStore ?? null,
+  });
   // M36 WP 4.1/4.2 - the urgent and acknowledgment-request limiters fall back to per-replica memory without a shared store: N
   // replicas then allow N times the budget. That is bounded but weaker, so say so loudly in production instead of silently.
   if (!rateLimitStore && process.env.NODE_ENV === "production") {
@@ -6447,6 +6449,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               now: () => new Date(),
               newRequestId: randomUUID,
               log: (event) => app.log.info({ eligibility: event }, "M41 eligibility"),
+              // TRANSIENT search facts for a name-searching clearinghouse (Claim.MD): M5's identity read and the sealed EIN
+              // opened the way M25 opens it. Read per call, passed in the request object, never stored or logged. Only
+              // bound for Claim.MD: no other vendor uses them, so nothing is read or decrypted for them (minimum necessary).
+              ...(clearinghouseBinding.vendor === "claimmd"
+                ? {
+                    searchFacts: {
+                      subscriber: async (organizationId: string, patientId: string) => {
+                        const p = await getPatientReader().findById({ organizationId, id: patientId });
+                        return p ? { firstName: p.firstName, lastName: p.lastName, dateOfBirth: p.dateOfBirth } : null;
+                      },
+                      billingTaxId: m25PayeeTinDeps.payeeTin,
+                    },
+                  }
+                : {}),
             }),
             admin: createCommercialAdminService(buildDrizzleEligibilityStore(dbHandle.db)),
           });

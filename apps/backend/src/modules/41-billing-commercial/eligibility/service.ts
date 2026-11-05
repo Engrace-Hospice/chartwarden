@@ -100,6 +100,22 @@ export interface EligibilityServiceDeps {
   readonly now: () => Date;
   readonly newRequestId: () => string;
   readonly log: (event: EligibilityLogEvent) => void;
+  /**
+   * TRANSIENT search facts for a clearinghouse that searches coverage by name (Claim.MD `eligdata` needs the subscriber's
+   * name and the billing provider's EIN). Read for the one call, handed to the transport in the request object, never
+   * stored, logged or put in an error. Absent: none are sent (a transport that needs them refuses before any call).
+   */
+  readonly searchFacts?: EligibilitySearchFactsPort;
+}
+
+export interface EligibilitySearchFactsPort {
+  /** The patient's legal name and DOB (M5's PatientReader), or null when unknown. */
+  subscriber(
+    organizationId: string,
+    patientId: string,
+  ): Promise<{ readonly firstName: string; readonly lastName: string; readonly dateOfBirth: string } | null>;
+  /** The provider entity's EIN, opened from its sealed column (M1 + M2), or null when none is on file. */
+  billingTaxId(organizationId: string, providerEntityId: string): Promise<string | null>;
 }
 
 const unavailable = (): CommercialRefusalError =>
@@ -276,10 +292,21 @@ export function createEligibilityService(deps: EligibilityServiceDeps) {
       const requestId = deps.newRequestId();
       let answer: Awaited<ReturnType<ClearinghouseTransport["checkEligibility"]>>;
       try {
+        const [subscriber, billingProviderTaxId] = deps.searchFacts
+          ? await Promise.all([
+              deps.searchFacts.subscriber(organizationId, args.patientId),
+              deps.searchFacts.billingTaxId(organizationId, args.providerEntityId),
+            ])
+          : [null, null];
         answer = await binding.transport.checkEligibility(
           { ...ctx, correlationId: requestId },
-          // TRANSIENT: the only place the member id leaves the coverage row.
-          { memberId: chosen.subscriberId.trim(), serviceDate: args.serviceDate },
+          // TRANSIENT: the only place the member id (and the search facts) leave their rows.
+          {
+            memberId: chosen.subscriberId.trim(),
+            serviceDate: args.serviceDate,
+            ...(subscriber ? { subscriber } : {}),
+            ...(billingProviderTaxId ? { billingProviderTaxId } : {}),
+          },
         );
       } catch (error) {
         // Only the class name is kept: a message could carry whatever the transport interpolated.

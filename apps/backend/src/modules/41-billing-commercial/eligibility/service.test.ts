@@ -14,7 +14,7 @@ import {
   degraded,
 } from "@chartwarden/x12-837-client";
 import { describe, expect, it } from "vitest";
-import { createEligibilityService } from "./service";
+import { type EligibilitySearchFactsPort, createEligibilityService } from "./service";
 import type {
   EligibilityStore,
   NewEligibilityCheck,
@@ -121,6 +121,7 @@ function harness(
     transportResult?: Awaited<ReturnType<ClearinghouseTransport["checkEligibility"]>>;
     transportThrows?: Error;
     npi?: string | null;
+    searchFacts?: EligibilitySearchFactsPort;
   } = {},
 ): Harness {
   const store = new FakeStore();
@@ -159,6 +160,7 @@ function harness(
     now: () => NOW,
     newRequestId: () => "00000000-0000-4000-8000-0000000000aa",
     log: (event) => logs.push(event),
+    ...(opts.searchFacts ? { searchFacts: opts.searchFacts } : {}),
   });
   return { store, calls, logs, service };
 }
@@ -203,6 +205,38 @@ describe("EligibilityService.check", () => {
       checkedByUserId: USER,
     });
     expect(JSON.stringify([view, h.store.checks, h.logs])).not.toContain(MEMBER_ID);
+  });
+
+  it("hands the transient search facts (name, DOB, EIN) to the transport and keeps them out of the row and the logs", async () => {
+    const asked: string[] = [];
+    const h = harness({
+      searchFacts: {
+        subscriber: async (org, patientId) => {
+          asked.push(`${org}:${patientId}`);
+          return { firstName: "Jane", lastName: "Doe", dateOfBirth: "1940-03-15" };
+        },
+        billingTaxId: async (org, pe) => {
+          asked.push(`${org}:${pe}`);
+          return "999999999";
+        },
+      },
+    });
+    const view = await h.service.check(ACTOR, ARGS);
+    expect(asked).toEqual([`${ORG}:${PATIENT}`, `${ORG}:${PE}`]);
+    expect(h.calls[0]?.req).toEqual({
+      memberId: MEMBER_ID,
+      serviceDate: "2026-10-25",
+      subscriber: { firstName: "Jane", lastName: "Doe", dateOfBirth: "1940-03-15" },
+      billingProviderTaxId: "999999999",
+    });
+    const kept = JSON.stringify([view, h.store.checks, h.logs]);
+    for (const value of ["Jane", "Doe", "1940-03-15", "999999999"]) expect(kept).not.toContain(value);
+  });
+
+  it("sends no search facts it does not have (unknown patient, no EIN on file)", async () => {
+    const h = harness({ searchFacts: { subscriber: async () => null, billingTaxId: async () => null } });
+    await h.service.check(ACTOR, ARGS);
+    expect(h.calls[0]?.req).toEqual({ memberId: MEMBER_ID, serviceDate: "2026-10-25" });
   });
 
   it("answers CH_NOT_WIRED and sends nothing when no clearinghouse is bound", async () => {
