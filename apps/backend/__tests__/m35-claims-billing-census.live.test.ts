@@ -204,6 +204,26 @@ describe.skipIf(!DB_URL)("ADR-0108 claims-billing census — LIVE Postgres", () 
     expect(rows[0]?.inactivity_reason).toBe("died");
   });
 
+  it("under a mirrored non-calendar window, a death before the window starts lands on the earlier window", async () => {
+    await admin.query(
+      `UPDATE subscription SET current_period_start='2026-03-15T00:00:00Z', current_period_end='2026-04-15T00:00:00Z'
+        WHERE organization_id=$1`,
+      [ORG_C],
+    );
+    const consumer = buildM35PatientActivePeriodConsumer({ db: app.db, keyProvider });
+    await consumer.handle({
+      eventType: "m5.patient.deceased",
+      organizationId: ORG_C,
+      payload: { patientId: patients[ORG_C]?.[0], deceasedDate: "2026-03-10" },
+    });
+    const rows = await q<{ period_year_month: string }>(
+      "SELECT period_year_month FROM patient_active_period WHERE organization_id=$1",
+      [ORG_C],
+    );
+    // [Feb 15, Mar 15) is keyed 2026-02; 2026-03 is the CURRENT window [Mar 15, Apr 15), where the patient was not alive.
+    expect(rows).toEqual([{ period_year_month: "2026-02" }]);
+  });
+
   it("aggregates the month's add-on count as billing_addon_patient, idempotently, and shows it", async () => {
     expect(await aggregateAddonForOrg({ db: app.db }, ORG_A)).toBe(1);
     expect(await aggregateAddonForOrg({ db: app.db }, ORG_A)).toBe(1); // recomputes the open window, no duplicate

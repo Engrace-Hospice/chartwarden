@@ -13,9 +13,27 @@ describe("usageWindowFor", () => {
     });
   });
 
-  it("falls back to the calendar month when now is outside the mirrored period", () => {
+  it("puts an instant before the mirrored period in the earlier window on the same anchor", () => {
+    // A death dated Mar 10 under a [Mar 15, Apr 15) mirror belongs to [Feb 15, Mar 15), not to calendar March
+    // (whose key, 2026-03, is the CURRENT period's).
     const sub = { currentPeriodStart: utc(2026, 3, 15), currentPeriodEnd: utc(2026, 4, 15) };
     expect(usageWindowFor(sub, utc(2026, 3, 10))).toEqual({
+      start: utc(2026, 2, 15),
+      end: utc(2026, 3, 15),
+    });
+    expect(usageWindowFor(sub, utc(2025, 12, 20))).toEqual({
+      start: utc(2025, 12, 15),
+      end: utc(2026, 1, 15),
+    });
+  });
+
+  it("falls back to the calendar month when the mirror has no period or now is past its end", () => {
+    const sub = { currentPeriodStart: utc(2026, 3, 15), currentPeriodEnd: utc(2026, 4, 15) };
+    expect(usageWindowFor(sub, utc(2026, 4, 20))).toEqual({
+      start: utc(2026, 4, 1),
+      end: utc(2026, 5, 1),
+    });
+    expect(usageWindowFor(NO_MIRROR, utc(2026, 3, 10))).toEqual({
       start: utc(2026, 3, 1),
       end: utc(2026, 4, 1),
     });
