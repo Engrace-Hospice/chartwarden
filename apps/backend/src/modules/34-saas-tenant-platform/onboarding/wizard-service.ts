@@ -15,7 +15,13 @@
 // After any change that can make an `auto`/`either` step's fact true, the wizard asks the advance sweep to run for that
 // tenant (best effort, after commit) so the next step unlocks without waiting for the daily pass.
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
-import { normalizeEvidence, normalizeReason } from "./evidence";
+import {
+  SKIP_RATIONALE_MAX,
+  normalizeBlockerReason,
+  normalizeEvidence,
+  normalizeOptionalNote,
+  normalizeReason,
+} from "./evidence";
 import {
   assertCanApprove,
   assertCanAttest,
@@ -333,6 +339,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
         409,
       );
     }
+    const why = normalizeReason(rationale, { max: SKIP_RATIONALE_MAX, field: "skipRationale" });
     if (isSettled(task.status))
       throw refuse(
         "ONBOARDING_STEP_ALREADY_SETTLED",
@@ -347,7 +354,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
       completionEvidence: {
         ...(await ctx.store.getCompletionEvidence(task.id)),
         skip: {
-          rationale,
+          rationale: why,
           skippedByMembershipId: actor.membershipId,
           skippedByUserId: actor.userId,
           skippedAt: at.toISOString(),
@@ -366,7 +373,8 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
   ): Promise<StepTask> {
     requireOnboarding(ctx.tenant);
     const { task } = targetOf(ctx, taskId, actor);
-    const why = actor.kind === "platform" || reason !== undefined ? normalizeReason(reason) : null;
+    // A re-open discards an attestation the audit trail relied on, so every actor, tenant included, says why.
+    const why = normalizeReason(reason);
     if (!isSettled(task.status))
       throw refuse(
         "ONBOARDING_STEP_NOT_SETTLED",
@@ -448,12 +456,13 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
   ): Promise<StepTask> {
     requireOnboarding(ctx.tenant);
     const { task } = targetOf(ctx, taskId, actor);
+    const why = normalizeBlockerReason(blockerReason);
     if (task.status !== "pending" && task.status !== "in_progress") {
       throw refuse("ONBOARDING_STEP_NOT_BLOCKABLE", `a ${task.status} step cannot be blocked`, 409);
     }
     const updated = await ctx.store.updateTask(task.id, task.status, {
       status: "blocked",
-      blockerReason,
+      blockerReason: why,
     });
     if (!updated) throw conflict();
     return updated;
@@ -489,6 +498,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
         403,
       );
     }
+    const attestationNote = normalizeOptionalNote(note);
     const attestations = await ctx.store.listGoLive(ctx.tenant.tenantAccountId);
     assertCanAttest({
       tenantStatus: ctx.tenant.status,
@@ -508,7 +518,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
       organizationId: ctx.tenant.organizationId,
       tenantAccountId: ctx.tenant.tenantAccountId,
       attestedByMembershipId: actor.membershipId,
-      attestationNote: note?.trim() ? note.trim() : null,
+      attestationNote,
     });
     const goLiveTask = ctx.tasks.find((t) => t.templateKey === GO_LIVE_TEMPLATE_KEY);
     const patch: TaskPatch = {

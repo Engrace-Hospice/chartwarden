@@ -30,8 +30,9 @@ export const TenantCompleteStepRequest = Type.Object({
 export const PlatformReasonRequest = Type.Object({
   reason: Type.String({ minLength: 8, maxLength: 1000 }),
 });
+/** A re-open discards an attestation the audit trail relied on, so the tenant says why (the service trims and judges it). */
 export const TenantReopenStepRequest = Type.Object({
-  reason: Type.Optional(Type.String({ maxLength: 1000 })),
+  reason: Type.String({ minLength: 8, maxLength: 1000 }),
 });
 export const OrgProfileRequest = Type.Object(
   {
