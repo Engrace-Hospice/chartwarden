@@ -129,7 +129,8 @@ export type UsageEventType =
   | "ai_tokens_consumed"
   | "fhir_egress_request"
   | "hl7_message_inbound"
-  | "hl7_message_outbound";
+  | "hl7_message_outbound"
+  | "billing_addon_patient"; // ADR-0108: the claims-billing add-on monthly active-patient census
 
 /** §3.3 `usage_event_source_module` — which module emitted a usage event (idempotency key component). */
 export type UsageEventSourceModule = "m1" | "m2" | "m5" | "m23" | "m24" | "m28" | "m29" | "m32";
@@ -205,6 +206,8 @@ export const M35_EVENT_NAMES = [
   "m35.stripe.api_call_failed",
   "m35.tenant.billing_blocked",
   "m35.revenue.monthly_snapshot_computed",
+  "m35.claims_billing_addon.granted", // ADR-0108
+  "m35.claims_billing_addon.canceled", // ADR-0108
 ] as const;
 
 export type M35EventName = (typeof M35_EVENT_NAMES)[number];
@@ -485,6 +488,15 @@ export interface M35RevenueMonthlySnapshotComputedPayload {
   readonly activeSubscriptions: number;
 }
 
+/** ADR-0108 — the claims-billing add-on grant / cancel push (ids, status, effective instant only). */
+export interface M35ClaimsBillingAddonChangedPayload {
+  readonly subscriptionAddonId: string;
+  readonly subscriptionId: SubscriptionId;
+  readonly organizationId: OrgId;
+  readonly status: SubscriptionAddonStatus;
+  readonly effectiveAt: IsoInstant;
+}
+
 /** Name → payload map for the §4.11 taxonomy (the dispatcher's compile-time contract). */
 export interface M35EventPayloadMap {
   "m35.subscription.created": M35SubscriptionCreatedPayload;
@@ -519,6 +531,8 @@ export interface M35EventPayloadMap {
   "m35.stripe.api_call_failed": M35StripeApiCallFailedPayload;
   "m35.tenant.billing_blocked": M35TenantBillingBlockedPayload;
   "m35.revenue.monthly_snapshot_computed": M35RevenueMonthlySnapshotComputedPayload;
+  "m35.claims_billing_addon.granted": M35ClaimsBillingAddonChangedPayload;
+  "m35.claims_billing_addon.canceled": M35ClaimsBillingAddonChangedPayload;
 }
 
 // ── §2.2 / §4.5 shared domain value shapes (surfaced by the published seams below) ─────────────────────
@@ -651,6 +665,35 @@ export interface PatientCounterProvider {
     periodStart: IsoInstant;
     periodEnd: IsoInstant;
   }): Promise<number>;
+}
+
+// ── ADR-0108 the claims-billing add-on ─────────────────────────────────────────────────────────────────
+
+/** The add-on slug / entitlement key (migration 1321 seeds the one `addon` row). */
+export const CLAIMS_BILLING_ADDON_SLUG = "claims_billing";
+
+/** Why an org is NOT entitled to start new claims-billing work (ADR-0108 D3). */
+export type ClaimsBillingDenyReason =
+  | "never_purchased"
+  | "lapsed"
+  | "subscription_suspended"
+  | "subscription_canceled"
+  | "subscription_paused";
+
+export type ClaimsBillingEntitlement =
+  | { readonly entitled: true }
+  | { readonly entitled: false; readonly reason: ClaimsBillingDenyReason };
+
+/** `subscription_addon.status` (migration 1321 CHECK). */
+export type SubscriptionAddonStatus = "trialing" | "active" | "canceled";
+
+/**
+ * ADR-0108 — the claims-billing entitlement read (owner M35). Entitled = a trialing/active, not-ended
+ * `subscription_addon` row AND a base subscription in trialing/active/past_due/at_risk. No cache: every call reads
+ * the database (the gate memoises per request). Throws when the read fails; a new-work caller fails CLOSED on it.
+ */
+export interface ClaimsBillingEntitlementReader {
+  entitlementForOrg(organizationId: OrgId): Promise<ClaimsBillingEntitlement>;
 }
 
 /** §4.5 platform-shared revenue metrics (consumed by M33 for the platform-ops revenue dashboard). */
