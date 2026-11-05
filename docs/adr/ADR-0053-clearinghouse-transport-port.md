@@ -285,6 +285,17 @@ the contract doc's webhook rows say what is D and what is U. Turn it on only whe
    `NPI_TAKEN`. Before enabling, the sweep must route an enrollment only to a provider entity whose NPI platform staff
    have verified, and answer `unroutable_npi` for an unverified one. Appeal routing (by our own platform-sequence control
    number) is not affected.
+   **Built 2026-11-05.** M23's `provider_npi_verification` (migration 1326) records "platform staff verified that provider
+   entity P owns NPI N", with the evidence, the verifying membership and time, and a revoke (membership and time); rows
+   are never deleted. It is a separate table, not a column on `provider_entity`, because tenants can update that row. RLS
+   is FORCEd: a tenant reads its own org's rows and writes none; only the platform login writes, through the audited
+   `m23.npi_verification` platform context (M1 baseline write-audit trigger). The sweep routes an enrollment only when a
+   live row matches the entity's CURRENT NPI, so changing the NPI voids the verification. Platform staff list, verify and
+   revoke at `GET /api/v1/admin/billing/npi-verifications` and `POST …/:providerEntityId/verify|revoke`
+   (`billing.rule_config.platform_admin` + a platform-ops role; writes add a fresh step-up, the AI-actor block and
+   `Idempotency-Key`; verify must name the NPI the operator checked, so a value changed since is refused `NPI_CHANGED`),
+   in the admin console under Medicare billing → NPI verification. Before turning the intake on, verify every live
+   tenant's NPI there; until then their enrollment reports land as `unroutable_npi`.
 3. The Billing add-on binding below is in the mode the operator intends (`CLAIMS_BILLING_ENFORCEMENT`).
 
 **D7 as applied to Claim.MD: a push is a vendor REPORT, not event-then-fetch.** Claim.MD pushes only enrollment and appeal
@@ -307,7 +318,8 @@ owned by M23 (it owns the D3 binding; M25 and M41 depend on M23, never the rever
   transaction that marks the receipt `published`. Test events are settled on receipt (`test_ack`).
 
 **D8 as applied to Claim.MD: tenant resolution never trusts the payload's claims about a tenant.** An enrollment resolves
-by `prov_npi` to the one `provider_entity` with that NPI (unique platform-wide); an appeal by `remote_claimid` to the one
+by `prov_npi` to the one `provider_entity` with that NPI (unique platform-wide), and only when that NPI is platform-verified
+(precondition 2); an appeal by `remote_claimid` to the one
 live `clearinghouse_submission_attempt` with that `(usage, control_number)` (unique per usage platform-wide). An unknown
 NPI or claim is terminal `unroutable_npi` / `unroutable_claim`, logged with ids only. Caveat: Claim.MD documents
 `remote_claimid` as the 837 `REF*D9`, which our 837I does not send today, so appeal reports for X12 uploads resolve only

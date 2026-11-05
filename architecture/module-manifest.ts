@@ -933,6 +933,8 @@ export const MODULES: ModuleDef[] = [
     ownedTables: [
       "billing_edi_profile",
       "claimmd_webhook_event",
+      // ADR-0053 amendment precondition 2 (migration 1326): platform-verified NPI ownership the Claim.MD sweep routes on.
+      "provider_npi_verification",
       "claim",
       "claim_acknowledgment",
       "claim_line",

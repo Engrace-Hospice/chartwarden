@@ -294,8 +294,14 @@ async function main(): Promise<void> {
       // DELETE: retention clears the cipher column). The sweep resolves a tenant from two COLUMN grants only: the
       // platform-unique provider NPI and the platform-unique live control number.
       await run('GRANT SELECT, INSERT, UPDATE ON "claimmd_webhook_event" TO chartwarden_platform;');
+      // The NPI-verification admin list (migration 1326) also names the entity: legal_name joins that column grant.
       await run(
-        'GRANT SELECT ("id", "organization_id", "npi") ON "provider_entity" TO chartwarden_platform;',
+        'GRANT SELECT ("id", "organization_id", "npi", "legal_name") ON "provider_entity" TO chartwarden_platform;',
+      );
+      // Migration 1326: platform staff verify / revoke NPI ownership; the sweep routes only on a live verification.
+      // No DELETE: a revoked row stays as evidence.
+      await run(
+        'GRANT SELECT, INSERT, UPDATE ON "provider_npi_verification" TO chartwarden_platform;',
       );
       await run(
         'GRANT SELECT ("organization_id", "provider_entity_id", "usage", "control_number", "status") ON "clearinghouse_submission_attempt" TO chartwarden_platform;',

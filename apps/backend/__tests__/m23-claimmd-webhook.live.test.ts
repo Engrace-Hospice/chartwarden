@@ -5,6 +5,10 @@
  * (executed here), through an allowlisted, audited withPlatformContext, so a missing production grant fails here. The
  * tenant role `chartwarden_app` is proved unable to read the receipts at all.
  *
+ * Platform-verified NPI ownership (ADR-0053 amendment precondition 2, migration 1326): the sweep routes an enrollment only
+ * to a provider entity whose CURRENT NPI has a live verification, written only by the platform login (audited, operator
+ * attributed); the tenant role reads its own org's verifications and writes none.
+ *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://... bun run test:m23:claimmd-webhook:live
  * (SUPERUSER url to a THROWAWAY database on a PRIVATE pgvector/pgvector:pg18: this file DROPs the public schema.)
  * Synthetic key, NPIs and bodies only.
@@ -35,7 +39,15 @@ import {
   runClaimMdWebhookSweep,
 } from "../src/modules/23-billing-medicare/claimmd-webhook/sweep";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/events-by-m23";
-import { M23_CLAIMMD_WEBHOOK_JOB_ID } from "../src/modules/23-billing-medicare/wiring";
+import type { M23WriteActor } from "../src/modules/23-billing-medicare/routes/actor";
+import {
+  type NpiVerificationService,
+  buildDrizzleNpiVerificationService,
+} from "../src/modules/23-billing-medicare/routes/npi-verification-service";
+import {
+  M23_CLAIMMD_WEBHOOK_JOB_ID,
+  M23_NPI_VERIFICATION_JOB_ID,
+} from "../src/modules/23-billing-medicare/wiring";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -48,6 +60,17 @@ const NPI_B = "1999999984";
 const ORG_A = "00000000-0000-4000-8000-0000000322a1";
 const ORG_B = "00000000-0000-4000-8000-0000000322b1";
 const URL_TEST = "/api/v1/webhooks/claimmd/test";
+const NPI_C = "1222222220";
+const NPI_D = "1222222238";
+const OPERATOR = "00000000-0000-4000-8000-0000000326f1";
+const operator: M23WriteActor = {
+  organizationId: "00000000-0000-4000-8000-0000000326f0",
+  userId: "00000000-0000-4000-8000-0000000326f2",
+  roles: ["platform_admin"],
+  membershipId: OPERATOR,
+  stepUpRecent: true,
+  actorKind: "user",
+};
 
 const sign = (body: string) =>
   createHmac("sha256", Buffer.from(KEY, "latin1")).update(body).digest("base64");
@@ -74,6 +97,7 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
   let platform: ReturnType<typeof createDbClient>;
   let tenant: Client;
   let runner: ClaimMdPlatformRunner;
+  let npiAdmin: NpiVerificationService;
   let publisher: ReturnType<typeof buildTxOutboxPublisher>;
   let peA = "";
   let peB = "";
@@ -177,6 +201,34 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
         },
         fn,
       );
+    registerPlatformJob(M23_NPI_VERIFICATION_JOB_ID);
+    npiAdmin = buildDrizzleNpiVerificationService({
+      runner: (fn) =>
+        withPlatformContext(
+          platform.db,
+          { jobId: M23_NPI_VERIFICATION_JOB_ID, reason: "live suite", crossTenant: true },
+          async (tx, event) => {
+            await auditPlatformEvent(tx, {
+              eventType: "platform.bypass_invoked",
+              resourceKind: "tenant",
+              outcome: "success",
+              severity: event.severity,
+              correlationId: `platform-bypass:${event.jobId}`,
+              context: { jobId: event.jobId, reason: event.reason },
+            });
+          },
+          fn,
+        ),
+    });
+    // The sweep tests below route to A and B: platform staff have verified both NPIs.
+    await npiAdmin.verify(operator, peA, {
+      npi: NPI_A,
+      evidence: "NPPES record matches CCN 322001",
+    });
+    await npiAdmin.verify(operator, peB, {
+      npi: NPI_B,
+      evidence: "NPPES record matches CCN 322002",
+    });
     app = Fastify();
     applyErrorHandler(app);
     applyCsrfProtection(app, { secure: false });
@@ -531,6 +583,132 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
         payload_cipher: null,
       });
       expect((await outcome("r3")).payload_sha256).toMatch(/^[0-9a-f]{64}$/); // the digest stays as evidence
+    });
+  });
+
+  // ── platform-verified NPI ownership (ADR-0053 amendment precondition 2) ─────────────────────────────────────────
+  describe("NPI verification", () => {
+    let peC = "";
+    const asTenant = async <T>(org: string, fn: () => Promise<T>): Promise<T> => {
+      await tenant.query("BEGIN");
+      try {
+        await tenant.query("SELECT set_config('app.org_id', $1, true)", [org]);
+        return await fn();
+      } finally {
+        await tenant.query("ROLLBACK");
+      }
+    };
+
+    beforeAll(async () => {
+      peC = (
+        await admin.query(
+          `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+           VALUES ($1,'322003','Synthetic Hospice C',$2,'\\x00','12-31') RETURNING id`,
+          [ORG_A, NPI_C],
+        )
+      ).rows[0].id as string;
+    });
+
+    beforeEach(async () => {
+      await admin.query("DELETE FROM outbox_event WHERE event_type LIKE 'm23.clearinghouse.%'");
+    });
+
+    it("lets a tenant read only its own org's verifications and write none", async () => {
+      const seen = await asTenant(ORG_A, async () =>
+        (await tenant.query("SELECT provider_entity_id FROM provider_npi_verification")).rows.map(
+          (r) => r.provider_entity_id,
+        ),
+      );
+      expect(seen).toContain(peA);
+      expect(seen).not.toContain(peB); // org B's verification is invisible to org A
+      for (const write of [
+        `INSERT INTO provider_npi_verification (organization_id, provider_entity_id, npi, evidence, verified_by_membership_id)
+         VALUES ('${ORG_A}', '${peC}', '${NPI_C}', 'self-verified', '${OPERATOR}')`,
+        "UPDATE provider_npi_verification SET evidence = 'tampered'",
+        "DELETE FROM provider_npi_verification",
+      ]) {
+        await expect(asTenant(ORG_A, () => tenant.query(write))).rejects.toThrow(
+          /permission denied/,
+        );
+      }
+    });
+
+    it("routes an enrollment only while the entity's current NPI has a live verification", async () => {
+      await store([enrollFor("v1", NPI_C)]);
+      expect((await sweep()).outcomes).toEqual({ unroutable_npi: 1 }); // registered, never verified
+
+      await npiAdmin.verify(operator, peC, { npi: NPI_C, evidence: "called the CCN contact" });
+      await store([enrollFor("v2", NPI_C)]);
+      expect((await sweep()).outcomes).toEqual({ published: 1 });
+      const [ev] = await outbox("m23.clearinghouse.enrollment_reported");
+      expect(ev?.organization_id).toBe(ORG_A);
+      expect(ev?.payload).toMatchObject({ providerEntityId: peC });
+
+      // The tenant changes the entity's NPI: the verification was for the old value, so the new one is unroutable.
+      await admin.query("UPDATE provider_entity SET npi = $1 WHERE id = $2", [NPI_D, peC]);
+      await store([enrollFor("v3", NPI_D), enrollFor("v4", NPI_C)]);
+      expect((await sweep()).outcomes).toEqual({ unroutable_npi: 2 });
+      expect((await npiAdmin.list()).find((r) => r.providerEntityId === peC)).toMatchObject({
+        npi: NPI_D,
+        state: "unverified",
+      });
+
+      // Re-verifying the new NPI closes the stale live row; a revoke makes it unroutable again.
+      await npiAdmin.verify(operator, peC, { npi: NPI_D, evidence: "NPPES record matches" });
+      await store([enrollFor("v5", NPI_D)]);
+      expect((await sweep()).outcomes).toEqual({ published: 1 });
+      const revoked = await npiAdmin.revoke(operator, peC);
+      expect(revoked).toMatchObject({ state: "revoked", revokedByMembershipId: OPERATOR });
+      await store([enrollFor("v6", NPI_D)]);
+      expect((await sweep()).outcomes).toEqual({ unroutable_npi: 1 });
+      expect(await outbox("m23.clearinghouse.enrollment_reported")).toHaveLength(2);
+    });
+
+    it("refuses a stale NPI, a double verify and a revoke of nothing", async () => {
+      await expect(
+        npiAdmin.verify(operator, peB, { npi: NPI_A, evidence: "wrong number" }),
+      ).rejects.toMatchObject({ code: "NPI_CHANGED" });
+      await expect(
+        npiAdmin.verify(operator, peB, { npi: NPI_B, evidence: "again" }),
+      ).rejects.toMatchObject({ code: "ALREADY_VERIFIED" });
+      await expect(npiAdmin.revoke(operator, peC)).rejects.toMatchObject({ code: "NOT_VERIFIED" });
+      await expect(
+        npiAdmin.verify(operator, "00000000-0000-4000-8000-00000000dead", {
+          npi: NPI_A,
+          evidence: "nobody",
+        }),
+      ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    });
+
+    it("lists every tenant's entities with their state, and audits each write with the operator", async () => {
+      const list = await npiAdmin.list();
+      expect(list.find((r) => r.providerEntityId === peB)).toMatchObject({
+        organizationId: ORG_B,
+        organizationName: "cmd-b",
+        legalName: "Synthetic Hospice",
+        npi: NPI_B,
+        state: "verified",
+        verifiedByMembershipId: OPERATOR,
+      });
+      const audit = await admin.query(
+        `SELECT event_type, after FROM audit_event WHERE resource_kind = 'provider_npi_verification'
+         ORDER BY created_at`,
+      );
+      const inserts = audit.rows.filter((r) => r.event_type === "provider_npi_verification.insert");
+      expect(inserts.length).toBeGreaterThanOrEqual(4);
+      for (const r of inserts) expect(r.after.verified_by_membership_id).toBe(OPERATOR);
+      expect(
+        audit.rows.some(
+          (r) =>
+            r.event_type === "provider_npi_verification.update" &&
+            r.after.revoked_by_membership_id === OPERATOR,
+        ),
+      ).toBe(true);
+      const bypass = await admin.query(
+        "SELECT count(*)::int AS n FROM audit_event WHERE event_type = 'platform.bypass_invoked' AND context->>'jobId' = $1",
+        [M23_NPI_VERIFICATION_JOB_ID],
+      );
+      expect(bypass.rows[0]?.n).toBeGreaterThan(0);
     });
   });
 });

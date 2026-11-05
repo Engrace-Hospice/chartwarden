@@ -469,6 +469,11 @@ import {
   UpsertEdiProfileBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/edi-profile-typebox";
 import {
+  NpiVerificationListSchema,
+  NpiVerificationViewSchema,
+  VerifyNpiBodySchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/npi-verification-typebox";
+import {
   LoadWageIndexesBodySchema,
   LoadWageIndexesResultSchema,
   RegisterPlatformRuleBodySchema,
@@ -13233,6 +13238,22 @@ Object.assign(ROUTE_ENRICHMENTS, {
       wired: Type.Boolean(),
     }),
   },
+  "GET /api/v1/admin/billing/npi-verifications": {
+    summary:
+      "List every tenant's provider entities with the platform verification state of their current NPI (the Claim.MD sweep routes enrollment reports only to a verified one); platform-admin + platform-ops role (ADR-0053 amendment)",
+    response: NpiVerificationListSchema,
+  },
+  "POST /api/v1/admin/billing/npi-verifications/:providerEntityId/verify": {
+    summary:
+      "Record that platform staff verified the provider entity owns its current NPI — 409 NPI_CHANGED when it is no longer the NPI checked, ALREADY_VERIFIED when live; platform-admin + step-up (ADR-0053 amendment)",
+    body: VerifyNpiBodySchema,
+    response: NpiVerificationViewSchema,
+  },
+  "POST /api/v1/admin/billing/npi-verifications/:providerEntityId/revoke": {
+    summary:
+      "Revoke the live NPI verification (enrollment reports for it become unroutable) — 409 NOT_VERIFIED when none; platform-admin + step-up (ADR-0053 amendment)",
+    response: NpiVerificationViewSchema,
+  },
   "POST /api/v1/admin/billing/wage-indexes/load": {
     summary:
       "Load the annual CMS hospice wage index into the platform table — all-or-nothing; platform-admin + step-up (§4.1 #42)",
@@ -15078,12 +15099,12 @@ import {
   EnrollmentReportListQuerySchema as M41EnrollmentReportListQuerySchema,
   EnrollmentReportListResponseSchema as M41EnrollmentReportListResponseSchema,
   EnrollmentReportResponseSchema as M41EnrollmentReportResponseSchema,
-  ResolveEnrollmentReportBodySchema as M41ResolveEnrollmentReportBodySchema,
   EnrollmentResponseSchema as M41EnrollmentResponseSchema,
   LatestEligibilityResponseSchema as M41LatestEligibilityResponseSchema,
   LatestQuerySchema as M41LatestQuerySchema,
   PatchEnrollmentBodySchema as M41PatchEnrollmentBodySchema,
   PatientPlanQuerySchema as M41PatientPlanQuerySchema,
+  ResolveEnrollmentReportBodySchema as M41ResolveEnrollmentReportBodySchema,
 } from "../../apps/backend/src/modules/41-billing-commercial/routes/typebox";
 
 Object.assign(ROUTE_ENRICHMENTS, {

@@ -3,7 +3,8 @@
 // every tenant), every minute, over at most 100 rows taken FOR UPDATE SKIP LOCKED.
 //
 // Tenant resolution (D8), never from the payload's own claims about a tenant:
-//   enroll  → prov_npi       → provider_entity (NPI is unique platform-wide) → organization + provider entity
+//   enroll  → prov_npi       → provider_entity (NPI is unique platform-wide) → organization + provider entity, ONLY
+//             when platform staff have verified that entity's current NPI (provider_npi_verification, migration 1326)
 //   appeal  → remote_claimid → the live clearinghouse_submission_attempt with that (usage, control_number), which is
 //             unique per usage platform-wide. (`remote_claimid` is Claim.MD's REF*D9 / remote_claimid: what we must send
 //             as our control number for this to match; `claimid` is Claim.MD's own id, which an X12 upload never returns.)
@@ -19,6 +20,7 @@ import type { DbClient } from "@chartwarden/db";
 import type { WebhookPayloadCipher } from "@chartwarden/shared";
 import { sql } from "drizzle-orm";
 import { providerEntityByNpi } from "../../../bootstrap/provider-entity-npi-lookup";
+import { isNpiVerified } from "../routes/npi-verification-service";
 import type { ClaimMdPlatformRunner } from "./receipt-store";
 
 /** The Billing add-on capability (M35). Bound at the composition root; see index.ts. */
@@ -139,7 +141,8 @@ async function routeOf(
     const npi = text(e.prov_npi, 10);
     if (!npi || !NPI_RE.test(npi)) return { outcome: "unroutable_npi" };
     const pe = await providerEntityByNpi(tx, npi);
-    if (!pe) return { outcome: "unroutable_npi" };
+    // A tenant can register any valid NPI, so only a platform-verified one routes (ADR-0053 amendment precondition 2).
+    if (!pe || !(await isNpiVerified(tx, pe.id, npi))) return { outcome: "unroutable_npi" };
     const enrollType = text(e.enroll_type, 16)?.toLowerCase() ?? null;
     return {
       org: pe.organizationId,

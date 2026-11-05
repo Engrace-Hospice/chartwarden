@@ -1086,6 +1086,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/billing/npi-verifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List every tenant's provider entities with the platform verification state of their current NPI (the Claim.MD sweep routes enrollment reports only to a verified one); platform-admin + platform-ops role (ADR-0053 amendment) */
+        get: operations["getApiV1AdminBillingNpiverifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/billing/npi-verifications/{providerEntityId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke the live NPI verification (enrollment reports for it become unroutable) — 409 NOT_VERIFIED when none; platform-admin + step-up (ADR-0053 amendment) */
+        post: operations["postApiV1AdminBillingNpiverificationsByProviderEntityIdRevoke"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/billing/npi-verifications/{providerEntityId}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record that platform staff verified the provider entity owns its current NPI — 409 NPI_CHANGED when it is no longer the NPI checked, ALREADY_VERIFIED when live; platform-admin + step-up (ADR-0053 amendment) */
+        post: operations["postApiV1AdminBillingNpiverificationsByProviderEntityIdVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/billing/platform-rules": {
         parameters: {
             query?: never;
@@ -31501,6 +31552,124 @@ export interface operations {
                     "application/json": {
                         provider: "manual" | "in_memory" | "episode_alert";
                         wired: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdminBillingNpiverifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        providerEntityId: string;
+                        organizationId: string;
+                        organizationName: string;
+                        legalName: string;
+                        npi: string;
+                        state: "verified" | "unverified" | "revoked";
+                        verificationId: string | null;
+                        evidence: string | null;
+                        verifiedAt: string | null;
+                        verifiedByMembershipId: string | null;
+                        revokedAt: string | null;
+                        revokedByMembershipId: string | null;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminBillingNpiverificationsByProviderEntityIdRevoke: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerEntityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        providerEntityId: string;
+                        organizationId: string;
+                        organizationName: string;
+                        legalName: string;
+                        npi: string;
+                        state: "verified" | "unverified" | "revoked";
+                        verificationId: string | null;
+                        evidence: string | null;
+                        verifiedAt: string | null;
+                        verifiedByMembershipId: string | null;
+                        revokedAt: string | null;
+                        revokedByMembershipId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminBillingNpiverificationsByProviderEntityIdVerify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                providerEntityId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description The NPI the operator checked. */
+                    npi: string;
+                    /** @description How ownership was confirmed (for the audit record; no patient information). */
+                    evidence: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        providerEntityId: string;
+                        organizationId: string;
+                        organizationName: string;
+                        legalName: string;
+                        npi: string;
+                        state: "verified" | "unverified" | "revoked";
+                        verificationId: string | null;
+                        evidence: string | null;
+                        verifiedAt: string | null;
+                        verifiedByMembershipId: string | null;
+                        revokedAt: string | null;
+                        revokedByMembershipId: string | null;
                     };
                 };
             };
