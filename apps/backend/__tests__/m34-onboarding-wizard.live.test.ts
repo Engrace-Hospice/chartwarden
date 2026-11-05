@@ -221,6 +221,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         [org, tenant],
       );
     }
+    // The platform operator is a real user: platform writes run with app.user_id = the operator, and the row-audit
+    // trigger writes it to audit_event.actor_user_id (a foreign key to user).
+    await admin.query(`INSERT INTO "user" (id, email) VALUES ($1, 'ops@wizard.test')`, [OPS_USER]);
     adminA = await person(ORG_A, "admin-a", ["org_admin"]);
     officerA = await person(ORG_A, "officer-a", ["compliance_officer"]);
     strangerB = await person(ORG_B, "stranger-b", ["org_admin"]);
@@ -904,6 +907,10 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     let officerD2: TenantActor;
     let memberE: TenantActor;
     let inactiveE: TenantActor;
+    let adminE: TenantActor;
+    let officerE2: TenantActor;
+    let adminC: TenantActor;
+    let officerC2: TenantActor;
     let opsTwo: PlatformActor;
 
     /** A tenant whose every gating step is done and whose BAA is long: only go-live is left. */
@@ -985,6 +992,10 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       await admin.query("UPDATE membership SET status='suspended' WHERE id=$1", [
         inactiveE.membershipId,
       ]);
+      adminE = await person(ORG_E, "admin-e", ["org_admin"]);
+      officerE2 = await person(ORG_E, "officer-e2", ["compliance_officer"]);
+      adminC = await person(ORG_C, "admin-c", ["org_admin"]);
+      officerC2 = await person(ORG_C, "officer-c2", ["compliance_officer"]);
     }, 120_000);
 
     // ── HIGH 1: two people, not two memberships ───────────────────────────────────────────────────────────
@@ -1292,6 +1303,125 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
         });
       }
       await admin.query("UPDATE tenant_account SET status='onboarding' WHERE id=$1", [T_E]);
+    });
+
+    // ── MEDIUM 4: a platform officer assignment is attributed and says why ───────────────────────────────
+    it("a platform assignment needs a reason, and names the operator, the organisation and the reason in the audit trail", async () => {
+      const reason = "customer named a new officer on the call";
+      expect(
+        (
+          await refusal(
+            wizard(false).setComplianceOfficerPlatform(
+              "wiz-e",
+              OPS,
+              officerE2.membershipId,
+              "short",
+            ),
+          )
+        ).code,
+      ).toBe("ONBOARDING_REASON_REQUIRED");
+
+      await wizard(false).setComplianceOfficerPlatform(
+        "wiz-e",
+        OPS,
+        officerE2.membershipId,
+        reason,
+      );
+
+      expect(
+        (
+          await admin.query(
+            "SELECT compliance_officer_membership_id AS m FROM tenant_account WHERE id=$1",
+            [T_E],
+          )
+        ).rows[0].m,
+      ).toBe(officerE2.membershipId);
+      // the explicit entry: operator, organisation, reason, and who it replaced
+      const entry = await admin.query(
+        `SELECT context FROM audit_event WHERE event_type='m34.onboarding.compliance_officer_assigned' AND resource_id=$1`,
+        [T_E],
+      );
+      expect(entry.rowCount).toBe(1);
+      expect(entry.rows[0].context).toMatchObject({
+        organizationId: ORG_E,
+        operatorUserId: OPS_USER,
+        operatorMembershipId: OPS_MEMBERSHIP,
+        reason,
+        newOfficerMembershipId: officerE2.membershipId,
+      });
+      // and the row trigger now names the operator too (app.user_id is set on the platform transaction)
+      const row = await admin.query(
+        `SELECT actor_user_id FROM audit_event WHERE event_type='tenant_account.update' AND resource_id=$1 ORDER BY created_at DESC LIMIT 1`,
+        [T_E],
+      );
+      expect(row.rows[0].actor_user_id).toBe(OPS_USER);
+    });
+
+    it("refuses an officer who is a member of the organisation but does not hold the compliance_officer role", async () => {
+      expect(
+        (await refusal(wizard(false).setComplianceOfficer(adminE, ORG_E, adminE.membershipId)))
+          .code,
+      ).toBe("COMPLIANCE_OFFICER_LACKS_ROLE");
+      expect(
+        (
+          await refusal(
+            wizard(false).setComplianceOfficerPlatform(
+              "wiz-e",
+              OPS,
+              adminE.membershipId,
+              "trying an org_admin as the officer",
+            ),
+          )
+        ).statusCode,
+      ).toBe(422);
+    });
+
+    it("a tenant org_admin's reassignment voids the pending attestation (on a platform transaction, as the admin)", async () => {
+      await wizard(false).setComplianceOfficer(adminE, ORG_E, memberE.membershipId);
+      await wizard(false).attestGoLive(memberE, ORG_E, "ready from where I sit");
+      expect((await attestationRows(T_E)).map((r) => r.status)).toEqual(["pending"]);
+
+      await wizard(false).setComplianceOfficer(adminE, ORG_E, officerE2.membershipId);
+
+      const [voided] = await attestationRows(T_E);
+      expect(voided).toMatchObject({
+        status: "revoked",
+        revoked_by_membership_id: adminE.membershipId,
+      });
+      expect(voided.revoke_reason).toContain("reassigned");
+      expect(await statusOf(T_E, "go_live_checklist_complete")).toBe("pending");
+      expect(
+        (
+          await refusal(
+            wizard(false).approveGoLive("wiz-e", opsTwo, "reviewed the evidence and the BAA"),
+          )
+        ).code,
+      ).toBe("GO_LIVE_NOT_ATTESTED");
+      // the new officer attests; the previous one no longer may
+      expect((await refusal(wizard(false).attestGoLive(memberE, ORG_E, undefined))).code).toBe(
+        "GO_LIVE_NOT_ASSIGNED_OFFICER",
+      );
+      await wizard(false).attestGoLive(officerE2, ORG_E, undefined);
+      expect((await attestationRows(T_E)).map((r) => r.status)).toEqual(["revoked", "pending"]);
+    });
+
+    it("changes the officer of an ACTIVE tenant on the real roles, and refuses a frozen one", async () => {
+      expect(await tenantStatus(T_C)).toBe("active");
+      await wizard(false).setComplianceOfficer(adminC, ORG_C, officerC2.membershipId);
+      expect(
+        (
+          await admin.query(
+            "SELECT compliance_officer_membership_id AS m FROM tenant_account WHERE id=$1",
+            [T_C],
+          )
+        ).rows[0].m,
+      ).toBe(officerC2.membershipId);
+      await admin.query("UPDATE tenant_account SET status='suspended' WHERE id=$1", [T_C]);
+      expect(
+        (await refusal(wizard(false).setComplianceOfficer(adminC, ORG_C, officerC.membershipId)))
+          .code,
+      ).toBe("COMPLIANCE_OFFICER_LOCKED");
+      await admin.query("UPDATE tenant_account SET status='active' WHERE id=$1", [T_C]);
     });
 
     // ── LOW: the sweep's write is compare-and-set ───────────────────────────────────────────────────────

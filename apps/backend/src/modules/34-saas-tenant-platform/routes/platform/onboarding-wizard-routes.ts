@@ -8,7 +8,7 @@
 //   GET   /platform/tenants/:orgSlug/onboarding                       read the ordered wizard (+ go-live + org profile)
 //   POST  .../onboarding/:taskId/skip | attest | reopen              settle or re-open a step
 //   PATCH /platform/tenants/:orgSlug/org-profile                     display name + IANA time zone
-//   PUT   /platform/tenants/:orgSlug/compliance-officer              assign the officer who attests go-live
+//   PUT   /platform/tenants/:orgSlug/compliance-officer              assign the officer who attests go-live (a reason is required)
 //   POST  /platform/tenants/:orgSlug/go-live/approve | revoke        the second party of the two-party go-live
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import { UnauthorizedError } from "@chartwarden/types";
@@ -21,7 +21,7 @@ import {
   OrgProfileRequest,
   PlatformAttestStepRequest,
   PlatformReasonRequest,
-  SetComplianceOfficerRequest,
+  SetComplianceOfficerPlatformRequest,
 } from "../onboarding-wizard-typebox";
 import { SkipOnboardingTaskRequest } from "../typebox";
 import { OrgSlugParamsSchema, parse } from "./platform-typebox";
@@ -135,8 +135,8 @@ export function registerOnboardingWizardRoutes(
     async (request) => {
       const actor = actorOf(request);
       const { orgSlug } = parse(OrgSlugParamsSchema, request.params);
-      const body = parse(SetComplianceOfficerRequest, request.body);
-      return wizard.setComplianceOfficerPlatform(orgSlug, actor, body.membershipId);
+      const body = parse(SetComplianceOfficerPlatformRequest, request.body);
+      return wizard.setComplianceOfficerPlatform(orgSlug, actor, body.membershipId, body.reason);
     },
   );
 

@@ -420,9 +420,11 @@ describe("free text: no patient identifiers, no NUL", () => {
   });
 });
 
+const OPS_REASON = "customer named a new officer on the call";
+
 describe("compliance officer and org profile", () => {
   it("assigns an active member and refuses a stranger", async () => {
-    expect(await wizard().setComplianceOfficerPlatform("acme", OPS, "co-m")).toEqual({
+    expect(await wizard().setComplianceOfficerPlatform("acme", OPS, "co-m", OPS_REASON)).toEqual({
       complianceOfficerMembershipId: "co-m",
     });
     expect(tenant().complianceOfficerMembershipId).toBe("co-m");
@@ -430,6 +432,94 @@ describe("compliance officer and org profile", () => {
       "COMPLIANCE_OFFICER_NOT_A_MEMBER",
     );
     expect(advance).toHaveBeenCalled();
+  });
+
+  it("refuses a member of ANOTHER organisation and a member that is not active, as not a member", async () => {
+    state.members.set(
+      ...memoryMember("other-org", "foreign-m", "foreign-u", ["compliance_officer"]),
+    );
+    state.members.set(...memoryMember(ORG, "gone-m", "gone-u", ["compliance_officer"], false));
+    for (const membership of ["foreign-m", "gone-m"]) {
+      expect(await code(wizard().setComplianceOfficer(ADMIN, ORG, membership))).toBe(
+        "COMPLIANCE_OFFICER_NOT_A_MEMBER",
+      );
+    }
+    expect(tenant().complianceOfficerMembershipId).toBeNull();
+  });
+
+  it("refuses an active member who does not hold the compliance_officer role (422)", async () => {
+    try {
+      await wizard().setComplianceOfficer(ADMIN, ORG, "admin-m"); // an org_admin, not an officer
+      expect.unreachable("assignment should have been refused");
+    } catch (e) {
+      const err = e as ChartWardenError;
+      expect(err.code).toBe("COMPLIANCE_OFFICER_LACKS_ROLE");
+      expect(err.statusCode).toBe(422);
+    }
+    expect(
+      await code(wizard().setComplianceOfficerPlatform("acme", OPS, "admin-m", OPS_REASON)),
+    ).toBe("COMPLIANCE_OFFICER_LACKS_ROLE");
+    expect(tenant().complianceOfficerMembershipId).toBeNull();
+  });
+
+  it("a platform assignment needs a written reason of 8 to 500 characters", async () => {
+    for (const reason of [undefined, "", "short", "       ", "r".repeat(501)]) {
+      expect(await code(wizard().setComplianceOfficerPlatform("acme", OPS, "co-m", reason))).toBe(
+        "ONBOARDING_REASON_REQUIRED",
+      );
+    }
+    expect(tenant().complianceOfficerMembershipId).toBeNull();
+    await wizard().setComplianceOfficerPlatform("acme", OPS, "co-m", "r".repeat(500));
+    expect(tenant().complianceOfficerMembershipId).toBe("co-m");
+  });
+
+  it("a platform assignment is attributed: the platform transaction carries the operator and an audit entry names operator, organisation and reason", async () => {
+    state.tenants = [{ ...tenant(), complianceOfficerMembershipId: "old-officer-m" }];
+
+    await wizard().setComplianceOfficerPlatform("acme", OPS, "co-m", `  ${OPS_REASON}  `);
+
+    expect(state.platformTransactions).toContainEqual({
+      reason: "platform-ops compliance officer assignment",
+      actorUserId: "ops-u",
+    });
+    expect(state.platformAudit).toEqual([
+      {
+        eventType: "m34.onboarding.compliance_officer_assigned",
+        tenantAccountId: TENANT,
+        organizationId: ORG,
+        operator: { userId: "ops-u", membershipId: "ops-m" },
+        reason: OPS_REASON,
+        detail: { previousOfficerMembershipId: "old-officer-m", newOfficerMembershipId: "co-m" },
+      },
+    ]);
+  });
+
+  it("every platform write runs attributed to its operator", async () => {
+    await wizard().attestPlatform("acme", taskId("organisation"), OPS, evidence);
+    await wizard().reopenPlatform("acme", taskId("organisation"), OPS, "wrong legal name recorded");
+    const writes = state.platformTransactions.filter((t) => /attest|reopen/.test(t.reason));
+    expect(writes).toHaveLength(2);
+    expect(writes.every((t) => t.actorUserId === "ops-u")).toBe(true);
+  });
+
+  it("changes the officer of an ACTIVE tenant too (staff turnover), without waking the onboarding sweep", async () => {
+    state.tenants = [{ ...tenant(), status: "active", complianceOfficerMembershipId: "old-m" }];
+    advance.mockClear();
+
+    await wizard().setComplianceOfficer(ADMIN, ORG, "co-m");
+
+    expect(tenant().complianceOfficerMembershipId).toBe("co-m");
+    expect(advance).not.toHaveBeenCalled();
+  });
+
+  it("freezes the officer of a suspended or closing tenant", async () => {
+    for (const status of ["suspended", "offboarding_initiated", "destroyed"]) {
+      state.tenants = [{ ...tenant(), status }];
+      expect(await code(wizard().setComplianceOfficer(ADMIN, ORG, "co-m"))).toBe(
+        "COMPLIANCE_OFFICER_LOCKED",
+      );
+    }
+    expect(tenant().complianceOfficerMembershipId).toBeNull();
   });
 
   it("validates the time zone and display name, and only edits during onboarding", async () => {
@@ -680,6 +770,91 @@ describe("go-live: two people, a live attester, a fresh attestation", () => {
     expect(view.goLive.attestation?.expiresAt).toBe(
       new Date(filedAt.getTime() + 14 * DAY_MS).toISOString(),
     );
+  });
+
+  describe("reassigning the compliance officer voids a pending attestation", () => {
+    const OFFICER_TWO: TenantActor = {
+      kind: "tenant",
+      membershipId: "co2-m",
+      userId: "co2-u",
+      roles: ["compliance_officer"],
+    };
+    beforeEach(() => {
+      state.members.set(...memoryMember(ORG, "co2-m", "co2-u", ["compliance_officer"]));
+      state.tenants = [{ ...tenant(), complianceOfficerMembershipId: "co-m" }];
+    });
+
+    it("a tenant org_admin's reassignment revokes it as the admin, resets the go-live step, and the new officer can attest", async () => {
+      await wizard().attestGoLive(OFFICER, ORG, undefined);
+      expect(statusOf("go_live_checklist_complete")).toBe("in_progress");
+
+      await wizard().setComplianceOfficer(ADMIN, ORG, "co2-m");
+
+      expect(state.goLive[0]).toMatchObject({
+        status: "revoked",
+        revokedByMembershipId: "admin-m",
+        revokeReason: expect.stringContaining("reassigned"),
+      });
+      expect(statusOf("go_live_checklist_complete")).toBe("pending");
+      expect(tenant().complianceOfficerMembershipId).toBe("co2-m");
+      // the void ran on a platform transaction attributed to the admin (a tenant session cannot write the table)
+      expect(state.platformTransactions).toContainEqual({
+        reason: "system: void go-live attestation after compliance officer change",
+        actorUserId: "admin-u",
+      });
+      expect((await wizard().attestGoLive(OFFICER_TWO, ORG, undefined)).goLive.state).toBe(
+        "awaiting_approval",
+      );
+    });
+
+    it("a platform operator's reassignment revokes it as the operator, in the same transaction", async () => {
+      await wizard().attestGoLive(OFFICER, ORG, undefined);
+
+      await wizard().setComplianceOfficerPlatform("acme", OPS, "co2-m", OPS_REASON);
+
+      expect(state.goLive[0]).toMatchObject({ status: "revoked", revokedByMembershipId: "ops-m" });
+      expect(statusOf("go_live_checklist_complete")).toBe("pending");
+    });
+
+    it("assigning the officer who already attested voids nothing", async () => {
+      await wizard().attestGoLive(OFFICER, ORG, undefined);
+
+      await wizard().setComplianceOfficer(ADMIN, ORG, "co-m");
+
+      expect(state.goLive[0]?.status).toBe("pending");
+    });
+
+    it("a failed void is logged, never hidden, and the stale attestation still cannot be approved", async () => {
+      await wizard().attestGoLive(OFFICER, ORG, undefined);
+      const warn = vi.fn();
+      const base = createMemoryWizardRunner(state);
+      const flaky = createOnboardingWizard({
+        runner: {
+          inTenant: base.inTenant,
+          inPlatform: (reason, fn, actorUserId) =>
+            reason.startsWith("system:")
+              ? Promise.reject(new Error("platform database unavailable"))
+              : base.inPlatform(reason, fn, actorUserId),
+        },
+        orgProfile: createMemoryOrgProfile(state),
+        warn,
+        now: () => NOW,
+      });
+
+      await flaky.setComplianceOfficer(ADMIN, ORG, "co2-m");
+
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("void"),
+        expect.objectContaining({
+          tenantAccountId: TENANT,
+          error: "platform database unavailable",
+        }),
+      );
+      expect(state.goLive[0]?.status).toBe("pending");
+      expect(
+        await code(wizard().approveGoLive("acme", OPS, "reviewed the evidence and the BAA")),
+      ).toBe("GO_LIVE_ATTESTATION_STALE");
+    });
   });
 
   it("scopes the attestations it reads to the organization as well as the tenant", async () => {

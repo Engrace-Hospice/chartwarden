@@ -387,13 +387,14 @@ describe("platform onboarding routes", () => {
     ).toEqual({ orgTimezone: "America/Chicago", displayName: "Acme Hospice" });
 
     const officer = "/api/v1/platform/tenants/acme/compliance-officer";
+    const reason = "customer named a new officer on the call";
     expect(
       (
         await app.inject({
           method: "PUT",
           url: officer,
           headers: OPS,
-          payload: { membershipId: OFFICER_MEMBERSHIP },
+          payload: { membershipId: OFFICER_MEMBERSHIP, reason },
         })
       ).statusCode,
     ).toBe(403);
@@ -403,17 +404,27 @@ describe("platform onboarding routes", () => {
           method: "PUT",
           url: officer,
           headers: stepped,
-          payload: { membershipId: "30000000-0000-4000-8000-0000000000ff" },
+          payload: { membershipId: "30000000-0000-4000-8000-0000000000ff", reason },
         })
       ).json().error.code,
     ).toBe("COMPLIANCE_OFFICER_NOT_A_MEMBER");
+    // a platform assignment says why: no reason, or one outside 8 to 500 characters, is refused before anything is written
+    for (const payload of [
+      { membershipId: OFFICER_MEMBERSHIP },
+      { membershipId: OFFICER_MEMBERSHIP, reason: "short" },
+      { membershipId: OFFICER_MEMBERSHIP, reason: "r".repeat(501) },
+    ]) {
+      const refused = await app.inject({ method: "PUT", url: officer, headers: stepped, payload });
+      expect(refused.statusCode).toBeGreaterThanOrEqual(400);
+      expect(refused.statusCode).toBeLessThan(500);
+    }
     expect(
       (
         await app.inject({
           method: "PUT",
           url: officer,
           headers: stepped,
-          payload: { membershipId: OFFICER_MEMBERSHIP },
+          payload: { membershipId: OFFICER_MEMBERSHIP, reason },
         })
       ).json(),
     ).toEqual({ complianceOfficerMembershipId: OFFICER_MEMBERSHIP });
