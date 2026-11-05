@@ -111,6 +111,8 @@ function headerAuth(request: FastifyRequest): void {
   if (request.headers["x-test-step-up"] === "1") {
     request.context.attributes.stepUpRecent = true;
   }
+  const kind = request.headers["x-test-actor-kind"];
+  if (typeof kind === "string") request.context.attributes.actorKind = kind;
 }
 
 // ── fixed ids (the M15/M26 style — distinct, valid-`uuid`-format constants where a route's TypeBox schema
@@ -1710,6 +1712,26 @@ describe("ADR-0108 — the add-on routes and the billing-status block", () => {
       payload: body,
     });
     expect(noPerm.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("403s an AI actor on the add-on grant and cancel writes", async () => {
+    const { app } = makeServer();
+    const ai = { ...SUPER_HEADERS, "x-test-actor-kind": "ai_agent" };
+    const grant = await app.inject({
+      method: "POST",
+      url: `/api/admin/subscriptions/${SUB_ID}/addons`,
+      headers: { ...ai, ...IDEMP() },
+      payload: { addonSlug: "claims_billing", mode: "grant", reason: "signed order form" },
+    });
+    expect(grant.statusCode).toBe(403);
+    const cancel = await app.inject({
+      method: "POST",
+      url: `/api/admin/subscriptions/${SUB_ID}/addons/${ADDON_ID}/cancel`,
+      headers: { ...ai, ...IDEMP() },
+      payload: {},
+    });
+    expect(cancel.statusCode).toBe(403);
     await app.close();
   });
 
