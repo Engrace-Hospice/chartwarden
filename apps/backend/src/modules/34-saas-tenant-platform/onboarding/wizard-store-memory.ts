@@ -6,7 +6,6 @@
 import { randomUUID } from "node:crypto";
 import type {
   GoLiveAttestation,
-  PlatformActor,
   StepTask,
   StepTemplate,
   TaskStatus,
@@ -206,5 +205,3 @@ export function createMemoryOrgProfile(state: MemoryWizardState): OrgProfilePort
     },
   };
 }
-
-export type { PlatformActor };

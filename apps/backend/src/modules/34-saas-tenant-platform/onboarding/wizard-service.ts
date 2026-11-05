@@ -365,7 +365,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     reason: unknown,
   ): Promise<StepTask> {
     requireOnboarding(ctx.tenant);
-    const { task, template } = targetOf(ctx, taskId, actor);
+    const { task } = targetOf(ctx, taskId, actor);
     const why = actor.kind === "platform" || reason !== undefined ? normalizeReason(reason) : null;
     if (!isSettled(task.status))
       throw refuse(
@@ -417,7 +417,6 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
       },
     });
     if (!updated) throw conflict();
-    void template;
     return updated;
   }
 
@@ -689,8 +688,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
       );
       return profileResult(tenant.organizationId, patch, actor.userId, tenant);
     },
-    setComplianceOfficerPlatform: async (orgSlug, actor, membershipId) => {
-      void actor;
+    setComplianceOfficerPlatform: async (orgSlug, _actor, membershipId) => {
       const out = await platform(
         "platform-ops compliance officer assignment",
         orgSlug,
