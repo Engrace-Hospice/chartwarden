@@ -95,7 +95,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   const m06Calls: string[] = [];
   let m06: ReturnType<typeof createDbAdmissionRouteService>;
   const m06Fixtures = {} as Record<
-    "election" | "retry" | "nor" | "agent",
+    "election" | "retry" | "nor" | "agent" | "noDpoa" | "revokedDpoa",
     { patientId: string; actor: Actor; proxy?: Actor }
   >;
   const actors: Actor[] = [];
