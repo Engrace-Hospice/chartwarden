@@ -4690,7 +4690,7 @@ export function createDbAdmissionRouteService(
           .set({
             status: "signed",
             signedAt,
-            signatureMethod: "electronic_witnessed",
+            signatureMethod: input.signatureMethod ?? "electronic_witnessed",
             // #44 — who signed, under what name, and in what capacity (§418.24(b)(1)). These came in
             // on the request and were discarded: the handler forwarded `ifVersion` alone, so
             // `patient_name_at_signing` was NULL on every row and `signer_kind` kept the draft's
@@ -4735,7 +4735,7 @@ export function createDbAdmissionRouteService(
           structuredEntityType: "election_statement",
           structuredEntityId: id,
           completedAt: new Date(`${signedAt}T00:00:00.000Z`),
-          metadata: { signatureMethod: "electronic_witnessed" },
+          metadata: { signatureMethod: input.signatureMethod ?? "electronic_witnessed" },
         });
         await outbox.publish(tx, {
           eventName: "m6.election.signed",
@@ -6784,7 +6784,8 @@ export function createDbAdmissionRouteService(
             acknowledgedByRole: input.acknowledgedByRole,
             deliveryMethod: input.deliveryMethod,
           },
-          createdByMembershipId: actorUserId,
+          // A portal signer is not a staff membership: the portal seam passes "" and the column stays null.
+          createdByMembershipId: actorUserId || null,
         });
         const r = firstOrThrow(
           await tx

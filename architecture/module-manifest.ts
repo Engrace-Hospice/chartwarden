@@ -1205,6 +1205,7 @@ export const MODULES: ModuleDef[] = [
       "portal_document_upload",
       "portal_invitation",
       "portal_notification_preference",
+      "portal_signature_request",
       "telehealth_visit",
     ],
   },

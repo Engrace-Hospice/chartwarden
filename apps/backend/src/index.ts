@@ -522,11 +522,14 @@ import {
   claimStayEndFactsForOrg,
   composeNonCoveredItemsReaders,
   createAdmissionLocPeriodsReader,
+  createDbAdmissionAbacResolver,
   createDocumentReaderEvidenceValidator,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
   createElectionAddendumService,
   createNomncService,
+  createPortalAdmissionSigners,
+  createPortalSigningTargetCheck,
   electionAddendumComplianceForOrg,
   electionPeriodContextForOrg,
   idgActiveAdmissionsForOrg,
@@ -1389,6 +1392,8 @@ import {
   buildDailyTelehealthAdapter,
   buildDrizzlePortalStore,
   buildPortalAbacResolverFromStore,
+  buildPortalSignatureStore,
+  buildStaffSignatureStore,
   createM31EventEmitter,
   createM31PublishedSeamImpls,
   createPortalConsentPort,
@@ -1770,6 +1775,7 @@ import {
   createConsentInternalNotesCipher,
   createDbConsentStore,
   createDrizzleConsentEraseStore,
+  createPortalConsentSigner,
   getConsentEvaluator,
   getConsentPatientReader,
   mountConsentRoutes,
@@ -5260,7 +5266,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           );
           registerProviderEntityLookupRoutes(app, dbHandle.db); // M1 — provider-entity selector lookup for UX surfaces
           registerLocationLookupRoutes(app, dbHandle.db); // M1 (#50) — location selector for the admission activation ceremony
-          mountAdmissionRoutes(
+          // ADR-0107: kept so the portal sign seam binds to the SAME M06 service instance the staff routes use.
+          const m6AdmissionService = mountAdmissionRoutes(
             app,
             dbHandle.db,
             m6OutboxPublisher,
@@ -5440,7 +5447,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           }
           // M38 (GAP-108: the load / refresh-embeddings routes now enqueue the §4.3 jobs; /uploads presigns the platform bucket) — terminology read surface + tenant value-set extensions (FB-T01), the §4.1 value-set catalog + §7.3 remediation report + the platform-ops admin surface (GAP-063); the reader is the §7.7 `ai.full` semantic-search gate (F-091)
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
-          mountConsentRoutes(app, dbHandle.db, {
+          const m39ConsentService = mountConsentRoutes(app, dbHandle.db, {
             outbox: m39OutboxPublisher,
             cipher: createConsentInternalNotesCipher(getTenantKeyProvider()),
             patientReader: getConsentPatientReader(),
@@ -6724,7 +6731,60 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // GAP-092 — a bereaved family member's own opt-out is M16's D9 transition (it cancels the contact's future
           // outreach); the scope read names which contact(s) the portal account is.
           const portalAuditQuery = createDbAuditQuery(dbHandle.db);
+          // ADR-0107 - the portal admission-document signing ports, over the SAME M06 / M39 service instances the staff routes use.
+          const portalConsentSigner = createPortalConsentSigner(m39ConsentService, () =>
+            new Date().toISOString(),
+          );
+          const portalAdmissionSigners = createPortalAdmissionSigners({
+            service: m6AdmissionService,
+            readPatientName: async (organizationId, patientId) => {
+              const patient = await getSeam("PatientReader").findById({
+                organizationId,
+                id: patientId,
+              });
+              return patient ? `${patient.firstName} ${patient.lastName}`.trim() : null;
+            },
+            nowIso: () => new Date().toISOString(),
+          });
           mountM31Routes(app, {
+            signing: {
+              store: buildPortalSignatureStore(dbHandle.db),
+              signers: {
+                election: (input) => portalAdmissionSigners.election(input),
+                noticeOfRights: (input) => portalAdmissionSigners.noticeOfRights(input),
+                consent: (input) => portalConsentSigner.sign(input),
+              },
+              consents: {
+                async read(organizationId, consentId) {
+                  const c = await m39ConsentService.getConsent(organizationId, consentId);
+                  return c
+                    ? { patientId: c.patientId, typeKey: c.typeKey, status: c.status }
+                    : null;
+                },
+              },
+              // A "pending legal review" template (Consent to Treat today) is never signable unless this is set on purpose.
+              allowUnreviewedTemplates: process.env.PORTAL_ALLOW_UNREVIEWED_TEMPLATES === "true",
+              staff: {
+                store: buildStaffSignatureStore(dbHandle.db),
+                patientSite: async (organizationId, patientId) => {
+                  const patient = await getSeam("PatientReader").findById({
+                    organizationId,
+                    id: patientId,
+                  });
+                  // A patient with no agency is refused (fail closed): the request's provider_entity_id is NOT NULL.
+                  return patient?.providerEntityId
+                    ? {
+                        providerEntityId: patient.providerEntityId,
+                        locationId: patient.locationId ?? null,
+                      }
+                    : null;
+                },
+                m06TargetIsSignable: createPortalSigningTargetCheck(
+                  m6AdmissionService,
+                  createDbAdmissionAbacResolver(dbHandle.db),
+                ),
+              },
+            },
             telehealth: buildDailyTelehealthAdapter(process.env),
             provisioning: portalProvisioning,
             bereavementOptOut: {

@@ -705,6 +705,9 @@ export const consentTypeKey = pgEnum("consent_type_key", [
   "hipaa_release",
   "bereavement_outreach_consent",
   "custom",
+  // ADR-0107 (migration 1305): the two M39-backed admission documents a portal signer can be asked to sign.
+  "hipaa_npp_acknowledgement",
+  "consent_to_treat",
 ]);
 
 /** `consent_scope_discriminator` — the typed scope shape a consent type carries (§3.2). */
@@ -913,6 +916,7 @@ export const electionSignerKind = pgEnum("election_signer_kind", ["patient", "re
 export const electionSignatureMethod = pgEnum("election_signature_method", [
   "wet_ink_scanned",
   "electronic_witnessed",
+  "electronic_portal", // ADR-0107 (migration 1305): signed alone in the portal — not witnessed
 ]);
 
 /** `election_statement_status` — the §7.3 draft → signed → voided lifecycle (M6L-T03). */
@@ -1069,6 +1073,7 @@ export const norAcknowledgmentMethod = pgEnum("nor_acknowledgment_method", [
   "wet_ink_scanned",
   "electronic_witnessed",
   "verbal_with_witness",
+  "electronic_portal", // ADR-0107 (migration 1305): acknowledged alone in the portal — not witnessed
 ]);
 
 /** `compliance_window_kind` — every tracked compliance window (§3.2). The last three values back the

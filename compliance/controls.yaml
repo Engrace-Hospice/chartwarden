@@ -113,6 +113,27 @@ controls:
       owner: platform
       review_by: 2027-03-31
 
+  - id: CW-AC-09
+    title: Portal admission-document signing — a fail-closed authority matrix (who may sign which document, under which role), a signature request that tenant-isolates and audits the signer without PHI in the audit trail, and an append-only status lifecycle
+    hipaa: ["164.312(a)(1)", "164.312(c)(1)", "164.312(d)", "164.312(b)"]
+    soc2: ["CC6.1", "CC6.3", "PI1.4"]
+    status: partial
+    evidence:
+      - script: arch:tenancy
+      - script: arch:migration-compat
+      - file: apps/backend/src/modules/31-portal/portal-signing-authority.ts
+      - file: apps/backend/src/modules/31-portal/__tests__/portal-signing-authority.test.ts
+      - file: packages/db/migrations/1304_m31_portal_signature_request.sql
+      - file: apps/backend/src/modules/31-portal/routes/signature.routes.ts
+      - file: apps/backend/src/modules/31-portal/write-paths/sign-admission-document.ts
+      - file: apps/backend/src/modules/31-portal/routes/signature-staff.routes.ts
+      - file: apps/backend/src/modules/31-portal/routes/signature-staff-store.ts
+      - file: apps/backend/__tests__/m31-signature-requests.live.test.ts
+    gap:
+      reason: The portal list / detail / sign routes (TOTP step-up, Idempotency-Key, session-class permissions, grant ABAC, the per-grant matrix, the DPOA source-consent check through M39's ConsentEvaluator) and the staff create / list / void routes (portal.signature_request.create/read/void, caseload-or-scope patient guard, one open request per document, no signer text in staff views, read audit) are proven on a real database as chartwarden_app, including the M06 Election Statement and Notice of Rights seam against a real admission. Not yet built - the uploaded-copy upload and staff review, the outbox events, push and daily reminders. Accepted for now - signer evidence columns are plaintext (scrubbed from audit images), there is no retention or legal-hold link for the table yet, and staff create / void do not require step-up (permission + patient scope + idempotency only) - so the control stays partial.
+      owner: engineering
+      review_by: 2026-12-31
+
   - id: CW-AC-06
     title: List and audit reads return minimum-necessary facts — computed age (never date of birth) on the admission census; actor names resolved only inside the caller's org
     hipaa: ["164.502(b)", "164.312(b)"]

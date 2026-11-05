@@ -129,6 +129,11 @@ export interface PortalRouteDeps {
   readonly signInThrottle?: import("@chartwarden/auth").CredentialThrottle;
   /** GAP-159 - the M31 outbox emitter for decision-point events (session, upload, amendment, message). */
   readonly events?: M31EventEmitter;
+  /**
+   * ADR-0107 - the portal admission-document signing ports (the store, the M06 / M39 signers, the M39 status read). ABSENT => the three
+   * signature routes answer 503: a portal that tells a patient "signed" must have written the authoritative M06 / M39 record.
+   */
+  readonly signing?: import("./signature-deps").PortalSigningDeps;
   /** Injected clock (every timestamp decision is reproducible in a unit test). */
   readonly now?: () => Date;
 }

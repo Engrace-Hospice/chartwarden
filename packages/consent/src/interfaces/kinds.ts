@@ -31,7 +31,9 @@ export type ConsentTypeKey =
   | "advance_directive_acknowledgment"
   | "hipaa_release"
   | "bereavement_outreach_consent"
-  | "custom";
+  | "custom"
+  | "hipaa_npp_acknowledgement"
+  | "consent_to_treat";
 
 /** Runtime list of every consent type — the value-level mirror of {@link ConsentTypeKey}. */
 export const CONSENT_TYPE_KEYS = [
@@ -47,6 +49,8 @@ export const CONSENT_TYPE_KEYS = [
   "hipaa_release",
   "bereavement_outreach_consent",
   "custom",
+  "hipaa_npp_acknowledgement",
+  "consent_to_treat",
 ] as const satisfies readonly ConsentTypeKey[];
 
 /** The typed scope shape a consent type carries (§2.3). Mirrors `consent_scope_discriminator`. */
@@ -266,6 +270,24 @@ export const CONSENT_TYPE_STRUCTURE: {
   },
   custom: {
     typeKey: "custom",
+    scopeDiscriminator: "categorical",
+    isPerRecipient: false,
+    isPerNamedAgent: false,
+    survivesDeathEligible: false,
+    isPostMortemEligible: false,
+  },
+  // ADR-0107: the two M39-backed admission documents a portal signer can be asked to sign. A post-death personal representative may
+  // acknowledge the NPP (the practice's receipt of notice), so it is post-mortem eligible; consent to treat is moot after death.
+  hipaa_npp_acknowledgement: {
+    typeKey: "hipaa_npp_acknowledgement",
+    scopeDiscriminator: "categorical",
+    isPerRecipient: false,
+    isPerNamedAgent: false,
+    survivesDeathEligible: false,
+    isPostMortemEligible: true,
+  },
+  consent_to_treat: {
+    typeKey: "consent_to_treat",
     scopeDiscriminator: "categorical",
     isPerRecipient: false,
     isPerNamedAgent: false,

@@ -483,7 +483,13 @@ export interface CtiDraftInput {
  * TASK-034 fixes the ones that do rather than widening this type to fields that would still be dropped.
  */
 export interface NorAcknowledgeInput {
-  readonly deliveryMethod: "wet_ink_scanned" | "electronic_witnessed" | "verbal_with_witness";
+  // `electronic_portal` (ADR-0107, migration 1305) is set only by the portal sign seam; the staff route's
+  // TypeBox schema (NOR_METHODS) does not list it, so a staff caller cannot claim it.
+  readonly deliveryMethod:
+    | "wet_ink_scanned"
+    | "electronic_witnessed"
+    | "verbal_with_witness"
+    | "electronic_portal";
   readonly acknowledgedByRole: "patient" | "legal_representative";
   readonly acknowledgedAt?: string;
   readonly acknowledgedByName?: string;
@@ -832,6 +838,9 @@ export const SIGNER_KIND_BY_ROLE = {
 export interface ElectionSignInput {
   readonly signingPatientName: string;
   readonly signingRole: "patient" | "legal_representative" | "caregiver";
+  /** ADR-0107: how the signature was captured. Omitted = `electronic_witnessed` (the staff path). Only the
+   *  portal sign seam passes `electronic_portal`; the staff route never forwards a caller-supplied value. */
+  readonly signatureMethod?: "electronic_witnessed" | "electronic_portal";
 }
 
 /**

@@ -1496,6 +1496,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/portal-signature-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A patient's signature requests, newest first (ADR-0107) */
+        get: operations["getApiV1AdminPortalsignaturerequests"];
+        put?: never;
+        /** Send a patient an admission document to sign in the portal; one open request per patient and document kind (ADR-0107) */
+        post: operations["postApiV1AdminPortalsignaturerequests"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/portal-signature-requests/{requestId}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw an open signature request with a coded reason (ADR-0107) */
+        post: operations["postApiV1AdminPortalsignaturerequestsByRequestIdVoid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/refill-inbox-policy": {
         parameters: {
             query?: never;
@@ -21641,6 +21676,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portal/signature-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The session patient's admission-document signature requests (ADR-0107) */
+        get: operations["getApiV1PortalSignaturerequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/signature-requests/{requestId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One signature request with the exact attestation text the signer agrees to (ADR-0107) */
+        get: operations["getApiV1PortalSignaturerequestsByRequestId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/signature-requests/{requestId}/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign an admission document with a typed name and an attestation; TOTP step-up, Idempotency-Key required (ADR-0107) */
+        post: operations["postApiV1PortalSignaturerequestsByRequestIdSign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portal/supplies/upcoming": {
         parameters: {
             query?: never;
@@ -32038,6 +32124,151 @@ export interface operations {
                 content: {
                     "application/json": {
                         ok: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdminPortalsignaturerequests: {
+        parameters: {
+            query: {
+                patientId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                            status: ("pending" | "signed" | "uploaded_pending_review") | "voided";
+                            templateKey: string;
+                            templateVersion: string;
+                            targetRef: string | null;
+                            /** Format: uuid */
+                            requestedBy: string;
+                            /** Format: date-time */
+                            requestedAt: string;
+                            lastRemindedAt: string | null;
+                            reminderCount: number;
+                            signedAt: string | null;
+                            signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
+                            voidReason: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminPortalsignaturerequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                    /** Format: uuid */
+                    targetRef?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                        status: ("pending" | "signed" | "uploaded_pending_review") | "voided";
+                        templateKey: string;
+                        templateVersion: string;
+                        targetRef: string | null;
+                        /** Format: uuid */
+                        requestedBy: string;
+                        /** Format: date-time */
+                        requestedAt: string;
+                        lastRemindedAt: string | null;
+                        reminderCount: number;
+                        signedAt: string | null;
+                        signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
+                        voidReason: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminPortalsignaturerequestsByRequestIdVoid: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: "sent_in_error" | "document_superseded" | "patient_declined" | "patient_unreachable" | "signed_on_paper";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                        status: ("pending" | "signed" | "uploaded_pending_review") | "voided";
+                        templateKey: string;
+                        templateVersion: string;
+                        targetRef: string | null;
+                        /** Format: uuid */
+                        requestedBy: string;
+                        /** Format: date-time */
+                        requestedAt: string;
+                        lastRemindedAt: string | null;
+                        reminderCount: number;
+                        signedAt: string | null;
+                        signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
+                        voidReason: string | null;
                     };
                 };
             };
@@ -51882,7 +52113,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         data: {
-                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                             displayNameEn: string;
                             scopeDiscriminator: string;
                             isPerRecipient: boolean;
@@ -51904,7 +52135,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                    typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                     tighterExpirationSeconds?: number | null;
                     tighterCaptureMethods?: ("electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized")[];
                     tighterReminderCadence?: ("90_days" | "30_days" | "14_days" | "7_days" | "1_day")[];
@@ -51924,7 +52155,7 @@ export interface operations {
                         data: {
                             id: string;
                             organizationId: string;
-                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                             tighterExpirationSeconds: number | null;
                             tighterCaptureMethods: string[] | null;
                             tighterReminderCadence: string[] | null;
@@ -51962,7 +52193,7 @@ export interface operations {
                             id: string;
                             organizationId: string;
                             patientId: string;
-                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                             grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
                             captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                             scopeDescriptor: unknown;
@@ -52015,7 +52246,7 @@ export interface operations {
                             id: string;
                             organizationId: string;
                             patientId: string;
-                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                             grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
                             captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                             scopeDescriptor: unknown;
@@ -52278,7 +52509,7 @@ export interface operations {
                             organizationId: string;
                             patientId: string;
                             consentRecordId: string | null;
-                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                             allowed: boolean;
                             denyReason: string | null;
                             callerModule: string;
@@ -52479,7 +52710,7 @@ export interface operations {
                             id: string;
                             organizationId: string;
                             patientId: string;
-                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                             grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
                             captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                             scopeDescriptor: unknown;
@@ -52570,7 +52801,7 @@ export interface operations {
                             id: string;
                             organizationId: string;
                             patientId: string;
-                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                             grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
                             captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                             scopeDescriptor: unknown;
@@ -52632,7 +52863,7 @@ export interface operations {
                             id: string;
                             organizationId: string;
                             patientId: string;
-                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                             grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
                             captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                             scopeDescriptor: unknown;
@@ -52702,7 +52933,7 @@ export interface operations {
                             id: string;
                             organizationId: string;
                             patientId: string;
-                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                             grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
                             captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                             scopeDescriptor: unknown;
@@ -52747,7 +52978,7 @@ export interface operations {
                                 id: string;
                                 organizationId: string;
                                 patientId: string;
-                                typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                                typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                                 grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
                                 captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                                 scopeDescriptor: unknown;
@@ -52765,7 +52996,7 @@ export interface operations {
                                 id: string;
                                 organizationId: string;
                                 patientId: string;
-                                typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                                typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                                 grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
                                 captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                                 scopeDescriptor: unknown;
@@ -52816,7 +53047,7 @@ export interface operations {
                             id: string;
                             organizationId: string;
                             patientId: string;
-                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                             grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
                             captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                             scopeDescriptor: unknown;
@@ -52862,7 +53093,7 @@ export interface operations {
                             organizationId: string;
                             patientId: string;
                             consentRecordId: string | null;
-                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                             allowed: boolean;
                             denyReason: string | null;
                             callerModule: string;
@@ -52896,7 +53127,7 @@ export interface operations {
                     "application/json": {
                         data: {
                             consentId: string;
-                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                             status: "draft" | "active" | "superseded" | "revoked" | "expired";
                             survivesDeath: boolean;
                             terminatesOnDeath: boolean;
@@ -87809,7 +88040,7 @@ export interface operations {
                             id: string;
                             organizationId: string;
                             patientId: string;
-                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                             grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
                             captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                             scopeDescriptor: unknown;
@@ -87842,7 +88073,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                    typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                     grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
                     captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                     scopeDescriptor: unknown;
@@ -87871,7 +88102,7 @@ export interface operations {
                             id: string;
                             organizationId: string;
                             patientId: string;
-                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                             grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
                             captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                             scopeDescriptor: unknown;
@@ -88053,7 +88284,7 @@ export interface operations {
                             id: string;
                             organizationId: string;
                             patientId: string;
-                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom";
+                            typeKey: "portal_access" | "dpoa_healthcare" | "dpoa_financial" | "family_caregiver_access" | "42_cfr_part_2_release" | "media_release" | "research_participation" | "telehealth_consent" | "advance_directive_acknowledgment" | "hipaa_release" | "bereavement_outreach_consent" | "custom" | "hipaa_npp_acknowledgement" | "consent_to_treat";
                             grantorKind: "patient_self" | "dpoa_healthcare_agent" | "dpoa_financial_agent" | "court_guardian" | "parent_for_minor" | "healthcare_surrogate" | "bereaved_person_self";
                             captureMethod: "electronic_portal_signature" | "typed_signature_in_app" | "uploaded_signed_pdf" | "witnessed_verbal_documented" | "notarized";
                             scopeDescriptor: unknown;
@@ -92157,6 +92388,125 @@ export interface operations {
                         organizationName: string;
                         sessionClass: string;
                         replayed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PortalSignaturerequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                            status: "pending" | "signed" | "uploaded_pending_review";
+                            templateKey: string;
+                            templateVersion: string;
+                            /** Format: date-time */
+                            requestedAt: string;
+                            signedAt: string | null;
+                            signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PortalSignaturerequestsByRequestId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                        status: "pending" | "signed" | "uploaded_pending_review";
+                        templateKey: string;
+                        templateVersion: string;
+                        /** Format: date-time */
+                        requestedAt: string;
+                        signedAt: string | null;
+                        signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
+                        attestationText: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PortalSignaturerequestsByRequestIdSign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    signedTypedName: string;
+                    signerRelationshipText?: string;
+                    patientUnableReason?: string;
+                    /** @constant */
+                    attested: true;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        request: {
+                            /** Format: uuid */
+                            id: string;
+                            docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                            status: "pending" | "signed" | "uploaded_pending_review";
+                            templateKey: string;
+                            templateVersion: string;
+                            /** Format: date-time */
+                            requestedAt: string;
+                            signedAt: string | null;
+                            signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
+                        };
+                        alreadySigned: boolean;
                     };
                 };
             };

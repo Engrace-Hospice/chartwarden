@@ -6157,6 +6157,40 @@ export const M31_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "inOrg",
   },
+  // ADR-0107 (PROPOSED) - admission-document signing in the portal. Read lists and opens the patient's own signature requests;
+  // sign records the signature (TOTP step-up at the route; the per-grant authority matrix narrows who may sign which document).
+  "portal.signature.read": {
+    resource: "portal_signature_request",
+    action: "read",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.signature.sign": {
+    resource: "portal_signature_request",
+    action: "sign",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  // ADR-0107 (PROPOSED) - STAFF side of admission-document signing: send a patient a request, see its status, void an open one. Each route also
+  // composes the shared `caseload_or_scope` guard over the patient the request concerns. (Reviewing an uploaded signed copy arrives with the upload route.)
+  "portal.signature_request.create": {
+    resource: "portal_signature_request",
+    action: "create",
+    category: "admin",
+    abac: "caseload_membership",
+  },
+  "portal.signature_request.read": {
+    resource: "portal_signature_request",
+    action: "read",
+    category: "admin",
+    abac: "caseload_membership",
+  },
+  "portal.signature_request.void": {
+    resource: "portal_signature_request",
+    action: "void",
+    category: "admin",
+    abac: "caseload_membership",
+  },
   // Engagement-scoped auditor surface (M3 engagement scope resolves the row set).
   "portal.engagement.read_auditor": {
     resource: "portal_engagement",
@@ -6166,7 +6200,7 @@ export const M31_CONTRIBUTED_PERMISSIONS = {
   },
 } satisfies Record<string, PermissionDef>;
 
-/** Union of the M31 contributed permission keys (forty-seven). */
+/** Union of the M31 contributed permission keys (fifty-two; ADR-0107 added portal.signature.read/.sign and the staff portal.signature_request.create/.read/.void). */
 export type M31ContributedPermissionKey = keyof typeof M31_CONTRIBUTED_PERMISSIONS;
 
 /** Project the M31 contributed keys into `permission`-table mirror rows (M31 §4.6). */

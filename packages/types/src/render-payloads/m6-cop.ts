@@ -95,6 +95,8 @@ export const NorRenderPayload = Type.Object({
   acknowledgmentMethod: Type.Union([
     Type.Literal("wet_ink_scanned"),
     Type.Literal("electronic_witnessed"),
+    // ADR-0107: acknowledged alone in the patient portal (migration 1305); no witness is on record.
+    Type.Literal("electronic_portal"),
     Type.Literal("verbal_with_witness"),
   ]),
   /** The acknowledgment as a signature record: the beneficiary (or representative) acknowledging. */

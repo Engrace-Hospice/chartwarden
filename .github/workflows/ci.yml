@@ -912,6 +912,8 @@ jobs:
           - { name: "M36 Body key ring", scripts: "test:m36:body-key-ring:live" }
           - { name: "Crypto labels, legacy removed (release 3)", scripts: "test:crypto-labels:backfill:live" }
           - { name: "M39 Consent", scripts: "test:m39:consent-lifecycle:live" }
+          # ADR-0107 - portal admission-document signing: the real routes, session-class RBAC, grant ABAC, step-up, M39 consent and the DB guard as chartwarden_app.
+          - { name: "M31 Signature requests", scripts: "test:m31:signature-requests:live" }
           # GAP-158 / GAP-161 / GAP-164 (batch 17 close-out) - caregiver->user link + M40 grief catalog,
           # M32 same-tx outbox emit sites, M34 platform-ops / tenant account+flags routes.
           - { name: "GAP-158 caregiver link + grief catalog", scripts: "test:gap-158:live" }

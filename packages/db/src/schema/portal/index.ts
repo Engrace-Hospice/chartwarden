@@ -27,3 +27,4 @@ export * from "./telehealth-visits"; // telehealth_visit
 export * from "./portal-invitations"; // portal_invitation (0424)
 export * from "./portal-document-uploads"; // portal_document_upload (0423)
 export * from "./portal-notification-preferences"; // portal_notification_preference (0422)
+export * from "./portal-signature-requests"; // portal_signature_request (1304, ADR-0107)

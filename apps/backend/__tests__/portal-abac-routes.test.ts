@@ -80,8 +80,8 @@ const ports = (consentAllowed: boolean, over: Partial<PortalAbacPorts> = {}): Po
 });
 
 describe("M31-T07 §4.6 permission keys", () => {
-  it("registers exactly forty-seven keys, each with a resource/action/category/abac", () => {
-    expect(M31_PERMISSION_KEY_LIST).toHaveLength(47);
+  it("registers exactly forty-nine keys, each with a resource/action/category/abac", () => {
+    expect(M31_PERMISSION_KEY_LIST).toHaveLength(52);
     for (const def of Object.values(M31_CONTRIBUTED_PERMISSIONS)) {
       expect(def.resource.length).toBeGreaterThan(0);
       expect(def.action.length).toBeGreaterThan(0);
@@ -93,7 +93,7 @@ describe("M31-T07 §4.6 permission keys", () => {
     for (const k of M31_STEP_UP_PERMISSION_KEYS) {
       expect(M31_PERMISSION_KEY_LIST).toContain(k);
     }
-    expect(M31_STEP_UP_PERMISSION_KEYS).toHaveLength(6);
+    expect(M31_STEP_UP_PERMISSION_KEYS).toHaveLength(7);
   });
 });
 

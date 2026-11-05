@@ -256,6 +256,24 @@ describe("buildNorRenderPayload", () => {
     expect(drawn(COMPILED_FORMS.nor(p))).toContain("Record of scan");
   });
 
+  it("accepts a portal acknowledgment (ADR-0107): valid payload, no witness, and the form still draws", async () => {
+    const portalRows = {
+      ...rows,
+      notice_of_rights_acknowledgment: [
+        {
+          ...NOR_ROW,
+          signerKind: "patient",
+          acknowledgmentMethod: "electronic_portal",
+          witnessUserId: null,
+        },
+      ],
+    };
+    const p = await buildNorRenderPayload(ctx(portalRows), "nor-1");
+    expect(p.acknowledgmentMethod).toBe("electronic_portal");
+    expect(p.witness).toBeNull();
+    expect(drawn(COMPILED_FORMS.nor(p)).length).toBeGreaterThan(0);
+  });
+
   it("does not invent a witness signing time: the acknowledgment row records none", async () => {
     const p = await buildNorRenderPayload(ctx(rows), "nor-1");
     expect(p.witness).not.toBeNull();

@@ -1,0 +1,73 @@
+// M39 ADR-0107 (PROPOSED) — the portal sign seam: create a consent with the `electronic_portal_signature` capture method and sign it,
+// idempotently. M31's `AdmissionDocumentSigners.consent` port is bound to this at the composition root.
+//
+// Idempotent: M39 signing and M31's request update are separate transactions, so a retry can find work already done. A retry first looks
+// for a consent THIS REQUEST already created (the request id rides in the scope descriptor, so a later request for the same document never
+// reuses an earlier signature) — an `active` one is returned as-is (nothing signed twice), a `draft` one is signed. `created_by_id` / `signed_by_id` carry the portal login's USER id: the column has no FK, but M39's audit
+// trigger writes the same id as `audit_event.actor_user_id`, which does (a portal ACCOUNT id there fails the insert, found by the live
+// suite). The human signer's typed name rides in the capture evidence; the account id is on the M31 request.
+import type { ConsentRouteService } from "@chartwarden/consent";
+
+export interface PortalConsentSignInput {
+  readonly organizationId: string;
+  readonly patientId: string;
+  readonly typeKey: "hipaa_npp_acknowledgement" | "consent_to_treat";
+  readonly grantorKind: "patient_self" | "dpoa_healthcare_agent" | "healthcare_surrogate";
+  readonly actingConsentId: string | null;
+  readonly grantorRelationshipText: string | null;
+  /** The portal login's `user` id: recorded as creator and signer, and as the audit actor (the audit trigger's actor FK targets `user`). */
+  readonly portalUserId: string;
+  /** The M31 signature request this consent answers; binds the retry lookup to this request alone. */
+  readonly requestId: string;
+  readonly portalAccountId: string;
+  readonly portalSessionId: string;
+  readonly signerName: string;
+  readonly existingConsentId: string | null;
+}
+
+type PortalConsentService = Pick<
+  ConsentRouteService,
+  "getConsent" | "listConsentsForPatient" | "createDraft" | "signConsent"
+>;
+
+export function createPortalConsentSigner(service: PortalConsentService, nowIso: () => string) {
+  return {
+    async sign(input: PortalConsentSignInput): Promise<{ recordId: string }> {
+      const { organizationId, portalUserId } = input;
+      const known = input.existingConsentId
+        ? await service.getConsent(organizationId, input.existingConsentId)
+        : ((await service.listConsentsForPatient(organizationId, input.patientId)).find(
+            (c) =>
+              c.typeKey === input.typeKey &&
+              c.createdById === portalUserId &&
+              (c.scopeDescriptor as { requestId?: unknown } | null)?.requestId ===
+                input.requestId &&
+              (c.status === "draft" || c.status === "active"),
+          ) ?? null);
+      if (known?.status === "active") return { recordId: known.id };
+
+      const draft =
+        known?.status === "draft"
+          ? known
+          : await service.createDraft(organizationId, {
+              patientId: input.patientId,
+              typeKey: input.typeKey,
+              grantorKind: input.grantorKind,
+              captureMethod: "electronic_portal_signature",
+              scopeDescriptor: {
+                kind: "categorical",
+                documentKind: input.typeKey,
+                requestId: input.requestId,
+              },
+              createdById: portalUserId,
+              grantorRelationshipText: input.grantorRelationshipText,
+              actingConsentId: input.actingConsentId,
+            });
+      const signed = await service.signConsent(organizationId, draft.id, portalUserId, nowIso(), {
+        portalSessionId: input.portalSessionId,
+        typedSignatureName: input.signerName,
+      });
+      return { recordId: signed.id };
+    },
+  };
+}

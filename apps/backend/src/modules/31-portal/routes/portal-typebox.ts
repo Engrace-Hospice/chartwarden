@@ -378,3 +378,105 @@ export const PortalEngagementResponse = Type.Object({
   amendmentsSubmitted: Type.Integer(),
   administrationsAttested: Type.Integer(),
 });
+
+// ── ADR-0107 (PROPOSED) — admission-document signing ──────────────────────────────────────────────────────────────────────────────
+const SignatureDocKind = Type.Union([
+  Type.Literal("election_statement"),
+  Type.Literal("notice_of_patient_rights"),
+  Type.Literal("hipaa_npp_acknowledgement"),
+  Type.Literal("consent_to_treat"),
+]);
+const SignatureStatus = Type.Union([
+  Type.Literal("pending"),
+  Type.Literal("signed"),
+  Type.Literal("uploaded_pending_review"),
+]);
+/** What a portal user may see of a request: never the signer's typed name, relationship or reason. */
+export const PortalSignatureRequestView = Type.Object({
+  id: Uuid,
+  docKind: SignatureDocKind,
+  status: SignatureStatus,
+  templateKey: LayStr,
+  templateVersion: LayStr,
+  requestedAt: Iso,
+  signedAt: Type.Union([Iso, Type.Null()]),
+  signerRole: Type.Union([
+    Type.Literal("patient"),
+    Type.Literal("legal_representative"),
+    Type.Literal("caregiver_on_behalf"),
+    Type.Null(),
+  ]),
+});
+export const PortalSignatureRequestListResponse = Type.Object({
+  items: Type.Array(PortalSignatureRequestView),
+});
+/** The detail adds the exact attestation sentence the signer agrees to; the server hashes THIS text, never a client-supplied one. */
+export const PortalSignatureRequestDetailResponse = Type.Composite([
+  PortalSignatureRequestView,
+  Type.Object({ attestationText: LayStr }),
+]);
+export const PortalSignatureSignRequest = Type.Object(
+  {
+    signedTypedName: Type.String({ minLength: 2, maxLength: 200 }),
+    signerRelationshipText: Type.Optional(Type.String({ minLength: 1, maxLength: 300 })),
+    patientUnableReason: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
+    attested: Type.Literal(true),
+  },
+  { additionalProperties: false },
+);
+export const PortalSignatureSignResponse = Type.Object({
+  request: PortalSignatureRequestView,
+  alreadySigned: Type.Boolean(),
+});
+
+// ── ADR-0107 (PROPOSED) staff side: send / list / void a signature request ───────────────────────────────────────────────────────
+/** Staff name the patient and the document kind; the template key and version are stamped by the server, never supplied. */
+export const StaffSignatureRequestCreate = Type.Object(
+  {
+    patientId: Uuid,
+    docKind: SignatureDocKind,
+    /** Required for the election statement (the drafted statement's id) and the notice of rights (the admission's id); refused for the others. */
+    targetRef: Type.Optional(Uuid),
+  },
+  { additionalProperties: false },
+);
+export const StaffSignatureRequestVoid = Type.Object(
+  {
+    reason: Type.Union([
+      Type.Literal("sent_in_error"),
+      Type.Literal("document_superseded"),
+      Type.Literal("patient_declined"),
+      Type.Literal("patient_unreachable"),
+      Type.Literal("signed_on_paper"),
+    ]),
+  },
+  { additionalProperties: false },
+);
+export const StaffSignatureRequestView = Type.Object({
+  id: Uuid,
+  patientId: Uuid,
+  docKind: SignatureDocKind,
+  status: Type.Union([SignatureStatus, Type.Literal("voided")]),
+  templateKey: LayStr,
+  templateVersion: LayStr,
+  targetRef: Type.Union([Uuid, Type.Null()]),
+  requestedBy: Uuid,
+  requestedAt: Iso,
+  lastRemindedAt: Type.Union([Iso, Type.Null()]),
+  reminderCount: Type.Integer({ minimum: 0 }),
+  signedAt: Type.Union([Iso, Type.Null()]),
+  signerRole: Type.Union([
+    Type.Literal("patient"),
+    Type.Literal("legal_representative"),
+    Type.Literal("caregiver_on_behalf"),
+    Type.Null(),
+  ]),
+  voidReason: Type.Union([LayStr, Type.Null()]),
+});
+export const StaffSignatureRequestListResponse = Type.Object({
+  items: Type.Array(StaffSignatureRequestView),
+});
+export const StaffSignatureRequestQuery = Type.Object(
+  { patientId: Uuid },
+  { additionalProperties: false },
+);
