@@ -31,6 +31,9 @@ const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const ORG_A = "a1000000-0000-4000-8000-0000000000a1";
 const ORG_B = "b2000000-0000-4000-8000-0000000000b2";
 const ORG_C = "c3000000-0000-4000-8000-0000000000c3"; // no add-on
+const ORG_D = "d4000000-0000-4000-8000-0000000000d4"; // add-on canceled this window
+const NOW = new Date();
+const D_ENDED_AT = new Date(Date.UTC(NOW.getUTCFullYear(), NOW.getUTCMonth(), 2));
 const KEY = { keyEpoch: "epoch-20261101T0000Z-test", keyMaterial: "live-suite-only-key-material" };
 const keyProvider = { activeKey: async () => KEY };
 
@@ -71,6 +74,7 @@ describe.skipIf(!DB_URL)("ADR-0108 claims-billing census — LIVE Postgres", () 
       [ORG_A, "census-a"],
       [ORG_B, "census-b"],
       [ORG_C, "census-c"],
+      [ORG_D, "census-d"],
     ] as const) {
       await admin.query(
         "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -80,7 +84,14 @@ describe.skipIf(!DB_URL)("ADR-0108 claims-billing census — LIVE Postgres", () 
         "INSERT INTO subscription (organization_id, plan_id, status) VALUES ($1,$2,'active') RETURNING id",
         [org, plan?.id],
       );
-      if (org !== ORG_C) {
+      if (org === ORG_D) {
+        await admin.query(
+          `INSERT INTO subscription_addon (organization_id, subscription_id, addon_id, status, grant_reason,
+             started_at, canceled_at, ends_at)
+           VALUES ($1,$2,$3,'canceled','live suite',$4,$5,$5)`,
+          [org, sub?.id, addon?.id, new Date(D_ENDED_AT.getTime() - 86_400_000), D_ENDED_AT],
+        );
+      } else if (org !== ORG_C) {
         await admin.query(
           `INSERT INTO subscription_addon (organization_id, subscription_id, addon_id, status, grant_reason)
            VALUES ($1,$2,$3,'active','live suite')`,
@@ -100,6 +111,7 @@ describe.skipIf(!DB_URL)("ADR-0108 claims-billing census — LIVE Postgres", () 
       await addPatient(ORG_B, "B-2", "active"),
     ];
     patients[ORG_C] = [await addPatient(ORG_C, "C-1", "active")];
+    patients[ORG_D] = [await addPatient(ORG_D, "D-1", "active")];
 
     app = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
@@ -147,6 +159,18 @@ describe.skipIf(!DB_URL)("ADR-0108 claims-billing census — LIVE Postgres", () 
     expect(
       await q("SELECT 1 FROM patient_active_period WHERE organization_id=$1", [ORG_C]),
     ).toHaveLength(0);
+  });
+
+  it("after a cancel, counts one final pass just after the end, then stops (no patients first seen later)", async () => {
+    const at = (ms: number) => ({ ...deps(), now: () => new Date(D_ENDED_AT.getTime() + ms) });
+    const hour = 3_600_000;
+    expect(await runPatientCensusForOrg(at(hour), ORG_D)).toMatchObject({ counted: true, seen: 1 });
+    // A patient admitted after the add-on ended is never counted by a later sweep in the same window.
+    await addPatient(ORG_D, "D-2", "active");
+    expect(await runPatientCensusForOrg(at(7 * hour), ORG_D)).toEqual({ counted: false });
+    expect(
+      await q("SELECT 1 FROM patient_active_period WHERE organization_id=$1", [ORG_D]),
+    ).toHaveLength(1);
   });
 
   it("the PatientCounterProvider counts per org under RLS (two-org fixture)", async () => {
