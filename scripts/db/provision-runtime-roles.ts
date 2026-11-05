@@ -93,6 +93,7 @@ const PLATFORM_READ_TABLES = [
   "tenant_invitation",
   "onboarding_task",
   "onboarding_task_template",
+  "tenant_go_live_attestation",
   "support_consent_grant",
   "support_session",
   "support_session_event",
@@ -311,6 +312,13 @@ async function main(): Promise<void> {
       await run('REVOKE UPDATE ON "provider_npi_verification" FROM chartwarden_platform;');
       await run(
         'GRANT UPDATE ("revoked_at", "revoked_by_membership_id", "updated_at") ON "provider_npi_verification" TO chartwarden_platform;',
+      );
+      // Migration 1328: the platform operator approves or revokes a go-live attestation the tenant's compliance officer
+      // filed. No INSERT (the tenant files it) and no DELETE (it is history); UPDATE is COLUMN-level, approve / revoke only,
+      // so the attester, the time and the note can never be rewritten. REVOKE first so a re-provision takes back a table grant.
+      await run('REVOKE UPDATE ON "tenant_go_live_attestation" FROM chartwarden_platform;');
+      await run(
+        'GRANT UPDATE ("status", "approved_by_membership_id", "approved_at", "approval_reason", "revoked_by_membership_id", "revoked_at", "revoke_reason", "updated_at") ON "tenant_go_live_attestation" TO chartwarden_platform;',
       );
       await run(
         'GRANT SELECT ("organization_id", "provider_entity_id", "usage", "control_number", "status") ON "clearinghouse_submission_attempt" TO chartwarden_platform;',

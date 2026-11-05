@@ -1,6 +1,6 @@
 // apps/backend/src/modules/34-saas-tenant-platform/abac-predicates.ts — M34 (§4.6).
 //
-// The EIGHT named ABAC predicate resolvers M34 OWNS and registers into M3's named-predicate registry
+// The NAMED ABAC predicate resolvers M34 OWNS and registers into M3's named-predicate registry
 // (M3 §3.4). Each is a typed `(context, target) => boolean | Promise<boolean>` evaluated server-side
 // AFTER RBAC passes; M34 never authorizes by reading the request body — a tenant/grant/session/flag's
 // owner facts are loaded through the injected {@link TenantPlatformAbacResolver} (org/platform-scoped,
@@ -30,6 +30,8 @@ export const M34_ABAC_PREDICATES = [
   "feature_flag_write_authority",
   "onboarding_task_assignee_or_owner",
   "tenant_platform_baa_compliance_officer",
+  "tenant_org_admin_role",
+  "tenant_compliance_officer_role",
 ] as const;
 
 /** Owner facts for an in-flight support-consent grant (resolved off `support_consent_grant`, §4.6). */
@@ -210,6 +212,12 @@ export function buildTenantPlatformAbacPredicates(
     // platform-tenant BAA attest: actor holds the tenant's compliance_officer role. §4.6.
     tenant_platform_baa_compliance_officer: async (context) =>
       hasRole(context, "compliance_officer"),
+
+    // onboarding wizard v2: the tenant's org profile and compliance-officer assignment are the org_admin's.
+    tenant_org_admin_role: async (context) => hasRole(context, "org_admin"),
+
+    // the two-party go-live's first party: the tenant's compliance officer (and only them) attests readiness.
+    tenant_compliance_officer_role: async (context) => hasRole(context, "compliance_officer"),
   });
 }
 

@@ -47,6 +47,12 @@ export const onboardingTask = pgTable(
     completedAt: timestamp("completed_at", { withTimezone: true }),
     blockerReason: text("blocker_reason"),
     completionEvidence: jsonb("completion_evidence").notNull().default({}),
+    // Migration 1327: the human attestation that settled the step (note required, ref optional) and who gave it.
+    evidenceNote: text("evidence_note"),
+    evidenceRef: text("evidence_ref"),
+    attestedByMembershipId: uuid("attested_by_membership_id"),
+    attestedByActorKind: text("attested_by_actor_kind"), // 'platform_ops' | 'tenant'
+    attestedAt: timestamp("attested_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
