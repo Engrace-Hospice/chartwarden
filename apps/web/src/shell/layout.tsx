@@ -77,7 +77,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   const client = useApiClient();
   // ADR-0108 — read the claims-billing add-on posture once, for a user allowed to read the billing status (the
   // route's own permission); the billing screens' notice and gated actions read it from the shared store.
-  const canReadBillingStatus = session?.permissions.includes("subscription.read") === true;
+  const canReadBillingStatus = session?.permissions?.includes("subscription.read") === true;
   useEffect(() => {
     if (canReadBillingStatus) primeClaimsBilling(client);
   }, [client, canReadBillingStatus]);
