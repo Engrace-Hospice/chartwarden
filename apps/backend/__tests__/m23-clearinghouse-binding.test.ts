@@ -32,7 +32,11 @@ describe("platform clearinghouse binding", () => {
 
   it("binds claimmd from its key and account usage, never logging the key, and refuses without either", () => {
     const binding = bindPlatformClearinghouse(
-      { CLEARINGHOUSE_VENDOR: "claimmd", CLAIMMD_ACCOUNT_KEY: "cmd_do_not_log", CLAIMMD_ACCOUNT_USAGE: "test" },
+      {
+        CLEARINGHOUSE_VENDOR: "claimmd",
+        CLAIMMD_ACCOUNT_KEY: "cmd_do_not_log",
+        CLAIMMD_ACCOUNT_USAGE: "test",
+      },
       deps(),
     );
     expect(binding.vendor).toBe("claimmd");
@@ -42,11 +46,18 @@ describe("platform clearinghouse binding", () => {
       /CLAIMMD_ACCOUNT_KEY/,
     );
     expect(() =>
-      bindPlatformClearinghouse({ CLEARINGHOUSE_VENDOR: "claimmd", CLAIMMD_ACCOUNT_KEY: "k" }, deps()),
+      bindPlatformClearinghouse(
+        { CLEARINGHOUSE_VENDOR: "claimmd", CLAIMMD_ACCOUNT_KEY: "k" },
+        deps(),
+      ),
     ).toThrow(/CLAIMMD_ACCOUNT_USAGE/);
     expect(() =>
       bindPlatformClearinghouse(
-        { CLEARINGHOUSE_VENDOR: "claimmd", CLAIMMD_ACCOUNT_KEY: "k", CLAIMMD_ACCOUNT_USAGE: "test" },
+        {
+          CLEARINGHOUSE_VENDOR: "claimmd",
+          CLAIMMD_ACCOUNT_KEY: "k",
+          CLAIMMD_ACCOUNT_USAGE: "test",
+        },
         { attempts: null },
       ),
     ).toThrow(/attempt store|database/i);
@@ -55,7 +66,11 @@ describe("platform clearinghouse binding", () => {
   it("spends claimmd's request budget from the injected shared counter, keyed by usage, failing closed when it is down", async () => {
     const keys: string[] = [];
     const binding = bindPlatformClearinghouse(
-      { CLEARINGHOUSE_VENDOR: "claimmd", CLAIMMD_ACCOUNT_KEY: "cmd_do_not_log", CLAIMMD_ACCOUNT_USAGE: "test" },
+      {
+        CLEARINGHOUSE_VENDOR: "claimmd",
+        CLAIMMD_ACCOUNT_KEY: "cmd_do_not_log",
+        CLAIMMD_ACCOUNT_USAGE: "test",
+      },
       {
         ...deps(),
         // The shape of createRedisRateLimitStore while Valkey is unreachable: nothing may be sent.
@@ -67,8 +82,16 @@ describe("platform clearinghouse binding", () => {
         },
       },
     );
-    const scope = { organizationId: "org-1", providerEntityId: "pe-1", usage: "test" as const, billingNpi: "1234567893" };
-    const r = await binding.transport.fetchAcknowledgments({ ...scope, payerId: "15004", correlationId: "c" }, null);
+    const scope = {
+      organizationId: "org-1",
+      providerEntityId: "pe-1",
+      usage: "test" as const,
+      billingNpi: "1234567893",
+    };
+    const r = await binding.transport.fetchAcknowledgments(
+      { ...scope, payerId: "15004", correlationId: "c" },
+      null,
+    );
     expect(!r.ok && r.degraded.code).toBe(CH.UNAVAILABLE);
     expect(keys).toEqual(["claimmd:test"]);
   });

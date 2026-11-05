@@ -8,6 +8,7 @@ import {
   claimMdFilename,
   createClaimMdTransportFromEnv,
 } from "./claimmd-transport";
+import { hasList } from "./claimmd-wire";
 import {
   CLEARINGHOUSE_CONFORMANCE_CASES,
   type ClearinghouseHarness,
@@ -16,7 +17,6 @@ import {
   DEFAULT_SCOPE,
   runConformance,
 } from "./conformance";
-import { hasList } from "./claimmd-wire";
 import { scopeKey } from "./submission-identity";
 import {
   CH,
@@ -83,7 +83,16 @@ function fakeClaimMd(clock: () => Date) {
     [TEST_KEY, { uploads: [], responses: [], eras: [], claimIds: new Map() }],
     [PROD_KEY, { uploads: [], responses: [], eras: [], claimIds: new Map() }],
   ]);
-  let mode: "up" | "down" | "unreachable" | "lost_after_upload" | "bad_key" | "garbled_list" | "list_lags" | "gateway_after_upload" | "endless_stream" = "up";
+  let mode:
+    | "up"
+    | "down"
+    | "unreachable"
+    | "lost_after_upload"
+    | "bad_key"
+    | "garbled_list"
+    | "list_lags"
+    | "gateway_after_upload"
+    | "endless_stream" = "up";
   let seq = 1000;
   const calls: string[] = [];
   let lastEligibility: Record<string, string> = {};
@@ -97,7 +106,8 @@ function fakeClaimMd(clock: () => Date) {
     if (mode === "unreachable") throw new TypeError("fetch failed");
     const body = init?.body as URLSearchParams | FormData;
     const key = String(body.get("AccountKey"));
-    if (mode === "bad_key") // The observed shape (2026-11-04): HTTP 200, a single error object, code 21.
+    if (mode === "bad_key")
+      // The observed shape (2026-11-04): HTTP 200, a single error object, code 21.
       return Response.json({ error: { error_code: "21", error_mesg: "Invalid AccountKey." } });
     const acct = accounts.get(key);
     if (!acct)
@@ -106,32 +116,51 @@ function fakeClaimMd(clock: () => Date) {
     switch (path) {
       case "upload": {
         const file = await (body.get("File") as Blob).text();
-        const json = f("Filename").endsWith(".json") ? (JSON.parse(file).claim[0] as Record<string, string>) : null;
+        const json = f("Filename").endsWith(".json")
+          ? (JSON.parse(file).claim[0] as Record<string, string>)
+          : null;
         const pcn = json?.pcn ?? /CLM\*([^*]+)\*/.exec(file)?.[1] ?? "";
         const npi = json?.bill_npi ?? /NM1\*85\*[^~]*\*XX\*(\d{10})/.exec(file)?.[1] ?? "";
         // Observed 2026-11-05: a repeated Filename is refused whole, code 61 as a NUMBER.
         if (acct.uploads.some((u) => u.filename === f("Filename")))
-          return Response.json({ error: { error_code: 61, error_mesg: `ERROR File: '${f("Filename")}' is a duplicate.` } });
+          return Response.json({
+            error: { error_code: 61, error_mesg: `ERROR File: '${f("Filename")}' is a duplicate.` },
+          });
         const claimid = String(++seq);
         acct.claimIds.set(pcn, claimid);
-        acct.uploads.push({ filename: f("Filename"), inboundid: `IN${seq}`, date: clock().toISOString().slice(0, 10) });
+        acct.uploads.push({
+          filename: f("Filename"),
+          inboundid: `IN${seq}`,
+          date: clock().toISOString().slice(0, 10),
+        });
         if (mode === "lost_after_upload") throw new TypeError("socket hang up");
         if (mode === "gateway_after_upload") return new Response("bad gateway", { status: 502 });
         // Observed 2026-11-04: the upload answer names our claim (pcn) with a fileid but no claimid.
-        return Response.json({ claim: [{ pcn, bill_npi: npi, status: "A", senderid: "CLMMD", fileid: `F${seq}` }] });
+        return Response.json({
+          claim: [{ pcn, bill_npi: npi, status: "A", senderid: "CLMMD", fileid: `F${seq}` }],
+        });
       }
       case "uploadlist": {
-        if (mode === "garbled_list") return Response.json({ notice: "Service temporarily unavailable" });
-        const files = acct.uploads.filter((u) => u.date === f("UploadDate") && mode !== "list_lags");
+        if (mode === "garbled_list")
+          return Response.json({ notice: "Service temporarily unavailable" });
+        const files = acct.uploads.filter(
+          (u) => u.date === f("UploadDate") && mode !== "list_lags",
+        );
         // Observed 2026-11-05: a day with no uploads answers `{}`.
         if (files.length === 0) return Response.json({});
-        return Response.json({ file: files.map((u) => ({ filename: u.filename, inboundid: u.inboundid })) });
+        return Response.json({
+          file: files.map((u) => ({ filename: u.filename, inboundid: u.inboundid })),
+        });
       }
       case "response": {
         const after = Number(f("ResponseID"));
         if (mode === "endless_stream") {
           // Every page full (20,000 other claims): the stream never ends within the status scan.
-          const claim = Array.from({ length: 20_000 }, (_, i) => ({ pcn: `OTHER-${after + i}`, bill_npi: OTHER_NPI, status: "A" }));
+          const claim = Array.from({ length: 20_000 }, (_, i) => ({
+            pcn: `OTHER-${after + i}`,
+            bill_npi: OTHER_NPI,
+            status: "A",
+          }));
           return Response.json({ last_responseid: String(after + 20_000), claim });
         }
         const claimId = f("ClaimID");
@@ -149,21 +178,38 @@ function fakeClaimMd(clock: () => Date) {
           last_eraid: acct.eras.at(-1)?.eraid,
           era: acct.eras
             .filter((e) => Number(e.eraid) > after && e.npi === f("NPI"))
-            .map((e) => ({ eraid: e.eraid, prov_npi: e.npi, received_time: "2026-11-04 10:15:00am" })),
+            .map((e) => ({
+              eraid: e.eraid,
+              prov_npi: e.npi,
+              received_time: "2026-11-04 10:15:00am",
+            })),
         });
       }
       case "era835": {
         const era = acct.eras.find((e) => e.eraid === f("eraid"));
         // Observed 2026-11-05: `data` is a one-element array holding the whole 835; ids are numbers.
-        return Response.json({ eraid: Number(era?.eraid), data: era?.x12 === undefined ? undefined : [era.x12] });
+        return Response.json({
+          eraid: Number(era?.eraid),
+          data: era?.x12 === undefined ? undefined : [era.x12],
+        });
       }
       case "eligdata": {
-        lastEligibility = Object.fromEntries((body as URLSearchParams).entries());
-        delete lastEligibility.AccountKey;
+        lastEligibility = Object.fromEntries(
+          [...(body as URLSearchParams).entries()].filter(([key]) => key !== "AccountKey"),
+        );
         const coverage = { "ACTIVE-1": "1", "TERM-1": "6", "PEND-1": "5" }[f("ins_number")];
-        if (!coverage) return Response.json({ error: { error_code: "75", error_mesg: `Subscriber ${f("ins_name_l")} not found` } });
+        if (!coverage)
+          return Response.json({
+            error: { error_code: "75", error_mesg: `Subscriber ${f("ins_name_l")} not found` },
+          });
         return Response.json({
-          elig: { eligid: "1", benefit: [{ benefit_code: "30", benefit_coverage_code: coverage }, { benefit_code: "30", benefit_coverage_code: "C" }] },
+          elig: {
+            eligid: "1",
+            benefit: [
+              { benefit_code: "30", benefit_coverage_code: coverage },
+              { benefit_code: "30", benefit_coverage_code: "C" },
+            ],
+          },
         });
       }
       default:
@@ -171,7 +217,8 @@ function fakeClaimMd(clock: () => Date) {
     }
   }) as typeof fetch;
 
-  const account = (usage: "test" | "production") => accounts.get(usage === "test" ? TEST_KEY : PROD_KEY) as Account;
+  const account = (usage: "test" | "production") =>
+    accounts.get(usage === "test" ? TEST_KEY : PROD_KEY) as Account;
   return {
     fetchImpl,
     calls,
@@ -197,7 +244,14 @@ function fakeClaimMd(clock: () => Date) {
         senderid: a.sender ?? "CLMMD",
         sender_icn: a.icn ?? "",
         response_time: "2026-11-04 09:05:00pm",
-        messages: [{ responseid: rid, status: a.status, mesgid: a.mesgid ?? "ACK", message: "free text never surfaced" }],
+        messages: [
+          {
+            responseid: rid,
+            status: a.status,
+            mesgid: a.mesgid ?? "ACK",
+            message: "free text never surfaced",
+          },
+        ],
       });
     },
     era(usage: "test" | "production", eraid: string, x12: string, npi = NPI) {
@@ -235,7 +289,11 @@ const ctx = (over: Partial<ClearinghouseContext> = {}): ClearinghouseContext => 
   correlationId: "corr-1",
   ...over,
 });
-const claim = (cn: string, over: Partial<ClearinghouseSubmission> = {}, o: X12Options = {}): ClearinghouseSubmission => ({
+const claim = (
+  cn: string,
+  over: Partial<ClearinghouseSubmission> = {},
+  o: X12Options = {},
+): ClearinghouseSubmission => ({
   kind: "claim",
   controlNumber: cn,
   idempotencyKey: `idem-${cn}`,
@@ -313,9 +371,21 @@ describe("ClaimMdTransport submission", () => {
   });
 
   it.each([
-    ["the receiver is not CLAIMMD", (x: string) => x.replace("CLAIMMD        ", "STEDI          "), "ISA08"],
-    ["CLM01 is not the control number", (x: string) => x.replace("CLM*CCN-2*", "CLM*OTHER*"), "CLM01"],
-    ["the billing NPI is another provider's", (x: string) => x.replace(`XX*${NPI}`, `XX*${OTHER_NPI}`), "NPI"],
+    [
+      "the receiver is not CLAIMMD",
+      (x: string) => x.replace("CLAIMMD        ", "STEDI          "),
+      "ISA08",
+    ],
+    [
+      "CLM01 is not the control number",
+      (x: string) => x.replace("CLM*CCN-2*", "CLM*OTHER*"),
+      "CLM01",
+    ],
+    [
+      "the billing NPI is another provider's",
+      (x: string) => x.replace(`XX*${NPI}`, `XX*${OTHER_NPI}`),
+      "NPI",
+    ],
     ["the usage is production", (x: string) => x.replace(/\*T\*:~/, "*P*:~"), "ISA15"],
   ])("refuses before any call when %s", async (_label, mutate, reason) => {
     const s = setup();
@@ -331,8 +401,14 @@ describe("ClaimMdTransport submission", () => {
     const s = setup();
     const noNpi = await s.transport.submitClaim(ctx({ billingNpi: undefined }), claim("CCN-3"));
     expect(!noNpi.ok && noNpi.degraded.code).toBe(CH.INVALID_REQUEST);
-    const testOnly = new ClaimMdTransport({ keys: { test: TEST_KEY }, attempts: new InMemoryAttemptStore() });
-    const prod = await testOnly.submitClaim(ctx({ usage: "production" }), claim("CCN-3", {}, { usage: "production" }));
+    const testOnly = new ClaimMdTransport({
+      keys: { test: TEST_KEY },
+      attempts: new InMemoryAttemptStore(),
+    });
+    const prod = await testOnly.submitClaim(
+      ctx({ usage: "production" }),
+      claim("CCN-3", {}, { usage: "production" }),
+    );
     expect(!prod.ok && prod.degraded.code).toBe(CH.NOT_WIRED);
   });
 
@@ -348,7 +424,10 @@ describe("ClaimMdTransport submission", () => {
     const reconciled = await s.transport.submitClaim(ctx(), claim("CCN-4"));
     expect(reconciled.ok && reconciled.data.clearinghouseSubmissionId).toMatch(/^file:IN\d+$/);
     expect(s.server.account("test").uploads).toHaveLength(1);
-    expect(s.anomalies).toContainEqual({ type: "reconciled_from_upload_list", idempotencyKey: "idem-CCN-4" });
+    expect(s.anomalies).toContainEqual({
+      type: "reconciled_from_upload_list",
+      idempotencyKey: "idem-CCN-4",
+    });
   });
 
   it("re-uploads a stale reservation only when the upload list proves the file never arrived", async () => {
@@ -428,13 +507,21 @@ describe("ClaimMdTransport submission", () => {
 
   it("sends a replacement only for a known original, with CLM05-3 7 and the payer ICN in REF*F8", async () => {
     const s = setup();
-    const adjustment = { kind: "replacement", originalControlNumber: "CCN-7", originalPayerClaimNumber: "ICN-77" } as const;
+    const adjustment = {
+      kind: "replacement",
+      originalControlNumber: "CCN-7",
+      originalPayerClaimNumber: "ICN-77",
+    } as const;
     const replacement = claim("CCN-7R", { adjustment }, { frequency: "7", f8: "ICN-77" });
     const unknown = await s.transport.submitClaim(ctx(), replacement);
     expect(!unknown.ok && unknown.degraded.code).toBe(CH.UNKNOWN_ORIGINAL);
     expect((await s.transport.submitClaim(ctx(), claim("CCN-7"))).ok).toBe(true);
     expect((await s.transport.submitClaim(ctx(), replacement)).ok).toBe(true);
-    const wrongF8 = claim("CCN-7V", { adjustment: { ...adjustment, kind: "void" } }, { frequency: "8", f8: "ICN-OTHER" });
+    const wrongF8 = claim(
+      "CCN-7V",
+      { adjustment: { ...adjustment, kind: "void" } },
+      { frequency: "8", f8: "ICN-OTHER" },
+    );
     const refused = await s.transport.submitClaim(ctx(), wrongF8);
     expect(!refused.ok && refused.degraded.reason).toContain("REF*F8");
     const plainSeven = await s.transport.submitClaim(ctx(), claim("CCN-8", {}, { frequency: "7" }));
@@ -445,7 +532,11 @@ describe("ClaimMdTransport submission", () => {
     const s = setup();
     for (const kind of ["noe", "notr", "transfer_notice"] as const) {
       const cn = `N-${kind}`.replace("_", "");
-      const sub = { ...claim(cn), kind, payload: { format: "x12" as const, x12: claimMdX12(kind, cn) } };
+      const sub = {
+        ...claim(cn),
+        kind,
+        payload: { format: "x12" as const, x12: claimMdX12(kind, cn) },
+      };
       expect((await s.transport.submitNotice(ctx(), sub)).ok).toBe(true);
       expect((await s.transport.submitClaim(ctx(), sub)).ok).toBe(false);
     }
@@ -453,7 +544,11 @@ describe("ClaimMdTransport submission", () => {
 });
 
 describe("ClaimMdTransport acknowledgments, status and remittance", () => {
-  async function submitted(s: ReturnType<typeof setup>, cn: string, over: Partial<ClearinghouseContext> = {}) {
+  async function submitted(
+    s: ReturnType<typeof setup>,
+    cn: string,
+    over: Partial<ClearinghouseContext> = {},
+  ) {
     const npi = over.billingNpi ?? NPI;
     const r = await s.transport.submitClaim(ctx(over), claim(cn, {}, { npi, usage: over.usage }));
     expect(r.ok).toBe(true);
@@ -483,7 +578,11 @@ describe("ClaimMdTransport acknowledgments, status and remittance", () => {
     await submitted(s, "CCN-11");
     s.server.respond("test", "CCN-11", { status: "A" });
     s.server.era("test", "501", "ST*835*0001~SE*2*0001~");
-    const other = ctx({ organizationId: "org-other", providerEntityId: "pe-other", billingNpi: OTHER_NPI });
+    const other = ctx({
+      organizationId: "org-other",
+      providerEntityId: "pe-other",
+      billingNpi: OTHER_NPI,
+    });
     const acks = await s.transport.fetchAcknowledgments(other, null);
     expect(acks.ok && acks.data.items).toEqual([]);
     const status = await s.transport.fetchClaimStatus(other, "CCN-11");
@@ -518,7 +617,12 @@ describe("ClaimMdTransport acknowledgments, status and remittance", () => {
     s.server.respond("test", "CCN-14", { status: "Q" });
     const page = await s.transport.fetchAcknowledgments(ctx(), null);
     expect(page.ok && page.data.items).toEqual([]);
-    expect(s.anomalies).toContainEqual({ type: "unmapped_status", stage: "clearinghouse", status: "Q", controlNumber: "CCN-14" });
+    expect(s.anomalies).toContainEqual({
+      type: "unmapped_status",
+      stage: "clearinghouse",
+      status: "Q",
+      controlNumber: "CCN-14",
+    });
   });
 
   it("a status scan that runs out of pages is unavailable, never 'no answer yet'", async () => {
@@ -559,7 +663,9 @@ describe("ClaimMdTransport acknowledgments, status and remittance", () => {
     s.server.era("test", "601", raw);
     s.server.era("test", "602", "ST*835*0002~SE*1*0002~", OTHER_NPI);
     const first = await s.transport.fetchRemittances(ctx(), null);
-    expect(first.ok && first.data.items.map((r) => [r.remittanceId, r.rawX12])).toEqual([["claimmd-601", raw]]);
+    expect(first.ok && first.data.items.map((r) => [r.remittanceId, r.rawX12])).toEqual([
+      ["claimmd-601", raw],
+    ]);
     if (!first.ok) return;
     const rest = await s.transport.fetchRemittances(ctx(), first.data.nextCursor);
     expect(rest.ok && rest.data.items).toEqual([]);
@@ -622,8 +728,14 @@ describe("ClaimMdTransport eligibility (eligdata) and the local dry run", () => 
 
   it("sends nothing without the subscriber's name or the provider's tax id", async () => {
     const s = setup();
-    const noName = await s.transport.checkEligibility(ctx(), { memberId: "ACTIVE-1", serviceDate: "2026-11-01" });
-    const noTin = await s.transport.checkEligibility(ctx(), elig("ACTIVE-1", { billingProviderTaxId: undefined }));
+    const noName = await s.transport.checkEligibility(ctx(), {
+      memberId: "ACTIVE-1",
+      serviceDate: "2026-11-01",
+    });
+    const noTin = await s.transport.checkEligibility(
+      ctx(),
+      elig("ACTIVE-1", { billingProviderTaxId: undefined }),
+    );
     for (const r of [noName, noTin]) expect(!r.ok && r.degraded.code).toBe(CH.INVALID_REQUEST);
     expect(s.server.calls).toEqual([]);
   });
@@ -633,7 +745,8 @@ describe("ClaimMdTransport eligibility (eligdata) and the local dry run", () => 
     const r = await s.transport.checkEligibility(ctx(), elig("UNKNOWN-9"));
     expect(!r.ok && r.degraded).toMatchObject({ code: CH.INVALID_REQUEST });
     const text = JSON.stringify(r);
-    for (const leak of ["Doe", "Jane", "UNKNOWN-9", "not found", "1940"]) expect(text).not.toContain(leak);
+    for (const leak of ["Doe", "Jane", "UNKNOWN-9", "not found", "1940"])
+      expect(text).not.toContain(leak);
   });
 
   it("validateOnly runs the pre-upload checks locally and never calls Claim.MD", async () => {
@@ -651,8 +764,13 @@ describe("createClaimMdTransportFromEnv", () => {
   const store = new InMemoryAttemptStore();
   it("needs the key and which account it opens", () => {
     expect(() => createClaimMdTransportFromEnv({}, store)).toThrow(/CLAIMMD_ACCOUNT_KEY/);
-    expect(() => createClaimMdTransportFromEnv({ CLAIMMD_ACCOUNT_KEY: "k" }, store)).toThrow(/CLAIMMD_ACCOUNT_USAGE/);
-    const t = createClaimMdTransportFromEnv({ CLAIMMD_ACCOUNT_KEY: "k", CLAIMMD_ACCOUNT_USAGE: "test" }, store);
+    expect(() => createClaimMdTransportFromEnv({ CLAIMMD_ACCOUNT_KEY: "k" }, store)).toThrow(
+      /CLAIMMD_ACCOUNT_USAGE/,
+    );
+    const t = createClaimMdTransportFromEnv(
+      { CLAIMMD_ACCOUNT_KEY: "k", CLAIMMD_ACCOUNT_USAGE: "test" },
+      store,
+    );
     expect(t.vendor).toBe("claimmd");
   });
 });

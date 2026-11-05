@@ -26,6 +26,12 @@ import {
   type SubmissionAttempt,
   type SubmissionAttemptStore,
 } from "./attempt-store";
+import { claimMdCheckEligibility } from "./claimmd-eligibility";
+import {
+  type ClaimMdRequestCounter,
+  budgetedFetch,
+  createInProcessClaimMdCounter,
+} from "./claimmd-rate-limit";
 import {
   type ClaimMdRecord,
   DUPLICATE_FILE_CODE,
@@ -41,8 +47,6 @@ import {
   topAttr,
   vendorError,
 } from "./claimmd-wire";
-import { claimMdCheckEligibility } from "./claimmd-eligibility";
-import { type ClaimMdRequestCounter, budgetedFetch, createInProcessClaimMdCounter } from "./claimmd-rate-limit";
 import { identityOf, scopeKey } from "./submission-identity";
 import {
   type AckEvent,
@@ -119,7 +123,12 @@ export type ClaimMdAnomaly =
    * A response status letter with no mapping yet (only `A` and `R` are known); the response is skipped, not guessed.
    * controlNumber is our own id (no PHI), so an operator can find the claim whose answer was skipped.
    */
-  | { readonly type: "unmapped_status"; readonly stage: AckStage; readonly status: string; readonly controlNumber: string }
+  | {
+      readonly type: "unmapped_status";
+      readonly stage: AckStage;
+      readonly status: string;
+      readonly controlNumber: string;
+    }
   /** An `era835` `data` array that is neither whole interchanges nor fragments of one: remittances stop at this ERA. */
   | { readonly type: "era_unreadable"; readonly eraid: string; readonly elements: number };
 
@@ -130,10 +139,13 @@ export function createClaimMdTransportFromEnv(
   extras: Pick<ClaimMdTransportOptions, "onAnomaly" | "now" | "requestCounter"> = {},
 ): ClaimMdTransport {
   const key = env[CLAIMMD_ACCOUNT_KEY_ENV]?.trim();
-  if (!key) throw new Error(`${CLAIMMD_ACCOUNT_KEY_ENV} is required for CLEARINGHOUSE_VENDOR=claimmd`);
+  if (!key)
+    throw new Error(`${CLAIMMD_ACCOUNT_KEY_ENV} is required for CLEARINGHOUSE_VENDOR=claimmd`);
   const usage = env[CLAIMMD_ACCOUNT_USAGE_ENV]?.trim();
   if (usage !== "test" && usage !== "production") {
-    throw new Error(`${CLAIMMD_ACCOUNT_USAGE_ENV} must be "test" or "production" for CLEARINGHOUSE_VENDOR=claimmd`);
+    throw new Error(
+      `${CLAIMMD_ACCOUNT_USAGE_ENV} must be "test" or "production" for CLEARINGHOUSE_VENDOR=claimmd`,
+    );
   }
   return new ClaimMdTransport({ keys: { [usage]: key }, attempts, ...extras });
 }
@@ -146,7 +158,11 @@ const notImplemented = <T>(what: string): Promise<X12WorkerResult<T>> =>
  * The upload's Filename: unique per (scope, caller key), PHI-free, and how an in-doubt upload is found again. The
  * extension tells Claim.MD the format (`.837` raw X12, `.json` a Claim.MD JSON document).
  */
-export function claimMdFilename(scope: string, idempotencyKey: string, format: "x12" | "json" = "x12"): string {
+export function claimMdFilename(
+  scope: string,
+  idempotencyKey: string,
+  format: "x12" | "json" = "x12",
+): string {
   const digest = createHash("sha256").update(`${scope}\n${idempotencyKey}`).digest("hex");
   return `cw-${digest.slice(0, 40)}.${format === "x12" ? "837" : "json"}`;
 }
@@ -161,11 +177,14 @@ export function claimMdJsonProblem(
   submission: ClearinghouseSubmission,
 ): string | null {
   const claims = (document as { claim?: unknown } | null)?.claim;
-  if (!Array.isArray(claims) || claims.length !== 1) return "a JSON upload carries exactly one claim";
+  if (!Array.isArray(claims) || claims.length !== 1)
+    return "a JSON upload carries exactly one claim";
   const only = claims[0] as { pcn?: unknown; bill_npi?: unknown } | null;
   if (only?.pcn !== submission.controlNumber) return "claim.pcn does not match the control number";
-  if (only.bill_npi !== ctx.billingNpi) return "the billing provider NPI does not match the context";
-  if (submission.kind !== "claim" || submission.adjustment) return "notices and adjustments are sent as raw X12";
+  if (only.bill_npi !== ctx.billingNpi)
+    return "the billing provider NPI does not match the context";
+  if (submission.kind !== "claim" || submission.adjustment)
+    return "notices and adjustments are sent as raw X12";
   return null;
 }
 
@@ -189,11 +208,23 @@ function maxId(a: string | null, b: string | null): string {
  * A transport/HTTP failure as a degraded envelope. On a read, anything but a credential rejection is UNAVAILABLE:
  * consumers reset their stored cursor on INVALID_REQUEST, and one bad page must not replay the account's history.
  */
-function wireFailure<T>(w: Extract<WireResult, { ok: false }>, op: "read" | "write"): X12WorkerResult<T> {
+function wireFailure<T>(
+  w: Extract<WireResult, { ok: false }>,
+  op: "read" | "write",
+): X12WorkerResult<T> {
   if (w.status === 401) return degraded<T>(CH.NOT_WIRED, CLAIMMD_CREDENTIAL_REJECTED);
   // 403 is Claim.MD's temporary block after 100 requests a minute.
-  if (op === "read" || w.status === null || w.status === 403 || w.status === 429 || w.status >= 500) {
-    return degraded<T>(CH.UNAVAILABLE, w.status ? `Claim.MD answered HTTP ${w.status}` : "Claim.MD could not be reached");
+  if (
+    op === "read" ||
+    w.status === null ||
+    w.status === 403 ||
+    w.status === 429 ||
+    w.status >= 500
+  ) {
+    return degraded<T>(
+      CH.UNAVAILABLE,
+      w.status ? `Claim.MD answered HTTP ${w.status}` : "Claim.MD could not be reached",
+    );
   }
   return refuse<T>(`Claim.MD refused the request, HTTP ${w.status}`);
 }
@@ -210,7 +241,8 @@ function bodyFailure<T>(body: ClaimMdRecord, op: "read" | "write"): X12WorkerRes
 }
 
 function receiptOf(a: SubmissionAttempt, replayed: boolean): SubmissionReceipt | null {
-  if (a.status !== "sent" || a.clearinghouseSubmissionId === null || a.receivedAt === null) return null;
+  if (a.status !== "sent" || a.clearinghouseSubmissionId === null || a.receivedAt === null)
+    return null;
   return {
     clearinghouseSubmissionId: a.clearinghouseSubmissionId,
     idempotencyKey: a.idempotencyKey,
@@ -230,7 +262,8 @@ export function claimMdX12Problem(
     const { segments, delimiters } = tokenizeInterchange(x12);
     const isa = segments.find((s) => s[0] === "ISA");
     if (isa?.[8]?.trim() !== RECEIVER_ID) return `ISA08 must be ${RECEIVER_ID}`;
-    if (isa[15] !== (ctx.usage === "test" ? "T" : "P")) return `ISA15 does not match usage ${ctx.usage}`;
+    if (isa[15] !== (ctx.usage === "test" ? "T" : "P"))
+      return `ISA15 does not match usage ${ctx.usage}`;
     const claims = segments.filter((s) => s[0] === "CLM");
     if (claims.length !== 1) return "an upload carries exactly one CLM";
     const clm = claims[0] as readonly string[];
@@ -249,9 +282,13 @@ export function claimMdX12Problem(
     if (frequency !== (adjustment.kind === "replacement" ? "7" : "8")) {
       return `CLM05-3 does not match the ${adjustment.kind}`;
     }
-    return f8 === adjustment.originalPayerClaimNumber ? null : "REF*F8 does not match the payer claim number";
+    return f8 === adjustment.originalPayerClaimNumber
+      ? null
+      : "REF*F8 does not match the payer claim number";
   } catch (e) {
-    return e instanceof X12FormatError ? "payload is not a readable X12 interchange" : "payload could not be checked";
+    return e instanceof X12FormatError
+      ? "payload is not a readable X12 interchange"
+      : "payload could not be checked";
   }
 }
 
@@ -270,13 +307,18 @@ export class ClaimMdTransport implements ClearinghouseTransport {
     this.attempts = options.attempts;
     // Every Claim.MD request goes through this fetch. The account a request opens is read back from its AccountKey
     // field (the key is compared, never kept or logged); the budget is counted per usage mode.
-    const usageByKey = new Map(Object.entries(options.keys).map(([usage, key]) => [key, usage as Usage]));
+    const usageByKey = new Map(
+      Object.entries(options.keys).map(([usage, key]) => [key, usage as Usage]),
+    );
     this.fetchImpl = budgetedFetch(
       options.fetch ?? fetch,
       options.requestCounter ?? createInProcessClaimMdCounter(),
       (init) => {
         const body = init?.body;
-        const key = body instanceof URLSearchParams || body instanceof FormData ? body.get("AccountKey") : null;
+        const key =
+          body instanceof URLSearchParams || body instanceof FormData
+            ? body.get("AccountKey")
+            : null;
         return typeof key === "string" ? usageByKey.get(key) : undefined;
       },
     );
@@ -288,10 +330,16 @@ export class ClaimMdTransport implements ClearinghouseTransport {
   private keyFor(ctx: ClearinghouseContext): { key: string } | { fail: X12WorkerResult<never> } {
     const key = this.keys[ctx.usage];
     if (!key) {
-      return { fail: degraded(CH.NOT_WIRED, `no Claim.MD account is configured for ${ctx.usage} usage`) };
+      return {
+        fail: degraded(CH.NOT_WIRED, `no Claim.MD account is configured for ${ctx.usage} usage`),
+      };
     }
     if (!ctx.billingNpi) {
-      return { fail: refuse("billingNpi is required: it is what isolates tenants on the shared Claim.MD account") };
+      return {
+        fail: refuse(
+          "billingNpi is required: it is what isolates tenants on the shared Claim.MD account",
+        ),
+      };
     }
     return { key };
   }
@@ -315,7 +363,10 @@ export class ClaimMdTransport implements ClearinghouseTransport {
           adjustment.originalControlNumber,
         );
         if (original?.status !== "sent") {
-          return degraded(CH.UNKNOWN_ORIGINAL, "the original claim was never submitted through this clearinghouse");
+          return degraded(
+            CH.UNKNOWN_ORIGINAL,
+            "the original claim was never submitted through this clearinghouse",
+          );
         }
       } catch {
         return degraded(CH.UNAVAILABLE, "the original submission could not be looked up");
@@ -332,7 +383,8 @@ export class ClaimMdTransport implements ClearinghouseTransport {
     if (kind !== "noe" && kind !== "notr" && kind !== "transfer_notice") {
       return Promise.resolve(refuse("submitNotice accepts kind=noe, notr or transfer_notice only"));
     }
-    if (submission.adjustment) return Promise.resolve(refuse("a notice cannot carry a claim adjustment"));
+    if (submission.adjustment)
+      return Promise.resolve(refuse("a notice cannot carry a claim adjustment"));
     return this.submit(ctx, submission);
   }
 
@@ -397,14 +449,23 @@ export class ClaimMdTransport implements ClearinghouseTransport {
       existing = r.attempt;
     } catch (e) {
       return e instanceof PlatformControlNumberTaken
-        ? degraded(CH.IDEMPOTENCY_CONFLICT, "the control number is already in use on this platform; allocate a new one")
+        ? degraded(
+            CH.IDEMPOTENCY_CONFLICT,
+            "the control number is already in use on this platform; allocate a new one",
+          )
         : degraded(CH.UNAVAILABLE, "the submission record could not be reserved");
     }
     if (existing.scope !== attempt.scope || existing.idempotencyKey !== attempt.idempotencyKey) {
-      return degraded(CH.IDEMPOTENCY_CONFLICT, "the control number was already submitted under another key");
+      return degraded(
+        CH.IDEMPOTENCY_CONFLICT,
+        "the control number was already submitted under another key",
+      );
     }
     if (existing.identity !== attempt.identity) {
-      return degraded(CH.IDEMPOTENCY_CONFLICT, "the idempotency key was used for a different submission");
+      return degraded(
+        CH.IDEMPOTENCY_CONFLICT,
+        "the idempotency key was used for a different submission",
+      );
     }
     if (existing.status === "voided") {
       return degraded(
@@ -414,19 +475,30 @@ export class ClaimMdTransport implements ClearinghouseTransport {
     }
     if (existing.status === "sent") {
       const receipt = receiptOf(existing, true);
-      return receipt ? { ok: true, data: receipt } : degraded(CH.UNAVAILABLE, "the earlier attempt's record is incomplete");
+      return receipt
+        ? { ok: true, data: receipt }
+        : degraded(CH.UNAVAILABLE, "the earlier attempt's record is incomplete");
     }
     // Fails closed: an unparseable reservedAt counts as in flight.
     if (!(this.now().getTime() - Date.parse(existing.reservedAt) >= IN_FLIGHT_MS)) {
-      return degraded(CH.UNAVAILABLE, "an earlier attempt at this submission may still be in flight");
+      return degraded(
+        CH.UNAVAILABLE,
+        "an earlier attempt at this submission may still be in flight",
+      );
     }
     // A stale reservation: the earlier upload may have landed. A different claim is never deduped, so look before re-sending.
     const found = await this.findUpload(key, attempt, existing);
     if (found === "error") {
-      return degraded(CH.UNAVAILABLE, "an earlier upload could not be reconciled with Claim.MD's upload list");
+      return degraded(
+        CH.UNAVAILABLE,
+        "an earlier upload could not be reconciled with Claim.MD's upload list",
+      );
     }
     if (found !== null) {
-      this.onAnomaly({ type: "reconciled_from_upload_list", idempotencyKey: attempt.idempotencyKey });
+      this.onAnomaly({
+        type: "reconciled_from_upload_list",
+        idempotencyKey: attempt.idempotencyKey,
+      });
       return this.complete(ctx, attempt, `file:${found}`, true);
     }
     try {
@@ -437,7 +509,9 @@ export class ClaimMdTransport implements ClearinghouseTransport {
         existing.reservedAt,
         attempt.reservedAt,
       );
-      return won ? null : degraded(CH.UNAVAILABLE, "an earlier attempt at this submission may still be in flight");
+      return won
+        ? null
+        : degraded(CH.UNAVAILABLE, "an earlier attempt at this submission may still be in flight");
     } catch {
       return degraded(CH.UNAVAILABLE, "the submission record could not be retaken");
     }
@@ -461,7 +535,10 @@ export class ClaimMdTransport implements ClearinghouseTransport {
     for (let day = 0; from + day * DAY_MS <= to; day++) {
       const date = isoDay(new Date(from + day * DAY_MS));
       for (let page = 1; page <= MAX_UPLOAD_LIST_PAGES; page++) {
-        const w = await postForm(this.fetchImpl, "uploadlist", key, { UploadDate: date, Page: String(page) });
+        const w = await postForm(this.fetchImpl, "uploadlist", key, {
+          UploadDate: date,
+          Page: String(page),
+        });
         // "Absent" needs positive evidence: a body that does not carry a `file` list at all is unknown, not empty.
         if (!w.ok || vendorError(w.body) || !hasList(w.body, "file")) return "error";
         const files = listOf(w.body, "file");
@@ -496,7 +573,9 @@ export class ClaimMdTransport implements ClearinghouseTransport {
     // A repeated Filename (ours is fixed per scope + key) means an earlier upload of this submission landed: keep the
     // reservation and reconcile, never release (M23 would then mint a new control number and bill twice).
     if (!mine && vendorError(w.body)?.codes.includes(DUPLICATE_FILE_CODE)) {
-      return inDoubt("Claim.MD already holds this file from an earlier upload; it is reconciled before any resend");
+      return inDoubt(
+        "Claim.MD already holds this file from an earlier upload; it is reconciled before any resend",
+      );
     }
     const refused = mine ? null : bodyFailure<SubmissionReceipt>(w.body, "write");
     if (refused) {
@@ -506,7 +585,9 @@ export class ClaimMdTransport implements ClearinghouseTransport {
     const id = str(mine?.claimid) || (str(mine?.fileid) ? `file:${str(mine?.fileid)}` : "");
     if (!id || id.length > MAX_VENDOR_ID_LENGTH) {
       // Taken (2xx, no error) but our claim is not in the answer: unconfirmed, reconciled by Filename later.
-      return inDoubt("Claim.MD's upload answer does not name the claim; it is reconciled before any resend");
+      return inDoubt(
+        "Claim.MD's upload answer does not name the claim; it is reconciled before any resend",
+      );
     }
     return this.complete(ctx, attempt, id, false);
   }
@@ -534,8 +615,14 @@ export class ClaimMdTransport implements ClearinghouseTransport {
         // retry
       }
     }
-    this.onAnomaly({ type: "sent_but_unrecorded", idempotencyKey: attempt.idempotencyKey, clearinghouseSubmissionId });
-    return inDoubt("uploaded to Claim.MD but the attempt could not be recorded; retry with the same key to reconcile");
+    this.onAnomaly({
+      type: "sent_but_unrecorded",
+      idempotencyKey: attempt.idempotencyKey,
+      clearinghouseSubmissionId,
+    });
+    return inDoubt(
+      "uploaded to Claim.MD but the attempt could not be recorded; retry with the same key to reconcile",
+    );
   }
 
   private async releaseQuietly(attempt: SubmissionAttempt): Promise<void> {
@@ -558,10 +645,17 @@ export class ClaimMdTransport implements ClearinghouseTransport {
     const status = str(claim.status)?.toUpperCase() ?? "";
     const disposition = status === "A" ? "accepted" : status === "R" ? "rejected" : null;
     if (disposition === null) {
-      this.onAnomaly({ type: "unmapped_status", stage, status: safeCodes([status])[0] ?? "?", controlNumber });
+      this.onAnomaly({
+        type: "unmapped_status",
+        stage,
+        status: safeCodes([status])[0] ?? "?",
+        controlNumber,
+      });
       return null;
     }
-    const responseIds = messages.map((m) => str(m.responseid)).filter((v): v is string => !!v && CURSOR_SHAPE.test(v));
+    const responseIds = messages
+      .map((m) => str(m.responseid))
+      .filter((v): v is string => !!v && CURSOR_SHAPE.test(v));
     const eventKey =
       responseIds.sort((a, b) => Number(b) - Number(a))[0] ??
       createHash("sha256")
@@ -579,7 +673,9 @@ export class ClaimMdTransport implements ClearinghouseTransport {
         .slice(0, 24);
     const reasonCodes =
       disposition === "rejected"
-        ? safeCodes(messages.filter((m) => str(m.status)?.toUpperCase() !== "A").map((m) => str(m.mesgid)))
+        ? safeCodes(
+            messages.filter((m) => str(m.status)?.toUpperCase() !== "A").map((m) => str(m.mesgid)),
+          )
         : [];
     const icn = str(claim.sender_icn);
     const base = {
@@ -588,7 +684,9 @@ export class ClaimMdTransport implements ClearinghouseTransport {
       reasonCodes,
       // The day only: Claim.MD's time is account-local with no zone, and consumers accept a bare YYYY-MM-DD.
       occurredAt: claimMdDay(str(claim.response_time)) ?? this.now().toISOString(),
-      ...(stage === "payer" && icn && icn.length <= MAX_VENDOR_ID_LENGTH ? { payerClaimNumber: icn } : {}),
+      ...(stage === "payer" && icn && icn.length <= MAX_VENDOR_ID_LENGTH
+        ? { payerClaimNumber: icn }
+        : {}),
     };
     return stage === "clearinghouse"
       ? { ...base, stage, disposition }
@@ -606,7 +704,8 @@ export class ClaimMdTransport implements ClearinghouseTransport {
   ): Promise<X12WorkerResult<Page<AckEvent>>> {
     const access = this.keyFor(ctx);
     if ("fail" in access) return access.fail;
-    if (cursor !== null && !CURSOR_SHAPE.test(cursor)) return refuse("cursor is not a Claim.MD response id");
+    if (cursor !== null && !CURSOR_SHAPE.test(cursor))
+      return refuse("cursor is not a Claim.MD response id");
     // ponytail: every provider entity reads the whole account stream from its own cursor and keeps its own NPI's
     // entries; fine at tens of tenants. One account-wide reader fanning out by NPI is the upgrade if the stream grows.
     const w = await postForm(this.fetchImpl, "response", access.key, { ResponseID: cursor ?? "0" });
@@ -629,12 +728,19 @@ export class ClaimMdTransport implements ClearinghouseTransport {
     };
   }
 
-  async fetchClaimStatus(ctx: ClearinghouseContext, controlNumber: string): Promise<X12WorkerResult<ClaimStatus>> {
+  async fetchClaimStatus(
+    ctx: ClearinghouseContext,
+    controlNumber: string,
+  ): Promise<X12WorkerResult<ClaimStatus>> {
     const access = this.keyFor(ctx);
     if ("fail" in access) return access.fail;
     let attempt: SubmissionAttempt | null;
     try {
-      attempt = await this.attempts.findByControlNumber(ctx.organizationId, scopeKey(ctx), controlNumber);
+      attempt = await this.attempts.findByControlNumber(
+        ctx.organizationId,
+        scopeKey(ctx),
+        controlNumber,
+      );
     } catch {
       return degraded(CH.UNAVAILABLE, "the submission record could not be read");
     }
@@ -677,7 +783,12 @@ export class ClaimMdTransport implements ClearinghouseTransport {
       const claims = listOf(w.body, "claim");
       out.push(...claims);
       const last = topAttr(w.body, "last_responseid");
-      if (claims.length < RESPONSE_PAGE_LIMIT || !last || !CURSOR_SHAPE.test(last) || last === cursor) {
+      if (
+        claims.length < RESPONSE_PAGE_LIMIT ||
+        !last ||
+        !CURSOR_SHAPE.test(last) ||
+        last === cursor
+      ) {
         return { ok: true, data: out };
       }
       cursor = last;
@@ -697,7 +808,8 @@ export class ClaimMdTransport implements ClearinghouseTransport {
   ): Promise<X12WorkerResult<Page<RemittanceFile>>> {
     const access = this.keyFor(ctx);
     if ("fail" in access) return access.fail;
-    if (cursor !== null && !CURSOR_SHAPE.test(cursor)) return refuse("cursor is not a Claim.MD ERA id");
+    if (cursor !== null && !CURSOR_SHAPE.test(cursor))
+      return refuse("cursor is not a Claim.MD ERA id");
     const npi = ctx.billingNpi as string;
     // NewOnly=0: Claim.MD's "new" flag is account-wide state another reader would consume; our cursor is the position.
     const w = await postForm(this.fetchImpl, "eralist", access.key, {
@@ -714,7 +826,10 @@ export class ClaimMdTransport implements ClearinghouseTransport {
         listed
           .filter((e) => str(e.prov_npi) === npi)
           .map((e) => str(e.eraid))
-          .filter((id): id is string => !!id && CURSOR_SHAPE.test(id) && (cursor === null || BigInt(id) > BigInt(cursor))),
+          .filter(
+            (id): id is string =>
+              !!id && CURSOR_SHAPE.test(id) && (cursor === null || BigInt(id) > BigInt(cursor)),
+          ),
       ),
     ].sort((a, b) => Number(a) - Number(b));
     const taken = ids.slice(0, MAX_ERAS_PER_CALL);
@@ -723,8 +838,12 @@ export class ClaimMdTransport implements ClearinghouseTransport {
     // Without its file the cursor must not pass an ERA (at-least-once, never skipped). The ERAs before it are delivered
     // with the cursor on the last good one, so one bad ERA (or a spent budget) neither withholds nor re-downloads them;
     // the failing ERA then comes first on the next call and fails alone. Nothing read yet: the failure itself.
-    const stop = (failure: X12WorkerResult<Page<RemittanceFile>>): X12WorkerResult<Page<RemittanceFile>> =>
-      lastGood === null ? failure : { ok: true, data: { items, nextCursor: maxId(lastGood, cursor), hasMore: true } };
+    const stop = (
+      failure: X12WorkerResult<Page<RemittanceFile>>,
+    ): X12WorkerResult<Page<RemittanceFile>> =>
+      lastGood === null
+        ? failure
+        : { ok: true, data: { items, nextCursor: maxId(lastGood, cursor), hasMore: true } };
     for (const eraid of taken) {
       const era = await postForm(this.fetchImpl, "era835", access.key, { eraid });
       if (!era.ok) return stop(wireFailure(era, "read"));
@@ -732,7 +851,8 @@ export class ClaimMdTransport implements ClearinghouseTransport {
       if (eraRefused) return stop(eraRefused);
       const read = rawFiles(era.body, "data");
       if (!read.ok) {
-        if (read.elements !== null) this.onAnomaly({ type: "era_unreadable", eraid, elements: read.elements });
+        if (read.elements !== null)
+          this.onAnomaly({ type: "era_unreadable", eraid, elements: read.elements });
         return stop(degraded(CH.UNAVAILABLE, "a Claim.MD ERA came back without a readable 835"));
       }
       // The first file keeps `claimmd-<eraid>` (stable if Claim.MD ever adds elements); later ones are `-2`, `-3`, … .
@@ -773,7 +893,10 @@ export class ClaimMdTransport implements ClearinghouseTransport {
       payload.format === "x12"
         ? claimMdX12Problem(payload.x12, ctx, submission)
         : claimMdJsonProblem(payload.document, ctx, submission);
-    const issues = problem === null ? [] : [{ code: "CLAIMMD_PRECHECK", severity: "error" as const, message: problem }];
+    const issues =
+      problem === null
+        ? []
+        : [{ code: "CLAIMMD_PRECHECK", severity: "error" as const, message: problem }];
     return { ok: true, data: { valid: issues.length === 0, issues } };
   }
 
@@ -783,7 +906,13 @@ export class ClaimMdTransport implements ClearinghouseTransport {
   ): Promise<X12WorkerResult<ClearinghouseEligibilityResult>> {
     const access = this.keyFor(ctx);
     if ("fail" in access) return Promise.resolve(access.fail);
-    return claimMdCheckEligibility(this.fetchImpl, access.key, CLAIMMD_CREDENTIAL_REJECTED, ctx, req);
+    return claimMdCheckEligibility(
+      this.fetchImpl,
+      access.key,
+      CLAIMMD_CREDENTIAL_REJECTED,
+      ctx,
+      req,
+    );
   }
 
   verifyAndParseEvent(): Promise<X12WorkerResult<ClearinghouseEvent>> {

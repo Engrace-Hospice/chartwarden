@@ -113,7 +113,11 @@ export interface EligibilitySearchFactsPort {
   subscriber(
     organizationId: string,
     patientId: string,
-  ): Promise<{ readonly firstName: string; readonly lastName: string; readonly dateOfBirth: string } | null>;
+  ): Promise<{
+    readonly firstName: string;
+    readonly lastName: string;
+    readonly dateOfBirth: string;
+  } | null>;
   /** The provider entity's EIN, opened from its sealed column (M1 + M2), or null when none is on file. */
   billingTaxId(organizationId: string, providerEntityId: string): Promise<string | null>;
 }

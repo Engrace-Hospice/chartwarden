@@ -59,9 +59,12 @@ export function claimMdEligibilityFields(
   if (!ctx.billingNpi) return { problem: "eligibility needs the billing provider NPI" };
   if (!ISO_DAY.test(req.serviceDate)) return { problem: "the service date is not YYYY-MM-DD" };
   if (!MEMBER_ID.test(memberId)) return { problem: "the member id is malformed" };
-  if (!last || !first) return { problem: "Claim.MD eligibility needs the subscriber's first and last name" };
-  if (dob !== undefined && !ISO_DAY.test(dob)) return { problem: "the subscriber's date of birth is not YYYY-MM-DD" };
-  if (!taxId || !EIN.test(taxId)) return { problem: "Claim.MD eligibility needs the billing provider's tax id" };
+  if (!last || !first)
+    return { problem: "Claim.MD eligibility needs the subscriber's first and last name" };
+  if (dob !== undefined && !ISO_DAY.test(dob))
+    return { problem: "the subscriber's date of birth is not YYYY-MM-DD" };
+  if (!taxId || !EIN.test(taxId))
+    return { problem: "Claim.MD eligibility needs the billing provider's tax id" };
   return {
     fields: {
       ins_name_l: last,
@@ -80,7 +83,9 @@ export function claimMdEligibilityFields(
 }
 
 /** Active when any benefit says active, else inactive when any says inactive, else unknown. Never a guess. */
-export function claimMdEligibilityOutcome(body: Readonly<Record<string, unknown>>): EligibilityOutcome {
+export function claimMdEligibilityOutcome(
+  body: Readonly<Record<string, unknown>>,
+): EligibilityOutcome {
   const coverage = listOf(body, "elig")
     .flatMap((e) => listOf(e, "benefit"))
     .map((b) => str(b.benefit_coverage_code) ?? "");
@@ -102,7 +107,12 @@ export async function claimMdCheckEligibility(
   if (!w.ok) {
     if (w.status === 401) return degraded(CH.NOT_WIRED, credentialRejected);
     // A read with no side effect: every failure is retryable except a plain 4xx refusal of the request itself.
-    const refused = w.status !== null && w.status >= 400 && w.status < 500 && w.status !== 403 && w.status !== 429;
+    const refused =
+      w.status !== null &&
+      w.status >= 400 &&
+      w.status < 500 &&
+      w.status !== 403 &&
+      w.status !== 429;
     return refused
       ? refuse(`Claim.MD refused the eligibility request, HTTP ${w.status}`)
       : degraded(CH.UNAVAILABLE, "Claim.MD eligibility is unavailable");
@@ -114,5 +124,8 @@ export async function claimMdCheckEligibility(
     const suffix = error.codes.length > 0 ? ` (${error.codes.join(", ")})` : "";
     return refuse(`Claim.MD could not answer the eligibility request${suffix}`);
   }
-  return { ok: true, data: { outcome: claimMdEligibilityOutcome(w.body), asOfDate: req.serviceDate } };
+  return {
+    ok: true,
+    data: { outcome: claimMdEligibilityOutcome(w.body), asOfDate: req.serviceDate },
+  };
 }

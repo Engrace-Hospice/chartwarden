@@ -6456,8 +6456,17 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 ? {
                     searchFacts: {
                       subscriber: async (organizationId: string, patientId: string) => {
-                        const p = await getPatientReader().findById({ organizationId, id: patientId });
-                        return p ? { firstName: p.firstName, lastName: p.lastName, dateOfBirth: p.dateOfBirth } : null;
+                        const p = await getPatientReader().findById({
+                          organizationId,
+                          id: patientId,
+                        });
+                        return p
+                          ? {
+                              firstName: p.firstName,
+                              lastName: p.lastName,
+                              dateOfBirth: p.dateOfBirth,
+                            }
+                          : null;
                       },
                       billingTaxId: m25PayeeTinDeps.payeeTin,
                     },

@@ -19,7 +19,11 @@ export type EnvLike = Record<string, string | undefined>;
  * two agree. The registry still throws at boot for a vendor with no adapter.
  */
 export const CLEARINGHOUSE_VENDOR_ENV = "CLEARINGHOUSE_VENDOR";
-export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = ["stedi", "direct_mac", "claimmd"];
+export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = [
+  "stedi",
+  "direct_mac",
+  "claimmd",
+];
 
 /** One unmet production requirement. */
 export interface EnvProblem {
