@@ -51,6 +51,11 @@ UPDATE "onboarding_task_template"
    AND "retired_at" IS NULL;--> statement-breakpoint
 
 -- The steps that stay, in their new wizard position.
+-- ROLLBACK TRIPWIRE: the go-live row carries `context.goLiveApproved == true`, a field no release produces. If deploy.sh
+-- restores the previous release over this `expand` migration, its sweep reads a NULL precondition as met and would take
+-- the tenant live with no attestation or approval; with this expression its evaluator throws on the unknown field instead
+-- (that tenant's pass fails loud and retries). This release never evaluates it: go-live is `attestation` mode and the
+-- machine config drops every attestation step's DSL (steps.ts GO_LIVE_ROLLBACK_GUARD_DSL; a test pins the two together).
 UPDATE "onboarding_task_template" AS t
    SET "display_label" = v.label,
        "description" = v.descr,
@@ -68,7 +73,7 @@ UPDATE "onboarding_task_template" AS t
     ('dosespot_kickoff_initiated', 'e-Prescribing (DoseSpot)', 'DoseSpot clinic registration started', 10, 'either', 'context.dosespotKickoffRecorded == true', 21, 'either', false),
     ('first_admin_invited', 'People: first admin', 'At least one org_admin membership exists and has accepted', 11, 'platform_ops', 'context.orgAdminAcceptedMembershipCount > 0', 1, 'auto', false),
     ('sample_data_loaded', 'Sample data (optional)', 'Optional starter data for staff training', 13, 'platform_ops', NULL, 45, 'attestation', true),
-    ('go_live_checklist_complete', 'Go-live', 'The compliance officer attests readiness and a platform operator approves; the tenant then goes active', 14, 'compliance_officer', NULL, 60, 'attestation', false)
+    ('go_live_checklist_complete', 'Go-live', 'The compliance officer attests readiness and a platform operator approves; the tenant then goes active', 14, 'compliance_officer', 'context.goLiveApproved == true', 60, 'attestation', false)
   ) AS v(key, label, descr, seq, owner, dsl, due, mode, optional)
  WHERE t."key" = v.key;--> statement-breakpoint
 

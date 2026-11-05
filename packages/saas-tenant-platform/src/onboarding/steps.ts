@@ -37,6 +37,20 @@ export const CANONICAL_ONBOARDING_STEPS = [
 /** One canonical onboarding step key. */
 export type CanonicalOnboardingStep = (typeof CANONICAL_ONBOARDING_STEPS)[number];
 
+/**
+ * The `precondition_dsl` migration 1327 writes on the `go_live_checklist_complete` template.
+ *
+ * ROLLBACK SAFETY. Migrations 1327-1329 are `expand`, so deploy.sh may restore the previous release over them. That
+ * release's sweep settles a step whose precondition holds, treats a NULL precondition as met, and then activates the
+ * tenant once every canonical step is settled: a NULL here would let a restored release take a tenant live with no
+ * compliance-officer attestation and no platform approval. `goLiveApproved` is a context field NO release produces, so
+ * the previous evaluator throws `PreconditionDslError` (unknown context field): that tenant's pass fails loud and is
+ * retried, it never settles go-live. This release never evaluates the expression (go-live is `attestation` mode and the
+ * machine config drops the DSL of every attestation step); it is a tripwire for the old code only. Do NOT register
+ * `goLiveApproved` as a context field: the guard test fails if the evaluator ever accepts it.
+ */
+export const GO_LIVE_ROLLBACK_GUARD_DSL = "context.goLiveApproved == true";
+
 /** The synthetic machine terminal — reached when `go_live_checklist_complete` completes and the tenant
  *  flips to `active` (the `[*]` final node in the §2.3 mermaid). Not a template key; a machine sentinel. */
 export const ONBOARDING_DONE = "__done__" as const;
