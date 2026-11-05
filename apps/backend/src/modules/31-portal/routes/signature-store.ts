@@ -65,6 +65,7 @@ export interface PortalSignatureStore extends SignatureRequestStore {
     organizationId: string,
     input: {
       readonly patientId: string;
+      readonly portalUserId: string;
       readonly portalAccountId: string;
       readonly requestId: string;
       readonly uploadId: string;
@@ -92,7 +93,8 @@ export function buildPortalSignatureStore(
   db: DbClient,
   events?: M31EventEmitter,
 ): PortalSignatureStore {
-  const ctx = (organizationId: string) => ({ organizationId, userId: "" });
+  // `userId` is the acting portal login when there is one, so the audit trigger records the signer as a `user` actor, not as the system.
+  const ctx = (organizationId: string, userId = "") => ({ organizationId, userId });
   return {
     async get(organizationId, requestId) {
       return withOrgContext(db, ctx(organizationId), async (tx) => {
@@ -102,7 +104,7 @@ export function buildPortalSignatureStore(
     },
 
     async markSigned(organizationId, requestId, input) {
-      return withOrgContext(db, ctx(organizationId), async (tx) => {
+      return withOrgContext(db, ctx(organizationId, input.signer.portalUserId), async (tx) => {
         const [updated] = await tx
           .update(SR)
           .set({
@@ -173,7 +175,7 @@ export function buildPortalSignatureStore(
     },
 
     async attachSignedCopy(organizationId, input) {
-      return withOrgContext(db, ctx(organizationId), async (tx) => {
+      return withOrgContext(db, ctx(organizationId, input.portalUserId), async (tx) => {
         const [req] = await tx
           .select()
           .from(SR)

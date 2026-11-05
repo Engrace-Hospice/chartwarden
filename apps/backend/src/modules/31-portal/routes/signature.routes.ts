@@ -6,7 +6,8 @@
 // The route only authorizes and shapes; the authority matrix, the DPOA check and the call-then-record order live in `signAdmissionDocument`.
 //
 //   POST /api/v1/portal/signature-requests/:requestId/signed-copy  attach a completed `signed_admission_document` upload as the signed paper copy (D6)
-// An attached copy parks the request in `uploaded_pending_review`; it is never marked signed here (staff accept or reject it).
+// An attached copy parks the request in `uploaded_pending_review`; it is never marked signed here (staff accept or reject it). Attaching needs the same
+// fresh step-up as signing: a hijacked low-assurance session must not be able to put a document in front of staff as the patient's signed copy.
 import { createHash } from "node:crypto";
 import { ChartWardenError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
@@ -224,7 +225,14 @@ export function registerPortalSignatureRoutes(app: FastifyInstance, deps: Portal
 
   app.post(
     "/api/v1/portal/signature-requests/:requestId/signed-copy",
-    { preHandler: [P("portal.signature.sign"), ABAC_GRANT("portal.signature.sign"), IDEMPOTENT] },
+    {
+      preHandler: [
+        P("portal.signature.sign"),
+        STEP_UP("portal.signature.sign"),
+        ABAC_GRANT("portal.signature.sign"),
+        IDEMPOTENT,
+      ],
+    },
     async (request) => {
       const actor = actorOf(request);
       const accountId = portalAccountIdOf(actor);
@@ -248,6 +256,7 @@ export function registerPortalSignatureRoutes(app: FastifyInstance, deps: Portal
       }
       const outcome = await signing.store.attachSignedCopy(actor.organizationId, {
         patientId,
+        portalUserId: actor.userId,
         portalAccountId: accountId,
         requestId,
         uploadId,

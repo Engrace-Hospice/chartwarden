@@ -12,7 +12,7 @@ CREATE OR REPLACE FUNCTION delivery_endpoint_verified_push_for_portal_users(
 ) RETURNS TABLE (user_id uuid, channel text)
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, public
+SET search_path = pg_catalog, public, pg_temp
 AS $$
 BEGIN
   IF jsonb_typeof(p_user_ids) IS DISTINCT FROM 'array' OR jsonb_array_length(p_user_ids) > 500 THEN
@@ -20,8 +20,8 @@ BEGIN
   END IF;
   RETURN QUERY
   SELECT DISTINCT e.user_id, e.channel::text
-  FROM delivery_endpoint e
-  JOIN portal_account pa
+  FROM public.delivery_endpoint e
+  JOIN public.portal_account pa
     ON pa.user_id = e.user_id
    AND pa.organization_id = p_organization_id
    AND pa.status = 'active'

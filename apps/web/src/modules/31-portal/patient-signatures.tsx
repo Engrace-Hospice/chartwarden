@@ -54,7 +54,15 @@ interface KnownRecords {
 }
 const NONE_KNOWN: KnownRecords = { draftedElectionStatementId: null, admissionId: null };
 
+/** Keyed by patient: a chart switch gets a fresh screen, so one patient's rows and drafted records never show under another's name. */
 export function PatientSignatures(): JSX.Element {
+  const { patientId } = useParams<{ patientId: string }>();
+  return <PatientSignaturesInner key={patientId} />;
+}
+
+const NETWORK_REFUSAL = "We could not reach the server. Please try again.";
+
+function PatientSignaturesInner(): JSX.Element {
   const client = useApiClient();
   const permissions = useSession()?.permissions ?? [];
   const canSend = permissions.includes("portal.signature_request.create");
@@ -76,11 +84,16 @@ export function PatientSignatures(): JSX.Element {
     if (!patientId) return;
     setLoading(true);
     setLoadError(false);
-    const res = await client.GET(BASE as never, { params: { query: { patientId } } } as never);
-    const r = res as { error?: unknown; data?: { items?: SignatureRequestRow[] } };
-    if (r.error) setLoadError(true);
-    else setRows(r.data?.items ?? []);
-    setLoading(false);
+    try {
+      const res = await client.GET(BASE as never, { params: { query: { patientId } } } as never);
+      const r = res as { error?: unknown; data?: { items?: SignatureRequestRow[] } };
+      if (r.error) setLoadError(true);
+      else setRows(r.data?.items ?? []);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }, [client, patientId]);
 
   useEffect(() => {
@@ -106,13 +119,21 @@ export function PatientSignatures(): JSX.Element {
         draftedElectionStatementId: drafted?.electionStatement?.id ?? null,
         admissionId: bundle.admission?.id ?? null,
       });
-    })();
+    })().catch(() => undefined); // the dialog then offers only the two documents that need no record
     return () => {
       live = false;
     };
   }, [client, patientId, canSend]);
 
   const send = async (option: SendOption): Promise<string | null> => {
+    try {
+      return await sendOnce(option);
+    } catch {
+      return NETWORK_REFUSAL;
+    }
+  };
+
+  const sendOnce = async (option: SendOption): Promise<string | null> => {
     const res = await client.POST(
       BASE as never,
       {
@@ -132,6 +153,17 @@ export function PatientSignatures(): JSX.Element {
   };
 
   const withdraw = async (row: SignatureRequestRow, reason: VoidReason): Promise<string | null> => {
+    try {
+      return await withdrawOnce(row, reason);
+    } catch {
+      return NETWORK_REFUSAL;
+    }
+  };
+
+  const withdrawOnce = async (
+    row: SignatureRequestRow,
+    reason: VoidReason,
+  ): Promise<string | null> => {
     const res = await client.POST(
       `${BASE}/{requestId}/void` as never,
       {
@@ -150,6 +182,16 @@ export function PatientSignatures(): JSX.Element {
   const review = async (row: SignatureRequestRow, decision: "accepted" | "rejected") => {
     setBusyId(row.id);
     setNotice(null);
+    try {
+      await reviewOnce(row, decision);
+    } catch {
+      setNotice({ tone: "error", text: NETWORK_REFUSAL });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const reviewOnce = async (row: SignatureRequestRow, decision: "accepted" | "rejected") => {
     const res = await client.POST(
       `${BASE}/{requestId}/review` as never,
       {
@@ -171,7 +213,6 @@ export function PatientSignatures(): JSX.Element {
       });
       await load();
     }
-    setBusyId(null);
   };
 
   const columns: DataTableColumn<SignatureRequestRow>[] = [
@@ -308,25 +349,47 @@ function RowActions({
   const open = row.status === "pending" || row.status === "uploaded_pending_review";
   if (!open) return null;
   const parked = row.status === "uploaded_pending_review";
+  const docName = DOC_LABEL[row.docKind] ?? "this document";
   return (
     <span style={{ display: "inline-flex", gap: "0.5rem", flexWrap: "wrap" }}>
       {parked && row.uploadedDocumentId ? (
-        <Link to={`/documents/${row.uploadedDocumentId}/versions`} className="wx-btn-secondary">
+        <Link
+          to={`/documents/${row.uploadedDocumentId}/versions`}
+          className="wx-btn-secondary"
+          aria-label={`Open the uploaded copy of ${docName}`}
+        >
           Open uploaded copy
         </Link>
       ) : null}
       {parked && canReview ? (
         <>
-          <Button size="sm" loading={busy} onClick={() => onReview("accepted")}>
+          <Button
+            size="sm"
+            loading={busy}
+            aria-label={`Accept the signed copy of ${docName}`}
+            onClick={() => onReview("accepted")}
+          >
             Accept
           </Button>
-          <Button size="sm" tone="secondary" disabled={busy} onClick={() => onReview("rejected")}>
+          <Button
+            size="sm"
+            tone="secondary"
+            disabled={busy}
+            aria-label={`Reject the signed copy of ${docName}`}
+            onClick={() => onReview("rejected")}
+          >
             Reject
           </Button>
         </>
       ) : null}
       {canVoid ? (
-        <Button size="sm" tone="tertiary" disabled={busy} onClick={onWithdraw}>
+        <Button
+          size="sm"
+          tone="tertiary"
+          disabled={busy}
+          aria-label={`Withdraw the request for ${docName}`}
+          onClick={onWithdraw}
+        >
           Withdraw
         </Button>
       ) : null}
@@ -348,6 +411,12 @@ function SendDialog({
   const [kind, setKind] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open) {
+      setKind("");
+      setError(null);
+    }
+  }, [open]);
   if (!open) return null;
   const chosen = options.find((o) => o.kind === (kind || options[0]?.kind));
   const submit = async (): Promise<void> => {
@@ -402,6 +471,13 @@ function WithdrawDialog({
   const [reason, setReason] = useState<VoidReason>("sent_in_error");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const rowId = row?.id;
+  // Each withdrawal starts from the default reason with no stale error: a destructive choice never carries over from another row.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the row id on purpose
+  useEffect(() => {
+    setReason("sent_in_error");
+    setError(null);
+  }, [rowId]);
   if (!row) return null;
   const submit = async (): Promise<void> => {
     setBusy(true);

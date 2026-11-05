@@ -54,6 +54,8 @@ export function createPortalConsentSigner(service: PortalConsentService, nowIso:
     typeKey: PortalConsentSignInput["typeKey"];
     requestId: string;
     createdById: string;
+    /** The portal sign path matches the consent its OWN signer created; an accepted upload matches on the request alone (any reviewer may retry). */
+    matchCreator: boolean;
     existingConsentId: string | null;
     captureMethod: "electronic_portal_signature" | "uploaded_signed_pdf";
     grantorKind: PortalConsentSignInput["grantorKind"];
@@ -67,7 +69,7 @@ export function createPortalConsentSigner(service: PortalConsentService, nowIso:
       : ((await service.listConsentsForPatient(organizationId, a.patientId)).find(
           (c) =>
             c.typeKey === a.typeKey &&
-            c.createdById === a.createdById &&
+            (!a.matchCreator || c.createdById === a.createdById) &&
             (c.scopeDescriptor as { requestId?: unknown } | null)?.requestId === a.requestId &&
             (c.status === "draft" || c.status === "active"),
         ) ?? null);
@@ -105,6 +107,7 @@ export function createPortalConsentSigner(service: PortalConsentService, nowIso:
       return findOrCreateAndSign({
         ...input,
         createdById: input.portalUserId,
+        matchCreator: true,
         captureMethod: "electronic_portal_signature",
         evidence: { portalSessionId: input.portalSessionId, typedSignatureName: input.signerName },
       });
@@ -113,6 +116,7 @@ export function createPortalConsentSigner(service: PortalConsentService, nowIso:
       return findOrCreateAndSign({
         ...input,
         createdById: input.reviewerUserId,
+        matchCreator: false,
         existingConsentId: null,
         captureMethod: "uploaded_signed_pdf",
         evidence: { uploadedPdfDocumentId: input.uploadedPdfDocumentId },

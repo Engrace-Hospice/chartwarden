@@ -179,6 +179,11 @@ export function createDrizzleRoleSetMembersReader(
   return (orgId, roleKeys) => ports.roleSetMembers(orgId, roleKeys);
 }
 
+/** The alert types a portal person may be the audience of (ADR-0107 D7). Every other alert still reaches only members and portal-caregiver channel members. */
+const PORTAL_ADDRESSABLE_EVENT_TYPES: ReadonlySet<string> = new Set([
+  "m36.portal_signature.pending",
+]);
+
 /** Optional composition-root extensions to the Drizzle {@link AlertEmitterPorts} (GAP-057). */
 export interface DrizzleAlertEmitterOptions {
   readonly extendResolvers?: AlertEmitterPorts["extendResolvers"];
@@ -286,7 +291,7 @@ export function createDrizzleAlertEmitterPorts(
 
     async persist(record: PersistedAlert): Promise<{ alertId: string; occurrences?: number }> {
       const portalRecipientIds = new Set(
-        options.activePortalRecipients
+        options.activePortalRecipients && PORTAL_ADDRESSABLE_EVENT_TYPES.has(record.eventType)
           ? await options.activePortalRecipients(record.orgId, [
               ...new Set(record.deliveries.map((delivery) => delivery.recipientUserId)),
             ])

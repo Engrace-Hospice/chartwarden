@@ -665,22 +665,33 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       "SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND resource_kind='portal_signature_request'",
       [ORG_A],
     );
-    expect(audit.rows[0].n).toBeGreaterThanOrEqual(1);
+    // The list read is audited: the count rises across one more list call, over and above the rows the seeding itself audited.
+    await get(self, "");
+    const after = await admin.query(
+      "SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND resource_kind='portal_signature_request'",
+      [ORG_A],
+    );
+    expect(after.rows[0].n).toBeGreaterThan(audit.rows[0].n);
   });
 
   it("opens one request with the exact attestation text, records the resource id, and 404s another patient's or tenant's", async () => {
     const mine = await seedRequest(ORG_A, patientA, NPP);
+    const auditCount = async () =>
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND resource_kind='portal_signature_request' AND resource_id=$2",
+          [ORG_A, mine],
+        )
+      ).rows[0].n as number;
+    const auditedBefore = await auditCount();
     const res = await get(self, `/${mine}`);
     expect(res.statusCode).toBe(200);
     expect(res.json().attestationText).toBe(attestationTextFor(NPP, "1.0.0"));
     expect(res.json().documentTitle).toMatch(/Notice of Privacy Practices/);
     expect(res.json().documentParagraphs.join(" ")).toMatch(/164\.520/);
     expect(res.json().documentParagraphs.join(" ")).toContain("Cedar Valley Hospice");
-    const audit = await admin.query(
-      "SELECT 1 FROM audit_event WHERE organization_id=$1 AND resource_kind='portal_signature_request' AND resource_id=$2",
-      [ORG_A, mine],
-    );
-    expect(audit.rows.length).toBeGreaterThanOrEqual(1);
+    // The read adds an audit row for exactly this request id (the seeding insert had already added one).
+    expect(await auditCount()).toBeGreaterThan(auditedBefore);
     expect((await get(otherPatient, `/${mine}`)).statusCode).toBe(404);
     expect((await get(orgBActor, `/${mine}`)).statusCode).toBe(404);
   });
@@ -716,12 +727,28 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     expect(consent.capture_evidence_jsonb.portalSessionId).toBe(self.sessionId);
     // The write was audited (ids, status, instants) and the signer's typed name never reached the audit trail.
     const audited = await admin.query(
-      `SELECT before::text AS b, after::text AS a FROM audit_event
+      `SELECT before::text AS b, after::text AS a, actor_user_id, actor_kind FROM audit_event
         WHERE organization_id=$1 AND resource_kind='portal_signature_request' AND resource_id=$2 AND event_type LIKE '%update'`,
       [ORG_A, id],
     );
     expect(audited.rows.length).toBeGreaterThanOrEqual(1);
     for (const row of audited.rows) expect(`${row.b}${row.a}`).not.toContain("Pat Example");
+    // The legal act is attributed to the portal login who signed, not to the system.
+    expect(audited.rows.map((r) => r.actor_user_id)).toContain(self.userId);
+  });
+
+  it("attaching a signed copy needs a fresh step-up, like signing", async () => {
+    const id = await seedRequest(ORG_A, patientA, NPP);
+    const res = await app.inject({
+      method: "POST",
+      url: `${BASE}/${id}/signed-copy`,
+      headers: headers(self, {
+        "x-test-session": self.staleSessionId,
+        "idempotency-key": `k-stale-attach-${randomUUID()}`,
+      }),
+      payload: { uploadId: randomUUID() },
+    });
+    expect(res.statusCode).toBe(403);
   });
 
   it("a replay under the same Idempotency-Key signs nothing twice", async () => {
@@ -1114,7 +1141,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       docKind: NPP,
       status: "pending",
       templateKey: "hipaa_npp_acknowledgement_v1",
-      templateVersion: "1.0.0",
+      templateVersion: "1.1.0",
       requestedBy: staff.admin,
       targetRef: null,
     });

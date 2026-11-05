@@ -117,6 +117,8 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
   const attemptKey = useRef<string | null>(null);
   const attachKey = useRef<string | null>(null);
   const resumeUpload = useRef<string | null>(null);
+  /** The upload id whose `upload-complete` succeeded; a retry resumes from the first step that has not. */
+  const completedUpload = useRef<string | null>(null);
   const live = useRef(true);
 
   useEffect(() => {
@@ -153,8 +155,12 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
       const step = await client.POST("/api/v1/portal/sessions/step-up", {
         body: { totpCode: code.trim() },
       });
-      if ("error" in step) {
-        setMessage("We could not verify that code. Check the 6-digit code and try again.");
+      if (step.error) {
+        setMessage(
+          isDefinitive(statusOf(step)) && statusOf(step) !== 429
+            ? "We could not verify that code. Check the code and try again."
+            : "We could not verify your code right now. Wait a moment and try again.",
+        );
         return;
       }
       const res = await client.POST("/api/v1/portal/signature-requests/{requestId}/sign", {
@@ -195,6 +201,8 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
     const selected = event.target.files?.[0] ?? null;
     event.target.value = "";
     resumeUpload.current = null;
+    completedUpload.current = null;
+    attachKey.current = null;
     setMessage(null);
     if (!selected) return;
     if (
@@ -222,21 +230,24 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
       if (isDefinitive(statusOf(res))) {
         attachKey.current = null;
         resumeUpload.current = null;
+        completedUpload.current = null;
       }
       setMessage(refusalMessage(res, statusOf(res)));
       return false;
     }
     attachKey.current = null;
     resumeUpload.current = null;
+    completedUpload.current = null;
     return true;
   };
 
   const sendCopy = async (): Promise<void> => {
-    if (busy || !file) return;
+    if (busy || !file || !TOTP.test(code.trim())) return;
     setBusy(true);
     setMessage(null);
     try {
       if (!resumeUpload.current) {
+        completedUpload.current = null;
         setUploadStep("Preparing secure upload…");
         const init = await client.POST("/api/v1/portal/documents/upload-init", {
           body: {
@@ -261,18 +272,31 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
           setMessage("The file could not be sent. Check your connection and try again.");
           return;
         }
+        resumeUpload.current = uploadId;
+      }
+      const uploadId = resumeUpload.current as string;
+      if (completedUpload.current !== uploadId) {
         setUploadStep("Submitting for processing…");
         const done = await client.POST("/api/v1/portal/documents/upload-complete/{uploadId}", {
           params: { path: { uploadId } },
         });
         if (done.error) {
           setMessage("The file was sent, but could not be submitted. Try again.");
-          resumeUpload.current = uploadId;
           return;
         }
-        resumeUpload.current = uploadId;
+        completedUpload.current = uploadId;
       }
-      if (await attach(resumeUpload.current as string)) {
+      // Attaching needs the same fresh step-up as signing, right before the call.
+      const step = await client.POST("/api/v1/portal/sessions/step-up", {
+        body: { totpCode: code.trim() },
+      });
+      if (step.error) {
+        setMessage(
+          "We could not verify your code. Check it and try again; your file is already sent.",
+        );
+        return;
+      }
+      if (await attach(uploadId)) {
         onDone("Your signed copy was sent. Your care team will review it.");
       }
     } catch {
@@ -280,13 +304,20 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
     } finally {
       if (live.current) {
         setUploadStep(null);
+        setCode("");
         setBusy(false);
       }
     }
   };
 
   return (
-    <Modal open onClose={busy ? undefined : onClose} ariaLabel="Sign this document" width="40rem">
+    <Modal
+      open
+      onClose={busy ? undefined : onClose}
+      dismissOnScrim={false}
+      ariaLabel="Sign this document"
+      width="40rem"
+    >
       <div className="wx-signatures-dialog">
         <header>
           <h2>{detail ? docName(detail.docKind) : "Document to sign"}</h2>
@@ -301,8 +332,8 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
               {detail.documentParagraphs ? (
                 <section className="wx-signatures-document" aria-label={detail.documentTitle}>
                   {detail.documentTitle ? <h3>{detail.documentTitle}</h3> : null}
-                  {detail.documentParagraphs.map((paragraph) => (
-                    <p key={paragraph}>{paragraph}</p>
+                  {detail.documentParagraphs.map((paragraph, index) => (
+                    <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
                   ))}
                 </section>
               ) : null}
@@ -312,7 +343,10 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
                 value={name}
                 autoComplete="off"
                 disabled={busy}
-                onChange={(event) => setName(event.target.value)}
+                onChange={(event) => {
+                  attemptKey.current = null;
+                  setName(event.target.value);
+                }}
               />
               <details
                 className="wx-signatures-behalf"
@@ -324,7 +358,10 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
                   label="How are you related to the patient?"
                   value={relationship}
                   disabled={busy}
-                  onChange={(event) => setRelationship(event.target.value)}
+                  onChange={(event) => {
+                    attemptKey.current = null;
+                    setRelationship(event.target.value);
+                  }}
                 />
                 <TextAreaField
                   label="Why is the patient not able to sign?"
@@ -361,7 +398,10 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
             </form>
             <section className="wx-signatures-copy" aria-labelledby="signatures-copy-title">
               <h3 id="signatures-copy-title">Upload a signed paper copy</h3>
-              <p>Signed on paper instead? Upload a photo or scan. Your care team will review it.</p>
+              <p>
+                Signed on paper instead? Upload a photo or scan. Your care team will review it.
+                Enter your authenticator code above first: it confirms it is you.
+              </p>
               <label htmlFor="signatures-copy-file">Choose a file</label>
               <input
                 id="signatures-copy-file"
@@ -374,7 +414,7 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
               {uploadStep ? <output>{uploadStep}</output> : null}
               <Button
                 tone="secondary"
-                disabled={!file || busy}
+                disabled={!file || busy || !TOTP.test(code.trim())}
                 loading={busy && uploadStep !== null}
                 onClick={() => void sendCopy()}
               >

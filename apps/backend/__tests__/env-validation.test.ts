@@ -147,6 +147,16 @@ describe("collectEnvProblems", () => {
     expect(problemFor("1")).toBe("must be 'true' or 'false'");
   });
 
+  it("ADR-0107: a production boot refuses the unreviewed-template bypass unless it is unset or false", () => {
+    const problemFor = (v: string | undefined) =>
+      collectEnvProblems({ ...GOOD, PORTAL_ALLOW_UNREVIEWED_TEMPLATES: v }).find(
+        (p) => p.key === "PORTAL_ALLOW_UNREVIEWED_TEMPLATES",
+      )?.problem;
+    expect(problemFor(undefined)).toBeUndefined();
+    expect(problemFor("false")).toBeUndefined();
+    expect(problemFor("true")).toMatch(/unset or 'false'/);
+  });
+
   it("GAP-009: the sign-up invite flag is optional, but a set value must be exactly true/false", () => {
     const problemFor = (v: string | undefined) =>
       collectEnvProblems({ ...GOOD, CHARTWARDEN_SIGNUP_REQUIRES_INVITE: v }).find(

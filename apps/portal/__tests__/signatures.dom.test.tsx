@@ -316,18 +316,27 @@ describe("portal documents to sign (ADR-0107)", () => {
     fireEvent.change(within(dialog).getByLabelText("Choose a file"), {
       target: { files: [new File(["%PDF"], "signed.pdf", { type: "application/pdf" })] },
     });
+    fireEvent.change(within(dialog).getByLabelText("6-digit code from your authenticator app"), {
+      target: { value: "123456" },
+    });
     fireEvent.click(within(dialog).getByRole("button", { name: "Send signed copy" }));
     expect(
       await screen.findByText("Your signed copy was sent. Your care team will review it."),
     ).toBeTruthy();
 
     const calls = seen
-      .filter((s) => s.path.includes("/documents/upload") || s.path.endsWith("/signed-copy"))
+      .filter(
+        (s) =>
+          s.path.includes("/documents/upload") ||
+          s.path.endsWith("/signed-copy") ||
+          s.path.endsWith("/step-up"),
+      )
       .map((s) => `${s.method} ${s.path}`);
     expect(calls).toEqual([
       "POST /api/v1/portal/documents/upload-init",
       `PUT /api/v1/portal/documents/uploads/${UPLOAD}/content`,
       `POST /api/v1/portal/documents/upload-complete/${UPLOAD}`,
+      "POST /api/v1/portal/sessions/step-up",
       `POST /api/v1/portal/signature-requests/${REQ_PENDING}/signed-copy`,
     ]);
     expect(seen.find((s) => s.path.endsWith("/upload-init"))?.body).toMatchObject({
@@ -336,6 +345,57 @@ describe("portal documents to sign (ADR-0107)", () => {
     const attach = seen.find((s) => s.path.endsWith("/signed-copy"));
     expect(attach?.body).toEqual({ uploadId: UPLOAD });
     expect(attach?.headers.get("idempotency-key")).toBeTruthy();
+  });
+
+  it("retries a failed upload-complete from that step, without sending the file again", async () => {
+    const seen: Seen[] = [];
+    let completes = 0;
+    render(
+      <PortalApp
+        client={clientFor(
+          server((s) => {
+            if (s.path === "/api/v1/portal/documents/upload-init")
+              return json({
+                uploadId: UPLOAD,
+                signedUploadUrl: `/api/v1/portal/documents/uploads/${UPLOAD}/content`,
+                signedUploadUrlExpiresAt: "2026-10-13T23:00:00Z",
+              });
+            if (s.path.endsWith(`/uploads/${UPLOAD}/content`))
+              return json({ uploadId: UPLOAD, status: "staged", byteSize: 4 });
+            if (s.path.endsWith(`/upload-complete/${UPLOAD}`)) {
+              completes += 1;
+              return completes === 1
+                ? refusal(503, "UNAVAILABLE")
+                : json({ uploadId: UPLOAD, status: "submitted" });
+            }
+            if (s.path === `/api/v1/portal/signature-requests/${REQ_PENDING}/signed-copy`)
+              return json({ request: { ...ITEMS[0], status: "uploaded_pending_review" } });
+            return undefined;
+          }),
+          seen,
+        )}
+      />,
+    );
+    const dialog = await openSigning();
+    await within(dialog).findByText(ATTEST);
+    fireEvent.change(within(dialog).getByLabelText("Choose a file"), {
+      target: { files: [new File(["%PDF"], "signed.pdf", { type: "application/pdf" })] },
+    });
+    fireEvent.change(within(dialog).getByLabelText("6-digit code from your authenticator app"), {
+      target: { value: "123456" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Send signed copy" }));
+    await within(dialog).findByText(/could not be submitted/);
+    fireEvent.change(within(dialog).getByLabelText("6-digit code from your authenticator app"), {
+      target: { value: "123456" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Retry sending" }));
+    expect(
+      await screen.findByText("Your signed copy was sent. Your care team will review it."),
+    ).toBeTruthy();
+    expect(completes).toBe(2);
+    expect(seen.filter((s) => s.path.endsWith("/upload-init"))).toHaveLength(1);
+    expect(seen.filter((s) => s.path.endsWith(`/uploads/${UPLOAD}/content`))).toHaveLength(1);
   });
 
   it("rejects an unsupported file locally and never starts an upload", async () => {

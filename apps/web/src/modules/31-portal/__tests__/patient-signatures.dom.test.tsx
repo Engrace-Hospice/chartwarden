@@ -103,7 +103,7 @@ describe("PatientSignatures", () => {
     expect(within(table).getByText("Signed by: Family caregiver")).toBeTruthy();
     expect(within(table).getByText("Patient declined")).toBeTruthy();
     // No actions on a signed or withdrawn row: only the pending row has Withdraw.
-    expect(within(table).getAllByRole("button", { name: "Withdraw" })).toHaveLength(1);
+    expect(within(table).getAllByRole("button", { name: /^Withdraw/ })).toHaveLength(1);
   });
 
   it("sends a privacy notice with an idempotency key and refreshes the list", async () => {
@@ -161,12 +161,12 @@ describe("PatientSignatures", () => {
 
   it("withdraws an open request with the chosen coded reason", async () => {
     const { post } = mount({ items: [row({ id: "w-1" })] });
-    fireEvent.click(await screen.findByRole("button", { name: "Withdraw" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Withdraw/ }));
     const dialog = await screen.findByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Reason"), {
       target: { value: "patient_declined" },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Withdraw" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Withdraw/ }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     const [url, init] = post.mock.calls[0] as [string, { params: unknown; body: unknown }];
     expect(url).toBe(`${BASE}/{requestId}/void`);
@@ -179,13 +179,13 @@ describe("PatientSignatures", () => {
       items: [row({ id: "u-1", status: "uploaded_pending_review", uploadedDocumentId: "doc-9" })],
     });
     const link = (await screen.findByRole("link", {
-      name: "Open uploaded copy",
+      name: /^Open the uploaded copy/,
     })) as HTMLAnchorElement;
     expect(link.getAttribute("href")).toBe("/documents/doc-9/versions");
-    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Accept/ }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     expect((post.mock.calls[0]?.[1] as { body: unknown }).body).toEqual({ decision: "accepted" });
-    fireEvent.click(await screen.findByRole("button", { name: "Reject" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Reject/ }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
     expect((post.mock.calls[1]?.[1] as { body: unknown }).body).toEqual({ decision: "rejected" });
   });
@@ -197,7 +197,7 @@ describe("PatientSignatures", () => {
         error: { error: { code: "M06_DOCUMENT_RECORDED_IN_ADMISSION", message: "x" } },
       }),
     });
-    fireEvent.click(await screen.findByRole("button", { name: "Accept" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Accept/ }));
     expect(
       await screen.findByText(/Record this paper signature in the admission workflow/),
     ).toBeTruthy();
@@ -213,9 +213,9 @@ describe("PatientSignatures", () => {
     });
     await screen.findByRole("table", { name: "Signature requests" });
     expect(screen.queryByRole("button", { name: "Send for signature" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Withdraw" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Accept" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Withdraw/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Accept/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Reject/ })).toBeNull();
   });
 
   it("says so when the list cannot be loaded", async () => {

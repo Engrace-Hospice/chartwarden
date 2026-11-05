@@ -42,7 +42,8 @@ export const SIGNATURE_TEMPLATES: Readonly<
   notice_of_patient_rights: { key: "notice_of_patient_rights_v1", version: "1.0.0" },
   hipaa_npp_acknowledgement: {
     key: "hipaa_npp_acknowledgement_v1",
-    version: "1.0.0",
+    // 1.1.0: 1.0.0 shipped with no wording; requests signed under it keep their old evidence hash and are not re-rendered.
+    version: "1.1.0",
     text: NPP_TEXT,
   },
   consent_to_treat: {
