@@ -15,13 +15,13 @@ import {
   ValidationError,
 } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { claimsBillingEnforcementMode } from "../../../bootstrap/claims-billing-gate";
 import {
   activePeriodKeyFor,
   countActivePatientsForPeriod,
   latestSubscriptionWindow,
 } from "../billing-runtime/census";
 import { usageWindowFor } from "../billing-runtime/jobs";
-import { claimsBillingEnforcementMode } from "../../../bootstrap/claims-billing-gate";
 import type { M35WriteActor } from "../routes/actor";
 import type { PlatformRunner, WriteOutboxPort, WriteTx } from "../routes/service-drizzle";
 import {
@@ -299,7 +299,7 @@ export function buildDrizzleAddonService(db: DbClient, deps: AddonServiceDeps = 
       });
     },
 
-    async cancelAddon(_actor, subscriptionId, addonId) {
+    async cancelAddon(actor, subscriptionId, addonId) {
       const at = now();
       return platform(async (tx) => {
         const sub = await loadSubscription(tx, subscriptionId);
@@ -320,7 +320,13 @@ export function buildDrizzleAddonService(db: DbClient, deps: AddonServiceDeps = 
         if (!live) throw new NotFoundError("no live add-on on this subscription");
         const [row] = await tx
           .update(SA)
-          .set({ status: "canceled", canceledAt: at, endsAt: at, updatedAt: at })
+          .set({
+            status: "canceled",
+            canceledAt: at,
+            endsAt: at,
+            canceledByMembershipId: actor.membershipId,
+            updatedAt: at,
+          })
           .where(eq(SA.id, live.id))
           .returning();
         if (!row)
