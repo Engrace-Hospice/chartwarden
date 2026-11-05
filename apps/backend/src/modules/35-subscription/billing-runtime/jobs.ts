@@ -271,12 +271,18 @@ interface UsageWindow {
   readonly end: Date;
 }
 
-/** The subscription's billing window containing `now`; calendar month (UTC) when the mirror has no period. */
+/** The subscription's billing window containing `now`; calendar month (UTC) when the mirror has no period or
+ *  `now` falls outside it (a past instant, e.g. a death date, must not land in the current period). */
 export function usageWindowFor(
   sub: { currentPeriodStart: Date | null; currentPeriodEnd: Date | null },
   now: Date,
 ): UsageWindow {
-  if (sub.currentPeriodStart && sub.currentPeriodEnd && sub.currentPeriodEnd > now) {
+  if (
+    sub.currentPeriodStart &&
+    sub.currentPeriodEnd &&
+    sub.currentPeriodStart <= now &&
+    sub.currentPeriodEnd > now
+  ) {
     return { start: sub.currentPeriodStart, end: sub.currentPeriodEnd };
   }
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));

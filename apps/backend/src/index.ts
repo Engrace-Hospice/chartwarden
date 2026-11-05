@@ -7812,12 +7812,28 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               },
             }
           : {}),
+        // ADR-0108 D8 — the claims-billing census pull (M5 PatientCensusReader, resolved lazily). Bound only with
+        // the pseudonym key ring: without the key nothing is pseudonymized, so nothing is counted (never a raw id).
+        ...(pseudonymKeyRing
+          ? {
+              census: {
+                census: {
+                  activePatientIdsPage: (orgId, page) =>
+                    getSeam("PatientCensusReader").activePatientIdsPage(orgId, page),
+                  activePatientCount: (orgId) =>
+                    getSeam("PatientCensusReader").activePatientCount(orgId),
+                },
+                keyProvider: pseudonymKeyProvider,
+              },
+            }
+          : {}),
       });
       attachDlqAlertsToAll(m35Workers, "m35");
       app.addHook("onClose", () => Promise.all(m35Workers.map((w) => w.close())));
       void scheduleM35Jobs(queueConnection, {
         webhookHandler: m35Stripe.cipher !== undefined,
         refundExecutor: m35Stripe.client !== undefined,
+        patientCensus: pseudonymKeyRing !== null && pseudonymKeyRing !== undefined,
       })
         .then((queues) => {
           app.addHook("onClose", () => Promise.all(queues.map((q) => q.close())));
