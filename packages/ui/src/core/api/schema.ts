@@ -20968,7 +20968,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Is a tenant subdomain usable? Label rules, reserved names, live and retired slugs (read; no step-up) */
+        /** Is a tenant subdomain usable? Label rules, reserved names, live and retired slugs (read; no step-up; 429 past 30 probes a minute per user; each probe is one audited platform read) */
         get: operations["getApiV1PlatformTenantslugsBySlugAvailability"];
         put?: never;
         post?: never;

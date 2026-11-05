@@ -43,6 +43,11 @@ export interface TenantPlatformRouteDeps {
   service: TenantPlatformRouteService;
   /** `TENANT_BASE_DOMAIN`; absent or null (single-host mode) leaves the availability answer without an address. */
   tenantBaseDomain?: string | null;
+  /**
+   * Per-route cap on the availability probe (`createRouteRateLimit`, composed in `index.ts`). It runs AFTER the permission and
+   * ABAC gates, so a caller those refuse never spends it. Absent = only the global limiter applies (tests, no-db boot).
+   */
+  slugAvailabilityRateLimit?: PreHandler;
 }
 
 /** The org-scoped actor (org/actor binding is server-side: the context, never the body). */
@@ -102,7 +107,7 @@ export function registerTenantPlatformRoutes(
   app: FastifyInstance,
   deps: TenantPlatformRouteDeps,
 ): void {
-  const { service, tenantBaseDomain } = deps;
+  const { service, tenantBaseDomain, slugAvailabilityRateLimit } = deps;
 
   // 1 — list tenants (cross-tenant, cursor-paginated; filters status/plan/created_after/legal-name). §4.1.
   app.get("/api/v1/platform/tenants", { preHandler: [LIST, ABAC_LIST] }, async (request) => {
@@ -116,10 +121,17 @@ export function registerTenantPlatformRoutes(
   });
 
   // 1a — is this subdomain usable? Format/reserved are decided here (no data read); taken covers a live slug AND a retired
-  // alias (a slug is never reused; ADR-0049 D3). Read-only and non-PHI, so no step-up; the platform read is audited.
+  // alias (a slug is never reused; ADR-0049 D3). Read-only and non-PHI, so no step-up; the platform read is audited (warn, not
+  // critical: see `isTenantSlugTaken` in service-drizzle.ts) and rate-limited per user, since each probe writes an audit row.
   app.get(
     "/api/v1/platform/tenant-slugs/:slug/availability",
-    { preHandler: [READ, ABAC_READ] },
+    {
+      preHandler: [
+        READ,
+        ABAC_READ,
+        ...(slugAvailabilityRateLimit ? [slugAvailabilityRateLimit] : []),
+      ],
+    },
     async (request) => {
       actorOf(request);
       const { slug } = parse(TenantSlugParamsSchema, request.params);

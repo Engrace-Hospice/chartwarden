@@ -5970,6 +5970,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           };
           mountTenantPlatformRoutes(app, dbHandle.db, {
             tenantBaseDomain,
+            // Each slug probe is an audited platform read: 30/min/user, 300/min/org, fail-open (an availability control).
+            slugAvailabilityRateLimit: createRouteRateLimit({
+              store: rateLimitStore ?? createInMemoryRateLimitStore(),
+              limit: TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT,
+              keyPrefix: "m34-slug-availability",
+            }),
             platform: m34PlatformBackend,
             onboarding: m34Onboarding,
             tenant: buildDrizzleTenantService({

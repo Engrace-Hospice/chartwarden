@@ -10294,7 +10294,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/platform/tenant-slugs/:slug/availability": {
     summary:
-      "Is a tenant subdomain usable? Label rules, reserved names, live and retired slugs (read; no step-up)",
+      "Is a tenant subdomain usable? Label rules, reserved names, live and retired slugs (read; no step-up; 429 past 30 probes a minute per user; each probe is one audited platform read)",
     response: M34TenantSlugAvailabilitySchema,
   },
   "POST /api/v1/platform/tenants": {
