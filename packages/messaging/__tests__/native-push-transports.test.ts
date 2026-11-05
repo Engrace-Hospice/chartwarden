@@ -257,6 +257,56 @@ describe("FCM v1 transport", () => {
   });
 });
 
+describe("APNs host per token", () => {
+  it("round-trips the environment and ignores anything but sandbox/production", () => {
+    const enc = (environment: unknown) =>
+      JSON.stringify({ provider: "apns", token: APNS_TOKEN, alertId: ALERT_ID, environment });
+    expect(parseNativeDestination(enc("sandbox"))?.environment).toBe("sandbox");
+    expect(parseNativeDestination(enc("production"))?.environment).toBe("production");
+    expect(parseNativeDestination(enc("staging"))).not.toHaveProperty("environment");
+    expect(parseNativeDestination(apnsDestination)).not.toHaveProperty("environment");
+  });
+
+  it("picks the host from the token's environment, falling back to the transport default", async () => {
+    const hosts: string[] = [];
+    const request: ApnsRequest = async (input) => {
+      hosts.push(input.host);
+      return { status: 200, apnsId: "id", body: "" };
+    };
+    const base = {
+      keyP8: ecPem,
+      keyId: "KEYID12345",
+      teamId: "TEAMID1234",
+      bundleId: "com.example.app",
+      request,
+    };
+    const prodDefault = createApnsTransport(base);
+    const sandboxDefault = createApnsTransport({ ...base, sandbox: true });
+    const dest = (environment?: "sandbox" | "production") =>
+      encodeNativeDestination({
+        provider: "apns",
+        token: APNS_TOKEN,
+        alertId: ALERT_ID,
+        ...(environment ? { environment } : {}),
+      });
+    for (const [t, d] of [
+      [prodDefault, dest("sandbox")],
+      [prodDefault, dest("production")],
+      [prodDefault, dest()],
+      [sandboxDefault, dest("production")],
+      [sandboxDefault, dest()],
+    ] as const)
+      await t.send({ notification: NOTIFICATION, destination: d });
+    expect(hosts).toEqual([
+      "api.sandbox.push.apple.com",
+      "api.push.apple.com",
+      "api.push.apple.com",
+      "api.push.apple.com",
+      "api.sandbox.push.apple.com",
+    ]);
+  });
+});
+
 describe("APNs transport", () => {
   function setup(
     respond: (input: Parameters<ApnsRequest>[0]) => {

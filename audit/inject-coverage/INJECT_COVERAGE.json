@@ -4,7 +4,7 @@
     "covered": 40,
     "routes": 1884,
     "coveredRoutes": 1884,
-    "directRoutesReferenced": 1720
+    "directRoutesReferenced": 1722
   },
   "modules": [
     {
@@ -649,7 +649,7 @@
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 160
+      "directRoutesReferenced": 162
     },
     {
       "module": "37-ipu",

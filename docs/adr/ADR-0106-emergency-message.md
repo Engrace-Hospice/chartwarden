@@ -54,6 +54,14 @@ acknowledge, see who has, and have it escalate if nobody does within 15 minutes.
   a frozen, auditable list is the right behaviour.
 - The sweep re-alarms by raising a new alert each minute; each alert is its own delivery row, so the sender's roster and the audit trail show every
   repeat. Re-alarming stops after one hour whatever happened (the escalation fires at 15 minutes).
-- The native push transport still targets one verified endpoint per user (no multi-device fan-out) and the APNs host is global; both are follow-ups
-  from ADR-0105 and matter more for an alarm than for a normal alert.
+- **Multi-device fan-out (migration 1301).** A critical push is sent to EVERY verified native (FCM/APNs) device of the recipient. The first dispatch of
+  the delivery takes the newest device and inserts one pending sibling `notification_delivery` per other device, each bound to its `endpoint_id`
+  (`delivery_endpoint_fan_out`, only while the delivery is unbound, and only for devices with no delivery yet, so it is idempotent per
+  (alert, device)). Each device therefore has its own status, retry budget and dead-token expiry: a failing token never blocks the others, and an
+  `UNREGISTERED` token expires only its own endpoint. A bound critical delivery only ever resolves to its own endpoint. Web Push endpoints and
+  non-critical alerts are unchanged (newest verified endpoint only).
+- **APNs host per token.** `delivery_endpoint_for_delivery` also returns the `environment` ADR-0105 already records (`sandbox` | `production`); the
+  dispatcher puts it in the destination and the APNs transport picks `api.sandbox.push.apple.com` or `api.push.apple.com` per token. A token with
+  no recorded environment (older clients) falls back to `APNS_ENVIRONMENT`, so nothing changes for them. This implements ADR-0105 D6.
+- Still unproven: delivery to a physical device through the real FCM/APNs vendors.
 - ADRs are immutable once Accepted; this one stays Proposed until reviewed.
