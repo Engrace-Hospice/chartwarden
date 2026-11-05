@@ -293,15 +293,24 @@ async function main(): Promise<void> {
       // M23 Claim.MD webhook (migration 1322): the receipt table is platform-only (the route stores, the sweep settles; no
       // DELETE: retention clears the cipher column). The sweep resolves a tenant from two COLUMN grants only: the
       // platform-unique provider NPI and the platform-unique live control number.
-      await run('GRANT SELECT, INSERT, UPDATE ON "claimmd_webhook_event" TO chartwarden_platform;');
+      // UPDATE is COLUMN-level: only what the sweep settles and the retention pass clears, never the stored receipt
+      // (usage, ids, event_type/time, payload_sha256). REVOKE first so a re-provision takes back an older table grant.
+      await run('GRANT SELECT, INSERT ON "claimmd_webhook_event" TO chartwarden_platform;');
+      await run('REVOKE UPDATE ON "claimmd_webhook_event" FROM chartwarden_platform;');
+      await run(
+        'GRANT UPDATE ("derived_organization_id", "derived_provider_entity_id", "last_error_class", "processing_outcome", "entitlement_checked_at", "processed_at", "attempt_count", "payload_cipher", "payload_key_ref", "payload_cleared_at") ON "claimmd_webhook_event" TO chartwarden_platform;',
+      );
       // The NPI-verification admin list (migration 1326) also names the entity: legal_name joins that column grant.
       await run(
         'GRANT SELECT ("id", "organization_id", "npi", "legal_name") ON "provider_entity" TO chartwarden_platform;',
       );
       // Migration 1326: platform staff verify / revoke NPI ownership; the sweep routes only on a live verification.
-      // No DELETE: a revoked row stays as evidence.
+      // No DELETE: a revoked row stays as evidence. UPDATE is COLUMN-level (revocation only): a verified npi or its
+      // evidence can never be rewritten. REVOKE first so a re-provision takes back an older table grant.
+      await run('GRANT SELECT, INSERT ON "provider_npi_verification" TO chartwarden_platform;');
+      await run('REVOKE UPDATE ON "provider_npi_verification" FROM chartwarden_platform;');
       await run(
-        'GRANT SELECT, INSERT, UPDATE ON "provider_npi_verification" TO chartwarden_platform;',
+        'GRANT UPDATE ("revoked_at", "revoked_by_membership_id", "updated_at") ON "provider_npi_verification" TO chartwarden_platform;',
       );
       await run(
         'GRANT SELECT ("organization_id", "provider_entity_id", "usage", "control_number", "status") ON "clearinghouse_submission_attempt" TO chartwarden_platform;',
