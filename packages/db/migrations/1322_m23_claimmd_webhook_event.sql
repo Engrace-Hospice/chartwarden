@@ -69,7 +69,9 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;--> statement-breakpoint
 -- The platform carrier exists only where provision-runtime-roles.ts has run; that script re-grants on every run.
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chartwarden_platform') THEN
-    GRANT SELECT, INSERT, UPDATE ON "claimmd_webhook_event" TO chartwarden_platform;
+    -- UPDATE is column-level, the same list scripts/db/provision-runtime-roles.ts grants: never the stored receipt.
+    GRANT SELECT, INSERT ON "claimmd_webhook_event" TO chartwarden_platform;
+    GRANT UPDATE ("derived_organization_id", "derived_provider_entity_id", "last_error_class", "processing_outcome", "entitlement_checked_at", "processed_at", "attempt_count", "payload_cipher", "payload_key_ref", "payload_cleared_at") ON "claimmd_webhook_event" TO chartwarden_platform;
   END IF;
 END $$;
 --> statement-breakpoint
