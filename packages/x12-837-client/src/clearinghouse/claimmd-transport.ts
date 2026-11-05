@@ -916,7 +916,7 @@ export class ClaimMdTransport implements ClearinghouseTransport {
   }
 
   verifyAndParseEvent(): Promise<X12WorkerResult<ClearinghouseEvent>> {
-    return notImplemented("push events (Claim.MD pushes enrollment and appeal events only)");
+    return notImplemented("push events (enroll/appeal reports enter via M23's POST /api/v1/webhooks/claimmd/<usage>)");
   }
 }
 
