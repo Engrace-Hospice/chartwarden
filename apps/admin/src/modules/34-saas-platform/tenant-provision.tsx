@@ -131,8 +131,9 @@ export function TenantProvisionDrawer({
   const [adminEmail, setAdminEmail] = useState(draft?.adminEmail ?? "");
   const [adminName, setAdminName] = useState(draft?.adminName ?? "");
   // The subdomain follows the legal name until the operator types one; a restored draft's slug counts as typed.
-  const { slug, setSlug } = useSuggestedSlug(legalName, draft ? draft.slug : null);
-  const slugStatus = useSlugAvailability(slug);
+  const { slug, setSlug, following } = useSuggestedSlug(legalName, draft ? draft.slug : null);
+  // Followed suggestion: checked once, when the operator leaves the legal name; a typed slug: after a short pause.
+  const { status: slugStatus, checkSuggestion } = useSlugAvailability(slug, following);
   const [plan, setPlan] = useState<PlanLabel>(draft?.plan ?? "standard");
   const [slugRefusal, setSlugRefusal] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -237,6 +238,7 @@ export function TenantProvisionDrawer({
             value={legalName}
             maxLength={NAME_MAX}
             onChange={(e) => setLegalName(e.target.value)}
+            onBlur={checkSuggestion}
           />
           <SlugField
             id="prov-slug"
