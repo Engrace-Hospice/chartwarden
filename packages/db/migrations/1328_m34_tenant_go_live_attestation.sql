@@ -21,7 +21,8 @@
 --
 -- AUTHENTICITY IS A DATABASE FACT, not only an application check:
 --   * (tenant_account_id, organization_id) is a composite FK to tenant_account(id, organization_id) (the unique index on
---     that pair is the expand-only key it needs), so a row cannot name another organisation's tenant;
+--     that pair is the key it needs, and the reason this file is `contract`), so a row cannot name another organisation's
+--     tenant;
 --   * the tenant's INSERT policy pins status pending, every approve/revoke column to NULL, the attester's user to the
 --     session user (app.user_id), and the attester's membership to an ACTIVE membership of THIS organisation held by that
 --     very user, so a tenant session cannot file an attestation in anyone else's name or from another organisation;

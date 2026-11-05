@@ -151,9 +151,9 @@ function makeServer() {
   registerAbacRegistry(reg);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   const registered: { method: string | string[]; url: string; config: unknown }[] = [];
-  app.addHook("onRoute", (route) =>
-    registered.push({ method: route.method, url: route.url, config: route.config }),
-  );
+  app.addHook("onRoute", (route) => {
+    registered.push({ method: route.method, url: route.url, config: route.config });
+  });
   mountTenantPlatformRoutes(app, {} as DbClient, { onboarding: { wizard } });
   const id = (key: string) => (state.tasks.find((t) => t.templateKey === key) as { id: string }).id;
   return { app, state, id, registered };
