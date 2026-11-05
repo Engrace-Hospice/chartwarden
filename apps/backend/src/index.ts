@@ -1038,6 +1038,16 @@ import {
   validateDocumentsAIBlock,
 } from "./modules/22-documents/index";
 import { buildM22ConsentRevokedConsumer } from "./modules/22-documents/outbox-consumers/m39-consent-revoked";
+import { claimMdWebhookConfigFromEnv } from "./modules/23-billing-medicare/claimmd-webhook/config";
+import {
+  type ClaimMdPlatformRunner,
+  buildClaimMdReceiptStore,
+} from "./modules/23-billing-medicare/claimmd-webhook/receipt-store";
+import { registerClaimMdWebhookRoutes } from "./modules/23-billing-medicare/claimmd-webhook/routes";
+import {
+  registerClaimMdWebhookSweepWorker,
+  scheduleClaimMdWebhookSweep,
+} from "./modules/23-billing-medicare/claimmd-webhook/worker";
 import { createDrizzleAckCursorStore } from "./modules/23-billing-medicare/clearinghouse-ack-cursor-store";
 import { createDrizzleAttemptStore } from "./modules/23-billing-medicare/clearinghouse-attempt-store";
 import {
@@ -7884,6 +7894,28 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       );
     } else {
       app.log.warn("M35 workers disabled: DATABASE_PLATFORM_URL (active-org fan-out) is required");
+    }
+
+    // ── ADR-0053 amendment D7/D8 — the Claim.MD webhook receipt sweep (M23). Only with a bound webhook (which already
+    // implies the platform pool). It resolves the tenant, checks the Billing add-on, and publishes one PHI-free report.
+    if (m23ClaimMdWebhook.bound) {
+      const claimMdBound = m23ClaimMdWebhook.bound;
+      const claimMdSweepWorker = registerClaimMdWebhookSweepWorker(queueConnection, {
+        runner: claimMdBound.runner,
+        cipher: claimMdBound.cipher,
+        // TODO(claims-billing-addon): bind M35 entitlement. The Billing add-on capability (`isEntitled(orgId)`) lands on a
+        // parallel branch; until it is merged every resolved tenant counts as entitled, so reports flow as before it.
+        entitlement: { isEntitled: async () => true },
+        outbox: m23OutboxPublisher,
+        log: (event, detail) => app.log.info({ claimmd: detail }, event),
+      });
+      attachDlqAlertsToAll([claimMdSweepWorker], "m23");
+      app.addHook("onClose", () => claimMdSweepWorker.close());
+      void scheduleClaimMdWebhookSweep(queueConnection)
+        .then((queue) => {
+          app.addHook("onClose", () => queue.close());
+        })
+        .catch((err) => app.log.error(err, "Claim.MD webhook sweep schedule registration failed"));
     }
 
     // ── GAP-014 — M4 §4.4 audit jobs (build_export sweep, daily retention_scan, execute_destruction sweep) ──
