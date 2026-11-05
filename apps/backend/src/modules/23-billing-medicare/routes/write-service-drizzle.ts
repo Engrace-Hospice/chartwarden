@@ -41,6 +41,7 @@ import * as schema from "@chartwarden/db/schema";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, ConflictError, DegradedError, NotFoundError } from "@chartwarden/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
 import { M23_QUEUES } from "../jobs/queues";
 import { buildNoticeCorrectionService } from "../services/notice-correction-service";
 import {
@@ -1300,6 +1301,7 @@ export function buildDrizzleM23WriteService(
       actor,
       args: UpsertMacCredentialArgs,
     ): Promise<MacCredentialView> {
+      await assertTxScopedToOrg(tx, actor.organizationId);
       requireStepUp(actor);
       return mapUniqueViolation(
         "a MAC credential already exists for this provider entity; send its current version in If-Match to update it",

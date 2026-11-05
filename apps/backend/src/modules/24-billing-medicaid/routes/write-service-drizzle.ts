@@ -35,6 +35,7 @@ import {
   type PatientCoverageReader,
 } from "@chartwarden/types";
 import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
+import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
 import type { CredentialCipherPort } from "../credential-crypto";
 import type { M24WriteActor } from "./actor";
 import type { ClaimView, RbArrangementView } from "./read-service";
@@ -1601,6 +1602,7 @@ export function buildDrizzleM24WriteService(
     // The SAME upsert on the CALLER'S transaction (`tx` already scoped to `actor.organizationId`): the platform
     // onboarding route keeps the write, its tenant-status check and its audit row in one unit of work.
     async upsertCredentialOnTx(tx, actor, input: UpsertCredentialInput) {
+      await assertTxScopedToOrg(tx, actor.organizationId);
       return upsertCredentialRow(tx as Tx, actor, input);
     },
 

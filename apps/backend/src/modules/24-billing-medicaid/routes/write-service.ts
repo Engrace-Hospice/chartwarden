@@ -8,6 +8,7 @@
 // readers; eligibility — the state adapter + M5 MedicaidIdUnlockReader; submit/replace/void — the state
 // adapter wire I/O; platform rate-schedule-load — M40) DEGRADE to a structured typed error / queued no-op
 // rather than crashing. Noted per method.
+import type { DbClient } from "@chartwarden/db";
 import type { M24WriteActor } from "./actor";
 import type { ClaimView, RbArrangementView } from "./read-service";
 
@@ -198,7 +199,7 @@ export interface M24WriteService {
    * onboarding route (M34) uses it so the write, its tenant-status check and its audit row commit together.
    */
   upsertCredentialOnTx(
-    tx: unknown,
+    tx: DbClient,
     actor: M24WriteActor,
     input: UpsertCredentialInput,
   ): Promise<{ id: string }>;

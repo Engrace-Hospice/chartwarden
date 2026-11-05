@@ -4,7 +4,6 @@
 //
 // The body is the tenant route's (`UpsertMacCredentialBodySchema`), parsed here with M23's own schema. The service
 // view carries only a `hasSecret` flag and the safe identifiers (§3.6): no secret ever leaves through this port.
-import type { repositories } from "@chartwarden/billing";
 import type {
   OnboardingCredentialPort,
   OnboardingWriteScope,
@@ -41,7 +40,7 @@ export function buildMacOnboardingCredentialPort(deps: {
     async upsert(tx, scope, body, expectedVersion) {
       const args = parse(UpsertMacCredentialBodySchema, body);
       const view = await deps.writeService.upsertMacCredentialOnTx(
-        tx as unknown as repositories.BillingDb,
+        tx,
         writeActorFor(scope),
         { ...args, expectedVersion },
       );
