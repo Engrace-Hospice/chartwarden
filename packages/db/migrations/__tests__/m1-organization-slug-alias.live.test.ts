@@ -2,8 +2,8 @@
  * Migration 1144 — tenant slug rules and rename aliases (ADR-0049 D3) — the LIVE Postgres proof.
  *
  * Applies every migration to a fresh schema and drives the rules as the real NOBYPASSRLS `chartwarden_app` role:
- * the slug CHECK, the rename → alias trigger, "a slug is never reused", and that an alias is readable only by its
- * own tenant and writable by nobody but the trigger.
+ * the slug guard (and migration 1331's reserved legacy host `wardenx`, which binds new slugs only), the rename → alias
+ * trigger, "a slug is never reused", and that an alias is readable only by its own tenant and writable by nobody but the trigger.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… (SUPERUSER, THROWAWAY db) bun run test:m1:slug-alias:live
  */
@@ -95,6 +95,7 @@ describe.skipIf(!DB_URL)("migration 1144 — slug rules and aliases — LIVE Pos
     "status",
     "docs",
     "mail",
+    "wardenx",
     "Upper",
     "ab",
     "-lead",
@@ -127,6 +128,34 @@ describe.skipIf(!DB_URL)("migration 1144 — slug rules and aliases — LIVE Pos
       (await db.query("SELECT status FROM organization WHERE id=$1", [legacy])).rows[0].status,
     ).toBe("suspended");
     expect(await errorCode(() => rename(legacy, "Still_Bad"))).toBe(CHECK_VIOLATION);
+  });
+
+  it("refuses a rename onto a reserved legacy host, including as the app role", async () => {
+    expect(await errorCode(() => rename(ORG_A, "wardenx"))).toBe(CHECK_VIOLATION);
+    expect(
+      await errorCode(() =>
+        asApp(ORG_A, () => db.query("UPDATE organization SET slug='wardenx' WHERE id=$1", [ORG_A])),
+      ),
+    ).toBe(CHECK_VIOLATION);
+  });
+
+  it("does not block an organization that already holds a reserved legacy host (migration 1331 binds new slugs only)", async () => {
+    const holder = "55555555-5555-5555-5555-555555555555";
+    await db.query("ALTER TABLE organization DISABLE TRIGGER organization_slug_legacy_host_guard");
+    try {
+      await insertOrg(holder, "wardenx");
+    } finally {
+      await db.query("ALTER TABLE organization ENABLE TRIGGER organization_slug_legacy_host_guard");
+    }
+    await db.query("UPDATE organization SET status = 'suspended' WHERE id = $1", [holder]);
+    await db.query("UPDATE organization SET slug = slug WHERE id = $1", [holder]);
+    expect(
+      (await db.query("SELECT slug, status FROM organization WHERE id=$1", [holder])).rows[0],
+    ).toEqual({ slug: "wardenx", status: "suspended" });
+    // Leaving it is a rename like any other (the old slug becomes an alias); only taking it is refused.
+    await rename(holder, "legacy-holder");
+    expect(await aliasesOf(holder)).toEqual(["wardenx"]);
+    expect(await errorCode(() => rename(holder, "wardenx"))).toBe(CHECK_VIOLATION);
   });
 
   it("records the old slug as an alias when an organization is renamed", async () => {

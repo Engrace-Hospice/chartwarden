@@ -1,9 +1,13 @@
 // ADR-0049 D3 — tenant slug rules. A slug is the DNS label a tenant is served at
 // (`<slug>.<TENANT_BASE_DOMAIN>`), so it is an RFC 1123 label, lower-case, never punycode, and never one
-// of the hosts ADR-0049 D2 reserves. The DB CHECK in migration 1144 repeats both rules; a test keeps the
+// of the hosts ADR-0049 D2 reserves. The DB guards (migrations 1144 and 1331) repeat both rules; a test keeps the
 // two in step.
 
-/** Hosts under the base domain that are never tenants (ADR-0049 D2). */
+/**
+ * Hosts under the base domain that are never tenants (ADR-0049 D2), plus `wardenx`: the legacy vhost the infra rename leaves
+ * behind (deploy/production/nginx/chartwarden-legacy-redirects.conf answers it with a 308 away), so a tenant of that name
+ * could never be reached. Migrations 1144 and 1331 carry the same names.
+ */
 export const RESERVED_TENANT_SLUGS: readonly string[] = [
   "www",
   "admin",
@@ -14,6 +18,7 @@ export const RESERVED_TENANT_SLUGS: readonly string[] = [
   "status",
   "docs",
   "mail",
+  "wardenx",
 ];
 
 /** RFC 1123 DNS label, lower-case, 1–63 characters; `validateTenantSlug` additionally requires 3+. */
