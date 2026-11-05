@@ -126,7 +126,7 @@ single-host and per-tenant installs need separate builds:
 cosign. It is manual-only and the real environment is deployed by hand; set `CHARTWARDEN_WEB_IMAGE` to that image.
 
 **Demo:** `deploy.yml` builds `chartwarden-web` on every release and passes both args from the repository variable
-`DEMO_TENANT_BASE_DOMAIN` (empty or unset = both args empty = the single-host image, byte for byte what it built before). Setting
+`DEMO_TENANT_BASE_DOMAIN` (empty or unset = both args empty, the Dockerfile defaults: the single-host behaviour is unchanged; the image digest still differs from build to build). A malformed value fails the first step after checkout, before any image is built. Setting
 the variable changes nothing until the next release run, and adds no workflow trigger.
 
 ## Verify (smoke.sh)
