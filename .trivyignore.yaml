@@ -28,6 +28,13 @@
 # These are the outstanding high findings in Debian 13 (trixie), after the image refresh. Debian has
 # not shipped fixes for that release; each row is limited to the earliest mandated re-examination date.
 vulnerabilities:
+  - id: CVE-2026-76844
+    expired_at: 2026-12-31
+    statement: >
+      Debian 13's zlib1g 1:1.3.dfsg+really1.3.1-1+b1 has no fixed stable package yet; Debian's
+      tracking discussion says the patch is in sid and stable backports are pending (Debian bug
+      #1153063). Remove this when the Bun base image carries the fixed Debian package, or re-examine
+      by the expiry.
   - id: CVE-2026-76642
     expired_at: 2026-12-31
     statement: >
