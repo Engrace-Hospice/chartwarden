@@ -598,6 +598,18 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
       expect((await sweep()).outcomes).toEqual({ published: 2 });
     });
 
+    it("refuses a ciphertext moved from another row (its digest no longer matches), spending no attempt", async () => {
+      await store([enrollFor("s1", NPI_A), enrollFor("s2", NPI_B)]);
+      await admin.query(
+        `UPDATE claimmd_webhook_event SET payload_cipher = (SELECT payload_cipher FROM claimmd_webhook_event WHERE event_id = 's1')
+          WHERE event_id = 's2'`,
+      );
+      expect((await sweep()).outcomes).toEqual({ published: 1, payload_undecryptable: 1 });
+      expect(await outcome("s2")).toMatchObject({ processing_outcome: null, attempt_count: 0 });
+      const published = await outbox("m23.clearinghouse.enrollment_reported");
+      expect(published.map((e) => e.organization_id)).toEqual([ORG_A]);
+    });
+
     it("clears ciphers after the retention window and closes out entitlement waits", async () => {
       const old = new Date(T0.getTime() - (CLAIMMD_PAYLOAD_RETENTION_DAYS + 1) * 86_400_000);
       await store([enrollFor("r1", NPI_A), enrollFor("r2", NPI_A)], old);
