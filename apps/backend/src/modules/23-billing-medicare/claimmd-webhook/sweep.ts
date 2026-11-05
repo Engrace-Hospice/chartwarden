@@ -91,7 +91,7 @@ export const vendorText = (v: unknown, max = 64): string | null => {
   const s = typeof v === "number" && Number.isSafeInteger(v) ? String(v) : v;
   if (typeof s !== "string" || s.length > max) return null;
   const t = s.trim();
-  return t.length > 0 && !/[\u0000-\u001f\u007f]/.test(t) ? t : null;
+  return t.length > 0 && !/\p{Cc}/u.test(t) ? t : null;
 };
 const text = vendorText;
 
