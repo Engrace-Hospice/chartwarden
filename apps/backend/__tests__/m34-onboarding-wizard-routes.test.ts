@@ -150,9 +150,13 @@ function makeServer() {
   reg.register("step_up_recent", async (c) => c.attributes.stepUpRecent === true);
   registerAbacRegistry(reg);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+  const registered: { method: string | string[]; url: string; config: unknown }[] = [];
+  app.addHook("onRoute", (route) =>
+    registered.push({ method: route.method, url: route.url, config: route.config }),
+  );
   mountTenantPlatformRoutes(app, {} as DbClient, { onboarding: { wizard } });
   const id = (key: string) => (state.tasks.find((t) => t.templateKey === key) as { id: string }).id;
-  return { app, state, id };
+  return { app, state, id, registered };
 }
 
 beforeEach(() => {
@@ -478,6 +482,50 @@ describe("tenant onboarding routes", () => {
     expect((await app.inject({ method: "GET", url: "/api/v1/tenant/onboarding" })).statusCode).toBe(
       401,
     );
+    await app.close();
+  });
+
+  it("declares a read-audit event for the tenant wizard read, as the platform read does", async () => {
+    const { app, registered } = makeServer();
+    const read = registered.find(
+      (r) => r.method === "GET" && r.url === "/api/v1/tenant/onboarding",
+    );
+    expect(read?.config).toMatchObject({
+      auditRead: { resourceKind: "onboarding_task", list: true },
+    });
+    await app.close();
+  });
+
+  it("never returns a platform operator's membership to the tenant, and still returns the reason", async () => {
+    const { app, state } = makeServer();
+    state.tasks = state.tasks.map((t) =>
+      t.templateKey === "organisation"
+        ? {
+            ...t,
+            status: "done" as const,
+            evidenceNote: "legal name confirmed",
+            attestedByMembershipId: "40000000-0000-4000-8000-0000000000aa",
+            attestedByActorKind: "platform_ops" as const,
+            attestedAt: new Date("2026-11-05T12:00:00Z"),
+          }
+        : t,
+    );
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/tenant/onboarding",
+      headers: ADMIN,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain("40000000-0000-4000-8000-0000000000aa");
+    expect(res.json().steps[0]).toMatchObject({
+      evidence: { note: "legal name confirmed" },
+      attestedBy: {
+        membershipId: null,
+        actorKind: "platform_ops",
+        label: "ChartWarden operations",
+        at: "2026-11-05T12:00:00.000Z",
+      },
+    });
     await app.close();
   });
 

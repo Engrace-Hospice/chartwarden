@@ -62,12 +62,17 @@ export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingR
 
   // The ordered wizard: steps (lock state, owner, mode, evidence, who/when), the current step, the go-live state and the
   // org profile. The whole catalog is a dozen rows, so there is no cursor; `items` is the older name of `steps`.
-  app.get("/api/v1/tenant/onboarding", { preHandler: [READ] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    parse(OnboardingListQuerySchema, request.query);
-    const view = await wizard.getTenant(organizationId);
-    return { ...view, items: view.steps, nextCursor: null, hasMore: false };
-  });
+  // The read is audited like the platform one (a list read of onboarding_task), and carries no ChartWarden operator's id.
+  app.get(
+    "/api/v1/tenant/onboarding",
+    { preHandler: [READ], config: { auditRead: { resourceKind: "onboarding_task", list: true } } },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      parse(OnboardingListQuerySchema, request.query);
+      const view = await wizard.getTenant(organizationId);
+      return { ...view, items: view.steps, nextCursor: null, hasMore: false };
+    },
+  );
 
   // pending/blocked -> in_progress; refused out of sequence or by a non-owner.
   app.post(

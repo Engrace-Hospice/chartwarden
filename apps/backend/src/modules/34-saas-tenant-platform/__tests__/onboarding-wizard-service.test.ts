@@ -875,6 +875,86 @@ describe("go-live: two people, a live attester, a fresh attestation", () => {
   });
 });
 
+describe("the tenant never sees a ChartWarden operator's ids", () => {
+  it("a platform-attested step shows as ChartWarden operations to the tenant, with its id to the platform", async () => {
+    await wizard().attestPlatform("acme", taskId("organisation"), OPS, evidence);
+
+    const forTenant = await wizard().getTenant(ORG);
+    const forPlatform = await wizard().getPlatform("acme");
+
+    expect(forTenant.steps[0]?.attestedBy).toMatchObject({
+      membershipId: null,
+      actorKind: "platform_ops",
+      label: "ChartWarden operations",
+    });
+    expect(forPlatform.steps[0]?.attestedBy).toMatchObject({ membershipId: "ops-m", label: null });
+    expect(JSON.stringify(forTenant)).not.toMatch(/ops-m|ops-u/);
+  });
+
+  it("every tenant response (start, attest, re-open, go-live attest) is redacted, and the evidence text stays", async () => {
+    await wizard().attestPlatform("acme", taskId("organisation"), OPS, evidence);
+    const started = await wizard().startTask(ADMIN, ORG, taskId("billing"));
+    expect(JSON.stringify(started)).not.toMatch(/ops-m|ops-u/);
+    const reopened = await wizard().reopenPlatform(
+      "acme",
+      taskId("organisation"),
+      OPS,
+      "wrong legal name recorded",
+    );
+    expect(reopened.status).toBe("in_progress");
+    await wizard().attestPlatform("acme", taskId("organisation"), OPS, evidence);
+    settle("billing", "locations", "baa_auto");
+    const attested = await wizard().attestGoLive(OFFICER, ORG, "all checks reviewed");
+    expect(JSON.stringify(attested)).not.toMatch(/ops-m|ops-u/);
+    expect(attested.steps.find((s) => s.key === "organisation")?.evidence?.note).toBe(
+      "signed order form on file",
+    );
+  });
+
+  it("an approval shows the tenant who approved only as ChartWarden operations, with the reason and the time", async () => {
+    settle("organisation", "billing", "locations", "baa_auto");
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    await wizard().approveGoLive("acme", OPS, "reviewed the evidence and the BAA");
+
+    const view = await wizard().getTenant(ORG);
+
+    expect(view.goLive.attestation).toMatchObject({
+      status: "approved",
+      approvedByMembershipId: null,
+      approvedByLabel: "ChartWarden operations",
+      approvalReason: "reviewed the evidence and the BAA",
+    });
+    expect(view.goLive.attestation?.approvedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(JSON.stringify(view)).not.toMatch(/ops-m|ops-u/);
+  });
+
+  it("a revocation by the tenant's own admin keeps the admin visible; one by an operator does not", async () => {
+    settle("organisation", "billing", "locations", "baa_auto");
+    state.members.set(...memoryMember(ORG, "co2-m", "co2-u", ["compliance_officer"]));
+    state.tenants = [{ ...tenant(), complianceOfficerMembershipId: "co-m" }];
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    await wizard().setComplianceOfficer(ADMIN, ORG, "co2-m"); // voids it as the tenant admin
+    expect((await wizard().getTenant(ORG)).goLive.attestation).toMatchObject({
+      status: "revoked",
+      revokedByMembershipId: "admin-m",
+      revokedByLabel: null,
+    });
+
+    await wizard().attestGoLive(
+      { kind: "tenant", membershipId: "co2-m", userId: "co2-u", roles: ["compliance_officer"] },
+      ORG,
+      undefined,
+    );
+    await wizard().revokeGoLive("acme", OPS, "BAA addendum is being renegotiated");
+    expect((await wizard().getTenant(ORG)).goLive.attestation).toMatchObject({
+      status: "revoked",
+      revokedByMembershipId: null,
+      revokedByLabel: "ChartWarden operations",
+      revokeReason: "BAA addendum is being renegotiated",
+    });
+  });
+});
+
 describe("read model", () => {
   it("returns the ordered steps with lock state, the current step and the go-live state", async () => {
     await wizard().attestPlatform("acme", taskId("organisation"), OPS, evidence);

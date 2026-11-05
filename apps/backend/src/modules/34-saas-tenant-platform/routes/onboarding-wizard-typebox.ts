@@ -72,8 +72,10 @@ export const WizardStepViewSchema = Type.Object({
   evidence: Nullable(Type.Object({ note: Type.String(), ref: Nullable(Type.String()) })),
   attestedBy: Nullable(
     Type.Object({
-      membershipId: Type.String(),
+      // Null for a ChartWarden operator on the tenant surface, which shows `label` instead.
+      membershipId: Nullable(Type.String()),
       actorKind: lit(["platform_ops", "tenant"] as const),
+      label: Nullable(Type.String()),
       at: Instant,
     }),
   ),
@@ -97,9 +99,11 @@ const GoLiveAttestationViewSchema = Type.Object({
   expiresAt: Nullable(Instant),
   attestationNote: Nullable(Type.String()),
   approvedByMembershipId: Nullable(Type.String()),
+  approvedByLabel: Nullable(Type.String()),
   approvedAt: Nullable(Instant),
   approvalReason: Nullable(Type.String()),
   revokedByMembershipId: Nullable(Type.String()),
+  revokedByLabel: Nullable(Type.String()),
   revokedAt: Nullable(Instant),
   revokeReason: Nullable(Type.String()),
 });
