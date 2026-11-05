@@ -5,10 +5,10 @@
 > (`apps/web`, `apps/portal`, `apps/admin`). Do not hand-edit — the `ui:parity --check`
 > gate (in `arch:fitness`) keeps it in sync with source.
 
-**Coverage:** 117 documented screen specs · 45 module screen-sets registered · 395 screens wired across web/portal/admin.
+**Coverage:** 116 documented screen specs · 45 module screen-sets registered · 384 screens wired across web/portal/admin.
 - **admin**: 40 screen(s)
 - **portal**: 19 screen(s)
-- **web**: 336 screen(s)
+- **web**: 325 screen(s)
 
 > The documented vs implemented counts are a deliberate gap *summary*, not a per-screen join: UI specs are feature-named docs with no shared key to a registered screen, and screen `path`s are frontend routes (not API paths). The per-screen table below is the precise, checkable surface.
 
@@ -22,7 +22,7 @@
 - **mobile**: 1 spec(s)
 - **platform**: 5 spec(s)
 - **portal**: 11 spec(s)
-- **revenue**: 18 spec(s)
+- **revenue**: 17 spec(s)
 - **staffing**: 3 spec(s)
 
 ## Implemented surface (registered screens)
@@ -148,17 +148,8 @@
 | web | 16-bereavement | `bereavement.plan` | `/bereavement/plans/:planId` | `bereavement.plan.read` | ✅ |
 | web | 16-bereavement | `bereavement.plan.seed` | `/bereavement/plans/:planId/seed` | `bereavement.plan.activate` | ✅ |
 | web | 16-bereavement | `bereavement.plan.closeout` | `/bereavement/plans/:planId/closeout` | `bereavement.plan.read` | ✅ |
-| web | 16-bereavement | `bereavement.mailings` | `/bereavement/mailings` | `bereavement.mailing.read` | ✅ |
-| web | 16-bereavement | `bereavement.mailings.settings` | `/bereavement/mailings/settings` | `bereavement.mailing.manage` | ✅ |
-| web | 16-bereavement | `bereavement.mailings.run` | `/bereavement/mailings/runs/:runId` | `bereavement.mailing.read` | ✅ |
-| web | 16-bereavement | `bereavement.groups` | `/bereavement/groups` | `bereavement.group.read` | ✅ |
-| web | 16-bereavement | `bereavement.groups.detail` | `/bereavement/groups/:groupId` | `bereavement.group.read` | ✅ |
-| web | 16-bereavement | `bereavement.memorials` | `/bereavement/memorials` | `bereavement.memorial.rsvp` | ✅ |
-| web | 16-bereavement | `bereavement.memorials.detail` | `/bereavement/memorials/:serviceId` | `bereavement.memorial.rsvp` | ✅ |
-| web | 16-bereavement | `bereavement.library` | `/bereavement/library` | `bereavement.library.read` | ✅ |
 | web | 16-bereavement | `bereavement.plan.outreach` | `/bereavement/plans/:planId/outreach` | `bereavement.outreach.read` | ✅ |
 | web | 16-bereavement | `bereavement.plan.risk` | `/bereavement/plans/:planId/risk` | `bereavement.risk.read` | ✅ |
-| web | 16-bereavement | `bereavement.predeath` | `/bereavement/pre-death/:admissionId` | `bereavement.assessment_draft.read` | ✅ |
 | web | 16-bereavement | `bereavement.contact` | `/bereavement/plans/:planId/contacts/:contactId` | `bereavement.plan.read` | ✅ |
 | web | 16-bereavement | `bereavement.contact.screen` | `/bereavement/plans/:planId/contacts/:contactId/screen` | `bereavement.contact.flag_complicated_grief` | ✅ |
 | web | 16-bereavement | `bereavement.plan.history` | `/bereavement/plans/:planId/history` | `bereavement.plan.read` | ✅ |
@@ -227,7 +218,6 @@
 | web | 22-documents | `intake.review-workspace` | `/intake/:batchId/review` | `intake.review` | ✅ |
 | web | 22-documents | `documents.intake-batch` | `/intake/:batchId` | `intake.read` | ✅ |
 | web | 22-documents | `documents.template-library` | `/admin/forms/templates` | `documents.read_templates` | ✅ |
-| web | 23-billing-medicare | `billing.operations` | `/billing/operations` | `(none)` | ✅ |
 | web | 23-billing-medicare | `billing.ar-dashboard` | `/billing` | `billing.claim.read_ar_dashboard` | ✅ |
 | web | 23-billing-medicare | `billing.work-queue` | `/billing/queue` | `billing.claim.read` | ✅ |
 | web | 23-billing-medicare | `billing.claims` | `/billing/claims` | `billing.claim.read` | ✅ |
@@ -270,7 +260,6 @@
 | web | 24-billing-medicaid | `medicaid.metrics` | `/medicaid/billing/metrics` | `medicaid.claim.read_metrics` | ✅ |
 | web | 24-billing-medicaid | `medicaid.surveyor-read` | `/admin/medicaid-billing-audit/:claimId` | `medicaid.claim.read` | ✅ |
 | web | 25-remittance | `remittance.worklist` | `/remittance` | `remittance.read` | ✅ |
-| web | 25-remittance | `remittance.claimmd-era-review` | `/remittance/claimmd-era-review` | `remittance.read` | ✅ |
 | web | 25-remittance | `remittance.denials` | `/remittance/denials` | `denial.worklist.read` | ✅ |
 | web | 25-remittance | `remittance.adrs` | `/remittance/adrs` | `adr.read` | ✅ |
 | web | 25-remittance | `remittance.audits` | `/remittance/audits` | `audit_request.read` | ✅ |
@@ -365,10 +354,10 @@
 | web | 41-billing-commercial | `commercial.authorizations` | `/commercial/billing/authorizations` | `commercial_billing.read` | ✅ |
 | web | 41-billing-commercial | `commercial.enrollments` | `/commercial/billing/enrollments` | `commercial_billing.read` | ✅ |
 | web | 41-billing-commercial | `commercial.eligibility` | `/commercial/billing/eligibility` | `commercial_billing.read` | ✅ |
-| admin | 01-ops | `admin.ops.claimmd-recovery-readiness` | `/admin/ops/claimmd-recovery-readiness` | `billing.rule_config.platform_admin` | ✅ |
 | admin | 01-ops | `admin.ops.outbox` | `/admin/ops/outbox` | `member.manage` | ✅ |
 | admin | 01-ops | `admin.ops.outbox-detail` | `/admin/ops/outbox/:id` | `member.manage` | ✅ |
 | admin | 23-billing-medicare | `admin.billing.wage-index-load` | `/admin/billing/wage-indexes/load` | `billing.rule_config.platform_admin` | ✅ |
+| admin | 23-billing-medicare | `admin.billing.npi-verifications` | `/admin/billing/npi-verifications` | `billing.rule_config.platform_admin` | ✅ |
 | admin | 32-ai-platform | `admin.ai-capabilities` | `/admin/ai-platform/capabilities` | `ai.capability.read` | ✅ |
 | admin | 32-ai-platform | `admin.ai-capability-detail` | `/admin/ai-platform/capabilities/:capabilityId` | `ai.capability.read` | ✅ |
 | admin | 32-ai-platform | `admin.ai-kill-switches` | `/admin/ai-platform/kill-switches` | `ai.kill_switch.read` | ✅ |
