@@ -8,7 +8,7 @@
 --   * subscription_addon: which tenant subscription holds which add-on, and since when. Tenant-scoped on
 --     organization_id (no PHI, so provider_entity_id/location_id do not attach - the M35 posture). RLS ENABLE + FORCE
 --     with a SELECT-ONLY policy and grant for chartwarden_app: the entitlement reader runs on the tenant pool, but a
---     grant or cancel is written ONLY through M35's platform runner (chartwarden_admin), so a tenant can never grant
+--     grant or cancel is written ONLY through M35's platform runner (the chartwarden_platform carrier), so a tenant can never grant
 --     itself the add-on. At most one live (trialing/active) row per (organization, add-on).
 -- Both carry the M1 baseline write-audit trigger: ids, statuses, instants and the operator's grant reason only.
 -- The nullable stripe_* columns are placeholders for the deferred Stripe subscription-item wiring.

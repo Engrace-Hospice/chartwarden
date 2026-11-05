@@ -1,6 +1,6 @@
 // apps/backend/src/modules/35-subscription/addon/addon-service.ts — ADR-0108 the claims-billing add-on service.
 //
-// PLATFORM-OPS writes (grant / trial / cancel) run ONLY through the injected platform runner (chartwarden_admin): the
+// PLATFORM-OPS writes (grant / trial / cancel) run ONLY through the injected platform runner (the chartwarden_platform carrier): the
 // app role holds SELECT and nothing else on `subscription_addon`, so a tenant session can never grant itself the
 // add-on (migration 1321). Each write emits its `m35.claims_billing_addon.*` event through the catalog-validating
 // publisher on the SAME transaction. The tenant read (`claimsBillingForOrg`) runs on the tenant pool under RLS.

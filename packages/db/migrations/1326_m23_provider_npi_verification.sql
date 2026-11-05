@@ -50,7 +50,9 @@ GRANT ALL ON "provider_npi_verification" TO chartwarden_admin;--> statement-brea
 -- The platform carrier exists only where provision-runtime-roles.ts has run; that script re-grants on every run.
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chartwarden_platform') THEN
-    GRANT SELECT, INSERT, UPDATE ON "provider_npi_verification" TO chartwarden_platform;
+    -- UPDATE is column-level (revocation only), the same list scripts/db/provision-runtime-roles.ts grants.
+    GRANT SELECT, INSERT ON "provider_npi_verification" TO chartwarden_platform;
+    GRANT UPDATE ("revoked_at", "revoked_by_membership_id", "updated_at") ON "provider_npi_verification" TO chartwarden_platform;
   END IF;
 END $$;
 --> statement-breakpoint
