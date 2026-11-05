@@ -261,6 +261,17 @@ controls:
       reason: The signature scheme and payload shape follow Claim.MD's documentation and are proven against our own signed fixtures only; no real Claim.MD delivery has been captured yet (questions sent to Claim.MD). CLAIMMD_WEBHOOK_ENABLED stays false until one is.
       owner: engineering
       review_by: 2027-01-31
+  - id: CW-TX-03
+    title: Clearinghouse enrollment reports are routed to a tenant only when platform staff have verified that the tenant's provider entity owns the reported NPI (a platform-written, RLS-forced record tenants can read but never write; verify/revoke need a platform-ops role, the platform-admin key, a fresh step-up and an Idempotency-Key, are audited with the operator, and a changed NPI stops routing)
+    hipaa: ["164.312(a)(1)", "164.308(a)(4)(ii)(B)", "164.312(b)"]
+    soc2: ["CC6.1", "CC6.3", "CC7.2"]
+    status: implemented
+    evidence:
+      - script: test:m23:claimmd-webhook:live
+      - ci: "M23 Claim.MD webhook"
+      - file: packages/db/migrations/1326_m23_provider_npi_verification.sql
+      - file: apps/backend/src/modules/23-billing-medicare/routes/npi-verification.routes.ts
+      - file: apps/backend/__tests__/m23-npi-verification-routes.test.ts
 
   # ---------------------------------------------------------------- §164.308 administrative (engineering-side)
   - id: CW-RA-01
