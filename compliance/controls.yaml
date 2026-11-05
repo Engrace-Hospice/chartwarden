@@ -197,6 +197,28 @@ controls:
       - file: apps/backend/src/modules/41-billing-commercial/services/enrollment-report-service.ts
       - file: apps/backend/src/modules/25-remittance/outbox-consumers/m23-appeal-reported.ts
 
+  - id: CW-AC-14
+    title: The platform BAA register is written only by a platform operator holding platform_tenant_baa.write_platform with a fresh step-up and a human (non-AI) actor; the read key no longer permits writes
+    hipaa: ["164.308(b)(1)", "164.314(a)(1)"]
+    soc2: ["CC6.1", "CC9.2"]
+    status: implemented
+    evidence:
+      - script: test:m34:onboarding-wizard:live
+      - ci: "Unit + integration suite (bun run test)"
+      - file: apps/backend/src/modules/34-saas-tenant-platform/routes/platform/baa-register.ts
+      - file: apps/backend/__tests__/saas-tenant-platform-inject.test.ts
+
+  - id: CW-AC-15
+    title: Tenant onboarding steps are strictly ordered on the server (409 ONBOARDING_STEP_OUT_OF_ORDER on both the platform and tenant routes), and a human settles a step only with required evidence (a note, plus an optional reference) recorded on the task with the attester and time and audited by the row trigger; a tenant actor must hold the step's owner role, and go-live cannot be skipped or attested as an ordinary step
+    hipaa: ["164.308(a)(1)(ii)(D)", "164.312(b)"]
+    soc2: ["CC5.2", "CC8.1"]
+    status: implemented
+    evidence:
+      - script: test:m34:onboarding-wizard:live
+      - ci: "M34 onboarding wizard v2"
+      - file: apps/backend/src/modules/34-saas-tenant-platform/onboarding/wizard-service.ts
+      - file: packages/db/migrations/1327_m34_onboarding_wizard_v2.sql
+
   - id: CW-AU-01
     title: Audit controls — PHI reads and writes leave an integrity-checked trail
     hipaa: ["164.312(b)", "164.312(c)(1)"]
