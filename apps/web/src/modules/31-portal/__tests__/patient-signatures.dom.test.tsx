@@ -99,6 +99,10 @@ const deferred = <T,>() => {
   return { promise, resolve };
 };
 
+/** The text an alertdialog's aria-describedby points at. */
+const describedText = (dialog: HTMLElement) =>
+  document.getElementById(dialog.getAttribute("aria-describedby") ?? "")?.textContent ?? "";
+
 describe("PatientSignatures", () => {
   it("lists requests with status, reminders and signer role, and never shows signer text", async () => {
     mount({
@@ -184,8 +188,9 @@ describe("PatientSignatures", () => {
   it("withdraws an open request with the chosen coded reason", async () => {
     const { post } = mount({ items: [row({ id: "w-1" })] });
     fireEvent.click(await screen.findByRole("button", { name: /^Withdraw/ }));
-    // A destructive confirmation is an alertdialog.
+    // A destructive confirmation is an alertdialog, and a screen reader hears its consequence.
     const dialog = await screen.findByRole("alertdialog", { name: "Withdraw request" });
+    expect(describedText(dialog)).toMatch(/cannot be undone/);
     fireEvent.change(within(dialog).getByLabelText("Reason"), {
       target: { value: "patient_declined" },
     });
@@ -295,6 +300,7 @@ describe("PatientSignatures", () => {
     fireEvent.click(await screen.findByRole("button", { name: /^Accept the signed copy/ }));
     const dialog = await screen.findByRole("alertdialog", { name: "Accept signed copy" });
     expect(within(dialog).getByText(/cannot be undone/)).toBeTruthy();
+    expect(describedText(dialog)).toMatch(/cannot be undone/);
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(post).not.toHaveBeenCalled();

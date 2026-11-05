@@ -473,10 +473,16 @@ function AcceptDialog({
 }): JSX.Element | null {
   if (!row) return null;
   return (
-    <Modal open onClose={onClose} ariaLabel="Accept signed copy" role="alertdialog">
+    <Modal
+      open
+      onClose={onClose}
+      ariaLabel="Accept signed copy"
+      ariaDescribedBy="accept-copy-consequence"
+      role="alertdialog"
+    >
       <div style={{ display: "grid", gap: "1rem" }}>
         <h2 style={{ margin: 0 }}>Accept signed copy</h2>
-        <p style={{ margin: 0 }}>
+        <p id="accept-copy-consequence" style={{ margin: 0 }}>
           The uploaded copy will be recorded as the patient's signed{" "}
           {DOC_LABEL[row.docKind] ?? "document"}, with you as the reviewer. This cannot be undone.
           Open the uploaded copy first if you have not checked it.
@@ -579,6 +585,7 @@ function WithdrawDialog({
       open
       onClose={busy ? undefined : onClose}
       ariaLabel="Withdraw request"
+      ariaDescribedBy="withdraw-request-consequence"
       role="alertdialog"
     >
       <form
@@ -589,7 +596,7 @@ function WithdrawDialog({
         style={{ display: "grid", gap: "1rem" }}
       >
         <h2 style={{ margin: 0 }}>Withdraw request</h2>
-        <p style={{ margin: 0 }}>
+        <p id="withdraw-request-consequence" style={{ margin: 0 }}>
           {DOC_LABEL[row.docKind]} will no longer be waiting for a signature. This cannot be undone;
           send a new request to ask again.
         </p>

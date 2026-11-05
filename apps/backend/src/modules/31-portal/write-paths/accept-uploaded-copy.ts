@@ -154,7 +154,7 @@ export async function acceptUploadedCopy(
   if (marked.ok) return { ok: true };
   // The request was voided, rejected or accepted with another consent while M39 signed this one (two transactions, D2): revoke it, so a
   // consent never stays active without the request that justifies it. A retry landing on the same consent is `ok` above, never revoked.
-  // Another reviewer's accept may have revoked the same consent already; revoking it twice is an M39 invalid transition.
+  // Another reviewer (or a reject's sweep) may revoke the same consent first; the revoke port treats losing that race as done, not a 500.
   const current = await deps.readConsent(organizationId, signed.recordId);
   if (current?.status !== "active") return deny("request_not_pending_review");
   await deps.revokeConsent({
