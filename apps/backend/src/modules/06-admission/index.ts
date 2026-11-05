@@ -27,10 +27,10 @@ import type { NomncService } from "./nomnc/service";
 import { createDbPhysicianAuthority } from "./physician-authority-db";
 import { createDbReadmissionService } from "./readmission-service-db";
 import { registerAdmissionRoutes as _registerM6Routes } from "./routes/admission-routes";
-import type { AdmissionRouteService } from "./routes/service";
 import { registerElectionAddendumRoutes as _registerM6AddendumRoutes } from "./routes/election-addendum-routes";
 import { registerNomncRoutes as _registerM6NomncRoutes } from "./routes/nomnc-routes";
 import type { PriorElectionClosurePort } from "./routes/readmission-service";
+import type { AdmissionRouteService } from "./routes/service";
 
 export * from "./state-machines";
 export * from "./admission-evidence-service";
@@ -134,7 +134,7 @@ interface ConsentEvaluatorPort {
  * `seams/index.ts` convention (no `@chartwarden/consent` import edge from M6). Resolved as a THUNK per call
  * so it binds after `wireModuleSeams()`, and the M1 registry fails closed on an unregistered seam.
  */
-function dpoaConsentCheck(): DpoaConsentCheckPort {
+export function dpoaConsentCheck(): DpoaConsentCheckPort {
   return {
     async hasActiveDpoaHealthcareConsent(organizationId, patientId) {
       const evaluator = getSeam("ConsentEvaluator") as ConsentEvaluatorPort;

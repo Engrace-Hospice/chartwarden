@@ -8,8 +8,8 @@
  * the committed row back as the superuser.
  *
  * The M06 Election Statement / Notice of Rights seam is the REAL `createPortalAdmissionSigners` over the real M06 service and a real
- * admission (referral → qualify → accept), with a staff-drafted election statement; only the R-EL-01 DPOA fact is a direct
- * `consent_record` read (production resolves it through M39's ConsentEvaluator seam, which `m6-election-cti-write` does not cover either).
+ * admission (referral → qualify → accept), with a staff-drafted election statement; R-EL-01's DPOA fact is production's own
+ * `dpoaConsentCheck()`, resolved through the real M39 ConsentEvaluator seam over the real consent tables.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m31:signature-requests:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
@@ -32,6 +32,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { wireModuleSeams } from "../src/index";
+import { dpoaConsentCheck } from "../src/modules/06-admission";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import { createPortalAdmissionSigners } from "../src/modules/06-admission/portal-document-signers";
 import { mountM31Routes } from "../src/modules/31-portal/routes/mount";
@@ -389,7 +390,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     );
 
     // Logins for the real-M06 scenarios: the session store is built below, so every actor must exist before it.
-    for (const key of ["election", "retry", "nor", "agent"] as const) {
+    for (const key of ["election", "retry", "nor", "agent", "noDpoa", "revokedDpoa"] as const) {
       const patientId = randomUUID();
       const access = await seedConsent(ORG_A, patientId, "portal_access", "active");
       const actor = await seedActor(
@@ -401,6 +402,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       );
       m06Fixtures[key] = { patientId, actor };
     }
+    await seedConsent(ORG_A, m06Fixtures.revokedDpoa.patientId, "dpoa_healthcare", "revoked");
     {
       const fx = m06Fixtures.agent;
       const dpoa = await seedConsent(ORG_A, fx.patientId, "dpoa_healthcare", "active");
@@ -465,15 +467,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
         },
       },
       undefined,
-      {
-        async hasActiveDpoaHealthcareConsent(organizationId, patientId) {
-          const r = await admin.query(
-            "SELECT 1 FROM consent_record WHERE organization_id=$1 AND patient_id=$2 AND type_key='dpoa_healthcare' AND status='active'",
-            [organizationId, patientId],
-          );
-          return r.rows.length > 0;
-        },
-      },
+      dpoaConsentCheck(), // production's own R-EL-01 port: resolves through M39's ConsentEvaluator seam
     );
     const m06Signers = createPortalAdmissionSigners({
       service: m06,
@@ -951,5 +945,22 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       signer_kind: "representative",
       patient_name_at_signing: "Test Patient",
     });
+  });
+  it("R-EL-01 live through M39's ConsentEvaluator: a representative may not sign the election without a LIVE healthcare DPOA", async () => {
+    for (const key of ["noDpoa", "revokedDpoa"] as const) {
+      const { electionId } = await realAdmission(key, true);
+      const es = await m06.getElectionStatement(ORG_A, electionId);
+      await expect(
+        m06.signElection(ORG_A, electionId, es!.version, staffUserId, {
+          signingPatientName: "Test Patient",
+          signingRole: "legal_representative",
+          signatureMethod: "electronic_portal",
+        }),
+      ).rejects.toMatchObject({ code: "REPRESENTATIVE_AUTHORITY_MISSING" });
+      const row = (
+        await admin.query("SELECT status FROM election_statement WHERE id=$1", [electionId])
+      ).rows[0];
+      expect(row.status).toBe("drafted");
+    }
   });
 });
