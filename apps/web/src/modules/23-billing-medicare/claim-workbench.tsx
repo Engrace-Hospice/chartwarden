@@ -405,8 +405,10 @@ function ClaimPreview({
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  // ADR-0108 — submitting a claim is new claims-billing work: paused without the add-on (when enforced).
+  // ADR-0108 — submitting a claim is new claims-billing work: paused without the add-on (when enforced). A void
+  // (TOB 818) is not: the server lets it through, so the button stays live for one.
   const claimsBilling = useClaimsBilling();
+  const submitPaused = claimsBilling.blocked && claim.tob !== "818";
 
   // Submit carries no reason, so it stays a direct one-click action here. It sends If-Match (the claim
   // version) for §2.5 optimistic concurrency; a 412 means the row moved under us (reopen to retry), a 422
@@ -470,9 +472,9 @@ function ClaimPreview({
         </Link>
         <button
           type="button"
-          disabled={!canSubmit || busy || claimsBilling.blocked}
+          disabled={!canSubmit || busy || submitPaused}
           onClick={() => void submit()}
-          style={canSubmit && !claimsBilling.blocked ? primaryButtonStyle : disabledButtonStyle}
+          style={canSubmit && !submitPaused ? primaryButtonStyle : disabledButtonStyle}
         >
           {busy ? "Submitting…" : "Submit"}
         </button>

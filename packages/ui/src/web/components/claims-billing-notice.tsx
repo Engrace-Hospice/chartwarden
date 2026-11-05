@@ -3,7 +3,7 @@
 // per page load (`primeClaimsBilling`, GET /api/v1/billing/status); a 402 CLAIMS_BILLING_ADDON_REQUIRED observed anywhere
 // (`noteClaimsBillingRefusal`, fed from the app's response hook or a screen's error path) flips every reader to
 // blocked at once. `blocked` is what disables create / submit actions: only when the server enforces the add-on.
-// In-flight work (voids, NOE/NOTR, corrections) is never disabled by this.
+// In-flight work, voids and NOE/NOTR are never disabled by this; a replacement (TOB 817) is new work and is.
 import { useSyncExternalStore } from "react";
 import type { JSX } from "react";
 import type { ApiClient } from "../../core/api/client";
@@ -108,8 +108,8 @@ export function ClaimsBillingNotice(): JSX.Element | null {
   const why = REASON_TEXT[p.reason ?? "never_purchased"];
   return p.enforced ? (
     <InlineAlert tone="warning">
-      {why} New claims, submissions and eligibility checks are paused. Claims already sent still
-      finish, and NOE, NOTR, transfer notices, voids and corrections stay available. Contact
+      {why} New claims, submissions, replacements and eligibility checks are paused. Claims already
+      sent still finish, and NOE, NOTR, transfer notices and voids stay available. Contact
       ChartWarden to add claims billing.
     </InlineAlert>
   ) : (

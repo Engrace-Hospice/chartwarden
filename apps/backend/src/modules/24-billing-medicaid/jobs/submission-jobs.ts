@@ -26,6 +26,7 @@ import { and, eq } from "drizzle-orm";
 import { holdUnlessClaimsBillingEntitled } from "../../../bootstrap/claims-billing-gate";
 import type { CredentialCipherPort } from "../credential-crypto";
 import { isUsableCipher } from "../credential-crypto";
+import { isVoidM24Claim } from "../void-claim";
 import { M24_QUEUES, M24_QUEUE_PARAMS } from "./queues";
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
@@ -613,9 +614,17 @@ export function registerM24LaunchWorkers(deps: M24SubmissionWorkerDeps): Worker[
       async (job, token) => {
         const data = job.data as D;
         if (!data.organizationId) throw new Error(`M24 ${queue}: job.data.organizationId missing`);
-        // ADR-0108 D7 — a claim submit for an org without the claims-billing add-on is held, not failed (poll runs).
+        // ADR-0108 D7 — a claim submit for an org without the claims-billing add-on is held, not failed (poll runs);
+        // a VOID claim (read from the stored row under the job's org) still goes out.
         if (M24_CLAIMS_BILLING_GATED_QUEUES.has(queue)) {
-          await holdUnlessClaimsBillingEntitled(job, token, data.organizationId, queue);
+          const { organizationId } = data;
+          const claimId = (data as { claimId?: unknown }).claimId;
+          await holdUnlessClaimsBillingEntitled(job, token, organizationId, queue, {
+            exempt:
+              typeof claimId === "string"
+                ? () => isVoidM24Claim(deps.db, organizationId, claimId)
+                : undefined,
+          });
         }
         await withOrgContext(
           deps.db,

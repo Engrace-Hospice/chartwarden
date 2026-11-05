@@ -11,9 +11,15 @@ import {
   withClaimsBillingGate,
 } from "../src/bootstrap/claims-billing-gate";
 import { mountM23Routes } from "../src/modules/23-billing-medicare/routes/mount";
-import { M23_ROUTE_CLASSES } from "../src/modules/23-billing-medicare/routes/route-classes";
+import {
+  M23_ROUTE_CLASSES,
+  m23RouteClasses,
+} from "../src/modules/23-billing-medicare/routes/route-classes";
 import { mountM24Routes } from "../src/modules/24-billing-medicaid/routes/mount";
-import { M24_ROUTE_CLASSES } from "../src/modules/24-billing-medicaid/routes/route-classes";
+import {
+  M24_ROUTE_CLASSES,
+  m24RouteClasses,
+} from "../src/modules/24-billing-medicaid/routes/route-classes";
 import { mountM25Routes } from "../src/modules/25-remittance/routes/mount";
 import { M25_ROUTE_CLASSES } from "../src/modules/25-remittance/routes/route-classes";
 import { registerCommercialAckQuarantineRoutes } from "../src/modules/41-billing-commercial/routes/ack-quarantine.routes";
@@ -142,6 +148,37 @@ describe.each(MODULES)("ADR-0108 route classes — $name", (m) => {
       expect(r.preHandlers.length).toBeGreaterThan(1);
     }
   });
+});
+
+describe("ADR-0108 — a void claim stays submittable without the add-on", () => {
+  const ORG = "a1000000-0000-4000-8000-000000000001";
+  it.each([
+    ["M23", m23RouteClasses, "/api/v1/billing/claims/:id/submit"],
+    ["M24", m24RouteClasses, "/api/v1/medicaid-claims/:id/submit"],
+  ] as const)(
+    "%s: only the submit rule is exempt, decided on the stored claim named by the route id (never the body)",
+    async (_name, build, path) => {
+      const asked: Array<[string, string]> = [];
+      const rules = build(async (org, id) => {
+        asked.push([org, id]);
+        return id === "void-claim";
+      });
+      const exempt = rules.filter((r) => r.exempt);
+      expect(exempt.map((r) => `${r.cls} ${r.method} ${r.path}`)).toEqual([
+        `new_work POST ${path}`,
+      ]);
+      const req = (id: string) =>
+        ({ context: { organizationId: ORG }, params: { id }, body: { tob: "818" } }) as never;
+      expect(await exempt[0]?.exempt?.(req("void-claim"))).toBe(true);
+      expect(await exempt[0]?.exempt?.(req("original-claim"))).toBe(false);
+      expect(asked).toEqual([
+        [ORG, "void-claim"],
+        [ORG, "original-claim"],
+      ]);
+      // without a reader (the enumeration above) nothing is exempt
+      expect(build().some((r) => r.exempt)).toBe(false);
+    },
+  );
 });
 
 describe("withClaimsBillingGate scope", () => {

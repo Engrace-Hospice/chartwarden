@@ -40,7 +40,10 @@ describe.skipIf(!REDIS_URL)("ADR-0108 worker hold — LIVE Valkey", () => {
     worker = new Worker(
       queueName,
       async (job: Job, token?: string) => {
-        await holdUnlessClaimsBillingEntitled(job, token, ORG, queueName);
+        // The exemption stands in for the void-claim read (M23/M24 read the stored claim's TOB under the job's org).
+        await holdUnlessClaimsBillingEntitled(job, token, ORG, queueName, {
+          exempt: async () => job.data.voidClaim === true,
+        });
         ran += 1;
       },
       { connection },
@@ -79,13 +82,24 @@ describe.skipIf(!REDIS_URL)("ADR-0108 worker hold — LIVE Valkey", () => {
     );
   });
 
+  it("runs an exempt job (a void claim) straight away for the same unentitled org", async () => {
+    const job = await queue.add(
+      "submit",
+      { organizationId: ORG, voidClaim: true },
+      { attempts: 1 },
+    );
+    await waitFor(async () => (await queue.getJobState(job.id as string)) === "completed");
+    expect(ran).toBe(1);
+    expect(await queue.getDelayedCount()).toBe(1); // the non-void job is still held
+  });
+
   it("runs the held job once the org is entitled", async () => {
     entitlement = { entitled: true };
     const [held] = await queue.getDelayed();
     expect(held).toBeDefined();
     await held?.promote();
     await waitFor(async () => (await queue.getJobState(held?.id as string)) === "completed");
-    expect(ran).toBe(1);
+    expect(ran).toBe(2);
     expect(await queue.getFailedCount()).toBe(0);
   });
 });

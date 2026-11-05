@@ -137,7 +137,58 @@ export function claimsBillingAddonRequired(reason: ClaimsBillingDenyReason): Cha
   );
 }
 
+/**
+ * A per-rule carve-out inside a new-work route (a void claim on the submit route): consulted only when the org would be
+ * refused, and it must read what it decides on under the caller's org context (RLS), never from the request body.
+ * A throw is treated as "not exempt", so a failed lookup in `enforce` gates as normal.
+ */
+export type ClaimsBillingExemption = () => Promise<boolean>;
+
+async function isExempt(
+  exempt: ClaimsBillingExemption | undefined,
+  organizationId: string,
+  site: GateSite,
+): Promise<boolean> {
+  if (!exempt) return false;
+  try {
+    if (!(await exempt())) return false;
+  } catch (err) {
+    log("claims-billing exemption lookup failed", {
+      organizationId,
+      ...site,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+  log("claims-billing exemption applied", { organizationId, ...site });
+  return true;
+}
+
+/** The verdict with an exemption folded in: a refused (or unreadable, in `enforce`) org passes when the work is exempt. */
+async function verdictWithExemption(
+  organizationId: string,
+  site: GateSite,
+  exempt: ClaimsBillingExemption | undefined,
+): Promise<GateVerdict> {
+  let verdict: GateVerdict;
+  try {
+    verdict = await claimsBillingVerdict(organizationId, site);
+  } catch (err) {
+    if (await isExempt(exempt, organizationId, site)) return { allow: true };
+    throw err;
+  }
+  if (verdict.allow || !(await isExempt(exempt, organizationId, site))) return verdict;
+  return { allow: true };
+}
+
 const memo = new WeakMap<FastifyRequest, Promise<GateVerdict>>();
+
+declare module "fastify" {
+  interface FastifyContextConfig {
+    /** Set by `withClaimsBillingGate` from the matching rule's `exempt`. */
+    claimsBillingExemption?: RouteExemption;
+  }
+}
 
 /** The route preHandler. Runs after the route's own guards, so `request.context` is already authorized. */
 export async function claimsBillingPreHandler(request: FastifyRequest): Promise<void> {
@@ -147,9 +198,12 @@ export async function claimsBillingPreHandler(request: FastifyRequest): Promise<
   if (!organizationId) return;
   let pending = memo.get(request);
   if (!pending) {
-    pending = claimsBillingVerdict(organizationId, {
-      route: `${request.method} ${request.routeOptions.url ?? request.url}`,
-    });
+    const exemption = request.routeOptions.config?.claimsBillingExemption;
+    pending = verdictWithExemption(
+      organizationId,
+      { route: `${request.method} ${request.routeOptions.url ?? request.url}` },
+      exemption ? () => exemption(request) : undefined,
+    );
     memo.set(request, pending);
   }
   const verdict = await pending;
@@ -168,6 +222,23 @@ export interface RouteClassRule {
   readonly cls: RouteClass;
   readonly method: string;
   readonly path: string;
+  /** new_work only: let a request through that the add-on would refuse (see ClaimsBillingExemption). */
+  readonly exempt?: RouteExemption;
+}
+
+/** A rule's exemption, given the (already authorized) request. */
+export type RouteExemption = (request: FastifyRequest) => Promise<boolean>;
+
+/** An exemption decided on the route's `:id` record, read by `check` under the request's org. */
+export function exemptByRouteId(
+  check: (organizationId: string, id: string) => Promise<boolean>,
+): RouteExemption {
+  return async (request) => {
+    const organizationId = request.context?.organizationId;
+    const id = (request.params as { id?: unknown } | undefined)?.id;
+    if (!organizationId || typeof id !== "string") return false;
+    return check(organizationId, id);
+  };
 }
 
 export function ruleMatches(rule: RouteClassRule, method: string, url: string): boolean {
@@ -210,10 +281,13 @@ export function withClaimsBillingGate(
   app.addHook("onRoute", (opts) => {
     if (!active) return;
     const methods = Array.isArray(opts.method) ? opts.method : [opts.method];
-    const gated = methods.some(
-      (m) => !READ_METHODS.has(m) && classifyRoute(rules, m, opts.url) === "new_work",
-    );
-    if (gated) appendGate(opts);
+    const rule = methods
+      .filter((m) => !READ_METHODS.has(m))
+      .map((m) => rules.find((r) => ruleMatches(r, m, opts.url)))
+      .find((r) => r?.cls === "new_work");
+    if (!rule) return;
+    appendGate(opts);
+    if (rule.exempt) opts.config = { ...opts.config, claimsBillingExemption: rule.exempt };
   });
   try {
     mount();
@@ -248,7 +322,8 @@ export interface HoldableJob {
 }
 
 /**
- * ADR-0108 D7 — call first in a new-work job processor. Returns normally when the work may run. Otherwise moves the job
+ * ADR-0108 D7 — call first in a new-work job processor. Returns normally when the work may run (or `exempt` answers
+ * true — a void claim). Otherwise moves the job
  * back to delayed (CLAIMS_BILLING_HOLD_MS) and throws BullMQ's DelayedError, which the worker treats as "not done, no
  * attempt spent": no retry counted, no DLQ.
  */
@@ -257,9 +332,14 @@ export async function holdUnlessClaimsBillingEntitled(
   token: string | undefined,
   organizationId: string,
   queue: string,
-  now: () => number = Date.now,
+  opts: { readonly exempt?: ClaimsBillingExemption; readonly now?: () => number } = {},
 ): Promise<void> {
-  if (await claimsBillingAllowsWork(organizationId, { queue })) return;
+  const { exempt, now = Date.now } = opts;
+  const allowed = await verdictWithExemption(organizationId, { queue }, exempt).then(
+    (v) => v.allow,
+    () => false, // already logged; fail closed without failing the job
+  );
+  if (allowed) return;
   log("claims-billing job held", { organizationId, queue, holdMs: CLAIMS_BILLING_HOLD_MS });
   await job.moveToDelayed(now() + CLAIMS_BILLING_HOLD_MS, token);
   throw new DelayedError();

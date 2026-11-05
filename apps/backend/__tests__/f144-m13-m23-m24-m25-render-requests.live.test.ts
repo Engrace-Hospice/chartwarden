@@ -86,6 +86,7 @@ import {
   buildClaimStateService,
 } from "../src/modules/23-billing-medicare/services/claim-state-service";
 import { buildNoeNotrStateService } from "../src/modules/23-billing-medicare/services/noe-notr-state-service";
+import { isVoidM23Claim } from "../src/modules/23-billing-medicare/void-claim";
 import { M24_OUTBOX_EVENTS } from "../src/modules/24-billing-medicaid/index";
 import {
   type CredentialResolverPort,
@@ -93,6 +94,7 @@ import {
   type WorkerOutboxPort,
   runClaimSubmit,
 } from "../src/modules/24-billing-medicaid/jobs/submission-jobs";
+import { isVoidM24Claim } from "../src/modules/24-billing-medicaid/void-claim";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import type { M25WriteActor } from "../src/modules/25-remittance/routes/actor";
 import { buildDrizzleM25WriteService } from "../src/modules/25-remittance/routes/write-service-drizzle";
@@ -763,5 +765,54 @@ describe.skipIf(!DB_URL)("F-144 — M13/M23/M24/M25 render-request producers, LI
     } finally {
       await b.end();
     }
+  });
+  // ── ADR-0108 — the void readers the claims-billing gate consults (submit route + submit workers) ──────────
+
+  it("ADR-0108: the void readers see a stored 818 under the caller's org (RLS), never another org's claim", async () => {
+    const original = await seedClaim("ACK_ACCEPTED", "CLM-CTL-VOID-0", "2025-03-01", "2025-03-31");
+    const voided = await seedClaim("DRAFT", "CLM-CTL-VOID-1", "2025-04-01", "2025-04-30");
+    await admin.query("UPDATE claim SET tob='818', replaces_claim_id=$2 WHERE id=$1", [
+      voided,
+      original,
+    ]);
+    expect(await isVoidM23Claim(handle.db as never, ORG_A, voided)).toBe(true);
+    expect(await isVoidM23Claim(handle.db as never, ORG_A, original)).toBe(false);
+    expect(await isVoidM23Claim(handle.db as never, ORG_B, voided)).toBe(false);
+
+    const mcdOriginal = randomUUID();
+    const mcdVoid = randomUUID();
+    for (const [id, tob, replaces, ctl, state] of [
+      [mcdOriginal, "811", null, "MCD-CTL-VOID-0", "PAID"],
+      [mcdVoid, "818", mcdOriginal, "MCD-CTL-VOID-1", "DRAFT"],
+    ] as const) {
+      await admin.query(
+        `INSERT INTO medicaid_claim (
+           id, organization_id, provider_entity_id, patient_id, patient_payer_id, admission_id,
+           service_state, kind, tob, service_from, service_to, state_plan_code_id,
+           state_plan_code_snapshot, medicaid_claim_control_number, state, replaces_claim_id,
+           created_by_membership_id, updated_by_membership_id
+         ) VALUES (
+           $1,$2,$3,$4,$5,$6,'OR','hospice_only',$7,'2026-11-01','2026-11-30',$8,
+           'PLAN-1',$9,$10,$11,$12,$12
+         )`,
+        [
+          id,
+          ORG_A,
+          providerOf[ORG_A],
+          PATIENT,
+          randomUUID(),
+          ADMISSION,
+          tob,
+          randomUUID(),
+          ctl,
+          state,
+          replaces,
+          memberOf[ORG_A],
+        ],
+      );
+    }
+    expect(await isVoidM24Claim(handle.db as never, ORG_A, mcdVoid)).toBe(true);
+    expect(await isVoidM24Claim(handle.db as never, ORG_A, mcdOriginal)).toBe(false);
+    expect(await isVoidM24Claim(handle.db as never, ORG_B, mcdVoid)).toBe(false);
   });
 });

@@ -1143,13 +1143,14 @@ import {
   validateBillingAiBlockAtBoot,
   wireM23Tenancy,
 } from "./modules/23-billing-medicare/index";
-import { M23_ROUTE_CLASSES } from "./modules/23-billing-medicare/routes/route-classes";
+import { m23RouteClasses } from "./modules/23-billing-medicare/routes/route-classes";
 import {
   composeFacilitySpans,
   toFacilitySpans,
 } from "./modules/23-billing-medicare/services/claim-cbsa";
 import { buildClearinghouseAttemptResolutionService } from "./modules/23-billing-medicare/services/clearinghouse-attempt-resolution-service";
 import { resolveInpatientCapDifferential } from "./modules/23-billing-medicare/services/inpatient-cap-differential";
+import { isVoidM23Claim } from "./modules/23-billing-medicare/void-claim";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
 // (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
 // medicaid_override_role_eligible / regulatory_required_rule_protected_medicaid / rb_arrangement_visible_in_scope
@@ -1192,7 +1193,8 @@ import {
   scheduleM24StateChannelHealthJob,
   wireM24Tenancy,
 } from "./modules/24-billing-medicaid/index";
-import { M24_ROUTE_CLASSES } from "./modules/24-billing-medicaid/routes/route-classes";
+import { m24RouteClasses } from "./modules/24-billing-medicaid/routes/route-classes";
+import { isVoidM24Claim } from "./modules/24-billing-medicaid/void-claim";
 // M25 (Remittance & Denials) boot surface — the §4.5 outbox catalog, the §4.7 ABAC resolvers
 // (`claim_assigned_to_actor`, `appeal_within_deadline`), and the §4.1 route mount over the Drizzle
 // read/write services. The write service binds the catalog-validating transactional outbox publisher
@@ -6115,135 +6117,140 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // instance here, rather than each module reading the schema directly.
           const { providerCcn: m23ProviderCcn, assemblyPorts: m23AssemblyPorts } =
             buildM23AssemblyPorts(dbHandle.db);
-          // ADR-0108 — the claims-billing add-on gate on M23's new-work routes (route-classes.ts).
-          withClaimsBillingGate(app, M23_ROUTE_CLASSES, () =>
-            mountM23Routes(app, {
-              // F-210 — the tenant-entered hospice rate table (`/billing/rate-tables`); the SAME table the
-              // assembly service's `referenceData.perDiemRateTable`/`chcHourlyRateCents` read (M23-owned, so
-              // the boot assembly reads it over `dbHandle.db` directly — no injected port).
-              rateTableService: buildDrizzleRateTableService(dbHandle.db),
-              // The tenant-entered hospice visit-charge schedule (`/billing/visit-charge-schedules`); the SAME table the
-              // assembly service reads the charge each visit line is billed at (M23-owned, over `dbHandle.db`).
-              visitChargeService: buildDrizzleVisitChargeService(dbHandle.db),
-              // F-211 — the tenant-entered CMS wage index (`/billing/wage-indexes`), read by the same boot assembly.
-              wageIndexService: buildDrizzleWageIndexService(dbHandle.db),
-              platformAdminService: buildDrizzlePlatformAdminService(dbHandle.db),
-              ddeProviderVendor: ddeBinding.vendor,
-              // F-212 — the tenant-entered sequestration policy (`/billing/sequestration-policies`); the SAME table the
-              // assembly service's `referenceData.activeSequestrationPolicy` reads (M23-owned, over `dbHandle.db`).
-              sequestrationService: buildDrizzleSequestrationPolicyService(dbHandle.db),
-              // Migration 1269 — the tenant-entered EDI profile (`/billing/edi-profiles`): the 837I submitter + receiver parties.
-              ediProfileService: buildDrizzleEdiProfileService(dbHandle.db),
-              readService: buildDrizzleM23ReadService(dbHandle.db, {
-                // How each claim's stay ended, from M6's live facts (org-explicit, batched): the claim list /
-                // detail "needs attention" block — missing place of death / receiving care setting, and a Type
-                // of Bill the resolver now derives differently (812/813 → 811/814).
-                stayEndFacts: {
-                  forAdmissions: (orgId, admissionIds) =>
-                    claimStayEndFactsForOrg(dbHandle.db, orgId, admissionIds),
-                },
-                // The hospice-periods read reports `hets_not_configured` when no transport is bound.
-                hetsConfigured: m23HetsConfig !== null,
-                // Two-tier RHC carry-over on the readmission screen: M6's earlier stays, merged with HETS.
-                priorStays: {
-                  async forPatient(organizationId, patientId) {
-                    const episodes = await priorEpisodesForOrg(
-                      dbHandle.db,
-                      organizationId,
-                      patientId,
-                    );
-                    // Incl. a transfer-in's sending-hospice span (same election, carries into the count).
-                    return rhcPriorStayFacts(episodes);
+          // ADR-0108 — the claims-billing add-on gate on M23's new-work routes (route-classes.ts); submitting a void
+          // claim stays open (read under the caller's org).
+          withClaimsBillingGate(
+            app,
+            m23RouteClasses((org, id) => isVoidM23Claim(dbHandle.db, org, id)),
+            () =>
+              mountM23Routes(app, {
+                // F-210 — the tenant-entered hospice rate table (`/billing/rate-tables`); the SAME table the
+                // assembly service's `referenceData.perDiemRateTable`/`chcHourlyRateCents` read (M23-owned, so
+                // the boot assembly reads it over `dbHandle.db` directly — no injected port).
+                rateTableService: buildDrizzleRateTableService(dbHandle.db),
+                // The tenant-entered hospice visit-charge schedule (`/billing/visit-charge-schedules`); the SAME table the
+                // assembly service reads the charge each visit line is billed at (M23-owned, over `dbHandle.db`).
+                visitChargeService: buildDrizzleVisitChargeService(dbHandle.db),
+                // F-211 — the tenant-entered CMS wage index (`/billing/wage-indexes`), read by the same boot assembly.
+                wageIndexService: buildDrizzleWageIndexService(dbHandle.db),
+                platformAdminService: buildDrizzlePlatformAdminService(dbHandle.db),
+                ddeProviderVendor: ddeBinding.vendor,
+                // F-212 — the tenant-entered sequestration policy (`/billing/sequestration-policies`); the SAME table the
+                // assembly service's `referenceData.activeSequestrationPolicy` reads (M23-owned, over `dbHandle.db`).
+                sequestrationService: buildDrizzleSequestrationPolicyService(dbHandle.db),
+                // Migration 1269 — the tenant-entered EDI profile (`/billing/edi-profiles`): the 837I submitter + receiver parties.
+                ediProfileService: buildDrizzleEdiProfileService(dbHandle.db),
+                readService: buildDrizzleM23ReadService(dbHandle.db, {
+                  // How each claim's stay ended, from M6's live facts (org-explicit, batched): the claim list /
+                  // detail "needs attention" block — missing place of death / receiving care setting, and a Type
+                  // of Bill the resolver now derives differently (812/813 → 811/814).
+                  stayEndFacts: {
+                    forAdmissions: (orgId, admissionIds) =>
+                      claimStayEndFactsForOrg(dbHandle.db, orgId, admissionIds),
                   },
-                },
-              }),
-              writeService: buildDrizzleM23WriteService(dbHandle.db, {
-                outbox: m23OutboxPublisher,
-                // Readmission — a new NOE waits for the prior election's NOTR / final claim (M6's prior-stay facts).
-                priorLiveEndedStay: {
-                  async latestPriorLiveEndedAdmission(organizationId, q) {
-                    const prior = latestLiveEndedEpisode(
-                      await priorEpisodesForOrg(
+                  // The hospice-periods read reports `hets_not_configured` when no transport is bound.
+                  hetsConfigured: m23HetsConfig !== null,
+                  // Two-tier RHC carry-over on the readmission screen: M6's earlier stays, merged with HETS.
+                  priorStays: {
+                    async forPatient(organizationId, patientId) {
+                      const episodes = await priorEpisodesForOrg(
                         dbHandle.db,
                         organizationId,
-                        q.patientId,
-                        q.currentAdmissionId,
-                      ),
-                    );
-                    return prior ? { admissionId: prior.admissionId } : null;
+                        patientId,
+                      );
+                      // Incl. a transfer-in's sending-hospice span (same election, carries into the count).
+                      return rhcPriorStayFacts(episodes);
+                    },
                   },
-                },
-                jobs: buildM23OutboxBackedSubmissionGate({
-                  "claim.submit": m23SubmissionQueues !== null,
-                  "noe.submit": m23SubmissionQueues !== null,
-                  "notr.submit": m23SubmissionQueues !== null,
-                  // GAP-070 — real `validation-run` worker + outbox bridge whenever a queue connection exists.
-                  [M23_QUEUES.validationRun]: m23WorkQueues !== null,
-                  // HETS 270/271: accepted only when a transport is configured AND a worker can drain the
-                  // queue; otherwise refuse (503) rather than accept a request no worker can complete.
-                  "eligibility.refresh": m23WorkQueues !== null && m23HetsConfig !== null,
                 }),
-                providerCcn: m23ProviderCcn,
-                ...(m23MacSecretCipher ? { secretCipher: m23MacSecretCipher } : {}),
-                // §4.5 validation override: one prominent audit_event per override, in the override's own transaction.
-                audit: buildM23OverrideAuditPort(),
-                // GAP-144 — the MAC sandbox probe (portal health) when the launch gateway is configured.
-                ...(m23LaunchGateway
-                  ? {
-                      macSandbox: {
-                        probe: async ({ macJurisdiction }) => {
-                          const up = await m23LaunchGateway.macPortal.probeHealth(macJurisdiction);
-                          return {
-                            ok: up,
-                            detail: up ? "MAC portal reachable" : "MAC portal unavailable",
-                          };
+                writeService: buildDrizzleM23WriteService(dbHandle.db, {
+                  outbox: m23OutboxPublisher,
+                  // Readmission — a new NOE waits for the prior election's NOTR / final claim (M6's prior-stay facts).
+                  priorLiveEndedStay: {
+                    async latestPriorLiveEndedAdmission(organizationId, q) {
+                      const prior = latestLiveEndedEpisode(
+                        await priorEpisodesForOrg(
+                          dbHandle.db,
+                          organizationId,
+                          q.patientId,
+                          q.currentAdmissionId,
+                        ),
+                      );
+                      return prior ? { admissionId: prior.admissionId } : null;
+                    },
+                  },
+                  jobs: buildM23OutboxBackedSubmissionGate({
+                    "claim.submit": m23SubmissionQueues !== null,
+                    "noe.submit": m23SubmissionQueues !== null,
+                    "notr.submit": m23SubmissionQueues !== null,
+                    // GAP-070 — real `validation-run` worker + outbox bridge whenever a queue connection exists.
+                    [M23_QUEUES.validationRun]: m23WorkQueues !== null,
+                    // HETS 270/271: accepted only when a transport is configured AND a worker can drain the
+                    // queue; otherwise refuse (503) rather than accept a request no worker can complete.
+                    "eligibility.refresh": m23WorkQueues !== null && m23HetsConfig !== null,
+                  }),
+                  providerCcn: m23ProviderCcn,
+                  ...(m23MacSecretCipher ? { secretCipher: m23MacSecretCipher } : {}),
+                  // §4.5 validation override: one prominent audit_event per override, in the override's own transaction.
+                  audit: buildM23OverrideAuditPort(),
+                  // GAP-144 — the MAC sandbox probe (portal health) when the launch gateway is configured.
+                  ...(m23LaunchGateway
+                    ? {
+                        macSandbox: {
+                          probe: async ({ macJurisdiction }) => {
+                            const up =
+                              await m23LaunchGateway.macPortal.probeHealth(macJurisdiction);
+                            return {
+                              ok: up,
+                              detail: up ? "MAC portal reachable" : "MAC portal unavailable",
+                            };
+                          },
                         },
-                      },
-                    }
-                  : {}),
-              }),
-              assemblyService: buildM23BootAssemblyService(dbHandle.db, {
-                outbox: m23OutboxPublisher,
-                providerCcn: m23ProviderCcn,
-                ...m23AssemblyPorts,
-              }),
-              // The receiving hospice's Medicare transfer notice (TOB 8xC / 8xD, CMS Pub. 100-04 ch. 11
-              // §20.1.3–§20.1.4). Submission rides the same outbox → BullMQ bridge + launch gateway as the NOE;
-              // M6's org-explicit transfer-in read refreshes our admission date + physicians before filing.
-              // ADR-0052 — the DDE work queue (human work tracking; no DDE integration or credential).
-              attemptResolutionService: buildClearinghouseAttemptResolutionService(
-                createDrizzleAttemptStore(dbHandle.db),
-              ),
-              ddeQueueService: buildDdeQueueService(dbHandle.db, {
-                outbox: m23OutboxPublisher,
-                ddeProvider: ddeBinding.provider,
-                ddeUsage: process.env.NODE_ENV === "production" ? "production" : "test",
-                // #793 - the MBI for a provider operation comes only from M5's audited unlock seam, per call.
-                ddeBeneficiary: buildDdeBeneficiaryPort(() => getSeam("MbiUnlockReader")),
-                // #765 - the keying sheet's Provider CCN / Billing NPI (read-only; provider_entity is M1-owned).
-                providerIdentity: (tx, organizationId, providerEntityId) =>
-                  readProviderIdentityOnTx(
-                    tx as unknown as DbClient,
-                    organizationId,
-                    providerEntityId,
-                  ),
-                // Assignable only to an active member whose role grants billing.dde.work (M3's holder reader).
-                assigneeCanWork: buildDdeAssigneeEligibility(
-                  dbHandle.db,
-                  createMembershipsHoldingPermissionReader(dbHandle.db),
-                  createDbActorEnrichmentReader(dbHandle.db),
-                  ORG_WIDE_BILLING_SCOPE_ROLES,
-                ),
-              }),
-              transferNoticeService: buildTransferNoticeService(dbHandle.db, {
-                outbox: m23OutboxPublisher,
-                jobs: buildM23OutboxBackedSubmissionGate({
-                  "transfer_notice.submit": m23SubmissionQueues !== null,
+                      }
+                    : {}),
                 }),
-                transferInFacts: (organizationId, transferEventId) =>
-                  transferInNoticeContextForOrg(dbHandle.db, organizationId, transferEventId),
+                assemblyService: buildM23BootAssemblyService(dbHandle.db, {
+                  outbox: m23OutboxPublisher,
+                  providerCcn: m23ProviderCcn,
+                  ...m23AssemblyPorts,
+                }),
+                // The receiving hospice's Medicare transfer notice (TOB 8xC / 8xD, CMS Pub. 100-04 ch. 11
+                // §20.1.3–§20.1.4). Submission rides the same outbox → BullMQ bridge + launch gateway as the NOE;
+                // M6's org-explicit transfer-in read refreshes our admission date + physicians before filing.
+                // ADR-0052 — the DDE work queue (human work tracking; no DDE integration or credential).
+                attemptResolutionService: buildClearinghouseAttemptResolutionService(
+                  createDrizzleAttemptStore(dbHandle.db),
+                ),
+                ddeQueueService: buildDdeQueueService(dbHandle.db, {
+                  outbox: m23OutboxPublisher,
+                  ddeProvider: ddeBinding.provider,
+                  ddeUsage: process.env.NODE_ENV === "production" ? "production" : "test",
+                  // #793 - the MBI for a provider operation comes only from M5's audited unlock seam, per call.
+                  ddeBeneficiary: buildDdeBeneficiaryPort(() => getSeam("MbiUnlockReader")),
+                  // #765 - the keying sheet's Provider CCN / Billing NPI (read-only; provider_entity is M1-owned).
+                  providerIdentity: (tx, organizationId, providerEntityId) =>
+                    readProviderIdentityOnTx(
+                      tx as unknown as DbClient,
+                      organizationId,
+                      providerEntityId,
+                    ),
+                  // Assignable only to an active member whose role grants billing.dde.work (M3's holder reader).
+                  assigneeCanWork: buildDdeAssigneeEligibility(
+                    dbHandle.db,
+                    createMembershipsHoldingPermissionReader(dbHandle.db),
+                    createDbActorEnrichmentReader(dbHandle.db),
+                    ORG_WIDE_BILLING_SCOPE_ROLES,
+                  ),
+                }),
+                transferNoticeService: buildTransferNoticeService(dbHandle.db, {
+                  outbox: m23OutboxPublisher,
+                  jobs: buildM23OutboxBackedSubmissionGate({
+                    "transfer_notice.submit": m23SubmissionQueues !== null,
+                  }),
+                  transferInFacts: (organizationId, transferEventId) =>
+                    transferInNoticeContextForOrg(dbHandle.db, organizationId, transferEventId),
+                }),
               }),
-            }),
           );
           // M41 (Billing — Commercial) — claim assembly, validation, pre-authorization, coordination of benefits and
           // audited overrides (#722). The clinical facts (admission, election, level of care, diagnoses, attending +
@@ -6565,30 +6572,33 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // M24 (Billing — Medicaid) — mount the §4.1 route plugins over the Drizzle READ + WRITE services;
           // the §4.11 `m24.*` transactional outbox publisher binds here (events persist on the mutation's tx).
           // ADR-0108 — the claims-billing add-on gate on M24's new-work routes (route-classes.ts).
-          withClaimsBillingGate(app, M24_ROUTE_CLASSES, () =>
-            mountM24Routes(app, {
-              readService: buildDrizzleM24ReadService(
-                dbHandle.db,
-                (state) => state !== "OR" || m24OregonGateway !== null,
-              ),
-              // The §8.7 credential cipher port binds here. Absent M24_CREDENTIAL_ENCRYPTION_KEY the port is
-              // left unbound and a credential WRITE fails closed (503 CREDENTIAL_CRYPTO_UNBOUND) — every other
-              // M24 route is unaffected. Boot never fails on a missing key outside production, where env.ts
-              // requires it; and a secret is never accepted-then-dropped, which is what the sentinel did.
-              writeService: buildDrizzleM24WriteService(
-                dbHandle.db,
-                m24OutboxPublisher,
-                m24CredentialCipher,
-                m24CoverageResolver,
-                m24CcnReader,
-                m24LocPeriodReader,
-                m24SignedEncounters,
-                m24FacilityKindReader,
-                m24ResidenceReader,
-                m24FacilityNameResolver,
-                (state) => state !== "OR" || m24OregonGateway !== null,
-              ),
-            }),
+          withClaimsBillingGate(
+            app,
+            m24RouteClasses((org, id) => isVoidM24Claim(dbHandle.db, org, id)),
+            () =>
+              mountM24Routes(app, {
+                readService: buildDrizzleM24ReadService(
+                  dbHandle.db,
+                  (state) => state !== "OR" || m24OregonGateway !== null,
+                ),
+                // The §8.7 credential cipher port binds here. Absent M24_CREDENTIAL_ENCRYPTION_KEY the port is
+                // left unbound and a credential WRITE fails closed (503 CREDENTIAL_CRYPTO_UNBOUND) — every other
+                // M24 route is unaffected. Boot never fails on a missing key outside production, where env.ts
+                // requires it; and a secret is never accepted-then-dropped, which is what the sentinel did.
+                writeService: buildDrizzleM24WriteService(
+                  dbHandle.db,
+                  m24OutboxPublisher,
+                  m24CredentialCipher,
+                  m24CoverageResolver,
+                  m24CcnReader,
+                  m24LocPeriodReader,
+                  m24SignedEncounters,
+                  m24FacilityKindReader,
+                  m24ResidenceReader,
+                  m24FacilityNameResolver,
+                  (state) => state !== "OR" || m24OregonGateway !== null,
+                ),
+              }),
           );
           // M15 (Discipline Care Plans) — mount the §4.1 route plugins over the Drizzle READ + WRITE
           // services. Every read opens its own withOrgContext (RLS scopes each statement to app.org_id)
