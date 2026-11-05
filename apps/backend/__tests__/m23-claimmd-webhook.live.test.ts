@@ -20,6 +20,7 @@ import { registerPlatformJob, withPlatformContext } from "@chartwarden/tenancy";
 import Fastify, { type FastifyInstance } from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { applyCsrfProtection } from "../src/bootstrap/plugins/csrf";
 import { applyErrorHandler } from "../src/bootstrap/plugins/error-handler";
 import {
@@ -27,6 +28,12 @@ import {
   buildClaimMdReceiptStore,
 } from "../src/modules/23-billing-medicare/claimmd-webhook/receipt-store";
 import { registerClaimMdWebhookRoutes } from "../src/modules/23-billing-medicare/claimmd-webhook/routes";
+import {
+  type BillingEntitlementPort,
+  CLAIMMD_PAYLOAD_RETENTION_DAYS,
+  runClaimMdWebhookSweep,
+} from "../src/modules/23-billing-medicare/claimmd-webhook/sweep";
+import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/events-by-m23";
 import { M23_CLAIMMD_WEBHOOK_JOB_ID } from "../src/modules/23-billing-medicare/wiring";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
 
@@ -35,6 +42,10 @@ const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
 const PLATFORM_PASSWORD = "platform-live-password-claimmd";
 const KEY = "SYNTH99999_k#ey*not-real";
 const NPI = "1111111112";
+const NPI_A = "1234567893";
+const NPI_B = "1999999984";
+const ORG_A = "00000000-0000-4000-8000-0000000322a1";
+const ORG_B = "00000000-0000-4000-8000-0000000322b1";
 const URL_TEST = "/api/v1/webhooks/claimmd/test";
 
 const sign = (body: string) =>
@@ -61,6 +72,10 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
   let admin: Client;
   let platform: ReturnType<typeof createDbClient>;
   let tenant: Client;
+  let runner: ClaimMdPlatformRunner;
+  let publisher: ReturnType<typeof buildTxOutboxPublisher>;
+  let peA = "";
+  let peB = "";
   let app: FastifyInstance;
   const cipher = createWebhookPayloadCipher(Buffer.alloc(32, 5), "claimmd-webhook-v1");
   const logs: { event: string; detail: Record<string, unknown> }[] = [];
@@ -117,8 +132,35 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
     });
     await tenant.connect();
     registerPlatformJob(M23_CLAIMMD_WEBHOOK_JOB_ID);
+    publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M23_OUTBOX_EVENTS]));
+    for (const [org, slug] of [
+      [ORG_A, "cmd-a"],
+      [ORG_B, "cmd-b"],
+    ] as const) {
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
+        [org, slug],
+      );
+    }
+    const provider = async (org: string, ccn: string, npi: string) =>
+      (
+        await admin.query(
+          `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+           VALUES ($1,$2,'Synthetic Hospice',$3,'\\x00','12-31') RETURNING id`,
+          [org, ccn, npi],
+        )
+      ).rows[0].id as string;
+    peA = await provider(ORG_A, "322001", NPI_A);
+    peB = await provider(ORG_B, "322002", NPI_B);
+    // A sent claim of org B under control number CN-B-1 (what an appeal's remote_claimid must carry).
+    await admin.query(
+      `INSERT INTO clearinghouse_submission_attempt (organization_id, provider_entity_id, scope, usage, idempotency_key,
+         control_number, kind, identity, status, clearinghouse_submission_id, reserved_at, received_at)
+       VALUES ($1,$2,'claimmd:test','test','idem-b-1','CN-B-1','claim',$3,'sent','file:1',now(),now())`,
+      [ORG_B, peB, "a".repeat(64)],
+    );
 
-    const runner: ClaimMdPlatformRunner = (fn) =>
+    runner = (fn) =>
       withPlatformContext(
         platform.db,
         { jobId: M23_CLAIMMD_WEBHOOK_JOB_ID, reason: "live suite", crossTenant: true },
@@ -293,5 +335,189 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
     expect(JSON.stringify(written.rows[0]?.after)).not.toContain(
       String((await rows())[0]?.payload_cipher),
     );
+  });
+
+  // ── the sweep (slice 3): tenant resolution, entitlement, publish ──────────────────────────────────────────────
+  const T0 = new Date("2026-11-05T12:00:00Z");
+  const receiveAt = (at: Date) => buildClaimMdReceiptStore({ runner, cipher, now: () => at });
+  const store = (events: unknown[], at = T0) =>
+    receiveAt(at)({ usage: "test", rawBody: Buffer.from(delivery(events)) });
+  const enrollFor = (eventid: string, npi: string, event = "enrolled") => ({
+    ...enroll(eventid),
+    event_data: { enroll: { ...enroll(eventid).event_data.enroll, prov_npi: npi, event } },
+  });
+  const appealFor = (eventid: string, remoteClaimId: string) => ({
+    eventid,
+    event_type: "appeal",
+    event_time: "2026-11-05 12:00:00",
+    event_data: {
+      appeal: {
+        appealid: "A-9",
+        event: "created",
+        event_detail: "free text <b>",
+        claimid: "123",
+        remote_claimid: remoteClaimId,
+        appeal_type: "electronic",
+      },
+    },
+  });
+  const sweep = (entitlement: BillingEntitlementPort = { isEntitled: async () => true }, at = T0) =>
+    runClaimMdWebhookSweep({
+      runner,
+      cipher,
+      entitlement,
+      outbox: {
+        publish: (tx, input) => publisher.publish(tx as never, { ...input, callerModule: "m23" }),
+      },
+      now: () => at,
+    });
+  const outbox = async (eventType: string) =>
+    (
+      await admin.query(
+        "SELECT organization_id, payload FROM outbox_event WHERE event_type = $1 ORDER BY created_at",
+        [eventType],
+      )
+    ).rows as { organization_id: string; payload: Record<string, unknown> }[];
+  const outcome = async (eventId: string) =>
+    (await admin.query("SELECT * FROM claimmd_webhook_event WHERE event_id = $1", [eventId]))
+      .rows[0];
+
+  describe("sweep", () => {
+    beforeEach(async () => {
+      await admin.query("DELETE FROM outbox_event WHERE event_type LIKE 'm23.clearinghouse.%'");
+    });
+
+    it("resolves an enrollment by the unique NPI and publishes one PHI-free report to that tenant only", async () => {
+      await store([enrollFor("e1", NPI_A)]);
+      expect((await sweep()).outcomes).toEqual({ published: 1 });
+      const [ev, ...rest] = await outbox("m23.clearinghouse.enrollment_reported");
+      expect(rest).toHaveLength(0);
+      expect(ev?.organization_id).toBe(ORG_A);
+      expect(ev?.payload).toMatchObject({
+        sourceEventKey: "test:99999:e1",
+        providerEntityId: peA,
+        vendorStatus: "enrolled",
+        enrollType: "era",
+        clearinghousePayerId: "SYN01",
+        vendorEnrollId: "77",
+      });
+      expect(JSON.stringify(ev?.payload)).not.toContain("000000001"); // the TIN never leaves the receipt
+      expect(await outcome("e1")).toMatchObject({
+        processing_outcome: "published",
+        derived_organization_id: ORG_A,
+        derived_provider_entity_id: peA,
+      });
+      // Org B's tenant connection sees nothing of org A's report.
+      await tenant.query("BEGIN");
+      await tenant.query(`SELECT set_config('app.org_id', '${ORG_B}', true)`);
+      const seen = await tenant.query(
+        "SELECT count(*)::int AS n FROM outbox_event WHERE event_type LIKE 'm23.clearinghouse.%'",
+      );
+      await tenant.query("COMMIT");
+      expect(seen.rows[0]?.n).toBe(0);
+    });
+
+    it("settles an unknown NPI, an unknown claim and an undocumented type terminal, publishing nothing", async () => {
+      await store([
+        enrollFor("e2", "1000000004"),
+        appealFor("a0", "CN-NOPE"),
+        { ...enroll("u1"), event_type: "brand_new" },
+      ]);
+      expect((await sweep()).outcomes).toEqual({
+        unroutable_npi: 1,
+        unroutable_claim: 1,
+        unsupported_type: 1,
+      });
+      expect(await outbox("m23.clearinghouse.enrollment_reported")).toHaveLength(0);
+      expect(await outbox("m23.clearinghouse.appeal_reported")).toHaveLength(0);
+    });
+
+    it("resolves an appeal by the platform-unique control number (remote_claimid), with a bounded status word", async () => {
+      await store([appealFor("a1", "CN-B-1")]);
+      expect((await sweep()).outcomes).toEqual({ published: 1 });
+      const [ev] = await outbox("m23.clearinghouse.appeal_reported");
+      expect(ev?.organization_id).toBe(ORG_B);
+      expect(ev?.payload).toMatchObject({
+        controlNumber: "CN-B-1",
+        providerEntityId: peB,
+        vendorStatus: "created",
+        vendorAppealId: "A-9",
+      });
+      expect(JSON.stringify(ev?.payload)).not.toContain("free text");
+    });
+
+    it("parks an event for an org without the Billing add-on, then back-fills it once the add-on is granted", async () => {
+      let entitled = false;
+      const port: BillingEntitlementPort = {
+        isEntitled: async (org) => (org === ORG_A ? entitled : true),
+      };
+      await store([enrollFor("e3", NPI_A)]);
+      expect((await sweep(port)).outcomes).toEqual({ awaiting_entitlement: 1 });
+      expect(await outcome("e3")).toMatchObject({
+        processing_outcome: "awaiting_entitlement",
+        processed_at: null,
+      });
+      expect(String((await outcome("e3")).payload_cipher)).toMatch(/^v1\./); // still encrypted, still there
+      entitled = true;
+      expect((await sweep(port, new Date(T0.getTime() + 5 * 60_000))).seen).toBe(0); // re-checked hourly, not every minute
+      expect((await sweep(port, new Date(T0.getTime() + 61 * 60_000))).outcomes).toEqual({
+        published: 1,
+      });
+      expect(await outbox("m23.clearinghouse.enrollment_reported")).toHaveLength(1);
+    });
+
+    it("leaves a row untouched when the entitlement reader fails, and publishes it on the next sweep", async () => {
+      await store([enrollFor("e4", NPI_A)]);
+      const failing: BillingEntitlementPort = {
+        isEntitled: async () => Promise.reject(new Error("down")),
+      };
+      expect((await sweep(failing)).outcomes).toEqual({ entitlement_unavailable: 1 });
+      expect(await outcome("e4")).toMatchObject({
+        processing_outcome: null,
+        attempt_count: 0,
+        last_error_class: "entitlement_unavailable",
+      });
+      expect((await sweep()).outcomes).toEqual({ published: 1 });
+    });
+
+    it("never publishes a row twice: a second sweep finds nothing to do", async () => {
+      await store([enrollFor("e5", NPI_B)]);
+      await sweep();
+      expect((await sweep()).seen).toBe(0);
+      expect(await outbox("m23.clearinghouse.enrollment_reported")).toHaveLength(1);
+    });
+
+    it("gives up on a poison row after five attempts without blocking the others", async () => {
+      await store([enrollFor("p1", NPI_A), enrollFor("e6", NPI_B)]);
+      await admin.query(
+        "UPDATE claimmd_webhook_event SET payload_cipher = 'v1.AAAA.AAAA.AAAA' WHERE event_id = 'p1'",
+      );
+      const first = await sweep();
+      expect(first.outcomes).toEqual({ retry: 1, published: 1 });
+      for (let i = 0; i < 4; i += 1) await sweep();
+      expect(await outcome("p1")).toMatchObject({ processing_outcome: "failed", attempt_count: 5 });
+      expect((await outcome("p1")).processed_at).not.toBeNull();
+    });
+
+    it("clears ciphers after the retention window and closes out entitlement waits", async () => {
+      const old = new Date(T0.getTime() - (CLAIMMD_PAYLOAD_RETENTION_DAYS + 1) * 86_400_000);
+      await store([enrollFor("r1", NPI_A), enrollFor("r2", NPI_A)], old);
+      await sweep({ isEntitled: async () => true }, old); // r1 and r2 published at `old`
+      await store([enrollFor("r3", NPI_A)], old);
+      await sweep({ isEntitled: async () => false }, old); // r3 waits
+      await sweep({ isEntitled: async () => false }, T0);
+      for (const id of ["r1", "r2"]) {
+        expect(await outcome(id)).toMatchObject({
+          processing_outcome: "published",
+          payload_cipher: null,
+          payload_key_ref: null,
+        });
+      }
+      expect(await outcome("r3")).toMatchObject({
+        processing_outcome: "expired_not_entitled",
+        payload_cipher: null,
+      });
+      expect((await outcome("r3")).payload_sha256).toMatch(/^[0-9a-f]{64}$/); // the digest stays as evidence
+    });
   });
 });
