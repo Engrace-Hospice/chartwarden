@@ -130,7 +130,7 @@ describe("sanitizeRichBody", () => {
     ]);
   });
 
-  it("ADR-0107: accepts the group tag kinds and projects them like any mention", () => {
+  it("ADR-0108: accepts the group tag kinds and projects them like any mention", () => {
     for (const kind of ["role", "team", "on_call"]) {
       const value = ok(doc(para({ type: "mention", kind, entityId: ID, label: "Care team" })));
       expect(richBodyMentions(value)).toEqual([
