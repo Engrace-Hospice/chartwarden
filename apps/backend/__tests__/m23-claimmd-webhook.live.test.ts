@@ -226,13 +226,14 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
 
   it("refuses every bad signature with the same 401 and stores nothing", async () => {
     const body = delivery([enroll("1")]);
-    for (const headers of [
+    const cases: Record<string, string>[] = [
       {},
       { "auth-signature-base64": "" },
       { "auth-signature-base64": `${sign(body).slice(0, 42)}A=` },
       { "auth-signature-base64": sign(`${body} `) },
       { "auth-signature-base64": `${sign(body)}=` },
-    ]) {
+    ];
+    for (const headers of cases) {
       const res = await post(body, headers);
       expect(res.statusCode).toBe(401);
       expect(JSON.stringify(res.json())).toContain("INVALID_SIGNATURE");
