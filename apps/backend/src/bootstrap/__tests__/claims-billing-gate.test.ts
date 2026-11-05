@@ -31,12 +31,12 @@ function bindReader(answer: ClaimsBillingEntitlement | Error): void {
   });
 }
 
-async function gatedApp() {
+async function gatedApp(organizationId: string | null = ORG) {
   const app = Fastify();
   app.decorateRequest("context", null as never);
   app.addHook("onRequest", async (request) => {
     (request as unknown as { context: unknown }).context = {
-      organizationId: ORG,
+      organizationId,
       userId: "u",
       roles: [],
       attributes: {},
@@ -95,6 +95,23 @@ describe("the route gate", () => {
     expect(calls).toBe(1);
     expect((await app.inject({ method: "POST", url: "/claims/void" })).statusCode).toBe(200);
     bindReader({ entitled: true });
+    expect((await app.inject({ method: "POST", url: "/claims/submit" })).statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("a gated route reached with no org is refused 403 in shadow and enforce, untouched in off", async () => {
+    bindReader({ entitled: true });
+    for (const mode of ["shadow", "enforce"] as const) {
+      configureClaimsBillingGate({ mode });
+      const app = await gatedApp(null);
+      const res = await app.inject({ method: "POST", url: "/claims/submit" });
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toMatchObject({ code: "FORBIDDEN" });
+      await app.close();
+    }
+    expect(calls).toBe(0);
+    configureClaimsBillingGate({ mode: "off" });
+    const app = await gatedApp(null);
     expect((await app.inject({ method: "POST", url: "/claims/submit" })).statusCode).toBe(200);
     await app.close();
   });
