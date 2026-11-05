@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/admin/addons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the add-on catalog (admin) */
+        get: operations["getApiAdminAddons"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/dunning": {
         parameters: {
             query?: never;
@@ -755,6 +772,41 @@ export interface paths {
         get: operations["getApiAdminSubscriptionsById"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/subscriptions/{id}/addons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a subscription's add-ons (admin) */
+        get: operations["getApiAdminSubscriptionsByIdAddons"];
+        put?: never;
+        /** Grant or start a trial of an add-on */
+        post: operations["postApiAdminSubscriptionsByIdAddons"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/subscriptions/{id}/addons/{addonId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel an add-on */
+        post: operations["postApiAdminSubscriptionsByIdAddonsByAddonIdCancel"];
         delete?: never;
         options?: never;
         head?: never;
@@ -28432,6 +28484,39 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getApiAdminAddons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        slug: string;
+                        name: string;
+                        description: string | null;
+                        entitlementKey: string;
+                        meterEventType: string;
+                        unitPriceCents: number | null;
+                        currencyCode: string;
+                        isActive: boolean;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiAdminDunning: {
         parameters: {
             query?: {
@@ -30569,6 +30654,149 @@ export interface operations {
                         /** Format: date-time */
                         startedAt: string;
                         organizationName: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiAdminSubscriptionsByIdAddons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        subscriptionId: string;
+                        /** Format: uuid */
+                        addonId: string;
+                        addonSlug: string;
+                        addonName: string;
+                        status: "trialing" | "active" | "canceled";
+                        live: boolean;
+                        trialEndsAt: string | null;
+                        /** Format: date-time */
+                        startedAt: string;
+                        endsAt: string | null;
+                        canceledAt: string | null;
+                        grantedByMembershipId: string | null;
+                        grantReason: string;
+                    }[];
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminSubscriptionsByIdAddons: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    addonSlug: string;
+                    mode: "grant" | "trial";
+                    /** Format: date-time */
+                    trialEndsAt?: string;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        subscriptionId: string;
+                        /** Format: uuid */
+                        addonId: string;
+                        addonSlug: string;
+                        addonName: string;
+                        status: "trialing" | "active" | "canceled";
+                        live: boolean;
+                        trialEndsAt: string | null;
+                        /** Format: date-time */
+                        startedAt: string;
+                        endsAt: string | null;
+                        canceledAt: string | null;
+                        grantedByMembershipId: string | null;
+                        grantReason: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiAdminSubscriptionsByIdAddonsByAddonIdCancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                addonId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        subscriptionId: string;
+                        /** Format: uuid */
+                        addonId: string;
+                        addonSlug: string;
+                        addonName: string;
+                        status: "trialing" | "active" | "canceled";
+                        live: boolean;
+                        trialEndsAt: string | null;
+                        /** Format: date-time */
+                        startedAt: string;
+                        endsAt: string | null;
+                        canceledAt: string | null;
+                        grantedByMembershipId: string | null;
+                        grantReason: string;
                     };
                 };
             };
@@ -48351,6 +48579,13 @@ export interface operations {
                         daysUntilSuspension: number | null;
                         hasValidPaymentMethod: boolean;
                         paymentMethodExpiresAt: string | null;
+                        claimsBilling?: {
+                            entitled: boolean;
+                            status: "none" | "trialing" | "active" | "canceled";
+                            reason: ("never_purchased" | "lapsed" | "subscription_suspended" | "subscription_canceled" | "subscription_paused") | null;
+                            trialEndsAt: string | null;
+                            activePatientCount: number | null;
+                        };
                     };
                 };
             };

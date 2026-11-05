@@ -494,4 +494,39 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
+  // ── ADR-0108 the claims-billing add-on (platform-ops grant / cancel) ─────────────────────────────────
+  // Ids, status and the effective instant only (no operator reason, no price). Record-only today: the
+  // entitlement is a PULL (`ClaimsBillingEntitlementReader`), so nothing must react to the push.
+  {
+    eventName: "m35.claims_billing_addon.granted",
+    moduleOwner: "m35",
+    description:
+      "Platform ops granted (or started a trial of) the claims-billing add-on for a tenant.",
+    payloadSchema: Type.Object({
+      subscriptionAddonId: id,
+      subscriptionId: id,
+      organizationId: id,
+      status: Type.Union([Type.Literal("trialing"), Type.Literal("active")]),
+      effectiveAt: isoInstant,
+    }),
+    declaredConsumers: [],
+    seamConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m35.claims_billing_addon.canceled",
+    moduleOwner: "m35",
+    description:
+      "Platform ops canceled a tenant's claims-billing add-on (new claims work blocks; in-flight finishes).",
+    payloadSchema: Type.Object({
+      subscriptionAddonId: id,
+      subscriptionId: id,
+      organizationId: id,
+      status: Type.Literal("canceled"),
+      effectiveAt: isoInstant,
+    }),
+    declaredConsumers: [],
+    seamConsumers: [],
+    isOutboxOnly: true,
+  },
 ];

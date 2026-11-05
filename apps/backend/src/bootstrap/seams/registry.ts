@@ -49,6 +49,7 @@ import {
   claimReaderDenyStub,
   claimSettlementProviderDenyStub,
   claimSubmissionReaderDenyStub,
+  claimsBillingEntitlementReaderDenyStub,
   comfortKitDispatchProviderDenyStub,
   commercialClaimReaderDenyStub,
   complianceStatusProviderDenyStub,
@@ -142,6 +143,7 @@ import {
   patientHopeAdmissionPrefillReaderDenyStub,
   patientMutatorDenyStub,
   patientPrivacyFlagReaderDenyStub,
+  patientCensusReaderDenyStub,
   patientReaderDenyStub,
   patientSitingReaderDenyStub,
   patientWristbandVerifierDenyStub,
@@ -320,6 +322,14 @@ export const REQUIRED_SEAMS = [
     ownerModule: 5,
     phi: true,
     denyStub: patientPrivacyFlagReaderDenyStub,
+  },
+  // ADR-0108 — M5's active-patient census page for the M35 claims-billing add-on. Raw patient ids cross → phi:true
+  // (M35 pseudonymizes them in memory and stores only the HMAC).
+  {
+    key: "PatientCensusReader",
+    ownerModule: 5,
+    phi: true,
+    denyStub: patientCensusReaderDenyStub,
   },
   // M40 — TASK-015/ARCH-018: the M31 bereaved-portal `/resources` read. Deny-stub only — no
   // `external_grief_resource` table exists yet (M40 has not built this catalog).
@@ -727,6 +737,13 @@ export const REQUIRED_SEAMS = [
     ownerModule: 35,
     phi: false,
     denyStub: patientCounterProviderDenyStub,
+  },
+  // ADR-0108 — the claims-billing add-on entitlement (owner M35). Aggregate org metadata, no patient row → phi:false.
+  {
+    key: "ClaimsBillingEntitlementReader",
+    ownerModule: 35,
+    phi: false,
+    denyStub: claimsBillingEntitlementReaderDenyStub,
   },
   {
     key: "RevenueMetricsProvider",

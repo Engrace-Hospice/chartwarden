@@ -2437,6 +2437,7 @@ import {
 import {
   AckResponseDto as M35AckResponseDto,
   AddMeterBodySchema as M35AddMeterBody,
+  AddonListResponseDto as M35AddonListResponseDto,
   AdminSubscriptionListQuerySchema as M35AdminSubscriptionListQuery,
   ApplyPromoBodySchema as M35ApplyPromoBody,
   AttachPaymentMethodBodySchema as M35AttachPaymentMethodBody,
@@ -2450,6 +2451,7 @@ import {
   DunningDto as M35DunningDto,
   DunningListQuerySchema as M35DunningListQuery,
   DunningListResponseDto as M35DunningListResponseDto,
+  GrantAddonBodySchema as M35GrantAddonBody,
   InvoiceDetailDto as M35InvoiceDetailDto,
   InvoiceListResponseDto as M35InvoiceListResponseDto,
   ListQuerySchema as M35ListQuery,
@@ -2471,6 +2473,8 @@ import {
   RevenueSnapshotListResponseDto as M35RevenueSnapshotListResponseDto,
   RevokePromoBodySchema as M35RevokePromoBody,
   SetupIntentResponseDto as M35SetupIntentResponseDto,
+  SubscriptionAddonDto as M35SubscriptionAddonDto,
+  SubscriptionAddonListResponseDto as M35SubscriptionAddonListResponseDto,
   SubscriptionAdminListResponseDto as M35SubscriptionAdminListResponseDto,
   SubscriptionAdminResponseDto as M35SubscriptionAdminResponseDto,
   SubscriptionResponseDto as M35SubscriptionResponseDto,
@@ -3119,6 +3123,24 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     body: M35PauseSubscriptionBody,
     response: M35SubscriptionAdminResponseDto,
     summary: "Pause subscription",
+  },
+  // ADR-0108 — the claims-billing add-on (platform-ops).
+  "GET /api/admin/addons": {
+    response: M35AddonListResponseDto,
+    summary: "List the add-on catalog (admin)",
+  },
+  "GET /api/admin/subscriptions/:id/addons": {
+    response: M35SubscriptionAddonListResponseDto,
+    summary: "List a subscription's add-ons (admin)",
+  },
+  "POST /api/admin/subscriptions/:id/addons": {
+    body: M35GrantAddonBody,
+    response: M35SubscriptionAddonDto,
+    summary: "Grant or start a trial of an add-on",
+  },
+  "POST /api/admin/subscriptions/:id/addons/:addonId/cancel": {
+    response: M35SubscriptionAddonDto,
+    summary: "Cancel an add-on",
   },
   "POST /api/admin/subscriptions/:id/apply_promo": {
     body: M35ApplyPromoBody,

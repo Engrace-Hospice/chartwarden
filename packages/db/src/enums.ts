@@ -3682,6 +3682,7 @@ export const usageEventType = pgEnum("usage_event_type", [
   "fhir_egress_request",
   "hl7_message_inbound",
   "hl7_message_outbound",
+  "billing_addon_patient", // ADR-0108 (migration 1320): the claims-billing add-on monthly census
 ]);
 
 /** `usage_event_source_module` — which ChartWarden module emitted a usage event. */

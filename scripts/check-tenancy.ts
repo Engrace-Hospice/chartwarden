@@ -321,6 +321,10 @@ const NON_ORG_SCOPED = new Set<string>([
   "stripe_webhook_event",
   "platform_retained_invoice",
   "platform_retained_invoice_line",
+  // ADR-0108 — `addon`, the platform-owned add-on catalog (the `plan` shape, D11: platform pricing, no tenant
+  // overlay). Read-all `USING (true)` TO chartwarden_app, writes only via chartwarden_admin (migration 1321). Its
+  // tenant half, `subscription_addon`, carries organization_id with app.org_id RLS and is NOT listed here.
+  "addon",
   // M29 External Interfaces (§3.3 / §3.5): the two NPPES cache tables carry NO organization_id BY DESIGN —
   // the CMS NPPES registry is the same public provider directory for every tenant. `nppes_provider` (keyed
   // by the 10-char NPI) and `nppes_sync_run` are read-all `USING (true)` TO chartwarden_app, written only via

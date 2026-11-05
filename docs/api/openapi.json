@@ -6,6 +6,92 @@
     "description": "Generated from backend routes + TypeBox enrichments (ADR-0032). Source of truth for the typed frontend client until routes are wired to Fastify schema."
   },
   "paths": {
+    "/api/admin/addons": {
+      "get": {
+        "operationId": "getApiAdminAddons",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "List the add-on catalog (admin)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "slug",
+                      "name",
+                      "description",
+                      "entitlementKey",
+                      "meterEventType",
+                      "unitPriceCents",
+                      "currencyCode",
+                      "isActive"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "slug": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "entitlementKey": {
+                        "type": "string"
+                      },
+                      "meterEventType": {
+                        "type": "string"
+                      },
+                      "unitPriceCents": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "currencyCode": {
+                        "type": "string"
+                      },
+                      "isActive": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/admin/dunning": {
       "get": {
         "operationId": "getApiAdminDunning",
@@ -7708,6 +7794,499 @@
                       }
                     }
                   ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/admin/subscriptions/{id}/addons": {
+      "get": {
+        "operationId": "getApiAdminSubscriptionsByIdAddons",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "List a subscription's add-ons (admin)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "organizationId",
+                      "subscriptionId",
+                      "addonId",
+                      "addonSlug",
+                      "addonName",
+                      "status",
+                      "live",
+                      "trialEndsAt",
+                      "startedAt",
+                      "endsAt",
+                      "canceledAt",
+                      "grantedByMembershipId",
+                      "grantReason"
+                    ],
+                    "properties": {
+                      "id": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "organizationId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "subscriptionId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "addonId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "addonSlug": {
+                        "type": "string"
+                      },
+                      "addonName": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "anyOf": [
+                          {
+                            "const": "trialing",
+                            "type": "string"
+                          },
+                          {
+                            "const": "active",
+                            "type": "string"
+                          },
+                          {
+                            "const": "canceled",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "live": {
+                        "type": "boolean"
+                      },
+                      "trialEndsAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "startedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "endsAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "canceledAt": {
+                        "anyOf": [
+                          {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "grantedByMembershipId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "grantReason": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiAdminSubscriptionsByIdAddons",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Grant or start a trial of an add-on",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "subscriptionId",
+                    "addonId",
+                    "addonSlug",
+                    "addonName",
+                    "status",
+                    "live",
+                    "trialEndsAt",
+                    "startedAt",
+                    "endsAt",
+                    "canceledAt",
+                    "grantedByMembershipId",
+                    "grantReason"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "subscriptionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "addonId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "addonSlug": {
+                      "type": "string"
+                    },
+                    "addonName": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "trialing",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "canceled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "trialEndsAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "startedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "endsAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canceledAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "grantedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "grantReason": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "addonSlug",
+                  "mode",
+                  "reason"
+                ],
+                "properties": {
+                  "addonSlug": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "mode": {
+                    "anyOf": [
+                      {
+                        "const": "grant",
+                        "type": "string"
+                      },
+                      {
+                        "const": "trial",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "trialEndsAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 3,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/subscriptions/{id}/addons/{addonId}/cancel": {
+      "post": {
+        "operationId": "postApiAdminSubscriptionsByIdAddonsByAddonIdCancel",
+        "tags": [
+          "35-subscription"
+        ],
+        "summary": "Cancel an add-on",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "addonId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "subscriptionId",
+                    "addonId",
+                    "addonSlug",
+                    "addonName",
+                    "status",
+                    "live",
+                    "trialEndsAt",
+                    "startedAt",
+                    "endsAt",
+                    "canceledAt",
+                    "grantedByMembershipId",
+                    "grantReason"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "subscriptionId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "addonId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "addonSlug": {
+                      "type": "string"
+                    },
+                    "addonName": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "trialing",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "canceled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "live": {
+                      "type": "boolean"
+                    },
+                    "trialEndsAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "startedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "endsAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "canceledAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "grantedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "grantReason": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }
@@ -85256,6 +85835,93 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "claimsBilling": {
+                      "type": "object",
+                      "required": [
+                        "entitled",
+                        "status",
+                        "reason",
+                        "trialEndsAt",
+                        "activePatientCount"
+                      ],
+                      "properties": {
+                        "entitled": {
+                          "type": "boolean"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "none",
+                              "type": "string"
+                            },
+                            {
+                              "const": "trialing",
+                              "type": "string"
+                            },
+                            {
+                              "const": "active",
+                              "type": "string"
+                            },
+                            {
+                              "const": "canceled",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "anyOf": [
+                            {
+                              "anyOf": [
+                                {
+                                  "const": "never_purchased",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "lapsed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "subscription_suspended",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "subscription_canceled",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "subscription_paused",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "trialEndsAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "activePatientCount": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
                     }
                   }
                 }

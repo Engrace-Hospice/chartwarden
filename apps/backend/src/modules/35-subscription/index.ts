@@ -87,3 +87,15 @@ export {
   scheduleM35Jobs,
 } from "./billing-runtime/workers";
 export type { M35JobDeps } from "./billing-runtime/jobs";
+
+// ADR-0108 — the claims-billing add-on: the entitlement reader (registered as the `ClaimsBillingEntitlementReader`
+// seam) and the platform-ops add-on service the route mount binds.
+export {
+  type AddonService,
+  buildDrizzleAddonService,
+} from "./addon/addon-service";
+export {
+  createDrizzleClaimsBillingEntitlementReader,
+  decideClaimsBillingEntitlement,
+} from "./addon/entitlement";
+export { registerM35Seams } from "./seams/register";

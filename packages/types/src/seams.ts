@@ -96,6 +96,7 @@ import type {
   PatientAdmissionClearanceReader,
   PatientAllergyReader,
   PatientCaregiverReader,
+  PatientCensusReader,
   PatientCaregiverRosterReader,
   PatientCoverageReader,
   PatientHopeAdmissionPrefillReader,
@@ -135,6 +136,7 @@ import type {
 import type {
   AITokenMeterProvider,
   BillingStatusProvider,
+  ClaimsBillingEntitlementReader,
   ExternalInterfaceMetricsProvider,
   OnboardingStatusProvider,
   PatientCounterProvider,
@@ -176,6 +178,7 @@ export type SeamName =
   | "NonCoveredDmeSuppliesReader" // M21 — COP27: active dme/supply requests determined NOT hospice-covered (M6 election addendum)
   | "PatientAllergyReader" // M5 — the patient's current allergy list (M12 requestSignature allergy gate, GAP-036)
   | "PatientWristbandVerifier" // M5 — is the scanned wristband this patient's? verdict only (M13 BCMA wrong_patient arm, GAP-020)
+  | "PatientCensusReader" // M5 — ADR-0108: active-patient ids, paged (the M35 claims-billing add-on census pull)
   | "PatientPrivacyFlagReader" // M5 §3.5 — sex class + active privacy flags (M37 shared-room gate, GAP-061)
   | "ExternalGriefResourceReader" // M40 — TASK-015: bereaved-portal external resources list; deny-stub only (no M40 table yet)
   | "EmergencyServiceJurisdictionReader" // M40 — GAP-032: tenant-curated PSAP jurisdiction for an SOS (M20 terminus); deny-stub = unavailable
@@ -484,6 +487,7 @@ export type SeamName =
   | "BillingStatusProvider" // M35 — the billing-block gate + Phase-1 open quota check (M28/M29/M32/M34)
   | "UsageMeteringIngest" // M35 — PHI-free usage-event ingest (M23/M24/M28/M29/M32; redactor-enforced)
   | "PatientCounterProvider" // M35 — pseudonymized active-patient count for a period (reconciles vs M5)
+  | "ClaimsBillingEntitlementReader" // M35 — ADR-0108: may this org start NEW claims-billing work (add-on held)
   | "RevenueMetricsProvider" // M35 — platform-shared MRR/ARR snapshots + status counts (M33 revenue dashboard)
   | "PlanCatalogReader" // M35 — public (unauthenticated) plan catalog read (marketing pages + onboarding)
   // M35 §4.6 — the THREE forward-seam CONSUMER VIEWS M35 requires but whose owner modules do not publish them
@@ -1088,6 +1092,7 @@ export interface SeamContracts {
   NonCoveredMedicationsReader: NonCoveredItemsReader;
   NonCoveredDmeSuppliesReader: NonCoveredItemsReader;
   PatientPrivacyFlagReader: PatientPrivacyFlagReader;
+  PatientCensusReader: PatientCensusReader;
   ExternalGriefResourceReader: ExternalGriefResourceReader;
   EmergencyServiceJurisdictionReader: EmergencyServiceJurisdictionReader;
   PatientMutator: PatientMutator;
@@ -1432,6 +1437,8 @@ export interface SeamContracts {
   BillingStatusProvider: BillingStatusProvider;
   UsageMeteringIngest: UsageMeteringIngest;
   PatientCounterProvider: PatientCounterProvider;
+  // ADR-0108 — leaf-typed; the route gate + worker hold in apps/backend/src/bootstrap resolve it (fail closed).
+  ClaimsBillingEntitlementReader: ClaimsBillingEntitlementReader;
   RevenueMetricsProvider: RevenueMetricsProvider;
   PlanCatalogReader: PlanCatalogReader;
   // M35's three §4.6 forward-seam consumer views are LEAF-TYPED too (M35's minimal view in

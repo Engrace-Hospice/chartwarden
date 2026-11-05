@@ -1556,6 +1556,7 @@ import {
   M35_JOBS_PLATFORM_JOB_ID,
   M35_OUTBOX_EVENTS,
   type PlatformRunner,
+  buildDrizzleAddonService,
   buildDrizzleM35RouteService,
   buildM35OrgLifecycleConsumer,
   buildM35PatientActivePeriodConsumer,
@@ -1565,6 +1566,7 @@ import {
   loadM35StripeConfig,
   mountM35Routes,
   registerM35AbacPredicates,
+  registerM35Seams,
   registerM35Workers,
   scheduleM35Jobs,
 } from "./modules/35-subscription/index";
@@ -2406,6 +2408,8 @@ export function wireModuleSeams(
   // M37 §4.11 — register the eight REAL Drizzle-backed IPU reader seams over their deny-stubs (db-present
   // boot); consumers (M23/M26/M27/M13/M30/M31/M34) resolve them via getSeam. Without a db the deny-stubs stand.
   if (deps.db) registerIpuSeams({ registerSeam }, deps.db);
+  // ADR-0108 — the claims-billing entitlement reader (M35) over its throwing deny-stub (db-present boot only).
+  registerM35Seams(deps.db ? { db: deps.db } : {});
   // M17 — the four §4.3 owned READ seams (VisitReader — the visit read path M8 (encounter-authoring context,
   // which CLOSES M8's visit-seeding inert consumer M8 D9) / M18 (EVV geofence target) / M14 (IDG since-meeting)
   // consume — + VisitAssignmentReader — the assignment read path M5 (the §4.5 D11 caseload-contribution
@@ -6031,6 +6035,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               // audited (`platform.bypass_invoked` via the shared M34 auditor) `withPlatformContext` tx against
               // the platform credential. Undefined → fail-closed (503), never a tenant-pool read.
               platformRunner: m35PlatformRunner,
+            }),
+            // ADR-0108 — the claims-billing add-on: platform-ops grant/trial/cancel (platform runner only; the app role
+            // holds SELECT on subscription_addon) and the tenant `claimsBilling` block on GET /api/v1/billing/status.
+            addons: buildDrizzleAddonService(dbHandle.db, {
+              outbox: m35OutboxPublisher,
+              ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
             }),
           });
           // M37 (Inpatient Unit / IPU Management) — mount the §4.1 core route spine over the Drizzle route
