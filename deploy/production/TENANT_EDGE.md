@@ -12,8 +12,9 @@ API same-origin at `/api/`. Two environments use this mechanism, each with its o
 | Switched on by | that variable plus the five settings in the demo's `.env.production` | the `.env.tenant.example` overlay |
 | Hosts that already exist | `app.`, `api.`, `storage.` and the legacy `wardenx.` host (a 308 redirect, `nginx/chartwarden-legacy-redirects.conf`) keep working: they are all reserved names, so none can be a tenant slug | none |
 
-The demo's per-tenant mode is an owner decision that supersedes ADR-0088 decision 2 ("the demo stays single-host"); until it
-is switched on the demo behaves exactly as before. `/ready` is proxied on the tenant vhost like the demo's `api.` vhost; it
+The demo's per-tenant mode is an owner decision (2026-11-05) that supersedes ADR-0088 decision 2 ("the demo stays single-host"),
+recorded in [ADR-0088, Amendment 2026-11-05](../../docs/adr/ADR-0088-tenant-base-domain-and-environments.md#amendment-2026-11-05-the-demo-serves-tenant-subdomains-too-supersedes-decision-2);
+until it is switched on the demo behaves as before. `/ready` is proxied on the tenant vhost like the demo's `api.` vhost; it
 names dependency health, so restrict it at the edge if that is unwanted. Nothing in this file is per tenant: provisioning a
 tenant (M34) changes **no** DNS, certificate, Pangolin or nginx configuration. The shared web image also ships the portal at `/portal/`.
 
