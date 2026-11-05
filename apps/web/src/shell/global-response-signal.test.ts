@@ -161,3 +161,32 @@ describe("org-less 401 (ORGANIZATION_NOT_SELECTED)", () => {
     expect(getGlobalResponseSignal()).toEqual({ kind: "session-expired" });
   });
 });
+
+// ADR-0108 — the claims-billing gate's fail-closed 503 is one refused action, not an outage: navigating to
+// /maintenance would throw away the form the user was filling in.
+describe("503 BILLING_ENTITLEMENT_UNAVAILABLE", () => {
+  const url = `${ORIGIN}/api/v1/claims/submit`;
+  const body503 = (code: string): Response =>
+    new Response(JSON.stringify({ error: { code, message: "x" } }), {
+      status: 503,
+      headers: { "content-type": "application/json" },
+    });
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  afterEach(() => setGlobalResponseSignal(null));
+
+  it("does not signal service-unavailable for the gate's own 503", async () => {
+    handleObservedResponse(503, url, body503("BILLING_ENTITLEMENT_UNAVAILABLE"));
+    await settle();
+    expect(getGlobalResponseSignal()).toBeNull();
+  });
+
+  it("still signals service-unavailable for any other 503, JSON or not", async () => {
+    handleObservedResponse(503, url, body503("DEGRADED"));
+    await settle();
+    expect(getGlobalResponseSignal()).toEqual({ kind: "service-unavailable" });
+    setGlobalResponseSignal(null);
+    handleObservedResponse(503, url, new Response("down", { status: 503 }));
+    await settle();
+    expect(getGlobalResponseSignal()).toEqual({ kind: "service-unavailable" });
+  });
+});
