@@ -40,7 +40,28 @@ Decision record: [ADR-0053 amendment 2026-11-04](../../adr/ADR-0053-clearinghous
 | `fetchRemittances` | `eralist` with `ERAID` = cursor, `NPI` = `ctx.billingNpi`, `NewOnly=0` (the "new" flag is account-wide), then `era835` per `eraid`. **Observed 2026-11-05:** `eralist` answers `last_eraid` and `era[]` (`eraid` as a number, `prov_npi`, `prov_taxid`, `payerid`, `paid_amount`, `paid_date`, `check_number`, `check_type`, `received_time` `MM-DD-YYYY HH:MM`); `era835` answers the same summary keys plus `data`, an **array** whose first element is the 835 interchange (`ISA*…*ZZ*15004…*ZZ*34652…`). The adapter takes a string or a one-element array as one file. How many elements the array can hold is **not yet observed**, so several are read only where the X12 itself decides: every element a whole interchange (ISA first, the only IEA last, IEA02 = ISA13) gives one file per element in order, ids `claimmd-<eraid>`, `claimmd-<eraid>-2`, …; otherwise the elements joined in order must form exactly one such interchange (fragments) and give one file `claimmd-<eraid>`. Any other shape (a mix, junk, non-string or empty elements, an empty array) fails the page and raises the `era_unreadable` anomaly (eraid and element count only); never a guessed join. At most 25 ERAs per call (rate limit); ids at or below the cursor are dropped and the cursor never moves back; the 835 is kept byte-for-byte; an ERA without its 835 fails the page so the cursor never passes it | D |
 | `validateOnly` | **Local only.** Claim.MD has no dry-run endpoint and an upload is a submission, so this never calls Claim.MD: it reports the pre-upload checks (`CLAIMMD_PRECHECK`). Claim.MD and payer edits are known only after a real upload | D |
 | `checkEligibility` | `eligdata` (form): `ins_name_l/f`, `ins_number` (member id or MBI), `ins_dob`, `pat_rel=18`, `payerid` = `ctx.payerId`, `service_code=30`, `fdos`, `prov_npi`, `prov_taxid` (+`E`). Needs the request's transient `EligibilitySearchFacts` (name, DOB, EIN; M41 reads them per call from M5 and the sealed EIN) and refuses before any call without them. Outcome: any `benefit_coverage_code` 1-4 → `active`, else 6-8 → `inactive`, else `unknown`; as-of = the service date. An `error` element → `CH_INVALID_REQUEST` with codes only (the message can echo the subscriber). Medicare eligibility stays on HETS (M23), not the clearinghouse | D, **U** until a sandbox call |
-| `verifyAndParseEvent` | `CH_NOT_WIRED`: Claim.MD webhooks carry enrollment and appeal events only (HMAC-SHA256 of the body keyed with the account key, header `Auth-Signature-Base64`) | D |
+| `verifyAndParseEvent` | `CH_NOT_WIRED` (the message names the ingress): Claim.MD webhooks carry enrollment and appeal REPORTS only, with their content inline (nothing to fetch, no ack/status/ERA). They enter through M23's `POST /api/v1/webhooks/claimmd/<usage>` (webhook section below) | D |
+
+## Webhooks (enrollment and appeal reports; ingress built 2026-11-05, OFF by default)
+
+Source: `https://api.claim.md/`, Webhook Events, read 2026-11-05. **No real delivery has been captured**, so every O cell
+below is still empty; keep `CLAIMMD_WEBHOOK_ENABLED` unset until one has been read against these rows.
+
+| Item | Contract | Src |
+|---|---|---|
+| Activation | One URL per account, given to Claim.MD support (not self-service). Ours: `https://<api host>/api/v1/webhooks/claimmd/<usage>` | D |
+| Signature | Header `Auth-Signature-Base64` = base64(HMAC-SHA256(key = the API key used directly, message = the exact raw body)). We read the key as its Latin-1 bytes, require the canonical 43 chars + `=`, compare timing-safe | D (Latin-1 for non-ASCII keys: **U**; our keys are ASCII) |
+| Unsigned | The header is absent when the account has no active key: refused (401) like any bad signature | D |
+| Acknowledge | Reply 200 only after every event is durably stored (duplicates included). Any other answer, a timeout or a connection failure is retried at least 30 minutes later, for up to 4 days after the event | D |
+| Dedupe | At least once; dedupe on (`acct_number`, `eventid`). Our key: (usage, `acct_number`, `eventid`) | D |
+| Body | `{UTCTime, acct_number, remote_acct_number?, events:[{eventid, event_type, event_time, event_data}]}`, 1 to 100 events. We split up to 1,000 and store anything else whole as one `malformed` row | D |
+| `eventid` type | String or number: both accepted (a number as its decimal string) | **U** |
+| `event_type` values | Only `enroll` (example), `appeal`, `test` are seen in the docs; the list is not enumerated. An unknown type is stored and settled `unsupported_type` | D (partial), **U** |
+| `enroll` | `{enrollid, event, event_detail, enroll_type (era, 1500, ub, elig, attach; the docs also list 500), prov_npi, prov_taxid, prov_id, payerid}`. Status words beyond `enrolled` are not enumerated. Tenant: `prov_npi` → `provider_entity` (unique NPI). `prov_taxid` can be an SSN: kept only inside the encrypted receipt | D, words **U** |
+| `appeal` | `{appealid, event, event_detail, claimid, remote_claimid, appeal_type, service_fee, pages, formid, form_name}`; `event` seen as `created`. Tenant: `remote_claimid` → the live attempt with that control number. Claim.MD defines `remote_claimid` as the 837 `REF*D9`, which our 837I does not send yet, so X12-uploaded claims resolve only once it does (or Claim.MD confirms it echoes CLM01) | D, resolution **U** |
+| `test` | `{event: "test", event_detail}`: stored and settled `test_ack` on receipt, logged with usage and account only | D |
+| `event_detail` | Free vendor text: kept only encrypted, never logged, never shown to tenants (they see one bounded status word) | D (handling: design) |
+| `event_time` | Text, zone not stated: kept as text; M41 reads `YYYY-MM-DD HH:MM[:SS]` as UTC only to order reports | **U** |
 
 ## Tenant isolation
 

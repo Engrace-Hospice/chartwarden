@@ -102,6 +102,19 @@ Built: `commercial_payer_enrollment`, `commercial_eligibility_check`, the per-pl
 - Rate limiting on the mutating routes relies on the platform-wide limiter; there is no per-route budget.
 - Tenant erasure: every M41 table has a RESTRICT FK to `organization`; migration 1287 grants `chartwarden_destruction` SELECT+DELETE with an `app.org_id`-pinned policy per table, and `eraseOrgCommercialBilling` empties them (see `docs/history/m41-org-erasure.md`, #838). It is not yet bound to an M4 org-destruction driver.
 
+## Clearinghouse enrollment reports are advisory (2026-11-05, migration 1323)
+
+A clearinghouse may tell us a provider entity's enrollment changed (Claim.MD's `enroll` webhook, ADR-0053 amendment
+2026-11-05). M41 consumes `m23.clearinghouse.enrollment_reported` into `commercial_enrollment_report`: one row per event
+(idempotent on its source key), the payer mapped through `commercial_payer_route` only when exactly one route carries the
+reported payer id, a suggested status only for the exact word `enrolled`, older open reports for the same (entity, payer,
+enroll type) superseded. **A report never writes `commercial_payer_enrollment` and never opens the send gate (D5).**
+Staff confirm it on the enrollments screen, which pre-fills the existing enrollment form (evidence `claimmd:<enrollid>`);
+the existing POST/PATCH (manage_enrollment, fresh step-up, Idempotency-Key, no AI actor) records it, and only then is the
+report resolved `applied` (`POST …/enrollment-reports/:id/resolve`, manage_enrollment, idempotent, no step-up: closing a
+notice changes no gate). Every enroll type (`era`, `1500`, `ub`, `elig`, `attach`) is offered; the send gate still reads
+only the enrollment rows. Billing managers get a `clearinghouse.enrollment_reported` notice (ids only).
+
 ## Open questions
 
 1. ~~Payer plan versus an M40 extension.~~ Resolved: M40 owns the canonical `payer` master and needs no change; M41 owns the per-tenant plan, route and rate tables (migration 1260), referencing the payer by a logical id.
