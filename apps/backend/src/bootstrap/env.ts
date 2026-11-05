@@ -25,6 +25,26 @@ export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = [
   "claimmd",
 ];
 
+/** ADR-0108 D6 — the claims-billing add-on enforcement mode (the gate lives in ./claims-billing-gate.ts). */
+export const CLAIMS_BILLING_ENFORCEMENT_ENV = "CLAIMS_BILLING_ENFORCEMENT";
+export const CLAIMS_BILLING_ENFORCEMENT_MODES = ["off", "shadow", "enforce"] as const;
+export type ClaimsBillingEnforcementMode = (typeof CLAIMS_BILLING_ENFORCEMENT_MODES)[number];
+export const DEFAULT_CLAIMS_BILLING_ENFORCEMENT: ClaimsBillingEnforcementMode = "shadow";
+
+/** Parse the mode; unset → shadow; anything else than the three values throws (fail closed at boot). */
+export function parseClaimsBillingEnforcement(
+  env: Readonly<Record<string, string | undefined>>,
+): ClaimsBillingEnforcementMode {
+  const raw = env[CLAIMS_BILLING_ENFORCEMENT_ENV]?.trim().toLowerCase();
+  if (!raw) return DEFAULT_CLAIMS_BILLING_ENFORCEMENT;
+  if ((CLAIMS_BILLING_ENFORCEMENT_MODES as readonly string[]).includes(raw)) {
+    return raw as ClaimsBillingEnforcementMode;
+  }
+  throw new Error(
+    `${CLAIMS_BILLING_ENFORCEMENT_ENV} must be one of ${CLAIMS_BILLING_ENFORCEMENT_MODES.join(", ")} (got '${raw}')`,
+  );
+}
+
 /** One unmet production requirement. */
 export interface EnvProblem {
   readonly key: string;
@@ -514,6 +534,14 @@ export function collectEnvProblems(env: EnvLike): EnvProblem[] {
     if (value && value !== "true" && value !== "false") {
       problems.push({ key, problem: "must be 'true' or 'false'" });
     }
+  }
+  try {
+    parseClaimsBillingEnforcement(env);
+  } catch {
+    problems.push({
+      key: CLAIMS_BILLING_ENFORCEMENT_ENV,
+      problem: `must be one of ${CLAIMS_BILLING_ENFORCEMENT_MODES.join(", ")} (or unset for shadow)`,
+    });
   }
   const clearinghouseVendor = env[CLEARINGHOUSE_VENDOR_ENV]?.trim();
   if (clearinghouseVendor && !PRODUCTION_CLEARINGHOUSE_VENDORS.includes(clearinghouseVendor)) {

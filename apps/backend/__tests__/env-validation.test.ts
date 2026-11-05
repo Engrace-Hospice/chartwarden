@@ -117,6 +117,18 @@ describe("collectEnvProblems", () => {
     expect(integrationEnabled(GOOD, FHIR_TOKEN_ENDPOINT_ENABLED_ENV)).toBe(true);
   });
 
+  it("ADR-0108: CLAIMS_BILLING_ENFORCEMENT is optional (shadow), but a set value must be off|shadow|enforce", () => {
+    for (const mode of ["off", "shadow", "enforce"]) {
+      expect(collectEnvProblems({ ...GOOD, CLAIMS_BILLING_ENFORCEMENT: mode })).toEqual([]);
+    }
+    expect(collectEnvProblems({ ...GOOD, CLAIMS_BILLING_ENFORCEMENT: "on" })).toEqual([
+      {
+        key: "CLAIMS_BILLING_ENFORCEMENT",
+        problem: "must be one of off, shadow, enforce (or unset for shadow)",
+      },
+    ]);
+  });
+
   it("rejects an ambiguous external-gateway switch value", () => {
     expect(collectEnvProblems({ ...GOOD, M23_LAUNCH_GATEWAY_ENABLED: "sometimes" })).toEqual([
       { key: "M23_LAUNCH_GATEWAY_ENABLED", problem: "must be 'true' or 'false'" },
