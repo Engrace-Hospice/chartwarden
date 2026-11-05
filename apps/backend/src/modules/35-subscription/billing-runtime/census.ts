@@ -1,7 +1,7 @@
 // apps/backend/src/modules/35-subscription/billing-runtime/census.ts — ADR-0108 D8, the claims-billing add-on census.
 //
 // The `m35.patient-census` sweep (every 6 hours, through the M35 org fan-out) PULLS M5's active-patient ids for each
-// org that holds the add-on now or held it during the current billing window, pseudonymizes every id with the billing
+// org that holds the add-on now, or whose add-on ended within the last sweep interval (one final pass), pseudonymizes every id with the billing
 // HMAC key (M35 D6: the raw id lives in this function's memory only and never reaches an M35 table or a log), and
 // inserts one `patient_active_period` row per patient per period, `ON CONFLICT DO NOTHING` (a rerun is a no-op).
 //
@@ -28,6 +28,12 @@ const PAP = schema.patientActivePeriod;
 const S = schema.subscriptionRow;
 
 export const CENSUS_PAGE_SIZE = 500;
+/**
+ * How long after the add-on ends the census still takes its final pass: one sweep interval (`m35.patient-census` runs
+ * every 6 hours). ponytail: a time bound, not a marker; a manual rerun inside the interval counts again (only patients
+ * admitted within 6 hours of the end can slip in). Record a final-pass marker if that ever matters for billing.
+ */
+export const CENSUS_FINAL_PASS_MS = 6 * 60 * 60_000;
 /** Log a reconcile metric when this sweep's count and M5's own count differ by more than this fraction. */
 export const CENSUS_RECONCILE_TOLERANCE = 0.01;
 
@@ -77,7 +83,10 @@ export interface CensusResult {
   readonly inserted?: number;
 }
 
-/** Census one org. Skips (counted:false) an org with no add-on, or whose add-on ended before this window. */
+/**
+ * Census one org. Skips (counted:false) an org with no add-on, whose add-on ended before this window, or whose add-on
+ * ended more than one census interval ago.
+ */
 export async function runPatientCensusForOrg(
   deps: CensusDeps,
   organizationId: string,
@@ -95,7 +104,13 @@ export async function runPatientCensusForOrg(
       .limit(1);
     const window = usageWindowFor(sub ?? { currentPeriodStart: null, currentPeriodEnd: null }, at);
     const endedAt = addon.endsAt ?? (addon.status === "trialing" ? addon.trialEndsAt : null);
-    const inWindow = addonIsLive(addon, at) || (endedAt !== null && endedAt >= window.start);
+    // After the end only ONE final pass counts (the first sweep within a census interval of it), so a patient admitted
+    // later in the same window is never billed for an add-on the org no longer holds.
+    const finalPass =
+      endedAt !== null &&
+      endedAt >= window.start &&
+      at.getTime() - endedAt.getTime() < CENSUS_FINAL_PASS_MS;
+    const inWindow = addonIsLive(addon, at) || finalPass;
     return inWindow ? { periodYearMonth: toBillingYearMonth(window.start) } : null;
   });
   if (!scope) return { counted: false };
