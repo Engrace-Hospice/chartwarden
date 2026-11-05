@@ -6,6 +6,53 @@ its full description there. Newest first.
 
 ---
 
+## 2026-11-05 — Onboarding wizard v2: ordered steps, attestation with evidence, two-party go-live
+
+**Why.** Tenant onboarding is now an ordered wizard that the server enforces. A step can only be started, completed, attested
+or skipped when every earlier required step is done or skipped (`409 ONBOARDING_STEP_OUT_OF_ORDER`). A human marks a step done
+by attesting with evidence. Going live takes two people: the tenant's compliance officer attests readiness, then a platform
+operator approves; the daily sweep no longer activates a tenant. The Xero and payroll steps are retired.
+
+### 1. `GET /api/v1/platform/tenants/{orgSlug}/onboarding` and `GET /api/v1/tenant/onboarding` — new fields
+
+Both return `steps` (ordered): `key`, `title`, `owner` (`platform_ops` | `org_admin` | `compliance_officer` | `either`),
+`sequence`, `optional`, `status`, `locked` and `lockedBy`, `completionMode` (`auto` | `attestation` | `either`), `evidence`
+(`note`, `ref`), `attestedBy` (`membershipId`, `actorKind`, `at`), the due/started/completed times; plus `currentStepKey`,
+`goLive` (`state`: `not_ready` | `awaiting_attestation` | `awaiting_approval` | `live` | `closed`, the latest `attestation`,
+`failedGuards`, `complianceOfficerMembershipId`) and `orgProfile` (`displayName`, `orgTimezone`). The older names stay as
+aliases: `tasks` and `currentStep` (platform), `items`, `nextCursor` and `hasMore` (tenant; the whole wizard is one page).
+
+### 2. New routes
+
+| Route | Who | Guards |
+|---|---|---|
+| `POST /api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/attest` | platform ops | `onboarding.manage_platform`, step-up, no AI actor; body `evidenceNote`, `evidenceRef?`, `reason` |
+| `POST /api/v1/platform/tenants/{orgSlug}/onboarding/{taskId}/reopen` | platform ops | same; body `reason` |
+| `PATCH /api/v1/platform/tenants/{orgSlug}/org-profile` | platform ops | same; body `displayName?`, `orgTimezone?` (IANA) |
+| `PUT /api/v1/platform/tenants/{orgSlug}/compliance-officer` | platform ops | same; body `membershipId` (an active member of that organization) |
+| `POST /api/v1/platform/tenants/{orgSlug}/go-live/approve` and `.../revoke` | platform ops | `go_live.approve_platform`, step-up, no AI actor; body `reason` |
+| `POST /api/v1/tenant/onboarding/{taskId}/attest` and `/reopen` | the step's owner role | `onboarding.update`; no AI actor |
+| `PATCH /api/v1/tenant/org-profile` | org_admin | `onboarding.manage_own` |
+| `PUT /api/v1/tenant/compliance-officer` | org_admin | `onboarding.manage_own`, step-up |
+| `POST /api/v1/tenant/go-live/attest` | compliance officer | `go_live.attest`, step-up; body `attestationConfirmed: true` |
+
+`POST /api/v1/tenant/onboarding/{taskId}/complete` is now a deprecated alias of `/attest`: `evidenceNote` is required
+(`422 ONBOARDING_EVIDENCE_REQUIRED`) and `completionEvidence` is ignored. `.../skip` now also refuses out of sequence and refuses
+the go-live step.
+
+### 3. Changed behaviour
+
+- `POST /api/v1/platform/tenants/{orgSlug}/status` with `toStatus: "active"` from `onboarding` is refused
+  `409 GO_LIVE_TWO_PARTY_REQUIRED`. Approval refuses `409 GO_LIVE_NOT_ATTESTED` without a pending attestation and
+  `409 ACTIVATION_GUARDS_FAILED` (the failed guards are in `details`) when a guard fails at approval time.
+- `POST` and `PATCH /api/v1/platform/baa-register` now need `platform_tenant_baa.write_platform` and a fresh step-up.
+- Typed refusals: `ONBOARDING_STEP_OUT_OF_ORDER`, `ONBOARDING_STEP_OWNER_MISMATCH` (403), `ONBOARDING_STEP_NOT_ATTESTABLE`,
+  `ONBOARDING_STEP_ALREADY_SETTLED`, `ONBOARDING_EVIDENCE_REQUIRED` / `ONBOARDING_EVIDENCE_INVALID`, `TENANT_NOT_ONBOARDING`,
+  `GO_LIVE_ALREADY_ATTESTED`, `GO_LIVE_NOT_ASSIGNED_OFFICER` (403), `GO_LIVE_SELF_APPROVAL`, `GO_LIVE_PENDING`,
+  `INVALID_ORG_TIMEZONE`, `COMPLIANCE_OFFICER_NOT_A_MEMBER`.
+
+---
+
 ## 2026-10-06 — Discharge details the Medicare claim needs (place of death, receiving care setting)
 
 **Why.** A Medicare hospice claim must report the patient discharge status (UB-04 FL 17 / 837I CL103,
