@@ -35,6 +35,7 @@ import { registerClaimMdWebhookRoutes } from "../src/modules/23-billing-medicare
 import {
   type BillingEntitlementPort,
   CLAIMMD_PAYLOAD_RETENTION_DAYS,
+  CLAIMMD_SWEEP_MAX_ATTEMPTS,
   type ClaimMdSweepDeps,
   runClaimMdWebhookSweep,
 } from "../src/modules/23-billing-medicare/claimmd-webhook/sweep";
@@ -422,7 +423,6 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
     extra: Partial<ClaimMdSweepDeps> = {},
   ) =>
     runClaimMdWebhookSweep({
-      ...extra,
       runner,
       cipher,
       entitlement,
@@ -430,6 +430,7 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
         publish: (tx, input) => publisher.publish(tx as never, { ...input, callerModule: "m23" }),
       },
       now: () => at,
+      ...extra,
     });
   const outbox = async (eventType: string) =>
     (
@@ -549,20 +550,48 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
 
     it("gives up on a poison row after five attempts without blocking the others", async () => {
       await store([enrollFor("p1", NPI_A), enrollFor("e6", NPI_B)]);
-      await admin.query(
-        "UPDATE claimmd_webhook_event SET payload_cipher = 'v1.AAAA.AAAA.AAAA' WHERE event_id = 'p1'",
-      );
+      // p1's publish always fails (a per-row fault that a retry cannot fix).
+      const poisoned: ClaimMdSweepDeps["outbox"] = {
+        publish: async (tx, input) => {
+          if (String(input.payload.sourceEventKey).endsWith(":p1")) throw new Error("poison");
+          await publisher.publish(tx as never, { ...input, callerModule: "m23" });
+        },
+      };
       const alerts: Array<Record<string, unknown>> = [];
       const onFailed: ClaimMdSweepDeps["onFailed"] = (detail) => alerts.push({ ...detail });
-      const first = await sweep(undefined, T0, { onFailed });
+      const first = await sweep(undefined, T0, { onFailed, outbox: poisoned });
       expect(first.outcomes).toEqual({ retry: 1, published: 1 });
-      for (let i = 0; i < 4; i += 1) await sweep(undefined, T0, { onFailed });
+      for (let i = 0; i < 4; i += 1) await sweep(undefined, T0, { onFailed, outbox: poisoned });
       expect(await outcome("p1")).toMatchObject({ processing_outcome: "failed", attempt_count: 5 });
       expect((await outcome("p1")).processed_at).not.toBeNull();
       // Claim.MD already got its 200, so a terminal failure raises an ops alert once, with ids only.
       expect(alerts).toEqual([
         { usage: expect.any(String), eventId: "p1", attempts: 5, errorClass: expect.any(String) },
       ]);
+    });
+
+    it("spends no attempt on a payload it cannot decrypt (a key fault), alerts once per sweep, and recovers", async () => {
+      await store([enrollFor("k1", NPI_A), enrollFor("k2", NPI_B)]);
+      const wrongKey = createWebhookPayloadCipher(Buffer.alloc(32, 9), "claimmd-webhook-v1");
+      const alerts: Array<Record<string, unknown>> = [];
+      const onUndecryptable: ClaimMdSweepDeps["onUndecryptable"] = (detail) =>
+        alerts.push({ ...detail });
+      for (let i = 0; i < CLAIMMD_SWEEP_MAX_ATTEMPTS + 1; i += 1) {
+        const r = await sweep(undefined, T0, { cipher: wrongKey, onUndecryptable });
+        expect(r.outcomes).toEqual({ payload_undecryptable: 2 });
+      }
+      for (const id of ["k1", "k2"]) {
+        expect(await outcome(id)).toMatchObject({
+          processing_outcome: null,
+          attempt_count: 0,
+          last_error_class: "payload_undecryptable",
+        });
+      }
+      // One alert per sweep (not one per row), ids-free.
+      expect(alerts).toHaveLength(CLAIMMD_SWEEP_MAX_ATTEMPTS + 1);
+      expect(alerts[0]).toEqual({ count: 2, errorClass: expect.any(String) });
+      // The key is fixed: the next sweep publishes both.
+      expect((await sweep()).outcomes).toEqual({ published: 2 });
     });
 
     it("clears ciphers after the retention window and closes out entitlement waits", async () => {
