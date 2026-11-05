@@ -55,7 +55,9 @@ const payerStatusDateSource = Type.Union([
 // ── Claim.MD webhook reports (ADR-0053 amendment D7/D8) ───────────────────────────────────────────────
 // Published by the claimmd-webhook sweep once a receipt resolves to a tenant that holds the Billing add-on. Ids, the
 // control number, enroll_type and ONE bounded vendor status word only: never the vendor's free text, never a TIN.
-// The receipt and this publish are separate transactions, so consumers dedupe on `sourceEventKey` (usage:acct:eventid).
+// The sweep publishes and marks the receipt `published` in ONE savepoint, so a receipt publishes at most once; the
+// receipt's own arrival (the webhook's insert) is an earlier transaction. Consumers still dedupe on `sourceEventKey`
+// (usage:acct:eventid), the usual at-least-once outbox delivery contract.
 const claimMdReportBase = {
   sourceEventKey: Type.String({ minLength: 1, maxLength: 240 }),
   usage: Type.Union([Type.Literal("test"), Type.Literal("production")]),
