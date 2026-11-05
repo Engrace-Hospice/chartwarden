@@ -187,6 +187,7 @@ export type {
   ClearinghouseContext,
   ClearinghouseCommercialEligibilityRequest,
   ClearinghouseEligibilityRequest,
+  EligibilitySearchFacts,
   ClearinghouseEligibilityResult,
   ClearinghouseMedicareEligibilityRequest,
   ClearinghouseErrorCode,
@@ -345,6 +346,15 @@ export {
   createStediTransportFromEnv,
 } from "./clearinghouse/stedi-transport";
 export type { StediAnomaly, StediTransportOptions } from "./clearinghouse/stedi-transport";
+export {
+  CLAIMMD_ACCOUNT_KEY_ENV,
+  CLAIMMD_ACCOUNT_USAGE_ENV,
+  ClaimMdTransport,
+  claimMdFilename,
+  createClaimMdTransportFromEnv,
+} from "./clearinghouse/claimmd-transport";
+export type { ClaimMdAnomaly, ClaimMdTransportOptions } from "./clearinghouse/claimmd-transport";
+export type { ClaimMdRequestCounter } from "./clearinghouse/claimmd-rate-limit";
 export { scopeKey } from "./clearinghouse/submission-identity";
 export {
   CredentialRejectedError,

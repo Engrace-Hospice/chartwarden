@@ -92,6 +92,16 @@ export interface SubmissionAttemptStore {
     idempotencyKey: string,
   ): Promise<SubmissionAttempt | null>;
   /**
+   * The live (reserved or sent) attempt holding a control number in this scope, or null. Tenant-scoped: another
+   * tenant's or scope's attempt with the same number is never returned. Used by a transport that must map our control
+   * number back to the vendor's id (Claim.MD claim status).
+   */
+  findByControlNumber(
+    organizationId: string,
+    scope: string,
+    controlNumber: string,
+  ): Promise<SubmissionAttempt | null>;
+  /**
    * The next platform-wide control number for a usage mode: 9 digits (ISA13), increasing, never reused. Callers build
    * the interchange with it. Rejects when the 9-digit space is exhausted rather than wrapping.
    */
@@ -182,6 +192,21 @@ export class InMemoryAttemptStore implements SubmissionAttemptStore {
     idempotencyKey: string,
   ): Promise<SubmissionAttempt | null> {
     return Promise.resolve(this.rows[this.indexOf(organizationId, scope, idempotencyKey)] ?? null);
+  }
+
+  findByControlNumber(
+    organizationId: string,
+    scope: string,
+    controlNumber: string,
+  ): Promise<SubmissionAttempt | null> {
+    const row = this.rows.find(
+      (r) =>
+        r.organizationId === organizationId &&
+        r.scope === scope &&
+        r.controlNumber === controlNumber &&
+        (r.status === "reserved" || r.status === "sent"),
+    );
+    return Promise.resolve(row ?? null);
   }
 
   private nextNumber(usage: AttemptUsage): string {

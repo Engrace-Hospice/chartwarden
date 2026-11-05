@@ -24,9 +24,53 @@ describe("platform clearinghouse binding", () => {
 
   it("registers exactly the adapters compiled into this build", () => {
     expect(Object.keys(buildClearinghouseFactories(deps())).sort()).toEqual([
+      "claimmd",
       "direct_mac",
       "stedi",
     ]);
+  });
+
+  it("binds claimmd from its key and account usage, never logging the key, and refuses without either", () => {
+    const binding = bindPlatformClearinghouse(
+      { CLEARINGHOUSE_VENDOR: "claimmd", CLAIMMD_ACCOUNT_KEY: "cmd_do_not_log", CLAIMMD_ACCOUNT_USAGE: "test" },
+      deps(),
+    );
+    expect(binding.vendor).toBe("claimmd");
+    expect(describeClearinghouseBinding(binding)).toBe("Clearinghouse binding: claimmd");
+    expect(describeClearinghouseBinding(binding)).not.toContain("cmd_do_not_log");
+    expect(() => bindPlatformClearinghouse({ CLEARINGHOUSE_VENDOR: "claimmd" }, deps())).toThrow(
+      /CLAIMMD_ACCOUNT_KEY/,
+    );
+    expect(() =>
+      bindPlatformClearinghouse({ CLEARINGHOUSE_VENDOR: "claimmd", CLAIMMD_ACCOUNT_KEY: "k" }, deps()),
+    ).toThrow(/CLAIMMD_ACCOUNT_USAGE/);
+    expect(() =>
+      bindPlatformClearinghouse(
+        { CLEARINGHOUSE_VENDOR: "claimmd", CLAIMMD_ACCOUNT_KEY: "k", CLAIMMD_ACCOUNT_USAGE: "test" },
+        { attempts: null },
+      ),
+    ).toThrow(/attempt store|database/i);
+  });
+
+  it("spends claimmd's request budget from the injected shared counter, keyed by usage, failing closed when it is down", async () => {
+    const keys: string[] = [];
+    const binding = bindPlatformClearinghouse(
+      { CLEARINGHOUSE_VENDOR: "claimmd", CLAIMMD_ACCOUNT_KEY: "cmd_do_not_log", CLAIMMD_ACCOUNT_USAGE: "test" },
+      {
+        ...deps(),
+        // The shape of createRedisRateLimitStore while Valkey is unreachable: nothing may be sent.
+        claimMdRequestCounter: {
+          increment: async (key: string) => {
+            keys.push(key);
+            throw new Error("connect ECONNREFUSED");
+          },
+        },
+      },
+    );
+    const scope = { organizationId: "org-1", providerEntityId: "pe-1", usage: "test" as const, billingNpi: "1234567893" };
+    const r = await binding.transport.fetchAcknowledgments({ ...scope, payerId: "15004", correlationId: "c" }, null);
+    expect(!r.ok && r.degraded.code).toBe(CH.UNAVAILABLE);
+    expect(keys).toEqual(["claimmd:test"]);
   });
 
   it("binds stedi from STEDI_API_KEY and logs the vendor, never the key", () => {

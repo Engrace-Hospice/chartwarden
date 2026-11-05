@@ -229,3 +229,45 @@ check; they stay unverified (Q14, Q30) until a Stedi account is provisioned. M41
 ## Amendment 2026-10-27 (#820): the claim-status inquiry carries its inputs
 
 `fetchClaimStatus(ctx, controlNumber, inquiry?)` now takes an optional `ClaimStatusInquiry` (billing provider, TRANSIENT subscriber block, service dates; the payer is `ctx.payerId`). A transport that needs more than the control number reads it from there and refuses `CH_INVALID_REQUEST` without one; a transport that cannot inquire answers `CH_NOT_WIRED` whatever is passed. Stedi now implements the call (276/277 JSON, `stedi-claim-status.ts`) and is **vendor-unverified**: endpoint path, field names and the category-code mapping are not sandbox-observed (contract row stays U). The direct-MAC transport stays `CH_NOT_WIRED`: the MAC portal has no 276 channel and the repo has no 277 (status) parser, only 999/277CA. Neither transport ever answers `not_found` for a payer "cannot locate", and the parser returns `latest: null`, so a status inquiry reports a state and applies no acknowledgment.
+
+## Amendment 2026-11-04 — Claim.MD is a go; `claimmd` is a bindable vendor (supersedes the 2026-10-24 conditional)
+
+**Decision (product owner, 2026-11-04).** Build and allow production for a Claim.MD transport. The product owner
+opened a Claim.MD account and took the go decision without the remaining written vendor answers; what is known and what
+is still unverified is recorded in
+[`CLAIMMD_TRANSPORT_CONTRACT_20261104.md`](../audits/clearinghouse-integration/CLAIMMD_TRANSPORT_CONTRACT_20261104.md).
+Against the 2026-10-24 go criteria: **G5 met** (BAA received 2026-11-04, shown in the portal); **G3 met by
+documentation** (Claim.MD's "single vendor account" model: agencies are provider records on one account, each enrolled by
+NPI/TIN); **G1 met in test** (the home health + hospice MACs CGS J15, NGS J6, Palmetto JM and NGS JK are UB04/ERA payers on
+Claim.MD's payer list; sandbox run 2026-11-05: an NOE and an NOTR each accepted by Claim.MD and the test payer; routing to
+a real MAC is seen only on production); **G2 met for accept/reject** (sandbox run 2026-11-05: `A`/`R`
+at the clearinghouse stage, a payer-stage `A` with the payer's claim number; other letters unseen); **G4 met** (sandbox run
+2026-11-05: a repeated Filename is refused with error code 61; nothing else is deduped). Stedi and `direct_mac` are unchanged; the platform still binds exactly one vendor (D3).
+
+**What the adapter does about the open items.** An unknown response status is skipped with an anomaly, never guessed
+(G2). Claim.MD dedupes only by Filename (G4), so the attempt store stays the idempotency authority (D6); a code-61
+answer to our own fixed Filename is proof of an earlier landing and stays `CH_IN_DOUBT`. An
+upload that may have landed answers `CH_IN_DOUBT` (never retried under a new control number) and, retried under the
+same key, is reconciled against Claim.MD's upload list by our own Filename before any resend.
+
+**Configuration.** `CLEARINGHOUSE_VENDOR=claimmd`, `CLAIMMD_ACCOUNT_KEY`, `CLAIMMD_ACCOUNT_USAGE` (`test` or
+`production`: which Claim.MD account the key opens; a call of the other usage answers `CH_NOT_WIRED`). The envelope ids
+(ISA06/GS02 = account number, ISA08/GS03 = `CLAIMMD`) are `billing_edi_profile` rows under `route_key = 'claimmd'`.
+Production account settings: 837I on, Transmit Approval off, automatic corrected claims off, SFTP off.
+Claim.MD's limit (100 requests a minute per account, then an HTTP 403 block) is spent from one counter per usage mode,
+injected by the backend from the shared Valkey rate-limit store so every process draws on one budget; a request with no
+budget, or with the store down, is not sent and answers retryable `CH_UNAVAILABLE` (contract doc, Rate limit row).
+
+**Tenant boundary (D8).** One account serves every tenant, so every read is filtered to the context's billing NPI,
+which `provider_entity` makes unique platform-wide, and no Claim.MD call runs without it.
+`SubmissionAttemptStore.findByControlNumber` (contract case AS-04b) maps a control number to Claim.MD's claim id inside
+one tenant and scope.
+
+**Partly implemented.** `validateOnly` is a LOCAL dry run (Claim.MD has none; an upload is a submission), reporting the
+pre-upload checks only. `checkEligibility` calls Claim.MD `eligdata` with the request's transient `EligibilitySearchFacts`
+(subscriber name, DOB, billing EIN), which M41 reads per call only when Claim.MD is the bound vendor and never stores or
+logs; they go to Claim.MD under the BAA (CW-BA-01). `verifyAndParseEvent` (Claim.MD pushes enrollment and appeal events
+only) answers `CH_NOT_WIRED`.
+Conformance: the five submit-side cases pass; the receive cases are skipped by name and replaced by Claim.MD-specific
+tests, because the shared cases give every tenant the same NPI.
+

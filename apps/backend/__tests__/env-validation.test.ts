@@ -484,6 +484,22 @@ describe("CLEARINGHOUSE_VENDOR (ADR-0053 D3)", () => {
     expect(keysFor({ CLEARINGHOUSE_VENDOR: "stedi" })).toEqual([]);
     expect(keysFor({ CLEARINGHOUSE_VENDOR: "direct_mac" })).toEqual([]);
   });
+  it("claimmd needs its account key and which account it opens", () => {
+    expect(keysFor({ CLEARINGHOUSE_VENDOR: "claimmd" })).toEqual([
+      "CLAIMMD_ACCOUNT_KEY",
+      "CLAIMMD_ACCOUNT_USAGE",
+    ]);
+    expect(
+      keysFor({ CLEARINGHOUSE_VENDOR: "claimmd", CLAIMMD_ACCOUNT_KEY: "a-real-looking-key-0001", CLAIMMD_ACCOUNT_USAGE: "live" }),
+    ).toEqual(["CLAIMMD_ACCOUNT_USAGE"]);
+    expect(
+      keysFor({
+        CLEARINGHOUSE_VENDOR: "claimmd",
+        CLAIMMD_ACCOUNT_KEY: "a-real-looking-key-0001",
+        CLAIMMD_ACCOUNT_USAGE: "production",
+      }),
+    ).toEqual([]);
+  });
   it("refuses the in_memory test double and an unknown vendor in production", () => {
     expect(keysFor({ CLEARINGHOUSE_VENDOR: "in_memory" })).toEqual(["CLEARINGHOUSE_VENDOR"]);
     expect(keysFor({ CLEARINGHOUSE_VENDOR: "acme" })).toEqual(["CLEARINGHOUSE_VENDOR"]);

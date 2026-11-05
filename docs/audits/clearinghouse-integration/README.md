@@ -10,6 +10,7 @@ acks → 835 → posting → denials → NOTR).
 | [`STEDI_WRITTEN_MESSAGE_20261011.md`](./STEDI_WRITTEN_MESSAGE_20261011.md) | Send-ready written message to Stedi (blocking items first). Draft, not yet sent. |
 | [`STEDI_SANDBOX_FINDINGS_20261009.md`](./STEDI_SANDBOX_FINDINGS_20261009.md) | Sandbox probe results (edit rules, payer records, error shapes), D/O/U-labelled answers. |
 | [`STEDI_TRANSPORT_CONTRACT_20261011.md`](./STEDI_TRANSPORT_CONTRACT_20261011.md) | What the `StediTransport` adapter may rely on, by source, and what is still unverified. |
+| [`CLAIMMD_TRANSPORT_CONTRACT_20261104.md`](./CLAIMMD_TRANSPORT_CONTRACT_20261104.md) | What the `ClaimMdTransport` adapter relies on (docs, portal observations, open items) and where the sandbox results go. |
 | [`STEDI_QUESTIONS_TO_SEND_20261025.md`](./STEDI_QUESTIONS_TO_SEND_20261025.md) | Ready-to-send questions (Q14 test-key note, Q32 reseller model, enrollment, freq 7/8, BAA). Not sent (#727). |
 | [`EPISODE_ALERT_QUESTIONS_TO_SEND_20261025.md`](./EPISODE_ALERT_QUESTIONS_TO_SEND_20261025.md) | Paste-ready questions to Episode Alert and the MAC (DDE IDs, write endpoints, BAA), with what each blocks. Not sent (#762). |
 | [`EPISODE_ALERT_ONBOARDING_RUNBOOK_20261025.md`](./EPISODE_ALERT_ONBOARDING_RUNBOOK_20261025.md) | Human checklist: trial, BAA gate before PHI, owner roles, what to attach, how to record answers (#762). |

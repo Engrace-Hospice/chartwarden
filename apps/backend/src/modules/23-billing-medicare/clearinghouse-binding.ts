@@ -1,5 +1,5 @@
 // apps/backend/src/modules/23-billing-medicare/clearinghouse-binding.ts — which clearinghouse the platform is bound to
-// (ADR-0053 D3). Platform configuration: `CLEARINGHOUSE_VENDOR` unset | `stedi` | `direct_mac` (`in_memory` is a
+// (ADR-0053 D3). Platform configuration: `CLEARINGHOUSE_VENDOR` unset | `stedi` | `direct_mac` | `claimmd` (`in_memory` is a
 // test double, refused in production). Unset is the logged, unbound state (every call answers CH_NOT_WIRED). A vendor
 // with no adapter in this build, a vendor whose credential is missing, or a vendor named with no durable attempt store
 // all throw at boot — a deployment never silently behaves as "unset" while believing it is bound.
@@ -9,6 +9,8 @@
 // remittance consumption is bound separately (#717: M25 `remittance-pull`). Read `binding.vendor`, not `binding.transport.vendor`, to know whether a
 // clearinghouse is bound.
 import {
+  type ClaimMdAnomaly,
+  type ClaimMdRequestCounter,
   type ClearinghouseBinding,
   type ClearinghouseTransportFactories,
   type DirectMacGateway,
@@ -16,6 +18,7 @@ import {
   type StediAnomaly,
   type SubmissionAttemptStore,
   bindClearinghouseTransport,
+  createClaimMdTransportFromEnv,
   createStediTransportFromEnv,
 } from "@chartwarden/x12-837-client";
 
@@ -25,7 +28,9 @@ export interface ClearinghouseBindingDeps {
   /** The launch gateway composed as a port (absent when the M23 launch gateway is not configured). */
   readonly directMacGateway?: DirectMacGateway | null;
   /** PHI-free signals (a send that could not be recorded, a stale reservation) for the log / the reconciler. */
-  readonly onAnomaly?: (anomaly: StediAnomaly) => void;
+  readonly onAnomaly?: (anomaly: StediAnomaly | ClaimMdAnomaly) => void;
+  /** The cluster-wide counter (Valkey) Claim.MD's per-account request budget is spent from; absent → per process. */
+  readonly claimMdRequestCounter?: ClaimMdRequestCounter | null;
 }
 
 /** Vendor adapters compiled into this build. Add a factory here when an adapter passes its conformance suite. */
@@ -59,6 +64,19 @@ export function buildClearinghouseFactories(
         );
       }
       return createStediTransportFromEnv(env, attempts, onAnomaly ? { onAnomaly } : {});
+    },
+    // ADR-0053 amendment 2026-11-04. Claim.MD does not dedupe uploads, so the durable attempt store is mandatory.
+    claimmd: (env) => {
+      if (!attempts) {
+        throw new Error(
+          "CLEARINGHOUSE_VENDOR=claimmd needs the durable attempt store, which needs a database; none is configured",
+        );
+      }
+      const { claimMdRequestCounter: requestCounter } = deps;
+      return createClaimMdTransportFromEnv(env, attempts, {
+        ...(onAnomaly ? { onAnomaly } : {}),
+        ...(requestCounter ? { requestCounter } : {}),
+      });
     },
   };
 }

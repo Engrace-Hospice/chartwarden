@@ -19,7 +19,7 @@ export type EnvLike = Record<string, string | undefined>;
  * two agree. The registry still throws at boot for a vendor with no adapter.
  */
 export const CLEARINGHOUSE_VENDOR_ENV = "CLEARINGHOUSE_VENDOR";
-export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = ["stedi", "direct_mac"];
+export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = ["stedi", "direct_mac", "claimmd"];
 
 /** One unmet production requirement. */
 export interface EnvProblem {
@@ -198,6 +198,16 @@ const REQUIREMENTS: readonly Requirement[] = [
     // production instead of silently not constructing (index.ts today only warns when unset).
     key: "REDIS_URL",
     rule: (v) => (/^rediss?:\/\//.test(v) ? null : "must be a redis:// or rediss:// URL"),
+  },
+  // ADR-0053 amendment 2026-11-04: the Claim.MD account key and which account it opens (test or production).
+  {
+    key: "CLAIMMD_ACCOUNT_KEY",
+    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
+  },
+  {
+    key: "CLAIMMD_ACCOUNT_USAGE",
+    rule: (v) => (v === "test" || v === "production" ? null : "must be 'test' or 'production'"),
+    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
   },
   {
     key: "M23_X12_GATEWAY_URL",
