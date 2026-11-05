@@ -6807,6 +6807,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               staff: {
                 store: buildStaffSignatureStore(dbHandle.db, m31Events ?? undefined),
                 uploadedCopyConsent: (input) => portalConsentSigner.acceptUploadedCopy(input),
+                revokeUploadedCopyConsent: (input) => portalConsentSigner.revokeUploadedCopy(input),
                 patientSite: async (organizationId, patientId) => {
                   const patient = await getSeam("PatientReader").findById({
                     organizationId,
@@ -11879,7 +11880,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM31SignatureRequestPushConsumer({
             alerts: getSeam("AlertEmitter") as AlertEmitter,
             stillPending: (organizationId, requestId) =>
-              signatureRequestStillPending(dbHandle.db, organizationId, requestId),
+              signatureRequestStillPending(
+                dbHandle.db,
+                organizationId,
+                requestId,
+                process.env.PORTAL_ALLOW_UNREVIEWED_TEMPLATES === "true",
+              ),
             recipients: (organizationId, patientId, docKind) =>
               signatureRecipientUserIds(dbHandle.db, organizationId, patientId, docKind),
           }),

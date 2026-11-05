@@ -370,11 +370,15 @@ function PatientSignaturesInner(): JSX.Element {
         onClose={() => setSendOpen(false)}
         onSend={send}
       />
-      <WithdrawDialog
-        row={withdrawing}
-        onClose={() => setWithdrawing(null)}
-        onWithdraw={withdraw}
-      />
+      {/* Keyed by row: each withdrawal mounts fresh (default reason, no stale error), never carried over from another row. */}
+      {withdrawing ? (
+        <WithdrawDialog
+          key={withdrawing.id}
+          row={withdrawing}
+          onClose={() => setWithdrawing(null)}
+          onWithdraw={withdraw}
+        />
+      ) : null}
       <AcceptDialog
         row={confirming}
         onClose={() => setConfirming(null)}
@@ -412,7 +416,7 @@ function RowActions({
         <Link
           to={`/documents/${row.uploadedDocumentId}/versions`}
           className="wx-btn-secondary"
-          aria-label={`Open the uploaded copy of ${docName}`}
+          aria-label={`Open uploaded copy: ${docName}`}
         >
           Open uploaded copy
         </Link>
@@ -465,7 +469,7 @@ function AcceptDialog({
 }): JSX.Element | null {
   if (!row) return null;
   return (
-    <Modal open onClose={onClose} ariaLabel="Accept signed copy">
+    <Modal open onClose={onClose} ariaLabel="Accept signed copy" role="alertdialog">
       <div style={{ display: "grid", gap: "1rem" }}>
         <h2 style={{ margin: 0 }}>Accept signed copy</h2>
         <p style={{ margin: 0 }}>
@@ -551,21 +555,13 @@ function WithdrawDialog({
   onClose,
   onWithdraw,
 }: {
-  row: SignatureRequestRow | null;
+  row: SignatureRequestRow;
   onClose: () => void;
   onWithdraw: (row: SignatureRequestRow, reason: VoidReason) => Promise<string | null>;
-}): JSX.Element | null {
+}): JSX.Element {
   const [reason, setReason] = useState<VoidReason>("sent_in_error");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const rowId = row?.id;
-  // Each withdrawal starts from the default reason with no stale error: a destructive choice never carries over from another row.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the row id on purpose
-  useEffect(() => {
-    setReason("sent_in_error");
-    setError(null);
-  }, [rowId]);
-  if (!row) return null;
   const submit = async (): Promise<void> => {
     setBusy(true);
     setError(null);
@@ -575,7 +571,12 @@ function WithdrawDialog({
     else onClose();
   };
   return (
-    <Modal open onClose={busy ? undefined : onClose} ariaLabel="Withdraw request">
+    <Modal
+      open
+      onClose={busy ? undefined : onClose}
+      ariaLabel="Withdraw request"
+      role="alertdialog"
+    >
       <form
         onSubmit={(event) => {
           event.preventDefault();

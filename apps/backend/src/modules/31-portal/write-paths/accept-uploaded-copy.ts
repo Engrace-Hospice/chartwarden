@@ -52,6 +52,14 @@ export interface AcceptUploadedCopyDeps {
     reviewerUserId: string;
     uploadedPdfDocumentId: string;
   }) => Promise<{ recordId: string }>;
+  /** M39: revoke a consent this accept signed but could not record (the request changed meanwhile), so no orphan stays active. */
+  readonly revokeConsent: (input: {
+    organizationId: string;
+    consentId: string;
+    reviewerUserId: string;
+    /** The uploaded copy's M22 document, the same evidence the consent was recorded from (M39 requires evidence for a staff revocation). */
+    evidenceDocumentId: string;
+  }) => Promise<void>;
   readonly readConsent: (
     organizationId: string,
     consentId: string,
@@ -131,5 +139,14 @@ export async function acceptUploadedCopy(
     signerGrantKind: grantKind,
     signerRole: decision.signerRole,
   });
-  return marked.ok ? { ok: true } : deny("request_not_pending_review");
+  if (marked.ok) return { ok: true };
+  // The request was voided, rejected or accepted with another consent while M39 signed this one (two transactions, D2): revoke it, so a
+  // consent never stays active without the request that justifies it. A retry landing on the same consent is `ok` above, never revoked.
+  await deps.revokeConsent({
+    organizationId,
+    consentId: signed.recordId,
+    reviewerUserId,
+    evidenceDocumentId: target.documentId,
+  });
+  return deny("request_not_pending_review");
 }

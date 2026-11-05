@@ -407,7 +407,17 @@ export function buildStaffSignatureStore(
           })
           .where(and(eq(SR.id, requestId), eq(SR.status, "uploaded_pending_review")))
           .returning();
-        if (!row) return reviewMiss(asDb(tx), requestId);
+        if (!row) {
+          // A retry, or a second reviewer, that lands on the SAME consent already recorded: the same answer, nothing re-emitted.
+          const [current] = await tx.select().from(SR).where(eq(SR.id, requestId)).limit(1);
+          if (current?.status === "signed" && current.targetRef === input.targetRef) {
+            return {
+              ok: true,
+              request: (await toStaffViews(asDb(tx), [current]))[0] as StaffSignatureRequestView,
+            } as const;
+          }
+          return reviewMiss(asDb(tx), requestId);
+        }
         const common = { requestId: row.id, patientId: row.patientId, docKind: row.docKind };
         const aggregate = { kind: "portal_signature_request", id: row.id } as const;
         await events?.emitInTx(tx, organizationId, "m31.signature_request.reviewed", aggregate, {

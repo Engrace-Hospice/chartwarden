@@ -125,8 +125,10 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   let staffUserId = "";
   let seq = 0;
   let allowDrafts = false;
+  let afterAcceptSigned: ((requestId: string) => Promise<unknown>) | null = null;
   afterEach(() => {
     allowDrafts = false;
+    afterAcceptSigned = null;
   });
   const m06Calls: string[] = [];
   let m06: ReturnType<typeof createDbAdmissionRouteService>;
@@ -634,7 +636,13 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
         },
         staff: {
           store: buildStaffSignatureStore(handle.db, m31Events),
-          uploadedCopyConsent: (i) => consentSigner.acceptUploadedCopy(i),
+          uploadedCopyConsent: async (i) => {
+            const signed = await consentSigner.acceptUploadedCopy(i);
+            // Race window between M39's transaction and M31's (D2): a test can change the request here.
+            await afterAcceptSigned?.(i.requestId);
+            return signed;
+          },
+          revokeUploadedCopyConsent: (i) => consentSigner.revokeUploadedCopy(i),
           patientSite: async (organizationId, patientId) => {
             const r = await admin.query(
               "SELECT provider_entity_id, location_id FROM patient WHERE id=$1 AND organization_id=$2",
@@ -1768,6 +1776,36 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
         [id],
       ),
     ).rejects.toThrow(/signed_chk/);
+    // 1311: a full review is not enough either; an accepted row must name its signer and the record it signed into.
+    await expect(
+      admin.query(
+        "UPDATE portal_signature_request SET status='signed', review_outcome='accepted', reviewed_by=$2, reviewed_at=now() WHERE id=$1",
+        [id, staffUserId],
+      ),
+    ).rejects.toThrow(/signed_chk/);
+  });
+
+  it("a request withdrawn while its copy is being accepted leaves no active consent behind", async () => {
+    const { id, patientId } = await sentWithCopy("staffNpp");
+    afterAcceptSigned = (requestId) => clearOpen(patientId, NPP).then(() => requestId);
+    const res = await review(id, "accepted");
+    expect(res.statusCode, res.body).toBe(409);
+    expect((await reqRow(id)).status).toBe("voided");
+    const consents = (
+      await admin.query(
+        "SELECT status FROM consent_record WHERE patient_id=$1 AND scope_descriptor->>'requestId'=$2",
+        [patientId, id],
+      )
+    ).rows;
+    expect(consents).toEqual([{ status: "revoked" }]);
+  });
+
+  it("a queued push for draft wording is dropped at delivery on production", async () => {
+    const { patientId } = staffFixtures.staffElection;
+    await clearOpen(patientId, CTT);
+    const id = await seedRequest(ORG_A, patientId, CTT);
+    expect(await signatureRequestStillPending(handle.db, ORG_A, id, false)).toBe(false);
+    expect(await signatureRequestStillPending(handle.db, ORG_A, id, true)).toBe(true);
   });
 
   it("the daily reminder sweep reminds only still-pending requests, once per interval, in the right org", async () => {
@@ -1843,7 +1881,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     await wireAlertRuleSeed(handle.db);
     const consumer = buildM31SignatureRequestPushConsumer({
       alerts: getAlertEmitter(),
-      stillPending: (org, id) => signatureRequestStillPending(handle.db, org, id),
+      stillPending: (org, id) => signatureRequestStillPending(handle.db, org, id, allowDrafts),
       recipients: (org, patient, kind) => signatureRecipientUserIds(handle.db, org, patient, kind),
     });
     const endpoint = (userId: string) =>

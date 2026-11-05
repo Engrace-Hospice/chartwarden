@@ -238,6 +238,7 @@ export function registerPortalSignatureStaffRoutes(
           allowUnreviewedTemplates: deps.signing?.allowUnreviewedTemplates ?? false,
           loadForReview: (org, id) => staff.store.loadForReview(org, id),
           consent: staff.uploadedCopyConsent,
+          revokeConsent: staff.revokeUploadedCopyConsent,
           readConsent: (org, id) => consents.read(org, id),
           markAccepted: (org, id, input) => staff.store.markAccepted(org, id, input),
         },

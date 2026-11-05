@@ -87,7 +87,7 @@ function mount(opts: {
 /** Accept asks for confirmation first: click the row's Accept, then confirm in the dialog. */
 async function confirmAccept(): Promise<void> {
   fireEvent.click(await screen.findByRole("button", { name: /^Accept the signed copy/ }));
-  const dialog = await screen.findByRole("dialog", { name: "Accept signed copy" });
+  const dialog = await screen.findByRole("alertdialog", { name: "Accept signed copy" });
   fireEvent.click(within(dialog).getByRole("button", { name: "Accept signed copy" }));
 }
 
@@ -184,7 +184,8 @@ describe("PatientSignatures", () => {
   it("withdraws an open request with the chosen coded reason", async () => {
     const { post } = mount({ items: [row({ id: "w-1" })] });
     fireEvent.click(await screen.findByRole("button", { name: /^Withdraw/ }));
-    const dialog = await screen.findByRole("dialog");
+    // A destructive confirmation is an alertdialog.
+    const dialog = await screen.findByRole("alertdialog", { name: "Withdraw request" });
     fireEvent.change(within(dialog).getByLabelText("Reason"), {
       target: { value: "patient_declined" },
     });
@@ -196,13 +197,32 @@ describe("PatientSignatures", () => {
     expect(init.body).toEqual({ reason: "patient_declined" });
   });
 
+  it("starts each withdrawal from the default reason, never the last row's choice", async () => {
+    mount({ items: [row({ id: "w-1" }), row({ id: "w-2" })] });
+    const [first, second] = await screen.findAllByRole("button", { name: /^Withdraw/ });
+    fireEvent.click(first as HTMLElement);
+    let dialog = await screen.findByRole("alertdialog", { name: "Withdraw request" });
+    fireEvent.change(within(dialog).getByLabelText("Reason"), {
+      target: { value: "patient_declined" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Keep request" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    fireEvent.click(second as HTMLElement);
+    dialog = await screen.findByRole("alertdialog", { name: "Withdraw request" });
+    expect((within(dialog).getByLabelText("Reason") as HTMLSelectElement).value).toBe(
+      "sent_in_error",
+    );
+  });
+
   it("accepts and rejects an uploaded copy, and links to the uploaded document", async () => {
     const { post } = mount({
       items: [row({ id: "u-1", status: "uploaded_pending_review", uploadedDocumentId: "doc-9" })],
     });
+    // WCAG 2.5.3: the accessible name starts with the visible text, so "click Open uploaded copy" works by voice.
     const link = (await screen.findByRole("link", {
-      name: /^Open the uploaded copy/,
+      name: /^Open uploaded copy/,
     })) as HTMLAnchorElement;
+    expect(link.getAttribute("aria-label")?.startsWith(link.textContent?.trim() ?? "-")).toBe(true);
     expect(link.getAttribute("href")).toBe("/documents/doc-9/versions");
     await confirmAccept();
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
@@ -252,10 +272,10 @@ describe("PatientSignatures", () => {
   it("asks for confirmation before accepting, and Cancel sends nothing", async () => {
     const { post } = mount({ items: [row({ id: "u-1", status: "uploaded_pending_review" })] });
     fireEvent.click(await screen.findByRole("button", { name: /^Accept the signed copy/ }));
-    const dialog = await screen.findByRole("dialog", { name: "Accept signed copy" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Accept signed copy" });
     expect(within(dialog).getByText(/cannot be undone/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(post).not.toHaveBeenCalled();
   });
 

@@ -41,8 +41,12 @@ export interface UploadedCopyConsentInput {
 
 type PortalConsentService = Pick<
   ConsentRouteService,
-  "getConsent" | "listConsentsForPatient" | "createDraft" | "signConsent"
+  "getConsent" | "listConsentsForPatient" | "createDraft" | "signConsent" | "revokeConsent"
 >;
+
+/** Recorded on a consent revoked because the paper copy it answered was withdrawn or decided otherwise while it was being signed. */
+export const UPLOADED_COPY_ORPHAN_REVOKE_REASON =
+  "The signature request changed while this paper copy was being accepted, so the consent was not recorded against it.";
 
 export function createPortalConsentSigner(service: PortalConsentService, nowIso: () => string) {
   type Known = { id: string; status: string } | null;
@@ -111,6 +115,25 @@ export function createPortalConsentSigner(service: PortalConsentService, nowIso:
         captureMethod: "electronic_portal_signature",
         evidence: { portalSessionId: input.portalSessionId, typedSignatureName: input.signerName },
       });
+    },
+    async revokeUploadedCopy(input: {
+      organizationId: string;
+      consentId: string;
+      reviewerUserId: string;
+      evidenceDocumentId: string;
+    }): Promise<void> {
+      await service.revokeConsent(
+        input.organizationId,
+        input.consentId,
+        {
+          actorIsStaff: true,
+          revokedByKind: "staff",
+          reasonText: UPLOADED_COPY_ORPHAN_REVOKE_REASON,
+          evidenceDocumentId: input.evidenceDocumentId,
+          revokedById: input.reviewerUserId,
+        },
+        nowIso(),
+      );
     },
     acceptUploadedCopy(input: UploadedCopyConsentInput): Promise<{ recordId: string }> {
       return findOrCreateAndSign({
