@@ -162,18 +162,16 @@ export const M34_PLATFORM_OPS_ONBOARDING_KEYS = [
 /**
  * The platform onboarding-data pair (M34 `/api/v1/platform/tenants/:orgSlug/{provider-entities,locations,mac-credentials}`):
  * operators fill in a tenant's provider entities, service locations and MAC credentials on its behalf while it is
- * still onboarding. The routes also gate on the `tenant_lifecycle_platform_ops` predicate (the exact `platform_ops`
- * role), a fresh step-up and a recorded reason; the grant exists so the platform-owned role row carries the keys.
+ * still onboarding. The routes also gate on the `tenant_lifecycle_platform_ops` predicate, which admits the EXACT
+ * `platform_ops` role only (a `platform_admin` / `platform_owner` is denied by it), a fresh step-up and a recorded
+ * reason. So only `platform_ops` carries the keys: a grant to a role the predicate always denies would be a control
+ * that exists on paper only.
  */
 export const PLATFORM_ONBOARDING_DATA_KEYS = [
   "tenant_onboarding_data.read_platform",
   "tenant_onboarding_data.write_platform",
 ] as const;
-const PLATFORM_ONBOARDING_DATA_ROLES: readonly PlatformOpsRoleKey[] = [
-  "platform_ops",
-  "platform_admin",
-  "platform_owner",
-];
+const PLATFORM_ONBOARDING_DATA_ROLES: readonly PlatformOpsRoleKey[] = ["platform_ops"];
 
 /** Build a platform-ops role's default grant: `billing_admin.*` per the §4.7 binding rule, plus user lifecycle. */
 function platformOpsGrantsFor(role: PlatformOpsRoleKey): readonly string[] {
