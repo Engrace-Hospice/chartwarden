@@ -256421,6 +256421,447 @@
         }
       }
     },
+    "/api/v1/portal/signature-requests": {
+      "get": {
+        "operationId": "getApiV1PortalSignaturerequests",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "The session patient's admission-document signature requests (ADR-0107)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "docKind",
+                          "status",
+                          "templateKey",
+                          "templateVersion",
+                          "requestedAt",
+                          "signedAt",
+                          "signerRole"
+                        ],
+                        "properties": {
+                          "id": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "docKind": {
+                            "anyOf": [
+                              {
+                                "const": "election_statement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "notice_of_patient_rights",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hipaa_npp_acknowledgement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "consent_to_treat",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              },
+                              {
+                                "const": "signed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "uploaded_pending_review",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "templateKey": {
+                            "type": "string"
+                          },
+                          "templateVersion": {
+                            "type": "string"
+                          },
+                          "requestedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "signedAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "signerRole": {
+                            "anyOf": [
+                              {
+                                "const": "patient",
+                                "type": "string"
+                              },
+                              {
+                                "const": "legal_representative",
+                                "type": "string"
+                              },
+                              {
+                                "const": "caregiver_on_behalf",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/signature-requests/{requestId}": {
+      "get": {
+        "operationId": "getApiV1PortalSignaturerequestsByRequestId",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "One signature request with the exact attestation text the signer agrees to (ADR-0107)",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "docKind",
+                    "status",
+                    "templateKey",
+                    "templateVersion",
+                    "requestedAt",
+                    "signedAt",
+                    "signerRole",
+                    "attestationText"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "docKind": {
+                      "anyOf": [
+                        {
+                          "const": "election_statement",
+                          "type": "string"
+                        },
+                        {
+                          "const": "notice_of_patient_rights",
+                          "type": "string"
+                        },
+                        {
+                          "const": "hipaa_npp_acknowledgement",
+                          "type": "string"
+                        },
+                        {
+                          "const": "consent_to_treat",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "signed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "uploaded_pending_review",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "templateKey": {
+                      "type": "string"
+                    },
+                    "templateVersion": {
+                      "type": "string"
+                    },
+                    "requestedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "signedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signerRole": {
+                      "anyOf": [
+                        {
+                          "const": "patient",
+                          "type": "string"
+                        },
+                        {
+                          "const": "legal_representative",
+                          "type": "string"
+                        },
+                        {
+                          "const": "caregiver_on_behalf",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "attestationText": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/portal/signature-requests/{requestId}/sign": {
+      "post": {
+        "operationId": "postApiV1PortalSignaturerequestsByRequestIdSign",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Sign an admission document with a typed name and an attestation; TOTP step-up, Idempotency-Key required (ADR-0107)",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "request",
+                    "alreadySigned"
+                  ],
+                  "properties": {
+                    "request": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "docKind",
+                        "status",
+                        "templateKey",
+                        "templateVersion",
+                        "requestedAt",
+                        "signedAt",
+                        "signerRole"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "docKind": {
+                          "anyOf": [
+                            {
+                              "const": "election_statement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "notice_of_patient_rights",
+                              "type": "string"
+                            },
+                            {
+                              "const": "hipaa_npp_acknowledgement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "consent_to_treat",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "signed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "uploaded_pending_review",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "templateKey": {
+                          "type": "string"
+                        },
+                        "templateVersion": {
+                          "type": "string"
+                        },
+                        "requestedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "signedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "signerRole": {
+                          "anyOf": [
+                            {
+                              "const": "patient",
+                              "type": "string"
+                            },
+                            {
+                              "const": "legal_representative",
+                              "type": "string"
+                            },
+                            {
+                              "const": "caregiver_on_behalf",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "alreadySigned": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "signedTypedName",
+                  "attested"
+                ],
+                "properties": {
+                  "signedTypedName": {
+                    "minLength": 2,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "signerRelationshipText": {
+                    "minLength": 1,
+                    "maxLength": 300,
+                    "type": "string"
+                  },
+                  "patientUnableReason": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "attested": {
+                    "const": true,
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/portal/supplies/upcoming": {
       "get": {
         "operationId": "getApiV1PortalSuppliesUpcoming",

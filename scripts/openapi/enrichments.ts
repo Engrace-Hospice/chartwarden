@@ -2390,6 +2390,10 @@ import {
   PortalAccountGrantListResponse as M31PortalAccountGrantListResponse,
   PortalAccountListResponse as M31PortalAccountListResponse,
   PortalAuditViewResponse as M31PortalAuditViewResponse,
+  PortalSignatureRequestDetailResponse as M31PortalSignatureRequestDetailResponse,
+  PortalSignatureRequestListResponse as M31PortalSignatureRequestListResponse,
+  PortalSignatureSignRequest as M31PortalSignatureSignRequest,
+  PortalSignatureSignResponse as M31PortalSignatureSignResponse,
   PortalDocumentUploadInitRequest as M31PortalDocumentUploadInitRequest,
   PortalDocumentUploadInitResponse as M31PortalDocumentUploadInitResponse,
   PortalEngagementResponse as M31PortalEngagementResponse,
@@ -4227,6 +4231,20 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Caregiver-attested administration into M13 (D10); TOTP step-up",
     body: M31CaregiverAttestRequest,
     response: M31CaregiverAttestResponse,
+  },
+  "GET /api/v1/portal/signature-requests": {
+    summary: "The session patient's admission-document signature requests (ADR-0107)",
+    response: M31PortalSignatureRequestListResponse,
+  },
+  "GET /api/v1/portal/signature-requests/:requestId": {
+    summary: "One signature request with the exact attestation text the signer agrees to (ADR-0107)",
+    response: M31PortalSignatureRequestDetailResponse,
+  },
+  "POST /api/v1/portal/signature-requests/:requestId/sign": {
+    summary:
+      "Sign an admission document with a typed name and an attestation; TOTP step-up, Idempotency-Key required (ADR-0107)",
+    body: M31PortalSignatureSignRequest,
+    response: M31PortalSignatureSignResponse,
   },
   "POST /api/v1/portal/amendments/submit": {
     summary: "Submit a §164.526 amendment request to M5; TOTP step-up",

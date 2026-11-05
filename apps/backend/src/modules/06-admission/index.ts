@@ -27,6 +27,7 @@ import type { NomncService } from "./nomnc/service";
 import { createDbPhysicianAuthority } from "./physician-authority-db";
 import { createDbReadmissionService } from "./readmission-service-db";
 import { registerAdmissionRoutes as _registerM6Routes } from "./routes/admission-routes";
+import type { AdmissionRouteService } from "./routes/service";
 import { registerElectionAddendumRoutes as _registerM6AddendumRoutes } from "./routes/election-addendum-routes";
 import { registerNomncRoutes as _registerM6NomncRoutes } from "./routes/nomnc-routes";
 import type { PriorElectionClosurePort } from "./routes/readmission-service";
@@ -78,7 +79,7 @@ export function mountAdmissionRoutes(
   priorElectionClosure?: PriorElectionClosurePort,
   /** Milestone 10a — the NOMNC / expedited-review service; its routes mount when bound. */
   nomnc?: NomncService,
-): void {
+): AdmissionRouteService {
   // 42 CFR 418.25(a) / 418.26(b) — ONE physician-authority binding for the route-40 predicate and the service.
   const physicianAuthority = createDbPhysicianAuthority(db);
   _registerM6Abac({
@@ -88,26 +89,29 @@ export function mountAdmissionRoutes(
   if (electionAddendum)
     _registerM6AddendumRoutes(app, { service: mapMalformedIdTo404(electionAddendum) });
   if (nomnc) _registerM6NomncRoutes(app, { service: mapMalformedIdTo404(nomnc) });
-  _registerM6Routes(app, {
-    service: mapMalformedIdTo404(
-      createDbAdmissionRouteService(
-        db,
-        outbox,
-        ipuBedAssignmentReader,
-        providerEntityOrgCheck,
-        providerEntityLocations,
-        dpoaConsentCheck(),
-        f2fClinicianRoles,
-        f2fSignedNotes,
-        physicianAuthority,
-      ),
+  // The one service instance the routes use; returned so the composition root can bind the portal sign seam (ADR-0107) to it.
+  const service = mapMalformedIdTo404(
+    createDbAdmissionRouteService(
+      db,
+      outbox,
+      ipuBedAssignmentReader,
+      providerEntityOrgCheck,
+      providerEntityLocations,
+      dpoaConsentCheck(),
+      f2fClinicianRoles,
+      f2fSignedNotes,
+      physicianAuthority,
     ),
+  );
+  _registerM6Routes(app, {
+    service,
     // After-the-fact claim details (place of death / receiving care setting) — same outbox, so the
     // `m6.discharge.details_recorded` emit lands in the caller's transaction like every other M6 write.
     dischargeDetails: mapMalformedIdTo404(createDbDischargeDetailsService(db, outbox)),
     dischargeWorklist: createDbDischargeWorklistService(db),
     readmission: mapMalformedIdTo404(createDbReadmissionService(db, priorElectionClosure)),
   });
+  return service;
 }
 
 /** The narrow slice of M39's `ConsentEvaluator` the R-EL-01 representative-authority guard needs. */
@@ -455,3 +459,6 @@ export {
   createAdmissionEraser,
   registerAdmissionErasers,
 } from "./erasers/admission-eraser";
+
+// ADR-0107 - the portal sign seam the composition root binds to the M31 signing routes.
+export { createPortalAdmissionSigners } from "./portal-document-signers";

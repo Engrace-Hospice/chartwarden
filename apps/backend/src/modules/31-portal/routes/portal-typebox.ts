@@ -378,3 +378,53 @@ export const PortalEngagementResponse = Type.Object({
   amendmentsSubmitted: Type.Integer(),
   administrationsAttested: Type.Integer(),
 });
+
+// ── ADR-0107 (PROPOSED) — admission-document signing ──────────────────────────────────────────────────────────────────────────────
+const SignatureDocKind = Type.Union([
+  Type.Literal("election_statement"),
+  Type.Literal("notice_of_patient_rights"),
+  Type.Literal("hipaa_npp_acknowledgement"),
+  Type.Literal("consent_to_treat"),
+]);
+const SignatureStatus = Type.Union([
+  Type.Literal("pending"),
+  Type.Literal("signed"),
+  Type.Literal("uploaded_pending_review"),
+]);
+/** What a portal user may see of a request: never the signer's typed name, relationship or reason. */
+export const PortalSignatureRequestView = Type.Object({
+  id: Uuid,
+  docKind: SignatureDocKind,
+  status: SignatureStatus,
+  templateKey: LayStr,
+  templateVersion: LayStr,
+  requestedAt: Iso,
+  signedAt: Type.Union([Iso, Type.Null()]),
+  signerRole: Type.Union([
+    Type.Literal("patient"),
+    Type.Literal("legal_representative"),
+    Type.Literal("caregiver_on_behalf"),
+    Type.Null(),
+  ]),
+});
+export const PortalSignatureRequestListResponse = Type.Object({
+  items: Type.Array(PortalSignatureRequestView),
+});
+/** The detail adds the exact attestation sentence the signer agrees to; the server hashes THIS text, never a client-supplied one. */
+export const PortalSignatureRequestDetailResponse = Type.Composite([
+  PortalSignatureRequestView,
+  Type.Object({ attestationText: LayStr }),
+]);
+export const PortalSignatureSignRequest = Type.Object(
+  {
+    signedTypedName: Type.String({ minLength: 2, maxLength: 200 }),
+    signerRelationshipText: Type.Optional(Type.String({ minLength: 1, maxLength: 300 })),
+    patientUnableReason: Type.Optional(Type.String({ minLength: 1, maxLength: 500 })),
+    attested: Type.Literal(true),
+  },
+  { additionalProperties: false },
+);
+export const PortalSignatureSignResponse = Type.Object({
+  request: PortalSignatureRequestView,
+  alreadySigned: Type.Boolean(),
+});

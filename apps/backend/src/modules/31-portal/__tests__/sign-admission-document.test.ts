@@ -23,6 +23,7 @@ const statement: SignerStatement = {
   idempotencyKey: "idem-1",
 };
 const signerOf = (grantKind: PortalSignerContext["grantKind"]): PortalSignerContext => ({
+  portalUserId: "00000000-0000-4000-8000-0000000000e1",
   portalAccountId: "00000000-0000-4000-8000-0000000000d1",
   portalSessionId: "sess-1",
   grantKind,

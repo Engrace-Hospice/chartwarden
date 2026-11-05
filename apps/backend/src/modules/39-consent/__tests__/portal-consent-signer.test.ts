@@ -10,6 +10,7 @@ const input: PortalConsentSignInput = {
   grantorKind: "healthcare_surrogate",
   actingConsentId: null,
   grantorRelationshipText: "Daughter",
+  portalUserId: "user-1",
   portalAccountId: "acct-1",
   portalSessionId: "sess-1",
   signerName: "Pat Example",
@@ -64,13 +65,13 @@ describe("createPortalConsentSigner", () => {
     expect(r.recordId).toBe("c-1");
     expect(calls).toEqual([
       "draft:electronic_portal_signature",
-      'sign:acct-1:{"portalSessionId":"sess-1","typedSignatureName":"Pat Example"}',
+      'sign:user-1:{"portalSessionId":"sess-1","typedSignatureName":"Pat Example"}',
     ]);
   });
 
   it("returns an already-active consent of this account without signing again", async () => {
     const { signer, calls } = fakeService([
-      { id: "c-9", typeKey: "hipaa_npp_acknowledgement", createdById: "acct-1", status: "active" },
+      { id: "c-9", typeKey: "hipaa_npp_acknowledgement", createdById: "user-1", status: "active" },
     ]);
     expect(await signer.sign(input)).toEqual({ recordId: "c-9" });
     expect(calls).toEqual([]);
@@ -78,7 +79,7 @@ describe("createPortalConsentSigner", () => {
 
   it("signs, rather than recreating, a draft left by a crashed attempt", async () => {
     const { signer, calls, rows } = fakeService([
-      { id: "c-5", typeKey: "hipaa_npp_acknowledgement", createdById: "acct-1", status: "draft" },
+      { id: "c-5", typeKey: "hipaa_npp_acknowledgement", createdById: "user-1", status: "draft" },
     ]);
     expect(await signer.sign(input)).toEqual({ recordId: "c-5" });
     expect(rows).toHaveLength(1);

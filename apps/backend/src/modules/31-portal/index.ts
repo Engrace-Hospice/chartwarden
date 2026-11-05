@@ -64,3 +64,6 @@ export {
   bindM31EventEmitter,
   createM31EventEmitter,
 } from "./events";
+
+// ADR-0107 - the portal signature-request store the composition root binds.
+export { buildPortalSignatureStore } from "./routes/signature-store";

@@ -6157,6 +6157,20 @@ export const M31_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "inOrg",
   },
+  // ADR-0107 (PROPOSED) - admission-document signing in the portal. Read lists and opens the patient's own signature requests;
+  // sign records the signature (TOTP step-up at the route; the per-grant authority matrix narrows who may sign which document).
+  "portal.signature.read": {
+    resource: "portal_signature_request",
+    action: "read",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
+  "portal.signature.sign": {
+    resource: "portal_signature_request",
+    action: "sign",
+    category: "portal",
+    abac: "portal_grant_active_for_patient",
+  },
   // Engagement-scoped auditor surface (M3 engagement scope resolves the row set).
   "portal.engagement.read_auditor": {
     resource: "portal_engagement",
@@ -6166,7 +6180,7 @@ export const M31_CONTRIBUTED_PERMISSIONS = {
   },
 } satisfies Record<string, PermissionDef>;
 
-/** Union of the M31 contributed permission keys (forty-seven). */
+/** Union of the M31 contributed permission keys (forty-nine; ADR-0107 added portal.signature.read and .sign). */
 export type M31ContributedPermissionKey = keyof typeof M31_CONTRIBUTED_PERMISSIONS;
 
 /** Project the M31 contributed keys into `permission`-table mirror rows (M31 §4.6). */

@@ -21641,6 +21641,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portal/signature-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The session patient's admission-document signature requests (ADR-0107) */
+        get: operations["getApiV1PortalSignaturerequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/signature-requests/{requestId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One signature request with the exact attestation text the signer agrees to (ADR-0107) */
+        get: operations["getApiV1PortalSignaturerequestsByRequestId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/signature-requests/{requestId}/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Sign an admission document with a typed name and an attestation; TOTP step-up, Idempotency-Key required (ADR-0107) */
+        post: operations["postApiV1PortalSignaturerequestsByRequestIdSign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portal/supplies/upcoming": {
         parameters: {
             query?: never;
@@ -92157,6 +92208,125 @@ export interface operations {
                         organizationName: string;
                         sessionClass: string;
                         replayed: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PortalSignaturerequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                            status: "pending" | "signed" | "uploaded_pending_review";
+                            templateKey: string;
+                            templateVersion: string;
+                            /** Format: date-time */
+                            requestedAt: string;
+                            signedAt: string | null;
+                            signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PortalSignaturerequestsByRequestId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                        status: "pending" | "signed" | "uploaded_pending_review";
+                        templateKey: string;
+                        templateVersion: string;
+                        /** Format: date-time */
+                        requestedAt: string;
+                        signedAt: string | null;
+                        signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
+                        attestationText: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PortalSignaturerequestsByRequestIdSign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    signedTypedName: string;
+                    signerRelationshipText?: string;
+                    patientUnableReason?: string;
+                    /** @constant */
+                    attested: true;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        request: {
+                            /** Format: uuid */
+                            id: string;
+                            docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                            status: "pending" | "signed" | "uploaded_pending_review";
+                            templateKey: string;
+                            templateVersion: string;
+                            /** Format: date-time */
+                            requestedAt: string;
+                            signedAt: string | null;
+                            signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
+                        };
+                        alreadySigned: boolean;
                     };
                 };
             };

@@ -65,6 +65,13 @@ const PORTAL_CARE_WRITE_KEYS = ["portal.administration.attest", "portal.triage.r
  */
 const PORTAL_PATIENT_ONLY_KEYS = ["portal.amendment.submit", "portal.amendment.read_own"] as const;
 
+/**
+ * ADR-0107 - admission-document signing. Held by EVERY portal class that can reach a grant able to sign: the patient, a healthcare agent or
+ * family caregiver (caregiver_portal), and a post-death personal representative (bereaved_portal). The class cannot tell those grants apart,
+ * so the real narrowing is the per-grant matrix in `portal-signing-authority.ts` (a bereaved_family grant is denied every document there).
+ */
+const PORTAL_SIGNATURE_KEYS = ["portal.signature.read", "portal.signature.sign"] as const;
+
 /** The bereaved-family surface: the program, the resources, one's own opt-out, plus documents and messages. */
 const PORTAL_BEREAVED_KEYS = [
   "portal.bereavement.read_program",
@@ -84,9 +91,15 @@ export const SESSION_CLASS_PERMISSIONS: Readonly<Record<string, readonly string[
       ...PORTAL_CARE_READ_KEYS,
       ...PORTAL_CARE_WRITE_KEYS,
       ...PORTAL_PATIENT_ONLY_KEYS,
+      ...PORTAL_SIGNATURE_KEYS,
     ],
-    caregiver_portal: [...PORTAL_COMMON_KEYS, ...PORTAL_CARE_READ_KEYS, ...PORTAL_CARE_WRITE_KEYS],
-    bereaved_portal: [...PORTAL_COMMON_KEYS, ...PORTAL_BEREAVED_KEYS],
+    caregiver_portal: [
+      ...PORTAL_COMMON_KEYS,
+      ...PORTAL_CARE_READ_KEYS,
+      ...PORTAL_CARE_WRITE_KEYS,
+      ...PORTAL_SIGNATURE_KEYS,
+    ],
+    bereaved_portal: [...PORTAL_COMMON_KEYS, ...PORTAL_BEREAVED_KEYS, ...PORTAL_SIGNATURE_KEYS],
     // GAP-115 follow-up — a redeemed funeral-home link reads the one deceased patient's disposition facts, nothing else.
     funeral_home: ["funeral.case_read"],
   },

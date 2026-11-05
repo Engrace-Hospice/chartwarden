@@ -3,8 +3,9 @@
 //
 // Idempotent: M39 signing and M31's request update are separate transactions, so a retry can find work already done. A retry first looks
 // for a consent of this type the SAME portal account already created for the patient — an `active` one is returned as-is (nothing signed
-// twice), a `draft` one is signed. `consent_record.created_by_id` / `signed_by_id` are plain uuids (no FK), so the portal account id is
-// recorded there; the human signer's typed name rides in the capture evidence.
+// twice), a `draft` one is signed. `created_by_id` / `signed_by_id` carry the portal login's USER id: the column has no FK, but M39's audit
+// trigger writes the same id as `audit_event.actor_user_id`, which does (a portal ACCOUNT id there fails the insert, found by the live
+// suite). The human signer's typed name rides in the capture evidence; the account id is on the M31 request.
 import type { ConsentRouteService } from "@chartwarden/consent";
 
 export interface PortalConsentSignInput {
@@ -14,6 +15,8 @@ export interface PortalConsentSignInput {
   readonly grantorKind: "patient_self" | "dpoa_healthcare_agent" | "healthcare_surrogate";
   readonly actingConsentId: string | null;
   readonly grantorRelationshipText: string | null;
+  /** The portal login's `user` id: recorded as creator and signer, and as the audit actor (the audit trigger's actor FK targets `user`). */
+  readonly portalUserId: string;
   readonly portalAccountId: string;
   readonly portalSessionId: string;
   readonly signerName: string;
@@ -28,13 +31,13 @@ type PortalConsentService = Pick<
 export function createPortalConsentSigner(service: PortalConsentService, nowIso: () => string) {
   return {
     async sign(input: PortalConsentSignInput): Promise<{ recordId: string }> {
-      const { organizationId, portalAccountId } = input;
+      const { organizationId, portalUserId } = input;
       const known = input.existingConsentId
         ? await service.getConsent(organizationId, input.existingConsentId)
         : ((await service.listConsentsForPatient(organizationId, input.patientId)).find(
             (c) =>
               c.typeKey === input.typeKey &&
-              c.createdById === portalAccountId &&
+              c.createdById === portalUserId &&
               (c.status === "draft" || c.status === "active"),
           ) ?? null);
       if (known?.status === "active") return { recordId: known.id };
@@ -48,11 +51,11 @@ export function createPortalConsentSigner(service: PortalConsentService, nowIso:
               grantorKind: input.grantorKind,
               captureMethod: "electronic_portal_signature",
               scopeDescriptor: { kind: "categorical", documentKind: input.typeKey },
-              createdById: portalAccountId,
+              createdById: portalUserId,
               grantorRelationshipText: input.grantorRelationshipText,
               actingConsentId: input.actingConsentId,
             });
-      const signed = await service.signConsent(organizationId, draft.id, portalAccountId, nowIso(), {
+      const signed = await service.signConsent(organizationId, draft.id, portalUserId, nowIso(), {
         portalSessionId: input.portalSessionId,
         typedSignatureName: input.signerName,
       });

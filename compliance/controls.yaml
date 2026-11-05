@@ -124,8 +124,11 @@ controls:
       - file: apps/backend/src/modules/31-portal/portal-signing-authority.ts
       - file: apps/backend/src/modules/31-portal/__tests__/portal-signing-authority.test.ts
       - file: packages/db/migrations/1304_m31_portal_signature_request.sql
+      - file: apps/backend/src/modules/31-portal/routes/signature.routes.ts
+      - file: apps/backend/src/modules/31-portal/write-paths/sign-admission-document.ts
+      - file: apps/backend/__tests__/m31-signature-requests.live.test.ts
     gap:
-      reason: Only the table (migration 1304, RLS forced, terminal-state guard, PHI-scrubbed audit trigger) and the pure authority matrix exist. The portal sign route with its step-up (TOTP) gate and idempotency, the M06 / M39 seams, the uploaded-copy staff review and the real-role live suite (cross-tenant isolation, read-audit landing) are the next PRs, so signing is not reachable from the portal yet.
+      reason: The portal list / detail / sign routes (TOTP step-up, Idempotency-Key, session-class permissions, grant ABAC, the per-grant matrix, the DPOA source-consent check) are proven on a real database as chartwarden_app for the NPP and Consent to Treat (M39). Not yet proven live, or not built - the M06 Election Statement and Notice of Rights seam against a real admission, the uploaded-copy upload and staff review, the staff create / void routes, the outbox events, push and daily reminders - so the control stays partial.
       owner: engineering
       review_by: 2026-12-31
 

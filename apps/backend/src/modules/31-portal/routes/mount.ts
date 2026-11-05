@@ -10,6 +10,7 @@ import type { FastifyInstance } from "fastify";
 import { registerPortalAdminRoutes } from "./admin.routes";
 import type { PortalRouteDeps } from "./index";
 import { registerPortalReadRoutes } from "./read.routes";
+import { registerPortalSignatureRoutes } from "./signature.routes";
 import { registerPortalSessionRoutes } from "./session.routes";
 import { registerPortalSignInRoutes } from "./sign-in.routes";
 import { registerTelehealthRoutes } from "./telehealth.routes";
@@ -19,6 +20,7 @@ export { registerPortalSessionRoutes } from "./session.routes";
 export { registerPortalSignInRoutes } from "./sign-in.routes";
 export { registerPortalReadRoutes } from "./read.routes";
 export { registerPortalWriteRoutes } from "./write.routes";
+export { registerPortalSignatureRoutes } from "./signature.routes";
 export { registerTelehealthRoutes } from "./telehealth.routes";
 export { registerPortalAdminRoutes } from "./admin.routes";
 
@@ -28,6 +30,7 @@ export function mountM31Routes(app: FastifyInstance, deps: PortalRouteDeps): voi
   registerPortalSessionRoutes(app, deps);
   registerPortalReadRoutes(app, deps);
   registerPortalWriteRoutes(app, deps);
+  registerPortalSignatureRoutes(app, deps);
   registerTelehealthRoutes(app, deps);
   registerPortalAdminRoutes(app, deps);
 }

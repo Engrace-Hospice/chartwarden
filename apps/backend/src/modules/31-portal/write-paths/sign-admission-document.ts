@@ -40,6 +40,8 @@ export function consentGrantorKindFor(
 }
 
 export interface PortalSignerContext {
+  /** The portal login's `user` row. M39's audit trigger records the actor as a `user`, so this (not the account id) is the actor id. */
+  readonly portalUserId: string;
   readonly portalAccountId: string;
   readonly portalSessionId: string;
   readonly grantKind: PortalSigningGrantKind;
@@ -109,6 +111,7 @@ export interface AdmissionDocumentSigners {
     grantorKind: PortalConsentGrantorKind;
     actingConsentId: string | null;
     grantorRelationshipText: string | null;
+    portalUserId: string;
     portalAccountId: string;
     portalSessionId: string;
     signerName: string;
@@ -260,6 +263,7 @@ async function signViaAuthoritativeModule(
         grantorKind: consentGrantorKindFor(signer.grantKind) as PortalConsentGrantorKind,
         actingConsentId: a.actingConsentId,
         grantorRelationshipText: statement.signerRelationshipText?.trim() || null,
+        portalUserId: signer.portalUserId,
         portalAccountId: signer.portalAccountId,
         portalSessionId: signer.portalSessionId,
         signerName,
