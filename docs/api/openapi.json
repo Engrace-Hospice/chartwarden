@@ -8140,6 +8140,7 @@
                   "reason": {
                     "minLength": 3,
                     "maxLength": 500,
+                    "pattern": "\\S",
                     "type": "string"
                   }
                 }
@@ -10935,6 +10936,7 @@
                   "evidence": {
                     "minLength": 3,
                     "maxLength": 500,
+                    "pattern": "\\S",
                     "description": "How ownership was confirmed (for the audit record; no patient information).",
                     "type": "string"
                   }

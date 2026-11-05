@@ -11,6 +11,7 @@ export const VerifyNpiBodySchema = Type.Object({
   evidence: Type.String({
     minLength: 3,
     maxLength: 500,
+    pattern: "\\S", // not whitespace-only: the service trims, and the DB CHECK refuses ''
     description: "How ownership was confirmed (for the audit record; no patient information).",
   }),
 });
