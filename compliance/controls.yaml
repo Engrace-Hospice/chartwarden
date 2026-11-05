@@ -165,7 +165,7 @@ controls:
       review_by: 2027-01-31
 
   - id: CW-AC-10
-    title: Paid-module entitlement is platform-controlled — only platform operators (platform credential, subscription.admin.write, fresh step-up, Idempotency-Key) can grant or cancel the claims-billing add-on; a tenant can read but never write its own entitlement; when enforced, new claims and eligibility work without the add-on is refused (CMS-deadline NOE/NOTR, voids and in-flight work still run) and fails closed when the entitlement cannot be read
+    title: Paid-module entitlement is platform-controlled — only platform operators (platform credential, subscription.admin.write, fresh step-up, a human (non-AI) actor, Idempotency-Key) can grant or cancel the claims-billing add-on; a tenant can read but never write its own entitlement; when enforced, new claims and eligibility work without the add-on is refused (CMS-deadline NOE/NOTR, voids and in-flight work still run) and fails closed when the entitlement cannot be read; a new-work request with no organization context is refused
     hipaa: ["164.312(a)(1)", "164.312(b)", "164.308(a)(4)"]
     soc2: ["CC6.1", "CC6.3", "CC8.1"]
     status: partial
@@ -262,7 +262,7 @@ controls:
       owner: engineering
       review_by: 2027-01-31
   - id: CW-TX-03
-    title: Clearinghouse enrollment reports are routed to a tenant only when platform staff have verified that the tenant's provider entity owns the reported NPI (a platform-written, RLS-forced record tenants can read but never write; verify/revoke need a platform-ops role, the platform-admin key, a fresh step-up and an Idempotency-Key, are audited with the operator, and a changed NPI stops routing)
+    title: Clearinghouse enrollment reports are routed to a tenant only when platform staff have verified that the tenant's provider entity owns the reported NPI (a platform-written, RLS-forced record tenants can read but never write; verify/revoke need a platform-ops role, the platform-admin key, a fresh step-up and an Idempotency-Key, are audited with the operator, and a changed NPI stops routing), and the platform login can only revoke a verification (column-level UPDATE), never rewrite its NPI or evidence
     hipaa: ["164.312(a)(1)", "164.308(a)(4)(ii)(B)", "164.312(b)"]
     soc2: ["CC6.1", "CC6.3", "CC7.2"]
     status: implemented
@@ -272,6 +272,7 @@ controls:
       - file: packages/db/migrations/1326_m23_provider_npi_verification.sql
       - file: apps/backend/src/modules/23-billing-medicare/routes/npi-verification.routes.ts
       - file: apps/backend/__tests__/m23-npi-verification-routes.test.ts
+      - file: scripts/db/provision-runtime-roles.ts
 
   # ---------------------------------------------------------------- §164.308 administrative (engineering-side)
   - id: CW-RA-01
