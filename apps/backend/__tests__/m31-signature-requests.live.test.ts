@@ -7,9 +7,9 @@
  * Fixtures are seeded as the superuser; every request and every assertion about what the APP wrote runs as `chartwarden_app` or reads
  * the committed row back as the superuser.
  *
- * NOT proven here, on purpose: the M06 Election Statement / Notice of Rights seam. Seeding a drafted election needs a full admission
- * chain; those two ports are bound to a recording fake, and `portal-document-signers.test.ts` covers the adapter against a fake M06
- * service. A live M06 pass is the next slice.
+ * The M06 Election Statement / Notice of Rights seam is the REAL `createPortalAdmissionSigners` over the real M06 service and a real
+ * admission (referral → qualify → accept), with a staff-drafted election statement; only the R-EL-01 DPOA fact is a direct
+ * `consent_record` read (production resolves it through M39's ConsentEvaluator seam, which `m6-election-cti-write` does not cover either).
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… bun run test:m31:signature-requests:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
@@ -32,13 +32,17 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { wireModuleSeams } from "../src/index";
+import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
+import { createPortalAdmissionSigners } from "../src/modules/06-admission/portal-document-signers";
 import { mountM31Routes } from "../src/modules/31-portal/routes/mount";
-import { attestationTextFor } from "../src/modules/31-portal/routes/signature.routes";
 import { buildPortalSignatureStore } from "../src/modules/31-portal/routes/signature-store";
+import { attestationTextFor } from "../src/modules/31-portal/routes/signature.routes";
 import { buildDrizzlePortalStore } from "../src/modules/31-portal/routes/store";
 import { M39_OUTBOX_EVENTS, createDbConsentRouteService } from "../src/modules/39-consent";
 import { createPortalConsentSigner } from "../src/modules/39-consent/portal-consent-signer";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
+import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
+import { validatingM6Outbox } from "./_m6-outbox";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -88,6 +92,11 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   let staffUserId = "";
   let seq = 0;
   const m06Calls: string[] = [];
+  let m06: ReturnType<typeof createDbAdmissionRouteService>;
+  const m06Fixtures = {} as Record<
+    "election" | "retry" | "nor" | "agent",
+    { patientId: string; actor: Actor; proxy?: Actor }
+  >;
   const actors: Actor[] = [];
 
   async function resetSchema() {
@@ -115,7 +124,8 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   }
 
   async function seedConsentCatalog() {
-    const floor = "'electronic_portal_signature','typed_signature_in_app','uploaded_signed_pdf','witnessed_verbal_documented'";
+    const floor =
+      "'electronic_portal_signature','typed_signature_in_app','uploaded_signed_pdf','witnessed_verbal_documented'";
     const row = (
       key: string,
       scope: string,
@@ -324,14 +334,24 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     const accessB = await seedConsent(ORG_A, patientB, "portal_access", "active");
     const accessOrgB = await seedConsent(ORG_B, patientOrgB, "portal_access", "active");
     // A family-caregiver grant is backed by a per-recipient consent, which the evaluator only passes with an active named recipient.
-    const caregiverConsent = await seedConsent(ORG_A, patientA, "family_caregiver_access", "active");
+    const caregiverConsent = await seedConsent(
+      ORG_A,
+      patientA,
+      "family_caregiver_access",
+      "active",
+    );
     await admin.query(
       `INSERT INTO consent_record_recipient
          (organization_id, consent_record_id, recipient_kind, recipient_free_text, recipient_resolved_display_name, added_by_id)
        VALUES ($1,$2,'free_text','Care Giver','Care Giver',$3)`,
       [ORG_A, caregiverConsent, randomUUID()],
     );
-    const bereavedConsent = await seedConsent(ORG_A, patientA, "bereavement_outreach_consent", "active");
+    const bereavedConsent = await seedConsent(
+      ORG_A,
+      patientA,
+      "bereavement_outreach_consent",
+      "active",
+    );
     dpoaConsent = await seedConsent(ORG_A, patientA, "dpoa_healthcare", "active");
     const revokedDpoa = await seedConsent(ORG_A, patientA, "dpoa_healthcare", "revoked");
 
@@ -368,6 +388,31 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       ORG_B,
     );
 
+    // Logins for the real-M06 scenarios: the session store is built below, so every actor must exist before it.
+    for (const key of ["election", "retry", "nor", "agent"] as const) {
+      const patientId = randomUUID();
+      const access = await seedConsent(ORG_A, patientId, "portal_access", "active");
+      const actor = await seedActor(
+        `m06-${key}`,
+        "patient_self",
+        "patient_portal",
+        patientId,
+        access,
+      );
+      m06Fixtures[key] = { patientId, actor };
+    }
+    {
+      const fx = m06Fixtures.agent;
+      const dpoa = await seedConsent(ORG_A, fx.patientId, "dpoa_healthcare", "active");
+      fx.proxy = await seedActor(
+        "m06-proxy",
+        "dpoa_healthcare",
+        "caregiver_portal",
+        fx.patientId,
+        dpoa,
+      );
+    }
+
     await admin.query(`ALTER ROLE chartwarden_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
 
@@ -389,7 +434,10 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       lastStepUpFactor: "totp" as const,
     });
     const { store: sessionStore } = createInMemorySessionContextStore(
-      actors.flatMap((a) => [sessionOf(a, a.sessionId, 0), sessionOf(a, a.staleSessionId, STALE_MS)]),
+      actors.flatMap((a) => [
+        sessionOf(a, a.sessionId, 0),
+        sessionOf(a, a.staleSessionId, STALE_MS),
+      ]),
     );
     // Real portal ABAC predicates over the real grant rows (wireModuleSeams, db-present), and the real session-class RBAC sets.
     wireModuleSeams({ db: handle.db, sessionContextStore: sessionStore });
@@ -398,8 +446,45 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M39_OUTBOX_EVENTS]));
     const consentService = createDbConsentRouteService(handle.db, {
       outbox: {
-        publish: (tx, input) => publisher.publish(tx as DbClient, { ...input, callerModule: "m39" }),
+        publish: (tx, input) =>
+          publisher.publish(tx as DbClient, { ...input, callerModule: "m39" }),
       },
+    });
+    registerM5IntakeSeams(handle.db);
+    m06 = createDbAdmissionRouteService(
+      handle.db,
+      validatingM6Outbox(),
+      undefined,
+      {
+        async belongsToOrg(organizationId, providerEntityId) {
+          const r = await admin.query(
+            "SELECT 1 FROM provider_entity WHERE id=$1 AND organization_id=$2",
+            [providerEntityId, organizationId],
+          );
+          return r.rows.length > 0;
+        },
+      },
+      undefined,
+      {
+        async hasActiveDpoaHealthcareConsent(organizationId, patientId) {
+          const r = await admin.query(
+            "SELECT 1 FROM consent_record WHERE organization_id=$1 AND patient_id=$2 AND type_key='dpoa_healthcare' AND status='active'",
+            [organizationId, patientId],
+          );
+          return r.rows.length > 0;
+        },
+      },
+    );
+    const m06Signers = createPortalAdmissionSigners({
+      service: m06,
+      readPatientName: async (organizationId, patientId) => {
+        const r = await admin.query(
+          "SELECT legal_first_name, legal_last_name FROM patient WHERE id=$1 AND organization_id=$2",
+          [patientId, organizationId],
+        );
+        return r.rows[0] ? `${r.rows[0].legal_first_name} ${r.rows[0].legal_last_name}` : null;
+      },
+      nowIso: () => new Date().toISOString(),
     });
     const consentSigner = createPortalConsentSigner(consentService, () => new Date().toISOString());
     consentServiceForTests = consentService;
@@ -416,11 +501,11 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
         signers: {
           election: async (i) => {
             m06Calls.push(`election:${i.signatureMethod}`);
-            return { recordId: randomUUID() };
+            return m06Signers.election(i);
           },
           noticeOfRights: async (i) => {
             m06Calls.push(`nor:${i.deliveryMethod}`);
-            return { recordId: randomUUID() };
+            return m06Signers.noticeOfRights(i);
           },
           consent: (i) => consentSigner.sign(i),
         },
@@ -448,7 +533,9 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
 
   it("harness bites: the app handle is RLS-enforced (no org context ⇒ zero rows; superuser sees them)", async () => {
     await seedRequest(ORG_A, patientA, NPP);
-    const asApp = await handle.pool.query("SELECT count(*)::int AS n FROM portal_signature_request");
+    const asApp = await handle.pool.query(
+      "SELECT count(*)::int AS n FROM portal_signature_request",
+    );
     const asSuper = await admin.query("SELECT count(*)::int AS n FROM portal_signature_request");
     expect(asSuper.rows[0].n).toBeGreaterThanOrEqual(1);
     expect(asApp.rows[0].n).toBe(0);
@@ -538,8 +625,18 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     const id = await seedRequest(ORG_A, patientA, CTT);
     const key = `k-replay-${randomUUID()}`;
     const before = await consentCount(patientA, CTT);
-    const first = await sign(self, id, { signedTypedName: "Pat Example" }, { "idempotency-key": key });
-    const second = await sign(self, id, { signedTypedName: "Pat Example" }, { "idempotency-key": key });
+    const first = await sign(
+      self,
+      id,
+      { signedTypedName: "Pat Example" },
+      { "idempotency-key": key },
+    );
+    const second = await sign(
+      self,
+      id,
+      { signedTypedName: "Pat Example" },
+      { "idempotency-key": key },
+    );
     expect(first.statusCode).toBe(200);
     expect(second.statusCode).toBe(200);
     expect(await consentCount(patientA, CTT)).toBe(before + 1);
@@ -589,13 +686,16 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       signer_role: "caregiver_on_behalf",
       patient_unable_reason: "Too weak to hold a pen",
     });
-    const c = (await admin.query("SELECT grantor_kind FROM consent_record WHERE id=$1", [r.target_ref]))
-      .rows[0];
+    const c = (
+      await admin.query("SELECT grantor_kind FROM consent_record WHERE id=$1", [r.target_ref])
+    ).rows[0];
     expect(c.grantor_kind).toBe("healthcare_surrogate");
   });
 
   it("a caregiver can never make the election, and the M06 seam is not reached", async () => {
-    const id = await seedRequest(ORG_A, patientA, "election_statement", { targetRef: randomUUID() });
+    const id = await seedRequest(ORG_A, patientA, "election_statement", {
+      targetRef: randomUUID(),
+    });
     const before = m06Calls.length;
     const res = await sign(caregiver, id, {
       signedTypedName: "Care Giver",
@@ -622,7 +722,10 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
         r.target_ref,
       ])
     ).rows[0];
-    expect(c).toMatchObject({ grantor_kind: "dpoa_healthcare_agent", acting_consent_id: dpoaConsent });
+    expect(c).toMatchObject({
+      grantor_kind: "dpoa_healthcare_agent",
+      acting_consent_id: dpoaConsent,
+    });
 
     const id2 = await seedRequest(ORG_A, patientA, CTT);
     const before = await consentCount(patientA, CTT);
@@ -661,7 +764,9 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   it("another patient's session, and another tenant's, cannot sign this request and leave it untouched", async () => {
     const id = await seedRequest(ORG_A, patientA, NPP);
     const before = await reqRow(id);
-    expect((await sign(otherPatient, id, { signedTypedName: "Other Person" })).statusCode).toBe(404);
+    expect((await sign(otherPatient, id, { signedTypedName: "Other Person" })).statusCode).toBe(
+      404,
+    );
     expect((await sign(orgBActor, id, { signedTypedName: "Org B" })).statusCode).toBe(404);
     expect(await reqRow(id)).toEqual(before);
   });
@@ -687,8 +792,12 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
 
   it("the signature is a required attested statement: attested must be true, extra fields are refused", async () => {
     const id = await seedRequest(ORG_A, patientA, NPP);
-    expect((await sign(self, id, { signedTypedName: "Pat Example", attested: false })).statusCode).toBe(422);
-    expect((await sign(self, id, { signedTypedName: "Pat Example", status: "signed" })).statusCode).toBe(422);
+    expect(
+      (await sign(self, id, { signedTypedName: "Pat Example", attested: false })).statusCode,
+    ).toBe(422);
+    expect(
+      (await sign(self, id, { signedTypedName: "Pat Example", status: "signed" })).statusCode,
+    ).toBe(422);
     expect((await reqRow(id)).status).toBe("pending");
   });
 
@@ -717,5 +826,130 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     ).rejects.toBeDefined();
     await expect(asApp("DELETE FROM portal_signature_request WHERE id=$1")).rejects.toBeDefined();
     expect((await reqRow(id)).signed_typed_name).toBe("Pat Example");
+  });
+  /** A real admission (referral → qualify → accept) for a pre-seeded fixture patient; optionally with a staff-drafted election statement. */
+  async function realAdmission(key: keyof typeof m06Fixtures, withElection: boolean) {
+    const { patientId, actor } = m06Fixtures[key];
+    const { admissionId } = await admitViaQualifiedReferral(m06, admin, {
+      organizationId: ORG_A,
+      actorUserId: staffUserId,
+      patientId,
+    });
+    let electionId = "";
+    if (withElection) {
+      const periods = await m06.listElectionPeriods(ORG_A, admissionId);
+      const es = await m06.draftElectionStatement(ORG_A, admissionId, periods![0].id, {
+        electedProviderEntityId: peByOrg[ORG_A],
+        waiverAcknowledged: true,
+      });
+      electionId = es.id;
+    }
+    return { patientId, actor, admissionId, electionId };
+  }
+
+  it("M06 live: the patient signs the staff-drafted election statement with the portal method, recording the PATIENT's name", async () => {
+    const { patientId, actor, electionId } = await realAdmission("election", true);
+    const id = await seedRequest(ORG_A, patientId, "election_statement", { targetRef: electionId });
+    const res = await sign(actor, id, { signedTypedName: "Pat Example" });
+    expect(res.statusCode, res.body).toBe(200);
+    const es = (
+      await admin.query(
+        "SELECT status, signer_kind, patient_name_at_signing, signature_method FROM election_statement WHERE id=$1",
+        [electionId],
+      )
+    ).rows[0];
+    const signedVersion = (await m06.getElectionStatement(ORG_A, electionId))!.version;
+    expect(es).toMatchObject({
+      status: "signed",
+      signer_kind: "patient",
+      patient_name_at_signing: "Test Patient",
+      signature_method: "electronic_portal",
+    });
+    const r = await reqRow(id);
+    expect(r).toMatchObject({ status: "signed", target_ref: electionId });
+    // Replay (the same key) and a fresh-key retry both link the same record and sign nothing twice.
+    const again = await sign(actor, id, { signedTypedName: "Pat Example" });
+    expect(again.statusCode).toBe(200);
+    expect(again.json().alreadySigned).toBe(true);
+    expect(
+      Number(
+        (await admin.query("SELECT version FROM election_statement WHERE id=$1", [electionId]))
+          .rows[0].version,
+      ),
+    ).toBe(Number(signedVersion));
+  });
+
+  it("M06 live: a crash after M06 signs but before the request is marked is healed by the retry (election signed once)", async () => {
+    const { patientId, actor, electionId } = await realAdmission("retry", true);
+    const id = await seedRequest(ORG_A, patientId, "election_statement", { targetRef: electionId });
+    // M06 signs first, as a crashed first attempt would have left it.
+    const es = await m06.getElectionStatement(ORG_A, electionId);
+    await m06.signElection(ORG_A, electionId, es!.version, staffUserId, {
+      signingPatientName: "Test Patient",
+      signingRole: "patient",
+      signatureMethod: "electronic_portal",
+    });
+    expect((await reqRow(id)).status).toBe("pending");
+    const versionBefore = (await m06.getElectionStatement(ORG_A, electionId))!.version;
+    const res = await sign(actor, id, { signedTypedName: "Pat Example" });
+    expect(res.statusCode, res.body).toBe(200);
+    expect((await reqRow(id)).target_ref).toBe(electionId);
+    expect((await m06.getElectionStatement(ORG_A, electionId))!.version).toBe(versionBefore);
+  });
+
+  it("M06 live: the patient acknowledges the Notice of Patient Rights; a retry links the same acknowledgement", async () => {
+    const { patientId, actor, admissionId } = await realAdmission("nor", false);
+    const id = await seedRequest(ORG_A, patientId, "notice_of_patient_rights", {
+      targetRef: admissionId,
+    });
+    const res = await sign(actor, id, { signedTypedName: "Pat Example" });
+    expect(res.statusCode, res.body).toBe(200);
+    const nor = (
+      await admin.query(
+        "SELECT id, acknowledgment_method, signer_kind FROM notice_of_rights_acknowledgment WHERE admission_id=$1",
+        [admissionId],
+      )
+    ).rows;
+    expect(nor).toHaveLength(1);
+    expect(nor[0]).toMatchObject({
+      acknowledgment_method: "electronic_portal",
+      signer_kind: "patient",
+    });
+    expect((await reqRow(id)).target_ref).toBe(nor[0].id);
+    // A second open request for the same admission is signed by linking the existing acknowledgement, not a second one.
+    const id2 = await seedRequest(ORG_A, patientId, "notice_of_patient_rights", {
+      targetRef: admissionId,
+    });
+    expect((await sign(actor, id2, { signedTypedName: "Pat Example" })).statusCode).toBe(200);
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM notice_of_rights_acknowledgment WHERE admission_id=$1",
+          [admissionId],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+  });
+
+  it("M06 live: a healthcare agent signs the election as a representative, under R-EL-01's DPOA check", async () => {
+    const { patientId, electionId } = await realAdmission("agent", true);
+    const proxy = m06Fixtures.agent.proxy as Actor;
+    const id = await seedRequest(ORG_A, patientId, "election_statement", { targetRef: electionId });
+    const res = await sign(proxy, id, {
+      signedTypedName: "Agent Person",
+      signerRelationshipText: "Healthcare agent",
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const es = (
+      await admin.query(
+        "SELECT status, signer_kind, patient_name_at_signing FROM election_statement WHERE id=$1",
+        [electionId],
+      )
+    ).rows[0];
+    expect(es).toMatchObject({
+      status: "signed",
+      signer_kind: "representative",
+      patient_name_at_signing: "Test Patient",
+    });
   });
 });
