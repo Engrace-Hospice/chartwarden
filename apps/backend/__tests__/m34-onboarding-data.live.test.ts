@@ -599,6 +599,33 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
     ).toEqual([]);
   });
 
+  it("a duplicate CCN or NPI is a 409 CCN_TAKEN / NPI_TAKEN, not a 500 from an aborted savepoint", async () => {
+    // The platform path runs the tenant's own repository inside the operator's transaction (a nested savepoint): a
+    // unique violation caught INSIDE that savepoint would leave it aborted and fail its RELEASE (25P02).
+    const dupCcn = await call("POST", "onb-b", "provider-entities", {
+      ...PE_BODY,
+      npi: "1245319599",
+    });
+    expect(dupCcn.statusCode, dupCcn.body).toBe(409);
+    expect(errorCode(dupCcn)).toBe("CCN_TAKEN");
+    const dupNpi = await call("POST", "onb-b", "provider-entities", { ...PE_BODY, ccn: "666555" });
+    expect(dupNpi.statusCode, dupNpi.body).toBe(409);
+    expect(errorCode(dupNpi)).toBe("NPI_TAKEN");
+    // ...also against ANOTHER tenant's identity (the unique index is global), and the transaction is still usable.
+    const dupOther = await call("POST", "onb-b", "provider-entities", {
+      ...PE_BODY,
+      ccn: "111111",
+      npi: "1245319599",
+    });
+    expect(dupOther.statusCode, dupOther.body).toBe(409);
+    expect(errorCode(dupOther)).toBe("CCN_TAKEN");
+
+    expect(
+      await q("SELECT 1 FROM provider_entity WHERE organization_id=$1", [ORG_B]),
+    ).toHaveLength(1);
+    expect(await auditRows(ORG_B, "m34.tenant_onboarding.provider_entity_created")).toHaveLength(1);
+  });
+
   it("a provisioning tenant accepts the write too", async () => {
     const res = await call("POST", "onb-d", "provider-entities", {
       ...PE_BODY,
