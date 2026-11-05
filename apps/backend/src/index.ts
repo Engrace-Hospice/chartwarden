@@ -264,9 +264,9 @@ import { buildDrizzleRemittanceCursorStore } from "./modules/25-remittance/inges
 import { partnerAccessAvailability } from "./modules/36-messaging/external-share/external-share-proxy";
 import { familyAccessAvailability } from "./modules/36-messaging/family/family-access-gate";
 
-/** The @chartwarden/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 /** ADR-0107: a "pending legal review" signing template (Consent to Treat today) is never sent, signed, accepted or reminded unless this is set on purpose (refused at a production boot by env.ts). Read once so the route, reminder and push re-check agree. */
 const PORTAL_ALLOW_UNREVIEWED_TEMPLATES = process.env.PORTAL_ALLOW_UNREVIEWED_TEMPLATES === "true";
+/** The @chartwarden/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
 /** The platform-job id M34's tenant-shred identity-subject read runs under (same M36 D9 rule, own audit trail). */
 const M34_SHRED_SOLE_TENANT_JOB_ID = "m34-shred-sole-tenant-resolver";
