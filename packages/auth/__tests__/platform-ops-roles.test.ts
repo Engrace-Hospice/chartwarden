@@ -76,14 +76,12 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
     }
   });
 
-  it("the platform onboarding-data pair binds to platform_ops/admin/owner only", () => {
+  it("the platform onboarding-data pair binds only to platform_ops, matching the ABAC predicate", () => {
     for (const key of PLATFORM_ONBOARDING_DATA_KEYS) {
-      expect([...rolesForPermission(key)].sort()).toEqual([
-        "platform_admin",
-        "platform_ops",
-        "platform_owner",
-      ]);
+      expect([...rolesForPermission(key)]).toEqual(["platform_ops"]);
     }
+    expect(PLATFORM_OPS_ROLE_GRANTS.platform_admin).not.toContain(PLATFORM_ONBOARDING_DATA_KEYS[0]);
+    expect(PLATFORM_OPS_ROLE_GRANTS.platform_owner).not.toContain(PLATFORM_ONBOARDING_DATA_KEYS[1]);
   });
 
   it("GAP-001: `user.deactivate` binds to platform_ops/admin/owner — the platform deactivate route's roles", () => {

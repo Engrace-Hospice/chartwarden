@@ -2656,7 +2656,8 @@ export const M22_CONTRIBUTED_PERMISSIONS = {
 export type M22ContributedPermissionKey = keyof typeof M22_CONTRIBUTED_PERMISSIONS;
 
 /**
- * The forty-one permission keys Module 34 (SaaS Tenant Platform) registers into Module 3's catalog —
+ * The permission keys Module 34 (SaaS Tenant Platform) registers into Module 3's catalog (no count is restated here:
+ * the spec's original forty-one have grown, and a hand-kept number goes stale) —
  * the §4.5 binding cross-module handshake (M34 spec §4.5 / D7). M3 must include these before M34's
  * platform-control-plane routes (tenant lifecycle, onboarding, invitations, support sessions, DSAR +
  * tenant export, feature flags, BAA register, signup intents) can be authorized; those routes
@@ -3010,7 +3011,7 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
   },
 } as const satisfies Record<string, PermissionDef>;
 
-/** Union of the M34 contributed permission keys (forty-six). */
+/** Union of the M34 contributed permission keys. */
 export type M34ContributedPermissionKey = keyof typeof M34_CONTRIBUTED_PERMISSIONS;
 
 /**
