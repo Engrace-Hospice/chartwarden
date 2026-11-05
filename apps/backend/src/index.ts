@@ -5560,7 +5560,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               };
             })(),
             // ── end WP 6.10 alarm ingest mount
-            // ADR-0107 (PROPOSED) - group tags (@role, @care-team, @on-call); off unless the tenant flag `messaging.group_tags` is on.
+            // ADR-0108 (PROPOSED) - group tags (@role, @care-team, @on-call); off unless the tenant flag `messaging.group_tags` is on.
             groupTags: { flags: featureFlagReader },
             // WP 5.8 (ADR-0087, PROPOSED) - break-glass read grants; honoured only while the tenant flag `messaging.break_glass` is on.
             breakGlass: {

@@ -1,4 +1,4 @@
-// M36 ADR-0107 (PROPOSED) - group tags in messages: `@role`, `@care-team`, `@on-call`. A tag is a mention node whose kind is one of the three
+// M36 ADR-0108 (PROPOSED) - group tags in messages: `@role`, `@care-team`, `@on-call`. A tag is a mention node whose kind is one of the three
 // below; the server resolves it to people at send (inside the channel only) and freezes them. Behind the tenant flag `messaging.group_tags`
 // (absent = off). Importers: the rich-body schema, the M36 send path, the mention candidate list, the route schemas.
 import type { OnCallDirectoryRole } from "./messaging-oncall";

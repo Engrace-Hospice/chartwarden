@@ -41,7 +41,7 @@ export interface MessageAttachmentView {
   readonly availability: "available" | "scanning";
 }
 
-/** ADR-0107: `role` / `team` / `on_call` are group tags the server resolves to people at send. */
+/** ADR-0108: `role` / `team` / `on_call` are group tags the server resolves to people at send. */
 export type MessageReferenceKind = MentionKind;
 
 /** UTF-16 code-unit offsets, matching the browser textarea selection model. */

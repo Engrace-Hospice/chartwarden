@@ -50,7 +50,7 @@ export interface RichText {
 }
 export interface RichMention {
   readonly type: "mention";
-  /** ADR-0107: `role` / `team` / `on_call` are group tags, resolved to people by the server at send. */
+  /** ADR-0108: `role` / `team` / `on_call` are group tags, resolved to people by the server at send. */
   readonly kind: MentionKind;
   readonly entityId: string;
   /** Display label at write time; the server rejects a label that is not the directory name, readers prefer the server's. */
