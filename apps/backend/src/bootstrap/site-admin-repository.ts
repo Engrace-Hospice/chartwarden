@@ -177,14 +177,21 @@ const toLoc = (r: typeof L.$inferSelect): LocationDetail => ({
   updatedAt: iso(r.updatedAt),
 });
 
-/** Which unique index a Postgres 23505 named. */
+type PgErrorShape = {
+  code?: string;
+  constraint_name?: string;
+  constraint?: string;
+  message?: string;
+  cause?: unknown;
+};
+
+/**
+ * Which unique index a Postgres 23505 named. Drizzle wraps the driver error in a `DrizzleQueryError` whose `.cause` is
+ * the pg `DatabaseError` (code + constraint), so the driver error is read from `.cause` when the top level has no code.
+ */
 export function uniqueConflictOf(err: unknown): UniqueConflict["conflict"] | null {
-  const e = err as {
-    code?: string;
-    constraint_name?: string;
-    constraint?: string;
-    message?: string;
-  };
+  const top = err as PgErrorShape | null | undefined;
+  const e = top?.code === undefined ? (top?.cause as PgErrorShape | null | undefined) : top;
   if (e?.code !== "23505") return null;
   const name = `${e.constraint_name ?? e.constraint ?? ""} ${e.message ?? ""}`;
   if (name.includes("ccn")) return "ccn";
@@ -239,8 +246,11 @@ export function createDrizzleSiteAdminRepository(
       });
     },
     async createProviderEntity(organizationId, input) {
-      return scoped(organizationId, async (tx) => {
-        try {
+      // The catch is OUTSIDE `scoped`: `db` may be the caller's open transaction, in which case `scoped` is a
+      // savepoint, and a unique violation swallowed inside it leaves the savepoint aborted, so its RELEASE fails
+      // (25P02) and the caller gets a 500. Thrown through `scoped`, the savepoint (or own transaction) rolls back.
+      try {
+        return await scoped(organizationId, async (tx) => {
           const [row] = await tx
             .insert(PE)
             .values({
@@ -257,12 +267,12 @@ export function createDrizzleSiteAdminRepository(
             })
             .returning();
           return toPe(row as typeof PE.$inferSelect);
-        } catch (err) {
-          const conflict = uniqueConflictOf(err);
-          if (conflict === "ccn" || conflict === "npi") return { conflict };
-          throw err;
-        }
-      });
+        });
+      } catch (err) {
+        const conflict = uniqueConflictOf(err);
+        if (conflict === "ccn" || conflict === "npi") return { conflict };
+        throw err;
+      }
     },
     async updateProviderEntity(organizationId, id, patch) {
       return scoped(organizationId, async (tx) => {
