@@ -3,7 +3,8 @@
 //
 // This is the HTTP wrapper the `@chartwarden/shared` idempotency helper's docstring promised
 // "is wired in M1-T10": it reuses that leaf's request fingerprint (computeIdempotencyHash
-// = SHA-256 over org + key + body) and its injected IdempotencyStore port (Valkey /
+// = SHA-256 over scope + key + body, the scope being org, user, method, route template, path
+// params and `If-Match`) and its injected IdempotencyStore port (Valkey /
 // Postgres `idempotency_key`), so the HTTP layer adds NO direct schema write.
 //
 // Contract (spec §4.6): only guards mutating methods carrying an `Idempotency-Key`; skips
@@ -54,14 +55,21 @@ export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore):
     const orgId = request.context?.organizationId;
     if (!orgId) return; // unauthenticated route — nothing to scope the key by
 
-    // The fingerprint also binds the CALLER: a key reused by a different user in the same org is a conflict (409), never a
-    // replay of the first user's cached response (which for e.g. a billing override echoes the typed rationale), and it
-    // is answered before any route-level permission guard runs.
-    const requestHash = computeIdempotencyHash(
-      `${orgId}|${request.context?.userId ?? ""}`,
-      key,
-      request.body ?? null,
-    );
+    // The fingerprint binds WHO asks (org + user) and WHAT is asked (method, the matched route template, its path
+    // parameters, the `If-Match` version) as well as the key and body. A key reused by a different user in the same org,
+    // or aimed at a different tenant slug / resource id / method / route, or retried with another version, is a conflict
+    // (409), never a replay of the first request's cached response (which for e.g. a billing override echoes the typed
+    // rationale, and for a 428 would keep answering "version missing" to a retry that now sends it). It is answered
+    // before any route-level permission guard runs. JSON-encoded, so no field can bleed into its neighbour.
+    const scope = JSON.stringify([
+      orgId,
+      request.context?.userId ?? "",
+      request.method,
+      request.routeOptions?.url ?? "",
+      request.params ?? null,
+      request.headers["if-match"] ?? null,
+    ]);
+    const requestHash = computeIdempotencyHash(scope, key, request.body ?? null);
     const answerFrom = (existing: IdempotencyRecord) => {
       if (existing.requestHash !== requestHash) throw new IdempotencyConflictError();
       if (existing.state === "complete") {
