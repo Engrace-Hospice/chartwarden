@@ -143,7 +143,11 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
     };
   }, [client, requestId]);
 
-  const canSubmit = name.trim().length >= 2 && attested && TOTP.test(code.trim()) && !busy;
+  // A document is only signed in the portal when its wording is shown here; without it (the election statement and the notice of
+  // rights today) the server refuses too, and the paper-copy path stays open.
+  const hasText = (detail?.documentParagraphs?.length ?? 0) > 0;
+  const canSubmit =
+    hasText && name.trim().length >= 2 && attested && TOTP.test(code.trim()) && !busy;
 
   const sign = async (event: FormEvent): Promise<void> => {
     event.preventDefault();
@@ -329,56 +333,63 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
         ) : (
           <>
             <form className="wx-signatures-form" onSubmit={(event) => void sign(event)}>
-              {detail.documentParagraphs ? (
-                <section className="wx-signatures-document" aria-label={detail.documentTitle}>
-                  {detail.documentTitle ? <h3>{detail.documentTitle}</h3> : null}
-                  {detail.documentParagraphs.map((paragraph, index) => (
-                    <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
-                  ))}
-                </section>
-              ) : null}
-              <p className="wx-signatures-attestation">{detail.attestationText}</p>
-              <TextField
-                label="Your full name"
-                value={name}
-                autoComplete="off"
-                disabled={busy}
-                onChange={(event) => {
-                  attemptKey.current = null;
-                  setName(event.target.value);
-                }}
-              />
-              <details
-                className="wx-signatures-behalf"
-                open={behalfOpen}
-                onToggle={(event) => setBehalfOpen(event.currentTarget.open)}
-              >
-                <summary>Signing for someone else?</summary>
-                <TextField
-                  label="How are you related to the patient?"
-                  value={relationship}
-                  disabled={busy}
-                  onChange={(event) => {
-                    attemptKey.current = null;
-                    setRelationship(event.target.value);
-                  }}
-                />
-                <TextAreaField
-                  label="Why is the patient not able to sign?"
-                  value={unableReason}
-                  disabled={busy}
-                  onChange={(event) => setUnableReason(event.target.value)}
-                />
-              </details>
-              <label className="wx-signatures-check">
-                <input
-                  type="checkbox"
-                  checked={attested}
-                  disabled={busy}
-                  onChange={(event) => setAttested(event.target.checked)}
-                />
-                <span>I agree to the statement above.</span>
-              </label>
+              {hasText ? (
+                <>
+                  <section className="wx-signatures-document" aria-label={detail.documentTitle}>
+                    {detail.documentTitle ? <h3>{detail.documentTitle}</h3> : null}
+                    {detail.documentParagraphs?.map((paragraph, index) => (
+                      <p key={`${index}-${paragraph.slice(0, 24)}`}>{paragraph}</p>
+                    ))}
+                  </section>
+                  <p className="wx-signatures-attestation">{detail.attestationText}</p>
+                  <TextField
+                    label="Your full name"
+                    value={name}
+                    autoComplete="off"
+                    disabled={busy}
+                    onChange={(event) => {
+                      attemptKey.current = null;
+                      setName(event.target.value);
+                    }}
+                  />
+                  <details
+                    className="wx-signatures-behalf"
+                    open={behalfOpen}
+                    onToggle={(event) => setBehalfOpen(event.currentTarget.open)}
+                  >
+                    <summary>Signing for someone else?</summary>
+                    <TextField
+                      label="How are you related to the patient?"
+                      value={relationship}
+                      disabled={busy}
+                      onChange={(event) => {
+                        attemptKey.current = null;
+                        setRelationship(event.target.value);
+                      }}
+                    />
+                    <TextAreaField
+                      label="Why is the patient not able to sign?"
+                      value={unableReason}
+                      disabled={busy}
+                      onChange={(event) => setUnableReason(event.target.value)}
+                    />
+                  </details>
+                  <label className="wx-signatures-check">
+                    <input
+                      type="checkbox"
+                      checked={attested}
+                      disabled={busy}
+                      onChange={(event) => setAttested(event.target.checked)}
+                    />
+                    <span>I agree to the statement above.</span>
+                  </label>
+                </>
+              ) : (
+                <p className="wx-signatures-attestation">
+                  This document can't be signed here yet. Your care team will help you sign it. If
+                  you signed a paper copy, you can upload it below.
+                </p>
+              )}
               <TextField
                 label="6-digit code from your authenticator app"
                 value={code}
@@ -392,9 +403,11 @@ function SignDialog({ requestId, onClose, onDone }: DialogProps): JSX.Element {
                   {message}
                 </p>
               ) : null}
-              <Button type="submit" loading={busy && !uploadStep} disabled={!canSubmit}>
-                Sign
-              </Button>
+              {hasText ? (
+                <Button type="submit" loading={busy && !uploadStep} disabled={!canSubmit}>
+                  Sign
+                </Button>
+              ) : null}
             </form>
             <section className="wx-signatures-copy" aria-labelledby="signatures-copy-title">
               <h3 id="signatures-copy-title">Upload a signed paper copy</h3>
@@ -466,9 +479,13 @@ function SignaturesForPatient(): JSX.Element {
       {state.status === "error" ? (
         <p role="alert">
           {readError(undefined)}{" "}
-          <button type="button" onClick={() => void load()}>
+          <Button
+            tone="secondary"
+            size="sm"
+            onClick={() => void load().catch(() => setState({ status: "error", items: [] }))}
+          >
             Try again
-          </button>
+          </Button>
         </p>
       ) : null}
       {state.status === "ready" && state.items.length === 0 ? (

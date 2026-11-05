@@ -8,12 +8,14 @@
 // Pure orchestration over ports: no db, no seams.
 import type { schema } from "@chartwarden/db";
 import { type PortalSigningGrantKind, decideSigningAuthority } from "../portal-signing-authority";
+import { portalSigningBlocker } from "../signature-templates";
 import { type PortalConsentGrantorKind, consentGrantorKindFor } from "./sign-admission-document";
 
 export type AcceptDenyCode =
   | "request_not_found"
   | "request_not_pending_review"
   | "m06_document_recorded_in_admission"
+  | "template_pending_legal_review"
   | "uploaded_copy_missing"
   | "uploader_grant_missing"
   | "uploader_not_authorized"
@@ -23,6 +25,7 @@ export interface AcceptReviewTarget {
   readonly id: string;
   readonly patientId: string;
   readonly docKind: schema.PortalSignatureDocKind;
+  readonly templateVersion: string;
   readonly status: schema.PortalSignatureStatus;
   readonly documentId: string | null;
   readonly uploaderGrant: {
@@ -32,6 +35,8 @@ export interface AcceptReviewTarget {
 }
 
 export interface AcceptUploadedCopyDeps {
+  /** false on production tenants: a copy of a "pending legal review" document cannot become an active consent. */
+  readonly allowUnreviewedTemplates: boolean;
   readonly loadForReview: (
     organizationId: string,
     requestId: string,
@@ -79,6 +84,12 @@ export async function acceptUploadedCopy(
   if (target.status !== "uploaded_pending_review") return deny("request_not_pending_review");
   if (target.docKind === "election_statement" || target.docKind === "notice_of_patient_rights")
     return deny("m06_document_recorded_in_admission");
+  // A paper copy of a document legal has not approved must not become an active consent either (the same rule as e-signing).
+  if (
+    portalSigningBlocker(target.docKind, target.templateVersion, deps.allowUnreviewedTemplates) ===
+    "template_pending_legal_review"
+  )
+    return deny("template_pending_legal_review");
   if (!target.documentId) return deny("uploaded_copy_missing");
   if (!target.uploaderGrant) return deny("uploader_grant_missing");
 

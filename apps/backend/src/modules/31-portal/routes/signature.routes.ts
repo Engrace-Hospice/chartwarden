@@ -15,6 +15,7 @@ import { type PortalSigningGrantKind, decideSigningAuthority } from "../portal-s
 import {
   SIGNATURE_TEMPLATES,
   type SignatureDocumentText,
+  portalSigningBlocker,
   renderDocumentText,
 } from "../signature-templates";
 import { type SignDenyCode, signAdmissionDocument } from "../write-paths/sign-admission-document";
@@ -31,7 +32,7 @@ const IDEMPOTENT = requireIdempotencyKey();
 export function attestationTextFor(docKind: string, templateVersion: string): string {
   return `By typing my name and checking this box I confirm that I have read this document (${docKind.replaceAll("_", " ")}, version ${templateVersion}), that the information I gave about myself is true, and that I understand my typed name is my legal electronic signature.`;
 }
-/** The wording registered for this kind, or null (the M06 documents carry theirs in the admission record). The version is the request's own, so a later template never rewrites an old request. */
+/** The wording registered for this kind (null only for an unknown kind). It is the CURRENT wording, which is why a draft kind blocks its older requests too (`portalSigningBlocker`). */
 export function documentTextFor(
   docKind: string,
   agencyName: string | null = null,
@@ -253,6 +254,12 @@ export function registerPortalSignatureRoutes(app: FastifyInstance, deps: Portal
       const grantKind = grant.grantKind as PortalSigningGrantKind;
       if (!decideSigningAuthority({ grantKind, docKind: view.docKind }).allowed) {
         throw new ForbiddenError(NOT_ABLE);
+      }
+      // A copy of draft wording could never be accepted (the review applies the same rule), so it is not parked for review either.
+      if (
+        portalSigningBlocker(view.docKind, view.templateVersion, signing.allowUnreviewedTemplates)
+      ) {
+        throw new ChartWardenError("TEMPLATE_PENDING_LEGAL_REVIEW", NOT_READY, 409);
       }
       const outcome = await signing.store.attachSignedCopy(actor.organizationId, {
         patientId,

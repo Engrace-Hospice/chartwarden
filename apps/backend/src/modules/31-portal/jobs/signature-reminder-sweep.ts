@@ -8,8 +8,9 @@
 // owe the next step). A failing org is logged and does not stop the rest. Bounded per org so a backlog drains over several ticks.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, asc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, lt, notInArray, notLike, or, sql } from "drizzle-orm";
 import type { M31EventEmitter } from "../events";
+import { DRAFT_DOC_KINDS, PENDING_REVIEW_MARK } from "../signature-templates";
 import type { M31ActiveOrgListPort } from "./post-discharge-grace-sweep";
 import { M31_WORKER_SYSTEM_USER_ID } from "./queues";
 
@@ -24,6 +25,8 @@ export interface SignatureReminderSweepDeps {
   readonly db: DbClient;
   readonly activeOrgs: M31ActiveOrgListPort;
   readonly events?: M31EventEmitter;
+  /** false on production tenants: a request for a "pending legal review" document is never reminded (it cannot be signed). */
+  readonly allowUnreviewedTemplates?: boolean;
   readonly now?: () => Date;
   readonly warn?: (message: string, context: Record<string, string>) => void;
 }
@@ -44,6 +47,13 @@ async function remindOrg(
     and(isNull(SR.lastRemindedAt), lt(SR.requestedAt, cutoff)),
     lt(SR.lastRemindedAt, cutoff),
   );
+  // Only what the person can actually sign (the same rule as portalSigningBlocker): draft wording is never reminded on production.
+  const signable = deps.allowUnreviewedTemplates
+    ? undefined
+    : and(
+        DRAFT_DOC_KINDS.length > 0 ? notInArray(SR.docKind, [...DRAFT_DOC_KINDS]) : undefined,
+        notLike(SR.templateVersion, `%${PENDING_REVIEW_MARK}%`),
+      );
   return withOrgContext(
     deps.db,
     { organizationId, userId: M31_WORKER_SYSTEM_USER_ID },
@@ -52,7 +62,7 @@ async function remindOrg(
       const candidates = await tx
         .select({ id: SR.id })
         .from(SR)
-        .where(and(eq(SR.status, "pending"), due))
+        .where(and(eq(SR.status, "pending"), due, signable))
         .orderBy(asc(sql`coalesce(${SR.lastRemindedAt}, ${SR.requestedAt})`))
         .limit(M31_SIGNATURE_REMINDER_MAX_PER_ORG_PER_RUN);
       let reminded = 0;

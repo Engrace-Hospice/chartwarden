@@ -94,6 +94,7 @@ export interface ReviewTarget {
   readonly id: string;
   readonly patientId: string;
   readonly docKind: schema.PortalSignatureDocKind;
+  readonly templateVersion: string;
   readonly status: schema.PortalSignatureStatus;
   readonly uploadId: string | null;
   readonly documentId: string | null;
@@ -159,6 +160,9 @@ export interface StaffSignatureStore {
     },
   ): Promise<ReviewOutcome>;
 }
+
+/** `portal_document_upload.rejection_code` for a signed copy staff refused at review. */
+export const SIGNED_COPY_REJECTED = "signed_copy_rejected_by_staff";
 
 const isUniqueViolation = (err: unknown): boolean =>
   (err as { code?: string; cause?: { code?: string } })?.code === "23505" ||
@@ -331,6 +335,7 @@ export function buildStaffSignatureStore(
           id: row.id,
           patientId: row.patientId,
           docKind: row.docKind,
+          templateVersion: row.templateVersion,
           status: row.status,
           uploadId: row.uploadedDocumentUploadId ?? null,
           documentId: upload?.documentId ?? null,
@@ -342,6 +347,13 @@ export function buildStaffSignatureStore(
 
     async rejectUpload(organizationId, requestId, reviewerId) {
       return withOrgContext(db, ctx(organizationId, reviewerId), async (tx) => {
+        // Lock the request and read the copy being refused before the link is cleared.
+        const [current] = await tx
+          .select({ uploadId: SR.uploadedDocumentUploadId })
+          .from(SR)
+          .where(and(eq(SR.id, requestId), eq(SR.status, "uploaded_pending_review")))
+          .for("update")
+          .limit(1);
         const [row] = await tx
           .update(SR)
           .set({
@@ -354,6 +366,13 @@ export function buildStaffSignatureStore(
           .where(and(eq(SR.id, requestId), eq(SR.status, "uploaded_pending_review")))
           .returning();
         if (!row) return reviewMiss(asDb(tx), requestId);
+        // A refused copy can never be attached again, to this request or another: attach only takes `submitted` uploads.
+        if (current?.uploadId) {
+          await tx
+            .update(UP)
+            .set({ status: "rejected", rejectionCode: SIGNED_COPY_REJECTED })
+            .where(eq(UP.id, current.uploadId));
+        }
         await events?.emitInTx(
           tx,
           organizationId,

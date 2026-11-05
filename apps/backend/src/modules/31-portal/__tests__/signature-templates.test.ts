@@ -1,6 +1,37 @@
 import { describe, expect, it } from "vitest";
 import { documentTextFor, signedContentFor } from "../routes/signature.routes";
-import { AGENCY_NAME_FALLBACK, SIGNATURE_TEMPLATES } from "../signature-templates";
+import {
+  AGENCY_NAME_FALLBACK,
+  SIGNATURE_TEMPLATES,
+  portalSigningBlocker,
+} from "../signature-templates";
+
+describe("portalSigningBlocker", () => {
+  it("gives every document wording to show, so nothing is signed unseen", () => {
+    for (const kind of Object.keys(SIGNATURE_TEMPLATES) as Array<
+      keyof typeof SIGNATURE_TEMPLATES
+    >) {
+      expect(documentTextFor(kind)?.paragraphs.length ?? 0).toBeGreaterThan(0);
+    }
+  });
+
+  it("blocks a draft kind's older request too, since the portal shows the current wording", () => {
+    expect(portalSigningBlocker("election_statement", "1.0.0", false)).toBe(
+      "template_pending_legal_review",
+    );
+    expect(portalSigningBlocker("election_statement", "1.0.0", true)).toBeNull();
+  });
+
+  it("blocks unapproved wording unless the tenant allows it, and passes the NPP", () => {
+    const draft = SIGNATURE_TEMPLATES.consent_to_treat.version;
+    expect(portalSigningBlocker("consent_to_treat", draft, false)).toBe(
+      "template_pending_legal_review",
+    );
+    expect(portalSigningBlocker("consent_to_treat", draft, true)).toBeNull();
+    const npp = SIGNATURE_TEMPLATES.hipaa_npp_acknowledgement.version;
+    expect(portalSigningBlocker("hipaa_npp_acknowledgement", npp, false)).toBeNull();
+  });
+});
 
 describe("signature templates", () => {
   it("carries the NPP wording and cites 45 CFR 164.520", () => {
@@ -12,9 +43,11 @@ describe("signature templates", () => {
     expect(documentTextFor("consent_to_treat")?.title).toMatch(/pending legal review/);
   });
 
-  it("has no wording for the M06 documents, which carry theirs in the admission record", () => {
-    expect(documentTextFor("election_statement")).toBeNull();
-    expect(documentTextFor("notice_of_patient_rights")).toBeNull();
+  it("marks the M06 placeholders as drafts nobody may mistake for the real document", () => {
+    for (const kind of ["election_statement", "notice_of_patient_rights"] as const) {
+      expect(SIGNATURE_TEMPLATES[kind].version).toContain("pending-legal-review");
+      expect(documentTextFor(kind)?.title).toMatch(/pending legal review/);
+    }
   });
 
   it("changes the signed content when the wording differs", () => {

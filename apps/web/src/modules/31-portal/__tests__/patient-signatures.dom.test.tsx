@@ -84,6 +84,21 @@ function mount(opts: {
   return { get, post };
 }
 
+/** Accept asks for confirmation first: click the row's Accept, then confirm in the dialog. */
+async function confirmAccept(): Promise<void> {
+  fireEvent.click(await screen.findByRole("button", { name: /^Accept the signed copy/ }));
+  const dialog = await screen.findByRole("dialog", { name: "Accept signed copy" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Accept signed copy" }));
+}
+
+const deferred = <T,>() => {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+};
+
 describe("PatientSignatures", () => {
   it("lists requests with status, reminders and signer role, and never shows signer text", async () => {
     mount({
@@ -189,7 +204,7 @@ describe("PatientSignatures", () => {
       name: /^Open the uploaded copy/,
     })) as HTMLAnchorElement;
     expect(link.getAttribute("href")).toBe("/documents/doc-9/versions");
-    fireEvent.click(screen.getByRole("button", { name: /^Accept/ }));
+    await confirmAccept();
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
     expect((post.mock.calls[0]?.[1] as { body: unknown }).body).toEqual({ decision: "accepted" });
     fireEvent.click(await screen.findByRole("button", { name: /^Reject/ }));
@@ -202,7 +217,7 @@ describe("PatientSignatures", () => {
       items: [row({ id: "u-1", status: "uploaded_pending_review" })],
       post: () => ({ error: { error: { code: "STEP_UP_REQUIRED", message: "x" } } }),
     });
-    fireEvent.click(await screen.findByRole("button", { name: /^Accept/ }));
+    await confirmAccept();
     expect(await screen.findByText("step-up /patients/p-1/signatures")).toBeTruthy();
   });
 
@@ -213,7 +228,7 @@ describe("PatientSignatures", () => {
         error: { error: { code: "M06_DOCUMENT_RECORDED_IN_ADMISSION", message: "x" } },
       }),
     });
-    fireEvent.click(await screen.findByRole("button", { name: /^Accept/ }));
+    await confirmAccept();
     expect(
       await screen.findByText(/Record this paper signature in the admission workflow/),
     ).toBeTruthy();
@@ -232,6 +247,96 @@ describe("PatientSignatures", () => {
     expect(screen.queryByRole("button", { name: /^Withdraw/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Accept/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Reject/ })).toBeNull();
+  });
+
+  it("asks for confirmation before accepting, and Cancel sends nothing", async () => {
+    const { post } = mount({ items: [row({ id: "u-1", status: "uploaded_pending_review" })] });
+    fireEvent.click(await screen.findByRole("button", { name: /^Accept the signed copy/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Accept signed copy" });
+    expect(within(dialog).getByText(/cannot be undone/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("keeps each row busy on its own call, so two rows in flight cannot double-decide", async () => {
+    const calls = new Map<string, ReturnType<typeof deferred<unknown>>>();
+    const { post } = mount({
+      items: [
+        row({ id: "a", status: "uploaded_pending_review" }),
+        row({ id: "b", status: "uploaded_pending_review", docKind: "consent_to_treat" }),
+      ],
+      post: (_url, init) => {
+        const id = (init as unknown as { params: { path: { requestId: string } } }).params.path
+          .requestId;
+        const d = deferred<unknown>();
+        calls.set(id, d);
+        return d.promise;
+      },
+    });
+    const rejects = await screen.findAllByRole("button", { name: /^Reject/ });
+    fireEvent.click(rejects[0] as HTMLElement);
+    fireEvent.click(rejects[1] as HTMLElement);
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    // Row a's answer arrives first; row b is still in flight and must stay locked.
+    calls.get("a")?.resolve({ data: {}, error: undefined });
+    await waitFor(() =>
+      expect(
+        (screen.getAllByRole("button", { name: /^Reject/ })[0] as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    const rowB = screen.getAllByRole("button", { name: /^Reject/ })[1] as HTMLButtonElement;
+    expect(rowB.disabled).toBe(true);
+    fireEvent.click(rowB);
+    expect(post).toHaveBeenCalledTimes(2);
+    calls.get("b")?.resolve({ data: {}, error: undefined });
+  });
+
+  it("reuses the Idempotency-Key when the same decision is retried after a network failure", async () => {
+    let attempt = 0;
+    const { post } = mount({
+      items: [row({ id: "u-1", status: "uploaded_pending_review" })],
+      post: () => {
+        attempt += 1;
+        if (attempt === 1) throw new Error("network down");
+        return { data: {}, error: undefined };
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /^Reject/ }));
+    expect(await screen.findByText(/could not reach the server/)).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: /^Reject/ }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    const keyOf = (i: number) =>
+      (post.mock.calls[i]?.[1] as unknown as { headers: Record<string, string> }).headers[
+        "Idempotency-Key"
+      ];
+    expect(keyOf(0)).toBeTruthy();
+    expect(keyOf(1)).toBe(keyOf(0));
+  });
+
+  it("drops the Idempotency-Key after a 5xx answer, so a retry is not replayed the cached failure", async () => {
+    let attempt = 0;
+    const { post } = mount({
+      items: [row({ id: "u-1", status: "uploaded_pending_review" })],
+      post: () => {
+        attempt += 1;
+        return attempt === 1
+          ? {
+              error: { error: { code: "INTERNAL", message: "x" } },
+              response: new Response(null, { status: 503 }),
+            }
+          : { data: {}, error: undefined };
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /^Reject/ }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByRole("button", { name: /^Reject/ }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    const keyOf = (i: number) =>
+      (post.mock.calls[i]?.[1] as unknown as { headers: Record<string, string> }).headers[
+        "Idempotency-Key"
+      ];
+    expect(keyOf(1)).not.toBe(keyOf(0));
   });
 
   it("says so when the list cannot be loaded", async () => {

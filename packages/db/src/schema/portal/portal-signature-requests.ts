@@ -133,7 +133,8 @@ export const portalSignatureRequests = pgTable(
     accountIdx: index("portal_signature_request_account_idx")
       .on(t.signedByPortalAccountId)
       .where(sql`${t.signedByPortalAccountId} IS NOT NULL`),
-    uploadIdx: index("portal_signature_request_upload_idx")
+    // UNIQUE (migration 1310): one upload is the signed copy of at most one request, enforced against concurrent attaches.
+    uploadIdx: uniqueIndex("portal_signature_request_upload_idx")
       .on(t.uploadedDocumentUploadId)
       .where(sql`${t.uploadedDocumentUploadId} IS NOT NULL`),
     providerEntityIdx: index("portal_signature_request_provider_entity_idx").on(t.providerEntityId),

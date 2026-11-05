@@ -89,12 +89,65 @@ export type AttachOutcome =
 const SHOWN_TO_PATIENT = ["pending", "uploaded_pending_review", "signed"] as const;
 const LIST_LIMIT = 100;
 
+type AttachSignedCopyInput = Parameters<PortalSignatureStore["attachSignedCopy"]>[1];
+
+const isUniqueViolation = (err: unknown): boolean =>
+  (err as { code?: string })?.code === "23505" ||
+  (err as { cause?: { code?: string } })?.cause?.code === "23505";
+
 export function buildPortalSignatureStore(
   db: DbClient,
   events?: M31EventEmitter,
 ): PortalSignatureStore {
   // `userId` is the acting portal login when there is one, so the audit trigger records the signer as a `user` actor, not as the system.
   const ctx = (organizationId: string, userId = "") => ({ organizationId, userId });
+  const attachInTx = (organizationId: string, input: AttachSignedCopyInput) =>
+    withOrgContext(db, ctx(organizationId, input.portalUserId), async (tx) => {
+      const [req] = await tx
+        .select()
+        .from(SR)
+        .where(and(eq(SR.id, input.requestId), eq(SR.patientId, input.patientId)))
+        .limit(1);
+      if (!req || req.status === "voided") return { ok: false, code: "request_not_found" } as const;
+      if (req.status !== "pending") return { ok: false, code: "request_not_pending" } as const;
+      // The upload must be THIS session account's, for THIS patient, a signed-copy upload that has completed (so it is a real M22 document),
+      // and not already attached to another request.
+      const [upload] = await tx
+        .select({ id: UP.id })
+        .from(UP)
+        .where(
+          and(
+            eq(UP.id, input.uploadId),
+            eq(UP.portalAccountId, input.portalAccountId),
+            eq(UP.patientId, input.patientId),
+            eq(UP.purpose, "signed_admission_document"),
+            eq(UP.status, "submitted"),
+            isNotNull(UP.documentId),
+          ),
+        )
+        .limit(1);
+      if (!upload) return { ok: false, code: "upload_not_usable" } as const;
+      const [taken] = await tx
+        .select({ id: SR.id })
+        .from(SR)
+        .where(eq(SR.uploadedDocumentUploadId, input.uploadId))
+        .limit(1);
+      if (taken) return { ok: false, code: "upload_not_usable" } as const;
+      const [updated] = await tx
+        .update(SR)
+        .set({ status: "uploaded_pending_review", uploadedDocumentUploadId: input.uploadId })
+        .where(and(eq(SR.id, input.requestId), eq(SR.status, "pending")))
+        .returning();
+      if (!updated) return { ok: false, code: "request_not_pending" } as const;
+      await events?.emitInTx(
+        tx,
+        organizationId,
+        "m31.signature_request.uploaded",
+        { kind: "portal_signature_request", id: updated.id },
+        { requestId: updated.id, patientId: updated.patientId, docKind: updated.docKind },
+      );
+      return { ok: true, request: toView(updated) } as const;
+    });
   return {
     async get(organizationId, requestId) {
       return withOrgContext(db, ctx(organizationId), async (tx) => {
@@ -175,53 +228,13 @@ export function buildPortalSignatureStore(
     },
 
     async attachSignedCopy(organizationId, input) {
-      return withOrgContext(db, ctx(organizationId, input.portalUserId), async (tx) => {
-        const [req] = await tx
-          .select()
-          .from(SR)
-          .where(and(eq(SR.id, input.requestId), eq(SR.patientId, input.patientId)))
-          .limit(1);
-        if (!req || req.status === "voided")
-          return { ok: false, code: "request_not_found" } as const;
-        if (req.status !== "pending") return { ok: false, code: "request_not_pending" } as const;
-        // The upload must be THIS session account's, for THIS patient, a signed-copy upload that has completed (so it is a real M22 document),
-        // and not already attached to another request.
-        const [upload] = await tx
-          .select({ id: UP.id })
-          .from(UP)
-          .where(
-            and(
-              eq(UP.id, input.uploadId),
-              eq(UP.portalAccountId, input.portalAccountId),
-              eq(UP.patientId, input.patientId),
-              eq(UP.purpose, "signed_admission_document"),
-              eq(UP.status, "submitted"),
-              isNotNull(UP.documentId),
-            ),
-          )
-          .limit(1);
-        if (!upload) return { ok: false, code: "upload_not_usable" } as const;
-        const [taken] = await tx
-          .select({ id: SR.id })
-          .from(SR)
-          .where(eq(SR.uploadedDocumentUploadId, input.uploadId))
-          .limit(1);
-        if (taken) return { ok: false, code: "upload_not_usable" } as const;
-        const [updated] = await tx
-          .update(SR)
-          .set({ status: "uploaded_pending_review", uploadedDocumentUploadId: input.uploadId })
-          .where(and(eq(SR.id, input.requestId), eq(SR.status, "pending")))
-          .returning();
-        if (!updated) return { ok: false, code: "request_not_pending" } as const;
-        await events?.emitInTx(
-          tx,
-          organizationId,
-          "m31.signature_request.uploaded",
-          { kind: "portal_signature_request", id: updated.id },
-          { requestId: updated.id, patientId: updated.patientId, docKind: updated.docKind },
-        );
-        return { ok: true, request: toView(updated) } as const;
-      });
+      try {
+        return await attachInTx(organizationId, input);
+      } catch (err) {
+        // Two concurrent attaches of one upload both pass the `taken` read; the loser trips the unique upload index. Same answer as the read.
+        if (isUniqueViolation(err)) return { ok: false, code: "upload_not_usable" } as const;
+        throw err;
+      }
     },
 
     async activeGrantSource(organizationId, portalAccountId, patientId) {

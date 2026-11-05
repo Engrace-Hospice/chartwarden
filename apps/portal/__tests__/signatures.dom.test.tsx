@@ -409,4 +409,43 @@ describe("portal documents to sign (ADR-0107)", () => {
     expect((await within(dialog).findByRole("alert")).textContent).toContain("Choose a PDF");
     expect(seen.some((s) => s.path.includes("/documents/upload"))).toBe(false);
   });
+
+  it("shows no sign form for a document whose wording is not shown here, and keeps the paper-copy path", async () => {
+    render(
+      <PortalApp
+        client={clientFor(
+          server((seen) =>
+            seen.path === `/api/v1/portal/signature-requests/${REQ_PENDING}`
+              ? json({ ...ITEMS[0], docKind: "election_statement", attestationText: ATTEST })
+              : undefined,
+          ),
+        )}
+      />,
+    );
+    const dialog = await openSigning();
+    expect(await within(dialog).findByText(/can't be signed here yet/)).toBeTruthy();
+    expect(within(dialog).queryByRole("button", { name: "Sign" })).toBeNull();
+    expect(within(dialog).queryByLabelText("Your full name")).toBeNull();
+    expect(within(dialog).queryByRole("checkbox")).toBeNull();
+    expect(within(dialog).queryByText(ATTEST)).toBeNull();
+    expect(within(dialog).getByLabelText("Choose a file")).toBeTruthy();
+    expect(within(dialog).getByLabelText("6-digit code from your authenticator app")).toBeTruthy();
+  });
+
+  it("handles a failed 'Try again' without an unhandled rejection", async () => {
+    let lists = 0;
+    render(
+      <PortalApp
+        client={clientFor((seen) => {
+          if (seen.path !== "/api/v1/portal/signature-requests") return json({}, 404);
+          lists += 1;
+          if (lists === 1) return json({ error: { code: "X", message: "x" } }, 500);
+          throw new TypeError("network down");
+        })}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(lists).toBe(2));
+    expect(await screen.findByRole("button", { name: "Try again" })).toBeTruthy();
+  });
 });

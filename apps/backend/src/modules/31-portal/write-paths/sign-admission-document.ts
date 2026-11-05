@@ -7,6 +7,7 @@
 // Pure orchestration over ports: no db, no seams, no clock. The composition root binds the ports (route PR); the tests bind fakes.
 import type { schema } from "@chartwarden/db";
 import { type PortalSigningGrantKind, decideSigningAuthority } from "../portal-signing-authority";
+import { portalSigningBlocker } from "../signature-templates";
 
 type DocKind = schema.PortalSignatureDocKind;
 type SignerRole = schema.PortalSignerRole;
@@ -158,7 +159,6 @@ export interface SignAdmissionDocumentDeps {
 }
 
 const MIN_NAME = 2;
-const PENDING_REVIEW_MARK = "pending-legal-review";
 const deny = (code: SignDenyCode): SignOutcome => ({ ok: false, code });
 const blank = (v: string | undefined): boolean => (v ?? "").trim().length === 0;
 
@@ -187,8 +187,13 @@ export async function signAdmissionDocument(
     return deny("relationship_required");
   if (decision.requiresPatientUnableReason && blank(statement.patientUnableReason))
     return deny("patient_unable_reason_required");
-  if (!deps.allowUnreviewedTemplates && request.templateVersion.includes(PENDING_REVIEW_MARK))
-    return deny("template_pending_legal_review");
+  // The signer attests to having read the document: wording legal has not approved is not signed here.
+  const blocker = portalSigningBlocker(
+    request.docKind,
+    request.templateVersion,
+    deps.allowUnreviewedTemplates,
+  );
+  if (blocker) return deny(blocker);
 
   // R-EL-01 widened for the portal: a healthcare agent must hold a grant issued from a LIVE healthcare-DPOA consent of THIS patient.
   // M06's own check only asks that some DPOA consent exists for the patient; here the signer's own grant must trace to it.

@@ -8944,6 +8944,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         db: dbHandle.db,
         events: m31Events,
         activeOrgs: m31ActiveOrgs,
+        allowUnreviewedTemplates: process.env.PORTAL_ALLOW_UNREVIEWED_TEMPLATES === "true",
         warn: (message, context) => app.log.warn(context, message),
       });
       app.addHook("onClose", async () => {

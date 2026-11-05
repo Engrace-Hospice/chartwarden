@@ -28,7 +28,7 @@ import {
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { wireModuleSeams } from "../src/index";
@@ -48,7 +48,10 @@ import {
 } from "../src/modules/31-portal/jobs/signature-reminder-sweep";
 import { buildM31SignatureRequestPushConsumer } from "../src/modules/31-portal/outbox-consumers/signature-request-push";
 import { mountM31Routes } from "../src/modules/31-portal/routes/mount";
-import { buildStaffSignatureStore } from "../src/modules/31-portal/routes/signature-staff-store";
+import {
+  SIGNED_COPY_REJECTED,
+  buildStaffSignatureStore,
+} from "../src/modules/31-portal/routes/signature-staff-store";
 import { buildPortalSignatureStore } from "../src/modules/31-portal/routes/signature-store";
 import {
   attestationTextFor,
@@ -121,6 +124,10 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   const peByOrg: Record<string, string> = {};
   let staffUserId = "";
   let seq = 0;
+  let allowDrafts = false;
+  afterEach(() => {
+    allowDrafts = false;
+  });
   const m06Calls: string[] = [];
   let m06: ReturnType<typeof createDbAdmissionRouteService>;
   const m06Fixtures = {} as Record<
@@ -621,7 +628,10 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
           },
         },
         agencyName: async () => "Cedar Valley Hospice",
-        allowUnreviewedTemplates: false,
+        // Production default; a test that exercises draft (pending legal review) wording turns it on, and afterEach turns it back off.
+        get allowUnreviewedTemplates() {
+          return allowDrafts;
+        },
         staff: {
           store: buildStaffSignatureStore(handle.db, m31Events),
           uploadedCopyConsent: (i) => consentSigner.acceptUploadedCopy(i),
@@ -778,6 +788,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   });
 
   it("a replay under the same Idempotency-Key signs nothing twice", async () => {
+    allowDrafts = true; // signs a Consent to Treat, whose wording is still a pending-legal-review draft
     const id = await seedRequest(ORG_A, patientA, CTT);
     const key = `k-replay-${randomUUID()}`;
     const before = await consentCount(patientA, CTT);
@@ -825,6 +836,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   });
 
   it("a caregiver must say who they are and why the patient did not sign; with both, the consent is a healthcare surrogate's", async () => {
+    allowDrafts = true; // signs a Consent to Treat, whose wording is still a pending-legal-review draft
     const id = await seedRequest(ORG_A, patientA, CTT);
     const noReason = await sign(caregiver, id, {
       signedTypedName: "Care Giver",
@@ -866,6 +878,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   });
 
   it("a healthcare agent's M39 signature cites the live DPOA consent; a grant from a REVOKED DPOA is refused and creates nothing", async () => {
+    allowDrafts = true; // signs a Consent to Treat, whose wording is still a pending-legal-review draft
     const id = await seedRequest(ORG_A, patientA, NPP);
     const res = await sign(agent, id, {
       signedTypedName: "Agent Person",
@@ -1005,6 +1018,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   }
 
   it("M06 live: the patient signs the staff-drafted election statement with the portal method, recording the PATIENT's name", async () => {
+    allowDrafts = true; // the M06 wording is a pending-legal-review placeholder
     const { patientId, actor, electionId } = await realAdmission("election", true);
     const id = await seedRequest(ORG_A, patientId, "election_statement", { targetRef: electionId });
     const res = await sign(actor, id, { signedTypedName: "Pat Example" });
@@ -1037,6 +1051,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   });
 
   it("M06 live: a crash after M06 signs but before the request is marked is healed by the retry (election signed once)", async () => {
+    allowDrafts = true; // the M06 wording is a pending-legal-review placeholder
     const { patientId, actor, electionId } = await realAdmission("retry", true);
     const id = await seedRequest(ORG_A, patientId, "election_statement", { targetRef: electionId });
     // M06 signs first, as a crashed first attempt would have left it.
@@ -1055,6 +1070,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   });
 
   it("M06 live: the patient acknowledges the Notice of Patient Rights; a retry links the same acknowledgement", async () => {
+    allowDrafts = true; // the M06 wording is a pending-legal-review placeholder
     const { patientId, actor, admissionId } = await realAdmission("nor", false);
     const id = await seedRequest(ORG_A, patientId, "notice_of_patient_rights", {
       targetRef: admissionId,
@@ -1089,6 +1105,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   });
 
   it("M06 live: a healthcare agent signs the election as a representative, under R-EL-01's DPOA check", async () => {
+    allowDrafts = true; // the M06 wording is a pending-legal-review placeholder
     const { patientId, electionId } = await realAdmission("agent", true);
     const proxy = m06Fixtures.agent.proxy as Actor;
     const id = await seedRequest(ORG_A, patientId, "election_statement", { targetRef: electionId });
@@ -1218,6 +1235,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   });
 
   it("an election request names its drafted statement; a wrong, foreign or signed target is refused, and the patient can then sign it", async () => {
+    allowDrafts = true; // the M06 wording is a pending-legal-review placeholder
     const { patientId, actor } = staffFixtures.staffElection;
     await clearOpen(patientId, "election_statement");
     const { admissionId, electionId } = await (async () => {
@@ -1270,6 +1288,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   });
 
   it("a notice-of-rights request names the patient's admission, and stops being sendable once acknowledged", async () => {
+    allowDrafts = true; // the M06 wording is a pending-legal-review placeholder
     const { patientId, actor } = staffFixtures.staffNor;
     await clearOpen(patientId, "notice_of_patient_rights");
     const { admissionId } = await admitViaQualifiedReferral(m06, admin, {
@@ -1320,12 +1339,18 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     ).toBe(422);
   });
 
-  it("the Consent to Treat request is sent at the pending-legal-review version, which the patient cannot yet sign", async () => {
+  it("draft wording (pending legal review) is refused at send on production, and sent at that version only where drafts are allowed", async () => {
     const { patientId, actor } = staffFixtures.staffNpp;
     await clearOpen(patientId, CTT);
+    const refused = await staffPost(staff.admin, ADMIN, { patientId, docKind: CTT });
+    expect(refused.statusCode, refused.body).toBe(422);
+    expect(refused.json().error.code).toBe("SIGNATURE_DOCUMENT_NOT_SIGNABLE");
+    allowDrafts = true;
     const res = await staffPost(staff.admin, ADMIN, { patientId, docKind: CTT });
     expect(res.statusCode, res.body).toBe(201);
     expect(res.json().templateVersion).toBe("0.0.0-pending-legal-review");
+    // Turned back off (a production tenant): the request that slipped through still cannot be signed.
+    allowDrafts = false;
     const signAttempt = await sign(actor, res.json().id, { signedTypedName: "Pat Example" });
     expect(signAttempt.statusCode).toBe(409);
     expect((await reqRow(res.json().id)).status).toBe("pending");
@@ -1595,6 +1620,94 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       200,
     );
     expect((await reqRow(id)).status).toBe("signed");
+  });
+
+  it("a copy staff rejected is marked rejected and can never be attached again", async () => {
+    const { id, actor, uploadId } = await sentWithCopy("staffVoid");
+    expect((await review(id, "rejected")).statusCode).toBe(200);
+    const upload = (
+      await admin.query("SELECT status, rejection_code FROM portal_document_upload WHERE id=$1", [
+        uploadId,
+      ])
+    ).rows[0];
+    expect(upload).toEqual({ status: "rejected", rejection_code: SIGNED_COPY_REJECTED });
+    const again = await attach(actor, id, uploadId);
+    expect(again.statusCode, again.body).toBe(422);
+    expect((await reqRow(id)).status).toBe("pending");
+  });
+
+  it("one upload backs at most one request: two concurrent attaches of the same file, one wins; the DB index refuses a second link", async () => {
+    allowDrafts = true; // the second request is a Consent to Treat (draft wording)
+    const { patientId, actor } = staffFixtures.staffNpp;
+    await clearOpen(patientId, NPP);
+    await clearOpen(patientId, CTT);
+    const npp = await seedRequest(ORG_A, patientId, NPP);
+    const ctt = await seedRequest(ORG_A, patientId, CTT);
+    const uploadId = await seedUpload(actor);
+    const codes = (
+      await Promise.all([attach(actor, npp, uploadId), attach(actor, ctt, uploadId)])
+    ).map((r) => r.statusCode);
+    expect([...codes].sort()).toEqual([200, 422]);
+    const linked = (
+      await admin.query(
+        "SELECT count(*)::int AS n FROM portal_signature_request WHERE uploaded_document_upload_id=$1",
+        [uploadId],
+      )
+    ).rows[0].n;
+    expect(linked).toBe(1);
+    await expect(
+      admin.query(
+        "UPDATE portal_signature_request SET uploaded_document_upload_id=$2 WHERE id IN ($1, $3)",
+        [npp, uploadId, ctt],
+      ),
+    ).rejects.toMatchObject({ code: "23505" });
+  });
+
+  it("a paper copy of draft wording is refused at attach on production, and a parked one is not accepted: no consent", async () => {
+    const { patientId, actor } = staffFixtures.staffNpp;
+    await clearOpen(patientId, CTT);
+    const id = await seedRequest(ORG_A, patientId, CTT);
+    // On production the copy is refused at attach already: draft wording is never parked for a review that must refuse it.
+    const refused = await attach(actor, id, await seedUpload(actor));
+    expect(refused.statusCode, refused.body).toBe(409);
+    expect((await reqRow(id)).status).toBe("pending");
+    // Parked while drafts were allowed, then reviewed on a production tenant: the accept is refused too.
+    allowDrafts = true;
+    expect((await attach(actor, id, await seedUpload(actor))).statusCode).toBe(200);
+    allowDrafts = false;
+    const before = (
+      await admin.query("SELECT count(*)::int AS n FROM consent_record WHERE patient_id=$1", [
+        patientId,
+      ])
+    ).rows[0].n;
+    const res = await review(id, "accepted");
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().error.code).toBe("TEMPLATE_PENDING_LEGAL_REVIEW");
+    expect((await reqRow(id)).status).toBe("uploaded_pending_review");
+    const after = (
+      await admin.query("SELECT count(*)::int AS n FROM consent_record WHERE patient_id=$1", [
+        patientId,
+      ])
+    ).rows[0].n;
+    expect(after).toBe(before);
+  });
+
+  it("the reminder sweep never reminds draft wording on production, and does where drafts are allowed", async () => {
+    const { patientId } = staffFixtures.staffElection;
+    await clearOpen(patientId, CTT);
+    const id = await seedRequest(ORG_A, patientId, CTT);
+    const run = (allowUnreviewedTemplates: boolean) =>
+      runSignatureReminderSweepOnce({
+        db: handle.db,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        events: m31EventsForTests,
+        allowUnreviewedTemplates,
+        now: () => new Date(Date.now() + M31_SIGNATURE_REMINDER_INTERVAL_MS + 60_000),
+      });
+    await run(false);
+    expect((await reqRow(id)).reminder_count).toBe(0);
+    await run(true);
+    expect((await reqRow(id)).reminder_count).toBe(1);
   });
 
   it("an election or notice-of-rights copy is not accepted here: M06 records a wet-ink signature in the admission workflow", async () => {

@@ -9,7 +9,7 @@
 // mistaken target fails at send time, not when the patient tries to sign.
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { M06_DOC_KINDS, SIGNATURE_TEMPLATES } from "../signature-templates";
+import { M06_DOC_KINDS, SIGNATURE_TEMPLATES, portalSigningBlocker } from "../signature-templates";
 import { type AcceptDenyCode, acceptUploadedCopy } from "../write-paths/accept-uploaded-copy";
 import { type PreHandler, actorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
@@ -53,6 +53,11 @@ const ACCEPT_DENY: Readonly<Record<AcceptDenyCode, { status: number; message: st
   request_not_pending_review: {
     status: 409,
     message: "That request has no uploaded copy waiting for review.",
+  },
+  template_pending_legal_review: {
+    status: 409,
+    message:
+      "This document's wording is still pending legal review, so a signed copy cannot be accepted yet.",
   },
   m06_document_recorded_in_admission: {
     status: 409,
@@ -104,6 +109,21 @@ export function registerPortalSignatureStaffRoutes(
       const staff = staffOf(deps);
       const actor = actorOf(request);
       const body = parse(StaffSignatureRequestCreate, request.body);
+
+      // Never send what nobody can sign: unapproved wording would only be pushed and reminded daily, then refused at the signature step.
+      if (
+        portalSigningBlocker(
+          body.docKind,
+          SIGNATURE_TEMPLATES[body.docKind].version,
+          deps.signing?.allowUnreviewedTemplates ?? false,
+        )
+      ) {
+        throw new ChartWardenError(
+          "SIGNATURE_DOCUMENT_NOT_SIGNABLE",
+          "This document's wording is still pending legal review and cannot be sent yet.",
+          422,
+        );
+      }
 
       const targetRequired = M06_DOC_KINDS.has(body.docKind);
       if (targetRequired !== (body.targetRef !== undefined)) {
@@ -215,6 +235,7 @@ export function registerPortalSignatureStaffRoutes(
       }
       const outcome = await acceptUploadedCopy(
         {
+          allowUnreviewedTemplates: deps.signing?.allowUnreviewedTemplates ?? false,
           loadForReview: (org, id) => staff.store.loadForReview(org, id),
           consent: staff.uploadedCopyConsent,
           readConsent: (org, id) => consents.read(org, id),

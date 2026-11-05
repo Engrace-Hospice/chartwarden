@@ -16,7 +16,7 @@ import type { DataTableColumn } from "@chartwarden/ui";
 // apps/web/src/modules/31-portal — the patient chart's Signatures tab (ADR-0107). Staff send a patient or their representative an
 // admission document to sign in the portal, see where each request stands, withdraw an open one, and accept or reject a signed
 // paper copy the patient uploaded. The signer's typed name and reasons are never read or shown here (the API does not return them).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
@@ -46,6 +46,12 @@ const idemKey = (): string =>
   typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
     : `sig-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+/**
+ * Any HTTP response is definitive: the server's idempotency plugin records it (5xx included) and replays it for the same key, so keeping
+ * the key after a 5xx would replay the failure forever. Only a thrown network error, which may still have landed, keeps the key.
+ */
+const isDefinitive = (res: unknown): boolean =>
+  (res as { response?: Response }).response?.status !== undefined;
 const when = (iso: string | null): string =>
   iso ? new Date(iso).toLocaleDateString("en-US") : "—";
 
@@ -81,7 +87,25 @@ function PatientSignaturesInner(): JSX.Element {
   const [known, setKnown] = useState<KnownRecords>(NONE_KNOWN);
   const [sendOpen, setSendOpen] = useState(false);
   const [withdrawing, setWithdrawing] = useState<SignatureRequestRow | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
+  const [confirming, setConfirming] = useState<SignatureRequestRow | null>(null);
+  /** Rows with a review call in flight, read synchronously so a second click on the same row is dropped. */
+  const inFlight = useRef<ReadonlySet<string>>(new Set());
+  /** One Idempotency-Key per user action (kind + row + choice), kept until the action gets a definitive answer. */
+  const actionKeys = useRef<ReadonlyMap<string, string>>(new Map());
+  const keyFor = (action: string): string => {
+    const existing = actionKeys.current.get(action);
+    if (existing) return existing;
+    const key = idemKey();
+    actionKeys.current = new Map(actionKeys.current).set(action, key);
+    return key;
+  };
+  const settle = (action: string, res: unknown): void => {
+    if ((res as { error?: unknown }).error && !isDefinitive(res)) return;
+    const next = new Map(actionKeys.current);
+    next.delete(action);
+    actionKeys.current = next;
+  };
 
   const load = useCallback(async () => {
     if (!patientId) return;
@@ -137,10 +161,11 @@ function PatientSignaturesInner(): JSX.Element {
   };
 
   const sendOnce = async (option: SendOption): Promise<string | null> => {
+    const action = `send:${option.kind}:${option.targetRef ?? ""}`;
     const res = await client.POST(
       BASE as never,
       {
-        headers: { "Idempotency-Key": idemKey() },
+        headers: { "Idempotency-Key": keyFor(action) },
         body: {
           patientId,
           docKind: option.kind,
@@ -148,6 +173,7 @@ function PatientSignaturesInner(): JSX.Element {
         },
       } as never,
     );
+    settle(action, res);
     const r = res as { error?: unknown };
     if (r.error) return refusalMessage(r.error, "The request could not be sent.");
     setNotice({ tone: "success", text: `${DOC_LABEL[option.kind]} sent for signature.` });
@@ -167,14 +193,16 @@ function PatientSignaturesInner(): JSX.Element {
     row: SignatureRequestRow,
     reason: VoidReason,
   ): Promise<string | null> => {
+    const action = `void:${row.id}:${reason}`;
     const res = await client.POST(
       `${BASE}/{requestId}/void` as never,
       {
         params: { path: { requestId: row.id } },
-        headers: { "Idempotency-Key": idemKey() },
+        headers: { "Idempotency-Key": keyFor(action) },
         body: { reason },
       } as never,
     );
+    settle(action, res);
     const r = res as { error?: unknown };
     if (r.error) return refusalMessage(r.error, "The request could not be withdrawn.");
     setNotice({ tone: "success", text: "Request withdrawn." });
@@ -182,27 +210,38 @@ function PatientSignaturesInner(): JSX.Element {
     return null;
   };
 
+  const markBusy = (id: string, busy: boolean): void => {
+    const next = new Set(inFlight.current);
+    if (busy) next.add(id);
+    else next.delete(id);
+    inFlight.current = next;
+    setBusyIds(next);
+  };
+
   const review = async (row: SignatureRequestRow, decision: "accepted" | "rejected") => {
-    setBusyId(row.id);
+    if (inFlight.current.has(row.id)) return;
+    markBusy(row.id, true);
     setNotice(null);
     try {
       await reviewOnce(row, decision);
     } catch {
       setNotice({ tone: "error", text: NETWORK_REFUSAL });
     } finally {
-      setBusyId(null);
+      markBusy(row.id, false);
     }
   };
 
   const reviewOnce = async (row: SignatureRequestRow, decision: "accepted" | "rejected") => {
+    const action = `review:${row.id}:${decision}`;
     const res = await client.POST(
       `${BASE}/{requestId}/review` as never,
       {
         params: { path: { requestId: row.id } },
-        headers: { "Idempotency-Key": idemKey() },
+        headers: { "Idempotency-Key": keyFor(action) },
         body: { decision },
       } as never,
     );
+    settle(action, res);
     const r = res as { error?: unknown };
     if (r.error) {
       // Accepting signs a consent, so the server may ask for a fresh step-up first; come back here after it.
@@ -268,10 +307,10 @@ function PatientSignaturesInner(): JSX.Element {
       cell: (row) => (
         <RowActions
           row={row}
-          busy={busyId === row.id}
+          busy={busyIds.has(row.id)}
           canReview={canReview}
           canVoid={canVoid}
-          onReview={(d) => void review(row, d)}
+          onReview={(d) => (d === "accepted" ? setConfirming(row) : void review(row, d))}
           onWithdraw={() => setWithdrawing(row)}
         />
       ),
@@ -335,6 +374,14 @@ function PatientSignaturesInner(): JSX.Element {
         row={withdrawing}
         onClose={() => setWithdrawing(null)}
         onWithdraw={withdraw}
+      />
+      <AcceptDialog
+        row={confirming}
+        onClose={() => setConfirming(null)}
+        onConfirm={(row) => {
+          setConfirming(null);
+          void review(row, "accepted");
+        }}
       />
     </PatientWorkspaceLayout>
   );
@@ -403,6 +450,37 @@ function RowActions({
         </Button>
       ) : null}
     </span>
+  );
+}
+
+/** Accepting is irreversible: it records the uploaded copy as the signed consent, so the reviewer confirms first. */
+function AcceptDialog({
+  row,
+  onClose,
+  onConfirm,
+}: {
+  row: SignatureRequestRow | null;
+  onClose: () => void;
+  onConfirm: (row: SignatureRequestRow) => void;
+}): JSX.Element | null {
+  if (!row) return null;
+  return (
+    <Modal open onClose={onClose} ariaLabel="Accept signed copy">
+      <div style={{ display: "grid", gap: "1rem" }}>
+        <h2 style={{ margin: 0 }}>Accept signed copy</h2>
+        <p style={{ margin: 0 }}>
+          The uploaded copy will be recorded as the patient's signed{" "}
+          {DOC_LABEL[row.docKind] ?? "document"}, with you as the reviewer. This cannot be undone.
+          Open the uploaded copy first if you have not checked it.
+        </p>
+        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+          <Button tone="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={() => onConfirm(row)}>Accept signed copy</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
