@@ -15,10 +15,19 @@ describe("M23 platform-admin screen registry", () => {
 
   it("registers the wage-index load, bound to a component, on the route's own permission", () => {
     const [load] = medicareBillingAdminScreens.screens;
-    expect(medicareBillingAdminScreens.screens).toHaveLength(1);
+    expect(medicareBillingAdminScreens.screens).toHaveLength(2);
     expect(load?.screen, "must bind a (lazy) component").toBeTruthy();
     expect(load?.path).toBe("/admin/billing/wage-indexes/load");
     expect(load?.requiredPermission).toBe("billing.rule_config.platform_admin");
     expect(CATALOG_KEYS.has("billing.rule_config.platform_admin")).toBe(true);
+  });
+
+  it("registers the NPI verification list on the same platform-admin key", () => {
+    const npi = medicareBillingAdminScreens.screens.find(
+      (s) => s.id === "admin.billing.npi-verifications",
+    );
+    expect(npi?.screen).toBeTruthy();
+    expect(npi?.path).toBe("/admin/billing/npi-verifications");
+    expect(npi?.requiredPermission).toBe("billing.rule_config.platform_admin");
   });
 });

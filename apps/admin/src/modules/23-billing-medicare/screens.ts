@@ -8,6 +8,9 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 import { lazy } from "react";
 import type { ComponentType } from "react";
 
+const NpiVerifications = lazy(() =>
+  import("./npi-verifications").then((m) => ({ default: m.NpiVerifications })),
+);
 const WageIndexLoad = lazy(() =>
   import("./wage-index-load").then((m) => ({ default: m.WageIndexLoad })),
 );
@@ -23,6 +26,15 @@ export const medicareBillingAdminScreens: ScreenRegistryModule<ComponentType> = 
       navGroup: "Medicare billing",
       requiredPermission: "billing.rule_config.platform_admin",
       screen: WageIndexLoad,
+    },
+    {
+      // ADR-0053 amendment precondition 2: the Claim.MD sweep routes enrollment reports only to a verified NPI.
+      id: "admin.billing.npi-verifications",
+      path: "/admin/billing/npi-verifications",
+      title: "NPI verification",
+      navGroup: "Medicare billing",
+      requiredPermission: "billing.rule_config.platform_admin",
+      screen: NpiVerifications,
     },
   ],
 };
