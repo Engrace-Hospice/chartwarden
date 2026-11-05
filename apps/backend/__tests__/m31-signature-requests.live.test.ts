@@ -1719,7 +1719,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
 
     // Eligible by live grant AND with a verified push device: the agent has no device so is not pushed; the bereaved account has a
     // device but no authority to sign.
-    expect((await signatureRecipientUserIds(handle.db, ORG_A, patientA, NPP)).sort()).toEqual(
+    expect([...(await signatureRecipientUserIds(handle.db, ORG_A, patientA, NPP))].sort()).toEqual(
       [self, caregiver].map((a) => a.userId).sort(),
     );
 
