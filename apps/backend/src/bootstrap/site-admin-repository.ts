@@ -10,7 +10,7 @@
 // here, already enveloped by the caller's cipher, and is never selected back.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 export type LifecycleStatus = "created" | "active" | "suspended" | "closed";
 
@@ -89,6 +89,10 @@ export type LocationPatch = Writable<
 export type UniqueConflict = { readonly conflict: "slug" | "ccn" | "npi" };
 
 export interface SiteAdminRepository {
+  /** Every provider entity of the organization, newest last (a tenant has a handful). */
+  listProviderEntities(organizationId: string): Promise<ProviderEntityDetail[]>;
+  /** Every service location under the organization's provider entities. */
+  listLocations(organizationId: string): Promise<LocationDetail[]>;
   getProviderEntity(organizationId: string, id: string): Promise<ProviderEntityDetail | null>;
   createProviderEntity(
     organizationId: string,
@@ -189,11 +193,41 @@ export function uniqueConflictOf(err: unknown): UniqueConflict["conflict"] | nul
   return null;
 }
 
-export function createDrizzleSiteAdminRepository(db: DbClient): SiteAdminRepository {
+/**
+ * `actorUserId` is the user the M4 write-audit trigger attributes each write to. Empty (the default) inherits the
+ * ambient request actor only when that request is in the SAME org; a caller acting across tenants (the platform
+ * onboarding routes) must name the operator or the trigger records a NULL actor. `db` may itself be an open
+ * transaction: the nested scope is then a savepoint inside the caller's unit of work.
+ */
+export function createDrizzleSiteAdminRepository(
+  db: DbClient,
+  actorUserId = "",
+): SiteAdminRepository {
   const scoped = <T>(organizationId: string, fn: (tx: DbClient) => Promise<T>): Promise<T> =>
-    withOrgContext<DbClient, T>(db, { organizationId, userId: "" }, fn);
+    withOrgContext<DbClient, T>(db, { organizationId, userId: actorUserId }, fn);
 
   return {
+    async listProviderEntities(organizationId) {
+      return scoped(organizationId, async (tx) => {
+        const rows = await tx
+          .select()
+          .from(PE)
+          .where(eq(PE.organizationId, organizationId))
+          .orderBy(asc(PE.createdAt), asc(PE.id));
+        return rows.map(toPe);
+      });
+    },
+    async listLocations(organizationId) {
+      return scoped(organizationId, async (tx) => {
+        const rows = await tx
+          .select({ l: L })
+          .from(L)
+          .innerJoin(PE, eq(PE.id, L.providerEntityId))
+          .where(eq(PE.organizationId, organizationId))
+          .orderBy(asc(L.createdAt), asc(L.id));
+        return rows.map((r) => toLoc(r.l));
+      });
+    },
     async getProviderEntity(organizationId, id) {
       return scoped(organizationId, async (tx) => {
         const [row] = await tx
@@ -315,6 +349,14 @@ export function createInMemorySiteAdminRepository(
   } = {
     pes,
     locs,
+    async listProviderEntities(organizationId) {
+      return [...pes.values()].filter((p) => p.organizationId === organizationId);
+    },
+    async listLocations(organizationId) {
+      return [...locs.values()].filter(
+        (l) => pes.get(l.providerEntityId)?.organizationId === organizationId,
+      );
+    },
     async getProviderEntity(organizationId, id) {
       const p = pes.get(id);
       return p && p.organizationId === organizationId ? p : null;

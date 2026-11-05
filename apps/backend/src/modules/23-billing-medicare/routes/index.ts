@@ -97,6 +97,7 @@ export {
   buildDrizzleNpiVerificationService,
   isNpiVerified,
 } from "./npi-verification-service";
+export { buildMacOnboardingCredentialPort } from "./onboarding-credential-port";
 export {
   type PlatformAdminRouteService,
   buildDrizzlePlatformAdminService,
