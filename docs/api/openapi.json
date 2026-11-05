@@ -256831,6 +256831,942 @@
         }
       }
     },
+    "/api/v1/platform/tenants/{orgSlug}/locations": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantsByOrgSlugLocations",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "A tenant's service locations, on the tenant's own RLS scope (platform ops; read is audited)",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "providerEntityId",
+                          "name",
+                          "addressLine1",
+                          "addressLine2",
+                          "city",
+                          "state",
+                          "postalCode",
+                          "phone",
+                          "fax",
+                          "timezone",
+                          "status",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "addressLine1": {
+                            "type": "string"
+                          },
+                          "addressLine2": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "city": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "postalCode": {
+                            "type": "string"
+                          },
+                          "phone": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "fax": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "timezone": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "created",
+                                "type": "string"
+                              },
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "suspended",
+                                "type": "string"
+                              },
+                              {
+                                "const": "closed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugLocations",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Create a service location under one of the tenant's provider entities — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "providerEntityId",
+                    "name",
+                    "addressLine1",
+                    "addressLine2",
+                    "city",
+                    "state",
+                    "postalCode",
+                    "phone",
+                    "fax",
+                    "timezone",
+                    "status",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "addressLine1": {
+                      "type": "string"
+                    },
+                    "addressLine2": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "city": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "postalCode": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "fax": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timezone": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "created",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "suspended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "name",
+                  "addressLine1",
+                  "city",
+                  "state",
+                  "postalCode",
+                  "timezone",
+                  "reason"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "addressLine1": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "addressLine2": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "city": {
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "type": "string"
+                  },
+                  "state": {
+                    "pattern": "^[A-Z]{2}$",
+                    "type": "string"
+                  },
+                  "postalCode": {
+                    "pattern": "^\\d{5}(-\\d{4})?$",
+                    "type": "string"
+                  },
+                  "phone": {
+                    "maxLength": 30,
+                    "type": "string"
+                  },
+                  "fax": {
+                    "maxLength": 30,
+                    "type": "string"
+                  },
+                  "timezone": {
+                    "description": "IANA zone, e.g. America/Los_Angeles.",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/locations/{id}": {
+      "patch": {
+        "operationId": "patchApiV1PlatformTenantsByOrgSlugLocationsById",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Edit a tenant service location's address / contact / timezone / lifecycle status — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "providerEntityId",
+                    "name",
+                    "addressLine1",
+                    "addressLine2",
+                    "city",
+                    "state",
+                    "postalCode",
+                    "phone",
+                    "fax",
+                    "timezone",
+                    "status",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "addressLine1": {
+                      "type": "string"
+                    },
+                    "addressLine2": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "city": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "postalCode": {
+                      "type": "string"
+                    },
+                    "phone": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "fax": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "timezone": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "created",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "suspended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "name": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "addressLine1": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "addressLine2": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "city": {
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "type": "string"
+                  },
+                  "state": {
+                    "pattern": "^[A-Z]{2}$",
+                    "type": "string"
+                  },
+                  "postalCode": {
+                    "pattern": "^\\d{5}(-\\d{4})?$",
+                    "type": "string"
+                  },
+                  "phone": {
+                    "maxLength": 30,
+                    "type": "string"
+                  },
+                  "fax": {
+                    "maxLength": 30,
+                    "type": "string"
+                  },
+                  "timezone": {
+                    "description": "IANA zone, e.g. America/Los_Angeles.",
+                    "type": "string"
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "created",
+                        "type": "string"
+                      },
+                      {
+                        "const": "active",
+                        "type": "string"
+                      },
+                      {
+                        "const": "suspended",
+                        "type": "string"
+                      },
+                      {
+                        "const": "closed",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/mac-credentials": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantsByOrgSlugMaccredentials",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "A tenant's MAC submitter credentials, masked (a hasSecret flag and the safe identifiers; the secret is never projected) — platform ops; read is audited",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "credentialId",
+                          "organizationId",
+                          "providerEntityId",
+                          "macJurisdiction",
+                          "submitterId",
+                          "tradingPartnerId",
+                          "clientId",
+                          "hasSecret",
+                          "baaRecordRef",
+                          "credentialExpiresAt",
+                          "lastSandboxTestAt",
+                          "version",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "credentialId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "type": "string"
+                          },
+                          "macJurisdiction": {
+                            "type": "string"
+                          },
+                          "submitterId": {
+                            "type": "string"
+                          },
+                          "tradingPartnerId": {
+                            "type": "string"
+                          },
+                          "clientId": {
+                            "type": "string"
+                          },
+                          "hasSecret": {
+                            "description": "The secret itself is never projected.",
+                            "type": "boolean"
+                          },
+                          "baaRecordRef": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "credentialExpiresAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastSandboxTestAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugMaccredentials",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Create (201) or version-checked update (200, If-Match) of a tenant's MAC credential; clientSecret is write-only and sealed under the tenant's key — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": false,
+            "description": "The credential's current integer version; required to update an existing credential, absent on a first create.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "credentialId",
+                    "organizationId",
+                    "providerEntityId",
+                    "macJurisdiction",
+                    "submitterId",
+                    "tradingPartnerId",
+                    "clientId",
+                    "hasSecret",
+                    "baaRecordRef",
+                    "credentialExpiresAt",
+                    "lastSandboxTestAt",
+                    "version",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "credentialId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "macJurisdiction": {
+                      "type": "string"
+                    },
+                    "submitterId": {
+                      "type": "string"
+                    },
+                    "tradingPartnerId": {
+                      "type": "string"
+                    },
+                    "clientId": {
+                      "type": "string"
+                    },
+                    "hasSecret": {
+                      "description": "The secret itself is never projected.",
+                      "type": "boolean"
+                    },
+                    "baaRecordRef": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "credentialExpiresAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastSandboxTestAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "macJurisdiction",
+                  "submitterId",
+                  "tradingPartnerId",
+                  "clientId",
+                  "clientSecret",
+                  "reason"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "macJurisdiction": {
+                    "minLength": 1,
+                    "maxLength": 32,
+                    "description": "The MAC jurisdiction key the tenant's billing screen offers (e.g. noridian_jf, ngs_j6, cgs_j15); M23 refuses any other with a 422.",
+                    "type": "string"
+                  },
+                  "submitterId": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "tradingPartnerId": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "clientId": {
+                    "minLength": 1,
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "clientSecret": {
+                    "minLength": 1,
+                    "maxLength": 4096,
+                    "description": "Write-only: sealed under the tenant's own key and never returned.",
+                    "type": "string"
+                  },
+                  "baaRecordRef": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "credentialExpiresAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/platform/tenants/{orgSlug}/offboard": {
       "post": {
         "operationId": "postApiV1PlatformTenantsByOrgSlugOffboard",
@@ -258964,6 +259900,711 @@
         }
       }
     },
+    "/api/v1/platform/tenants/{orgSlug}/provider-entities": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantsByOrgSlugProviderentities",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "A tenant's provider entities, on the tenant's own RLS scope (platform ops; read is audited; the tax id is never returned)",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "organizationId",
+                          "ccn",
+                          "legalName",
+                          "doingBusinessAs",
+                          "fiscalIntermediary",
+                          "npi",
+                          "fiscalYearEnd",
+                          "iqiesFacilityId",
+                          "billingAddress",
+                          "status",
+                          "createdAt",
+                          "updatedAt"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "ccn": {
+                            "type": "string"
+                          },
+                          "legalName": {
+                            "type": "string"
+                          },
+                          "doingBusinessAs": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "fiscalIntermediary": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "npi": {
+                            "type": "string"
+                          },
+                          "fiscalYearEnd": {
+                            "description": "MMDD",
+                            "type": "string"
+                          },
+                          "iqiesFacilityId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "billingAddress": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "line1",
+                                  "line2",
+                                  "city",
+                                  "state",
+                                  "postalCode"
+                                ],
+                                "properties": {
+                                  "line1": {
+                                    "type": "string"
+                                  },
+                                  "line2": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "city": {
+                                    "type": "string"
+                                  },
+                                  "state": {
+                                    "type": "string"
+                                  },
+                                  "postalCode": {
+                                    "type": "string"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "status": {
+                            "anyOf": [
+                              {
+                                "const": "created",
+                                "type": "string"
+                              },
+                              {
+                                "const": "active",
+                                "type": "string"
+                              },
+                              {
+                                "const": "suspended",
+                                "type": "string"
+                              },
+                              {
+                                "const": "closed",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "format": "date-time",
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugProviderentities",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Create a provider entity for a tenant (CCN, NPI check digit, EIN sealed under the tenant's key and never returned; 503 TAX_ID_CIPHER_UNBOUND / TAX_ID_KEY_UNAVAILABLE until the key ring is bound) — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "ccn",
+                    "legalName",
+                    "doingBusinessAs",
+                    "fiscalIntermediary",
+                    "npi",
+                    "fiscalYearEnd",
+                    "iqiesFacilityId",
+                    "billingAddress",
+                    "status",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "ccn": {
+                      "type": "string"
+                    },
+                    "legalName": {
+                      "type": "string"
+                    },
+                    "doingBusinessAs": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "fiscalIntermediary": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "npi": {
+                      "type": "string"
+                    },
+                    "fiscalYearEnd": {
+                      "description": "MMDD",
+                      "type": "string"
+                    },
+                    "iqiesFacilityId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "billingAddress": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "line1",
+                            "line2",
+                            "city",
+                            "state",
+                            "postalCode"
+                          ],
+                          "properties": {
+                            "line1": {
+                              "type": "string"
+                            },
+                            "line2": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "city": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            },
+                            "postalCode": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "created",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "suspended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ccn",
+                  "npi",
+                  "legalName",
+                  "taxId",
+                  "fiscalYearEnd",
+                  "reason"
+                ],
+                "properties": {
+                  "ccn": {
+                    "pattern": "^[0-9A-Z]{6}$",
+                    "description": "CMS Certification Number.",
+                    "type": "string"
+                  },
+                  "npi": {
+                    "pattern": "^[0-9]{10}$",
+                    "description": "10 digits with a correct NPI check digit.",
+                    "type": "string"
+                  },
+                  "legalName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "doingBusinessAs": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "fiscalIntermediary": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "taxId": {
+                    "description": "9-digit EIN (12-3456789). Write-once: enveloped by the KMS cipher, never returned. 503 TAX_ID_CIPHER_UNBOUND until that cipher is bound.",
+                    "type": "string"
+                  },
+                  "fiscalYearEnd": {
+                    "pattern": "^[0-9]{4}$",
+                    "description": "MMDD",
+                    "type": "string"
+                  },
+                  "iqiesFacilityId": {
+                    "maxLength": 50,
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/provider-entities/{id}": {
+      "patch": {
+        "operationId": "patchApiV1PlatformTenantsByOrgSlugProviderentitiesById",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Edit a tenant provider entity's names / iQIES id / billing address / lifecycle status; the CMS identity (CCN, NPI, tax id, fiscal year end) is immutable here — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "ccn",
+                    "legalName",
+                    "doingBusinessAs",
+                    "fiscalIntermediary",
+                    "npi",
+                    "fiscalYearEnd",
+                    "iqiesFacilityId",
+                    "billingAddress",
+                    "status",
+                    "createdAt",
+                    "updatedAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "ccn": {
+                      "type": "string"
+                    },
+                    "legalName": {
+                      "type": "string"
+                    },
+                    "doingBusinessAs": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "fiscalIntermediary": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "npi": {
+                      "type": "string"
+                    },
+                    "fiscalYearEnd": {
+                      "description": "MMDD",
+                      "type": "string"
+                    },
+                    "iqiesFacilityId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "billingAddress": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "line1",
+                            "line2",
+                            "city",
+                            "state",
+                            "postalCode"
+                          ],
+                          "properties": {
+                            "line1": {
+                              "type": "string"
+                            },
+                            "line2": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "city": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            },
+                            "postalCode": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "created",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "suspended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "legalName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "doingBusinessAs": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "fiscalIntermediary": {
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "iqiesFacilityId": {
+                    "maxLength": 50,
+                    "type": "string"
+                  },
+                  "billingAddress": {
+                    "description": "The billing address printed on the 837I billing-provider loop (2010AA). Replaces the first stored address.",
+                    "type": "object",
+                    "required": [
+                      "line1",
+                      "city",
+                      "state",
+                      "postalCode"
+                    ],
+                    "properties": {
+                      "line1": {
+                        "minLength": 1,
+                        "maxLength": 55,
+                        "type": "string"
+                      },
+                      "line2": {
+                        "maxLength": 55,
+                        "type": "string"
+                      },
+                      "city": {
+                        "minLength": 1,
+                        "maxLength": 30,
+                        "type": "string"
+                      },
+                      "state": {
+                        "pattern": "^[A-Z]{2}$",
+                        "type": "string"
+                      },
+                      "postalCode": {
+                        "pattern": "^\\d{5}(-\\d{4})?$",
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "const": "created",
+                        "type": "string"
+                      },
+                      {
+                        "const": "active",
+                        "type": "string"
+                      },
+                      {
+                        "const": "suspended",
+                        "type": "string"
+                      },
+                      {
+                        "const": "closed",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/platform/tenants/{orgSlug}/provision-status": {
       "get": {
         "operationId": "getApiV1PlatformTenantsByOrgSlugProvisionstatus",
@@ -259180,6 +260821,326 @@
                   },
                   "destructionCertificateId": {
                     "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/tenants/{orgSlug}/state-medicaid-credentials": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantsByOrgSlugStatemedicaidcredentials",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "A tenant's state Medicaid trading-partner credentials, masked (presence flags only; no secret or key is ever projected) — platform ops; read is audited",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "id",
+                          "providerEntityId",
+                          "serviceState",
+                          "channel",
+                          "mcoId",
+                          "tradingPartnerId",
+                          "clientId",
+                          "sftpHost",
+                          "portalUrl",
+                          "activeFrom",
+                          "activeTo",
+                          "lastSandboxTestAt",
+                          "lastSandboxTestResult",
+                          "version",
+                          "hasClientSecret",
+                          "hasSftpKey"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "providerEntityId": {
+                            "type": "string"
+                          },
+                          "serviceState": {
+                            "type": "string"
+                          },
+                          "channel": {
+                            "type": "string"
+                          },
+                          "mcoId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "tradingPartnerId": {
+                            "type": "string"
+                          },
+                          "clientId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "sftpHost": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "portalUrl": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "activeFrom": {
+                            "type": "string"
+                          },
+                          "activeTo": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastSandboxTestAt": {
+                            "anyOf": [
+                              {
+                                "format": "date-time",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "lastSandboxTestResult": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "version": {
+                            "type": "integer"
+                          },
+                          "hasClientSecret": {
+                            "description": "The secret itself is never projected.",
+                            "type": "boolean"
+                          },
+                          "hasSftpKey": {
+                            "description": "The key itself is never projected.",
+                            "type": "boolean"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PlatformTenantsByOrgSlugStatemedicaidcredentials",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Create or version-bump a tenant's state Medicaid trading-partner credential; clientSecret / sftpKey are write-only and sealed under the tenant's key (503 CREDENTIAL_CRYPTO_UNBOUND until the credential key is bound) — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused",
+        "parameters": [
+          {
+            "name": "orgSlug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "serviceState",
+                  "channel",
+                  "tradingPartnerId",
+                  "activeFrom",
+                  "reason"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "serviceState": {
+                    "pattern": "^[A-Z]{2}$",
+                    "description": "Two-letter state code.",
+                    "type": "string"
+                  },
+                  "channel": {
+                    "anyOf": [
+                      {
+                        "const": "direct_mmis",
+                        "type": "string"
+                      },
+                      {
+                        "const": "cco_clearinghouse",
+                        "type": "string"
+                      },
+                      {
+                        "const": "sftp",
+                        "type": "string"
+                      },
+                      {
+                        "const": "portal",
+                        "type": "string"
+                      },
+                      {
+                        "const": "state_proprietary",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "mcoId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "tradingPartnerId": {
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "type": "string"
+                  },
+                  "clientId": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "clientSecret": {
+                    "maxLength": 4096,
+                    "type": "string"
+                  },
+                  "sftpHost": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "sftpUser": {
+                    "maxLength": 256,
+                    "type": "string"
+                  },
+                  "sftpKey": {
+                    "maxLength": 16384,
+                    "type": "string"
+                  },
+                  "portalUrl": {
+                    "maxLength": 1024,
+                    "type": "string"
+                  },
+                  "activeFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "activeTo": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
                     "type": "string"
                   }
                 }

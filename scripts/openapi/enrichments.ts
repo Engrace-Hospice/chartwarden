@@ -15237,3 +15237,93 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M41EnrollmentResponseSchema,
   },
 });
+
+// ── M34: a platform operator enters a tenant's onboarding data on its behalf (routes/platform/onboarding-data-routes.ts) ──
+import {
+  OnboardingLocationCreateRequest as M34OnboardingLocationCreateRequest,
+  LocationDetailSchema as M34OnboardingLocationDetailSchema,
+  OnboardingLocationListSchema as M34OnboardingLocationListSchema,
+  OnboardingLocationPatchRequest as M34OnboardingLocationPatchRequest,
+  OnboardingMacCredentialListSchema as M34OnboardingMacCredentialListSchema,
+  OnboardingMacCredentialUpsertRequest as M34OnboardingMacCredentialUpsertRequest,
+  OnboardingMacCredentialViewSchema as M34OnboardingMacCredentialViewSchema,
+  OnboardingMedicaidCredentialIdSchema as M34OnboardingMedicaidCredentialIdSchema,
+  OnboardingMedicaidCredentialListSchema as M34OnboardingMedicaidCredentialListSchema,
+  OnboardingMedicaidCredentialUpsertRequest as M34OnboardingMedicaidCredentialUpsertRequest,
+  OnboardingProviderEntityCreateRequest as M34OnboardingProviderEntityCreateRequest,
+  ProviderEntityDetailSchema as M34OnboardingProviderEntityDetailSchema,
+  OnboardingProviderEntityListSchema as M34OnboardingProviderEntityListSchema,
+  OnboardingProviderEntityPatchRequest as M34OnboardingProviderEntityPatchRequest,
+} from "../../apps/backend/src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-typebox";
+
+const M34_ONBOARDING_WRITE_NOTE =
+  "tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused";
+Object.assign(ROUTE_ENRICHMENTS, {
+  "GET /api/v1/platform/tenants/:orgSlug/provider-entities": {
+    summary:
+      "A tenant's provider entities, on the tenant's own RLS scope (platform ops; read is audited; the tax id is never returned)",
+    response: M34OnboardingProviderEntityListSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/provider-entities": {
+    summary: `Create a provider entity for a tenant (CCN, NPI check digit, EIN sealed under the tenant's key and never returned; 503 TAX_ID_CIPHER_UNBOUND / TAX_ID_KEY_UNAVAILABLE until the key ring is bound) — ${M34_ONBOARDING_WRITE_NOTE}`,
+    body: M34OnboardingProviderEntityCreateRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+    response: M34OnboardingProviderEntityDetailSchema,
+  },
+  "PATCH /api/v1/platform/tenants/:orgSlug/provider-entities/:id": {
+    summary: `Edit a tenant provider entity's names / iQIES id / billing address / lifecycle status; the CMS identity (CCN, NPI, tax id, fiscal year end) is immutable here — ${M34_ONBOARDING_WRITE_NOTE}`,
+    body: M34OnboardingProviderEntityPatchRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingProviderEntityDetailSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/locations": {
+    summary:
+      "A tenant's service locations, on the tenant's own RLS scope (platform ops; read is audited)",
+    response: M34OnboardingLocationListSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/locations": {
+    summary: `Create a service location under one of the tenant's provider entities — ${M34_ONBOARDING_WRITE_NOTE}`,
+    body: M34OnboardingLocationCreateRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+    response: M34OnboardingLocationDetailSchema,
+  },
+  "PATCH /api/v1/platform/tenants/:orgSlug/locations/:id": {
+    summary: `Edit a tenant service location's address / contact / timezone / lifecycle status — ${M34_ONBOARDING_WRITE_NOTE}`,
+    body: M34OnboardingLocationPatchRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M34OnboardingLocationDetailSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/mac-credentials": {
+    summary:
+      "A tenant's MAC submitter credentials, masked (a hasSecret flag and the safe identifiers; the secret is never projected) — platform ops; read is audited",
+    response: M34OnboardingMacCredentialListSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/mac-credentials": {
+    summary: `Create (201) or version-checked update (200, If-Match) of a tenant's MAC credential; clientSecret is write-only and sealed under the tenant's key — ${M34_ONBOARDING_WRITE_NOTE}`,
+    body: M34OnboardingMacCredentialUpsertRequest,
+    headers: {
+      ...IDEMPOTENCY_KEY_HEADER,
+      "If-Match": {
+        required: false,
+        description:
+          "The credential's current integer version; required to update an existing credential, absent on a first create.",
+      },
+    },
+    status: 201,
+    response: M34OnboardingMacCredentialViewSchema,
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/state-medicaid-credentials": {
+    summary:
+      "A tenant's state Medicaid trading-partner credentials, masked (presence flags only; no secret or key is ever projected) — platform ops; read is audited",
+    response: M34OnboardingMedicaidCredentialListSchema,
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/state-medicaid-credentials": {
+    summary: `Create or version-bump a tenant's state Medicaid trading-partner credential; clientSecret / sftpKey are write-only and sealed under the tenant's key (503 CREDENTIAL_CRYPTO_UNBOUND until the credential key is bound) — ${M34_ONBOARDING_WRITE_NOTE}`,
+    body: M34OnboardingMedicaidCredentialUpsertRequest,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+    response: M34OnboardingMedicaidCredentialIdSchema,
+  },
+});

@@ -21081,6 +21081,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's service locations, on the tenant's own RLS scope (platform ops; read is audited) */
+        get: operations["getApiV1PlatformTenantsByOrgSlugLocations"];
+        put?: never;
+        /** Create a service location under one of the tenant's provider entities — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugLocations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/locations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a tenant service location's address / contact / timezone / lifecycle status — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        patch: operations["patchApiV1PlatformTenantsByOrgSlugLocationsById"];
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/mac-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's MAC submitter credentials, masked (a hasSecret flag and the safe identifiers; the secret is never projected) — platform ops; read is audited */
+        get: operations["getApiV1PlatformTenantsByOrgSlugMaccredentials"];
+        put?: never;
+        /** Create (201) or version-checked update (200, If-Match) of a tenant's MAC credential; clientSecret is write-only and sealed under the tenant's key — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugMaccredentials"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/offboard": {
         parameters: {
             query?: never;
@@ -21183,6 +21236,41 @@ export interface paths {
         patch: operations["patchApiV1PlatformTenantsByOrgSlugOrgprofile"];
         trace?: never;
     };
+    "/api/v1/platform/tenants/{orgSlug}/provider-entities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's provider entities, on the tenant's own RLS scope (platform ops; read is audited; the tax id is never returned) */
+        get: operations["getApiV1PlatformTenantsByOrgSlugProviderentities"];
+        put?: never;
+        /** Create a provider entity for a tenant (CCN, NPI check digit, EIN sealed under the tenant's key and never returned; 503 TAX_ID_CIPHER_UNBOUND / TAX_ID_KEY_UNAVAILABLE until the key ring is bound) — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugProviderentities"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/provider-entities/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a tenant provider entity's names / iQIES id / billing address / lifecycle status; the CMS identity (CCN, NPI, tax id, fiscal year end) is immutable here — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        patch: operations["patchApiV1PlatformTenantsByOrgSlugProviderentitiesById"];
+        trace?: never;
+    };
     "/api/v1/platform/tenants/{orgSlug}/provision-status": {
         parameters: {
             query?: never;
@@ -21228,6 +21316,24 @@ export interface paths {
         put?: never;
         /** Execute the cryptographic shred (enqueues tenant.shred; passkey-2min + co-signer) */
         post: operations["postApiV1PlatformTenantsByOrgSlugShred"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/platform/tenants/{orgSlug}/state-medicaid-credentials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A tenant's state Medicaid trading-partner credentials, masked (presence flags only; no secret or key is ever projected) — platform ops; read is audited */
+        get: operations["getApiV1PlatformTenantsByOrgSlugStatemedicaidcredentials"];
+        put?: never;
+        /** Create or version-bump a tenant's state Medicaid trading-partner credential; clientSecret / sftpKey are write-only and sealed under the tenant's key (503 CREDENTIAL_CRYPTO_UNBOUND until the credential key is bound) — tenant_onboarding_data.write_platform + the platform_ops role + a fresh step-up; Idempotency-Key and a `reason` (8-500 characters, recorded on the audit row beside the operator and the tenant) are required. Accepted only while the tenant is provisioning or onboarding (409 TENANT_NOT_ONBOARDING otherwise); an AI actor is refused */
+        post: operations["postApiV1PlatformTenantsByOrgSlugStatemedicaidcredentials"];
         delete?: never;
         options?: never;
         head?: never;
@@ -91902,6 +92008,284 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PlatformTenantsByOrgSlugLocations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            providerEntityId: string;
+                            name: string;
+                            addressLine1: string;
+                            addressLine2: string | null;
+                            city: string;
+                            state: string;
+                            postalCode: string;
+                            phone: string | null;
+                            fax: string | null;
+                            timezone: string;
+                            status: "created" | "active" | "suspended" | "closed";
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugLocations: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    providerEntityId: string;
+                    name: string;
+                    addressLine1: string;
+                    addressLine2?: string;
+                    city: string;
+                    state: string;
+                    postalCode: string;
+                    phone?: string;
+                    fax?: string;
+                    /** @description IANA zone, e.g. America/Los_Angeles. */
+                    timezone: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        name: string;
+                        addressLine1: string;
+                        addressLine2: string | null;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                        phone: string | null;
+                        fax: string | null;
+                        timezone: string;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1PlatformTenantsByOrgSlugLocationsById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    name?: string;
+                    addressLine1?: string;
+                    addressLine2?: string;
+                    city?: string;
+                    state?: string;
+                    postalCode?: string;
+                    phone?: string;
+                    fax?: string;
+                    /** @description IANA zone, e.g. America/Los_Angeles. */
+                    timezone?: string;
+                    status?: "created" | "active" | "suspended" | "closed";
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        name: string;
+                        addressLine1: string;
+                        addressLine2: string | null;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                        phone: string | null;
+                        fax: string | null;
+                        timezone: string;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugMaccredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            credentialId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            macJurisdiction: string;
+                            submitterId: string;
+                            tradingPartnerId: string;
+                            clientId: string;
+                            /** @description The secret itself is never projected. */
+                            hasSecret: boolean;
+                            baaRecordRef: string | null;
+                            credentialExpiresAt: string | null;
+                            lastSandboxTestAt: string | null;
+                            version: number;
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugMaccredentials: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+                /** @description The credential's current integer version; required to update an existing credential, absent on a first create. */
+                "If-Match"?: string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** @description The MAC jurisdiction key the tenant's billing screen offers (e.g. noridian_jf, ngs_j6, cgs_j15); M23 refuses any other with a 422. */
+                    macJurisdiction: string;
+                    submitterId: string;
+                    tradingPartnerId: string;
+                    clientId: string;
+                    /** @description Write-only: sealed under the tenant's own key and never returned. */
+                    clientSecret: string;
+                    baaRecordRef?: string;
+                    /** Format: date-time */
+                    credentialExpiresAt?: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        credentialId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        macJurisdiction: string;
+                        submitterId: string;
+                        tradingPartnerId: string;
+                        clientId: string;
+                        /** @description The secret itself is never projected. */
+                        hasSecret: boolean;
+                        baaRecordRef: string | null;
+                        credentialExpiresAt: string | null;
+                        lastSandboxTestAt: string | null;
+                        version: number;
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1PlatformTenantsByOrgSlugOffboard: {
         parameters: {
             query?: never;
@@ -92288,6 +92672,195 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1PlatformTenantsByOrgSlugProviderentities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            organizationId: string;
+                            ccn: string;
+                            legalName: string;
+                            doingBusinessAs: string | null;
+                            fiscalIntermediary: string | null;
+                            npi: string;
+                            /** @description MMDD */
+                            fiscalYearEnd: string;
+                            iqiesFacilityId: string | null;
+                            billingAddress: {
+                                line1: string;
+                                line2: string | null;
+                                city: string;
+                                state: string;
+                                postalCode: string;
+                            } | null;
+                            status: "created" | "active" | "suspended" | "closed";
+                            /** Format: date-time */
+                            createdAt: string;
+                            /** Format: date-time */
+                            updatedAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugProviderentities: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description CMS Certification Number. */
+                    ccn: string;
+                    /** @description 10 digits with a correct NPI check digit. */
+                    npi: string;
+                    legalName: string;
+                    doingBusinessAs?: string;
+                    fiscalIntermediary?: string;
+                    /** @description 9-digit EIN (12-3456789). Write-once: enveloped by the KMS cipher, never returned. 503 TAX_ID_CIPHER_UNBOUND until that cipher is bound. */
+                    taxId: string;
+                    /** @description MMDD */
+                    fiscalYearEnd: string;
+                    iqiesFacilityId?: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        ccn: string;
+                        legalName: string;
+                        doingBusinessAs: string | null;
+                        fiscalIntermediary: string | null;
+                        npi: string;
+                        /** @description MMDD */
+                        fiscalYearEnd: string;
+                        iqiesFacilityId: string | null;
+                        billingAddress: {
+                            line1: string;
+                            line2: string | null;
+                            city: string;
+                            state: string;
+                            postalCode: string;
+                        } | null;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1PlatformTenantsByOrgSlugProviderentitiesById: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    legalName?: string;
+                    doingBusinessAs?: string;
+                    fiscalIntermediary?: string;
+                    iqiesFacilityId?: string;
+                    /** @description The billing address printed on the 837I billing-provider loop (2010AA). Replaces the first stored address. */
+                    billingAddress?: {
+                        line1: string;
+                        line2?: string;
+                        city: string;
+                        state: string;
+                        postalCode: string;
+                    };
+                    status?: "created" | "active" | "suspended" | "closed";
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        organizationId: string;
+                        ccn: string;
+                        legalName: string;
+                        doingBusinessAs: string | null;
+                        fiscalIntermediary: string | null;
+                        npi: string;
+                        /** @description MMDD */
+                        fiscalYearEnd: string;
+                        iqiesFacilityId: string | null;
+                        billingAddress: {
+                            line1: string;
+                            line2: string | null;
+                            city: string;
+                            state: string;
+                            postalCode: string;
+                        } | null;
+                        status: "created" | "active" | "suspended" | "closed";
+                        /** Format: date-time */
+                        createdAt: string;
+                        /** Format: date-time */
+                        updatedAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1PlatformTenantsByOrgSlugProvisionstatus: {
         parameters: {
             query?: never;
@@ -92376,6 +92949,105 @@ export interface operations {
                     "application/json": {
                         tenantAccountId: string;
                         jobId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantsByOrgSlugStatemedicaidcredentials: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            id: string;
+                            providerEntityId: string;
+                            serviceState: string;
+                            channel: string;
+                            mcoId: string | null;
+                            tradingPartnerId: string;
+                            clientId: string | null;
+                            sftpHost: string | null;
+                            portalUrl: string | null;
+                            activeFrom: string;
+                            activeTo: string | null;
+                            lastSandboxTestAt: string | null;
+                            lastSandboxTestResult: string | null;
+                            version: number;
+                            /** @description The secret itself is never projected. */
+                            hasClientSecret: boolean;
+                            /** @description The key itself is never projected. */
+                            hasSftpKey: boolean;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformTenantsByOrgSlugStatemedicaidcredentials: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                orgSlug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** @description Two-letter state code. */
+                    serviceState: string;
+                    channel: "direct_mmis" | "cco_clearinghouse" | "sftp" | "portal" | "state_proprietary";
+                    /** Format: uuid */
+                    mcoId?: string;
+                    tradingPartnerId: string;
+                    clientId?: string;
+                    clientSecret?: string;
+                    sftpHost?: string;
+                    sftpUser?: string;
+                    sftpKey?: string;
+                    portalUrl?: string;
+                    /** Format: date */
+                    activeFrom: string;
+                    /** Format: date */
+                    activeTo?: string;
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
                     };
                 };
             };
