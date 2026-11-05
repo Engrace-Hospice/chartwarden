@@ -15,12 +15,19 @@
  *     Idempotency-Key (400), a tenant administrator (403) and a non-platform_ops role (403) are all refused;
  *   - every success leaves ONE audit row naming operator + target org + reason, and no EIN or MAC secret appears in a
  *     response, a list, a database column in the clear, an audit row or the outbox payload;
- *   - an operator cannot hang a credential on another tenant's provider entity.
+ *   - an operator cannot hang a credential on another tenant's provider entity, nor PATCH or POST against another
+ *     tenant's provider-entity / location ids through his slug (404, nothing written there);
+ *   - a duplicate CCN / NPI is a 409 (the savepoint inside the operator's transaction rolls back cleanly);
+ *   - every FAILED attempt (404, 409, ...) leaves a `denied` write_failed audit row beside the rolled-back write;
+ *   - an activation in flight holds a write back (advisory lock) and the write then sees `active` (409);
+ *   - the keys migration 1330 binds to `platform_ops` are what authorise the route (real DB permission store);
+ *   - an Idempotency-Key retry replays one write, and the same key aimed at another tenant is a 409.
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
+  createDbEffectivePermissionStore,
   createInMemoryEffectivePermissionStore,
   createPredicateRegistry,
   registerAbacRegistry,
@@ -74,9 +81,13 @@ const PLATFORM_ORG = "a0000000-0000-4000-8000-0000000000a0";
 const ORG_A = "a1000000-0000-4000-8000-0000000000a1"; // active tenant that already owns a provider entity
 const ORG_B = "b2000000-0000-4000-8000-0000000000b2"; // the tenant being onboarded
 const ORG_D = "d4000000-0000-4000-8000-0000000000d4"; // still provisioning
+const ORG_E = "e6000000-0000-4000-8000-0000000000e6"; // onboarding; idempotency + activation-lock cases
 const OPERATOR = "c3000000-0000-4000-8000-0000000000c3";
 const MEMBERSHIP = "e5000000-0000-4000-8000-0000000000e5";
 const A_PE = "f6000000-0000-4000-8000-0000000000f6";
+const A_LOC = "f7000000-0000-4000-8000-0000000000f7";
+const GRANT_USER = "c3000000-0000-4000-8000-0000000000c4"; // holds only platform_admin in the DB
+const GRANT_MEMBERSHIP = "e5000000-0000-4000-8000-0000000000e6";
 
 const EIN_DIGITS = "123456789";
 const MAC_SECRET = "mac-client-secret-live-7f3a91";
@@ -186,6 +197,32 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
       [org, eventType],
     );
 
+  /** The suite's default grants: explicit keys for the operator, none for a tenant admin. */
+  const useInMemoryPermissions = () =>
+    registerEffectivePermissionResolver(
+      createInMemoryEffectivePermissionStore([
+        {
+          orgId: PLATFORM_ORG,
+          userId: OPERATOR,
+          grants: [
+            {
+              roleKey: "platform_ops",
+              enabled: true,
+              expiresAt: null,
+              permissionKeys: [
+                "tenant_onboarding_data.read_platform",
+                "tenant_onboarding_data.write_platform",
+              ],
+            },
+          ],
+        },
+        { orgId: ORG_A, userId: "tenant-a-admin", grants: [] },
+      ]).store,
+    );
+
+  const failedRows = (org: string) => auditRows(org, "m34.tenant_onboarding.write_failed");
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
   beforeAll(async () => {
     admin = new Client({ connectionString: DB_URL });
     await admin.connect();
@@ -202,6 +239,7 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
       [ORG_A, "onb-a"],
       [ORG_B, "onb-b"],
       [ORG_D, "onb-d"],
+      [ORG_E, "onb-e"],
     ] as const) {
       await admin.query(
         "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
@@ -215,17 +253,26 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
       [ORG_A, "active"],
       [ORG_B, "onboarding"],
       [ORG_D, "provisioning"],
+      [ORG_E, "onboarding"],
     ] as const) {
       await admin.query(
         "INSERT INTO tenant_account (organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,$3,'b@x.test','p@x.test')",
         [org, status, `Tenant ${status}`],
       );
     }
-    // Tenant A already owns a provider entity; the operator must never reach it from tenant B's slug.
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'ops-admin-only@test.test')`, [
+      GRANT_USER,
+    ]);
+    // Tenant A already owns a provider entity and a location; the operator must never reach them from tenant B's slug.
     await admin.query(
       `INSERT INTO provider_entity (id, organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
        VALUES ($1,$2,'111111','Alpha Hospice','1234567893','sealed-elsewhere','1231')`,
       [A_PE, ORG_A],
+    );
+    await admin.query(
+      `INSERT INTO location (id, provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+       VALUES ($1,$2,'Alpha Main','1 Alpha Way','Reno','NV','89501','America/Los_Angeles')`,
+      [A_LOC, A_PE],
     );
 
     tenantPool = createDbClient({
@@ -293,26 +340,7 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
     resetAuthorizationContract();
     resetRbacEngine();
     resetAbacRegistry();
-    registerEffectivePermissionResolver(
-      createInMemoryEffectivePermissionStore([
-        {
-          orgId: PLATFORM_ORG,
-          userId: OPERATOR,
-          grants: [
-            {
-              roleKey: "platform_ops",
-              enabled: true,
-              expiresAt: null,
-              permissionKeys: [
-                "tenant_onboarding_data.read_platform",
-                "tenant_onboarding_data.write_platform",
-              ],
-            },
-          ],
-        },
-        { orgId: ORG_A, userId: "tenant-a-admin", grants: [] },
-      ]).store,
-    );
+    useInMemoryPermissions();
     const reg = createPredicateRegistry();
     reg.register("tenant_lifecycle_platform_ops", async (c) => c.roles.includes("platform_ops"));
     reg.register("step_up_recent", async (c) => c.attributes.stepUpRecent === true);
@@ -597,6 +625,16 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
     expect(
       await q("SELECT 1 FROM mac_submitter_credential WHERE provider_entity_id=$1", [A_PE]),
     ).toEqual([]);
+    // The rolled-back attempt is still on the target tenant's trail, and only there.
+    const failed = (await failedRows(ORG_B)).filter(
+      (r) => r.context.attemptedEvent === "m34.tenant_onboarding.mac_credential_upserted",
+    );
+    expect(failed).toHaveLength(1);
+    expect(failed[0]).toMatchObject({
+      outcome: "denied",
+      context: expect.objectContaining({ errorCode: "NOT_FOUND", reason: REASON }),
+    });
+    expect(await failedRows(ORG_A)).toEqual([]);
   });
 
   it("a duplicate CCN or NPI is a 409 CCN_TAKEN / NPI_TAKEN, not a 500 from an aborted savepoint", async () => {
@@ -624,6 +662,236 @@ describe.skipIf(!DB_URL)("M34 platform onboarding data, LIVE Postgres on the rea
       await q("SELECT 1 FROM provider_entity WHERE organization_id=$1", [ORG_B]),
     ).toHaveLength(1);
     expect(await auditRows(ORG_B, "m34.tenant_onboarding.provider_entity_created")).toHaveLength(1);
+
+    // Each rolled-back attempt left a `denied` write_failed row in a follow-up transaction: who, which tenant, why,
+    // which route and which error code; no EIN and no other body value.
+    const failed = (await failedRows(ORG_B)).filter((r) =>
+      String(r.context.errorCode).endsWith("_TAKEN"),
+    );
+    expect(failed.map((r) => r.context.errorCode)).toEqual(["CCN_TAKEN", "NPI_TAKEN", "CCN_TAKEN"]);
+    expect(failed[0]).toMatchObject({
+      actor_user_id: OPERATOR,
+      actor_role: "platform_ops",
+      outcome: "denied",
+      context: expect.objectContaining({
+        reason: REASON,
+        targetOrganizationId: ORG_B,
+        operatorMembershipId: MEMBERSHIP,
+        route: "POST /api/v1/platform/tenants/:orgSlug/provider-entities",
+        attemptedEvent: "m34.tenant_onboarding.provider_entity_created",
+      }),
+    });
+    const trail = JSON.stringify(await failedRows(ORG_B));
+    expect(trail).not.toContain(EIN_DIGITS);
+    expect(trail).not.toContain(PE_BODY.legalName);
+  });
+
+  it("through slug onb-b, tenant A's provider-entity and location ids are 404s that write nothing in A", async () => {
+    const snapshotA = async () => ({
+      pe: await q("SELECT legal_name, status, updated_at FROM provider_entity WHERE id=$1", [A_PE]),
+      loc: await q("SELECT name, status, updated_at FROM location WHERE id=$1", [A_LOC]),
+      locCount: await q("SELECT 1 FROM location WHERE provider_entity_id=$1", [A_PE]),
+    });
+    const before = await snapshotA();
+    const failedBefore = (await failedRows(ORG_B)).length;
+
+    const attempts = [
+      await call("PATCH", "onb-b", `provider-entities/${A_PE}`, {
+        legalName: "Hijacked",
+        reason: REASON,
+      }),
+      await call("PATCH", "onb-b", `locations/${A_LOC}`, { name: "Hijacked", reason: REASON }),
+      await call("POST", "onb-b", "locations", {
+        providerEntityId: A_PE,
+        name: "Planted",
+        addressLine1: "9 Plant St",
+        city: "Reno",
+        state: "NV",
+        postalCode: "89501",
+        timezone: "America/Los_Angeles",
+        reason: REASON,
+      }),
+    ];
+    for (const res of attempts) {
+      expect(res.statusCode, res.body).toBe(404);
+      expect(errorCode(res)).toBe("NOT_FOUND");
+    }
+
+    expect(await snapshotA()).toEqual(before);
+    const writeEventsInA = await q(
+      `SELECT event_type FROM audit_event
+        WHERE organization_id=$1 AND event_type LIKE 'm34.tenant_onboarding.%'
+          AND event_type <> 'm34.tenant_onboarding.data_read'`,
+      [ORG_A],
+    );
+    expect(writeEventsInA).toEqual([]);
+    // The attempts are on the target tenant's own trail, as failed attempts.
+    const failed = (await failedRows(ORG_B)).slice(failedBefore);
+    expect(failed.map((r) => r.context.errorCode)).toEqual(["NOT_FOUND", "NOT_FOUND", "NOT_FOUND"]);
+  });
+
+  describe("migration 1330's grants are what authorise the routes (real DB permission store)", () => {
+    const rolePermissionRows = () =>
+      q<{ key: string; permission_key: string }>(
+        `SELECT r.key, rp.permission_key FROM role_permission rp JOIN role r ON r.id = rp.role_id
+          WHERE rp.permission_key LIKE 'tenant_onboarding_data.%' ORDER BY r.key, rp.permission_key`,
+      );
+    const WRITE_KEYS = [
+      "tenant_onboarding_data.read_platform",
+      "tenant_onboarding_data.write_platform",
+    ];
+    let migration1330 = "";
+
+    beforeAll(async () => {
+      migration1330 = readFileSync(
+        join(
+          MIGRATIONS_DIR,
+          readdirSync(MIGRATIONS_DIR).find((f) =>
+            f.startsWith("1330_m34_platform_onboarding_data_permissions"),
+          ) as string,
+        ),
+        "utf8",
+      );
+      // A fresh database has no platform-owned role rows (`db:platform-role grant` creates them), so the migration
+      // bound nothing. Create all three and re-apply the migration, as a deploy does once they exist.
+      for (const key of ["platform_ops", "platform_admin", "platform_owner"]) {
+        await admin.query(
+          `INSERT INTO role (organization_id, key, name, category, scope_level, enabled)
+           VALUES (NULL, $1, $1, 'platform_staff'::role_category, 'organization', true)`,
+          [key],
+        );
+      }
+      await admin.query(migration1330);
+      for (const [membership, user, role] of [
+        [MEMBERSHIP, OPERATOR, "platform_ops"],
+        [GRANT_MEMBERSHIP, GRANT_USER, "platform_admin"],
+      ] as const) {
+        await admin.query(
+          "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,$2,$3,'active')",
+          [membership, user, PLATFORM_ORG],
+        );
+        await admin.query(
+          `INSERT INTO membership_role (organization_id, membership_id, role_id)
+           SELECT $1, $2, id FROM role WHERE organization_id IS NULL AND key = $3`,
+          [PLATFORM_ORG, membership, role],
+        );
+      }
+    });
+
+    it("binds both keys to platform_ops and to no other role (the predicate denies admin/owner)", async () => {
+      const rows = await rolePermissionRows();
+      expect(rows.map((r) => `${r.key}:${r.permission_key}`)).toEqual(
+        WRITE_KEYS.map((k) => `platform_ops:${k}`),
+      );
+    });
+
+    it("lets the platform_ops operator list and write, and refuses a platform_admin who holds neither key", async () => {
+      registerEffectivePermissionResolver(createDbEffectivePermissionStore(tenantPool.db));
+      try {
+        const read = await call("GET", "onb-e", "provider-entities");
+        expect(read.statusCode, read.body).toBe(200);
+        // The role HEADER claims platform_ops, so the predicate passes: only the DB grant is under test.
+        const adminOnly = await call("GET", "onb-e", "provider-entities", undefined, {
+          "x-test-user": GRANT_USER,
+        });
+        expect(adminOnly.statusCode, adminOnly.body).toBe(403);
+        const adminWrite = await call(
+          "POST",
+          "onb-e",
+          "provider-entities",
+          { ...PE_BODY, ccn: "999100", npi: "1003000159" },
+          { "x-test-user": GRANT_USER },
+        );
+        expect(adminWrite.statusCode, adminWrite.body).toBe(403);
+        expect(await q("SELECT 1 FROM provider_entity WHERE ccn='999100'")).toEqual([]);
+      } finally {
+        useInMemoryPermissions();
+      }
+    });
+  });
+
+  describe("an Idempotency-Key retry (tenant E)", () => {
+    let ePe = "";
+    const locationBody = () => ({
+      providerEntityId: ePe,
+      name: "Echo Main",
+      addressLine1: "5 Echo Rd",
+      city: "Fresno",
+      state: "CA",
+      postalCode: "93701",
+      timezone: "America/Los_Angeles",
+      reason: REASON,
+    });
+    const locationsOfE = () =>
+      q("SELECT 1 FROM location WHERE provider_entity_id=$1", [ePe]);
+
+    it("replays the first response: ONE location row, ONE audit row, the same body", async () => {
+      const pe = await call("POST", "onb-e", "provider-entities", {
+        ...PE_BODY,
+        ccn: "999111",
+        npi: "1003000134",
+      });
+      expect(pe.statusCode, pe.body).toBe(201);
+      ePe = pe.json().id;
+
+      const key = { "idempotency-key": "live-replay-location" };
+      const first = await call("POST", "onb-e", "locations", locationBody(), key);
+      const replay = await call("POST", "onb-e", "locations", locationBody(), key);
+      expect(first.statusCode, first.body).toBe(201);
+      expect(replay.statusCode, replay.body).toBe(201);
+      expect(replay.json()).toEqual(first.json());
+      expect(await locationsOfE()).toHaveLength(1);
+      expect(await auditRows(ORG_E, "m34.tenant_onboarding.location_created")).toHaveLength(1);
+    });
+
+    it("the same key and body aimed at ANOTHER tenant slug is a 409, never tenant E's response", async () => {
+      const res = await call("POST", "onb-d", "locations", locationBody(), {
+        "idempotency-key": "live-replay-location",
+      });
+      expect(res.statusCode, res.body).toBe(409);
+      expect(errorCode(res)).toBe("IDEMPOTENCY_CONFLICT");
+      expect(res.body).not.toContain("Echo Main");
+      expect(await locationsOfE()).toHaveLength(1);
+    });
+  });
+
+  it("an activation in flight holds a write back (advisory lock): it waits, then sees `active` and answers 409", async () => {
+    // Stand in for the activation sweep: take the EXCLUSIVE onboarding lock and flip the status, uncommitted.
+    const activator = new Client({ connectionString: DB_URL });
+    await activator.connect();
+    try {
+      await activator.query("BEGIN");
+      await activator.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended('tenant-onboarding:' || $1::text, 0))",
+        [ORG_E],
+      );
+      await activator.query("UPDATE tenant_account SET status='active' WHERE organization_id=$1", [
+        ORG_E,
+      ]);
+
+      let settled = false;
+      const attempt = call("POST", "onb-e", "provider-entities", {
+        ...PE_BODY,
+        ccn: "999222",
+        npi: "1003000142",
+      }).then((res) => {
+        settled = true;
+        return res;
+      });
+      await sleep(750);
+      // Without the lock the write would read the still-committed `onboarding` status and succeed within milliseconds.
+      expect(settled, "the write must wait for the activation").toBe(false);
+
+      await activator.query("COMMIT");
+      const res = await attempt;
+      expect(res.statusCode, res.body).toBe(409);
+      expect(errorCode(res)).toBe("TENANT_NOT_ONBOARDING");
+      expect(await q("SELECT 1 FROM provider_entity WHERE ccn='999222'")).toEqual([]);
+      expect(await auditRows(ORG_E, "m34.tenant_onboarding.write_refused")).toHaveLength(1);
+    } finally {
+      await activator.query("ROLLBACK").catch(() => undefined);
+      await activator.end();
+    }
   });
 
   it("a provisioning tenant accepts the write too", async () => {

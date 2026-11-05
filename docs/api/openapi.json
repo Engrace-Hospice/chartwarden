@@ -257184,7 +257184,7 @@
                   "reason": {
                     "minLength": 8,
                     "maxLength": 500,
-                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
                     "type": "string"
                   }
                 }
@@ -257418,7 +257418,7 @@
                   "reason": {
                     "minLength": 8,
                     "maxLength": 500,
-                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
                     "type": "string"
                   }
                 }
@@ -257757,7 +257757,7 @@
                   "reason": {
                     "minLength": 8,
                     "maxLength": 500,
-                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
                     "type": "string"
                   }
                 }
@@ -260314,7 +260314,7 @@
                   "reason": {
                     "minLength": 8,
                     "maxLength": 500,
-                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
                     "type": "string"
                   }
                 }
@@ -260595,7 +260595,7 @@
                   "reason": {
                     "minLength": 8,
                     "maxLength": 500,
-                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
                     "type": "string"
                   }
                 }
@@ -261140,7 +261140,7 @@
                   "reason": {
                     "minLength": 8,
                     "maxLength": 500,
-                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
+                    "description": "Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.",
                     "type": "string"
                   }
                 }

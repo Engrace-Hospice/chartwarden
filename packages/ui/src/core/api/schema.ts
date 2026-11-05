@@ -92077,7 +92077,7 @@ export interface operations {
                     fax?: string;
                     /** @description IANA zone, e.g. America/Los_Angeles. */
                     timezone: string;
-                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
                     reason: string;
                 };
             };
@@ -92140,7 +92140,7 @@ export interface operations {
                     /** @description IANA zone, e.g. America/Los_Angeles. */
                     timezone?: string;
                     status?: "created" | "active" | "suspended" | "closed";
-                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
                     reason: string;
                 };
             };
@@ -92249,7 +92249,7 @@ export interface operations {
                     baaRecordRef?: string;
                     /** Format: date-time */
                     credentialExpiresAt?: string;
-                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
                     reason: string;
                 };
             };
@@ -92748,7 +92748,7 @@ export interface operations {
                     /** @description MMDD */
                     fiscalYearEnd: string;
                     iqiesFacilityId?: string;
-                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
                     reason: string;
                 };
             };
@@ -92819,7 +92819,7 @@ export interface operations {
                         postalCode: string;
                     };
                     status?: "created" | "active" | "suspended" | "closed";
-                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
                     reason: string;
                 };
             };
@@ -93034,7 +93034,7 @@ export interface operations {
                     activeFrom: string;
                     /** Format: date */
                     activeTo?: string;
-                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
+                    /** @description Why the operator is entering this on the tenant's behalf (8-500 characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant. */
                     reason: string;
                 };
             };

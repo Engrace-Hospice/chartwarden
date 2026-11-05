@@ -304,6 +304,37 @@ describe("reason", () => {
   });
 });
 
+describe("reason normalisation", () => {
+  const post = (app: ReturnType<typeof makeServer>, reason: string) =>
+    app.inject({
+      method: "POST",
+      url: `${URL_BASE}/provider-entities`,
+      headers: fresh(),
+      payload: { ...NEW_PE, reason },
+    });
+
+  it("strips control and format characters and collapses whitespace before the reason reaches the service", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    // NUL, a zero-width space, a bidi override, a newline and a tab: nothing a tenant auditor reads can hide in them.
+    const res = await post(app, "Customer\u200b request,\n\t\u202eticket\u0000   CHG-1234");
+    expect(res.statusCode, res.body).toBe(201);
+    expect(calls[0]?.reason).toBe("Customer request, ticket CHG-1234");
+    await app.close();
+  });
+
+  it("applies the 8-500 bounds to the NORMALISED reason", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    // 12 raw characters, 4 after the invisible ones are gone; and "abc  def" collapses to 7.
+    expect((await post(app, "ab\u200b\u200b\u200b\u200b\u200b\u200b\u200b\u200bcd")).statusCode).toBe(422);
+    expect((await post(app, "abc  def")).statusCode).toBe(422);
+    expect((await post(app, "abc  defg")).statusCode).toBe(201);
+    expect(calls.map((c) => c.reason)).toEqual(["abc defg"]);
+    await app.close();
+  });
+});
+
 describe("mac credential version header", () => {
   const body = {
     providerEntityId: PE_ID,
@@ -369,8 +400,10 @@ interface InsertedRow {
 const resolveTenant = async (slug: string) =>
   slug === "tenant-b" ? { organizationId: TARGET_ORG } : null;
 
-function stubDb(tenantStatus: string | null) {
+function stubDb(tenantStatus: string | null, options: { failInserts?: boolean } = {}) {
   const inserts: InsertedRow[] = [];
+  /** Every statement the service issues, in order: `exec:<sql text>` / `select:tenant_account`. */
+  const trace: string[] = [];
   const rowsFor = (table: unknown): unknown[] => {
     if (table === schema.tenantAccount)
       return tenantStatus === null ? [] : [{ status: tenantStatus }];
@@ -378,7 +411,12 @@ function stubDb(tenantStatus: string | null) {
   };
   const select = () => ({
     from: (table: unknown) => ({
-      where: () => ({ limit: async () => rowsFor(table) }),
+      where: () => ({
+        limit: async () => {
+          if (table === schema.tenantAccount) trace.push("select:tenant_account");
+          return rowsFor(table);
+        },
+      }),
     }),
   });
   const tx: Record<string, unknown> = {
@@ -387,14 +425,18 @@ function stubDb(tenantStatus: string | null) {
     transaction: async (fn: (t: unknown) => Promise<unknown>) => fn(tx),
     insert: (table: unknown) => ({
       values: async (values: Record<string, unknown>) => {
+        if (options.failInserts) throw new Error("audit insert refused");
         inserts.push({ table, values });
       },
     }),
-    // `set_config('app.org_id' | 'app.user_id', …)`
-    execute: async () => undefined,
+    // `set_config('app.org_id' | 'app.user_id', …)` and the onboarding advisory lock
+    execute: async (query: { queryChunks?: unknown[] }) => {
+      trace.push(`exec:${JSON.stringify(query.queryChunks ?? query)}`);
+      return undefined;
+    },
   };
   const db = { select, transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx) };
-  return { db: db as unknown as DbClient, inserts };
+  return { db: db as unknown as DbClient, inserts, trace };
 }
 
 const OPERATOR: OnboardingOperator = {
@@ -427,9 +469,12 @@ describe("service: the status lock and the audit row", () => {
         undefined,
       );
       if (writable) {
-        // reaches the provider-entity ownership check (the stub has none): a 404, never the status refusal
+        // reaches the provider-entity ownership check (the stub has none): a 404, never the status refusal. The failed
+        // attempt is audited as `write_failed`, never as the status refusal.
         await expect(attempt, status).rejects.toMatchObject({ statusCode: 404 });
-        expect(inserts, status).toEqual([]);
+        expect(inserts.map((i) => i.values.eventType), status).toEqual([
+          ONBOARDING_DATA_AUDIT_EVENTS.writeFailed,
+        ]);
       } else {
         await expect(attempt, status).rejects.toMatchObject({
           statusCode: 409,
@@ -452,6 +497,67 @@ describe("service: the status lock and the audit row", () => {
         });
       }
     }
+  });
+
+  it("takes the SHARED onboarding lock before it reads the tenant status", async () => {
+    const { db, trace } = stubDb("onboarding");
+    const service = buildDrizzleOnboardingDataService({ db, resolveTenant });
+    await service.createLocation(OPERATOR, "tenant-b", {}, "ticket CHG-1").catch(() => undefined);
+    const lock = trace.findIndex((t) => t.includes("pg_advisory_xact_lock_shared"));
+    const status = trace.indexOf("select:tenant_account");
+    expect(lock, trace.join("\n")).toBeGreaterThanOrEqual(0);
+    expect(status).toBeGreaterThan(lock);
+    // keyed on the tenant, so it shares a key space with the activation path and with no other tenant
+    expect(trace[lock]).toContain("hashtextextended");
+    expect(trace[lock]).toContain(`tenant-onboarding:${TARGET_ORG}`);
+  });
+
+  it("audits ANY failed attempt as a denied write_failed row (operator, tenant, reason, route, error code; no body values)", async () => {
+    const { db, inserts } = stubDb("onboarding");
+    const service = buildDrizzleOnboardingDataService({ db, resolveTenant });
+    const operator: OnboardingOperator = {
+      ...OPERATOR,
+      request: {
+        ...OPERATOR.request,
+        route: "POST /api/v1/platform/tenants/:orgSlug/locations",
+      },
+    };
+    const secretLooking = "body-value-that-must-not-be-audited";
+    await expect(
+      service.createLocation(operator, "tenant-b", { name: secretLooking }, "ticket CHG-1"),
+    ).rejects.toMatchObject({ statusCode: 422 });
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0]?.values).toMatchObject({
+      eventType: ONBOARDING_DATA_AUDIT_EVENTS.writeFailed,
+      outcome: "denied",
+      organizationId: TARGET_ORG,
+      actorUserId: OPERATOR.userId,
+      actorRole: "platform_ops",
+      context: expect.objectContaining({
+        reason: "ticket CHG-1",
+        targetOrganizationId: TARGET_ORG,
+        operatorMembershipId: MEMBERSHIP,
+        route: "POST /api/v1/platform/tenants/:orgSlug/locations",
+        attemptedEvent: ONBOARDING_DATA_AUDIT_EVENTS.locationCreated,
+        errorCode: expect.any(String),
+      }),
+    });
+    expect(JSON.stringify(inserts[0]?.values)).not.toContain(secretLooking);
+  });
+
+  it("when the failed-attempt row cannot be written, logs it and still throws the ORIGINAL error", async () => {
+    const { db } = stubDb("onboarding", { failInserts: true });
+    const logged: unknown[] = [];
+    const service = buildDrizzleOnboardingDataService({
+      db,
+      resolveTenant,
+      logAuditError: (cause, context) => logged.push({ cause, context }),
+    });
+    await expect(
+      service.createLocation(OPERATOR, "tenant-b", {}, "ticket CHG-1"),
+    ).rejects.toMatchObject({ statusCode: 422 });
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({ context: { organizationId: TARGET_ORG } });
   });
 
   it("answers 404 for an organization with no tenant account, and for an unknown slug", async () => {
