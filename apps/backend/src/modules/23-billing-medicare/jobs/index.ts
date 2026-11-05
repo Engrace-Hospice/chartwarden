@@ -74,6 +74,7 @@ export {
   type MacJurisdictionOrgSource,
   type OrgMacJurisdictionReader,
   buildDrizzleOrgMacJurisdictionReader,
+  buildMacFeedConfiguredReader,
   buildMacJurisdictionLister,
 } from "./mac-jurisdictions";
 export {

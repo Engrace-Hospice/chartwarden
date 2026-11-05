@@ -58,3 +58,13 @@ export function buildDrizzleOrgMacJurisdictionReader(db: DbClient): OrgMacJurisd
       return rows.map((r) => r.macJurisdiction);
     });
 }
+
+/**
+ * The onboarding `mac_configured` fact (M34's sweep reads it through the composition root, never the table): the org
+ * has at least one MAC submitter credential, i.e. at least one configured MAC jurisdiction.
+ */
+export function buildMacFeedConfiguredReader(
+  readOrg: OrgMacJurisdictionReader,
+): (organizationId: string) => Promise<boolean> {
+  return async (organizationId) => (await readOrg(organizationId)).length > 0;
+}

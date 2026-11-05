@@ -1,0 +1,490 @@
+// The wizard's rules end to end over the in-memory store: strict sequence, owner role, attestation evidence, re-open,
+// skip, compliance-officer assignment, org profile, and the two-party go-live. No database; the live suite repeats the
+// load-bearing ones on the real roles.
+import { ChartWardenError } from "@chartwarden/types";
+import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PlatformActor, StepTemplate, TenantActor, TenantRef } from "../onboarding/model";
+import { createOnboardingWizard } from "../onboarding/wizard-service";
+import {
+  type MemoryWizardState,
+  createMemoryOrgProfile,
+  createMemoryWizardRunner,
+  createMemoryWizardState,
+  memoryTask,
+} from "../onboarding/wizard-store-memory";
+
+const ORG = "11111111-1111-4111-8111-111111111111";
+const TENANT = "22222222-2222-4222-8222-222222222222";
+const OPS: PlatformActor = { kind: "platform", membershipId: "ops-m", userId: "ops-u" };
+const ADMIN: TenantActor = {
+  kind: "tenant",
+  membershipId: "admin-m",
+  userId: "admin-u",
+  roles: ["org_admin"],
+};
+const OFFICER: TenantActor = {
+  kind: "tenant",
+  membershipId: "co-m",
+  userId: "co-u",
+  roles: ["compliance_officer"],
+};
+const NOW = new Date("2026-11-05T12:00:00Z");
+
+const tpl = (key: string, sequence: number, over: Partial<StepTemplate> = {}): StepTemplate => ({
+  key,
+  title: key,
+  description: "",
+  sequence,
+  owner: "platform_ops",
+  completionMode: "attestation",
+  optional: false,
+  canonical: true,
+  ...over,
+});
+
+const TEMPLATES: StepTemplate[] = [
+  tpl("organisation", 1),
+  tpl("billing", 2, { owner: "either" }),
+  tpl("locations", 3, { owner: "org_admin", completionMode: "either" }),
+  tpl("baa_auto", 4, { completionMode: "auto" }),
+  tpl("sample", 5, { optional: true }),
+  tpl("go_live_checklist_complete", 6, { owner: "compliance_officer" }),
+];
+
+let state: MemoryWizardState;
+let advance: Mock<(tenant: { tenantAccountId: string; organizationId: string }) => Promise<void>>;
+const taskId = (key: string): string =>
+  (state.tasks.find((t) => t.templateKey === key) as { id: string }).id;
+const statusOf = (key: string): string =>
+  (state.tasks.find((t) => t.templateKey === key) as { status: string }).status;
+const tenant = (): TenantRef => state.tenants[0] as TenantRef;
+
+function wizard() {
+  return createOnboardingWizard({
+    runner: createMemoryWizardRunner(state),
+    orgProfile: createMemoryOrgProfile(state),
+    advance,
+    now: () => NOW,
+  });
+}
+
+const code = async (p: Promise<unknown>): Promise<string> => {
+  try {
+    await p;
+  } catch (e) {
+    expect(e).toBeInstanceOf(ChartWardenError);
+    return (e as ChartWardenError).code;
+  }
+  throw new Error("expected a refusal");
+};
+
+const evidence = {
+  evidenceNote: "signed order form on file",
+  evidenceRef: "DOC-1",
+  reason: "customer confirmed by phone",
+};
+
+function settle(...keys: string[]): void {
+  for (const key of keys) {
+    const index = state.tasks.findIndex((t) => t.templateKey === key);
+    state.tasks[index] = {
+      ...(state.tasks[index] as (typeof state.tasks)[number]),
+      status: "done",
+    };
+  }
+}
+
+beforeEach(() => {
+  advance = vi.fn(async () => undefined);
+  const ref: TenantRef = {
+    tenantAccountId: TENANT,
+    organizationId: ORG,
+    orgSlug: "acme",
+    status: "onboarding",
+    legalBusinessName: "Acme Hospice",
+    complianceOfficerMembershipId: null,
+  };
+  state = createMemoryWizardState({
+    tenants: [ref],
+    templates: TEMPLATES,
+    tasks: TEMPLATES.map((t) => memoryTask(TENANT, t.key)),
+    activeMembers: new Set(["co-m", "admin-m"]),
+    baa: new Map([[TENANT, { baaStatus: "executed", expiresOn: "2028-01-01" }]]),
+    profiles: new Map([[ORG, { displayName: "Acme", orgTimezone: "America/New_York" }]]),
+  });
+});
+
+describe("strict sequence", () => {
+  it("refuses to attest, start or skip a later step while an earlier one is open (platform and tenant)", async () => {
+    expect(await code(wizard().attestPlatform("acme", taskId("billing"), OPS, evidence))).toBe(
+      "ONBOARDING_STEP_OUT_OF_ORDER",
+    );
+    expect(await code(wizard().startTask(ADMIN, ORG, taskId("billing")))).toBe(
+      "ONBOARDING_STEP_OUT_OF_ORDER",
+    );
+    expect(
+      await code(wizard().skipPlatform("acme", taskId("billing"), OPS, "not needed here")),
+    ).toBe("ONBOARDING_STEP_OUT_OF_ORDER");
+    expect(statusOf("billing")).toBe("pending");
+  });
+
+  it("unlocks the next step once the previous is attested", async () => {
+    await wizard().attestPlatform("acme", taskId("organisation"), OPS, evidence);
+    const step = await wizard().attestPlatform("acme", taskId("billing"), OPS, evidence);
+    expect(step).toMatchObject({ key: "billing", status: "done", locked: false });
+  });
+
+  it("an unsettled optional step does not lock the next one", async () => {
+    settle("organisation", "billing", "locations", "baa_auto");
+    const view = await wizard().getPlatform("acme");
+    expect(view.steps.find((s) => s.key === "go_live_checklist_complete")?.locked).toBe(false);
+    expect(view.currentStepKey).toBe("go_live_checklist_complete");
+  });
+});
+
+describe("attestation", () => {
+  it("stores the evidence, the attester and the time on the task, and asks the sweep to run", async () => {
+    const step = await wizard().attestPlatform("acme", taskId("organisation"), OPS, {
+      ...evidence,
+      evidenceNote: "  signed order form on file  ",
+    });
+    expect(step).toMatchObject({
+      status: "done",
+      evidence: { note: "signed order form on file", ref: "DOC-1" },
+      attestedBy: { membershipId: "ops-m", actorKind: "platform_ops", at: NOW.toISOString() },
+      completedAt: NOW.toISOString(),
+    });
+    expect(advance).toHaveBeenCalledWith({ tenantAccountId: TENANT, organizationId: ORG });
+  });
+
+  it("requires evidence, and a reason from a platform operator", async () => {
+    expect(
+      await code(
+        wizard().attestPlatform("acme", taskId("organisation"), OPS, { evidenceNote: "  " }),
+      ),
+    ).toBe("ONBOARDING_EVIDENCE_REQUIRED");
+    expect(
+      await code(
+        wizard().attestPlatform("acme", taskId("organisation"), OPS, { evidenceNote: "ok" }),
+      ),
+    ).toBe("ONBOARDING_REASON_REQUIRED");
+    expect(statusOf("organisation")).toBe("pending");
+  });
+
+  it("refuses to attest an auto step, the go-live step, or an already settled step", async () => {
+    settle("organisation", "billing", "locations");
+    expect(await code(wizard().attestPlatform("acme", taskId("baa_auto"), OPS, evidence))).toBe(
+      "ONBOARDING_STEP_NOT_ATTESTABLE",
+    );
+    expect(
+      await code(
+        wizard().attestPlatform("acme", taskId("go_live_checklist_complete"), OPS, evidence),
+      ),
+    ).toBe("ONBOARDING_STEP_NOT_ATTESTABLE");
+    expect(await code(wizard().attestPlatform("acme", taskId("organisation"), OPS, evidence))).toBe(
+      "ONBOARDING_STEP_ALREADY_SETTLED",
+    );
+  });
+
+  it("a tenant actor may only attest a step it owns", async () => {
+    // organisation is platform_ops-owned; the org_admin cannot touch it.
+    expect(
+      await code(wizard().attestTask(ADMIN, ORG, taskId("organisation"), { evidenceNote: "done" })),
+    ).toBe("ONBOARDING_STEP_OWNER_MISMATCH");
+    settle("organisation");
+    // billing is `either`: the org_admin may, a compliance officer may not.
+    expect(
+      await code(wizard().attestTask(OFFICER, ORG, taskId("billing"), { evidenceNote: "done" })),
+    ).toBe("ONBOARDING_STEP_OWNER_MISMATCH");
+    const step = await wizard().attestTask(ADMIN, ORG, taskId("billing"), {
+      evidenceNote: "chose Stedi",
+      evidenceRef: "ticket-9",
+    });
+    expect(step.attestedBy?.actorKind).toBe("tenant");
+    expect(step.evidence).toEqual({ note: "chose Stedi", ref: "ticket-9" });
+  });
+
+  it("refuses every change once the tenant is no longer onboarding", async () => {
+    state.tenants = [{ ...tenant(), status: "active" }];
+    expect(await code(wizard().attestPlatform("acme", taskId("organisation"), OPS, evidence))).toBe(
+      "TENANT_NOT_ONBOARDING",
+    );
+    expect(
+      await code(wizard().reopenPlatform("acme", taskId("organisation"), OPS, "need to fix this")),
+    ).toBe("TENANT_NOT_ONBOARDING");
+  });
+
+  it("a stale write loses cleanly (compare-and-set)", async () => {
+    const base = createMemoryWizardRunner(state);
+    const racing = createOnboardingWizard({
+      runner: {
+        ...base,
+        // Another actor starts the step after this call has read it but before it writes.
+        inPlatform: (reason, fn) =>
+          base.inPlatform(reason, (store) =>
+            fn({
+              ...store,
+              async listTasks(id) {
+                const rows = await store.listTasks(id);
+                const i = state.tasks.findIndex((t) => t.templateKey === "organisation");
+                state.tasks[i] = {
+                  ...(state.tasks[i] as (typeof state.tasks)[number]),
+                  status: "in_progress",
+                };
+                return rows;
+              },
+            }),
+          ),
+      },
+      orgProfile: createMemoryOrgProfile(state),
+      now: () => NOW,
+    });
+    expect(await code(racing.attestPlatform("acme", taskId("organisation"), OPS, evidence))).toBe(
+      "ONBOARDING_TASK_CHANGED",
+    );
+    expect(statusOf("organisation")).toBe("in_progress");
+  });
+});
+
+describe("skip", () => {
+  it("skips with a recorded rationale and counts as settled for the next step", async () => {
+    const step = await wizard().skipPlatform(
+      "acme",
+      taskId("organisation"),
+      OPS,
+      "customer migrating from another system",
+    );
+    expect(step).toMatchObject({
+      status: "skipped",
+      skipRationale: "customer migrating from another system",
+    });
+    expect((await wizard().attestPlatform("acme", taskId("billing"), OPS, evidence)).status).toBe(
+      "done",
+    );
+  });
+
+  it("refuses to skip go-live", async () => {
+    settle("organisation", "billing", "locations", "baa_auto");
+    expect(
+      await code(
+        wizard().skipPlatform(
+          "acme",
+          taskId("go_live_checklist_complete"),
+          OPS,
+          "skip the go-live",
+        ),
+      ),
+    ).toBe("ONBOARDING_STEP_NOT_SKIPPABLE");
+  });
+});
+
+describe("re-open", () => {
+  it("re-opens a done step, keeps its history and leaves later steps untouched", async () => {
+    await wizard().attestPlatform("acme", taskId("organisation"), OPS, evidence);
+    await wizard().attestPlatform("acme", taskId("billing"), OPS, evidence);
+
+    const step = await wizard().reopenPlatform(
+      "acme",
+      taskId("organisation"),
+      OPS,
+      "wrong legal name recorded",
+    );
+
+    expect(step).toMatchObject({
+      status: "in_progress",
+      evidence: null,
+      attestedBy: null,
+      completedAt: null,
+    });
+    expect(statusOf("billing")).toBe("done");
+    const bag = state.tasks.find((t) => t.templateKey === "organisation")?.completionEvidence as {
+      reopened: { previous: { evidenceNote: string }; reason: string }[];
+    };
+    expect(bag.reopened[0]).toMatchObject({
+      reason: "wrong legal name recorded",
+      previous: { evidenceNote: "signed order form on file" },
+    });
+  });
+
+  it("re-locks a later step that is not yet settled", async () => {
+    await wizard().attestPlatform("acme", taskId("organisation"), OPS, evidence);
+    await wizard().reopenPlatform("acme", taskId("organisation"), OPS, "wrong legal name recorded");
+    expect(await code(wizard().attestPlatform("acme", taskId("billing"), OPS, evidence))).toBe(
+      "ONBOARDING_STEP_OUT_OF_ORDER",
+    );
+  });
+
+  it("refuses an open step, and a re-open while a go-live attestation is pending", async () => {
+    expect(
+      await code(wizard().reopenPlatform("acme", taskId("organisation"), OPS, "reason given here")),
+    ).toBe("ONBOARDING_STEP_NOT_SETTLED");
+    settle("organisation", "billing", "locations", "baa_auto");
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    expect(
+      await code(wizard().reopenPlatform("acme", taskId("organisation"), OPS, "reason given here")),
+    ).toBe("GO_LIVE_PENDING");
+  });
+
+  it("a tenant owner may re-open its own step, with an optional reason that must be real when given", async () => {
+    settle("organisation");
+    await wizard().attestTask(ADMIN, ORG, taskId("billing"), { evidenceNote: "chose Stedi" });
+    expect(await code(wizard().reopenTask(ADMIN, ORG, taskId("billing"), "no"))).toBe(
+      "ONBOARDING_REASON_REQUIRED",
+    );
+    expect((await wizard().reopenTask(ADMIN, ORG, taskId("billing"), undefined)).status).toBe(
+      "in_progress",
+    );
+  });
+});
+
+describe("compliance officer and org profile", () => {
+  it("assigns an active member and refuses a stranger", async () => {
+    expect(await wizard().setComplianceOfficerPlatform("acme", OPS, "co-m")).toEqual({
+      complianceOfficerMembershipId: "co-m",
+    });
+    expect(tenant().complianceOfficerMembershipId).toBe("co-m");
+    expect(await code(wizard().setComplianceOfficer(ADMIN, ORG, "ghost-m"))).toBe(
+      "COMPLIANCE_OFFICER_NOT_A_MEMBER",
+    );
+    expect(advance).toHaveBeenCalled();
+  });
+
+  it("validates the time zone and display name, and only edits during onboarding", async () => {
+    expect(
+      await wizard().setOrgProfile(ADMIN, ORG, {
+        orgTimezone: "America/Chicago",
+        displayName: "  Acme Hospice  ",
+      }),
+    ).toEqual({
+      orgTimezone: "America/Chicago",
+      displayName: "Acme Hospice",
+    });
+    expect(await code(wizard().setOrgProfile(ADMIN, ORG, { orgTimezone: "Mars/Olympus" }))).toBe(
+      "INVALID_ORG_TIMEZONE",
+    );
+    expect(await code(wizard().setOrgProfile(ADMIN, ORG, { orgTimezone: "EST" }))).toBe(
+      "INVALID_ORG_TIMEZONE",
+    );
+    expect(await code(wizard().setOrgProfile(ADMIN, ORG, { displayName: "   " }))).toBe(
+      "INVALID_DISPLAY_NAME",
+    );
+    expect(await code(wizard().setOrgProfile(ADMIN, ORG, {}))).toBe("ORG_PROFILE_EMPTY");
+    state.tenants = [{ ...tenant(), status: "active" }];
+    expect(await code(wizard().setOrgProfilePlatform("acme", OPS, { orgTimezone: "UTC" }))).toBe(
+      "TENANT_NOT_ONBOARDING",
+    );
+  });
+});
+
+describe("two-party go-live", () => {
+  beforeEach(() => settle("organisation", "billing", "locations", "baa_auto"));
+
+  it("attest then approve takes the tenant active, recording both actors", async () => {
+    const attested = await wizard().attestGoLive(OFFICER, ORG, "all checks reviewed");
+    expect(attested.goLive).toMatchObject({
+      state: "awaiting_approval",
+      attestation: { status: "pending", attestedByMembershipId: "co-m" },
+    });
+    expect(statusOf("go_live_checklist_complete")).toBe("in_progress");
+
+    const live = await wizard().approveGoLive("acme", OPS, "reviewed the evidence and the BAA");
+
+    expect(live.goLive.state).toBe("live");
+    expect(live.goLive.attestation).toMatchObject({
+      status: "approved",
+      approvedByMembershipId: "ops-m",
+      approvalReason: "reviewed the evidence and the BAA",
+    });
+    expect(tenant().status).toBe("active");
+    expect(statusOf("go_live_checklist_complete")).toBe("done");
+    expect(state.activations).toHaveLength(1);
+  });
+
+  it("approve without an attestation is refused and the tenant stays in onboarding", async () => {
+    expect(await code(wizard().approveGoLive("acme", OPS, "reviewed everything twice"))).toBe(
+      "GO_LIVE_NOT_ATTESTED",
+    );
+    expect(tenant().status).toBe("onboarding");
+  });
+
+  it("only a compliance officer attests, and only the assigned one when one is assigned", async () => {
+    expect(await code(wizard().attestGoLive(ADMIN, ORG, undefined))).toBe(
+      "GO_LIVE_NOT_COMPLIANCE_OFFICER",
+    );
+    state.tenants = [{ ...tenant(), complianceOfficerMembershipId: "someone-else" }];
+    expect(await code(wizard().attestGoLive(OFFICER, ORG, undefined))).toBe(
+      "GO_LIVE_NOT_ASSIGNED_OFFICER",
+    );
+  });
+
+  it("attestation needs the earlier steps settled, and a second attestation is refused", async () => {
+    const index = state.tasks.findIndex((t) => t.templateKey === "baa_auto");
+    state.tasks[index] = {
+      ...(state.tasks[index] as (typeof state.tasks)[number]),
+      status: "pending",
+    };
+    expect(await code(wizard().attestGoLive(OFFICER, ORG, undefined))).toBe(
+      "ONBOARDING_STEP_OUT_OF_ORDER",
+    );
+    settle("baa_auto");
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    expect(await code(wizard().attestGoLive(OFFICER, ORG, undefined))).toBe(
+      "GO_LIVE_ALREADY_ATTESTED",
+    );
+  });
+
+  it("approve re-checks the guards at approval time and lists what failed", async () => {
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    state.baa = new Map([[TENANT, { baaStatus: "executed", expiresOn: "2026-12-01" }]]); // expires within 90 days
+    const index = state.tasks.findIndex((t) => t.templateKey === "billing");
+    state.tasks[index] = {
+      ...(state.tasks[index] as (typeof state.tasks)[number]),
+      status: "in_progress",
+    }; // reopened after attestation
+    try {
+      await wizard().approveGoLive("acme", OPS, "reviewed the evidence and the BAA");
+      expect.unreachable("approval should have been refused");
+    } catch (e) {
+      const err = e as ChartWardenError;
+      expect(err.code).toBe("ACTIVATION_GUARDS_FAILED");
+      expect(err.details?.map((d) => `${d.field}:${d.code}`)).toEqual([
+        "guard:canonicalTasksComplete",
+        "templateKey:billing",
+        "guard:baaExpiryClearsNinetyDays",
+      ]);
+    }
+    expect(tenant().status).toBe("onboarding");
+    expect(state.activations).toHaveLength(0);
+  });
+
+  it("a platform operator can revoke a pending attestation, after which the officer may attest again", async () => {
+    await wizard().attestGoLive(OFFICER, ORG, undefined);
+    const revoked = await wizard().revokeGoLive("acme", OPS, "BAA addendum is being renegotiated");
+    expect(revoked.goLive).toMatchObject({
+      state: "awaiting_attestation",
+      attestation: { status: "revoked", revokedByMembershipId: "ops-m" },
+    });
+    expect(statusOf("go_live_checklist_complete")).toBe("pending");
+    expect(await code(wizard().revokeGoLive("acme", OPS, "nothing is pending now"))).toBe(
+      "GO_LIVE_NOT_ATTESTED",
+    );
+    expect((await wizard().attestGoLive(OFFICER, ORG, undefined)).goLive.state).toBe(
+      "awaiting_approval",
+    );
+  });
+});
+
+describe("read model", () => {
+  it("returns the ordered steps with lock state, the current step and the go-live state", async () => {
+    await wizard().attestPlatform("acme", taskId("organisation"), OPS, evidence);
+    const view = await wizard().getTenant(ORG);
+    expect(view.steps.map((s) => s.key)).toEqual(TEMPLATES.map((t) => t.key));
+    expect(view.currentStepKey).toBe("billing");
+    expect(view.steps.find((s) => s.key === "locations")).toMatchObject({
+      locked: true,
+      lockedBy: "billing",
+    });
+    expect(view.goLive.state).toBe("not_ready");
+    expect(view.orgProfile).toEqual({ displayName: "Acme", orgTimezone: "America/New_York" });
+  });
+});

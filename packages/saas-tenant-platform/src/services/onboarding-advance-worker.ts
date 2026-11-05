@@ -3,14 +3,14 @@
 // The IO-bearing companion of the strictly-observable §2.3 onboarding machine (../onboarding/machine.ts).
 // The machine EMITS (never mutates); this worker CONSUMES the emits and effects them: it (a) drives the
 // `onboarding_task` rows through the OnboardingRepository, and (b) fires the `m34.tenant.onboarding_*`
-// outbox events + M36 alerts (§4.8 `tenant.onboarding_step_blocked` / `_overdue` / `tenant.onboarding_
-// completed`). When every canonical step settles it asks the lifecycle service to run `onboarding → active`.
+// outbox events + M36 alerts (§4.8 `tenant.onboarding_step_blocked` / `_overdue`). It NEVER activates a tenant:
+// going live is the two-party approval (the compliance officer attests, a platform operator approves).
 //
 // PURE-OVER-PORTS (the packages/mdm/src/jobs/processors.ts precedent): the worker takes an injected
 // {@link OnboardingAdvancePorts} bag — the onboarding repo (M34-owned, allowed), a clock, the
 // context-gathering reads (M2 org/provider-entity/location/membership, M27 external feed, M40 BAA — all
 // reached cross-module THROUGH SEAMS / outbox by the adapter that binds these ports at boot, NOT imported
-// here), the outbox publisher, the M36 alert router, and the lifecycle-activation hook. No clock/RNG/DB
+// here), the outbox publisher and the M36 alert router. No clock/RNG/DB
 // import in this file, so a run's emitted effects are deterministic and assertable with in-memory ports.
 //
 // withOrgContext / withPlatformContext (M1 @chartwarden/tenancy) RLS-scoping is the ADAPTER's job: the boot
@@ -19,6 +19,7 @@
 // orchestrator names WHAT to read/write; the adapter owns the RLS envelope.
 import type { OnboardingContext } from "../onboarding/context";
 import {
+  type OnboardingCompletionMode,
   type OnboardingEmit,
   type OnboardingStepState,
   type OnboardingTaskStatus,
@@ -50,14 +51,6 @@ export type OnboardingOutboxPayload =
       readonly templateKey: string;
       readonly dueAt: string;
       readonly hoursOverdue: number;
-    }
-  | {
-      readonly event: "m34.tenant.onboarding_completed";
-      readonly tenantAccountId: string;
-      readonly orgId: string;
-      readonly activatedAt: string;
-      readonly tasksCompleted: number;
-      readonly tasksSkipped: number;
     };
 
 /** The ports the advance worker binds (the boot adapter resolves each over the M34 repo + seams/outbox). */
@@ -78,30 +71,11 @@ export interface OnboardingAdvancePorts {
   publishOutbox(payload: OnboardingOutboxPayload): Promise<void>;
   /** Route an M36 alert (§4.8). Audience + PHI-sanitization are the adapter's job; the worker names the key. */
   routeAlert(input: {
-    alertKey:
-      | "tenant.onboarding_step_blocked"
-      | "tenant.onboarding_overdue"
-      | "tenant.onboarding_completed";
+    alertKey: "tenant.onboarding_step_blocked" | "tenant.onboarding_overdue";
     tenantAccountId: string;
     templateKey?: string;
   }): Promise<void>;
-  /**
-   * Run the `onboarding → active` lifecycle transition once every canonical step has settled (the §2.3
-   * `[*]` terminal). The adapter invokes the lifecycle-transition service (../services/lifecycle-transition
-   * `transitionTenant({type:'activate', …})`) inside the tenant_account's optimistic-locked tx — which
-   * itself re-checks the BAA-executed + >90d-to-expiry guards (§2.4.12) before flipping to `active`.
-   * Resolves `activated` (the lifecycle service ran the transition and alerted ops itself), `pending` (a guard
-   * refused or the call failed; tomorrow's pass retries) or `unbound` (no automatic activation; ops activates).
-   */
-  activateTenant(input: {
-    tenantAccountId: string;
-    orgId: string;
-    tasksCompleted: number;
-    tasksSkipped: number;
-  }): Promise<ActivationOutcome>;
 }
-
-export type ActivationOutcome = "activated" | "pending" | "unbound";
 
 /** What one advance pass did (for the worker's caller / the §2.3 funnel telemetry). */
 export interface OnboardingAdvanceReport {
@@ -111,7 +85,6 @@ export interface OnboardingAdvanceReport {
   readonly completed: readonly string[];
   readonly blocked: readonly string[];
   readonly overdue: readonly string[];
-  readonly onboardingCompleted: boolean;
 }
 
 /** Map a live `onboarding_task` row (+ its template) into the machine's observed {@link OnboardingStepState}. */
@@ -125,6 +98,8 @@ function toStepState(
   template: {
     preconditionDsl: string | null;
     isCanonical: boolean;
+    completionMode: string;
+    isOptional: boolean;
   },
   blockedSince: Date | null,
 ): OnboardingStepState {
@@ -132,6 +107,8 @@ function toStepState(
     templateKey: task.templateKey,
     preconditionDsl: template.preconditionDsl,
     isCanonical: template.isCanonical,
+    completionMode: template.completionMode as OnboardingCompletionMode,
+    isOptional: template.isOptional,
     status: task.status,
     dueAt: task.dueAt,
     blockedSince,
@@ -143,8 +120,7 @@ function toStepState(
  * (`onboarding_task_template`, D3) + the tenant's `onboarding_task` rows, builds the machine config, gathers
  * the {@link OnboardingContext} (cross-module reads through the injected ports), runs the PURE
  * {@link advanceOnboarding} interpreter, then EFFECTS its emits: transition the task rows via the repo,
- * publish the `m34.tenant.onboarding_*` outbox events, route the §4.8 M36 alerts, and — when every canonical
- * step has settled — ask the lifecycle service to run `onboarding → active`. Idempotent: re-running with no
+ * publish the `m34.tenant.onboarding_*` outbox events and route the §4.8 M36 alerts. Idempotent: re-running with no
  * new facts produces no new row writes (a `step_completed` only writes a row not already `done`).
  *
  * The worker is the live consumer of the strictly-observable machine; the DB stays the source of truth
@@ -169,6 +145,8 @@ export async function runOnboardingAdvance(
       preconditionDsl: t.preconditionDsl,
       isCanonical: t.isCanonical,
       canonicalOrder: t.canonicalOrder,
+      completionMode: t.completionMode as OnboardingCompletionMode,
+      isOptional: t.isOptional,
     })),
   );
 
@@ -188,7 +166,6 @@ export async function runOnboardingAdvance(
   const completed: string[] = [];
   const blocked: string[] = [];
   const overdue: string[] = [];
-  let onboardingCompleted = false;
 
   for (const emit of result.emits) {
     await applyEmit(emit, {
@@ -198,9 +175,6 @@ export async function runOnboardingAdvance(
       taskByKey,
       ports,
       sink: { completed, blocked, overdue },
-      onCompleted: () => {
-        onboardingCompleted = true;
-      },
     });
   }
 
@@ -211,7 +185,6 @@ export async function runOnboardingAdvance(
     completed,
     blocked,
     overdue,
-    onboardingCompleted,
   };
 }
 
@@ -226,7 +199,6 @@ async function applyEmit(
     taskByKey: Map<string, { id: string; templateKey: string; status: OnboardingTaskStatus }>;
     ports: OnboardingAdvancePorts;
     sink: { completed: string[]; blocked: string[]; overdue: string[] };
-    onCompleted: () => void;
   },
 ): Promise<void> {
   const { ports, taskByKey, now } = cx;
@@ -293,36 +265,6 @@ async function applyEmit(
         templateKey: emit.templateKey,
       });
       cx.sink.overdue.push(emit.templateKey);
-      return;
-    }
-    case "onboarding_completed": {
-      // The §2.3 `[*]` terminal: hand off to the lifecycle service to run `onboarding → active`
-      // (which re-checks the BAA guards, §2.4.12). The adapter wraps this in the optimistic-locked tx.
-      // "Completed" is announced only once the tenant is active (or when ops must activate by hand): a refused
-      // guard would otherwise repeat the event and alert on every daily pass.
-      const outcome = await ports.activateTenant({
-        tenantAccountId: cx.tenantAccountId,
-        orgId: cx.orgId,
-        tasksCompleted: emit.canonicalCompleted,
-        tasksSkipped: emit.canonicalSkipped,
-      });
-      if (outcome === "pending") return;
-      await ports.publishOutbox({
-        event: "m34.tenant.onboarding_completed",
-        tenantAccountId: cx.tenantAccountId,
-        orgId: cx.orgId,
-        activatedAt: now.toISOString(),
-        tasksCompleted: emit.canonicalCompleted,
-        tasksSkipped: emit.canonicalSkipped,
-      });
-      // An activated tenant already raised `tenant.onboarding_completed` from the lifecycle transition.
-      if (outcome === "unbound") {
-        await ports.routeAlert({
-          alertKey: "tenant.onboarding_completed",
-          tenantAccountId: cx.tenantAccountId,
-        });
-      }
-      cx.onCompleted();
       return;
     }
   }

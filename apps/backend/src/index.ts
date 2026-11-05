@@ -185,6 +185,7 @@ import {
   registerPartitionMetrics,
 } from "./bootstrap/metrics";
 import { createOpsNoticeClaims } from "./bootstrap/ops-notice-claims";
+import { buildDrizzleOrgProfilePort } from "./bootstrap/org-profile";
 import {
   buildMembershipUserResolver,
   buildOrgAdminCountReader,
@@ -1113,6 +1114,7 @@ import {
   buildM23WorkQueueEnqueuePort,
   buildM23WorkRequestConsumer,
   buildM23WorkerDeps,
+  buildMacFeedConfiguredReader,
   buildMacJurisdictionLister,
   buildMacSecretCipherFromEnv,
   buildNoticeWindowPort,
@@ -1544,7 +1546,10 @@ import {
   createDrizzlePlatformOpsService,
   createDrizzleSaasTenantPlatformEraseStore,
   createDrizzleTenantAccountFlagsService,
+  createDrizzleWizardRunner,
   createM34ProvisionGateway,
+  createOnboardingAdvancer,
+  createOnboardingWizard,
   describeM34SweepSchedules,
   enableM34JobCapability,
   getTenantKeyProvider,
@@ -2909,6 +2914,34 @@ export function wireModuleSeams(
   // seam), so test re-boots that call wireModuleSeams() repeatedly stay safe.
   registerAbacRegistry();
   // Phase-1 producers append here as they land.
+}
+
+/**
+ * The onboarding facts M34 may not read from tables it does not own (arch:tables): M1/M2 spine facts and the M23 MAC
+ * credential, handed to M34's sweep and wizard as ports. Each reader opens the org's own `withOrgContext`.
+ */
+function buildM34OnboardingFacts(db: DbClient) {
+  return {
+    orgSeed: buildOrgSeedFactsReader(db),
+    orgAdminCount: buildOrgAdminCountReader(db),
+    macFeedConfigured: buildMacFeedConfiguredReader(buildDrizzleOrgMacJurisdictionReader(db)),
+  };
+}
+
+/** One onboarding advance pass for a tenant (the wizard calls it after a change; the daily sweep runs the same code). */
+function buildM34OnboardingAdvance(
+  db: DbClient,
+  outbox: Parameters<typeof createOnboardingAdvancer>[0]["outbox"],
+) {
+  return createOnboardingAdvancer({
+    db,
+    outbox,
+    facts: buildM34OnboardingFacts(db),
+    // Resolved lazily: the M36 emitter seam registers after this is built (the sweep's own alert path does the same).
+    alerts: {
+      emit: (orgId, input) => (getSeam("AlertEmitter") as AlertEmitter).emit(orgId, input),
+    },
+  });
 }
 
 /**
@@ -5818,49 +5851,69 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // worker capability set is complete. Both fall back to the in-memory slice when no DB client is present (tests).
           const m34PlatformEnqueue = buildPlatformEnqueue(queueConnection);
           const m34TenantEnqueue = buildTenantEnqueue(queueConnection);
-          mountTenantPlatformRoutes(app, dbHandle.db, {
-            platform: buildDrizzlePlatformService({
-              platformDb: platformDbHandle?.db ?? dbHandle.db,
-              enqueue: m34PlatformEnqueue.enqueue,
-              provisionJobs: m34PlatformEnqueue.provisionJobs,
-              // Any active hold (org-wide, patient-scoped or messaging-only) blocks destroying the tenant's key.
-              legalHoldClear: async (organizationId) => {
-                const scope = await activeLegalHoldScopeForOrg(dbHandle.db, organizationId);
-                return !scope.orgWide && !scope.messagingHeld && scope.patientIds.size === 0;
+          const m34PlatformBackend = buildDrizzlePlatformService({
+            platformDb: platformDbHandle?.db ?? dbHandle.db,
+            enqueue: m34PlatformEnqueue.enqueue,
+            provisionJobs: m34PlatformEnqueue.provisionJobs,
+            // Any active hold (org-wide, patient-scoped or messaging-only) blocks destroying the tenant's key.
+            legalHoldClear: async (organizationId) => {
+              const scope = await activeLegalHoldScopeForOrg(dbHandle.db, organizationId);
+              return !scope.orgWide && !scope.messagingHeld && scope.patientIds.size === 0;
+            },
+            ...(m34ProvisionGateway ? { invitationDelivery: m34ProvisionGateway.invitation } : {}),
+            auditBypass: m34PlatformBypassAuditor,
+            outbox: m34OutboxPublisher,
+            // F-091 — M1 owns the `feature_flag` schema, so the §4.7 admin seam is built here and
+            // injected rather than constructed inside M34 (which would create a schema import edge the
+            // route file's own header says must not exist). On the PLATFORM pool: migration 0001's write
+            // policies never admit a NULL org, so a platform-global flag is uncreatable from a tenant
+            // connection by design.
+            featureFlags: createDrizzleFeatureFlagAdmin(
+              platformDbHandle?.db ?? dbHandle.db,
+              // §4.7 kill switch — audited emergency control; only with a real platform credential
+              // (without one the seam refuses 501 rather than flip a flag unaudited).
+              platformDbHandle
+                ? buildFeatureFlagKillSwitchPorts({
+                    platformDb: platformDbHandle.db,
+                    auditBypass: m34PlatformBypassAuditor,
+                    outbox: m34OutboxPublisher,
+                    auditCritical: (tx, event) =>
+                      auditPlatformEvent(tx, {
+                        eventType: event.eventType,
+                        resourceKind: "feature_flag",
+                        resourceId: event.resourceId,
+                        outcome: "success",
+                        severity: "critical",
+                        correlationId: event.correlationId,
+                        context: event.context,
+                      }),
+                  })
+                : undefined,
+            ),
+          });
+          // The onboarding wizard (both surfaces): the tenant steps run in the actor's own org transaction, the platform
+          // steps in an audited platform transaction, and go-live approval activates the tenant in that same transaction.
+          // After a change the wizard asks the advance sweep to run for that tenant so the next step unlocks at once.
+          const m34OnboardingAdvance = buildM34OnboardingAdvance(dbHandle.db, m34OutboxPublisher);
+          const m34Onboarding = {
+            wizard: createOnboardingWizard({
+              runner: createDrizzleWizardRunner({
+                db: dbHandle.db,
+                platformDb: platformDbHandle?.db ?? dbHandle.db,
+                auditBypass: m34PlatformBypassAuditor,
+                platformJobId: M34_PLATFORM_JOB_ID,
+                activation: m34PlatformBackend.activateApprovedTenant,
+              }),
+              orgProfile: buildDrizzleOrgProfilePort(dbHandle.db),
+              advance: async ({ tenantAccountId, organizationId }) => {
+                await m34OnboardingAdvance({ tenantAccountId, orgId: organizationId });
               },
-              ...(m34ProvisionGateway
-                ? { invitationDelivery: m34ProvisionGateway.invitation }
-                : {}),
-              auditBypass: m34PlatformBypassAuditor,
-              outbox: m34OutboxPublisher,
-              // F-091 — M1 owns the `feature_flag` schema, so the §4.7 admin seam is built here and
-              // injected rather than constructed inside M34 (which would create a schema import edge the
-              // route file's own header says must not exist). On the PLATFORM pool: migration 0001's write
-              // policies never admit a NULL org, so a platform-global flag is uncreatable from a tenant
-              // connection by design.
-              featureFlags: createDrizzleFeatureFlagAdmin(
-                platformDbHandle?.db ?? dbHandle.db,
-                // §4.7 kill switch — audited emergency control; only with a real platform credential
-                // (without one the seam refuses 501 rather than flip a flag unaudited).
-                platformDbHandle
-                  ? buildFeatureFlagKillSwitchPorts({
-                      platformDb: platformDbHandle.db,
-                      auditBypass: m34PlatformBypassAuditor,
-                      outbox: m34OutboxPublisher,
-                      auditCritical: (tx, event) =>
-                        auditPlatformEvent(tx, {
-                          eventType: event.eventType,
-                          resourceKind: "feature_flag",
-                          resourceId: event.resourceId,
-                          outcome: "success",
-                          severity: "critical",
-                          correlationId: event.correlationId,
-                          context: event.context,
-                        }),
-                    })
-                  : undefined,
-              ),
+              warn: (message, context) => app.log.warn(context, message),
             }),
+          };
+          mountTenantPlatformRoutes(app, dbHandle.db, {
+            platform: m34PlatformBackend,
+            onboarding: m34Onboarding,
             tenant: buildDrizzleTenantService({
               db: dbHandle.db,
               enqueue: m34TenantEnqueue.enqueue,
@@ -7802,31 +7855,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       // GAP-163 - the three remaining M34 consumers. Platform sweeps run on the audited platform credential
       // (required by this block); onboarding is org-scoped on the tenant pool.
       const getM34AlertEmitter = () => getSeam("AlertEmitter") as AlertEmitter;
-      // Automatic `onboarding → active`: the same lifecycle machine and guards as the platform route, driven by the
-      // sweep under a system actor. It never enqueues, so its enqueue port refuses; the lifecycle alert goes through
-      // the same lazily-resolved M36 emitter as the sweep's own alerts.
-      const m34Activation = buildDrizzlePlatformService({
-        platformDb: platformDbHandle.db,
-        enqueue: {
-          enqueue: async () => {
-            throw new Error("the onboarding sweep's activation never enqueues a job");
-          },
-        },
-        auditBypass: m34PlatformBypassAuditor,
-        outbox: m34OutboxPublisher,
-      });
       const m34SweepDeps = {
-        activate: ({ tenantAccountId }: { tenantAccountId: string }) =>
-          m34Activation.activateOnboardedTenant(tenantAccountId),
         connection: queueConnection,
         db: dbHandle.db,
         platformDb: platformDbHandle.db,
         auditBypass: m34PlatformBypassAuditor,
         outbox: m34OutboxPublisher,
-        facts: {
-          orgSeed: buildOrgSeedFactsReader(dbHandle.db),
-          orgAdminCount: buildOrgAdminCountReader(dbHandle.db),
-        },
+        facts: buildM34OnboardingFacts(dbHandle.db),
         alerts: {
           emit: (
             orgId: string,

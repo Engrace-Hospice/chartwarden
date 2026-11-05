@@ -62,6 +62,11 @@ import {
   buildTenantPlatformAbacPredicates,
   createInMemoryTenantBackend,
   createInMemoryTenantPlatformBackend,
+  createMemoryOrgProfile,
+  createMemoryWizardRunner,
+  createMemoryWizardState,
+  createOnboardingWizard,
+  memoryTask,
   mountTenantPlatformRoutes,
 } from "../src/modules/34-saas-tenant-platform/index";
 // `TenantRouteSeed` is only exported from the tenant-routes barrel, not re-exported at the module root
@@ -135,6 +140,7 @@ const PLATFORM_OPS_PERMISSIONS = [
   "signup_intent.qualify",
   "tenant_export.list_platform",
   "platform_tenant_baa.read_platform",
+  "platform_tenant_baa.write_platform",
   "feature_flag.read_platform",
   "feature_flag.write_platform",
   "feature_flag.kill_switch",
@@ -225,10 +231,6 @@ function makeServer() {
     ],
   };
   const tenantSeed: TenantRouteSeed = {
-    onboardingTasks: [
-      { id: TASK_START_ID, organizationId: ORG, templateKey: "account_created", status: "pending" },
-      { id: TASK_BLOCK_ID, organizationId: ORG, templateKey: "verify_email", status: "pending" },
-    ],
     baaRecords: [
       {
         id: BAA_TENANT_ID,
@@ -250,6 +252,37 @@ function makeServer() {
 
   const platform = createInMemoryTenantPlatformBackend(platformSeed);
   const tenant = createInMemoryTenantBackend(tenantSeed);
+  // The onboarding wizard (tenant surface): two org_admin-owned steps in sequence.
+  const wizardState = createMemoryWizardState({
+    tenants: [
+      {
+        tenantAccountId: TENANT_ACME_ID,
+        organizationId: ORG,
+        orgSlug: "acme",
+        status: "onboarding",
+        legalBusinessName: "Acme Hospice",
+        complianceOfficerMembershipId: null,
+      },
+    ],
+    templates: ["account_created", "verify_email"].map((key, i) => ({
+      key,
+      title: key,
+      description: "",
+      sequence: i + 1,
+      owner: "org_admin" as const,
+      completionMode: "attestation" as const,
+      optional: false,
+      canonical: true,
+    })),
+    tasks: [
+      memoryTask(TENANT_ACME_ID, "account_created", "pending", { id: TASK_START_ID }),
+      memoryTask(TENANT_ACME_ID, "verify_email", "pending", { id: TASK_BLOCK_ID }),
+    ],
+  });
+  const wizard = createOnboardingWizard({
+    runner: createMemoryWizardRunner(wizardState),
+    orgProfile: createMemoryOrgProfile(wizardState),
+  });
 
   const grantStore = createInMemoryEffectivePermissionStore([
     {
@@ -298,6 +331,7 @@ function makeServer() {
   mountTenantPlatformRoutes(app, STUB_DB, {
     platform: { service: platform.service },
     tenant: { service: tenant.service },
+    onboarding: { wizard },
   });
   return { app, platform, tenant };
 }
@@ -656,19 +690,45 @@ describe("M34-saas-tenant-platform-inject — platform→tenant BAA register (§
     });
     expect(list0.statusCode).toBe(200);
 
+    // A register WRITE is a decision: it needs the write key AND a fresh step-up (the read key alone is not enough).
+    const payload = {
+      tenantAccountId: TENANT_ACME_ID,
+      addendumVersion: "v2",
+      baaStatus: "pending",
+    };
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/v1/platform/baa-register",
+          headers: PLATFORM_OPS,
+          payload,
+        })
+      ).statusCode,
+    ).toBe(403);
     const create = await app.inject({
       method: "POST",
       url: "/api/v1/platform/baa-register",
-      headers: PLATFORM_OPS,
-      payload: { tenantAccountId: TENANT_ACME_ID, addendumVersion: "v2", baaStatus: "pending" },
+      headers: PLATFORM_OPS_STEPUP,
+      payload,
     });
     expect(create.statusCode).toBe(201);
     const baaId = create.json().id as string;
 
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/v1/platform/baa-register/${baaId}`,
+          headers: PLATFORM_OPS,
+          payload: { baaStatus: "executed" },
+        })
+      ).statusCode,
+    ).toBe(403);
     const update = await app.inject({
       method: "PATCH",
       url: `/api/v1/platform/baa-register/${baaId}`,
-      headers: PLATFORM_OPS,
+      headers: PLATFORM_OPS_STEPUP,
       payload: { baaStatus: "executed" },
     });
     expect(update.statusCode).toBe(200);
@@ -1044,11 +1104,19 @@ describe("M34-saas-tenant-platform-inject — tenant onboarding checklist (D3)",
     expect(start.statusCode).toBe(200);
     expect(start.json().status).toBe("in_progress");
 
-    const complete = await app.inject({
+    // The deprecated /complete is the attest route: evidence is required.
+    const noEvidence = await app.inject({
       method: "POST",
       url: `/api/v1/tenant/onboarding/${TASK_START_ID}/complete`,
       headers: ORG_ADMIN,
       payload: {},
+    });
+    expect(noEvidence.statusCode).toBe(422);
+    const complete = await app.inject({
+      method: "POST",
+      url: `/api/v1/tenant/onboarding/${TASK_START_ID}/complete`,
+      headers: ORG_ADMIN,
+      payload: { evidenceNote: "administrator confirmed the account details" },
     });
     expect(complete.statusCode).toBe(200);
     expect(complete.json().status).toBe("done");

@@ -1,15 +1,16 @@
 // @chartwarden/saas-tenant-platform — §2.3 onboarding: precondition-DSL evaluator + the (XState-shaped)
-// machine config + the strictly-observable advance interpreter + the eleven canonical steps (M34 / D3).
+// machine config + the strictly-observable advance interpreter + the canonical wizard steps (M34 / D3).
 //
 // Pure, IO-free assertions over the real implementation:
 //   • src/onboarding/precondition-dsl.ts — every canonical precondition expression evaluates met vs blocked
-//     over a hand-built OnboardingContext (the §3.12 seed expressions, verbatim);
-//   • src/onboarding/machine.ts — the interpreter advances a step ONLY when its precondition holds (else
-//     it blocks and the walk stops), unblocks a recovered step, and reaches the §2.3 `[*]` completion;
-//   • src/onboarding/steps.ts — the eleven canonical steps are present, in `canonical_order`.
+//     over a hand-built OnboardingContext (the migration 1327 seed expressions, verbatim);
+//   • src/onboarding/machine.ts — the interpreter settles an `auto`/`either` step ONLY when its precondition holds,
+//     waits at an `attestation` step, blocks an `auto` step that cannot settle, and never activates a tenant;
+//   • src/onboarding/steps.ts — the canonical steps are present, in the wizard's order.
 import { describe, expect, it } from "vitest";
 import type { OnboardingContext, OnboardingProviderEntityView } from "../src/onboarding/context";
 import {
+  type OnboardingCompletionMode,
   type OnboardingEmit,
   type OnboardingStepState,
   type OnboardingTaskStatus,
@@ -24,71 +25,46 @@ import {
   isCanonicalOnboardingStep,
 } from "../src/onboarding/steps";
 
-// ── the §3.12 seed catalog (migration 0054), mirrored verbatim — key, canonical_order, precondition_dsl,
-//    is_canonical. The machine's state floor is data-driven from exactly these rows (D3). ────────────────
-const CANONICAL_TEMPLATES: ReadonlyArray<{
+// ── the wizard catalog (migration 1327), mirrored verbatim — key, canonical_order, precondition_dsl,
+//    completion_mode, is_optional. The machine's state floor is data-driven from exactly these rows (D3). ──────
+interface Template {
   readonly key: string;
   readonly preconditionDsl: string | null;
   readonly isCanonical: boolean;
   readonly canonicalOrder: number;
-}> = [
-  { key: "account_created", preconditionDsl: null, isCanonical: true, canonicalOrder: 1 },
-  {
-    key: "org_seeded",
-    preconditionDsl: "context.providerEntityCount > 0 AND context.locationCount > 0",
-    isCanonical: true,
-    canonicalOrder: 2,
-  },
-  {
-    key: "ccn_registered",
-    preconditionDsl: "context.providerEntities[*].ccn != null",
-    isCanonical: true,
-    canonicalOrder: 3,
-  },
-  {
-    key: "mac_configured",
-    preconditionDsl: "context.macFeedConfigured == true",
-    isCanonical: true,
-    canonicalOrder: 4,
-  },
-  {
-    key: "dosespot_kickoff_initiated",
-    preconditionDsl: "context.dosespotKickoffRecorded == true",
-    isCanonical: true,
-    canonicalOrder: 5,
-  },
-  {
-    key: "xero_connected",
-    preconditionDsl: "context.xeroConnected == true",
-    isCanonical: true,
-    canonicalOrder: 6,
-  },
-  {
-    key: "payroll_connected",
-    preconditionDsl: "context.gustoConnected == true",
-    isCanonical: true,
-    canonicalOrder: 7,
-  },
-  {
-    key: "locations_seeded",
-    preconditionDsl: "context.primaryLocationExists == true",
-    isCanonical: true,
-    canonicalOrder: 8,
-  },
-  {
-    key: "first_admin_invited",
-    preconditionDsl: "context.orgAdminAcceptedMembershipCount > 0",
-    isCanonical: true,
-    canonicalOrder: 9,
-  },
-  { key: "sample_data_loaded", preconditionDsl: null, isCanonical: true, canonicalOrder: 10 },
-  {
-    key: "go_live_checklist_complete",
-    preconditionDsl:
-      "context.allCanonicalTasksDoneOrSkipped == true AND context.baaExecuted == true",
-    isCanonical: true,
-    canonicalOrder: 11,
-  },
+  readonly completionMode: OnboardingCompletionMode;
+  readonly isOptional: boolean;
+}
+const t = (
+  key: string,
+  canonicalOrder: number,
+  completionMode: OnboardingCompletionMode,
+  preconditionDsl: string | null,
+  isOptional = false,
+): Template => ({
+  key,
+  preconditionDsl,
+  isCanonical: true,
+  canonicalOrder,
+  completionMode,
+  isOptional,
+});
+
+const CANONICAL_TEMPLATES: readonly Template[] = [
+  t("account_created", 1, "attestation", null),
+  t("plan_contract", 2, "attestation", null),
+  t("baa_executed", 3, "auto", "context.baaExecuted == true"),
+  t("provisioning_complete", 4, "auto", null),
+  t("ccn_registered", 5, "attestation", null),
+  t("locations_seeded", 6, "either", "context.primaryLocationExists == true"),
+  t("clearinghouse_selected", 7, "attestation", null),
+  t("mac_configured", 8, "either", "context.macFeedConfigured == true"),
+  t("payer_enrollment", 9, "attestation", null),
+  t("dosespot_kickoff_initiated", 10, "either", "context.dosespotKickoffRecorded == true"),
+  t("first_admin_invited", 11, "auto", "context.orgAdminAcceptedMembershipCount > 0"),
+  t("compliance_officer_assigned", 12, "either", "context.complianceOfficerAssigned == true"),
+  t("sample_data_loaded", 13, "attestation", null, true),
+  t("go_live_checklist_complete", 14, "attestation", null),
 ];
 
 const pe = (id: string, ccn: string | null): OnboardingProviderEntityView => ({
@@ -96,8 +72,8 @@ const pe = (id: string, ccn: string | null): OnboardingProviderEntityView => ({
   ccn,
 });
 
-/** A context in which EVERY one of the eleven canonical preconditions is satisfied. Each "blocked"
- *  case below is one `metContext()` with a single fact flipped — so the assertion isolates the field. */
+/** A context in which EVERY canonical precondition is satisfied. Each "blocked" case below is one
+ *  `metContext()` with a single fact flipped — so the assertion isolates the field. */
 function metContext(overrides: Partial<OnboardingContext> = {}): OnboardingContext {
   return {
     providerEntityCount: 2,
@@ -109,74 +85,82 @@ function metContext(overrides: Partial<OnboardingContext> = {}): OnboardingConte
     gustoConnected: true,
     primaryLocationExists: true,
     orgAdminAcceptedMembershipCount: 1,
+    complianceOfficerAssigned: true,
     allCanonicalTasksDoneOrSkipped: true,
     baaExecuted: true,
     ...overrides,
   };
 }
 
-/** Build the eleven canonical step states in canonical order, defaulting to `pending`, with a per-key
- *  status override map. dueAt/blockedSince default null (the overdue/blocked-age sweeps are off). */
+/** The canonical step states in order, defaulting to `pending`, with a per-key status override map. */
 function makeSteps(
   statusByKey: Readonly<Record<string, OnboardingTaskStatus>> = {},
 ): OnboardingStepState[] {
-  return CANONICAL_TEMPLATES.map((t) => ({
-    templateKey: t.key,
-    preconditionDsl: t.preconditionDsl,
-    isCanonical: t.isCanonical,
-    status: statusByKey[t.key] ?? ("pending" as OnboardingTaskStatus),
+  return CANONICAL_TEMPLATES.map((tpl) => ({
+    templateKey: tpl.key,
+    preconditionDsl: tpl.preconditionDsl,
+    isCanonical: tpl.isCanonical,
+    completionMode: tpl.completionMode,
+    isOptional: tpl.isOptional,
+    status: statusByKey[tpl.key] ?? ("pending" as OnboardingTaskStatus),
     dueAt: null,
     blockedSince: null,
   }));
 }
 
+/** Every step through `through` (inclusive, in wizard order) done; the rest pending. */
+function doneThrough(through: string): Record<string, OnboardingTaskStatus> {
+  const out: Record<string, OnboardingTaskStatus> = {};
+  for (const tpl of CANONICAL_TEMPLATES) {
+    out[tpl.key] = "done";
+    if (tpl.key === through) break;
+  }
+  return out;
+}
+
 const kinds = (emits: readonly OnboardingEmit[]): string[] => emits.map((e) => e.kind);
 const hasKind = (emits: readonly OnboardingEmit[], kind: OnboardingEmit["kind"]): boolean =>
   emits.some((e) => e.kind === kind);
+const completedKeys = (emits: readonly OnboardingEmit[]): string[] =>
+  emits
+    .filter((e) => e.kind === "step_completed")
+    .map((e) => (e as { templateKey: string }).templateKey);
 
 const CONFIG = buildOnboardingMachineConfig(CANONICAL_TEMPLATES);
 const NOW = new Date("2026-06-25T12:00:00.000Z");
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
-// 1. The eleven canonical steps are present, in `canonical_order` (§2.3 / §3.12).
+// 1. The canonical steps are present, in the wizard's order (§2.3 / migration 1327).
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
-describe("§2.3 / §3.12 canonical onboarding steps", () => {
-  it("declares exactly eleven canonical step keys in canonical order", () => {
-    expect(CANONICAL_ONBOARDING_STEPS).toEqual([
-      "account_created",
-      "org_seeded",
-      "ccn_registered",
-      "mac_configured",
-      "dosespot_kickoff_initiated",
-      "xero_connected",
-      "payroll_connected",
-      "locations_seeded",
-      "first_admin_invited",
-      "sample_data_loaded",
-      "go_live_checklist_complete",
-    ]);
-    expect(CANONICAL_ONBOARDING_STEPS).toHaveLength(11);
+describe("§2.3 canonical onboarding steps (wizard v2)", () => {
+  it("declares the fourteen canonical step keys in wizard order, without the retired ones", () => {
+    expect(CANONICAL_ONBOARDING_STEPS).toEqual(CANONICAL_TEMPLATES.map((tpl) => tpl.key));
+    expect(CANONICAL_ONBOARDING_STEPS).toHaveLength(14);
+    for (const retired of ["org_seeded", "xero_connected", "payroll_connected"]) {
+      expect(CANONICAL_ONBOARDING_STEPS as readonly string[]).not.toContain(retired);
+    }
   });
 
-  it("the constant order matches the §3.12 seed canonical_order", () => {
+  it("the constant order matches the seed canonical_order", () => {
     const seedOrder = [...CANONICAL_TEMPLATES]
       .sort((a, b) => a.canonicalOrder - b.canonicalOrder)
-      .map((t) => t.key);
+      .map((tpl) => tpl.key);
     expect([...CANONICAL_ONBOARDING_STEPS]).toEqual(seedOrder);
   });
 
-  it("isCanonicalOnboardingStep accepts the eleven and rejects an unknown / agency key", () => {
+  it("isCanonicalOnboardingStep accepts the canonical keys and rejects an unknown / agency / retired key", () => {
     for (const key of CANONICAL_ONBOARDING_STEPS) {
       expect(isCanonicalOnboardingStep(key)).toBe(true);
     }
     expect(isCanonicalOnboardingStep("agency_custom_step")).toBe(false);
+    expect(isCanonicalOnboardingStep("xero_connected")).toBe(false);
     expect(isCanonicalOnboardingStep(ONBOARDING_DONE)).toBe(false);
   });
 
   it("canonicalStepIndex returns the 0-based order, and -1 for non-canonical keys", () => {
     expect(canonicalStepIndex("account_created")).toBe(0);
-    expect(canonicalStepIndex("go_live_checklist_complete")).toBe(10);
-    expect(canonicalStepIndex("ccn_registered")).toBe(2);
+    expect(canonicalStepIndex("go_live_checklist_complete")).toBe(13);
+    expect(canonicalStepIndex("ccn_registered")).toBe(4);
     expect(canonicalStepIndex("not_a_step")).toBe(-1);
   });
 });
@@ -185,7 +169,7 @@ describe("§2.3 / §3.12 canonical onboarding steps", () => {
 // 2. Each canonical precondition expression evaluates correctly over a context (met vs blocked).
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
 describe("§2.3 precondition-DSL: canonical expressions met vs blocked", () => {
-  it("a NULL / empty precondition is always satisfied (account_created, sample_data_loaded)", () => {
+  it("a NULL / empty precondition is always satisfied (an `auto` step with no fact, e.g. provisioning_complete)", () => {
     expect(evaluatePrecondition(null, metContext())).toBe(true);
     expect(evaluatePrecondition(undefined, metContext())).toBe(true);
     expect(evaluatePrecondition("   ", metContext())).toBe(true);
@@ -233,9 +217,8 @@ describe("§2.3 precondition-DSL: canonical expressions met vs blocked", () => {
     const cases: ReadonlyArray<[string, keyof OnboardingContext]> = [
       ["context.macFeedConfigured == true", "macFeedConfigured"],
       ["context.dosespotKickoffRecorded == true", "dosespotKickoffRecorded"],
-      ["context.xeroConnected == true", "xeroConnected"],
-      ["context.gustoConnected == true", "gustoConnected"],
       ["context.primaryLocationExists == true", "primaryLocationExists"],
+      ["context.complianceOfficerAssigned == true", "complianceOfficerAssigned"],
     ];
     for (const [expr, field] of cases) {
       expect(evaluatePrecondition(expr, metContext())).toBe(true);
@@ -314,14 +297,14 @@ describe("§2.3 precondition-DSL: canonical expressions met vs blocked", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
-// 3. The machine config — the eleven steps wired into a linear graph, in order, ending at __done__.
+// 3. The machine config — the steps wired into a linear graph, in order, ending at __done__.
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
 describe("§2.3 buildOnboardingMachineConfig", () => {
-  it("assembles the eleven canonical nodes in canonical order with account_created initial", () => {
+  it("assembles the canonical nodes in wizard order with account_created initial", () => {
     expect(CONFIG.id).toBe("m34.onboarding");
     expect(CONFIG.initial).toBe("account_created");
     expect(CONFIG.nodes.map((n) => n.key)).toEqual([...CANONICAL_ONBOARDING_STEPS]);
-    expect(CONFIG.nodes).toHaveLength(11);
+    expect(CONFIG.nodes).toHaveLength(14);
   });
 
   it("each node advances to its successor; the last targets __done__", () => {
@@ -333,18 +316,26 @@ describe("§2.3 buildOnboardingMachineConfig", () => {
     expect(CONFIG.nodes[CONFIG.nodes.length - 1]!.onAdvance.target).toBe(ONBOARDING_DONE);
   });
 
-  it("each node's guard is its seed precondition_dsl (data-driven, not a code branch — D3)", () => {
-    for (const t of CANONICAL_TEMPLATES) {
-      const node = CONFIG.nodes.find((n) => n.key === t.key)!;
-      expect(node.preconditionDsl).toBe(t.preconditionDsl);
-      expect(node.onAdvance.whenPreconditionHolds).toBe(t.preconditionDsl);
+  it("each node's guard, mode and optionality are the seed's (data-driven, not a code branch — D3)", () => {
+    for (const tpl of CANONICAL_TEMPLATES) {
+      const node = CONFIG.nodes.find((n) => n.key === tpl.key)!;
+      expect(node.preconditionDsl).toBe(tpl.preconditionDsl);
+      expect(node.onAdvance.whenPreconditionHolds).toBe(tpl.preconditionDsl);
+      expect(node.completionMode).toBe(tpl.completionMode);
+      expect(node.isOptional).toBe(tpl.isOptional);
       expect(node.isCanonical).toBe(true);
     }
   });
 
+  it("a template without a mode reads as `auto` and non-optional", () => {
+    const cfg = buildOnboardingMachineConfig([
+      { key: "x", preconditionDsl: null, isCanonical: true, canonicalOrder: 1 },
+    ]);
+    expect(cfg.nodes[0]).toMatchObject({ completionMode: "auto", isOptional: false });
+  });
+
   it("sorts templates by canonical_order regardless of input order", () => {
-    const shuffled = [...CANONICAL_TEMPLATES].reverse();
-    const cfg = buildOnboardingMachineConfig(shuffled);
+    const cfg = buildOnboardingMachineConfig([...CANONICAL_TEMPLATES].reverse());
     expect(cfg.nodes.map((n) => n.key)).toEqual([...CANONICAL_ONBOARDING_STEPS]);
     expect(cfg.initial).toBe("account_created");
   });
@@ -355,109 +346,147 @@ describe("§2.3 buildOnboardingMachineConfig", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
-// 4. The interpreter advances a step ONLY when its precondition is met (else blocks; the walk stops).
+// 4. The interpreter: `auto`/`either` settle on a fact, `attestation` waits for a human, `auto` blocks.
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
-describe("§2.3 advanceOnboarding — advances only when the precondition is met", () => {
-  it("completes the first non-terminal step when its precondition holds (account_created → org_seeded)", () => {
+describe("§2.3 advanceOnboarding — completion modes", () => {
+  it("waits at an attestation step: emits nothing and does not look past it", () => {
     const res = advanceOnboarding(CONFIG, makeSteps(), metContext(), NOW);
     expect(res.currentStep).toBe("account_created");
-    expect(res.nextStep).toBe("org_seeded");
-    const completed = res.emits.filter((e) => e.kind === "step_completed");
-    expect(completed).toHaveLength(1);
-    expect((completed[0] as { templateKey: string }).templateKey).toBe("account_created");
-    expect(hasKind(res.emits, "step_blocked")).toBe(false);
+    expect(res.nextStep).toBe("account_created");
+    expect(res.emits).toEqual([]);
   });
 
-  it("settles the first guarded step (org_seeded) ONLY when its DSL precondition holds", () => {
-    // account_created already done → org_seeded is the first non-terminal step under evaluation.
-    const steps = makeSteps({ account_created: "done", org_seeded: "in_progress" });
-
-    // precondition MET → step_completed, advance to ccn_registered.
-    const met = advanceOnboarding(CONFIG, steps, metContext(), NOW);
-    expect(met.currentStep).toBe("org_seeded");
-    expect(met.nextStep).toBe("ccn_registered");
-    expect(hasKind(met.emits, "step_completed")).toBe(true);
-    expect(hasKind(met.emits, "step_blocked")).toBe(false);
-
-    // precondition NOT met → step_blocked, the machine does NOT advance.
-    const blocked = advanceOnboarding(CONFIG, steps, metContext({ providerEntityCount: 0 }), NOW);
-    expect(blocked.currentStep).toBe("org_seeded");
-    expect(blocked.nextStep).toBe("org_seeded");
-    expect(hasKind(blocked.emits, "step_completed")).toBe(false);
-    const blk = blocked.emits.find((e) => e.kind === "step_blocked")!;
-    expect((blk as { templateKey: string }).templateKey).toBe("org_seeded");
-    expect((blk as { outbox: string }).outbox).toBe("m34.tenant.onboarding_step_blocked");
-    expect((blk as { blockerReason: string }).blockerReason).toContain("org_seeded");
-  });
-
-  it("a blocker GATES the rest: later steps never advance past an unmet precondition", () => {
-    // org_seeded blocked (providerEntityCount 0); ccn_registered would otherwise be met — it must NOT settle.
-    const steps = makeSteps({ account_created: "done", org_seeded: "blocked" });
-    const res = advanceOnboarding(CONFIG, steps, metContext({ providerEntityCount: 0 }), NOW);
-    expect(res.currentStep).toBe("org_seeded");
-    expect(kinds(res.emits)).not.toContain("step_completed");
-    // already-blocked-and-still-blocked emits nothing new for that step.
-    expect(hasKind(res.emits, "step_blocked")).toBe(false);
-  });
-
-  it("recovers a blocked step: step_unblocked precedes step_completed once the precondition holds again", () => {
-    const steps = makeSteps({ account_created: "done", org_seeded: "blocked" });
+  it("settles consecutive auto steps in ONE pass and stops at the next attestation step", () => {
+    // account_created + plan_contract attested; baa_executed and provisioning_complete are auto.
+    const steps = makeSteps({ account_created: "done", plan_contract: "done" });
     const res = advanceOnboarding(CONFIG, steps, metContext(), NOW);
-    const order = kinds(res.emits);
-    expect(order).toContain("step_unblocked");
-    expect(order).toContain("step_completed");
-    expect(order.indexOf("step_unblocked")).toBeLessThan(order.indexOf("step_completed"));
+    expect(completedKeys(res.emits)).toEqual(["baa_executed", "provisioning_complete"]);
+    expect(res.currentStep).toBe("baa_executed");
     expect(res.nextStep).toBe("ccn_registered");
   });
 
-  it("a skipped step is terminal — the walk steps over it to the next non-terminal step", () => {
+  it("blocks an auto step whose fact does not hold, with the standard outbox, and stops there", () => {
+    const steps = makeSteps({ account_created: "done", plan_contract: "done" });
+    const res = advanceOnboarding(CONFIG, steps, metContext({ baaExecuted: false }), NOW);
+    expect(completedKeys(res.emits)).toEqual([]);
+    const blk = res.emits.find((e) => e.kind === "step_blocked")!;
+    expect((blk as { templateKey: string }).templateKey).toBe("baa_executed");
+    expect((blk as { outbox: string }).outbox).toBe("m34.tenant.onboarding_step_blocked");
+    expect((blk as { blockerReason: string }).blockerReason).toContain("baa_executed");
+    expect(res.nextStep).toBe("baa_executed");
+  });
+
+  it("an already-blocked auto step that is still unmet emits nothing new", () => {
     const steps = makeSteps({
       account_created: "done",
-      org_seeded: "done",
-      ccn_registered: "skipped",
-      mac_configured: "in_progress",
+      plan_contract: "done",
+      baa_executed: "blocked",
+    });
+    const res = advanceOnboarding(CONFIG, steps, metContext({ baaExecuted: false }), NOW);
+    expect(res.emits).toEqual([]);
+  });
+
+  it("recovers a blocked step: step_unblocked precedes step_completed once the fact holds again", () => {
+    const steps = makeSteps({
+      account_created: "done",
+      plan_contract: "done",
+      baa_executed: "blocked",
     });
     const res = advanceOnboarding(CONFIG, steps, metContext(), NOW);
-    expect(res.currentStep).toBe("mac_configured");
-    const completed = res.emits.filter((e) => e.kind === "step_completed");
-    expect((completed[0] as { templateKey: string }).templateKey).toBe("mac_configured");
+    const order = kinds(res.emits);
+    expect(order.indexOf("step_unblocked")).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf("step_unblocked")).toBeLessThan(order.indexOf("step_completed"));
   });
 
-  it("emits onboarding_completed and __done__ when every canonical step is settled", () => {
-    const allDone: Record<string, OnboardingTaskStatus> = {};
-    for (const k of CANONICAL_ONBOARDING_STEPS) allDone[k] = "done";
-    allDone.sample_data_loaded = "skipped"; // the optional step may be skipped
-    const res = advanceOnboarding(CONFIG, makeSteps(allDone), metContext(), NOW);
-    expect(res.nextStep).toBe(ONBOARDING_DONE);
-    const done = res.emits.find((e) => e.kind === "onboarding_completed");
-    expect(done).toBeDefined();
-    expect((done as { outbox: string }).outbox).toBe("m34.tenant.onboarding_completed");
-    expect((done as { canonicalCompleted: number }).canonicalCompleted).toBe(10);
-    expect((done as { canonicalSkipped: number }).canonicalSkipped).toBe(1);
+  it("an `either` step settles when its fact holds, and waits SILENTLY (no block, no alert) when it does not", () => {
+    const upToLocations = doneThrough("ccn_registered");
+    const met = advanceOnboarding(CONFIG, makeSteps(upToLocations), metContext(), NOW);
+    expect(completedKeys(met.emits)).toEqual(["locations_seeded"]);
+
+    const unmet = advanceOnboarding(
+      CONFIG,
+      makeSteps(upToLocations),
+      metContext({ primaryLocationExists: false }),
+      NOW,
+    );
+    expect(unmet.emits).toEqual([]);
+    expect(unmet.nextStep).toBe("locations_seeded");
   });
 
-  it("rolls a final-step completion straight into onboarding_completed in the same pass", () => {
-    const statuses: Record<string, OnboardingTaskStatus> = {};
-    for (const k of CANONICAL_ONBOARDING_STEPS) statuses[k] = "done";
-    statuses.go_live_checklist_complete = "in_progress"; // last step still open, precondition now holds
+  it("an `either` step with no fact to read behaves as attestation-only", () => {
+    const cfg = buildOnboardingMachineConfig([
+      {
+        key: "a",
+        preconditionDsl: null,
+        isCanonical: true,
+        canonicalOrder: 1,
+        completionMode: "either",
+      },
+    ]);
+    const steps: OnboardingStepState[] = [
+      {
+        templateKey: "a",
+        preconditionDsl: null,
+        isCanonical: true,
+        completionMode: "either",
+        status: "pending",
+        dueAt: null,
+        blockedSince: null,
+      },
+    ];
+    expect(advanceOnboarding(cfg, steps, metContext(), NOW).emits).toEqual([]);
+  });
+
+  it("a skipped step is terminal: the walk steps over it", () => {
+    const statuses = { ...doneThrough("payer_enrollment"), mac_configured: "skipped" as const };
     const res = advanceOnboarding(CONFIG, makeSteps(statuses), metContext(), NOW);
-    expect(hasKind(res.emits, "step_completed")).toBe(true);
-    expect(hasKind(res.emits, "onboarding_completed")).toBe(true);
+    expect(completedKeys(res.emits)).toEqual([
+      "dosespot_kickoff_initiated",
+      "first_admin_invited",
+      "compliance_officer_assigned",
+    ]);
+  });
+
+  it("an optional step never gates the walk and is never driven by it", () => {
+    const res = advanceOnboarding(
+      CONFIG,
+      makeSteps(doneThrough("compliance_officer_assigned")),
+      metContext(),
+      NOW,
+    );
+    // sample_data_loaded (optional, pending) is stepped over; go_live (attestation) is where the walk waits.
+    expect(res.emits).toEqual([]);
+    expect(res.currentStep).toBe("go_live_checklist_complete");
+    expect(res.nextStep).toBe("go_live_checklist_complete");
+  });
+
+  it("reaches __done__ when everything is settled, and NEVER emits an activation", () => {
+    const all: Record<string, OnboardingTaskStatus> = {};
+    for (const k of CANONICAL_ONBOARDING_STEPS) all[k] = "done";
+    const res = advanceOnboarding(CONFIG, makeSteps(all), metContext(), NOW);
     expect(res.nextStep).toBe(ONBOARDING_DONE);
+    expect(res.emits).toEqual([]);
+    expect(kinds(res.emits)).not.toContain("onboarding_completed");
   });
 
   it("raises step_overdue (alert-only) for a non-terminal step past due, without changing the walk", () => {
-    const steps = makeSteps({ account_created: "done", org_seeded: "in_progress" });
+    const steps = makeSteps({
+      account_created: "done",
+      plan_contract: "done",
+      baa_executed: "in_progress",
+    });
     const overdue = steps.map((s) =>
-      s.templateKey === "org_seeded" ? { ...s, dueAt: new Date(NOW.getTime() - 2 * 3_600_000) } : s,
+      s.templateKey === "baa_executed"
+        ? { ...s, dueAt: new Date(NOW.getTime() - 2 * 3_600_000) }
+        : s,
     );
     const res = advanceOnboarding(CONFIG, overdue, metContext(), NOW);
     const od = res.emits.find((e) => e.kind === "step_overdue");
     expect(od).toBeDefined();
-    expect((od as { templateKey: string }).templateKey).toBe("org_seeded");
+    expect((od as { templateKey: string }).templateKey).toBe("baa_executed");
     expect((od as { hoursOverdue: number }).hoursOverdue).toBeCloseTo(2, 5);
     expect((od as { outbox: string }).outbox).toBe("m34.tenant.onboarding_overdue");
-    // overdue is independent of the advance: org_seeded still completes (precondition met).
-    expect(hasKind(res.emits, "step_completed")).toBe(true);
+    // overdue is independent of the advance: baa_executed still completes (fact holds).
+    expect(completedKeys(res.emits)).toContain("baa_executed");
   });
 });

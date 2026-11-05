@@ -148,6 +148,7 @@ export {
 } from "./jobs/bundle-expiry-worker";
 // GAP-163 - the BAA radar, the support-session close sweep and the onboarding advance worker.
 export {
+  createOnboardingAdvancer,
   describeM34SweepSchedules,
   registerM34BaaExpiryWorker,
   registerM34OnboardingAdvanceWorker,
@@ -287,6 +288,13 @@ const SLICE_M34_SIGNUP_SERVICE: _SignupIntentRouteService = {
  * prod shape). The §4.6 ABAC predicates are registered separately at boot via
  * `registerTenantPlatformAbacPredicates`.
  */
+import { type OnboardingWizard, createOnboardingWizard } from "./onboarding/wizard-service";
+import {
+  createMemoryOrgProfile,
+  createMemoryWizardRunner,
+  createMemoryWizardState,
+} from "./onboarding/wizard-store-memory";
+import { registerOnboardingWizardRoutes } from "./routes/platform/onboarding-wizard-routes";
 import { registerPlatformOpsRoutes } from "./routes/platform/ops-routes";
 import {
   type PlatformOpsService,
@@ -304,8 +312,10 @@ export function mountTenantPlatformRoutes(
   services?: {
     platform?: { service: _TenantPlatformRouteService };
     tenant?: { service: _TenantRouteService };
-    /** GAP-164 - cross-tenant DSAR list + onboarding read/skip (absent => in-memory slice). */
+    /** GAP-164 - the cross-tenant DSAR list (absent => in-memory slice). */
     platformOps?: { service: PlatformOpsService };
+    /** The onboarding wizard, both surfaces (absent => an empty in-memory slice). */
+    onboarding?: { wizard: OnboardingWizard };
     /** GAP-164 - tenant account + feature-flag read/write (absent => in-memory slice). */
     tenantAccountFlags?: { service: TenantAccountFlagsService };
     public?: {
@@ -331,15 +341,25 @@ export function mountTenantPlatformRoutes(
   _registerFeatureFlagAdminRoutes(app, { service: platformService });
   _registerTenantExportApprovalRoutes(app, { service: platformService });
 
-  // GAP-164 - the three platform-ops routes the first build deferred.
+  // GAP-164 - the cross-tenant DSAR list the first build deferred.
   registerPlatformOpsRoutes(app, {
     service: (services?.platformOps ?? { service: createInMemoryPlatformOpsService().service })
       .service,
   });
 
+  // The onboarding wizard (platform side: read, skip, attest, re-open, org profile, compliance officer, go-live decisions).
+  const sliceState = createMemoryWizardState();
+  const { wizard } = services?.onboarding ?? {
+    wizard: createOnboardingWizard({
+      runner: createMemoryWizardRunner(sliceState),
+      orgProfile: createMemoryOrgProfile(sliceState),
+    }),
+  };
+  registerOnboardingWizardRoutes(app, { wizard });
+
   // ── tenant-scoped surface (withOrgContext; the tenant's own org) ──
   const { service: tenantService } = services?.tenant ?? _createInMemoryTenantBackend();
-  _registerTenantTenantRoutes(app, { service: tenantService });
+  _registerTenantTenantRoutes(app, { service: tenantService, wizard });
   // GAP-164 - tenant account + feature flags.
   registerTenantAccountFlagsRoutes(app, {
     service: (
@@ -375,6 +395,26 @@ export {
   createInMemoryPlatformOpsService,
 } from "./routes/platform/ops-service";
 export { registerPlatformOpsRoutes } from "./routes/platform/ops-routes";
+
+// Onboarding wizard v2 — the service both surfaces share, its Drizzle runner (tenant + platform transactions) and the
+// in-memory twin the inject tests run on.
+export {
+  type OnboardingWizard,
+  type OnboardingWizardDeps,
+  createOnboardingWizard,
+} from "./onboarding/wizard-service";
+export {
+  type WizardActivation,
+  createDrizzleWizardRunner,
+} from "./onboarding/wizard-store-drizzle";
+export {
+  createMemoryOrgProfile,
+  createMemoryWizardRunner,
+  createMemoryWizardState,
+  memoryTask,
+} from "./onboarding/wizard-store-memory";
+export type { OrgProfilePort } from "./onboarding/org-profile";
+export { registerOnboardingWizardRoutes } from "./routes/platform/onboarding-wizard-routes";
 export {
   type TenantAccountFlagsService,
   type TenantFlagAdminPort,
