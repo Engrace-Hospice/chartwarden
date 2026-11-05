@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { type PortalConsentSignInput, createPortalConsentSigner } from "../portal-consent-signer";
 
-type View = { id: string; typeKey: string; createdById: string; status: string };
+type View = {
+  id: string;
+  typeKey: string;
+  createdById: string;
+  status: string;
+  scopeDescriptor?: unknown;
+};
+
+const mine = { kind: "categorical", documentKind: "hipaa_npp_acknowledgement", requestId: "req-1" };
 
 const input: PortalConsentSignInput = {
   organizationId: "org-1",
@@ -11,6 +19,7 @@ const input: PortalConsentSignInput = {
   actingConsentId: null,
   grantorRelationshipText: "Daughter",
   portalUserId: "user-1",
+  requestId: "req-1",
   portalAccountId: "acct-1",
   portalSessionId: "sess-1",
   signerName: "Pat Example",
@@ -25,7 +34,12 @@ function fakeService(initial: View[] = []) {
     listConsentsForPatient: async () => rows,
     createDraft: async (
       _o: string,
-      i: { typeKey: string; createdById: string; captureMethod: string },
+      i: {
+        typeKey: string;
+        createdById: string;
+        captureMethod: string;
+        scopeDescriptor: unknown;
+      },
     ) => {
       calls.push(`draft:${i.captureMethod}`);
       const row = {
@@ -33,6 +47,7 @@ function fakeService(initial: View[] = []) {
         typeKey: i.typeKey,
         createdById: i.createdById,
         status: "draft",
+        scopeDescriptor: i.scopeDescriptor,
       };
       rows.push(row);
       return row;
@@ -71,7 +86,13 @@ describe("createPortalConsentSigner", () => {
 
   it("returns an already-active consent of this account without signing again", async () => {
     const { signer, calls } = fakeService([
-      { id: "c-9", typeKey: "hipaa_npp_acknowledgement", createdById: "user-1", status: "active" },
+      {
+        id: "c-9",
+        typeKey: "hipaa_npp_acknowledgement",
+        createdById: "user-1",
+        status: "active",
+        scopeDescriptor: mine,
+      },
     ]);
     expect(await signer.sign(input)).toEqual({ recordId: "c-9" });
     expect(calls).toEqual([]);
@@ -79,7 +100,13 @@ describe("createPortalConsentSigner", () => {
 
   it("signs, rather than recreating, a draft left by a crashed attempt", async () => {
     const { signer, calls, rows } = fakeService([
-      { id: "c-5", typeKey: "hipaa_npp_acknowledgement", createdById: "user-1", status: "draft" },
+      {
+        id: "c-5",
+        typeKey: "hipaa_npp_acknowledgement",
+        createdById: "user-1",
+        status: "draft",
+        scopeDescriptor: mine,
+      },
     ]);
     expect(await signer.sign(input)).toEqual({ recordId: "c-5" });
     expect(rows).toHaveLength(1);
@@ -93,10 +120,27 @@ describe("createPortalConsentSigner", () => {
         typeKey: "hipaa_npp_acknowledgement",
         createdById: "someone-else",
         status: "active",
+        scopeDescriptor: mine,
       },
     ]);
     const r = await signer.sign(input);
     expect(r.recordId).toBe("c-2");
     expect(rows).toHaveLength(2);
+  });
+
+  it("does not reuse the signature of an earlier request for the same document", async () => {
+    const { signer, rows, calls } = fakeService([
+      {
+        id: "c-3",
+        typeKey: "hipaa_npp_acknowledgement",
+        createdById: "user-1",
+        status: "active",
+        scopeDescriptor: { ...mine, requestId: "req-0" },
+      },
+    ]);
+    const r = await signer.sign(input);
+    expect(r.recordId).toBe("c-2");
+    expect(rows).toHaveLength(2);
+    expect(calls).toHaveLength(2);
   });
 });

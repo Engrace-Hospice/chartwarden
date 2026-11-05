@@ -112,6 +112,7 @@ export interface AdmissionDocumentSigners {
     actingConsentId: string | null;
     grantorRelationshipText: string | null;
     portalUserId: string;
+    requestId: string;
     portalAccountId: string;
     portalSessionId: string;
     signerName: string;
@@ -267,6 +268,7 @@ async function signViaAuthoritativeModule(
         actingConsentId: a.actingConsentId,
         grantorRelationshipText: statement.signerRelationshipText?.trim() || null,
         portalUserId: signer.portalUserId,
+        requestId: request.id,
         portalAccountId: signer.portalAccountId,
         portalSessionId: signer.portalSessionId,
         signerName,

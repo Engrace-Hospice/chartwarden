@@ -89,41 +89,78 @@ export interface StaffSignatureStore {
   ): Promise<VoidOutcome>;
 }
 
+const isUniqueViolation = (err: unknown): boolean =>
+  (err as { code?: string; cause?: { code?: string } })?.code === "23505" ||
+  (err as { cause?: { code?: string } })?.cause?.code === "23505";
+
 export function buildStaffSignatureStore(db: DbClient): StaffSignatureStore {
   const ctx = (organizationId: string, userId = "") => ({ organizationId, userId });
+  const insertOrReportOpen = async (
+    organizationId: string,
+    input: CreateSignatureRequestInput,
+  ): Promise<CreateOutcome> =>
+    withOrgContext(db, ctx(organizationId, input.requestedBy), async (tx) => {
+      // One open request per (patient, document kind): a second send would double-notify and race the signature. Answer with the open one
+      // rather than relying on the unique index to throw, so the caller gets a clean 409 and the existing id.
+      const [open] = await tx
+        .select({ id: SR.id })
+        .from(SR)
+        .where(
+          and(
+            eq(SR.patientId, input.patientId),
+            eq(SR.docKind, input.docKind),
+            inArray(SR.status, [...OPEN]),
+          ),
+        )
+        .limit(1);
+      if (open) return { created: false, reason: "already_open", existingId: open.id } as const;
+      const [row] = await tx
+        .insert(SR)
+        .values({
+          organizationId,
+          providerEntityId: input.providerEntityId,
+          locationId: input.locationId,
+          patientId: input.patientId,
+          docKind: input.docKind,
+          templateKey: input.templateKey,
+          templateVersion: input.templateVersion,
+          targetRef: input.targetRef,
+          requestedBy: input.requestedBy,
+        })
+        .returning();
+      return { created: true, request: toStaffView(row as Row) } as const;
+    });
+
+  const openRequestId = (
+    organizationId: string,
+    input: CreateSignatureRequestInput,
+  ): Promise<string | null> =>
+    withOrgContext(db, ctx(organizationId, input.requestedBy), async (tx) => {
+      const [open] = await tx
+        .select({ id: SR.id })
+        .from(SR)
+        .where(
+          and(
+            eq(SR.patientId, input.patientId),
+            eq(SR.docKind, input.docKind),
+            inArray(SR.status, [...OPEN]),
+          ),
+        )
+        .limit(1);
+      return open?.id ?? null;
+    });
+
   return {
     async create(organizationId, input) {
-      return withOrgContext(db, ctx(organizationId, input.requestedBy), async (tx) => {
-        // One open request per (patient, document kind): a second send would double-notify and race the signature. Answer with the open one
-        // rather than relying on the unique index to throw, so the caller gets a clean 409 and the existing id.
-        const [open] = await tx
-          .select({ id: SR.id })
-          .from(SR)
-          .where(
-            and(
-              eq(SR.patientId, input.patientId),
-              eq(SR.docKind, input.docKind),
-              inArray(SR.status, [...OPEN]),
-            ),
-          )
-          .limit(1);
-        if (open) return { created: false, reason: "already_open", existingId: open.id } as const;
-        const [row] = await tx
-          .insert(SR)
-          .values({
-            organizationId,
-            providerEntityId: input.providerEntityId,
-            locationId: input.locationId,
-            patientId: input.patientId,
-            docKind: input.docKind,
-            templateKey: input.templateKey,
-            templateVersion: input.templateVersion,
-            targetRef: input.targetRef,
-            requestedBy: input.requestedBy,
-          })
-          .returning();
-        return { created: true, request: toStaffView(row as Row) } as const;
-      });
+      try {
+        return await insertOrReportOpen(organizationId, input);
+      } catch (err) {
+        // Two concurrent sends both pass the pre-check; the loser trips the one-open-request unique index. Same answer as the pre-check.
+        if (!isUniqueViolation(err)) throw err;
+        const existingId = await openRequestId(organizationId, input);
+        if (!existingId) throw err;
+        return { created: false, reason: "already_open", existingId };
+      }
     },
 
     async get(organizationId, requestId) {

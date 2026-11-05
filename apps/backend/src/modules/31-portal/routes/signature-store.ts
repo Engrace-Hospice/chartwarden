@@ -3,6 +3,7 @@
 // patient here, not left to the caller: a request id from another patient of the same tenant answers "not found", never its contents.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
+import { ConflictError } from "@chartwarden/types";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type {
   SignatureRequestRecord,
@@ -103,7 +104,11 @@ export function buildPortalSignatureStore(db: DbClient): PortalSignatureStore {
         // A concurrent retry signed it first: the request is final, return it as it stands.
         const [current] = await tx.select().from(SR).where(eq(SR.id, requestId)).limit(1);
         if (current?.status === "signed") return toRecord(current);
-        throw new Error("signature request is not open for signing");
+        // Staff voided it between the portal's check and this write (the authoritative M06/M39 record is already signed): a typed 409,
+        // never a bare 500. The voided request stays terminal; staff reconcile the orphaned record from the audit trail.
+        throw new ConflictError(
+          "This request was withdrawn while you were signing. Please contact your care team.",
+        );
       });
     },
 

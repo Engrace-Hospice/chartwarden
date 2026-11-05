@@ -717,6 +717,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       actingConsentId: null,
       grantorRelationshipText: null,
       portalUserId: otherPatient.userId,
+      requestId: id,
       portalAccountId: otherPatient.accountId,
       portalSessionId: otherPatient.sessionId,
       signerName: "Other Person",
@@ -1281,6 +1282,15 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     expect(
       (await sign(actor, created.json().id, { signedTypedName: "Secret Typed Name" })).statusCode,
     ).toBe(200);
+    const auditedReads = async (): Promise<number> =>
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM audit_event WHERE actor_user_id=$1 AND resource_kind='portal_signature_request'",
+          [staff.admin],
+        )
+      ).rows[0].n;
+    // The create above already left write-trigger rows for this actor, so only a before/after delta proves the READ itself landed.
+    const before = await auditedReads();
     const res = await staffGet(staff.admin, `${ADMIN}?patientId=${patientId}`);
     expect(res.statusCode, res.body).toBe(200);
     expect(res.body).not.toContain("Secret Typed Name");
@@ -1289,11 +1299,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       status: "signed",
       reminderCount: 0,
     });
-    const audited = await admin.query(
-      "SELECT count(*)::int AS n FROM audit_event WHERE actor_user_id=$1 AND resource_kind='portal_signature_request'",
-      [staff.admin],
-    );
-    expect(audited.rows[0].n).toBeGreaterThanOrEqual(1);
+    expect(await auditedReads()).toBeGreaterThan(before);
   });
 
   it("the DB guard holds for staff voids too: a voided request cannot be reopened or its reason rewritten", async () => {

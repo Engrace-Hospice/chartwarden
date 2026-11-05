@@ -126,9 +126,11 @@ controls:
       - file: packages/db/migrations/1304_m31_portal_signature_request.sql
       - file: apps/backend/src/modules/31-portal/routes/signature.routes.ts
       - file: apps/backend/src/modules/31-portal/write-paths/sign-admission-document.ts
+      - file: apps/backend/src/modules/31-portal/routes/signature-staff.routes.ts
+      - file: apps/backend/src/modules/31-portal/routes/signature-staff-store.ts
       - file: apps/backend/__tests__/m31-signature-requests.live.test.ts
     gap:
-      reason: The portal list / detail / sign routes (TOTP step-up, Idempotency-Key, session-class permissions, grant ABAC, the per-grant matrix, the DPOA source-consent check) are proven on a real database as chartwarden_app for the NPP and Consent to Treat (M39). Not yet proven live, or not built - the M06 Election Statement and Notice of Rights seam against a real admission, the uploaded-copy upload and staff review, the staff create / void routes, the outbox events, push and daily reminders - so the control stays partial.
+      reason: The portal list / detail / sign routes (TOTP step-up, Idempotency-Key, session-class permissions, grant ABAC, the per-grant matrix, the DPOA source-consent check through M39's ConsentEvaluator) and the staff create / list / void routes (portal.signature_request.create/read/void, caseload-or-scope patient guard, one open request per document, no signer text in staff views, read audit) are proven on a real database as chartwarden_app, including the M06 Election Statement and Notice of Rights seam against a real admission. Not yet built - the uploaded-copy upload and staff review, the outbox events, push and daily reminders. Accepted for now - signer evidence columns are plaintext (scrubbed from audit images), there is no retention or legal-hold link for the table yet, and staff create / void do not require step-up (permission + patient scope + idempotency only) - so the control stays partial.
       owner: engineering
       review_by: 2026-12-31
 
