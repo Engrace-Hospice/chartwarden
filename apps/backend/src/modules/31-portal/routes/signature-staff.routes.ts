@@ -11,9 +11,9 @@ import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/typ
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { M06_DOC_KINDS, SIGNATURE_TEMPLATES } from "../signature-templates";
 import { type AcceptDenyCode, acceptUploadedCopy } from "../write-paths/accept-uploaded-copy";
-import { actorOf } from "./actor";
+import { type PreHandler, actorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
-import { P } from "./guards";
+import { P, STEP_UP } from "./guards";
 import type { PortalRouteDeps } from "./index";
 import { invitationPatientScope } from "./invitation-scope";
 import {
@@ -25,6 +25,17 @@ import {
 import type { PortalStaffSigningDeps } from "./signature-deps";
 
 const IDEMPOTENT = requireIdempotencyKey();
+
+/**
+ * ADR-0107 D6: accepting an uploaded copy signs an M39 consent with the reviewer as signer, so it carries
+ * M39's own sign gate (`consent.sign` + a fresh step-up, as `POST /api/v1/consents/:id/sign`). Reject only
+ * reopens the request and stays on the review permission alone.
+ */
+const ACCEPT_SIGN_GATE: readonly PreHandler[] = [P("consent.sign"), STEP_UP("consent.sign")];
+const acceptSignGate: PreHandler = async (request, reply) => {
+  if ((request.body as { decision?: unknown } | null)?.decision !== "accepted") return;
+  for (const guard of ACCEPT_SIGN_GATE) await guard(request, reply);
+};
 
 function staffOf(deps: PortalRouteDeps): PortalStaffSigningDeps {
   if (!deps.signing?.staff) {
@@ -172,7 +183,7 @@ export function registerPortalSignatureStaffRoutes(
 
   app.post(
     "/api/v1/admin/portal-signature-requests/:requestId/review",
-    { preHandler: [P("portal.signature_request.review"), reviewScope, IDEMPOTENT] },
+    { preHandler: [P("portal.signature_request.review"), reviewScope, acceptSignGate, IDEMPOTENT] },
     async (request, reply) => {
       await reviewScope(request, reply);
       const staff = staffOf(deps);

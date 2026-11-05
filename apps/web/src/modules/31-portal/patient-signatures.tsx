@@ -18,7 +18,7 @@ import type { DataTableColumn } from "@chartwarden/ui";
 // paper copy the patient uploaded. The signer's typed name and reasons are never read or shown here (the API does not return them).
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 import {
   ChartPatientBanner,
@@ -26,6 +26,7 @@ import {
   useChartIdentity,
 } from "../../shell/patient-context";
 import { useSession } from "../../shell/session";
+import { stepUpRedirectFor } from "../../shell/step-up-redirect";
 import {
   DOC_LABEL,
   SIGNER_LABEL,
@@ -64,6 +65,8 @@ const NETWORK_REFUSAL = "We could not reach the server. Please try again.";
 
 function PatientSignaturesInner(): JSX.Element {
   const client = useApiClient();
+  const navigate = useNavigate();
+  const location = useLocation();
   const permissions = useSession()?.permissions ?? [];
   const canSend = permissions.includes("portal.signature_request.create");
   const canReview = permissions.includes("portal.signature_request.review");
@@ -202,6 +205,12 @@ function PatientSignaturesInner(): JSX.Element {
     );
     const r = res as { error?: unknown };
     if (r.error) {
+      // Accepting signs a consent, so the server may ask for a fresh step-up first; come back here after it.
+      const stepUp = stepUpRedirectFor(r.error, `${location.pathname}${location.search}`);
+      if (stepUp) {
+        navigate(stepUp);
+        return;
+      }
       setNotice({ tone: "error", text: refusalMessage(r.error, "The review could not be saved.") });
     } else {
       setNotice({

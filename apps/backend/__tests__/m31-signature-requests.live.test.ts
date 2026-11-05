@@ -128,8 +128,10 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     { patientId: string; actor: Actor; proxy?: Actor }
   >;
   const actors: Actor[] = [];
-  const staff = {} as Record<"admin" | "noScope" | "noPerm" | "orgB", string>;
+  const staff = {} as Record<"admin" | "noScope" | "noPerm" | "orgB" | "reviewOnly", string>;
   const staffPerms = new Map<string, Set<string>>();
+  /** Each staff user's fresh-step-up session, and a stale one (accept carries M39's sign step-up). */
+  const staffSessions = new Map<string, { readonly fresh: string; readonly stale: string }>();
   const staffFixtures = {} as Record<
     "staffNpp" | "staffElection" | "staffNor" | "staffVoid",
     { patientId: string; actor: Actor }
@@ -433,12 +435,18 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       "portal.signature_request.void",
       "portal.signature_request.review",
     ];
+    // Accepting a copy signs an M39 consent, so it also needs M39's own sign permission.
+    const SIGNER_KEYS = [...STAFF_KEYS, "consent.sign"];
     staff.admin = await seedUser("staff-admin");
     staff.noScope = await seedUser("staff-noscope");
     staff.noPerm = await seedUser("staff-noperm");
     staff.orgB = await seedUser("staff-orgb");
+    staff.reviewOnly = await seedUser("staff-reviewonly");
     for (const u of [staff.admin, staff.noScope, staff.orgB])
-      staffPerms.set(u, new Set(STAFF_KEYS));
+      staffPerms.set(u, new Set(SIGNER_KEYS));
+    staffPerms.set(staff.reviewOnly, new Set(STAFF_KEYS));
+    for (const u of Object.values(staff))
+      staffSessions.set(u, { fresh: randomUUID(), stale: randomUUID() });
     // Patients with a real, SITED `patient` row (the staff create route reads the agency from it), each with its own portal login.
     for (const key of ["staffNpp", "staffElection", "staffNor", "staffVoid"] as const) {
       const patientId = randomUUID();
@@ -507,12 +515,30 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       lastStepUpAt: new Date(Date.now() - ageMs),
       lastStepUpFactor: "totp" as const,
     });
-    const { store: sessionStore } = createInMemorySessionContextStore(
-      actors.flatMap((a) => [
+    const staffSessionOf = (userId: string, sessionId: string, ageMs: number) => ({
+      sessionClass: "staff",
+      portalAccountId: null,
+      sessionPatientId: null,
+      sessionId,
+      userId,
+      membershipId: null,
+      organizationId: ORG_A,
+      roles: [],
+      providerEntityIds: [],
+      locationIds: [],
+      lastStepUpAt: new Date(Date.now() - ageMs),
+      lastStepUpFactor: "totp" as const,
+    });
+    const { store: sessionStore } = createInMemorySessionContextStore([
+      ...actors.flatMap((a) => [
         sessionOf(a, a.sessionId, 0),
         sessionOf(a, a.staleSessionId, STALE_MS),
       ]),
-    );
+      ...[...staffSessions].flatMap(([userId, { fresh, stale }]) => [
+        staffSessionOf(userId, fresh, 0),
+        staffSessionOf(userId, stale, STALE_MS),
+      ]),
+    ]);
     // Real portal ABAC predicates over the real grant rows (wireModuleSeams, db-present), and the real session-class RBAC sets.
     wireModuleSeams({ db: handle.db, sessionContextStore: sessionStore });
     setEffectivePermissionResolver(
@@ -1106,6 +1132,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     "x-test-user": user,
     "x-test-org": ORG_A,
     "x-test-roles": "org_admin",
+    "x-test-session": staffSessions.get(user)?.fresh ?? "",
     ...over,
   });
   const staffPost = (
@@ -1596,6 +1623,25 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     );
     expect(offScope.statusCode).toBe(404);
     expect((await reqRow(id)).status).toBe("uploaded_pending_review");
+  });
+
+  it("accepting a copy signs a consent, so it needs consent.sign and a fresh step-up; rejecting needs neither", async () => {
+    const { id } = await sentWithCopy("staffNpp");
+    // A reviewer without M39's sign permission cannot accept.
+    expect((await review(id, "accepted", staff.reviewOnly)).statusCode).toBe(403);
+    // A signer whose step-up has lapsed is sent to re-verify, not refused outright.
+    const stale = await staffPost(
+      staff.admin,
+      `${ADMIN}/${id}/review`,
+      { decision: "accepted" },
+      { "x-test-session": staffSessions.get(staff.admin)?.stale ?? "" },
+    );
+    expect(stale.statusCode).toBe(403);
+    expect(stale.json().error?.code ?? stale.json().code).toBe("STEP_UP_REQUIRED");
+    expect((await reqRow(id)).status).toBe("uploaded_pending_review");
+    // Rejecting only reopens the request: the review permission alone is enough.
+    expect((await review(id, "rejected", staff.reviewOnly)).statusCode).toBe(200);
+    expect((await reqRow(id)).status).toBe("pending");
   });
 
   it("the DB refuses a signed request that has neither portal signer evidence nor an accepted review", async () => {

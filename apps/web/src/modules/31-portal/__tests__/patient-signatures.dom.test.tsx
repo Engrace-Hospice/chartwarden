@@ -3,7 +3,7 @@ import type { ApiClient } from "@chartwarden/ui";
 // @vitest-environment jsdom
 // ADR-0107 staff Signatures tab: list, send, withdraw, accept/reject an uploaded copy, permission hiding, and the refusals.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import { PatientSignatures } from "../patient-signatures";
@@ -33,6 +33,12 @@ const ALL = [
   "portal.signature_request.void",
   "portal.signature_request.review",
 ];
+
+/** Stands in for the step-up page: shows where it would send the user back to. */
+function StepUpProbe() {
+  const { search } = useLocation();
+  return <p>step-up {new URLSearchParams(search).get("returnTo")}</p>;
+}
 
 function mount(opts: {
   items: unknown[];
@@ -68,6 +74,7 @@ function mount(opts: {
           <MemoryRouter initialEntries={["/patients/p-1/signatures"]}>
             <Routes>
               <Route path="/patients/:patientId/signatures" element={<PatientSignatures />} />
+              <Route path="/step-up" element={<StepUpProbe />} />
             </Routes>
           </MemoryRouter>
         </SessionProvider>
@@ -188,6 +195,15 @@ describe("PatientSignatures", () => {
     fireEvent.click(await screen.findByRole("button", { name: /^Reject/ }));
     await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
     expect((post.mock.calls[1]?.[1] as { body: unknown }).body).toEqual({ decision: "rejected" });
+  });
+
+  it("sends the reviewer to step-up when accepting needs a fresh second factor, then back here", async () => {
+    mount({
+      items: [row({ id: "u-1", status: "uploaded_pending_review" })],
+      post: () => ({ error: { error: { code: "STEP_UP_REQUIRED", message: "x" } } }),
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /^Accept/ }));
+    expect(await screen.findByText("step-up /patients/p-1/signatures")).toBeTruthy();
   });
 
   it("explains the M06 refusal when an election or notice copy is accepted here", async () => {
