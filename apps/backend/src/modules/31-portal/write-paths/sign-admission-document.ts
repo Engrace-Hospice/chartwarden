@@ -176,7 +176,10 @@ export async function signAdmissionDocument(
   if (request.status === "signed") return { ok: true, request, alreadySigned: true };
   if (request.status === "voided") return deny("request_not_open");
 
-  const decision = decideSigningAuthority({ grantKind: signer.grantKind, docKind: request.docKind });
+  const decision = decideSigningAuthority({
+    grantKind: signer.grantKind,
+    docKind: request.docKind,
+  });
   if (!decision.allowed) return deny("not_authorized_for_document");
   if (statement.signedTypedName.trim().length < MIN_NAME) return deny("signer_name_required");
   if (decision.requiresRelationship && blank(statement.signerRelationshipText))

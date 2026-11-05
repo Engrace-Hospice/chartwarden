@@ -522,11 +522,14 @@ import {
   claimStayEndFactsForOrg,
   composeNonCoveredItemsReaders,
   createAdmissionLocPeriodsReader,
+  createDbAdmissionAbacResolver,
   createDocumentReaderEvidenceValidator,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
   createElectionAddendumService,
   createNomncService,
+  createPortalAdmissionSigners,
+  createPortalSigningTargetCheck,
   electionAddendumComplianceForOrg,
   electionPeriodContextForOrg,
   idgActiveAdmissionsForOrg,
@@ -535,7 +538,6 @@ import {
   idgPacketInclusionForOrg,
   idgRecertWindowsForOrg,
   latestLiveEndedEpisode,
-  createPortalAdmissionSigners,
   mountAdmissionRoutes,
   portalDischargedPastGraceForOrg,
   priorEpisodesForOrg,
@@ -1389,8 +1391,9 @@ import {
   bindM31EventEmitter,
   buildDailyTelehealthAdapter,
   buildDrizzlePortalStore,
-  buildPortalSignatureStore,
   buildPortalAbacResolverFromStore,
+  buildPortalSignatureStore,
+  buildStaffSignatureStore,
   createM31EventEmitter,
   createM31PublishedSeamImpls,
   createPortalConsentPort,
@@ -1772,9 +1775,9 @@ import {
   createConsentInternalNotesCipher,
   createDbConsentStore,
   createDrizzleConsentEraseStore,
+  createPortalConsentSigner,
   getConsentEvaluator,
   getConsentPatientReader,
-  createPortalConsentSigner,
   mountConsentRoutes,
   recordCascadeAckForOrg,
   registerConsentAbacPredicates,
@@ -6754,11 +6757,33 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               consents: {
                 async read(organizationId, consentId) {
                   const c = await m39ConsentService.getConsent(organizationId, consentId);
-                  return c ? { patientId: c.patientId, typeKey: c.typeKey, status: c.status } : null;
+                  return c
+                    ? { patientId: c.patientId, typeKey: c.typeKey, status: c.status }
+                    : null;
                 },
               },
               // A "pending legal review" template (Consent to Treat today) is never signable unless this is set on purpose.
               allowUnreviewedTemplates: process.env.PORTAL_ALLOW_UNREVIEWED_TEMPLATES === "true",
+              staff: {
+                store: buildStaffSignatureStore(dbHandle.db),
+                patientSite: async (organizationId, patientId) => {
+                  const patient = await getSeam("PatientReader").findById({
+                    organizationId,
+                    id: patientId,
+                  });
+                  // A patient with no agency is refused (fail closed): the request's provider_entity_id is NOT NULL.
+                  return patient?.providerEntityId
+                    ? {
+                        providerEntityId: patient.providerEntityId,
+                        locationId: patient.locationId ?? null,
+                      }
+                    : null;
+                },
+                m06TargetIsSignable: createPortalSigningTargetCheck(
+                  m6AdmissionService,
+                  createDbAdmissionAbacResolver(dbHandle.db),
+                ),
+              },
             },
             telehealth: buildDailyTelehealthAdapter(process.env),
             provisioning: portalProvisioning,

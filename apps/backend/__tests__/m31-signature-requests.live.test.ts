@@ -33,9 +33,14 @@ import { buildServer } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { wireModuleSeams } from "../src/index";
 import { dpoaConsentCheck } from "../src/modules/06-admission";
-import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
+import {
+  createDbAdmissionAbacResolver,
+  createDbAdmissionRouteService,
+} from "../src/modules/06-admission/admission-route-service-db";
 import { createPortalAdmissionSigners } from "../src/modules/06-admission/portal-document-signers";
+import { createPortalSigningTargetCheck } from "../src/modules/06-admission/portal-signing-targets";
 import { mountM31Routes } from "../src/modules/31-portal/routes/mount";
+import { buildStaffSignatureStore } from "../src/modules/31-portal/routes/signature-staff-store";
 import { buildPortalSignatureStore } from "../src/modules/31-portal/routes/signature-store";
 import { attestationTextFor } from "../src/modules/31-portal/routes/signature.routes";
 import { buildDrizzlePortalStore } from "../src/modules/31-portal/routes/store";
@@ -63,7 +68,8 @@ function headerAuth(request: FastifyRequest): void {
   if (!user) return;
   request.context.userId = user;
   request.context.organizationId = get("x-test-org") ?? "";
-  request.context.roles = [];
+  const roles = get("x-test-roles");
+  request.context.roles = roles ? roles.split(",") : [];
   const a = request.context.attributes;
   const klass = get("x-test-session-class");
   if (klass) a.sessionClass = klass;
@@ -99,6 +105,13 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     { patientId: string; actor: Actor; proxy?: Actor }
   >;
   const actors: Actor[] = [];
+  const staff = {} as Record<"admin" | "noScope" | "noPerm" | "orgB", string>;
+  const staffPerms = new Map<string, Set<string>>();
+  const staffFixtures = {} as Record<
+    "staffNpp" | "staffElection" | "staffNor" | "staffVoid",
+    { patientId: string; actor: Actor }
+  >;
+  let unsitedPatient = "";
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -389,6 +402,40 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       ORG_B,
     );
 
+    // STAFF identities: the permission keys come from this map (the base resolver), the org-wide scope from the role header.
+    const STAFF_KEYS = [
+      "portal.signature_request.create",
+      "portal.signature_request.read",
+      "portal.signature_request.void",
+    ];
+    staff.admin = await seedUser("staff-admin");
+    staff.noScope = await seedUser("staff-noscope");
+    staff.noPerm = await seedUser("staff-noperm");
+    staff.orgB = await seedUser("staff-orgb");
+    for (const u of [staff.admin, staff.noScope, staff.orgB])
+      staffPerms.set(u, new Set(STAFF_KEYS));
+    // Patients with a real, SITED `patient` row (the staff create route reads the agency from it), each with its own portal login.
+    for (const key of ["staffNpp", "staffElection", "staffNor", "staffVoid"] as const) {
+      const patientId = randomUUID();
+      await admin.query(
+        `INSERT INTO patient (id, organization_id, provider_entity_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth, status)
+         VALUES ($1,$2,$3,$4,'Test','Patient','1950-01-01','F','active')`,
+        [patientId, ORG_A, peByOrg[ORG_A], `MRN-${patientId}`],
+      );
+      const access = await seedConsent(ORG_A, patientId, "portal_access", "active");
+      staffFixtures[key] = {
+        patientId,
+        actor: await seedActor(`sf-${key}`, "patient_self", "patient_portal", patientId, access),
+      };
+    }
+    // An UNSITED patient: no agency, so a request cannot be created for them.
+    unsitedPatient = randomUUID();
+    await admin.query(
+      `INSERT INTO patient (id, organization_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth, status)
+       VALUES ($1,$2,$3,'No','Agency','1950-01-01','F','active')`,
+      [unsitedPatient, ORG_A, `MRN-${unsitedPatient}`],
+    );
+
     // Logins for the real-M06 scenarios: the session store is built below, so every actor must exist before it.
     for (const key of ["election", "retry", "nor", "agent", "noDpoa", "revokedDpoa"] as const) {
       const patientId = randomUUID();
@@ -443,7 +490,11 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     );
     // Real portal ABAC predicates over the real grant rows (wireModuleSeams, db-present), and the real session-class RBAC sets.
     wireModuleSeams({ db: handle.db, sessionContextStore: sessionStore });
-    setEffectivePermissionResolver(withSessionClassPermissions(() => new Set<string>()));
+    setEffectivePermissionResolver(
+      withSessionClassPermissions(
+        (context) => staffPerms.get(context.userId ?? "") ?? new Set<string>(),
+      ),
+    );
 
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M39_OUTBOX_EVENTS]));
     const consentService = createDbConsentRouteService(handle.db, {
@@ -510,6 +561,23 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
           },
         },
         allowUnreviewedTemplates: false,
+        staff: {
+          store: buildStaffSignatureStore(handle.db),
+          patientSite: async (organizationId, patientId) => {
+            const r = await admin.query(
+              "SELECT provider_entity_id, location_id FROM patient WHERE id=$1 AND organization_id=$2",
+              [patientId, organizationId],
+            );
+            const row = r.rows[0];
+            return row?.provider_entity_id
+              ? { providerEntityId: row.provider_entity_id, locationId: row.location_id ?? null }
+              : null;
+          },
+          m06TargetIsSignable: createPortalSigningTargetCheck(
+            m06,
+            createDbAdmissionAbacResolver(handle.db),
+          ),
+        },
       },
     });
     await app.ready();
@@ -962,5 +1030,292 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       ).rows[0];
       expect(row.status).toBe("drafted");
     }
+  });
+  // ── STAFF routes: send / list / void ────────────────────────────────────────────────────────────────────────────────────────────
+  const ADMIN = "/api/v1/admin/portal-signature-requests";
+  const staffHeaders = (user: string, over: Record<string, string> = {}) => ({
+    "x-test-user": user,
+    "x-test-org": ORG_A,
+    "x-test-roles": "org_admin",
+    ...over,
+  });
+  const staffPost = (
+    user: string,
+    url: string,
+    body: Record<string, unknown>,
+    over: Record<string, string> = {},
+  ) =>
+    app.inject({
+      method: "POST",
+      url,
+      headers: staffHeaders(user, { "idempotency-key": `k-3107-staff-${++seq}`, ...over }),
+      payload: body,
+    });
+  const staffGet = (user: string, url: string, over: Record<string, string> = {}) =>
+    app.inject({ method: "GET", url, headers: staffHeaders(user, over) });
+  /** Withdraw whatever is open for the pair so a test starts clean (a request is never deleted). */
+  const clearOpen = (patientId: string, docKind: string) =>
+    admin.query(
+      `UPDATE portal_signature_request SET status='voided', voided_by=$3, voided_at=now(), void_reason='sent_in_error'
+        WHERE patient_id=$1 AND doc_kind=$2 AND status IN ('pending','uploaded_pending_review')`,
+      [patientId, docKind, staffUserId],
+    );
+
+  it("staff send an NPP request: server-stamped template, sent by the staff user, visible to the patient, signable end to end", async () => {
+    const { patientId, actor } = staffFixtures.staffNpp;
+    await clearOpen(patientId, NPP);
+    const res = await staffPost(staff.admin, ADMIN, { patientId, docKind: NPP });
+    expect(res.statusCode, res.body).toBe(201);
+    const created = res.json();
+    expect(created).toMatchObject({
+      patientId,
+      docKind: NPP,
+      status: "pending",
+      templateKey: "hipaa_npp_acknowledgement_v1",
+      templateVersion: "1.0.0",
+      requestedBy: staff.admin,
+      targetRef: null,
+    });
+    // The patient sees it, then signs it through the portal route.
+    const seen = await get(actor);
+    expect((seen.json().items as Array<{ id: string }>).map((i) => i.id)).toContain(created.id);
+    const signed = await sign(actor, created.id, { signedTypedName: "Pat Example" });
+    expect(signed.statusCode, signed.body).toBe(200);
+    expect((await reqRow(created.id)).status).toBe("signed");
+  });
+
+  it("a second send for the same patient and document is refused while one is open, and allowed after it is voided", async () => {
+    const { patientId } = staffFixtures.staffVoid;
+    await clearOpen(patientId, NPP);
+    const first = await staffPost(staff.admin, ADMIN, { patientId, docKind: NPP });
+    expect(first.statusCode).toBe(201);
+    const dup = await staffPost(staff.admin, ADMIN, { patientId, docKind: NPP });
+    expect(dup.statusCode).toBe(409);
+    expect(dup.json().error.code).toBe("SIGNATURE_REQUEST_ALREADY_OPEN");
+    const voided = await staffPost(staff.admin, `${ADMIN}/${first.json().id}/void`, {
+      reason: "document_superseded",
+    });
+    expect(voided.statusCode, voided.body).toBe(200);
+    expect(voided.json()).toMatchObject({ status: "voided", voidReason: "document_superseded" });
+    const row = await reqRow(first.json().id);
+    expect(row).toMatchObject({ status: "voided", voided_by: staff.admin });
+    expect(row.voided_at).not.toBeNull();
+    // Voiding twice, or voiding a signed request, is a conflict; a voided request disappears from the patient's view.
+    expect(
+      (
+        await staffPost(staff.admin, `${ADMIN}/${first.json().id}/void`, {
+          reason: "sent_in_error",
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect((await get(staffFixtures.staffVoid.actor, `/${first.json().id}`)).statusCode).toBe(404);
+    const again = await staffPost(staff.admin, ADMIN, { patientId, docKind: NPP });
+    expect(again.statusCode, again.body).toBe(201);
+    const signedId = (
+      await sign(staffFixtures.staffVoid.actor, again.json().id, { signedTypedName: "Pat Example" })
+    ).json().request.id;
+    expect(
+      (await staffPost(staff.admin, `${ADMIN}/${signedId}/void`, { reason: "sent_in_error" }))
+        .statusCode,
+    ).toBe(409);
+    expect((await reqRow(signedId)).status).toBe("signed");
+  });
+
+  it("an election request names its drafted statement; a wrong, foreign or signed target is refused, and the patient can then sign it", async () => {
+    const { patientId, actor } = staffFixtures.staffElection;
+    await clearOpen(patientId, "election_statement");
+    const { admissionId, electionId } = await (async () => {
+      const { admissionId } = await admitViaQualifiedReferral(m06, admin, {
+        organizationId: ORG_A,
+        actorUserId: staffUserId,
+        patientId,
+      });
+      const periods = await m06.listElectionPeriods(ORG_A, admissionId);
+      const es = await m06.draftElectionStatement(ORG_A, admissionId, periods![0].id, {
+        electedProviderEntityId: peByOrg[ORG_A],
+        waiverAcknowledged: true,
+      });
+      return { admissionId, electionId: es.id };
+    })();
+    const send = (body: Record<string, unknown>) =>
+      staffPost(staff.admin, ADMIN, { patientId, docKind: "election_statement", ...body });
+    // No target, an NPP-style no-target rule broken the other way, a random id, and another patient's statement: all refused.
+    expect((await send({})).statusCode).toBe(422);
+    expect((await send({ targetRef: randomUUID() })).statusCode).toBe(422);
+    expect((await send({ targetRef: admissionId })).statusCode).toBe(422); // an admission is not a statement
+    // Another patient's drafted statement, on a real admission of its own.
+    const otherPatient = randomUUID();
+    const otherAdmission = await admitViaQualifiedReferral(m06, admin, {
+      organizationId: ORG_A,
+      actorUserId: staffUserId,
+      patientId: otherPatient,
+    });
+    const otherPeriods = await m06.listElectionPeriods(ORG_A, otherAdmission.admissionId);
+    const foreign = {
+      electionId: (
+        await m06.draftElectionStatement(ORG_A, otherAdmission.admissionId, otherPeriods![0].id, {
+          electedProviderEntityId: peByOrg[ORG_A],
+          waiverAcknowledged: true,
+        })
+      ).id,
+    };
+    expect((await send({ targetRef: foreign.electionId })).statusCode).toBe(422);
+    expect(
+      (await staffPost(staff.admin, ADMIN, { patientId, docKind: NPP, targetRef: electionId }))
+        .statusCode,
+    ).toBe(422); // a target is refused for a document that takes none
+    const ok = await send({ targetRef: electionId });
+    expect(ok.statusCode, ok.body).toBe(201);
+    expect(ok.json().targetRef).toBe(electionId);
+    const signed = await sign(actor, ok.json().id, { signedTypedName: "Pat Example" });
+    expect(signed.statusCode, signed.body).toBe(200);
+    // Once the statement is signed it cannot be sent again.
+    expect((await send({ targetRef: electionId })).statusCode).toBe(422);
+  });
+
+  it("a notice-of-rights request names the patient's admission, and stops being sendable once acknowledged", async () => {
+    const { patientId, actor } = staffFixtures.staffNor;
+    await clearOpen(patientId, "notice_of_patient_rights");
+    const { admissionId } = await admitViaQualifiedReferral(m06, admin, {
+      organizationId: ORG_A,
+      actorUserId: staffUserId,
+      patientId,
+    });
+    const send = (targetRef: string) =>
+      staffPost(staff.admin, ADMIN, { patientId, docKind: "notice_of_patient_rights", targetRef });
+    expect((await send(randomUUID())).statusCode).toBe(422);
+    const ok = await send(admissionId);
+    expect(ok.statusCode, ok.body).toBe(201);
+    expect((await sign(actor, ok.json().id, { signedTypedName: "Pat Example" })).statusCode).toBe(
+      200,
+    );
+    expect((await send(admissionId)).statusCode).toBe(422);
+  });
+
+  it("an unsited patient, an unknown patient and a missing Idempotency-Key are all refused", async () => {
+    expect(
+      (await staffPost(staff.admin, ADMIN, { patientId: unsitedPatient, docKind: NPP })).statusCode,
+    ).toBe(404);
+    expect(
+      (await staffPost(staff.admin, ADMIN, { patientId: randomUUID(), docKind: NPP })).statusCode,
+    ).toBe(404);
+    const noKey = await app.inject({
+      method: "POST",
+      url: ADMIN,
+      headers: staffHeaders(staff.admin),
+      payload: { patientId: staffFixtures.staffNpp.patientId, docKind: NPP },
+    });
+    expect(noKey.statusCode).toBe(400);
+  });
+
+  it("the staff create body is closed: the server stamps the template, so a supplied key or status is refused", async () => {
+    const { patientId } = staffFixtures.staffNpp;
+    for (const extra of [
+      { templateKey: "x" },
+      { templateVersion: "9.9.9" },
+      { status: "signed" },
+      { requestedBy: randomUUID() },
+    ]) {
+      const res = await staffPost(staff.admin, ADMIN, { patientId, docKind: NPP, ...extra });
+      expect(res.statusCode).toBe(422);
+    }
+    expect(
+      (await staffPost(staff.admin, ADMIN, { patientId, docKind: "made_up" })).statusCode,
+    ).toBe(422);
+  });
+
+  it("the Consent to Treat request is sent at the pending-legal-review version, which the patient cannot yet sign", async () => {
+    const { patientId, actor } = staffFixtures.staffNpp;
+    await clearOpen(patientId, CTT);
+    const res = await staffPost(staff.admin, ADMIN, { patientId, docKind: CTT });
+    expect(res.statusCode, res.body).toBe(201);
+    expect(res.json().templateVersion).toBe("0.0.0-pending-legal-review");
+    const signAttempt = await sign(actor, res.json().id, { signedTypedName: "Pat Example" });
+    expect(signAttempt.statusCode).toBe(409);
+    expect((await reqRow(res.json().id)).status).toBe("pending");
+  });
+
+  it("authorization: no permission is 403, off-scope staff are 404, and another tenant's staff cannot touch or void the request", async () => {
+    const { patientId } = staffFixtures.staffNpp;
+    await clearOpen(patientId, NPP);
+    const body = { patientId, docKind: NPP };
+    expect((await staffPost(staff.noPerm, ADMIN, body)).statusCode).toBe(403);
+    // Holds the permission but has no org-wide role and no caseload: the shared caseload_or_scope guard hides the patient.
+    expect((await staffPost(staff.noScope, ADMIN, body, { "x-test-roles": "" })).statusCode).toBe(
+      404,
+    );
+    expect(
+      (await staffGet(staff.noScope, `${ADMIN}?patientId=${patientId}`, { "x-test-roles": "" }))
+        .statusCode,
+    ).toBe(404);
+    const created = await staffPost(staff.admin, ADMIN, body);
+    expect(created.statusCode, created.body).toBe(201);
+    const id = created.json().id;
+    expect(
+      (
+        await staffPost(
+          staff.noScope,
+          `${ADMIN}/${id}/void`,
+          { reason: "sent_in_error" },
+          { "x-test-roles": "" },
+        )
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await staffPost(
+          staff.orgB,
+          `${ADMIN}/${id}/void`,
+          { reason: "sent_in_error" },
+          { "x-test-org": ORG_B },
+        )
+      ).statusCode,
+    ).toBe(404);
+    expect((await reqRow(id)).status).toBe("pending");
+  });
+
+  it("staff list a patient's requests with status but no signer text, and the read is audited", async () => {
+    const { patientId, actor } = staffFixtures.staffNpp;
+    await clearOpen(patientId, NPP);
+    const created = await staffPost(staff.admin, ADMIN, { patientId, docKind: NPP });
+    expect(
+      (await sign(actor, created.json().id, { signedTypedName: "Secret Typed Name" })).statusCode,
+    ).toBe(200);
+    const res = await staffGet(staff.admin, `${ADMIN}?patientId=${patientId}`);
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.body).not.toContain("Secret Typed Name");
+    const items = res.json().items as Array<{ id: string; status: string; reminderCount: number }>;
+    expect(items.find((i) => i.id === created.json().id)).toMatchObject({
+      status: "signed",
+      reminderCount: 0,
+    });
+    const audited = await admin.query(
+      "SELECT count(*)::int AS n FROM audit_event WHERE actor_user_id=$1 AND resource_kind='portal_signature_request'",
+      [staff.admin],
+    );
+    expect(audited.rows[0].n).toBeGreaterThanOrEqual(1);
+  });
+
+  it("the DB guard holds for staff voids too: a voided request cannot be reopened or its reason rewritten", async () => {
+    const { patientId } = staffFixtures.staffVoid;
+    await clearOpen(patientId, NPP);
+    const created = await staffPost(staff.admin, ADMIN, { patientId, docKind: NPP });
+    const id = created.json().id;
+    expect(
+      (await staffPost(staff.admin, `${ADMIN}/${id}/void`, { reason: "patient_declined" }))
+        .statusCode,
+    ).toBe(200);
+    const c = await handle.pool.connect();
+    try {
+      await c.query("BEGIN");
+      await c.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
+      await expect(
+        c.query("UPDATE portal_signature_request SET status='pending' WHERE id=$1", [id]),
+      ).rejects.toBeDefined();
+      await c.query("ROLLBACK");
+    } finally {
+      c.release();
+    }
+    expect((await reqRow(id)).void_reason).toBe("patient_declined");
   });
 });

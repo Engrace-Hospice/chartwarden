@@ -85,7 +85,14 @@ function harness(
     consents,
     allowUnreviewedTemplates: opts.allowUnreviewed ?? false,
   };
-  return { deps, calls, failMarkOnce: () => (failMarkOnce = true), current: () => record };
+  return {
+    deps,
+    calls,
+    failMarkOnce: () => {
+      failMarkOnce = true;
+    },
+    current: () => record,
+  };
 }
 
 const sign = (h: ReturnType<typeof harness>, grant: PortalSignerContext["grantKind"]) =>

@@ -1496,6 +1496,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/portal-signature-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A patient's signature requests, newest first (ADR-0107) */
+        get: operations["getApiV1AdminPortalsignaturerequests"];
+        put?: never;
+        /** Send a patient an admission document to sign in the portal; one open request per patient and document kind (ADR-0107) */
+        post: operations["postApiV1AdminPortalsignaturerequests"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/portal-signature-requests/{requestId}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw an open signature request with a coded reason (ADR-0107) */
+        post: operations["postApiV1AdminPortalsignaturerequestsByRequestIdVoid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/refill-inbox-policy": {
         parameters: {
             query?: never;
@@ -32089,6 +32124,151 @@ export interface operations {
                 content: {
                     "application/json": {
                         ok: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1AdminPortalsignaturerequests: {
+        parameters: {
+            query: {
+                patientId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                            status: ("pending" | "signed" | "uploaded_pending_review") | "voided";
+                            templateKey: string;
+                            templateVersion: string;
+                            targetRef: string | null;
+                            /** Format: uuid */
+                            requestedBy: string;
+                            /** Format: date-time */
+                            requestedAt: string;
+                            lastRemindedAt: string | null;
+                            reminderCount: number;
+                            signedAt: string | null;
+                            signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
+                            voidReason: string | null;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminPortalsignaturerequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    patientId: string;
+                    docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                    /** Format: uuid */
+                    targetRef?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                        status: ("pending" | "signed" | "uploaded_pending_review") | "voided";
+                        templateKey: string;
+                        templateVersion: string;
+                        targetRef: string | null;
+                        /** Format: uuid */
+                        requestedBy: string;
+                        /** Format: date-time */
+                        requestedAt: string;
+                        lastRemindedAt: string | null;
+                        reminderCount: number;
+                        signedAt: string | null;
+                        signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
+                        voidReason: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminPortalsignaturerequestsByRequestIdVoid: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reason: "sent_in_error" | "document_superseded" | "patient_declined" | "patient_unreachable" | "signed_on_paper";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                        status: ("pending" | "signed" | "uploaded_pending_review") | "voided";
+                        templateKey: string;
+                        templateVersion: string;
+                        targetRef: string | null;
+                        /** Format: uuid */
+                        requestedBy: string;
+                        /** Format: date-time */
+                        requestedAt: string;
+                        lastRemindedAt: string | null;
+                        reminderCount: number;
+                        signedAt: string | null;
+                        signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
+                        voidReason: string | null;
                     };
                 };
             };

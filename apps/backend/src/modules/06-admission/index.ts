@@ -462,3 +462,5 @@ export {
 
 // ADR-0107 - the portal sign seam the composition root binds to the M31 signing routes.
 export { createPortalAdmissionSigners } from "./portal-document-signers";
+export { createPortalSigningTargetCheck } from "./portal-signing-targets";
+export { createDbAdmissionAbacResolver } from "./admission-route-service-db";

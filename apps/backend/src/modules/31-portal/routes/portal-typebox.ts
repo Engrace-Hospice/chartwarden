@@ -428,3 +428,55 @@ export const PortalSignatureSignResponse = Type.Object({
   request: PortalSignatureRequestView,
   alreadySigned: Type.Boolean(),
 });
+
+// ── ADR-0107 (PROPOSED) staff side: send / list / void a signature request ───────────────────────────────────────────────────────
+/** Staff name the patient and the document kind; the template key and version are stamped by the server, never supplied. */
+export const StaffSignatureRequestCreate = Type.Object(
+  {
+    patientId: Uuid,
+    docKind: SignatureDocKind,
+    /** Required for the election statement (the drafted statement's id) and the notice of rights (the admission's id); refused for the others. */
+    targetRef: Type.Optional(Uuid),
+  },
+  { additionalProperties: false },
+);
+export const StaffSignatureRequestVoid = Type.Object(
+  {
+    reason: Type.Union([
+      Type.Literal("sent_in_error"),
+      Type.Literal("document_superseded"),
+      Type.Literal("patient_declined"),
+      Type.Literal("patient_unreachable"),
+      Type.Literal("signed_on_paper"),
+    ]),
+  },
+  { additionalProperties: false },
+);
+export const StaffSignatureRequestView = Type.Object({
+  id: Uuid,
+  patientId: Uuid,
+  docKind: SignatureDocKind,
+  status: Type.Union([SignatureStatus, Type.Literal("voided")]),
+  templateKey: LayStr,
+  templateVersion: LayStr,
+  targetRef: Type.Union([Uuid, Type.Null()]),
+  requestedBy: Uuid,
+  requestedAt: Iso,
+  lastRemindedAt: Type.Union([Iso, Type.Null()]),
+  reminderCount: Type.Integer({ minimum: 0 }),
+  signedAt: Type.Union([Iso, Type.Null()]),
+  signerRole: Type.Union([
+    Type.Literal("patient"),
+    Type.Literal("legal_representative"),
+    Type.Literal("caregiver_on_behalf"),
+    Type.Null(),
+  ]),
+  voidReason: Type.Union([LayStr, Type.Null()]),
+});
+export const StaffSignatureRequestListResponse = Type.Object({
+  items: Type.Array(StaffSignatureRequestView),
+});
+export const StaffSignatureRequestQuery = Type.Object(
+  { patientId: Uuid },
+  { additionalProperties: false },
+);
