@@ -15,6 +15,7 @@ import {
   ChartWardenError,
   type ClaimsBillingDenyReason,
   type ClaimsBillingEntitlement,
+  ForbiddenError,
 } from "@chartwarden/types";
 import { DelayedError } from "bullmq";
 import type { FastifyInstance, FastifyRequest, RouteOptions } from "fastify";
@@ -194,8 +195,10 @@ declare module "fastify" {
 export async function claimsBillingPreHandler(request: FastifyRequest): Promise<void> {
   if (mode === "off") return;
   const organizationId = request.context?.organizationId;
-  // An authenticated tenant route always has an org; without one the route's own guards already refused.
-  if (!organizationId) return;
+  // An authenticated tenant route always has an org; reaching the gate without one is a wiring fault. Fail closed.
+  if (!organizationId) {
+    throw new ForbiddenError("claims-billing work needs an organization context");
+  }
   let pending = memo.get(request);
   if (!pending) {
     const exemption = request.routeOptions.config?.claimsBillingExemption;
