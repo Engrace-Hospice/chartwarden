@@ -3,7 +3,8 @@
 //
 // This is the HTTP wrapper the `@chartwarden/shared` idempotency helper's docstring promised
 // "is wired in M1-T10": it reuses that leaf's request fingerprint (computeIdempotencyHash
-// = SHA-256 over org + key + body) and its injected IdempotencyStore port (Valkey /
+// = SHA-256 over scope + key + body, the scope being org, user, method, route template, path
+// params and `If-Match`) and its injected IdempotencyStore port (Valkey /
 // Postgres `idempotency_key`), so the HTTP layer adds NO direct schema write.
 //
 // Contract (spec §4.6): only guards mutating methods carrying an `Idempotency-Key`; skips
@@ -15,9 +16,9 @@ import {
   type IdempotencyRecord,
   type IdempotencyStore,
   type IdempotentResponse,
-  claimIdempotencyKey,
   computeIdempotencyHash,
 } from "@chartwarden/shared";
+import { ConflictError, IdempotencyConflictError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 
 declare module "fastify" {
@@ -54,18 +55,44 @@ export function applyIdempotency(app: FastifyInstance, store: IdempotencyStore):
     const orgId = request.context?.organizationId;
     if (!orgId) return; // unauthenticated route — nothing to scope the key by
 
-    // The fingerprint also binds the CALLER: a key reused by a different user in the same org is a conflict (409), never a
-    // replay of the first user's cached response (which for e.g. a billing override echoes the typed rationale), and it
-    // is answered before any route-level permission guard runs.
-    const requestHash = computeIdempotencyHash(
-      `${orgId}|${request.context?.userId ?? ""}`,
-      key,
-      request.body ?? null,
-    );
-    // The shared claim (`@chartwarden/shared` claimIdempotencyKey, the core of runIdempotent) decides: a cached
-    // response replays, a different body is 409 IDEMPOTENCY_CONFLICT, a duplicate still in flight is 409 CONFLICT.
-    const cached = await claimIdempotencyKey(store, orgId, key, requestHash);
-    if (cached) return reply.code(Number(cached.status) || 200).send(cached.body);
+    // The fingerprint binds WHO asks (org + user) and WHAT is asked (method, the matched route template, its path
+    // parameters, the `If-Match` version) as well as the key and body. A key reused by a different user in the same org,
+    // or aimed at a different tenant slug / resource id / method / route, or retried with another version, is a conflict
+    // (409), never a replay of the first request's cached response (which for e.g. a billing override echoes the typed
+    // rationale, and for a 428 would keep answering "version missing" to a retry that now sends it). It is answered
+    // before any route-level permission guard runs. JSON-encoded, so no field can bleed into its neighbour.
+    const scope = JSON.stringify([
+      orgId,
+      request.context?.userId ?? "",
+      request.method,
+      request.routeOptions?.url ?? "",
+      request.params ?? null,
+      request.headers["if-match"] ?? null,
+    ]);
+    const requestHash = computeIdempotencyHash(scope, key, request.body ?? null);
+    const answerFrom = (existing: IdempotencyRecord) => {
+      if (existing.requestHash !== requestHash) throw new IdempotencyConflictError();
+      if (existing.state === "complete") {
+        const status = Number(existing.response.status) || 200;
+        return reply.code(status).send(existing.response.body);
+      }
+      // Still `pending` — a concurrent duplicate arrived before the first finished.
+      throw new ConflictError("Idempotency-Key request is still being processed");
+    };
+
+    const existing = await store.load(orgId, key);
+    if (existing) return answerFrom(existing);
+
+    // The claim is the serialization point (GAP-007): `load` returning null does not mean we own
+    // the key, only that nobody did a moment ago. Only the caller whose `putPending` wins runs the
+    // handler; a loser reloads the winner's record and replays it or reports it in flight.
+    if (!(await store.putPending(orgId, key, requestHash))) {
+      const winner = await store.load(orgId, key);
+      if (winner) return answerFrom(winner);
+      // The record vanished between the lost claim and the reload (swept or expired in between):
+      // fail safe — never run the handler without the claim; the client retries.
+      throw new ConflictError("Idempotency-Key request is still being processed");
+    }
     pendingCaptures.set(request, { orgId, key });
   });
 
