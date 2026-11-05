@@ -20,6 +20,8 @@ export interface OnboardingOperator {
     readonly requestId?: string;
     readonly sourceIp?: string;
     readonly userAgent?: string;
+    /** `METHOD /route/template` (the matched route, never the concrete URL), recorded on the audit row. */
+    readonly route?: string;
   };
 }
 
@@ -31,7 +33,10 @@ export const ONBOARDING_DATA_AUDIT_EVENTS = {
   macCredentialUpserted: "m34.tenant_onboarding.mac_credential_upserted",
   medicaidCredentialUpserted: "m34.tenant_onboarding.medicaid_credential_upserted",
   dataRead: "m34.tenant_onboarding.data_read",
+  /** The tenant is not provisioning/onboarding: the write was refused before it ran. */
   writeRefused: "m34.tenant_onboarding.write_refused",
+  /** The write ran into the tenant's own rules (404, 422, 409, 412/428) or a 5xx and rolled back. */
+  writeFailed: "m34.tenant_onboarding.write_failed",
 } as const;
 
 export type OnboardingAuditEvent =
@@ -50,7 +55,7 @@ export interface OnboardingAuditInput {
   /** Null only on a read (the reason is a write-time attestation). */
   readonly reason: string | null;
   readonly changedFields?: readonly string[];
-  /** Extra non-sensitive facts (counts, the tenant status a refusal saw). */
+  /** Extra non-sensitive facts (counts, the tenant status a refusal saw, the error code of a failed attempt). */
   readonly detail?: Readonly<Record<string, string | number | boolean>>;
 }
 
@@ -89,6 +94,7 @@ export function recordOnboardingAudit(
       operatorMembershipId: op.membershipId,
       operatorOrganizationId: op.organizationId,
       reason: input.reason,
+      ...(op.request.route ? { route: op.request.route } : {}),
       ...(input.changedFields ? { changedFields: [...input.changedFields] } : {}),
       ...(input.detail ?? {}),
     },

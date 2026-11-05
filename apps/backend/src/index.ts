@@ -5978,6 +5978,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 }),
                 logError: (err, context) =>
                   app.log.error({ err, ...context }, "tax-id encryption failed"),
+                logAuditError: (err, context) =>
+                  app.log.error(
+                    { err, ...context },
+                    "platform onboarding-data: the failed-attempt audit row could not be written",
+                  ),
               }),
             },
             // AC-05 — SECURITY_HARDENING §22.1's 5/IP/hour on the public signup surface. The route

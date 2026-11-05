@@ -5,7 +5,7 @@
 // EVERY WRITE is behind, in order: the permission (`tenant_onboarding_data.write_platform`), the
 // `tenant_lifecycle_platform_ops` predicate (the exact `platform_ops` role), a FRESH step-up, the AI-actor block (a
 // person acts for a tenant, never an AI principal) and `Idempotency-Key`; the body carries a required `reason`
-// (8-500 characters after trimming) that lands on the audit row beside the operator and the tenant. The service then
+// (8-500 characters after normalising: whitespace collapsed, control characters removed) that lands on the audit row beside the operator and the tenant. The service then
 // accepts the write only while the tenant is provisioning or onboarding (409 `TENANT_NOT_ONBOARDING` otherwise).
 // READS (masked: no EIN, no secret exists in any view) need the read permission + the same predicate, and are audited.
 //
@@ -25,6 +25,7 @@ import {
   OnboardingProviderEntityCreateRequest,
   OnboardingProviderEntityPatchRequest,
   OnboardingResourceParamsSchema,
+  normalizeReason,
 } from "./onboarding-data-typebox";
 import { OrgSlugParamsSchema, parse } from "./platform-typebox";
 
@@ -80,6 +81,7 @@ function operatorOf(request: FastifyRequest): OnboardingOperator {
     request: {
       correlationId: ctx.correlationId ?? String(request.id),
       requestId: String(request.id),
+      route: `${request.method} ${request.routeOptions.url ?? ""}`.trim(),
       ...(ctx.ip ? { sourceIp: ctx.ip } : {}),
       ...(ctx.userAgent ? { userAgent: ctx.userAgent } : {}),
     },
@@ -87,24 +89,25 @@ function operatorOf(request: FastifyRequest): OnboardingOperator {
 }
 
 /**
- * The body without its `reason`, plus the reason trimmed and checked. `minLength` counts the spaces a whitespace-only
- * reason is made of, so the trimmed length is what is enforced: a reason of "abcd    " is a 422, not an audit row.
+ * The body without its `reason`, plus the reason normalised and checked. `minLength` counts the spaces and invisible
+ * characters a padded reason is made of, so the NORMALISED length is what is enforced: a reason of "abcd    " is a 422,
+ * not an audit row, and what reaches the tenant-visible audit trail has no control or format characters in it.
  */
 function splitReason<B extends { reason: string }>(
   body: B,
 ): { reason: string; fields: Omit<B, "reason"> } {
   const { reason, ...fields } = body;
-  const trimmed = reason.trim();
-  if (trimmed.length < ONBOARDING_REASON_MIN || trimmed.length > ONBOARDING_REASON_MAX) {
+  const normalized = normalizeReason(reason);
+  if (normalized.length < ONBOARDING_REASON_MIN || normalized.length > ONBOARDING_REASON_MAX) {
     throw new ValidationError("request validation failed", [
       {
         field: "reason",
         code: "INVALID",
-        message: `reason must be ${ONBOARDING_REASON_MIN}-${ONBOARDING_REASON_MAX} characters after trimming`,
+        message: `reason must be ${ONBOARDING_REASON_MIN}-${ONBOARDING_REASON_MAX} characters after whitespace is collapsed and control characters are removed`,
       },
     ]);
   }
-  return { reason: trimmed, fields };
+  return { reason: normalized, fields };
 }
 
 /** The optional `If-Match` version of an existing MAC credential: absent on a first create, an integer on an update. */

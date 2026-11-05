@@ -19,15 +19,28 @@ export { LocationDetailSchema, ProviderEntityDetailSchema };
 const Nullable = <T extends TSchema>(s: T) => Type.Union([s, Type.Null()]);
 const Iso = Type.String({ format: "date-time" });
 
-/** The trimmed length is checked again in the route (`minLength` counts the spaces a whitespace-only reason is made of). */
+/** The NORMALISED length is checked again in the route (`minLength` counts the spaces a whitespace-only reason is made of). */
 export const ONBOARDING_REASON_MIN = 8;
 export const ONBOARDING_REASON_MAX = 500;
+
+/**
+ * The reason as it is stored in the tenant-visible audit trail: whitespace runs (line breaks and tabs included) become
+ * one space, control and format characters (`\p{C}`: NUL, zero-width, bidi overrides) are removed, and the ends are
+ * trimmed. Whitespace is folded BEFORE the strip so "line one\nline two" never fuses into one word.
+ */
+export function normalizeReason(raw: string): string {
+  return raw
+    .replace(/\s+/gu, " ")
+    .replace(/\p{C}+/gu, "")
+    .replace(/ {2,}/gu, " ")
+    .trim();
+}
 
 export const OnboardingReasonSchema = Type.Object({
   reason: Type.String({
     minLength: ONBOARDING_REASON_MIN,
     maxLength: ONBOARDING_REASON_MAX,
-    description: `Why the operator is entering this on the tenant's behalf (${ONBOARDING_REASON_MIN}-${ONBOARDING_REASON_MAX} characters after trimming; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.`,
+    description: `Why the operator is entering this on the tenant's behalf (${ONBOARDING_REASON_MIN}-${ONBOARDING_REASON_MAX} characters after whitespace is collapsed and control characters are removed; a ticket reference, no patient information). Recorded on the audit row beside the operator and the tenant.`,
   }),
 });
 

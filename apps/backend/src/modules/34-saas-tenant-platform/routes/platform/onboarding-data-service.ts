@@ -10,14 +10,16 @@
 // M4 write-audit trigger attributes each row to the OPERATOR (`app.user_id`), not to a NULL actor.
 //
 // ONE TRANSACTION. The tenant-status check, the write and the audit row share one transaction, so a refused or
-// failed write leaves no row and a successful one cannot be un-audited.
+// failed write leaves no row and a successful one cannot be un-audited. A write that FAILS (404, 422, 409, 412/428, 5xx)
+// rolls its own audit row back with it, so its attempt is recorded afterwards as a `denied` `write_failed` row in a
+// small follow-up transaction (best effort, logged when it cannot be written; the original error is what the caller sees).
 //
 // LOCKED ONCE ACTIVE. A write is accepted only while `tenant_account.status` is `provisioning` or `onboarding`
 // (the tenant's own RLS lets the app role read its own row). Any other status answers 409 `TENANT_NOT_ONBOARDING`
-// and the refusal itself is audited. ponytail: the status is read, not locked (the app role holds no UPDATE on
-// `tenant_account`, so `FOR SHARE` is unavailable): an activation committing in the few milliseconds between that read and
-// the write is not excluded. The write is still operator-attributed, reasoned and audited; add an advisory lock shared
-// with the activation path if that window ever matters.
+// and the refusal itself is audited. The app role holds no UPDATE on `tenant_account`, so `FOR SHARE` is unavailable;
+// instead every write takes the SHARED advisory lock `tenant-onboarding:<org id>` BEFORE it reads the status
+// (`tenant-onboarding-lock.ts`), and the activation sweep and `transitionStatus` take it EXCLUSIVE: an activation
+// waits for in-flight writes to commit, and a write that starts after it sees `active` (409).
 import { type DbClient, schema } from "@chartwarden/db";
 import {
   type PlatformBypassAuditor,
@@ -46,6 +48,7 @@ import {
   type OnboardingOperator,
   recordOnboardingAudit,
 } from "./onboarding-data-audit";
+import { ONBOARDING_WRITABLE_STATUSES, lockTenantOnboardingShared } from "./tenant-onboarding-lock";
 
 export type { OnboardingOperator } from "./onboarding-data-audit";
 
@@ -115,10 +118,9 @@ export interface OnboardingDataDeps {
   /** M24's state Medicaid trading-partner credential adapter; unbound -> those routes answer 503. */
   readonly medicaidCredentials?: OnboardingCredentialPort;
   readonly logError?: (cause: unknown, context: { organizationId: string }) => void;
+  /** Cause logging for a failed-attempt audit row that could not be written (the original error still reaches the caller). */
+  readonly logAuditError?: (cause: unknown, context: { organizationId: string }) => void;
 }
-
-/** The only statuses in which a platform operator may enter data for a tenant. */
-const WRITABLE_STATUSES: ReadonlySet<string> = new Set(["provisioning", "onboarding"]);
 
 const ORG = schema.organizations;
 const ACCOUNT = schema.tenantAccount;
@@ -219,9 +221,43 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     ...(deps.logError ? { logError: deps.logError } : {}),
   });
 
+  /** The error code a failed attempt records: the typed error's own code, else a generic one (never the message). */
+  const errorCodeOf = (err: unknown): string =>
+    err instanceof ChartWardenError ? err.code : "INTERNAL_ERROR";
+
   /**
-   * One tenant write: status gate -> the tenant's own write -> the audit row, all in one transaction scoped to the
-   * target org. A refusal is audited (outcome `denied`) and committed, then thrown after the transaction closes.
+   * The audit row of an attempt whose transaction rolled back. A follow-up transaction on the same tenant scope; it
+   * carries the operator, the tenant, the reason, the route and the error code, never a body value or an error message.
+   * Best effort: a failure here is logged and must never replace the error the caller is about to receive.
+   */
+  async function recordFailedWrite(
+    op: OnboardingOperator,
+    target: OnboardingAuditTarget,
+    spec: WriteSpec,
+    err: unknown,
+  ): Promise<void> {
+    try {
+      await withOrgContext<DbClient, void>(
+        db,
+        { organizationId: target.organizationId, userId: op.userId },
+        (tx) =>
+          recordOnboardingAudit(tx, op, target, {
+            eventType: EVENTS.writeFailed,
+            resourceKind: spec.resourceKind,
+            outcome: "denied",
+            reason: spec.reason,
+            detail: { attemptedEvent: spec.event, errorCode: errorCodeOf(err) },
+          }),
+      );
+    } catch (auditError) {
+      deps.logAuditError?.(auditError, { organizationId: target.organizationId });
+    }
+  }
+
+  /**
+   * One tenant write: shared onboarding lock -> status gate -> the tenant's own write -> the audit row, all in one
+   * transaction scoped to the target org. A status refusal is audited (outcome `denied`) and committed, then thrown
+   * after the transaction closes; any other failure rolls back and is audited afterwards by `recordFailedWrite`.
    */
   async function write<T>(
     op: OnboardingOperator,
@@ -230,38 +266,45 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     run: (tx: DbClient, target: OnboardingAuditTarget) => Promise<WriteResult<T>>,
   ): Promise<T> {
     const target = await targetOf(orgSlug);
-    const outcome = await withOrgContext<DbClient, WriteOutcome<T>>(
-      db,
-      { organizationId: target.organizationId, userId: op.userId },
-      async (tx) => {
-        const [account] = await tx
-          .select({ status: ACCOUNT.status })
-          .from(ACCOUNT)
-          .where(eq(ACCOUNT.organizationId, target.organizationId))
-          .limit(1);
-        if (!account) throw new NotFoundError("tenant");
-        if (!WRITABLE_STATUSES.has(account.status)) {
+    let outcome: WriteOutcome<T>;
+    try {
+      outcome = await withOrgContext<DbClient, WriteOutcome<T>>(
+        db,
+        { organizationId: target.organizationId, userId: op.userId },
+        async (tx) => {
+          await lockTenantOnboardingShared(tx, target.organizationId);
+          const [account] = await tx
+            .select({ status: ACCOUNT.status })
+            .from(ACCOUNT)
+            .where(eq(ACCOUNT.organizationId, target.organizationId))
+            .limit(1);
+          if (!account) throw new NotFoundError("tenant");
+          if (!ONBOARDING_WRITABLE_STATUSES.has(account.status)) {
+            await recordOnboardingAudit(tx, op, target, {
+              eventType: EVENTS.writeRefused,
+              resourceKind: spec.resourceKind,
+              outcome: "denied",
+              reason: spec.reason,
+              detail: { attemptedEvent: spec.event, tenantStatus: account.status },
+            });
+            return { refusedStatus: account.status };
+          }
+          const done = await run(tx, target);
           await recordOnboardingAudit(tx, op, target, {
-            eventType: EVENTS.writeRefused,
+            eventType: spec.event,
             resourceKind: spec.resourceKind,
-            outcome: "denied",
+            resourceId: done.resourceId,
+            outcome: "success",
             reason: spec.reason,
-            detail: { attemptedEvent: spec.event, tenantStatus: account.status },
+            ...(done.changedFields ? { changedFields: done.changedFields } : {}),
           });
-          return { refusedStatus: account.status };
-        }
-        const done = await run(tx, target);
-        await recordOnboardingAudit(tx, op, target, {
-          eventType: spec.event,
-          resourceKind: spec.resourceKind,
-          resourceId: done.resourceId,
-          outcome: "success",
-          reason: spec.reason,
-          ...(done.changedFields ? { changedFields: done.changedFields } : {}),
-        });
-        return { value: done.value };
-      },
-    );
+          return { value: done.value };
+        },
+      );
+    } catch (err) {
+      await recordFailedWrite(op, target, spec, err);
+      throw err;
+    }
     if ("refusedStatus" in outcome) {
       throw new ChartWardenError(
         "TENANT_NOT_ONBOARDING",
