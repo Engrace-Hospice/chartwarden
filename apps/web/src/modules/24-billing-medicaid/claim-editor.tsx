@@ -142,7 +142,8 @@ export function MedicaidClaimEditor(): JSX.Element {
   const [reason, setReason] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // ADR-0108 — submit / replace are new claims-billing work (void stays open): paused without the add-on.
+  // ADR-0108 — submit / replace are new claims-billing work (void stays open): paused without the add-on. Submitting
+  // a void claim (TOB 818) is not paused: the server lets it through.
   const claimsBilling = useClaimsBilling();
 
   const load = useCallback(async () => {
@@ -232,6 +233,7 @@ export function MedicaidClaimEditor(): JSX.Element {
     claim.routeReadiness.submissionAvailable &&
     !claim.electronicSubmissionRefusal;
   const canReplaceVoid = REPLACEABLE.has(claim.state);
+  const submitPaused = claimsBilling.blocked && claim.tob !== "818";
   const totalCharges = lines.reduce((acc, l) => acc + l.chargesCents, 0);
   const rbLines = lines.filter((l) => l.isRb);
   const cobPaid = lines.reduce((acc, l) => acc + (l.cobPaidCents ?? 0), 0);
@@ -252,11 +254,9 @@ export function MedicaidClaimEditor(): JSX.Element {
               </a>
               <button
                 type="button"
-                disabled={!canSubmit || claimsBilling.blocked}
+                disabled={!canSubmit || submitPaused}
                 onClick={() => setCeremony("submit")}
-                style={
-                  canSubmit && !claimsBilling.blocked ? primaryButtonStyle : disabledButtonStyle
-                }
+                style={canSubmit && !submitPaused ? primaryButtonStyle : disabledButtonStyle}
               >
                 Submit
               </button>

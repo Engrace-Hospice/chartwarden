@@ -58,9 +58,13 @@ import {
   scopeKey,
 } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { holdUnlessClaimsBillingEntitled } from "../../../bootstrap/claims-billing-gate";
+import {
+  type HoldableJob,
+  holdUnlessClaimsBillingEntitled,
+} from "../../../bootstrap/claims-billing-gate";
 import { type Claim837iSubmitDeps, renderClaimForTransport } from "../services/claim-837i-submit";
 import type { DdeWatchdogPort } from "../services/dde-watchdog";
+import { isVoidM23Claim } from "../void-claim";
 import { CLEARINGHOUSE_PAYER_ID_ENV } from "./clearinghouse-context";
 import {
   type M23TransportDeps,
@@ -2502,6 +2506,27 @@ export const M23_CLAIMS_BILLING_GATED_QUEUES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Hold a gated queue's job for an org without the add-on — unless it submits a VOID claim (ADR-0108: voids stay
+ * available), read from the stored claim under the job's org. A failed void lookup holds (fail closed).
+ */
+async function holdNewClaimsWork(
+  deps: Pick<M23WorkerDeps, "db">,
+  job: HoldableJob,
+  token: string | undefined,
+  queue: string,
+  data: { readonly organizationId: string; readonly claimId?: unknown },
+): Promise<void> {
+  if (!M23_CLAIMS_BILLING_GATED_QUEUES.has(queue)) return;
+  const { organizationId, claimId } = data;
+  await holdUnlessClaimsBillingEntitled(job, token, organizationId, queue, {
+    exempt:
+      typeof claimId === "string"
+        ? () => isVoidM23Claim(deps.db, organizationId, claimId)
+        : undefined,
+  });
+}
+
+/**
  * Construct one BullMQ `Worker` per §4.8 WORK queue, each opening the per-job `withOrgContext(orgId)` RLS
  * envelope (every §4.8 work queue is ORG-scoped, F09) on the org from the job payload and running the matching
  * processor inside it over a tx-scoped repo set. Returns the workers so the composition root can `close()` them
@@ -2524,9 +2549,7 @@ export function registerM23Workers(deps: M23WorkerDeps): Worker[] {
             `M23 worker ${queue}: job.data.organizationId missing (the JobEnqueuePort must enrich it)`,
           );
         }
-        if (M23_CLAIMS_BILLING_GATED_QUEUES.has(queue)) {
-          await holdUnlessClaimsBillingEntitled(job, token, data.organizationId, queue);
-        }
+        await holdNewClaimsWork(deps, job, token, queue, data);
         return withOrgContext(
           deps.db,
           {
@@ -2601,9 +2624,7 @@ export function registerM23DomainWorkers(deps: M23WorkerDeps): Worker[] {
       async (job, token) => {
         const data = job.data as D;
         if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
-        if (M23_CLAIMS_BILLING_GATED_QUEUES.has(queue)) {
-          await holdUnlessClaimsBillingEntitled(job, token, data.organizationId, queue);
-        }
+        await holdNewClaimsWork(deps, job, token, queue, data);
         await withOrgContext(
           deps.db,
           { organizationId: data.organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
@@ -2728,9 +2749,7 @@ export function registerM23LaunchWorkers(
       async (job, token) => {
         const data = job.data as D;
         if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
-        if (M23_CLAIMS_BILLING_GATED_QUEUES.has(queue)) {
-          await holdUnlessClaimsBillingEntitled(job, token, data.organizationId, queue);
-        }
+        await holdNewClaimsWork(deps, job, token, queue, data);
         await withOrgContext(
           deps.db,
           {

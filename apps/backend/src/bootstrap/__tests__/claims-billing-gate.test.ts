@@ -131,6 +131,66 @@ describe("the route gate", () => {
   });
 });
 
+describe("the route gate — a rule's exemption (a void claim stays submittable)", () => {
+  async function exemptApp(exempt: () => Promise<boolean>) {
+    const app = Fastify();
+    app.decorateRequest("context", null as never);
+    app.addHook("onRequest", async (request) => {
+      (request as unknown as { context: unknown }).context = {
+        organizationId: ORG,
+        userId: "u",
+        roles: [],
+        attributes: {},
+      };
+    });
+    withClaimsBillingGate(
+      app,
+      [{ cls: "new_work", method: "POST", path: "/claims/:id/submit", exempt }],
+      () => {
+        app.post("/claims/:id/submit", { preHandler: [async () => {}] }, async () => ({
+          ok: true,
+        }));
+      },
+    );
+    await app.ready();
+    return app;
+  }
+
+  it("enforce + not entitled: an exempt request passes, a non-exempt one is refused 402", async () => {
+    configureClaimsBillingGate({ mode: "enforce", log: () => {} });
+    bindReader({ entitled: false, reason: "never_purchased" });
+    let isVoid = true;
+    const app = await exemptApp(async () => isVoid);
+    expect((await app.inject({ method: "POST", url: "/claims/c1/submit" })).statusCode).toBe(200);
+    isVoid = false;
+    expect((await app.inject({ method: "POST", url: "/claims/c2/submit" })).statusCode).toBe(402);
+    await app.close();
+  });
+
+  it("enforce: a failed exemption lookup fails closed (gated as normal)", async () => {
+    configureClaimsBillingGate({ mode: "enforce", log: () => {} });
+    bindReader({ entitled: false, reason: "lapsed" });
+    const app = await exemptApp(async () => {
+      throw new Error("db down");
+    });
+    expect((await app.inject({ method: "POST", url: "/claims/c1/submit" })).statusCode).toBe(402);
+    await app.close();
+  });
+
+  it("an entitled org never pays for the exemption lookup", async () => {
+    configureClaimsBillingGate({ mode: "enforce", log: () => {} });
+    bindReader({ entitled: true });
+    let looked = 0;
+    const app = await exemptApp(async () => {
+      looked += 1;
+      return false;
+    });
+    expect((await app.inject({ method: "POST", url: "/claims/c1/submit" })).statusCode).toBe(200);
+    expect(looked).toBe(0);
+    await app.close();
+  });
+});
+
 describe("isClaimsBillingEntitled", () => {
   it("is true in off/shadow, the real answer in enforce, and throws 503 on a failed read in enforce", async () => {
     bindReader({ entitled: false, reason: "subscription_paused" });
@@ -161,7 +221,7 @@ describe("holdUnlessClaimsBillingEntitled (workers: hold, don't fail)", () => {
     bindReader({ entitled: false, reason: "never_purchased" });
     const j = job();
     await expect(
-      holdUnlessClaimsBillingEntitled(j, "tok", ORG, "claim.submit", () => 1_000),
+      holdUnlessClaimsBillingEntitled(j, "tok", ORG, "claim.submit", { now: () => 1_000 }),
     ).rejects.toBeInstanceOf(DelayedError);
     expect(j.moves).toEqual([[1_000 + CLAIMS_BILLING_HOLD_MS, "tok"]]);
   });
@@ -174,6 +234,29 @@ describe("holdUnlessClaimsBillingEntitled (workers: hold, don't fail)", () => {
       holdUnlessClaimsBillingEntitled(j, "tok", ORG, "claim.submit"),
     ).rejects.toBeInstanceOf(DelayedError);
     expect(j.moves).toHaveLength(1);
+  });
+
+  it("enforce + not entitled: an exempt job (a void claim) runs; a failed exemption lookup holds", async () => {
+    configureClaimsBillingGate({ mode: "enforce", log: () => {} });
+    bindReader({ entitled: false, reason: "never_purchased" });
+    const j = job();
+    await holdUnlessClaimsBillingEntitled(j, "tok", ORG, "claim.submit", {
+      exempt: async () => true,
+    });
+    expect(j.moves).toEqual([]);
+    await expect(
+      holdUnlessClaimsBillingEntitled(j, "tok", ORG, "claim.submit", {
+        exempt: async () => false,
+      }),
+    ).rejects.toBeInstanceOf(DelayedError);
+    await expect(
+      holdUnlessClaimsBillingEntitled(j, "tok", ORG, "claim.submit", {
+        exempt: async () => {
+          throw new Error("db down");
+        },
+      }),
+    ).rejects.toBeInstanceOf(DelayedError);
+    expect(j.moves).toHaveLength(2);
   });
 
   it("entitled, or shadow: runs the job", async () => {
