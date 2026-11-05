@@ -10,7 +10,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
 # -77214, -93990; fixed in 2.9.0-1~deb13u1), and naming it makes apt upgrade it in place.
 # libbrotli1 is named for the same reason: the base image ships 1.1.0-2+b7 (CVE-2026-111497; fixed in 1.1.0-2+deb13u1).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libbrotli1 libcurl4t64 libexpat1 libgl1 libglib2.0-0 tesseract-ocr tesseract-ocr-eng \
+ && apt-get install -y --no-install-recommends apt libapt-pkg7.0 libbrotli1 libcurl4t64 libexpat1 libgl1 libglib2.0-0 tesseract-ocr tesseract-ocr-eng \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /srv
