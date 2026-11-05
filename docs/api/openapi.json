@@ -98712,6 +98712,14 @@
                               {
                                 "const": "custom",
                                 "type": "string"
+                              },
+                              {
+                                "const": "hipaa_npp_acknowledgement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "consent_to_treat",
+                                "type": "string"
                               }
                             ]
                           },
@@ -98829,6 +98837,14 @@
                             },
                             {
                               "const": "custom",
+                              "type": "string"
+                            },
+                            {
+                              "const": "hipaa_npp_acknowledgement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "consent_to_treat",
                               "type": "string"
                             }
                           ]
@@ -98981,6 +98997,14 @@
                       },
                       {
                         "const": "custom",
+                        "type": "string"
+                      },
+                      {
+                        "const": "hipaa_npp_acknowledgement",
+                        "type": "string"
+                      },
+                      {
+                        "const": "consent_to_treat",
                         "type": "string"
                       }
                     ]
@@ -99176,6 +99200,14 @@
                             },
                             {
                               "const": "custom",
+                              "type": "string"
+                            },
+                            {
+                              "const": "hipaa_npp_acknowledgement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "consent_to_treat",
                               "type": "string"
                             }
                           ]
@@ -99437,6 +99469,14 @@
                             },
                             {
                               "const": "custom",
+                              "type": "string"
+                            },
+                            {
+                              "const": "hipaa_npp_acknowledgement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "consent_to_treat",
                               "type": "string"
                             }
                           ]
@@ -100729,6 +100769,14 @@
                               {
                                 "const": "custom",
                                 "type": "string"
+                              },
+                              {
+                                "const": "hipaa_npp_acknowledgement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "consent_to_treat",
+                                "type": "string"
                               }
                             ]
                           },
@@ -101552,6 +101600,14 @@
                             {
                               "const": "custom",
                               "type": "string"
+                            },
+                            {
+                              "const": "hipaa_npp_acknowledgement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "consent_to_treat",
+                              "type": "string"
                             }
                           ]
                         },
@@ -102144,6 +102200,14 @@
                             {
                               "const": "custom",
                               "type": "string"
+                            },
+                            {
+                              "const": "hipaa_npp_acknowledgement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "consent_to_treat",
+                              "type": "string"
                             }
                           ]
                         },
@@ -102454,6 +102518,14 @@
                             },
                             {
                               "const": "custom",
+                              "type": "string"
+                            },
+                            {
+                              "const": "hipaa_npp_acknowledgement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "consent_to_treat",
                               "type": "string"
                             }
                           ]
@@ -102777,6 +102849,14 @@
                             },
                             {
                               "const": "custom",
+                              "type": "string"
+                            },
+                            {
+                              "const": "hipaa_npp_acknowledgement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "consent_to_treat",
                               "type": "string"
                             }
                           ]
@@ -103222,6 +103302,14 @@
                                   {
                                     "const": "custom",
                                     "type": "string"
+                                  },
+                                  {
+                                    "const": "hipaa_npp_acknowledgement",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "consent_to_treat",
+                                    "type": "string"
                                   }
                                 ]
                               },
@@ -103445,6 +103533,14 @@
                                   },
                                   {
                                     "const": "custom",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "hipaa_npp_acknowledgement",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "consent_to_treat",
                                     "type": "string"
                                   }
                                 ]
@@ -103702,6 +103798,14 @@
                             },
                             {
                               "const": "custom",
+                              "type": "string"
+                            },
+                            {
+                              "const": "hipaa_npp_acknowledgement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "consent_to_treat",
                               "type": "string"
                             }
                           ]
@@ -104075,6 +104179,14 @@
                               {
                                 "const": "custom",
                                 "type": "string"
+                              },
+                              {
+                                "const": "hipaa_npp_acknowledgement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "consent_to_treat",
+                                "type": "string"
                               }
                             ]
                           },
@@ -104215,6 +104327,14 @@
                               },
                               {
                                 "const": "custom",
+                                "type": "string"
+                              },
+                              {
+                                "const": "hipaa_npp_acknowledgement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "consent_to_treat",
                                 "type": "string"
                               }
                             ]
@@ -241975,6 +242095,14 @@
                               {
                                 "const": "custom",
                                 "type": "string"
+                              },
+                              {
+                                "const": "hipaa_npp_acknowledgement",
+                                "type": "string"
+                              },
+                              {
+                                "const": "consent_to_treat",
+                                "type": "string"
                               }
                             ]
                           },
@@ -242237,6 +242365,14 @@
                             {
                               "const": "custom",
                               "type": "string"
+                            },
+                            {
+                              "const": "hipaa_npp_acknowledgement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "consent_to_treat",
+                              "type": "string"
                             }
                           ]
                         },
@@ -242455,6 +242591,14 @@
                       },
                       {
                         "const": "custom",
+                        "type": "string"
+                      },
+                      {
+                        "const": "hipaa_npp_acknowledgement",
+                        "type": "string"
+                      },
+                      {
+                        "const": "consent_to_treat",
                         "type": "string"
                       }
                     ]
@@ -243290,6 +243434,14 @@
                                   },
                                   {
                                     "const": "custom",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "hipaa_npp_acknowledgement",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "consent_to_treat",
                                     "type": "string"
                                   }
                                 ]

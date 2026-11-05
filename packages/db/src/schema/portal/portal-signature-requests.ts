@@ -1,4 +1,4 @@
-// @chartwarden/db — `portal_signature_request` (M31 ADR-0107 PROPOSED; migration 1301). The portal-facing WORKFLOW record for a
+// @chartwarden/db — `portal_signature_request` (M31 ADR-0107 PROPOSED; migration 1304). The portal-facing WORKFLOW record for a
 // staff-sent request that a patient or their representative sign an admission document in the portal. M06 (election, notice of
 // rights) and M39 (consent) stay the authoritative signing state machines; `target_ref` is a logical FK to the row the sign path
 // produced there. Patient-bearing, so it carries the ARCH-011 provider_entity_id NOT NULL + location_id (nullable). The signer's
