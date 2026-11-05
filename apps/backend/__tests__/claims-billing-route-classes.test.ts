@@ -3,23 +3,23 @@
 // no open route). Routes are enumerated by mounting each module on a recording Fastify over a stub service graph.
 import Fastify, { type FastifyInstance, type RouteOptions } from "fastify";
 import { describe, expect, it } from "vitest";
-import { mountM23Routes } from "../../modules/23-billing-medicare/routes/mount";
-import { M23_ROUTE_CLASSES } from "../../modules/23-billing-medicare/routes/route-classes";
-import { mountM24Routes } from "../../modules/24-billing-medicaid/routes/mount";
-import { M24_ROUTE_CLASSES } from "../../modules/24-billing-medicaid/routes/route-classes";
-import { mountM25Routes } from "../../modules/25-remittance/routes/mount";
-import { M25_ROUTE_CLASSES } from "../../modules/25-remittance/routes/route-classes";
-import { registerCommercialAckQuarantineRoutes } from "../../modules/41-billing-commercial/routes/ack-quarantine.routes";
-import { registerCommercialBillingRoutes } from "../../modules/41-billing-commercial/routes/commercial-billing.routes";
-import { mountM41Routes } from "../../modules/41-billing-commercial/routes/mount";
-import { M41_ROUTE_CLASSES } from "../../modules/41-billing-commercial/routes/route-classes";
 import {
   type RouteClassRule,
   claimsBillingPreHandler,
   classifyRoute,
   ruleMatches,
   withClaimsBillingGate,
-} from "../claims-billing-gate";
+} from "../src/bootstrap/claims-billing-gate";
+import { mountM23Routes } from "../src/modules/23-billing-medicare/routes/mount";
+import { M23_ROUTE_CLASSES } from "../src/modules/23-billing-medicare/routes/route-classes";
+import { mountM24Routes } from "../src/modules/24-billing-medicaid/routes/mount";
+import { M24_ROUTE_CLASSES } from "../src/modules/24-billing-medicaid/routes/route-classes";
+import { mountM25Routes } from "../src/modules/25-remittance/routes/mount";
+import { M25_ROUTE_CLASSES } from "../src/modules/25-remittance/routes/route-classes";
+import { registerCommercialAckQuarantineRoutes } from "../src/modules/41-billing-commercial/routes/ack-quarantine.routes";
+import { registerCommercialBillingRoutes } from "../src/modules/41-billing-commercial/routes/commercial-billing.routes";
+import { mountM41Routes } from "../src/modules/41-billing-commercial/routes/mount";
+import { M41_ROUTE_CLASSES } from "../src/modules/41-billing-commercial/routes/route-classes";
 
 // Every property is a callable stub, so every optional route group mounts. Handlers never run here.
 const stub: any = new Proxy(() => {}, {
@@ -159,5 +159,30 @@ describe("withClaimsBillingGate scope", () => {
     await app.ready();
     expect(seen).toEqual([[]]);
     await app.close();
+  });
+});
+
+describe("ADR-0108 D7 — the held worker queues", () => {
+  it("hold claim submit / retry / eligibility, never NOE, NOTR or transfer notices", async () => {
+    const { M23_CLAIMS_BILLING_GATED_QUEUES } = await import(
+      "../src/modules/23-billing-medicare/jobs/m23-jobs"
+    );
+    const { M23_QUEUES } = await import("../src/modules/23-billing-medicare/jobs/queues");
+    const { M24_CLAIMS_BILLING_GATED_QUEUES } = await import(
+      "../src/modules/24-billing-medicaid/jobs/submission-jobs"
+    );
+    expect([...M23_CLAIMS_BILLING_GATED_QUEUES].sort()).toEqual(
+      [M23_QUEUES.claimSubmit, M23_QUEUES.claimSubmitRetry, M23_QUEUES.eligibilityRefresh].sort(),
+    );
+    for (const open of [
+      M23_QUEUES.noeSubmit,
+      M23_QUEUES.notrSubmit,
+      M23_QUEUES.transferNoticeSubmit,
+    ]) {
+      expect(M23_CLAIMS_BILLING_GATED_QUEUES.has(open)).toBe(false);
+    }
+    expect([...M24_CLAIMS_BILLING_GATED_QUEUES].sort()).toEqual(
+      ["medicaid-claim.submit", "medicaid-claim.submit.retry"].sort(),
+    );
   });
 });
