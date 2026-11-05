@@ -22,7 +22,7 @@ import { withOrgContext } from "@chartwarden/tenancy";
 import type { PatientCensusReader, PatientCounterProvider } from "@chartwarden/types";
 import { and, countDistinct, desc, eq, max } from "drizzle-orm";
 import { addonIsLive, latestClaimsBillingAddon } from "../addon/entitlement";
-import { usageWindowFor } from "./jobs";
+import { previousUsageWindow, usageWindowFor } from "./jobs";
 
 const PAP = schema.patientActivePeriod;
 const S = schema.subscriptionRow;
@@ -230,10 +230,7 @@ export async function aggregateAddonForOrg(
       .limit(1);
     if (!sub) return 0;
     const current = usageWindowFor(sub, now);
-    const previous = {
-      start: new Date(current.start.getTime() - (current.end.getTime() - current.start.getTime())),
-      end: current.start,
-    };
+    const previous = previousUsageWindow(current);
     let written = 0;
     for (const [window, finalize] of [
       [previous, true],
