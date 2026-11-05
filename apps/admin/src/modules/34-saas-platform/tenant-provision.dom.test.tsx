@@ -5,6 +5,7 @@ import { ApiClientProvider, createApiClient } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SLUG_CHECK_DEBOUNCE_MS } from "./slug-field";
 import { TenantProvisionDrawer } from "./tenant-provision";
 
 interface Recorded {
@@ -72,6 +73,11 @@ function fill(label: string, value: string): void {
   fireEvent.change(screen.getByLabelText(new RegExp(`^${label}`)), {
     target: { value },
   });
+}
+
+/** Focus leaves the legal name field: while the subdomain follows it, this is what triggers the availability check. */
+function leaveLegalName(): void {
+  fireEvent.blur(screen.getByLabelText(/^Legal business name/));
 }
 
 function fillAll(): void {
@@ -320,16 +326,66 @@ describe("TenantProvisionDrawer subdomain field", () => {
     expect(posts()[0]?.body).not.toHaveProperty("slug");
   });
 
-  it("says it is checking right away, then shows the full address once the slug is confirmed free", async () => {
-    const { checks } = mount(() => json(202, {}));
+  it("while the subdomain follows the legal name, typing the name asks nothing; leaving the field asks once", async () => {
+    const { checks, posts } = mount(() => json(202, {}));
 
-    fill("Legal business name", "Cedar Ridge Hospice LLC");
+    for (const typedName of ["Ce", "Cedar", "Cedar Ridge", "Cedar Ridge Hospice LLC"]) {
+      fill("Legal business name", typedName);
+    }
+    await new Promise((resolve) => setTimeout(resolve, SLUG_CHECK_DEBOUNCE_MS * 2));
+
+    expect(checks()).toEqual([]);
+    expect(screen.queryByText("Checking availability…")).toBeNull();
+    expect(slugInput().value).toBe("cedar-ridge-hospice");
+
+    leaveLegalName();
 
     expect(screen.getByText("Checking availability…")).toBeTruthy();
     expect(
       await screen.findByText("Available: https://cedar-ridge-hospice.chartwarden.cloud"),
     ).toBeTruthy();
     expect(checks()).toEqual(["cedar-ridge-hospice"]);
+    expect(posts()).toEqual([]);
+  });
+
+  it("changing the name again drops the verdict until the field is left again", async () => {
+    const { checks } = mount(() => json(202, {}));
+    fill("Legal business name", "Cedar Ridge Hospice LLC");
+    leaveLegalName();
+    expect(await screen.findByText(/Available: https:\/\/cedar-ridge-hospice\./)).toBeTruthy();
+
+    fill("Legal business name", "Cedar Ridge Hospice of Ohio LLC");
+    await new Promise((resolve) => setTimeout(resolve, SLUG_CHECK_DEBOUNCE_MS * 2));
+
+    expect(screen.queryByText(/Available:/)).toBeNull();
+    expect(checks()).toEqual(["cedar-ridge-hospice"]);
+    leaveLegalName();
+    expect(
+      await screen.findByText("Available: https://cedar-ridge-hospice-of-ohio.chartwarden.cloud"),
+    ).toBeTruthy();
+    expect(checks()).toEqual(["cedar-ridge-hospice", "cedar-ridge-hospice-of-ohio"]);
+  });
+
+  it("a typed subdomain is still checked after the short pause, with no need to leave a field", async () => {
+    const { checks } = mount(() => json(202, {}));
+    fill("Legal business name", "Cedar Ridge Hospice LLC");
+
+    fill("Subdomain", "sunrise");
+
+    expect(screen.getByText("Checking availability…")).toBeTruthy();
+    expect(await screen.findByText(/Available: https:\/\/sunrise\./)).toBeTruthy();
+    expect(checks()).toEqual(["sunrise"]);
+  });
+
+  it("submitting without leaving the name field still posts the suggestion; the server decides", async () => {
+    const { checks, posts } = mount(() => json(202, {}));
+    fillAll();
+
+    provision();
+
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(posts()[0]?.body).toMatchObject({ slug: "cedar-ridge-hospice" });
+    expect(checks()).toEqual([]);
   });
 
   it("debounces: typing in a burst asks the server about the last value only", async () => {
@@ -347,6 +403,7 @@ describe("TenantProvisionDrawer subdomain field", () => {
       (slug) => json(200, { slug, valid: true, available: false, reason: "taken" }),
     );
     fillAll();
+    leaveLegalName();
 
     expect(await screen.findByText(/already taken/i)).toBeTruthy();
     expect(slugInput().getAttribute("aria-invalid")).toBe("true");
@@ -365,6 +422,7 @@ describe("TenantProvisionDrawer subdomain field", () => {
           : freeSlug(slug),
     );
     fillAll();
+    leaveLegalName();
     expect(await screen.findByText(/already taken/i)).toBeTruthy();
 
     fill("Subdomain", "cedar-ridge");
@@ -399,6 +457,7 @@ describe("TenantProvisionDrawer subdomain field", () => {
       () => json(500, { error: { code: "INTERNAL", message: "boom", correlationId: "c" } }),
     );
     fillAll();
+    leaveLegalName();
 
     expect(await screen.findByText(/could not check availability/i)).toBeTruthy();
     provision();
@@ -414,6 +473,7 @@ describe("TenantProvisionDrawer subdomain field", () => {
       },
     );
     fill("Legal business name", "Cedar Ridge Hospice LLC");
+    leaveLegalName();
 
     expect(await screen.findByText(/could not check availability/i)).toBeTruthy();
   });

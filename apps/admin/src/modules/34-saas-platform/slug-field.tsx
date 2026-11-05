@@ -1,7 +1,10 @@
 // apps/admin/src/modules/34-saas-platform — the tenant subdomain field (ADR-0049 D3): a suggestion from the legal name
-// until the operator edits it, a debounced availability probe (`GET /platform/tenant-slugs/:slug/availability`) and the
-// inline verdict. The label rules run locally, so a malformed or reserved slug never costs a request. Kept apart from the
-// drawer so the onboarding wizard can reuse it: `useSuggestedSlug` + `useSlugAvailability` + `<SlugField>` are the whole API.
+// until the operator edits it, an availability probe (`GET /platform/tenant-slugs/:slug/availability`) and the inline
+// verdict. The label rules run locally, so a malformed or reserved slug never costs a request. Every probe is an audited
+// platform read, so the hook asks sparingly: a slug the operator TYPES is checked after a short pause (SLUG_CHECK_DEBOUNCE_MS);
+// a slug still FOLLOWING the legal name is checked once, when the operator leaves that field (`checkSuggestion`), not on every
+// settled keystroke of the name. Kept apart from the drawer so the onboarding wizard can reuse it: `useSuggestedSlug` +
+// `useSlugAvailability` + `<SlugField>` are the whole API.
 import {
   type TenantSlugRejection,
   suggestTenantSlug,
@@ -42,13 +45,20 @@ export function isSlugBlocking(status: SlugStatus): boolean {
   return status.kind === "taken" || status.kind === "invalid";
 }
 
-/** The slug as typed, or, until the operator has typed one, the suggestion for the legal name (`null` = never typed). */
+/**
+ * The slug as typed, or, until the operator has typed one, the suggestion for the legal name (`restored` null = never typed).
+ * `following` is true while the slug is still the suggestion.
+ */
 export function useSuggestedSlug(
   legalName: string,
   restored: string | null,
-): { slug: string; setSlug: (typed: string) => void } {
+): { slug: string; setSlug: (typed: string) => void; following: boolean } {
   const [typed, setTyped] = useState<string | null>(restored);
-  return { slug: typed ?? suggestTenantSlug(legalName), setSlug: setTyped };
+  return {
+    slug: typed ?? suggestTenantSlug(legalName),
+    setSlug: setTyped,
+    following: typed === null,
+  };
 }
 
 interface AvailabilityBody {
@@ -71,35 +81,50 @@ function statusFromAnswer(data: AvailabilityBody | undefined): SlugStatus {
   return data.url ? { kind: "available", url: data.url } : { kind: "available" };
 }
 
-/** What the server says about `slug`, once it has been still for the debounce window; never a verdict for a value that is gone. */
-export function useSlugAvailability(slug: string): SlugStatus {
+/**
+ * What the server says about `slug`; never a verdict for a value that is gone. A typed slug (`following` false) is asked about
+ * once it has been still for the debounce window. A slug that follows the legal name is asked about only when the caller runs
+ * `checkSuggestion` (the legal-name field's blur), so it costs one probe per name, not one per pause; until then it is idle.
+ */
+export function useSlugAvailability(
+  slug: string,
+  following: boolean,
+): { status: SlugStatus; checkSuggestion: () => void } {
   const client = useApiClient();
   const candidate = slug.trim();
-  const settled = useDebouncedValue(candidate, SLUG_CHECK_DEBOUNCE_MS);
+  // Held at "" while following, so handing over to a typed slug never probes the suggestion that was showing a moment ago.
+  const settledTyped = useDebouncedValue(following ? "" : candidate, SLUG_CHECK_DEBOUNCE_MS);
+  const [confirmed, setConfirmed] = useState("");
+  const settled = following ? confirmed : settledTyped;
   const [answer, setAnswer] = useState<{ slug: string; status: SlugStatus } | null>(null);
 
   useEffect(() => {
     if (settled === "" || !validateTenantSlug(settled).ok) return undefined;
     let cancelled = false;
+    const probe = new AbortController();
     const record = (status: SlugStatus): void => {
       if (!cancelled) setAnswer({ slug: settled, status });
     };
     client
       .GET("/api/v1/platform/tenant-slugs/{slug}/availability", {
         params: { path: { slug: settled } },
+        signal: probe.signal,
       })
       .then(({ data, error }) => record(error ? UNKNOWN : statusFromAnswer(data)))
       .catch(() => record(UNKNOWN));
     return () => {
       cancelled = true;
+      probe.abort(); // a superseded or orphaned probe stops waiting; its answer could not be shown anyway
     };
   }, [client, settled]);
 
-  if (candidate === "") return IDLE;
-  if (candidate !== settled) return CHECKING;
+  const checkSuggestion = (): void => setConfirmed(candidate);
+
+  if (candidate === "") return { status: IDLE, checkSuggestion };
+  if (candidate !== settled) return { status: following ? IDLE : CHECKING, checkSuggestion };
   const local = validateTenantSlug(candidate);
-  if (!local.ok) return { kind: "invalid", reason: local.reason };
-  return answer?.slug === candidate ? answer.status : CHECKING;
+  if (!local.ok) return { status: { kind: "invalid", reason: local.reason }, checkSuggestion };
+  return { status: answer?.slug === candidate ? answer.status : CHECKING, checkSuggestion };
 }
 
 function errorFor(status: SlugStatus): string | undefined {
