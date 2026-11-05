@@ -131,16 +131,7 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
       headers: { "content-type": "application/json", ...headers },
     });
 
-  beforeAll(async () => {
-    admin = new Client({ connectionString: DB_URL });
-    await admin.connect();
-    await resetPublicSchema(admin);
-    await dropLiveRoles(admin);
-    for (const f of readdirSync(MIGRATIONS_DIR)
-      .filter((x) => x.endsWith(".sql"))
-      .sort()) {
-      await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
-    }
+  const provision = (): void => {
     const provisioned = spawnSync("bun", ["run", "scripts/db/provision-runtime-roles.ts"], {
       cwd: join(__dirname, "../../.."),
       env: {
@@ -151,6 +142,19 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
       encoding: "utf8",
     });
     expect(provisioned.status, provisioned.stderr).toBe(0);
+  };
+
+  beforeAll(async () => {
+    admin = new Client({ connectionString: DB_URL });
+    await admin.connect();
+    await resetPublicSchema(admin);
+    await dropLiveRoles(admin);
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
+      await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
+    }
+    provision();
     platform = createDbClient({
       connectionString: urlAs("chartwarden_platform_login", PLATFORM_PASSWORD),
     });
@@ -762,5 +766,38 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
       );
       expect(bypass.rows[0]?.n).toBeGreaterThan(0);
     });
+  });
+
+  // The platform carrier may UPDATE only the columns the sweep and the verification service write, and a re-provision
+  // takes back an earlier table-wide UPDATE grant.
+  it("lets the platform login update only the written columns, even after an older table-wide grant", async () => {
+    for (const table of ["provider_npi_verification", "claimmd_webhook_event"]) {
+      await admin.query(`GRANT UPDATE ON "${table}" TO chartwarden_platform`);
+    }
+    provision();
+    const login = new Client({
+      connectionString: urlAs("chartwarden_platform_login", PLATFORM_PASSWORD),
+    });
+    await login.connect();
+    try {
+      const denied = async (stmt: string) =>
+        expect(login.query(stmt)).rejects.toThrow(/permission denied/);
+      await denied("UPDATE provider_npi_verification SET npi = npi WHERE false");
+      await denied("UPDATE provider_npi_verification SET evidence = evidence WHERE false");
+      await denied("UPDATE claimmd_webhook_event SET payload_sha256 = payload_sha256 WHERE false");
+      await denied("UPDATE claimmd_webhook_event SET event_type = event_type WHERE false");
+      await login.query(
+        "UPDATE provider_npi_verification SET revoked_at = revoked_at, revoked_by_membership_id = revoked_by_membership_id, updated_at = updated_at WHERE false",
+      );
+      await login.query(
+        `UPDATE claimmd_webhook_event SET derived_organization_id = derived_organization_id,
+           derived_provider_entity_id = derived_provider_entity_id, last_error_class = last_error_class,
+           processing_outcome = processing_outcome, entitlement_checked_at = entitlement_checked_at,
+           processed_at = processed_at, attempt_count = attempt_count, payload_cipher = payload_cipher,
+           payload_key_ref = payload_key_ref, payload_cleared_at = payload_cleared_at WHERE false`,
+      );
+    } finally {
+      await login.end();
+    }
   });
 });
