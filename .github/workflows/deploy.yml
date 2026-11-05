@@ -158,7 +158,7 @@ jobs:
     if: ${{ !cancelled() && (needs.debounce.result == 'skipped' || needs.debounce.outputs.proceed == 'true') }}
     # Pinned to the dedicated runner-01 box (4 CPU / 7.8 GB + 4 GB swap, one runner): `tsc -b apps/backend` needs several GB, and on the
     # shared `hostinger` hosts it was SIGKILLed (OOM) when another job ran alongside — #936's post-merge main run, and 3 earlier runs.
-    runs-on: [self-hosted, Linux, X64, runner-01]
+    runs-on: [self-hosted, Linux, X64, hostinger]
     env:
       NODE_OPTIONS: --max-old-space-size=6144
     steps:
