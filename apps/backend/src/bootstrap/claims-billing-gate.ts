@@ -16,6 +16,7 @@ import {
   type ClaimsBillingDenyReason,
   type ClaimsBillingEntitlement,
 } from "@chartwarden/types";
+import { DelayedError } from "bullmq";
 import type { FastifyInstance, FastifyRequest, RouteOptions } from "fastify";
 import {
   CLAIMS_BILLING_ENFORCEMENT_ENV,
@@ -219,4 +220,47 @@ export function withClaimsBillingGate(
   } finally {
     active = false;
   }
+}
+
+// ── workers: hold, don't fail ───────────────────────────────────────────────────────────────────────────
+
+/** How long a held job waits before it asks again. */
+export const CLAIMS_BILLING_HOLD_MS = 15 * 60_000;
+
+/**
+ * For a sweep that owns its own rows (no BullMQ job to delay): may this org's queued new work go out now? Never throws:
+ * a denied org or a failed read in `enforce` answers false (the rows stay queued and the next tick asks again).
+ */
+export async function claimsBillingAllowsWork(
+  organizationId: string,
+  site: GateSite,
+): Promise<boolean> {
+  try {
+    return (await claimsBillingVerdict(organizationId, site)).allow;
+  } catch {
+    return false; // already logged by the verdict; fail closed without failing the sweep
+  }
+}
+
+/** The slice of a BullMQ job the hold needs. */
+export interface HoldableJob {
+  moveToDelayed(timestamp: number, token?: string): Promise<void>;
+}
+
+/**
+ * ADR-0108 D7 — call first in a new-work job processor. Returns normally when the work may run. Otherwise moves the job
+ * back to delayed (CLAIMS_BILLING_HOLD_MS) and throws BullMQ's DelayedError, which the worker treats as "not done, no
+ * attempt spent": no retry counted, no DLQ.
+ */
+export async function holdUnlessClaimsBillingEntitled(
+  job: HoldableJob,
+  token: string | undefined,
+  organizationId: string,
+  queue: string,
+  now: () => number = Date.now,
+): Promise<void> {
+  if (await claimsBillingAllowsWork(organizationId, { queue })) return;
+  log("claims-billing job held", { organizationId, queue, holdMs: CLAIMS_BILLING_HOLD_MS });
+  await job.moveToDelayed(now() + CLAIMS_BILLING_HOLD_MS, token);
+  throw new DelayedError();
 }

@@ -18,8 +18,11 @@ vi.mock("@chartwarden/tenancy", async () => {
   };
 });
 
+import { configureClaimsBillingGate } from "../../../bootstrap/claims-billing-gate";
+import { __resetSeamsForTest, registerSeam } from "../../../bootstrap/seams/registry";
 import {
   classifyTransportRefusal,
+  drainOrg,
   endingFor,
   retryDelayMs,
   runSubmissionDrain,
@@ -149,5 +152,27 @@ describe("runSubmissionDrain with no clearinghouse bound", () => {
     waiting = 0;
     await expect(runSubmissionDrain(deps())).resolves.toEqual({ sent: 0, failures: [] });
     expect(submitCalls).toBe(0);
+  });
+});
+
+describe("ADR-0108 — drainOrg holds an org without the claims-billing add-on", () => {
+  it("leases nothing in enforce mode (rows stay queued), and drains as before in shadow", async () => {
+    registerSeam("ClaimsBillingEntitlementReader", {
+      entitlementForOrg: async () => ({ entitled: false, reason: "lapsed" }),
+    });
+    const deps = { db: {} as never } as never;
+    try {
+      configureClaimsBillingGate({ mode: "enforce", log: () => {} });
+      transactions = 0;
+      await expect(drainOrg(deps, "org-1")).resolves.toEqual({ sent: 0, failures: [] });
+      expect(transactions).toBe(0); // not even the due-list read
+      configureClaimsBillingGate({ mode: "shadow" });
+      waiting = 0;
+      await drainOrg(deps, "org-1").catch(() => undefined);
+      expect(transactions).toBeGreaterThan(0); // shadow: the drain proceeds to list its due rows
+    } finally {
+      configureClaimsBillingGate({ mode: "shadow" });
+      __resetSeamsForTest();
+    }
   });
 });

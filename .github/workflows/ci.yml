@@ -1414,6 +1414,8 @@ jobs:
           # M23 and M27 once shared a BullMQ queue named `validation-run` (an M27 worker failed M23 jobs into the DLQ). Real
           # producers, one consumer per module: a job reaches only its own module; stranded legacy jobs are moved, not dropped.
           - { name: "M23/M27 validation queue isolation", scripts: "test:m23:validation-queue-isolation:live" }
+          # ADR-0108 D7 - a held claims-billing job is delayed on real BullMQ, no attempt spent, never failed (needs Valkey).
+          - { name: "Claims-billing worker hold", scripts: "test:claims-billing:worker-hold:live" }
     services:
       # F-025 (#59): four of the newly-wired suites gate on `CHARTWARDEN_TEST_REDIS_URL` as well as the
       # database — `test:m30:scheduled-jobs:live`, `test:m33:scheduled-jobs:live`,

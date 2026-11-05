@@ -2,12 +2,15 @@
 // 402 + the reason, and a failed entitlement read fails CLOSED (503) in enforce only. Boot refuses a non-off mode on
 // the deny-stub.
 import type { ClaimsBillingEntitlement } from "@chartwarden/types";
+import { DelayedError } from "bullmq";
 import Fastify from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  CLAIMS_BILLING_HOLD_MS,
   assertClaimsBillingSeamBound,
   claimsBillingPreHandler,
   configureClaimsBillingGate,
+  holdUnlessClaimsBillingEntitled,
   isClaimsBillingEntitled,
   parseClaimsBillingEnforcement,
   withClaimsBillingGate,
@@ -139,5 +142,48 @@ describe("isClaimsBillingEntitled", () => {
     expect(await isClaimsBillingEntitled(ORG)).toBe(false);
     bindReader(new Error("db down"));
     await expect(isClaimsBillingEntitled(ORG)).rejects.toMatchObject({ statusCode: 503 });
+  });
+});
+
+describe("holdUnlessClaimsBillingEntitled (workers: hold, don't fail)", () => {
+  const job = () => {
+    const moves: Array<[number, string | undefined]> = [];
+    return {
+      moves,
+      moveToDelayed: async (ts: number, token?: string) => {
+        moves.push([ts, token]);
+      },
+    };
+  };
+
+  it("enforce + not entitled: moves the job back to delayed and throws DelayedError (no attempt spent)", async () => {
+    configureClaimsBillingGate({ mode: "enforce", log: () => {} });
+    bindReader({ entitled: false, reason: "never_purchased" });
+    const j = job();
+    await expect(
+      holdUnlessClaimsBillingEntitled(j, "tok", ORG, "claim.submit", () => 1_000),
+    ).rejects.toBeInstanceOf(DelayedError);
+    expect(j.moves).toEqual([[1_000 + CLAIMS_BILLING_HOLD_MS, "tok"]]);
+  });
+
+  it("enforce + failed read: holds too (fail closed, never a DLQ)", async () => {
+    configureClaimsBillingGate({ mode: "enforce", log: () => {} });
+    bindReader(new Error("db down"));
+    const j = job();
+    await expect(
+      holdUnlessClaimsBillingEntitled(j, "tok", ORG, "claim.submit"),
+    ).rejects.toBeInstanceOf(DelayedError);
+    expect(j.moves).toHaveLength(1);
+  });
+
+  it("entitled, or shadow: runs the job", async () => {
+    configureClaimsBillingGate({ mode: "enforce" });
+    bindReader({ entitled: true });
+    const j = job();
+    await holdUnlessClaimsBillingEntitled(j, "tok", ORG, "claim.submit");
+    configureClaimsBillingGate({ mode: "shadow" });
+    bindReader({ entitled: false, reason: "lapsed" });
+    await holdUnlessClaimsBillingEntitled(j, "tok", ORG, "claim.submit");
+    expect(j.moves).toEqual([]);
   });
 });

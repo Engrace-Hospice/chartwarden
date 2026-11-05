@@ -25,6 +25,7 @@ import { COMMERCIAL_SUBMISSION_MAX_ATTEMPTS, ChartWardenError } from "@chartward
 import { CH, type ClearinghouseTransport } from "@chartwarden/x12-837-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, eq, lte, sql } from "drizzle-orm";
+import { claimsBillingAllowsWork } from "../../../bootstrap/claims-billing-gate";
 import type { CommercialContextPort } from "../eligibility/service";
 import type { Render837iArgs, Render837iResult } from "../services/render-837i";
 import { evaluateGateForClaim } from "../services/submission-service";
@@ -497,6 +498,13 @@ export async function drainOrg(
   deps: SubmissionWorkerDeps,
   organizationId: string,
 ): Promise<DrainResult> {
+  // ADR-0108 D7 — an org without the claims-billing add-on is skipped, not leased: its rows stay queued (no attempt spent)
+  // and the next tick asks again. A failed entitlement read in enforce mode skips too (fail closed, no DLQ).
+  if (
+    !(await claimsBillingAllowsWork(organizationId, { queue: M41_CRON_QUEUES.submissionDrain }))
+  ) {
+    return { sent: 0, failures: [] };
+  }
   const failures: string[] = [];
   let sent = 0;
   for (const id of await listDue(deps, organizationId)) {
