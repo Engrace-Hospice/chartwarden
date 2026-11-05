@@ -148,6 +148,17 @@ const PLATFORM_USER_LIFECYCLE_ROLES: readonly PlatformOpsRoleKey[] = [
   "platform_owner",
 ];
 
+/**
+ * Onboarding wizard v2 (M34, migration 1329): the platform operator's write keys. Only `platform_ops` carries them: the
+ * `tenant_lifecycle_platform_ops` predicate that gates every one of these routes admits that role alone. The BAA register
+ * write key lives here (it was a read key's write); go-live approval is the second party of the two-party go-live.
+ */
+export const M34_PLATFORM_OPS_ONBOARDING_KEYS = [
+  "onboarding.manage_platform",
+  "go_live.approve_platform",
+  "platform_tenant_baa.write_platform",
+] as const;
+
 /** Build a platform-ops role's default grant: `billing_admin.*` per the §4.7 binding rule, plus user lifecycle. */
 function platformOpsGrantsFor(role: PlatformOpsRoleKey): readonly string[] {
   const keys: string[] = [];
@@ -156,6 +167,7 @@ function platformOpsGrantsFor(role: PlatformOpsRoleKey): readonly string[] {
   if (PLATFORM_APPROVE_ROLES.includes(role)) keys.push(M35_REFUND_APPROVE_KEY);
   if (PLATFORM_USER_LIFECYCLE_ROLES.includes(role))
     keys.push(PLATFORM_USER_LIFECYCLE_KEY, PLATFORM_PASSWORD_RESET_KEY);
+  if (role === "platform_ops") keys.push(...M34_PLATFORM_OPS_ONBOARDING_KEYS);
   return keys;
 }
 
@@ -331,6 +343,10 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
       "step_up_override.manage",
       // GAP-010: the compliance officer may reveal a stored SSN (M5 spec 4.7); the single source is ssn-grants.ts.
       "phi.read_ssn",
+      // M34 two-party go-live (migration 1329 covers existing roles): the compliance officer reads the onboarding wizard
+      // and attests go-live readiness.
+      "onboarding.read_own",
+      "go_live.attest",
       // WP 5.6 (ADR-0086): migration 1138 grants this to EXISTING compliance_officer roles; this entry gives NEW tenants the same
       // (administrator / org_admin get it through the non-platform catalog, the mirror in permissions/contributed.ts).
       "messaging.retention.manage",

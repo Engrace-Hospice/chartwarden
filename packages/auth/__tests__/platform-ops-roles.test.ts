@@ -10,6 +10,7 @@
  * → admin/owner ONLY, disjoint from `refund.request` so §4.8 four-eyes stays assignable).
  */
 import {
+  M34_PLATFORM_OPS_ONBOARDING_KEYS,
   M35_BILLING_ADMIN_READ_KEYS,
   M35_BILLING_ADMIN_WRITE_KEYS,
   M35_CONTRIBUTED_PERMISSIONS,
@@ -55,11 +56,22 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
     }
   });
 
-  it("the union of all platform-ops grants is the `billing_admin.*` keys plus user lifecycle", () => {
+  it("the union of all platform-ops grants is the `billing_admin.*` keys, user lifecycle and the M34 onboarding write keys", () => {
     const granted = new Set(Object.values(PLATFORM_OPS_ROLE_GRANTS).flat());
     expect([...granted].sort()).toEqual(
-      [...BILLING_ADMIN_KEYS, "user.deactivate", "user.password.reset"].sort(),
+      [
+        ...BILLING_ADMIN_KEYS,
+        "user.deactivate",
+        "user.password.reset",
+        ...M34_PLATFORM_OPS_ONBOARDING_KEYS,
+      ].sort(),
     );
+  });
+
+  it("the M34 onboarding write keys (BAA write, go-live approval, platform onboarding) bind to platform_ops alone", () => {
+    for (const key of M34_PLATFORM_OPS_ONBOARDING_KEYS) {
+      expect(rolesForPermission(key)).toEqual(["platform_ops"]);
+    }
   });
 
   it("GAP-001: `user.deactivate` binds to platform_ops/admin/owner — the platform deactivate route's roles", () => {
@@ -105,6 +117,7 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
     expect(PLATFORM_OPS_ROLE_GRANTS.platform_ops).toEqual([
       "user.deactivate",
       "user.password.reset",
+      ...M34_PLATFORM_OPS_ONBOARDING_KEYS,
     ]);
   });
 });
@@ -116,9 +129,12 @@ describe("ADMIN-T02 platform-ops grant seed", () => {
     expect(rows.length).toBe(expected);
     for (const row of rows) {
       expect(PLATFORM_OPS_ROLE_KEYS).toContain(row.roleKey);
-      expect([...BILLING_ADMIN_KEYS, "user.deactivate", "user.password.reset"]).toContain(
-        row.permissionKey,
-      );
+      expect([
+        ...BILLING_ADMIN_KEYS,
+        "user.deactivate",
+        "user.password.reset",
+        ...M34_PLATFORM_OPS_ONBOARDING_KEYS,
+      ]).toContain(row.permissionKey);
     }
   });
 });
