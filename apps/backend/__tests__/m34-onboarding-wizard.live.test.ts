@@ -1061,6 +1061,25 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       });
     });
 
+    it("the tenant's own view of that approval carries no operator id, only ChartWarden operations, the reason and the time", async () => {
+      const view = await wizard(false).getTenant(ORG_C);
+      const body = JSON.stringify(view);
+      expect(body).not.toContain(opsTwo.membershipId);
+      expect(body).not.toContain(opsTwo.userId);
+      expect(view.goLive.attestation).toMatchObject({
+        status: "approved",
+        approvedByMembershipId: null,
+        approvedByLabel: "ChartWarden operations",
+        approvalReason: "reviewed the evidence and the BAA",
+        attestedByMembershipId: dual.tenantMembershipId,
+      });
+      expect(view.goLive.attestation?.approvedAt).not.toBeNull();
+      // the platform's own view still names the operator
+      expect(
+        (await wizard(false).getPlatform("wiz-c")).goLive.attestation?.approvedByMembershipId,
+      ).toBe(opsTwo.membershipId);
+    });
+
     // ── MEDIUM 2: a stale or expired attestation is not approvable ───────────────────────────────────────
     const staleCase = async (label: string, change: () => Promise<unknown>, detail: string) => {
       await wizard(false).attestGoLive(officerD1, ORG_D, label);

@@ -51,6 +51,8 @@ import {
   type WizardStepView,
   type WizardView,
   buildWizardView,
+  redactStepForTenant,
+  redactViewForTenant,
   toWizardStepView,
 } from "./wizard-view";
 
@@ -695,6 +697,17 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
 
   // ── surface adapters ───────────────────────────────────────────────────────────────────────────────────────
 
+  /**
+   * The wizard as the tenant may see it. A revocation stays attributed when its revoker is a member of the tenant's own
+   * organisation (an org_admin who voided it by reassigning the officer); a platform operator's never does.
+   */
+  async function forTenant<V extends WizardView>(ctx: Loaded, wizardView: V): Promise<V> {
+    const revoker = wizardView.goLive.attestation?.revokedByMembershipId ?? null;
+    const revokedByTenantMember =
+      revoker !== null && (await ctx.store.loadMember(ctx.tenant.organizationId, revoker)) !== null;
+    return redactViewForTenant(wizardView, { revokedByTenantMember });
+  }
+
   /** A platform transaction on one tenant. `actor` is the operator it acts for (every write is attributed to them). */
   const platform = <T>(
     reason: string,
@@ -761,6 +774,11 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     tenant: ctx.tenant,
     view: stepView({ ...ctx, tasks: ctx.tasks.map((t) => (t.id === task.id ? task : t)) }, task),
   });
+  /** The same, for a tenant caller: a platform operator's attestation shows as the organisation, not the member. */
+  const tenantStepResult = async (ctx: Loaded, task: StepTask) => {
+    const result = await stepResult(ctx, task);
+    return { ...result, view: redactStepForTenant(result.view) };
+  };
   const profileResult = async (
     organizationId: string,
     patch: ProfileInput,
@@ -869,27 +887,30 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
       deps.runner.inTenant(
         { kind: "tenant", membershipId: "", userId: "", roles: [] },
         organizationId,
-        async (store) => withProfile(await load(store, { organizationId })),
+        async (store) => {
+          const ctx = await load(store, { organizationId });
+          return forTenant(ctx, await withProfile(ctx));
+        },
       ),
     startTask: async (actor, organizationId, taskId) =>
       (
         await changed(
           await tenantTx(actor, organizationId, async (ctx) =>
-            stepResult(ctx, await start(ctx, actor, taskId)),
+            tenantStepResult(ctx, await start(ctx, actor, taskId)),
           ),
         )
       ).view,
     blockTask: async (actor, organizationId, taskId, reason) =>
       (
         await tenantTx(actor, organizationId, async (ctx) =>
-          stepResult(ctx, await block(ctx, actor, taskId, reason)),
+          tenantStepResult(ctx, await block(ctx, actor, taskId, reason)),
         )
       ).view,
     attestTask: async (actor, organizationId, taskId, input) =>
       (
         await changed(
           await tenantTx(actor, organizationId, async (ctx) =>
-            stepResult(ctx, await attest(ctx, actor, taskId, input)),
+            tenantStepResult(ctx, await attest(ctx, actor, taskId, input)),
           ),
         )
       ).view,
@@ -897,7 +918,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
       (
         await changed(
           await tenantTx(actor, organizationId, async (ctx) =>
-            stepResult(ctx, await reopen(ctx, actor, taskId, reason)),
+            tenantStepResult(ctx, await reopen(ctx, actor, taskId, reason)),
           ),
         )
       ).view,
@@ -918,6 +939,8 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
       return { complianceOfficerMembershipId: done.assigned.complianceOfficerMembershipId };
     },
     attestGoLive: (actor, organizationId, note) =>
-      tenantTx(actor, organizationId, (ctx) => goLiveAttest(ctx, actor, note)),
+      tenantTx(actor, organizationId, async (ctx) =>
+        forTenant(ctx, await goLiveAttest(ctx, actor, note)),
+      ),
   };
 }

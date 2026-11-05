@@ -138,6 +138,9 @@ export function createMemoryWizardStore(
         .sort((a, b) => b.attestedAt.getTime() - a.attestedAt.getTime());
     },
     async insertGoLive(input) {
+      // Strictly increasing: two attestations filed in the same millisecond must still order (the real table's
+      // timestamptz is microsecond-resolution, so this never ties there).
+      const last = state.goLive.reduce((max, g) => Math.max(max, g.attestedAt.getTime()), 0);
       const row: MemoryGoLive = {
         id: randomUUID(),
         organizationId: input.organizationId,
@@ -145,7 +148,7 @@ export function createMemoryWizardStore(
         status: "pending",
         attestedByMembershipId: input.attestedByMembershipId,
         attestedByUserId: input.attestedByUserId,
-        attestedAt: new Date(),
+        attestedAt: new Date(Math.max(Date.now(), last + 1)),
         attestationNote: input.attestationNote,
         approvedByMembershipId: null,
         approvedByUserId: null,

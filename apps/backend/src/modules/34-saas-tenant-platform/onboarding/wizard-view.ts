@@ -38,8 +38,11 @@ export interface WizardStepView {
   readonly completionMode: CompletionMode;
   readonly evidence: { readonly note: string; readonly ref: string | null } | null;
   readonly attestedBy: {
-    readonly membershipId: string;
+    /** Null on the tenant surface when the attester is a ChartWarden operator (see `label`). */
+    readonly membershipId: string | null;
     readonly actorKind: "platform_ops" | "tenant";
+    /** The organisation to show instead of a person's id; only the tenant surface sets it, for a platform operator. */
+    readonly label: string | null;
     readonly at: string;
   } | null;
   readonly assignedToMembershipId: string | null;
@@ -64,9 +67,13 @@ export interface GoLiveAttestationView {
   readonly expiresAt: string | null;
   readonly attestationNote: string | null;
   readonly approvedByMembershipId: string | null;
+  /** Set instead of the membership on the tenant surface (the approver is always a ChartWarden operator). */
+  readonly approvedByLabel: string | null;
   readonly approvedAt: string | null;
   readonly approvalReason: string | null;
   readonly revokedByMembershipId: string | null;
+  /** Set instead of the membership on the tenant surface when an operator revoked it. */
+  readonly revokedByLabel: string | null;
   readonly revokedAt: string | null;
   readonly revokeReason: string | null;
 }
@@ -114,6 +121,7 @@ export function toWizardStepView(
         ? {
             membershipId: task.attestedByMembershipId,
             actorKind: task.attestedByActorKind,
+            label: null,
             at: task.attestedAt.toISOString(),
           }
         : null,
@@ -139,9 +147,11 @@ function toAttestationView(a: GoLiveAttestation): GoLiveAttestationView {
     expiresAt: a.status === "pending" ? attestationExpiresAt(a).toISOString() : null,
     attestationNote: a.attestationNote,
     approvedByMembershipId: a.approvedByMembershipId,
+    approvedByLabel: null,
     approvedAt: iso(a.approvedAt),
     approvalReason: a.approvalReason,
     revokedByMembershipId: a.revokedByMembershipId,
+    revokedByLabel: null,
     revokedAt: iso(a.revokedAt),
     revokeReason: a.revokeReason,
   };
@@ -190,6 +200,49 @@ export function buildWizardView(input: {
       attestation: latest ? toAttestationView(latest) : null,
       failedGuards: reviewable ? FAILED_GUARD_NAMES.filter((name) => !guards[name]) : [],
       complianceOfficerMembershipId: tenant.complianceOfficerMembershipId,
+    },
+  };
+}
+
+/** What a tenant is shown in place of a ChartWarden operator: the organisation, never a person or a membership. */
+export const PLATFORM_OPERATOR_LABEL = "ChartWarden operations";
+
+/** A step as the tenant sees it: a platform operator's attestation names the organisation and the time, not the member. */
+export function redactStepForTenant(step: WizardStepView): WizardStepView {
+  if (!step.attestedBy || step.attestedBy.actorKind !== "platform_ops") return step;
+  return {
+    ...step,
+    attestedBy: { ...step.attestedBy, membershipId: null, label: PLATFORM_OPERATOR_LABEL },
+  };
+}
+
+/**
+ * The wizard as the tenant sees it. The approver of a go-live is always a platform operator, so it is always redacted; a
+ * revocation is redacted unless the revoker is a member of the tenant's own organisation (an org_admin who voided an
+ * attestation by reassigning the officer is the tenant's own person). Reasons and times are kept.
+ */
+export function redactViewForTenant<V extends WizardView>(
+  view: V,
+  opts: { readonly revokedByTenantMember: boolean },
+): V {
+  const attestation = view.goLive.attestation;
+  return {
+    ...view,
+    steps: view.steps.map(redactStepForTenant),
+    goLive: {
+      ...view.goLive,
+      attestation: attestation && {
+        ...attestation,
+        approvedByMembershipId: null,
+        approvedByLabel: attestation.approvedByMembershipId ? PLATFORM_OPERATOR_LABEL : null,
+        revokedByMembershipId: opts.revokedByTenantMember
+          ? attestation.revokedByMembershipId
+          : null,
+        revokedByLabel:
+          attestation.revokedByMembershipId && !opts.revokedByTenantMember
+            ? PLATFORM_OPERATOR_LABEL
+            : null,
+      },
     },
   };
 }
