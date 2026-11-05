@@ -14,7 +14,7 @@ import {
 import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/23-billing-medicare — PLATFORM NPI VERIFICATION (ADR-0053 amendment 2026-11-05, precondition 2).
 // A tenant can register any valid NPI on its provider entity; the Claim.MD webhook sweep routes a vendor enrollment
-// report only to an entity whose CURRENT NPI platform staff verified here. Changing the NPI voids the verification.
+// report only to an entity whose CURRENT NPI platform staff verified here. Changing the NPI stops it routing.
 //
 //   GET  /api/v1/admin/billing/npi-verifications                       — every tenant's provider entities + state
 //   POST /api/v1/admin/billing/npi-verifications/:providerEntityId/verify — { npi (the one checked), evidence }
@@ -105,7 +105,8 @@ export function NpiVerifications(): JSX.Element {
             <h1>NPI verification</h1>
             <p>
               Claim.MD enrollment reports reach a tenant only when platform staff have verified that
-              its provider entity owns the NPI. Changing an entity's NPI clears its verification.
+              its provider entity owns the NPI. An entity whose NPI changes is unverified until
+              checked again.
             </p>
           </div>
         </header>

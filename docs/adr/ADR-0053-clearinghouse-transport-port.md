@@ -290,7 +290,9 @@ the contract doc's webhook rows say what is D and what is U. Turn it on only whe
    are never deleted. It is a separate table, not a column on `provider_entity`, because tenants can update that row. RLS
    is FORCEd: a tenant reads its own org's rows and writes none; only the platform login writes, through the audited
    `m23.npi_verification` platform context (M1 baseline write-audit trigger). The sweep routes an enrollment only when a
-   live row matches the entity's CURRENT NPI, so changing the NPI voids the verification. Platform staff list, verify and
+   live row matches the entity's CURRENT NPI, so changing the NPI stops routing (switching back to the same NPI counts
+   again only if no other entity has been verified for it since: verifying an NPI closes every other entity's live row
+   for it). Platform staff list, verify and
    revoke at `GET /api/v1/admin/billing/npi-verifications` and `POST …/:providerEntityId/verify|revoke`
    (`billing.rule_config.platform_admin` + a platform-ops role; writes add a fresh step-up, the AI-actor block and
    `Idempotency-Key`; verify must name the NPI the operator checked, so a value changed since is refused `NPI_CHANGED`),

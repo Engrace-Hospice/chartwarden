@@ -62,6 +62,7 @@ const ORG_B = "00000000-0000-4000-8000-0000000322b1";
 const URL_TEST = "/api/v1/webhooks/claimmd/test";
 const NPI_C = "1222222220";
 const NPI_D = "1222222238";
+const NPI_E = "1222222246";
 const OPERATOR = "00000000-0000-4000-8000-0000000326f1";
 const operator: M23WriteActor = {
   organizationId: "00000000-0000-4000-8000-0000000326f0",
@@ -662,6 +663,28 @@ describe.skipIf(!DB_URL)("M23 Claim.MD webhook intake - LIVE Postgres", () => {
       await store([enrollFor("v6", NPI_D)]);
       expect((await sweep()).outcomes).toEqual({ unroutable_npi: 1 });
       expect(await outbox("m23.clearinghouse.enrollment_reported")).toHaveLength(2);
+    });
+
+    it("closes another entity's stale live verification of an NPI when that NPI is verified elsewhere", async () => {
+      // peA (org A) was verified for NPI_A in beforeAll. It moves off NPI_A; org B's new entity takes it and is verified.
+      await admin.query("UPDATE provider_entity SET npi = $1 WHERE id = $2", [NPI_E, peA]);
+      const peE = (
+        await admin.query(
+          `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+           VALUES ($1,'322004','Synthetic Hospice E',$2,'\\x00','12-31') RETURNING id`,
+          [ORG_B, NPI_A],
+        )
+      ).rows[0].id as string;
+      await npiAdmin.verify(operator, peE, { npi: NPI_A, evidence: "NPPES record matches" });
+      // Org B vacates NPI_A and org A takes it back: org A's old verification must not revive.
+      await admin.query("DELETE FROM provider_entity WHERE id = $1", [peE]);
+      await admin.query("UPDATE provider_entity SET npi = $1 WHERE id = $2", [NPI_A, peA]);
+      await store([enrollFor("s1", NPI_A)]);
+      expect((await sweep()).outcomes).toEqual({ unroutable_npi: 1 });
+      await npiAdmin.verify(operator, peA, {
+        npi: NPI_A,
+        evidence: "re-checked after the NPI moved",
+      });
     });
 
     it("refuses a stale NPI, a double verify and a revoke of nothing", async () => {
