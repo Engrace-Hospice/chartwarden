@@ -158,15 +158,19 @@ export function buildOnboardingMachineConfig(
   const ordered = [...templates].sort((a, b) => a.canonicalOrder - b.canonicalOrder);
   const nodes: OnboardingStateNode[] = ordered.map((t, i) => {
     const next = ordered[i + 1];
+    const completionMode = t.completionMode ?? "auto";
+    // A step only a human settles is never evaluated, so its DSL is dropped here: the go-live template carries a
+    // rollback tripwire for the PREVIOUS release (GO_LIVE_ROLLBACK_GUARD_DSL) that this release must never read.
+    const preconditionDsl = completionMode === "attestation" ? null : t.preconditionDsl;
     return {
       key: t.key,
       isCanonical: t.isCanonical,
-      preconditionDsl: t.preconditionDsl,
-      completionMode: t.completionMode ?? "auto",
+      preconditionDsl,
+      completionMode,
       isOptional: t.isOptional ?? false,
       onAdvance: {
         target: next ? next.key : ONBOARDING_DONE,
-        whenPreconditionHolds: t.preconditionDsl,
+        whenPreconditionHolds: preconditionDsl,
       },
     };
   });

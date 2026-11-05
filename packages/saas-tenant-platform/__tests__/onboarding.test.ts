@@ -7,6 +7,8 @@
 //   • src/onboarding/machine.ts — the interpreter settles an `auto`/`either` step ONLY when its precondition holds,
 //     waits at an `attestation` step, blocks an `auto` step that cannot settle, and never activates a tenant;
 //   • src/onboarding/steps.ts — the canonical steps are present, in the wizard's order.
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { OnboardingContext, OnboardingProviderEntityView } from "../src/onboarding/context";
 import {
@@ -20,6 +22,7 @@ import {
 import { PreconditionDslError, evaluatePrecondition } from "../src/onboarding/precondition-dsl";
 import {
   CANONICAL_ONBOARDING_STEPS,
+  GO_LIVE_ROLLBACK_GUARD_DSL,
   ONBOARDING_DONE,
   canonicalStepIndex,
   isCanonicalOnboardingStep,
@@ -64,7 +67,7 @@ const CANONICAL_TEMPLATES: readonly Template[] = [
   t("first_admin_invited", 11, "auto", "context.orgAdminAcceptedMembershipCount > 0"),
   t("compliance_officer_assigned", 12, "either", "context.complianceOfficerAssigned == true"),
   t("sample_data_loaded", 13, "attestation", null, true),
-  t("go_live_checklist_complete", 14, "attestation", null),
+  t("go_live_checklist_complete", 14, "attestation", GO_LIVE_ROLLBACK_GUARD_DSL),
 ];
 
 const pe = (id: string, ccn: string | null): OnboardingProviderEntityView => ({
@@ -175,8 +178,9 @@ describe("§2.3 precondition-DSL: canonical expressions met vs blocked", () => {
     expect(evaluatePrecondition("   ", metContext())).toBe(true);
   });
 
-  it("every canonical precondition is MET under the fully-satisfied context", () => {
-    for (const t of CANONICAL_TEMPLATES) {
+  it("every precondition the machine evaluates is MET under the fully-satisfied context", () => {
+    // An attestation step is never evaluated (go-live's DSL is the old release's rollback tripwire, see section 5).
+    for (const t of CANONICAL_TEMPLATES.filter((x) => x.completionMode !== "attestation")) {
       expect(evaluatePrecondition(t.preconditionDsl, metContext())).toBe(true);
     }
   });
@@ -319,8 +323,10 @@ describe("§2.3 buildOnboardingMachineConfig", () => {
   it("each node's guard, mode and optionality are the seed's (data-driven, not a code branch — D3)", () => {
     for (const tpl of CANONICAL_TEMPLATES) {
       const node = CONFIG.nodes.find((n) => n.key === tpl.key)!;
-      expect(node.preconditionDsl).toBe(tpl.preconditionDsl);
-      expect(node.onAdvance.whenPreconditionHolds).toBe(tpl.preconditionDsl);
+      // A step only a human settles is never evaluated, so the config drops its DSL (the go-live row's rollback guard).
+      const evaluated = tpl.completionMode === "attestation" ? null : tpl.preconditionDsl;
+      expect(node.preconditionDsl).toBe(evaluated);
+      expect(node.onAdvance.whenPreconditionHolds).toBe(evaluated);
       expect(node.completionMode).toBe(tpl.completionMode);
       expect(node.isOptional).toBe(tpl.isOptional);
       expect(node.isCanonical).toBe(true);
@@ -488,5 +494,43 @@ describe("§2.3 advanceOnboarding — completion modes", () => {
     expect((od as { outbox: string }).outbox).toBe("m34.tenant.onboarding_overdue");
     // overdue is independent of the advance: baa_executed still completes (fact holds).
     expect(completedKeys(res.emits)).toContain("baa_executed");
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════════
+// 5. Rollback safety of the go-live row. If deploy.sh restores the previous release (these migrations are `expand`),
+//    the OLD sweep reads a NULL precondition as met and would settle go-live and auto-activate the tenant. The row
+//    therefore carries a DSL the old evaluator cannot satisfy; the new code never evaluates it.
+// ════════════════════════════════════════════════════════════════════════════════════════════════════
+describe("go-live rollback guard", () => {
+  it("is a DSL the evaluator cannot satisfy: an unknown context field fails loud, never reads as met", () => {
+    expect(() => evaluatePrecondition(GO_LIVE_ROLLBACK_GUARD_DSL, metContext())).toThrow(
+      PreconditionDslError,
+    );
+  });
+
+  it("is on the go-live row of migration 1327, verbatim", () => {
+    const sql = readFileSync(
+      join(__dirname, "../../db/migrations/1327_m34_onboarding_wizard_v2.sql"),
+      "utf8",
+    );
+    const row = sql.split("\n").find((line) => line.includes("'go_live_checklist_complete'"));
+    expect(row).toContain(`'${GO_LIVE_ROLLBACK_GUARD_DSL}'`);
+  });
+
+  it("is ignored by the new machine: an attested tenant waits at go-live and nothing is emitted or thrown", () => {
+    const steps = makeSteps(
+      Object.fromEntries(
+        CANONICAL_TEMPLATES.filter((tpl) => tpl.key !== "go_live_checklist_complete").map((tpl) => [
+          tpl.key,
+          "done" as OnboardingTaskStatus,
+        ]),
+      ),
+    );
+
+    const res = advanceOnboarding(CONFIG, steps, metContext(), NOW);
+
+    expect(res.currentStep).toBe("go_live_checklist_complete");
+    expect(res.emits).toEqual([]);
   });
 });

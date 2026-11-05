@@ -37,7 +37,8 @@ const task = (templateKey: string, status: string) => ({
 function ports(statuses: Record<string, string>) {
   const publishOutbox = vi.fn(async () => undefined);
   const routeAlert = vi.fn(async () => undefined);
-  const updateTaskStatus = vi.fn(async () => undefined);
+  // The repo write is compare-and-set on the status the sweep read: a row it returns is a write that landed.
+  const updateTaskStatus = vi.fn(async (..._args: unknown[]) => ({}) as unknown);
   const repo = {
     listTemplates: async () => [
       template("attested", 1, "attestation", null),
@@ -70,6 +71,7 @@ describe("runOnboardingAdvance", () => {
     expect(p.updateTaskStatus).toHaveBeenCalledTimes(2);
     expect(p.updateTaskStatus).toHaveBeenCalledWith(
       "task-baa",
+      "pending",
       expect.objectContaining({ status: "done", completedAt: NOW }),
     );
   });
@@ -104,6 +106,7 @@ describe("runOnboardingAdvance", () => {
     expect(report.blocked).toEqual(["baa"]);
     expect(p.updateTaskStatus).toHaveBeenCalledWith(
       "task-baa",
+      "pending",
       expect.objectContaining({ status: "blocked" }),
     );
     expect(p.publishOutbox).toHaveBeenCalledWith(
@@ -112,5 +115,42 @@ describe("runOnboardingAdvance", () => {
     expect(p.routeAlert).toHaveBeenCalledWith(
       expect.objectContaining({ alertKey: "tenant.onboarding_step_blocked" }),
     );
+  });
+
+  it("unblocks a blocked step and then completes it, each write expecting the status the row holds at that moment", async () => {
+    const p = ports({ attested: "done", baa: "blocked", provisioned: "pending" });
+
+    const report = await runOnboardingAdvance(input, p.all);
+
+    expect(report.completed).toEqual(["baa", "provisioned"]);
+    expect(p.updateTaskStatus.mock.calls.map((c) => [c[0], c[1]])).toEqual([
+      ["task-baa", "blocked"], // blocked -> in_progress
+      ["task-baa", "in_progress"], // in_progress -> done
+      ["task-provisioned", "pending"],
+    ]);
+  });
+
+  it("does not overwrite a step that changed after the sweep read it, and stops the pass there", async () => {
+    // A concurrent re-open moved `baa` out of `pending`: the guarded write matches no row.
+    const p = ports({ attested: "done", baa: "pending", provisioned: "pending" });
+    p.updateTaskStatus.mockResolvedValueOnce(null);
+
+    const report = await runOnboardingAdvance(input, p.all);
+
+    expect(report.completed).toEqual([]);
+    // `provisioned` is behind `baa`: settling it would break the strict sequence, so the pass writes nothing further.
+    expect(p.updateTaskStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("raises no blocked event or alert for a block that did not land", async () => {
+    const p = ports({ attested: "done", baa: "pending", provisioned: "pending" });
+    p.all.gatherContext = async () => ({ baaExecuted: false }) as OnboardingContext;
+    p.updateTaskStatus.mockResolvedValueOnce(null);
+
+    const report = await runOnboardingAdvance(input, p.all);
+
+    expect(report.blocked).toEqual([]);
+    expect(p.publishOutbox).not.toHaveBeenCalled();
+    expect(p.routeAlert).not.toHaveBeenCalled();
   });
 });

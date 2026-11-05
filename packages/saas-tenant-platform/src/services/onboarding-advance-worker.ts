@@ -167,15 +167,23 @@ export async function runOnboardingAdvance(
   const blocked: string[] = [];
   const overdue: string[] = [];
 
+  // Every write is compare-and-set on the status the sweep believes the row holds (read once, then advanced as its own
+  // writes land). A write that matches no row means a human changed the step since the read (a re-open, an attestation):
+  // the pass stops there, because later emits assume the earlier step settled, and the next pass re-reads.
+  const currentStatus = new Map<string, OnboardingTaskStatus>(
+    tasks.map((t) => [t.templateKey, t.status as OnboardingTaskStatus]),
+  );
   for (const emit of result.emits) {
-    await applyEmit(emit, {
+    const landed = await applyEmit(emit, {
       tenantAccountId,
       orgId,
       now,
       taskByKey,
+      currentStatus,
       ports,
       sink: { completed, blocked, overdue },
     });
+    if (!landed) break;
   }
 
   return {
@@ -189,7 +197,8 @@ export async function runOnboardingAdvance(
 }
 
 /** Effect a single machine emit (the §2.3 observe→persist handshake). Split out so each emit kind reads
- *  as one clause and the worker body stays a flat loop. */
+ *  as one clause and the worker body stays a flat loop. Resolves `false` when a guarded write matched no row (the step
+ *  changed under the sweep): nothing was effected for that emit and the caller stops the pass. */
 async function applyEmit(
   emit: OnboardingEmit,
   cx: {
@@ -197,40 +206,53 @@ async function applyEmit(
     orgId: string;
     now: Date;
     taskByKey: Map<string, { id: string; templateKey: string; status: OnboardingTaskStatus }>;
+    /** The status each step holds as far as this pass knows: what the sweep read, advanced by its own writes. */
+    currentStatus: Map<string, OnboardingTaskStatus>;
     ports: OnboardingAdvancePorts;
     sink: { completed: string[]; blocked: string[]; overdue: string[] };
   },
-): Promise<void> {
-  const { ports, taskByKey, now } = cx;
+): Promise<boolean> {
+  const { ports, taskByKey, now, currentStatus } = cx;
+  /** One compare-and-set write; records the new status only when it landed. */
+  const write = async (
+    task: { id: string; templateKey: string },
+    next: OnboardingTaskStatus,
+    patch: Parameters<OnboardingRepository["updateTaskStatus"]>[2],
+  ): Promise<boolean> => {
+    const expected = currentStatus.get(task.templateKey) ?? "pending";
+    const row = await ports.repo.updateTaskStatus(task.id, expected, patch);
+    if (!row) return false;
+    currentStatus.set(task.templateKey, next);
+    return true;
+  };
   switch (emit.kind) {
     case "step_unblocked": {
       const task = taskByKey.get(emit.templateKey);
-      if (task === undefined) return;
+      if (task === undefined) return true;
       // Seed's `blocked → in_progress` recovery edge: clear the blocker before the completing write.
-      await ports.repo.updateTaskStatus(task.id, { status: "in_progress", blockerReason: null });
-      return;
+      return write(task, "in_progress", { status: "in_progress", blockerReason: null });
     }
     case "step_completed": {
       const task = taskByKey.get(emit.templateKey);
-      if (task === undefined) return;
-      if (task.status === "done") return; // idempotent: nothing to do.
-      await ports.repo.updateTaskStatus(task.id, {
+      if (task === undefined) return true;
+      if (currentStatus.get(emit.templateKey) === "done") return true; // idempotent: nothing to do.
+      const landed = await write(task, "done", {
         status: "done",
         completedAt: now,
         blockerReason: null,
       });
-      cx.sink.completed.push(emit.templateKey);
-      return;
+      if (landed) cx.sink.completed.push(emit.templateKey);
+      return landed;
     }
     case "step_blocked": {
       const task = taskByKey.get(emit.templateKey);
-      if (task === undefined) return;
+      if (task === undefined) return true;
       // §2.4.15 — `blocked` requires a non-null blocker_reason.
-      if (task.status !== "blocked") {
-        await ports.repo.updateTaskStatus(task.id, {
-          status: "blocked",
-          blockerReason: emit.blockerReason,
-        });
+      if (
+        currentStatus.get(emit.templateKey) !== "blocked" &&
+        !(await write(task, "blocked", { status: "blocked", blockerReason: emit.blockerReason }))
+      ) {
+        return false; // the step changed under the sweep: it is not blocked, so there is nothing to announce
       }
       await ports.publishOutbox({
         event: "m34.tenant.onboarding_step_blocked",
@@ -246,11 +268,11 @@ async function applyEmit(
         templateKey: emit.templateKey,
       });
       cx.sink.blocked.push(emit.templateKey);
-      return;
+      return true;
     }
     case "step_overdue": {
       const task = taskByKey.get(emit.templateKey);
-      if (task === undefined) return;
+      if (task === undefined) return true;
       await ports.publishOutbox({
         event: "m34.tenant.onboarding_overdue",
         tenantAccountId: cx.tenantAccountId,
@@ -265,7 +287,7 @@ async function applyEmit(
         templateKey: emit.templateKey,
       });
       cx.sink.overdue.push(emit.templateKey);
-      return;
+      return true;
     }
   }
 }

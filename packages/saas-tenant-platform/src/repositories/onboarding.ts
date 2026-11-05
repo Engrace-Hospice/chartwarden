@@ -76,9 +76,14 @@ export class OnboardingRepository {
   /**
    * Transition a task's status, stamping the relevant timestamps / blocker / completion evidence.
    * The state machine's legal-transition guard lives in the onboarding service.
+   *
+   * Compare-and-set: the write lands only while the row still holds `expectedStatus` (the status the caller read),
+   * so a sweep that read `pending` cannot overwrite a re-open or an attestation that landed since. Resolves `null`
+   * when no row matched (the task changed or does not exist); the caller re-reads on its next pass.
    */
   async updateTaskStatus(
     id: string,
+    expectedStatus: schema.OnboardingTask["status"],
     patch: Partial<
       Pick<
         schema.NewOnboardingTask,
@@ -96,9 +101,12 @@ export class OnboardingRepository {
         | "attestedAt"
       >
     >,
-  ): Promise<schema.OnboardingTask> {
-    const [row] = await this.db.update(K).set(patch).where(eq(K.id, id)).returning();
-    if (!row) throw new Error(`onboarding_task ${id} not found for status update`);
-    return row;
+  ): Promise<schema.OnboardingTask | null> {
+    const [row] = await this.db
+      .update(K)
+      .set(patch)
+      .where(and(eq(K.id, id), eq(K.status, expectedStatus)))
+      .returning();
+    return row ?? null;
   }
 }
