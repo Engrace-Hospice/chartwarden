@@ -276,8 +276,16 @@ tests, because the shared cases give every tenant the same NPI.
 
 **Status: built, OFF by default** (`CLAIMMD_WEBHOOK_ENABLED` must be exactly `true`). No real Claim.MD delivery has been
 captured yet; the shape is from Claim.MD's documentation (`https://api.claim.md/`, Webhook Events, read 2026-11-05) and
-the contract doc's webhook rows say what is D and what is U. Turn it on only after Claim.MD support has activated the URL
-and one real delivery has been read against those rows.
+the contract doc's webhook rows say what is D and what is U. Turn it on only when all three hold:
+
+1. Claim.MD support has activated the URL, and one real delivery has been read against those rows.
+2. **NPI ownership is platform-verified** (owner decision 2026-11-05). Today any tenant `org.manage` user can register
+   any Luhn-valid NPI on a `provider_entity`, so a tenant that registers another hospice's public NPI first would receive
+   that hospice's enrollment reports (no PHI, but another provider's vendor data) and lock the real owner out with
+   `NPI_TAKEN`. Before enabling, the sweep must route an enrollment only to a provider entity whose NPI platform staff
+   have verified, and answer `unroutable_npi` for an unverified one. Appeal routing (by our own platform-sequence control
+   number) is not affected.
+3. The Billing add-on binding below is in the mode the operator intends (`CLAIMS_BILLING_ENFORCEMENT`).
 
 **D7 as applied to Claim.MD: a push is a vendor REPORT, not event-then-fetch.** Claim.MD pushes only enrollment and appeal
 updates, with their content inline; there is nothing to fetch back, and none of it is an acknowledgment, a claim status or
@@ -307,8 +315,9 @@ once we send our control number there (or Claim.MD confirms it echoes CLM01); un
 
 **The Billing add-on.** After resolution the sweep asks a `BillingEntitlementPort`; an org without the add-on keeps its
 receipt encrypted as `awaiting_entitlement`, re-checked hourly and published once the add-on is granted, and becomes
-`expired_not_entitled` 90 days after receipt. (The port is bound to an always-entitled placeholder until the M35
-entitlement lands: `TODO(claims-billing-addon)` in `apps/backend/src/index.ts`.)
+`expired_not_entitled` 90 days after receipt. The port is bound to ADR-0108's `isClaimsBillingEntitled`, so it follows
+`CLAIMS_BILLING_ENFORCEMENT`: `off`/`shadow` publish for every resolved org; `enforce` reads M35, and a failed read retries
+without spending an attempt.
 
 **What the reports may change.** Enrollment: nothing by itself; M41 lists an advisory report and staff confirm it through
 the existing, step-up-guarded enrollment routes (ADR-0100 note). Appeal: M25 records every report, alerts billing staff,
