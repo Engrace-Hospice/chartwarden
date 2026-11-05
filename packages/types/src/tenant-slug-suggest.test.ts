@@ -20,6 +20,19 @@ describe("suggestTenantSlug", () => {
     ["  Sunrise   Hospice  ", "sunrise-hospice"],
     ["Café Ñandú Hospice", "cafe-nandu-hospice"],
     ["Hospice of the Valley", "hospice-of-the-valley"],
+    // Letters NFKD does not decompose are transliterated, not dropped.
+    ["Søren Hospice", "soren-hospice"],
+    ["SØREN HOSPICE", "soren-hospice"],
+    ["Færøerne Care", "faeroerne-care"],
+    ["ÆRØ Hospice", "aero-hospice"],
+    ["Cœur Hospice", "coeur-hospice"],
+    ["Œuvre Care", "oeuvre-care"],
+    ["Straße Hospice", "strasse-hospice"],
+    ["STRAẞE Hospice", "strasse-hospice"],
+    ["Łódź Hospice", "lodz-hospice"],
+    ["Đorđe Care", "dorde-care"],
+    ["Þór Hospice", "thor-hospice"],
+    ["Ólafur Ðór Hospice", "olafur-dor-hospice"],
   ])("turns %j into %j", (legalName, expected) => {
     expect(suggestTenantSlug(legalName)).toBe(expected);
   });
