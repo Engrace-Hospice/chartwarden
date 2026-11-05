@@ -505,9 +505,19 @@ describe("tenant onboarding routes", () => {
     await app.close();
   });
 
-  it("an AI principal cannot attest or re-open", async () => {
+  it("an AI principal cannot start, block, attest or re-open", async () => {
     const { app, id } = makeServer();
     const ai = { ...ADMIN, "x-actor-kind": "ai_agent" };
+    for (const action of ["start", "block"]) {
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/tenant/onboarding/${id("billing")}/${action}`,
+        headers: ai,
+        payload: action === "block" ? { blockerReason: "waiting on the customer" } : {},
+      });
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.message).toContain("AI principals");
+    }
     expect(
       (
         await app.inject({
@@ -528,6 +538,38 @@ describe("tenant onboarding routes", () => {
         })
       ).statusCode,
     ).toBe(403);
+    await app.close();
+  });
+
+  it("a tenant re-open without a written reason is refused before the service runs", async () => {
+    const { app, state, id } = makeServer();
+    state.tasks = state.tasks.map((t) =>
+      t.templateKey === "organisation" ? { ...t, status: "done" as const } : t,
+    );
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/tenant/onboarding/${id("billing")}/attest`,
+      headers: ADMIN,
+      payload: { evidenceNote: "chose Stedi" },
+    });
+    for (const payload of [{}, { reason: "no" }]) {
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/tenant/onboarding/${id("billing")}/reopen`,
+        headers: ADMIN,
+        payload,
+      });
+      expect(res.statusCode).toBeGreaterThanOrEqual(400);
+      expect(res.statusCode).toBeLessThan(500);
+    }
+    expect(state.tasks.find((t) => t.templateKey === "billing")?.status).toBe("done");
+    const ok = await app.inject({
+      method: "POST",
+      url: `/api/v1/tenant/onboarding/${id("billing")}/reopen`,
+      headers: ADMIN,
+      payload: { reason: "chose the wrong vendor" },
+    });
+    expect(ok.statusCode).toBe(200);
     await app.close();
   });
 

@@ -325,15 +325,94 @@ describe("re-open", () => {
     ).toBe("GO_LIVE_PENDING");
   });
 
-  it("a tenant owner may re-open its own step, with an optional reason that must be real when given", async () => {
+  it("a tenant owner may re-open its own step, but only with a real written reason", async () => {
     settle("organisation");
     await wizard().attestTask(ADMIN, ORG, taskId("billing"), { evidenceNote: "chose Stedi" });
-    expect(await code(wizard().reopenTask(ADMIN, ORG, taskId("billing"), "no"))).toBe(
-      "ONBOARDING_REASON_REQUIRED",
+    for (const reason of [undefined, "", "no", "        "]) {
+      expect(await code(wizard().reopenTask(ADMIN, ORG, taskId("billing"), reason))).toBe(
+        "ONBOARDING_REASON_REQUIRED",
+      );
+    }
+    expect(statusOf("billing")).toBe("done");
+    const step = await wizard().reopenTask(ADMIN, ORG, taskId("billing"), "chose the wrong vendor");
+    expect(step.status).toBe("in_progress");
+    const bag = state.tasks.find((t) => t.templateKey === "billing")?.completionEvidence as {
+      reopened: { reason: string }[];
+    };
+    expect(bag.reopened[0]?.reason).toBe("chose the wrong vendor");
+  });
+});
+
+describe("free text: no patient identifiers, no NUL", () => {
+  const SSN = "900-12-3456"; // area 9xx is never issued
+  const MBI = "1EG4TE5MK73"; // synthetic registry value
+
+  it("refuses an identifier in an evidence note or its reference, and changes nothing", async () => {
+    expect(
+      await code(
+        wizard().attestPlatform("acme", taskId("organisation"), OPS, {
+          ...evidence,
+          evidenceNote: `verified for ${SSN}`,
+        }),
+      ),
+    ).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+    expect(
+      await code(
+        wizard().attestPlatform("acme", taskId("organisation"), OPS, {
+          ...evidence,
+          evidenceRef: MBI,
+        }),
+      ),
+    ).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+    expect(
+      await code(
+        wizard().attestPlatform("acme", taskId("organisation"), OPS, {
+          ...evidence,
+          reason: `confirmed for ${SSN}`,
+        }),
+      ),
+    ).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+    expect(statusOf("organisation")).toBe("pending");
+  });
+
+  it("refuses an identifier in a skip rationale, a blocker reason and a go-live note", async () => {
+    expect(
+      await code(wizard().skipPlatform("acme", taskId("organisation"), OPS, `not needed ${SSN}`)),
+    ).toBe("EVIDENCE_LOOKS_LIKE_PHI");
+    expect(await code(wizard().blockTask(ADMIN, ORG, taskId("billing"), `waiting on ${MBI}`))).toBe(
+      "EVIDENCE_LOOKS_LIKE_PHI",
     );
-    expect((await wizard().reopenTask(ADMIN, ORG, taskId("billing"), undefined)).status).toBe(
-      "in_progress",
+    settle("organisation", "billing", "locations", "baa_auto");
+    expect(await code(wizard().attestGoLive(OFFICER, ORG, `reviewed ${SSN}`))).toBe(
+      "EVIDENCE_LOOKS_LIKE_PHI",
     );
+    expect(statusOf("organisation")).toBe("done");
+    expect(state.goLive).toHaveLength(0);
+  });
+
+  it("refuses NUL as a typed 422 everywhere text is accepted, never a 500", async () => {
+    const nul = "text\u0000more";
+    const refusals: Array<() => Promise<unknown>> = [
+      () =>
+        wizard().attestPlatform("acme", taskId("organisation"), OPS, {
+          ...evidence,
+          evidenceNote: nul,
+        }),
+      () => wizard().skipPlatform("acme", taskId("organisation"), OPS, `not needed ${nul}`),
+      () => wizard().blockTask(ADMIN, ORG, taskId("billing"), `waiting ${nul}`),
+      () => wizard().reopenPlatform("acme", taskId("organisation"), OPS, `reason ${nul}`),
+    ];
+    for (const run of refusals) {
+      expect(await code(run())).toBe("ONBOARDING_TEXT_INVALID");
+    }
+  });
+
+  it("strips control characters from what it stores", async () => {
+    const step = await wizard().attestPlatform("acme", taskId("organisation"), OPS, {
+      ...evidence,
+      evidenceNote: "order\u0007 form\r\nsigned",
+    });
+    expect(step.evidence?.note).toBe("order form\nsigned");
   });
 });
 

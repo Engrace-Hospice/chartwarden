@@ -52,7 +52,7 @@ const ABAC_OFFICER = requireAbac("go_live.attest", "tenant_compliance_officer_ro
 const STEP_UP_OFFICER = requireStepUp("onboarding.manage_own") as PreHandler;
 const STEP_UP_GO_LIVE = requireStepUp("go_live.attest") as PreHandler;
 
-// The attest, re-open and assignment decisions are human acts.
+// Every state change a tenant makes to its onboarding (start, block, attest, re-open, assignment) is a human act.
 const NO_AI = rejectAiActor(
   "AI principals cannot change a tenant's onboarding or go-live",
 ) as PreHandler;
@@ -72,7 +72,7 @@ export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingR
   // pending/blocked -> in_progress; refused out of sequence or by a non-owner.
   app.post(
     "/api/v1/tenant/onboarding/:taskId/start",
-    { preHandler: [UPDATE, ABAC_UPDATE] },
+    { preHandler: [UPDATE, ABAC_UPDATE, NO_AI] },
     async (request) => {
       const actor = actorOf(request);
       const { taskId } = parse(OnboardingTaskParamsSchema, request.params);
@@ -121,7 +121,7 @@ export function registerOnboardingRoutes(app: FastifyInstance, deps: OnboardingR
   // pending/in_progress -> blocked with a reason.
   app.post(
     "/api/v1/tenant/onboarding/:taskId/block",
-    { preHandler: [UPDATE, ABAC_UPDATE] },
+    { preHandler: [UPDATE, ABAC_UPDATE, NO_AI] },
     async (request) => {
       const actor = actorOf(request);
       const { taskId } = parse(OnboardingTaskParamsSchema, request.params);
