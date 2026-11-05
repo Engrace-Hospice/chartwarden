@@ -28,6 +28,19 @@ export interface TaskPatch {
   readonly completionEvidence?: Record<string, unknown>;
 }
 
+/**
+ * One structured audit row for a platform action the row-level audit trigger cannot describe on its own: WHO did it (the
+ * operator's user and membership), to WHICH organisation, and WHY. `detail` carries ids only, never free text.
+ */
+export interface PlatformAuditEntry {
+  readonly eventType: string;
+  readonly tenantAccountId: string;
+  readonly organizationId: string;
+  readonly operator: { readonly userId: string; readonly membershipId: string };
+  readonly reason: string;
+  readonly detail: Readonly<Record<string, string | null>>;
+}
+
 /** What scopes a tenant's attestations: the tenant account AND its organisation. */
 export type GoLiveScope = Pick<TenantRef, "tenantAccountId" | "organizationId">;
 
@@ -77,6 +90,8 @@ export interface WizardStore {
     tenantAccountId: string,
   ): Promise<{ readonly baaStatus: string; readonly expiresOn: string | null } | undefined>;
   setComplianceOfficer(tenantAccountId: string, membershipId: string): Promise<void>;
+  /** Writes `entry` as a platform-scoped audit event, atomically with the change it describes (platform stores only). */
+  recordPlatformAudit(entry: PlatformAuditEntry): Promise<void>;
   /** The membership as it is now (user, liveness, roles), or null when it is not a membership of the organisation. */
   loadMember(organizationId: string, membershipId: string): Promise<WizardMember | null>;
   /**
@@ -99,5 +114,14 @@ export interface WizardRunner {
     organizationId: string,
     fn: (store: WizardStore) => Promise<T>,
   ): Promise<T>;
-  inPlatform<T>(reason: string, fn: (store: WizardStore) => Promise<T>): Promise<T>;
+  /**
+   * `actorUserId` is the operator the transaction acts for: the Drizzle runner sets it as `app.user_id`, so every
+   * row-audit trigger that records an actor (onboarding_task, tenant_account) names the person, not a null.
+   * `withPlatformContext` itself records only the job id and the reason label.
+   */
+  inPlatform<T>(
+    reason: string,
+    fn: (store: WizardStore) => Promise<T>,
+    actorUserId?: string,
+  ): Promise<T>;
 }

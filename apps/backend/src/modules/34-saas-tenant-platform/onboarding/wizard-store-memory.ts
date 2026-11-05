@@ -14,7 +14,7 @@ import type {
   WizardMember,
 } from "./model";
 import type { OrgProfile, OrgProfilePatch, OrgProfilePort } from "./org-profile";
-import type { TaskPatch, WizardRunner, WizardStore } from "./wizard-store";
+import type { PlatformAuditEntry, TaskPatch, WizardRunner, WizardStore } from "./wizard-store";
 
 /** An attestation row with the organisation the real table scopes it by. */
 export type MemoryGoLive = GoLiveAttestation & { organizationId: string };
@@ -29,6 +29,10 @@ export interface MemoryWizardState {
   members: Map<string, WizardMember & { organizationId: string }>;
   activations: { tenantAccountId: string; actorMembershipId: string; reason: string }[];
   profiles: Map<string, OrgProfile>;
+  /** Every platform transaction the runner opened: its reason label and the operator it acted for. */
+  platformTransactions: { reason: string; actorUserId: string | null }[];
+  /** The explicit platform audit entries a platform store recorded. */
+  platformAudit: PlatformAuditEntry[];
 }
 
 export function createMemoryWizardState(seed: Partial<MemoryWizardState> = {}): MemoryWizardState {
@@ -41,6 +45,8 @@ export function createMemoryWizardState(seed: Partial<MemoryWizardState> = {}): 
     members: new Map(),
     activations: [],
     profiles: new Map(),
+    platformTransactions: [],
+    platformAudit: [],
     ...seed,
   };
 }
@@ -189,6 +195,10 @@ export function createMemoryWizardStore(
           : t,
       );
     },
+    async recordPlatformAudit(entry) {
+      if (!allowActivate) throw new Error("a tenant store cannot write a platform audit entry");
+      state.platformAudit.push(entry);
+    },
     async loadMember(organizationId, membershipId) {
       const member = state.members.get(membershipId);
       if (!member || member.organizationId !== organizationId) return null;
@@ -213,8 +223,14 @@ export function createMemoryWizardRunner(state: MemoryWizardState): WizardRunner
   return {
     inTenant: <T>(_actor: TenantActor, _org: string, fn: (store: WizardStore) => Promise<T>) =>
       fn(createMemoryWizardStore(state, false)),
-    inPlatform: <T>(_reason: string, fn: (store: WizardStore) => Promise<T>) =>
-      fn(createMemoryWizardStore(state, true)),
+    inPlatform: <T>(
+      reason: string,
+      fn: (store: WizardStore) => Promise<T>,
+      actorUserId?: string,
+    ) => {
+      state.platformTransactions.push({ reason, actorUserId: actorUserId ?? null });
+      return fn(createMemoryWizardStore(state, true));
+    },
   };
 }
 

@@ -44,6 +44,11 @@ export const OrgProfileRequest = Type.Object(
 export const SetComplianceOfficerRequest = Type.Object({
   membershipId: Type.String({ format: "uuid" }),
 });
+/** The platform assignment also says why (8 to 500 characters, judged after trimming by the service). */
+export const SetComplianceOfficerPlatformRequest = Type.Object({
+  membershipId: Type.String({ format: "uuid" }),
+  reason: Type.String({ minLength: 8, maxLength: 500 }),
+});
 export const GoLiveAttestRequest = Type.Object({
   attestationConfirmed: Type.Literal(true),
   note: Type.Optional(Type.String({ maxLength: 2000 })),

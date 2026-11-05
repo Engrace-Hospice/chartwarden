@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 // apps/backend/src/modules/34-saas-tenant-platform/onboarding/wizard-store-drizzle.ts — the wizard over Drizzle.
 //
 // `createDrizzleWizardStore(tx)` binds the `WizardStore` port to ONE open transaction; `createDrizzleWizardRunner` opens
@@ -5,6 +6,7 @@
 // `app.org_id`, as the real NOBYPASSRLS app role), the platform surface inside an audited `withPlatformContext`. M34 owns
 // every table touched here except the M1 spine reads (`organization` for the slug, `membership` for the officer check),
 // which the table-ownership gate sanctions.
+import { auditPlatformEvent } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import { BaaRegisterRepository, OnboardingRepository } from "@chartwarden/saas-tenant-platform";
 import {
@@ -209,6 +211,23 @@ export function createDrizzleWizardStore(tx: DbClient, activation?: WizardActiva
         .set({ complianceOfficerMembershipId: membershipId, updatedAt: new Date() })
         .where(eq(A.id, tenantAccountId));
     },
+    async recordPlatformAudit(entry) {
+      await auditPlatformEvent(tx, {
+        eventType: entry.eventType,
+        resourceKind: "tenant_account",
+        resourceId: entry.tenantAccountId,
+        outcome: "success",
+        severity: "warn",
+        correlationId: `m34-onboarding:${entry.eventType}:${entry.tenantAccountId}:${randomUUID()}`,
+        context: {
+          organizationId: entry.organizationId,
+          operatorUserId: entry.operator.userId,
+          operatorMembershipId: entry.operator.membershipId,
+          reason: entry.reason,
+          ...entry.detail,
+        },
+      });
+    },
     async loadMember(organizationId, membershipId): Promise<WizardMember | null> {
       const [member] = await tx
         .select({
@@ -271,12 +290,18 @@ export function createDrizzleWizardRunner(deps: DrizzleWizardRunnerDeps): Wizard
       withOrgContext(deps.db, { organizationId, userId: actor.userId }, (tx) =>
         fn(createDrizzleWizardStore(tx as unknown as DbClient)),
       ),
-    inPlatform: <T>(reason: string, fn: (store: WizardStore) => Promise<T>) =>
+    inPlatform: <T>(reason: string, fn: (store: WizardStore) => Promise<T>, actorUserId?: string) =>
       withPlatformContext<DbClient, T>(
         deps.platformDb,
         { jobId: deps.platformJobId, reason, crossTenant: true },
         deps.auditBypass,
-        (tx) => fn(createDrizzleWizardStore(tx, deps.activation)),
+        async (tx) => {
+          // withPlatformContext sets no actor. Without app.user_id the row-audit triggers record these writes with a NULL
+          // actor_user_id, so the operator who made them would be nameless in the trail.
+          if (actorUserId)
+            await tx.execute(sql`SELECT set_config('app.user_id', ${actorUserId}, true)`);
+          return fn(createDrizzleWizardStore(tx, deps.activation));
+        },
       ),
   };
 }
