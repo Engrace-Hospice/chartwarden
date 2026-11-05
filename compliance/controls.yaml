@@ -197,6 +197,17 @@ controls:
       - file: apps/backend/src/modules/41-billing-commercial/services/enrollment-report-service.ts
       - file: apps/backend/src/modules/25-remittance/outbox-consumers/m23-appeal-reported.ts
 
+  - id: CW-AC-13
+    title: Tenant go-live is two-party — the tenant's compliance officer attests readiness (go_live.attest, a fresh step-up, a human (non-AI) actor), then a different human user, a platform operator, approves (go_live.approve_platform, a fresh step-up, a human actor, a written reason); the two sides are compared by user id as well as membership id and enforced by a database CHECK (409 GO_LIVE_SAME_PERSON); approval re-checks the activation guards and that the attester is still active, still holds compliance_officer and is still the assigned officer (409 GO_LIVE_ATTESTATION_STALE); a pending attestation expires after 14 days and is revoked when the officer is reassigned; neither the advance sweep nor the status route can activate an onboarding tenant (409 GO_LIVE_TWO_PARTY_REQUIRED); the tenant role can only insert a pending attestation, for an attester who is a member of its own organization, and never approve it; its only write on tenant_account is a column-level UPDATE of its own compliance officer, who must be an active member holding the compliance_officer role; a platform officer assignment requires a reason and is audited with the operator
+    hipaa: ["164.308(a)(3)(ii)(A)", "164.308(a)(4)(ii)(B)", "164.312(b)"]
+    soc2: ["CC6.1", "CC6.3", "CC8.1"]
+    status: implemented
+    evidence:
+      - script: test:m34:onboarding-wizard:live
+      - ci: "M34 onboarding wizard v2"
+      - file: packages/db/migrations/1328_m34_tenant_go_live_attestation.sql
+      - file: apps/backend/src/modules/34-saas-tenant-platform/onboarding/go-live.ts
+
   - id: CW-AC-14
     title: The platform BAA register is written only by a platform operator holding platform_tenant_baa.write_platform with a fresh step-up and a human (non-AI) actor; the read key no longer permits writes
     hipaa: ["164.308(b)(1)", "164.314(a)(1)"]
