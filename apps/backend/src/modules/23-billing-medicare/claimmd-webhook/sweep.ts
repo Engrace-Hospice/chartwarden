@@ -17,6 +17,7 @@
 //
 // The decrypted element (which can hold a provider TIN, possibly an SSN, and untrusted vendor text) never leaves this
 // file: payloads carry ids, the control number, enroll_type and ONE bounded vendor status word.
+import { createHash } from "node:crypto";
 import type { DbClient } from "@chartwarden/db";
 import type { WebhookPayloadCipher } from "@chartwarden/shared";
 import { sql } from "drizzle-orm";
@@ -95,6 +96,19 @@ export const vendorText = (v: unknown, max = 64): string | null => {
 };
 const text = vendorText;
 
+// What a tenant receives from the vendor is id/code- or timestamp-shaped (CW-AC-05B), never free text: anything else is null.
+const CODE_RE = /^[A-Za-z0-9._-]+$/;
+/** The documented Claim.MD shapes, `2022-09-01 11:34:59am` and `09-06-2022 13:07`. */
+const TIME_RE = /^\d{2,4}-\d{2}-\d{2,4}[ T]\d{2}:\d{2}(?::\d{2})?(?:[ap]m)?$/i;
+export const vendorCode = (v: unknown, max = 64): string | null => {
+  const t = vendorText(v, max);
+  return t !== null && CODE_RE.test(t) ? t : null;
+};
+export const vendorTime = (v: unknown): string | null => {
+  const t = vendorText(v, 32);
+  return t !== null && TIME_RE.test(t) ? t : null;
+};
+
 /** ONE vendor status word, lower-case, bounded; anything else is `unrecognized` (never the vendor's text). */
 export function vendorStatusWord(v: unknown): string {
   const w =
@@ -113,6 +127,7 @@ interface PendingRow {
   readonly event_id: string;
   readonly event_type: string | null;
   readonly payload_cipher: string;
+  readonly payload_sha256: string;
   readonly received_at: Date;
 }
 
@@ -148,7 +163,7 @@ async function routeOf(
     usage: row.usage,
     vendor: VENDOR,
     reportedAt,
-    eventTime: text(element.event_time),
+    eventTime: vendorTime(element.event_time),
   };
   if (row.event_type === "enroll") {
     const e = obj(data.enroll);
@@ -165,16 +180,16 @@ async function routeOf(
       payload: {
         ...base,
         providerEntityId: pe.id,
-        vendorEnrollId: text(e.enrollid),
+        vendorEnrollId: vendorCode(e.enrollid),
         enrollType: enrollType && ENROLL_TYPES.has(enrollType) ? enrollType : "unrecognized",
         vendorStatus: vendorStatusWord(e.event),
-        clearinghousePayerId: text(e.payerid, 32),
+        clearinghousePayerId: vendorCode(e.payerid, 32),
       },
     };
   }
   if (row.event_type === "appeal") {
     const a = obj(data.appeal);
-    const controlNumber = text(a.remote_claimid);
+    const controlNumber = vendorCode(a.remote_claimid);
     if (!controlNumber) return { outcome: "unroutable_claim" };
     const attempt = await one<{ organization_id: string; provider_entity_id: string }>(
       tx,
@@ -190,7 +205,7 @@ async function routeOf(
         ...base,
         providerEntityId: attempt.provider_entity_id,
         controlNumber,
-        vendorAppealId: text(a.appealid),
+        vendorAppealId: vendorCode(a.appealid),
         vendorStatus: vendorStatusWord(a.event),
         appealType: vendorStatusWord(a.appeal_type),
       },
@@ -202,7 +217,12 @@ async function routeOf(
 async function settle(deps: ClaimMdSweepDeps, tx: DbClient, row: PendingRow): Promise<Settlement> {
   let element: Json;
   try {
-    element = obj(JSON.parse(deps.cipher.decrypt(row.payload_cipher)));
+    const plaintext = deps.cipher.decrypt(row.payload_cipher);
+    // The digest stored at receipt binds this ciphertext to this row: one moved from another row is refused.
+    if (createHash("sha256").update(plaintext).digest("hex") !== row.payload_sha256) {
+      throw Object.assign(new Error("payload digest mismatch"), { name: "PayloadDigestMismatch" });
+    }
+    element = obj(JSON.parse(plaintext));
   } catch (err) {
     // A cipher we cannot open is a key/config fault, not a bad row: spending attempts would fail every pending receipt
     // for good within five sweeps of a wrong key. Leave the row for the next sweep (like entitlement_unavailable).
@@ -300,7 +320,7 @@ export async function runClaimMdWebhookSweep(deps: ClaimMdSweepDeps): Promise<Cl
     await applyRetention(tx, now);
     const pending = (
       (await tx.execute(sql`
-        SELECT usage, acct_number, event_id, event_type, payload_cipher, received_at
+        SELECT usage, acct_number, event_id, event_type, payload_cipher, payload_sha256, received_at
         FROM claimmd_webhook_event
         WHERE processed_at IS NULL AND payload_cipher IS NOT NULL
           AND (processing_outcome IS NULL
