@@ -212,4 +212,6 @@ export const M25_OUTBOX_SUBSCRIPTIONS = [
   "m23.claim.rejected",
   "m18.evv.aggregator_rejected",
   "m22.document.rendered",
+  // ADR-0053 amendment D7 - bound live by ../outbox-consumers/m23-appeal-reported.ts (records, alerts, opens/links a draft).
+  "m23.clearinghouse.appeal_reported",
 ] as const;

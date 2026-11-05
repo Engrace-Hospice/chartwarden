@@ -99,8 +99,7 @@ const CLAIMMD_REPORT_EVENTS: ModuleEventContribution = [
       vendorAppealId: nullableStr,
       appealType: Type.String({ pattern: "^[a-z][a-z0-9_]{0,31}$" }),
     }),
-    // The M25 appeal consumer is added with its table (migration 1324).
-    declaredConsumers: [],
+    declaredConsumers: ["m25"],
     isOutboxOnly: true,
   },
 ];

@@ -13,11 +13,15 @@ import { recordEnrollmentReport } from "../services/enrollment-report-service";
 export const M41_ENROLLMENT_REPORT_EVENT = "m23.clearinghouse.enrollment_reported";
 
 /** The ids-only notice billing staff get (M36 alert `clearinghouse.enrollment_reported`). */
+export const CLEARINGHOUSE_ENROLLMENT_ALERT = "clearinghouse.enrollment_reported";
+
+/** The M36 typed-alert dispatcher (the WorkerAlertPort shape every billing module uses). */
 export interface EnrollmentReportAlertPort {
-  emit(input: {
+  dispatch(input: {
+    readonly alertCode: string;
+    readonly severity: string;
     readonly organizationId: string;
-    readonly providerEntityId: string;
-    readonly sourceEventKey: string;
+    readonly payload: Record<string, unknown>;
   }): Promise<void>;
 }
 
@@ -27,6 +31,11 @@ export interface M41EnrollmentReportConsumerDeps {
   readonly onSkipped?: (info: {
     readonly reason: "unreadable_payload";
     readonly organizationId: string;
+  }) => void;
+  /** The report is already committed, so a failed notice is logged, not retried (a retry would find a duplicate). */
+  readonly onAlertFailed?: (info: {
+    readonly organizationId: string;
+    readonly error: string;
   }) => void;
 }
 
@@ -72,13 +81,21 @@ export function buildM41EnrollmentReportConsumer(
         reportedAt,
         eventTime: str(p.eventTime),
       });
-      if (outcome === "recorded") {
-        await deps.alerts?.emit({
+      if (outcome !== "recorded") return;
+      // Ids and closed-set words only.
+      await deps.alerts
+        ?.dispatch({
+          alertCode: CLEARINGHOUSE_ENROLLMENT_ALERT,
+          severity: "info",
           organizationId: event.organizationId,
-          providerEntityId,
-          sourceEventKey,
-        });
-      }
+          payload: { providerEntityId, sourceEventKey, vendorStatus, enrollType },
+        })
+        .catch((err: unknown) =>
+          deps.onAlertFailed?.({
+            organizationId: event.organizationId,
+            error: err instanceof Error ? err.name : "unknown",
+          }),
+        );
     },
   };
 }

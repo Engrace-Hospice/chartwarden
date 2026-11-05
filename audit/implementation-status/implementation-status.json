@@ -498,8 +498,8 @@
       "tests": true,
       "adapter": true,
       "liveInfra": {
-        "tables": 45,
-        "covered": 45
+        "tables": 46,
+        "covered": 46
       }
     },
     {
