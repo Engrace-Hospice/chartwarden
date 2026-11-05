@@ -18,6 +18,7 @@
 import type { DbClient } from "@chartwarden/db";
 import type { WebhookPayloadCipher } from "@chartwarden/shared";
 import { sql } from "drizzle-orm";
+import { providerEntityByNpi } from "../../../bootstrap/provider-entity-npi-lookup";
 import type { ClaimMdPlatformRunner } from "./receipt-store";
 
 /** The Billing add-on capability (M35). Bound at the composition root; see index.ts. */
@@ -127,14 +128,11 @@ async function routeOf(
     const e = obj(data.enroll);
     const npi = text(e.prov_npi, 10);
     if (!npi || !NPI_RE.test(npi)) return { outcome: "unroutable_npi" };
-    const pe = await one<{ id: string; organization_id: string }>(
-      tx,
-      sql`SELECT id, organization_id FROM provider_entity WHERE npi = ${npi}`,
-    );
+    const pe = await providerEntityByNpi(tx, npi);
     if (!pe) return { outcome: "unroutable_npi" };
     const enrollType = text(e.enroll_type, 16)?.toLowerCase() ?? null;
     return {
-      org: pe.organization_id,
+      org: pe.organizationId,
       pe: pe.id,
       eventName: "m23.clearinghouse.enrollment_reported",
       payload: {
