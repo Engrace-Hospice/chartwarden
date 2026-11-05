@@ -19,6 +19,13 @@ import {
 // the typed values, stashes them across the Re-verify round trip and restores them on return — never an automatic redirect.
 import { useState } from "react";
 import type { FormEvent, JSX } from "react";
+import {
+  SLUG_MESSAGES,
+  SlugField,
+  isSlugBlocking,
+  useSlugAvailability,
+  useSuggestedSlug,
+} from "./slug-field";
 
 type PlanLabel = "starter" | "standard" | "enterprise";
 
@@ -30,12 +37,6 @@ const PLAN_OPTIONS: readonly { value: PlanLabel; label: string }[] = [
 const NAME_MIN = 2;
 const NAME_MAX = 300;
 const ADMIN_NAME_MAX = 200;
-const SLUG_MESSAGES = {
-  format:
-    "Use 3–63 lowercase letters, digits or hyphens, starting and ending with a letter or digit.",
-  punycode: "A slug cannot start with “xn--”.",
-  reserved: "That name is reserved. Choose another.",
-} as const;
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Re-verify leaves the page, so the typed values ride through sessionStorage and are restored once, on return.
@@ -129,7 +130,9 @@ export function TenantProvisionDrawer({
   const [breachEmail, setBreachEmail] = useState(draft?.breachEmail ?? "");
   const [adminEmail, setAdminEmail] = useState(draft?.adminEmail ?? "");
   const [adminName, setAdminName] = useState(draft?.adminName ?? "");
-  const [slug, setSlug] = useState(draft?.slug ?? "");
+  // The subdomain follows the legal name until the operator types one; a restored draft's slug counts as typed.
+  const { slug, setSlug } = useSuggestedSlug(legalName, draft ? draft.slug : null);
+  const slugStatus = useSlugAvailability(slug);
   const [plan, setPlan] = useState<PlanLabel>(draft?.plan ?? "standard");
   const [slugRefusal, setSlugRefusal] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -155,7 +158,7 @@ export function TenantProvisionDrawer({
   async function submit(e: FormEvent<HTMLFormElement>): Promise<void> {
     e.preventDefault();
     if (busy || accepted) return;
-    if (!isValid(tenantProvisionErrors(fieldValues))) {
+    if (!isValid(tenantProvisionErrors(fieldValues)) || isSlugBlocking(slugStatus)) {
       setAttempted(true);
       focusFirstInvalid(e.currentTarget);
       return;
@@ -235,17 +238,15 @@ export function TenantProvisionDrawer({
             maxLength={NAME_MAX}
             onChange={(e) => setLegalName(e.target.value)}
           />
-          <TextField
+          <SlugField
             id="prov-slug"
             label="Subdomain (optional)"
-            hint="The tenant's address, e.g. sunrise for sunrise.chartwarden.com. Leave blank to generate one. It cannot be changed or reused later."
+            hint="The tenant's address, e.g. sunrise. Suggested from the legal name; edit it, or clear it to have one generated. It cannot be changed or reused later."
             error={slugError}
             value={slug}
-            maxLength={63}
-            autoCapitalize="none"
-            spellCheck={false}
-            onChange={(e) => {
-              setSlug(e.target.value);
+            status={slugStatus}
+            onChange={(next) => {
+              setSlug(next);
               setSlugRefusal(null);
             }}
           />
