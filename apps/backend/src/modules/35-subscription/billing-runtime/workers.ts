@@ -5,7 +5,7 @@
 // tests) and only when the platform pool exists (the org enumerator and the platform-only tables need it).
 // Every queue is a repeatable SWEEP over durable rows, not a per-request job: a lost job loses nothing.
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { type CensusDeps, runPatientCensusForOrg } from "./census";
+import { type CensusDeps, aggregateAddonForOrg, runPatientCensusForOrg } from "./census";
 import {
   type M35JobDeps,
   runDunningForOrg,
@@ -77,7 +77,11 @@ export function registerM35Workers(deps: M35WorkerDeps): Worker[] {
     worker(M35_QUEUES.usageAggregator, () =>
       runM35Fanout(
         jobs,
-        (o) => runUsageAggregationForOrg(jobs, o).then(() => undefined),
+        // ADR-0108 — the claims-billing add-on aggregate rides the same sweep (plan meters first, then the add-on).
+        (o) =>
+          runUsageAggregationForOrg(jobs, o)
+            .then(() => aggregateAddonForOrg(jobs, o))
+            .then(() => undefined),
         "usage_aggregator",
       ),
     ),

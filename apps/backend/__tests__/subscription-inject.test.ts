@@ -1110,6 +1110,7 @@ const fakeAddons: AddonService = {
   listSubscriptionAddons: async () => [fakeSubscriptionAddon],
   grantAddon: async () => fakeSubscriptionAddon,
   cancelAddon: async () => ({ ...fakeSubscriptionAddon, status: "canceled", live: false }),
+  adminAddonUsage: async () => null,
   claimsBillingForOrg: async () => ({
     entitled: false,
     status: "none",

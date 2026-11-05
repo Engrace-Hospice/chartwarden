@@ -9274,76 +9274,144 @@
               "application/json": {
                 "schema": {
                   "type": "object",
-                  "required": [
-                    "periodStart",
-                    "periodEnd",
-                    "meters"
-                  ],
-                  "properties": {
-                    "periodStart": {
-                      "format": "date-time",
-                      "type": "string"
-                    },
-                    "periodEnd": {
-                      "format": "date-time",
-                      "type": "string"
-                    },
-                    "meters": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "required": [
-                          "eventType",
-                          "label",
-                          "totalQuantity",
-                          "inclusiveQuantity",
-                          "overageQuantity",
-                          "overageUnitPriceCents",
-                          "projectedOverageCostCents",
-                          "thresholdState"
-                        ],
-                        "properties": {
-                          "eventType": {
-                            "type": "string"
-                          },
-                          "label": {
-                            "type": "string"
-                          },
-                          "totalQuantity": {
-                            "type": "integer"
-                          },
-                          "inclusiveQuantity": {
-                            "type": "integer"
-                          },
-                          "overageQuantity": {
-                            "type": "integer"
-                          },
-                          "overageUnitPriceCents": {
-                            "type": "integer"
-                          },
-                          "projectedOverageCostCents": {
-                            "type": "integer"
-                          },
-                          "thresholdState": {
-                            "anyOf": [
-                              {
-                                "const": "ok",
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "periodStart",
+                        "periodEnd",
+                        "meters"
+                      ],
+                      "properties": {
+                        "periodStart": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "periodEnd": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "meters": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "eventType",
+                              "label",
+                              "totalQuantity",
+                              "inclusiveQuantity",
+                              "overageQuantity",
+                              "overageUnitPriceCents",
+                              "projectedOverageCostCents",
+                              "thresholdState"
+                            ],
+                            "properties": {
+                              "eventType": {
                                 "type": "string"
                               },
-                              {
-                                "const": "warning",
+                              "label": {
                                 "type": "string"
                               },
-                              {
-                                "const": "breached",
-                                "type": "string"
+                              "totalQuantity": {
+                                "type": "integer"
+                              },
+                              "inclusiveQuantity": {
+                                "type": "integer"
+                              },
+                              "overageQuantity": {
+                                "type": "integer"
+                              },
+                              "overageUnitPriceCents": {
+                                "type": "integer"
+                              },
+                              "projectedOverageCostCents": {
+                                "type": "integer"
+                              },
+                              "thresholdState": {
+                                "anyOf": [
+                                  {
+                                    "const": "ok",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "warning",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "breached",
+                                    "type": "string"
+                                  }
+                                ]
                               }
-                            ]
+                            }
                           }
                         }
                       }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "claimsBillingAddon"
+                      ],
+                      "properties": {
+                        "claimsBillingAddon": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "addonSlug",
+                                "periodStart",
+                                "periodEnd",
+                                "activePatientCount",
+                                "unitPriceCents",
+                                "computedAt"
+                              ],
+                              "properties": {
+                                "addonSlug": {
+                                  "type": "string"
+                                },
+                                "periodStart": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "periodEnd": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "activePatientCount": {
+                                  "type": "integer"
+                                },
+                                "unitPriceCents": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "computedAt": {
+                                  "anyOf": [
+                                    {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
                     }
-                  }
+                  ]
                 }
               }
             }

@@ -7,6 +7,7 @@
 // server-side (`request.context`), NEVER read off the body; the cross-tenant reads/writes run under the
 // injected platform runner (M1 `withPlatformContext`), never a tenant RLS scope.
 import type { FastifyInstance } from "fastify";
+import type { AddonService } from "../addon/addon-service";
 import { writeActorOf } from "./actor";
 import { IDEMPOTENT, P, PLATFORM_SCOPE, REFUND_APPROVAL, STEP_UP } from "./guards";
 import type { M35RouteService } from "./service";
@@ -35,6 +36,8 @@ import {
 
 export interface AdminRouteDeps {
   readonly service: M35RouteService;
+  /** ADR-0108 — adds the claims-billing add-on census line to the tenant usage drill-down. */
+  readonly addons?: AddonService;
 }
 
 /** Register the §4.2 platform-ops subscription-billing routes. */
@@ -469,7 +472,9 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
     { preHandler: [P("usage.admin.read"), PLATFORM_SCOPE("usage.admin.read")] },
     async (request) => {
       const { organizationId } = parse(OrgUsageParamsSchema, request.params);
-      return service.adminGetTenantUsage(organizationId);
+      const usage = await service.adminGetTenantUsage(organizationId);
+      if (!deps.addons) return usage;
+      return { ...usage, claimsBillingAddon: await deps.addons.adminAddonUsage(organizationId) };
     },
   );
   app.get(
