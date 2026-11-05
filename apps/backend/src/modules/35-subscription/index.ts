@@ -99,3 +99,9 @@ export {
   decideClaimsBillingEntitlement,
 } from "./addon/entitlement";
 export { registerM35Seams } from "./seams/register";
+export {
+  activePeriodKeyFor,
+  countActivePatientsForPeriod,
+  createDrizzlePatientCounterProvider,
+  runPatientCensusForOrg,
+} from "./billing-runtime/census";

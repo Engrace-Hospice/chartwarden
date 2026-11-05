@@ -200,7 +200,7 @@ export async function runDunningForOrg(deps: M35JobDeps, organizationId: string)
 // ── payment-method expiry watch ─────────────────────────────────────────────────────────────────────────
 
 /** The §2.4 warning windows (days before expiry) - one `expiring_soon` per window crossing. */
-const PAYMENT_METHOD_EXPIRY_WINDOWS_DAYS: readonly number[] = [30, 14, 7, 1];
+export const PAYMENT_METHOD_EXPIRY_WINDOWS_DAYS: readonly number[] = [30, 14, 7, 1];
 
 /** Days until `expiresAt`, rounded UP so "expires later today" is 1 and the window match is stable. */
 export function daysUntil(expiresAt: Date, now: Date): number {
@@ -271,12 +271,18 @@ interface UsageWindow {
   readonly end: Date;
 }
 
-/** The subscription's billing window containing `now`; calendar month (UTC) when the mirror has no period. */
-function usageWindowFor(
+/** The subscription's billing window containing `now`; calendar month (UTC) when the mirror has no period or
+ *  `now` falls outside it (a past instant, e.g. a death date, must not land in the current period). */
+export function usageWindowFor(
   sub: { currentPeriodStart: Date | null; currentPeriodEnd: Date | null },
   now: Date,
 ): UsageWindow {
-  if (sub.currentPeriodStart && sub.currentPeriodEnd && sub.currentPeriodEnd > now) {
+  if (
+    sub.currentPeriodStart &&
+    sub.currentPeriodEnd &&
+    sub.currentPeriodStart <= now &&
+    sub.currentPeriodEnd > now
+  ) {
     return { start: sub.currentPeriodStart, end: sub.currentPeriodEnd };
   }
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
