@@ -32371,6 +32371,17 @@ export interface operations {
                             projectedOverageCostCents: number;
                             thresholdState: "ok" | "warning" | "breached";
                         }[];
+                    } & {
+                        claimsBillingAddon: {
+                            addonSlug: string;
+                            /** Format: date-time */
+                            periodStart: string;
+                            /** Format: date-time */
+                            periodEnd: string;
+                            activePatientCount: number;
+                            unitPriceCents: number | null;
+                            computedAt: string | null;
+                        } | null;
                     };
                 };
             };

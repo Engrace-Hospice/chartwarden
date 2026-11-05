@@ -15,8 +15,10 @@ import { createDbClient } from "@chartwarden/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildPatientCensusReader } from "../src/modules/05-patient/census-reader";
+import { buildDrizzleAddonService } from "../src/modules/35-subscription/addon/addon-service";
 import {
   activePeriodKeyFor,
+  aggregateAddonForOrg,
   createDrizzlePatientCounterProvider,
   runPatientCensusForOrg,
 } from "../src/modules/35-subscription/billing-runtime/census";
@@ -176,6 +178,48 @@ describe.skipIf(!DB_URL)("ADR-0108 claims-billing census — LIVE Postgres", () 
     // Still three rows: the death landed on the census row of the same period, not a fourth.
     expect(rows).toHaveLength(3);
     expect(rows[0]?.inactivity_reason).toBe("died");
+  });
+
+  it("aggregates the month's add-on count as billing_addon_patient, idempotently, and shows it", async () => {
+    expect(await aggregateAddonForOrg({ db: app.db }, ORG_A)).toBe(1);
+    expect(await aggregateAddonForOrg({ db: app.db }, ORG_A)).toBe(1); // recomputes the open window, no duplicate
+    expect(await aggregateAddonForOrg({ db: app.db }, ORG_C)).toBe(0); // never held the add-on
+    const rows = await q<{
+      total_quantity: string;
+      inclusive_quantity: string;
+      overage_quantity: string;
+    }>(
+      `SELECT total_quantity, inclusive_quantity, overage_quantity FROM usage_period_aggregate
+        WHERE organization_id=$1 AND event_type='billing_addon_patient'`,
+      [ORG_A],
+    );
+    expect(rows).toEqual([{ total_quantity: "3", inclusive_quantity: "0", overage_quantity: "3" }]);
+
+    const addons = buildDrizzleAddonService(app.db);
+    expect(await addons.claimsBillingForOrg(ORG_A)).toMatchObject({
+      entitled: true,
+      status: "active",
+      activePatientCount: 3,
+    });
+    expect(await addons.claimsBillingForOrg(ORG_C)).toMatchObject({
+      entitled: false,
+      reason: "never_purchased",
+      activePatientCount: null,
+    });
+    const platform = createDbClient({ connectionString: DB_URL as string });
+    try {
+      const usage = await buildDrizzleAddonService(app.db, {
+        platformRunner: (fn) => platform.db.transaction((tx) => fn(tx as never)),
+      }).adminAddonUsage(ORG_A);
+      expect(usage).toMatchObject({
+        addonSlug: "claims_billing",
+        activePatientCount: 3,
+        unitPriceCents: null,
+      });
+      expect(usage?.computedAt).not.toBeNull();
+    } finally {
+      await platform.close();
+    }
   });
 
   it("reports a census that disagrees with M5's own count by more than 1%", async () => {

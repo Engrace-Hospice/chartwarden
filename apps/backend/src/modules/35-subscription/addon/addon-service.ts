@@ -15,6 +15,12 @@ import {
   ValidationError,
 } from "@chartwarden/types";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import {
+  activePeriodKeyFor,
+  countActivePatientsForPeriod,
+  latestSubscriptionWindow,
+} from "../billing-runtime/census";
+import { usageWindowFor } from "../billing-runtime/jobs";
 import type { M35WriteActor } from "../routes/actor";
 import type { PlatformRunner, WriteOutboxPort, WriteTx } from "../routes/service-drizzle";
 import {
@@ -82,13 +88,22 @@ export interface AddonService {
   ): Promise<SubscriptionAddonView>;
   /** The tenant's own posture (tenant pool, RLS). */
   claimsBillingForOrg(organizationId: string): Promise<ClaimsBillingStatusView>;
+  /** The admin usage drill-down's add-on line (platform runner); null when the org never held the add-on. */
+  adminAddonUsage(organizationId: string): Promise<AddonUsageView | null>;
+}
+
+export interface AddonUsageView {
+  readonly addonSlug: string;
+  readonly periodStart: string;
+  readonly periodEnd: string;
+  readonly activePatientCount: number;
+  readonly unitPriceCents: number | null;
+  readonly computedAt: string | null;
 }
 
 export interface AddonServiceDeps {
   readonly platformRunner?: PlatformRunner;
   readonly outbox?: WriteOutboxPort;
-  /** Current-period census count for an org (slice 2 binds the real counter); absent → null. */
-  readonly activePatientCount?: (organizationId: string) => Promise<number | null>;
   readonly now?: () => Date;
 }
 
@@ -313,13 +328,22 @@ export function buildDrizzleAddonService(db: DbClient, deps: AddonServiceDeps = 
     },
 
     async claimsBillingForOrg(organizationId) {
-      const latest = await withOrgContext(db, { organizationId, userId: "" }, (tx) =>
-        latestClaimsBillingAddon(tx as unknown as DbClient, organizationId),
+      const at = now();
+      const { latest, activePatientCount } = await withOrgContext(
+        db,
+        { organizationId, userId: "" },
+        async (scoped) => {
+          const tx = scoped as unknown as DbClient;
+          const row = await latestClaimsBillingAddon(tx, organizationId);
+          if (!row) return { latest: null, activePatientCount: null };
+          const key = activePeriodKeyFor(await latestSubscriptionWindow(tx, organizationId), at);
+          return {
+            latest: row,
+            activePatientCount: await countActivePatientsForPeriod(tx, organizationId, key),
+          };
+        },
       );
-      const decision = decideClaimsBillingEntitlement(latest, now());
-      const activePatientCount = deps.activePatientCount
-        ? await deps.activePatientCount(organizationId)
-        : null;
+      const decision = decideClaimsBillingEntitlement(latest, at);
       return {
         entitled: decision.entitled,
         status: latest?.status ?? "none",
@@ -327,6 +351,53 @@ export function buildDrizzleAddonService(db: DbClient, deps: AddonServiceDeps = 
         trialEndsAt: iso(latest?.trialEndsAt),
         activePatientCount,
       };
+    },
+
+    async adminAddonUsage(organizationId) {
+      const at = now();
+      return platform(async (tx) => {
+        const latest = await latestClaimsBillingAddon(tx, organizationId);
+        if (!latest) return null;
+        const [row] = await tx
+          .select({
+            subscriptionId: S.id,
+            currentPeriodStart: S.currentPeriodStart,
+            currentPeriodEnd: S.currentPeriodEnd,
+            slug: A.slug,
+            unitPriceCents: A.unitPriceCents,
+          })
+          .from(SA)
+          .innerJoin(S, eq(S.id, SA.subscriptionId))
+          .innerJoin(A, eq(A.id, SA.addonId))
+          .where(eq(SA.id, latest.id))
+          .limit(1);
+        if (!row) return null;
+        const window = usageWindowFor(row, at);
+        const AGG = schema.usagePeriodAggregate;
+        const [agg] = await tx
+          .select({ computedAt: AGG.computedAt })
+          .from(AGG)
+          .where(
+            and(
+              eq(AGG.subscriptionId, row.subscriptionId),
+              eq(AGG.eventType, "billing_addon_patient"),
+              eq(AGG.periodStart, window.start),
+            ),
+          )
+          .limit(1);
+        return {
+          addonSlug: row.slug,
+          periodStart: window.start.toISOString(),
+          periodEnd: window.end.toISOString(),
+          activePatientCount: await countActivePatientsForPeriod(
+            tx,
+            organizationId,
+            activePeriodKeyFor(row, at),
+          ),
+          unitPriceCents: row.unitPriceCents,
+          computedAt: iso(agg?.computedAt),
+        };
+      });
     },
   };
 }

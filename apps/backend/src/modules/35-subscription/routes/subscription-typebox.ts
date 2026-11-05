@@ -500,6 +500,10 @@ export const AddonUsageDto = Type.Object({
   unitPriceCents: intNull(),
   computedAt: isoNull(),
 });
+export const AdminUsageCurrentResponseDto = Type.Intersect([
+  UsageCurrentResponseDto,
+  Type.Object({ claimsBillingAddon: Type.Union([AddonUsageDto, Type.Null()]) }),
+]);
 
 // ── validate helper ─────────────────────────────────────────────────────────────────────────────────────
 

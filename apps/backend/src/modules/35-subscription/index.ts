@@ -100,6 +100,7 @@ export {
 } from "./addon/entitlement";
 export { registerM35Seams } from "./seams/register";
 export {
+  aggregateAddonForOrg,
   activePeriodKeyFor,
   countActivePatientsForPeriod,
   createDrizzlePatientCounterProvider,

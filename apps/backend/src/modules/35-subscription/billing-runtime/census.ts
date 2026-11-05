@@ -182,3 +182,87 @@ export function createDrizzlePatientCounterProvider(db: DbClient): PatientCounte
     },
   };
 }
+
+// ── ADR-0108 the monthly add-on aggregate ───────────────────────────────────────────────────────────────
+
+const AGG = schema.usagePeriodAggregate;
+export const ADDON_METER_EVENT_TYPE = "billing_addon_patient" as const;
+
+/**
+ * Write the add-on's active-patient count for the current window and finalize the window that just ended, as
+ * `usage_period_aggregate` rows with event type `billing_addon_patient` (beside `runUsageAggregationForOrg`, which
+ * only walks plan meters). Every counted patient is billable, so inclusive is 0 and overage is the total. A closed
+ * window is final once an aggregate computed at/after its end exists. Returns the rows written.
+ */
+export async function aggregateAddonForOrg(
+  deps: { readonly db: DbClient; readonly now?: () => Date },
+  organizationId: string,
+): Promise<number> {
+  const now = (deps.now ?? (() => new Date()))();
+  return withOrgContext(deps.db, { organizationId, userId: "" }, async (scoped) => {
+    const tx = scoped as unknown as DbClient;
+    const addon = await latestClaimsBillingAddon(tx, organizationId);
+    if (!addon) return 0;
+    const [sub] = await tx
+      .select({
+        id: S.id,
+        currentPeriodStart: S.currentPeriodStart,
+        currentPeriodEnd: S.currentPeriodEnd,
+      })
+      .from(S)
+      .innerJoin(schema.subscriptionAddon, eq(schema.subscriptionAddon.subscriptionId, S.id))
+      .where(eq(schema.subscriptionAddon.id, addon.id))
+      .limit(1);
+    if (!sub) return 0;
+    const current = usageWindowFor(sub, now);
+    const previous = {
+      start: new Date(current.start.getTime() - (current.end.getTime() - current.start.getTime())),
+      end: current.start,
+    };
+    let written = 0;
+    for (const [window, finalize] of [
+      [previous, true],
+      [current, false],
+    ] as const) {
+      const [existing] = await tx
+        .select()
+        .from(AGG)
+        .where(
+          and(
+            eq(AGG.subscriptionId, sub.id),
+            eq(AGG.eventType, ADDON_METER_EVENT_TYPE),
+            eq(AGG.periodStart, window.start),
+            eq(AGG.periodEnd, window.end),
+          ),
+        )
+        .limit(1);
+      if (finalize && existing && existing.computedAt >= window.end) continue;
+      const total = await countActivePatientsForPeriod(
+        tx,
+        organizationId,
+        toBillingYearMonth(window.start),
+      );
+      if (total === 0 && !existing) continue;
+      const values = {
+        organizationId,
+        subscriptionId: sub.id,
+        eventType: ADDON_METER_EVENT_TYPE,
+        periodStart: window.start,
+        periodEnd: window.end,
+        totalQuantity: total,
+        inclusiveQuantity: 0,
+        overageQuantity: total,
+        computedAt: now,
+      };
+      await tx
+        .insert(AGG)
+        .values(values)
+        .onConflictDoUpdate({
+          target: [AGG.subscriptionId, AGG.eventType, AGG.periodStart, AGG.periodEnd],
+          set: values,
+        });
+      written += 1;
+    }
+    return written;
+  });
+}

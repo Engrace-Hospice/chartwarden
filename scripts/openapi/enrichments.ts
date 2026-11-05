@@ -2572,6 +2572,7 @@ import {
   AddMeterBodySchema as M35AddMeterBody,
   AddonListResponseDto as M35AddonListResponseDto,
   AdminSubscriptionListQuerySchema as M35AdminSubscriptionListQuery,
+  AdminUsageCurrentResponseDto as M35AdminUsageCurrentResponseDto,
   ApplyPromoBodySchema as M35ApplyPromoBody,
   AttachPaymentMethodBodySchema as M35AttachPaymentMethodBody,
   BillingStatusDto as M35BillingStatusDto,
@@ -3333,7 +3334,7 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Recompute MRR/ARR",
   },
   "GET /api/admin/usage/:organizationId/current": {
-    response: M35UsageCurrentResponseDto,
+    response: M35AdminUsageCurrentResponseDto,
     summary: "Tenant usage drill-down",
   },
   "GET /api/admin/webhooks/stripe/recent": {

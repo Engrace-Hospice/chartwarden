@@ -39,7 +39,10 @@ export function mountM35Routes(app: FastifyInstance, deps: M35MountDeps): void {
     service: deps.service,
     ...(deps.addons ? { addons: deps.addons } : {}),
   };
-  const admin: AdminRouteDeps = { service: deps.service };
+  const admin: AdminRouteDeps = {
+    service: deps.service,
+    ...(deps.addons ? { addons: deps.addons } : {}),
+  };
   registerTenantRoutes(app, tenant);
   registerAdminRoutes(app, admin);
   if (deps.addons) registerAddonRoutes(app, { addons: deps.addons });
