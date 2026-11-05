@@ -7,7 +7,8 @@ WORKDIR /app
 
 COPY --chown=bun:bun . .
 RUN bun install --frozen-lockfile
-# ADR-0049: the `app.<base>` landing is recognised by this build-time value (the backend's TENANT_BASE_DOMAIN); empty on the demo.
+# ADR-0049: the `app.<base>` landing is recognised by this build-time value (the backend's TENANT_BASE_DOMAIN); empty unless the
+# release sets it (the demo's deploy.yml from the DEMO_TENANT_BASE_DOMAIN repository variable, the real environment's own workflow).
 ARG VITE_TENANT_BASE_DOMAIN=""
 ENV VITE_TENANT_BASE_DOMAIN=${VITE_TENANT_BASE_DOMAIN}
 RUN bun run --cwd apps/web build:app
@@ -28,7 +29,7 @@ RUN apk upgrade --no-cache
 COPY deploy/production/web-nginx.conf /etc/nginx/conf.d/default.conf
 COPY deploy/production/web-security-headers.conf /etc/nginx/snippets/security-headers.conf
 # ADR-0049: the real environment pins the CSP's `img-src`/`frame-src` to its object-storage origin instead of any `https:`
-# host (presigned previews load from there). Empty on the demo, which keeps the shared snippet unchanged.
+# host (presigned previews load from there). Empty keeps the shared snippet unchanged.
 ARG CSP_STORAGE_ORIGIN=""
 RUN case "$CSP_STORAGE_ORIGIN" in \
       "") ;; \
