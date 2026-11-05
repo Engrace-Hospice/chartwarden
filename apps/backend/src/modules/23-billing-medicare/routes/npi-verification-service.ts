@@ -8,7 +8,7 @@
 // session's membership id, never the body; the row's audit after-image carries it. Revoked rows stay as evidence.
 import { type DbClient, schema } from "@chartwarden/db";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import {
   type PlatformProviderEntity,
   listProviderEntitiesForPlatform,
@@ -60,7 +60,7 @@ const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
 /**
  * The entity's state for its CURRENT NPI. `rows` may hold any of the entity's verifications, newest first; a live row
- * for an older NPI does not count (changing the NPI voids it). Pure.
+ * for an older NPI does not count while the entity holds another NPI. Pure.
  */
 export function deriveNpiVerification(
   entity: PlatformProviderEntity,
@@ -171,13 +171,14 @@ export function buildDrizzleNpiVerificationService(
         if (live?.npi === entity.npi) {
           throw new ChartWardenError("ALREADY_VERIFIED", "this NPI is already verified", 409);
         }
-        if (live) {
-          // A live verification of the entity's previous NPI: close it so the one-live index admits the new one.
-          await tx
-            .update(V)
-            .set({ revokedAt: at, revokedByMembershipId: actor.membershipId, updatedAt: at })
-            .where(eq(V.id, live.id));
-        }
+        // Close the entity's live verification of a previous NPI (the one-live index), AND every other entity's live
+        // verification of THIS NPI: a stale row elsewhere would otherwise route again if that entity took the NPI back.
+        await tx
+          .update(V)
+          .set({ revokedAt: at, revokedByMembershipId: actor.membershipId, updatedAt: at })
+          .where(
+            and(isNull(V.revokedAt), or(eq(V.providerEntityId, entity.id), eq(V.npi, entity.npi))),
+          );
         await tx.insert(V).values({
           organizationId: entity.organizationId,
           providerEntityId: entity.id,

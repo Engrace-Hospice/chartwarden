@@ -5,7 +5,8 @@
 -- record, not a column on provider_entity: a tenant `org.manage` user holds UPDATE on provider_entity and can register any
 -- Luhn-valid NPI, so a flag there could be self-set. The row is keyed to the provider entity AND the NPI value verified;
 -- the sweep routes an enrollment only when a live row matches the entity's CURRENT NPI, so changing the entity's NPI
--- voids the verification without anyone touching this table. Revoking sets revoked_at/revoked_by; rows are never deleted.
+-- stops it routing without anyone touching this table (it counts again only if the entity takes that NPI back and no
+-- other entity has been verified for it since: verifying an NPI closes every other entity's live row for it). Revoking sets revoked_at/revoked_by; rows are never deleted.
 --
 -- Tenant-scoped on organization_id (no PHI). RLS ENABLE + FORCE with a SELECT-ONLY own-org policy and grant for
 -- chartwarden_app (the subscription_addon posture, migration 1321): a tenant may read whether its entity is verified,
