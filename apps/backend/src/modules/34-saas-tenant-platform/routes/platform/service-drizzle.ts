@@ -52,6 +52,7 @@ import {
 import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
+import { isTenantSlugTaken } from "../../../../bootstrap/tenant-slug-registry";
 import {
   type InvitationDeliveryPort,
   acceptBaseUrlForOrg,
@@ -508,6 +509,12 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           );
         return paginate(views, cursor, limit);
       });
+    },
+
+    async isTenantSlugTaken(slug): Promise<boolean> {
+      return inPlatformCtx("platform-ops tenant slug availability", (tx) =>
+        isTenantSlugTaken(tx, slug),
+      );
     },
 
     async getTenantOverview(orgSlug): Promise<TenantOverview> {

@@ -318,6 +318,8 @@ export function mountTenantPlatformRoutes(
     platformOps?: { service: PlatformOpsService };
     /** The onboarding wizard, both surfaces (absent => an empty in-memory slice). */
     onboarding?: { wizard: OnboardingWizard };
+    /** `TENANT_BASE_DOMAIN` (null/absent = single-host): the slug availability route answers with the tenant's address. */
+    tenantBaseDomain?: string | null;
     /** GAP-164 - tenant account + feature-flag read/write (absent => in-memory slice). */
     tenantAccountFlags?: { service: TenantAccountFlagsService };
     /** Operator-entered tenant onboarding data (provider entities, locations, MAC credential); absent => not mounted. */
@@ -335,7 +337,10 @@ export function mountTenantPlatformRoutes(
   // ── platform-ops surface (withPlatformContext; F03/F09 audited cross-tenant reads) ──
   // Drizzle-backed when the composition root injects it; the in-memory slice otherwise (tests / no-db).
   const { service: platformService } = services?.platform ?? _createInMemoryTenantPlatformBackend();
-  _registerTenantPlatformRoutes(app, { service: platformService });
+  _registerTenantPlatformRoutes(app, {
+    service: platformService,
+    tenantBaseDomain: services?.tenantBaseDomain ?? null,
+  });
   _registerTenantInvitationRoutes(app, { service: platformService });
   _registerTenantKeyRingRoutes(app, { service: platformService });
   _registerOnboardingTemplateRoutes(app, { service: platformService });

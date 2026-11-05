@@ -254941,6 +254941,82 @@
         }
       }
     },
+    "/api/v1/platform/tenant-slugs/{slug}/availability": {
+      "get": {
+        "operationId": "getApiV1PlatformTenantslugsBySlugAvailability",
+        "tags": [
+          "34-saas-tenant-platform"
+        ],
+        "summary": "Is a tenant subdomain usable? Label rules, reserved names, live and retired slugs (read; no step-up)",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "slug",
+                    "valid",
+                    "available"
+                  ],
+                  "properties": {
+                    "slug": {
+                      "type": "string"
+                    },
+                    "valid": {
+                      "type": "boolean"
+                    },
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "anyOf": [
+                        {
+                          "const": "format",
+                          "type": "string"
+                        },
+                        {
+                          "const": "punycode",
+                          "type": "string"
+                        },
+                        {
+                          "const": "reserved",
+                          "type": "string"
+                        },
+                        {
+                          "const": "taken",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "url": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/platform/tenants": {
       "get": {
         "operationId": "getApiV1PlatformTenants",

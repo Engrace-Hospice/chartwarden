@@ -78,6 +78,10 @@ const ISO_DATE = Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" });
 export const OrgSlugParamsSchema = Type.Object({
   orgSlug: Type.String({ minLength: 1, maxLength: 128 }),
 });
+// ADR-0049 D3 — the slug the operator is typing into the New tenant form (any text: an unusable one is an answer, not a 4xx).
+export const TenantSlugParamsSchema = Type.Object({
+  slug: Type.String({ minLength: 1, maxLength: 128 }),
+});
 export const InvitationParamsSchema = Type.Object({
   id: Type.String({ minLength: 1, maxLength: 64 }),
 });
@@ -475,6 +479,19 @@ export const KeyRingMetadataViewSchema = Type.Object({
   dekLastRotatedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
   destroyedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
   destructionCertificateId: Type.Union([Type.String(), Type.Null()]),
+});
+
+/**
+ * GET /platform/tenant-slugs/:slug/availability. `valid` is the ADR-0049 D3 label rule (format, punycode, reserved);
+ * `available` is `valid` AND no organization holds the slug now or ever did (a retired slug is never reused). `reason` names
+ * the first refusal. `url` is the tenant's address, present only when the deployment runs per-tenant subdomains.
+ */
+export const TenantSlugAvailabilitySchema = Type.Object({
+  slug: Type.String(),
+  valid: Type.Boolean(),
+  available: Type.Boolean(),
+  reason: Type.Optional(lit(["format", "punycode", "reserved", "taken"] as const)),
+  url: Type.Optional(Type.String()),
 });
 
 // ── §4.2 command acknowledgements (the worker-enqueue + synchronous-command routes' typed results) ──────

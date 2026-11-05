@@ -20961,6 +20961,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/tenant-slugs/{slug}/availability": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Is a tenant subdomain usable? Label rules, reserved names, live and retired slugs (read; no step-up) */
+        get: operations["getApiV1PlatformTenantslugsBySlugAvailability"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/tenants": {
         parameters: {
             query?: never;
@@ -91573,6 +91590,36 @@ export interface operations {
                         id: string;
                         /** @constant */
                         status: "revoked";
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1PlatformTenantslugsBySlugAvailability: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        slug: string;
+                        valid: boolean;
+                        available: boolean;
+                        reason?: "format" | "punycode" | "reserved" | "taken";
+                        url?: string;
                     };
                 };
             };

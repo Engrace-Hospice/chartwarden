@@ -289,6 +289,8 @@ export interface TenantPlatformRouteService {
     limit: number | undefined,
   ): Promise<CursorPage<TenantSummaryView>>;
   getTenantOverview(orgSlug: string): Promise<TenantOverview>;
+  /** True when an organization holds `slug` now or ever did (a retired slug is an alias and is never reused; ADR-0049 D3). */
+  isTenantSlugTaken(slug: string): Promise<boolean>;
   provisionTenant(
     actorMembershipId: string,
     args: ProvisionTenantArgs,
@@ -693,6 +695,9 @@ export function createInMemoryTenantPlatformBackend(seed: TenantPlatformRouteSee
           .map(toSummary),
       );
       return paginate(rows, cursor, limit);
+    },
+    async isTenantSlugTaken(slug) {
+      return tenants.has(slug); // the slice has no retired-slug aliases; the Drizzle service reads them
     },
     async getTenantOverview(orgSlug) {
       const r = loadTenant(orgSlug);
