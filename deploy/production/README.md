@@ -72,6 +72,15 @@ provisioning, recreates `api`, `worker` and `web`, then runs `smoke.sh`. If any 
 the previous image references and recreates those services. Database migrations are forward-only and
 are not rolled back.
 
+The web image contains three static SPAs: the staff app at `/`, the patient/family portal at `/portal/`,
+and Platform Ops in a separate document root selected only for `platform112026.chartwarden.cloud`.
+After the image release is live, point `platform112026.chartwarden.cloud` to the VPS and copy
+`nginx/chartwarden-platform.conf` to `/etc/nginx/sites-available/`, symlink it into `sites-enabled/`,
+then run `nginx -t` before reloading. Issue a certificate with `certbot --nginx -d
+platform112026.chartwarden.cloud`. Preserve the existing entries in the VPS `.env.production` and add
+`https://platform112026.chartwarden.cloud` to `TRUSTED_ORIGINS`; recreate only `api` so CORS and Better
+Auth load the added origin. The vhost proxies the same-origin `/api/` and `/webhooks/` routes.
+
 ## DocLens worker and the scoped object-store account (GAP-138 / GAP-139)
 
 `compose.yml` runs two more services alongside `api`/`worker`/`web`:
