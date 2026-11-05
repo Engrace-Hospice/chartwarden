@@ -1644,8 +1644,13 @@ curl -sf -X POST $API/api/v1/platform/feature-flags \
 #     steps in order; when they are settled the tenant's compliance officer attests readiness
 #     (POST /api/v1/tenant/go-live/attest, step-up) and a platform operator approves
 #     (POST /api/v1/platform/tenants/<slug>/go-live/approve, step-up, written reason). Approval re-checks every activation
-#     guard at that moment and answers 409 ACTIVATION_GUARDS_FAILED listing what failed; a pending attestation can be
-#     withdrawn with POST .../go-live/revoke. The daily onboarding sweep settles steps from facts and never activates a tenant;
+#     guard at that moment and answers 409 ACTIVATION_GUARDS_FAILED listing what failed. The approver must be a different
+#     PERSON than the attester (409 GO_LIVE_SAME_PERSON: one user with a tenant membership and a platform one counts once),
+#     the attestation must be at most 14 days old (409 GO_LIVE_ATTESTATION_EXPIRED) and its attester still an active
+#     compliance officer and the assigned one (409 GO_LIVE_ATTESTATION_STALE); a stale or expired attestation is withdrawn
+#     with POST .../go-live/revoke so the officer can attest again. Reassigning the compliance officer voids a pending
+#     attestation by itself; a platform assignment (PUT .../compliance-officer) needs a written reason and is audited with
+#     the operator. The daily onboarding sweep settles steps from facts and never activates a tenant;
 #     POST /platform/tenants/<slug>/status with toStatus=active from onboarding is refused 409 GO_LIVE_TWO_PARTY_REQUIRED.
 # 12. Tenant added to monitoring dashboards
 

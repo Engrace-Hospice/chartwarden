@@ -255415,7 +255415,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Assign the tenant's compliance officer, an active member of that organization (platform ops; step-up)",
+        "summary": "Assign the tenant's compliance officer, an active member of that organization holding the compliance_officer role, with a required reason of 8 to 500 characters (platform ops; step-up). The operator and the reason are recorded in the audit trail; a pending go-live attestation by another officer is voided. 422 COMPLIANCE_OFFICER_NOT_A_MEMBER, 422 COMPLIANCE_OFFICER_LACKS_ROLE, 409 COMPLIANCE_OFFICER_LOCKED",
         "parameters": [
           {
             "name": "orgSlug",
@@ -255459,11 +255459,17 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "membershipId"
+                  "membershipId",
+                  "reason"
                 ],
                 "properties": {
                   "membershipId": {
                     "format": "uuid",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "minLength": 8,
+                    "maxLength": 500,
                     "type": "string"
                   }
                 }
@@ -255548,7 +255554,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED",
+        "summary": "Approve a pending go-live attestation: the tenant goes active only if the activation guards pass now (platform ops; step-up; human actor). The approver must be a different PERSON than the attester (409 GO_LIVE_SAME_PERSON), the attestation must be at most 14 days old (409 GO_LIVE_ATTESTATION_EXPIRED) and its attester still an active compliance officer and the assigned one (409 GO_LIVE_ATTESTATION_STALE). 409 GO_LIVE_NOT_ATTESTED, 409 ACTIVATION_GUARDS_FAILED",
         "parameters": [
           {
             "name": "orgSlug",
@@ -255758,11 +255764,19 @@
                                 "required": [
                                   "membershipId",
                                   "actorKind",
+                                  "label",
                                   "at"
                                 ],
                                 "properties": {
                                   "membershipId": {
-                                    "type": "string"
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
                                   },
                                   "actorKind": {
                                     "anyOf": [
@@ -255773,6 +255787,16 @@
                                       {
                                         "const": "tenant",
                                         "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "label": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
                                       }
                                     ]
                                   },
@@ -255915,11 +255939,14 @@
                                 "status",
                                 "attestedByMembershipId",
                                 "attestedAt",
+                                "expiresAt",
                                 "attestationNote",
                                 "approvedByMembershipId",
+                                "approvedByLabel",
                                 "approvedAt",
                                 "approvalReason",
                                 "revokedByMembershipId",
+                                "revokedByLabel",
                                 "revokedAt",
                                 "revokeReason"
                               ],
@@ -255950,6 +255977,17 @@
                                   "format": "date-time",
                                   "type": "string"
                                 },
+                                "expiresAt": {
+                                  "anyOf": [
+                                    {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "attestationNote": {
                                   "anyOf": [
                                     {
@@ -255961,6 +255999,16 @@
                                   ]
                                 },
                                 "approvedByMembershipId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "approvedByLabel": {
                                   "anyOf": [
                                     {
                                       "type": "string"
@@ -255992,6 +256040,16 @@
                                   ]
                                 },
                                 "revokedByMembershipId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "revokedByLabel": {
                                   "anyOf": [
                                     {
                                       "type": "string"
@@ -256297,11 +256355,19 @@
                                 "required": [
                                   "membershipId",
                                   "actorKind",
+                                  "label",
                                   "at"
                                 ],
                                 "properties": {
                                   "membershipId": {
-                                    "type": "string"
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
                                   },
                                   "actorKind": {
                                     "anyOf": [
@@ -256312,6 +256378,16 @@
                                       {
                                         "const": "tenant",
                                         "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "label": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
                                       }
                                     ]
                                   },
@@ -256454,11 +256530,14 @@
                                 "status",
                                 "attestedByMembershipId",
                                 "attestedAt",
+                                "expiresAt",
                                 "attestationNote",
                                 "approvedByMembershipId",
+                                "approvedByLabel",
                                 "approvedAt",
                                 "approvalReason",
                                 "revokedByMembershipId",
+                                "revokedByLabel",
                                 "revokedAt",
                                 "revokeReason"
                               ],
@@ -256489,6 +256568,17 @@
                                   "format": "date-time",
                                   "type": "string"
                                 },
+                                "expiresAt": {
+                                  "anyOf": [
+                                    {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "attestationNote": {
                                   "anyOf": [
                                     {
@@ -256500,6 +256590,16 @@
                                   ]
                                 },
                                 "approvedByMembershipId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "approvedByLabel": {
                                   "anyOf": [
                                     {
                                       "type": "string"
@@ -256531,6 +256631,16 @@
                                   ]
                                 },
                                 "revokedByMembershipId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "revokedByLabel": {
                                   "anyOf": [
                                     {
                                       "type": "string"
@@ -257022,11 +257132,19 @@
                                 "required": [
                                   "membershipId",
                                   "actorKind",
+                                  "label",
                                   "at"
                                 ],
                                 "properties": {
                                   "membershipId": {
-                                    "type": "string"
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
                                   },
                                   "actorKind": {
                                     "anyOf": [
@@ -257037,6 +257155,16 @@
                                       {
                                         "const": "tenant",
                                         "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "label": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
                                       }
                                     ]
                                   },
@@ -257179,11 +257307,14 @@
                                 "status",
                                 "attestedByMembershipId",
                                 "attestedAt",
+                                "expiresAt",
                                 "attestationNote",
                                 "approvedByMembershipId",
+                                "approvedByLabel",
                                 "approvedAt",
                                 "approvalReason",
                                 "revokedByMembershipId",
+                                "revokedByLabel",
                                 "revokedAt",
                                 "revokeReason"
                               ],
@@ -257214,6 +257345,17 @@
                                   "format": "date-time",
                                   "type": "string"
                                 },
+                                "expiresAt": {
+                                  "anyOf": [
+                                    {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "attestationNote": {
                                   "anyOf": [
                                     {
@@ -257225,6 +257367,16 @@
                                   ]
                                 },
                                 "approvedByMembershipId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "approvedByLabel": {
                                   "anyOf": [
                                     {
                                       "type": "string"
@@ -257256,6 +257408,16 @@
                                   ]
                                 },
                                 "revokedByMembershipId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "revokedByLabel": {
                                   "anyOf": [
                                     {
                                       "type": "string"
@@ -257507,11 +257669,19 @@
                                 "required": [
                                   "membershipId",
                                   "actorKind",
+                                  "label",
                                   "at"
                                 ],
                                 "properties": {
                                   "membershipId": {
-                                    "type": "string"
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
                                   },
                                   "actorKind": {
                                     "anyOf": [
@@ -257522,6 +257692,16 @@
                                       {
                                         "const": "tenant",
                                         "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "label": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
                                       }
                                     ]
                                   },
@@ -257828,11 +258008,19 @@
                           "required": [
                             "membershipId",
                             "actorKind",
+                            "label",
                             "at"
                           ],
                           "properties": {
                             "membershipId": {
-                              "type": "string"
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             },
                             "actorKind": {
                               "anyOf": [
@@ -257843,6 +258031,16 @@
                                 {
                                   "const": "tenant",
                                   "type": "string"
+                                }
+                              ]
+                            },
+                            "label": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
                                 }
                               ]
                             },
@@ -258176,11 +258374,19 @@
                           "required": [
                             "membershipId",
                             "actorKind",
+                            "label",
                             "at"
                           ],
                           "properties": {
                             "membershipId": {
-                              "type": "string"
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             },
                             "actorKind": {
                               "anyOf": [
@@ -258191,6 +258397,16 @@
                                 {
                                   "const": "tenant",
                                   "type": "string"
+                                }
+                              ]
+                            },
+                            "label": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
                                 }
                               ]
                             },
@@ -258514,11 +258730,19 @@
                           "required": [
                             "membershipId",
                             "actorKind",
+                            "label",
                             "at"
                           ],
                           "properties": {
                             "membershipId": {
-                              "type": "string"
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             },
                             "actorKind": {
                               "anyOf": [
@@ -258529,6 +258753,16 @@
                                 {
                                   "const": "tenant",
                                   "type": "string"
+                                }
+                              ]
+                            },
+                            "label": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
                                 }
                               ]
                             },
@@ -322816,7 +323050,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Assign the compliance officer (an active member of this organization) who attests go-live readiness (org_admin; step-up)",
+        "summary": "Assign the compliance officer (an active member of this organization holding the compliance_officer role) who attests go-live readiness (org_admin; step-up). Allowed while the tenant is onboarding or active; a pending go-live attestation by another officer is voided. 422 COMPLIANCE_OFFICER_NOT_A_MEMBER, 422 COMPLIANCE_OFFICER_LACKS_ROLE, 409 COMPLIANCE_OFFICER_LOCKED",
         "parameters": [],
         "responses": {
           "200": {
@@ -324264,11 +324498,19 @@
                                 "required": [
                                   "membershipId",
                                   "actorKind",
+                                  "label",
                                   "at"
                                 ],
                                 "properties": {
                                   "membershipId": {
-                                    "type": "string"
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
                                   },
                                   "actorKind": {
                                     "anyOf": [
@@ -324279,6 +324521,16 @@
                                       {
                                         "const": "tenant",
                                         "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "label": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
                                       }
                                     ]
                                   },
@@ -324421,11 +324673,14 @@
                                 "status",
                                 "attestedByMembershipId",
                                 "attestedAt",
+                                "expiresAt",
                                 "attestationNote",
                                 "approvedByMembershipId",
+                                "approvedByLabel",
                                 "approvedAt",
                                 "approvalReason",
                                 "revokedByMembershipId",
+                                "revokedByLabel",
                                 "revokedAt",
                                 "revokeReason"
                               ],
@@ -324456,6 +324711,17 @@
                                   "format": "date-time",
                                   "type": "string"
                                 },
+                                "expiresAt": {
+                                  "anyOf": [
+                                    {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "attestationNote": {
                                   "anyOf": [
                                     {
@@ -324467,6 +324733,16 @@
                                   ]
                                 },
                                 "approvedByMembershipId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "approvedByLabel": {
                                   "anyOf": [
                                     {
                                       "type": "string"
@@ -324498,6 +324774,16 @@
                                   ]
                                 },
                                 "revokedByMembershipId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "revokedByLabel": {
                                   "anyOf": [
                                     {
                                       "type": "string"
@@ -324821,11 +325107,19 @@
                                 "required": [
                                   "membershipId",
                                   "actorKind",
+                                  "label",
                                   "at"
                                 ],
                                 "properties": {
                                   "membershipId": {
-                                    "type": "string"
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
                                   },
                                   "actorKind": {
                                     "anyOf": [
@@ -324836,6 +325130,16 @@
                                       {
                                         "const": "tenant",
                                         "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "label": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
                                       }
                                     ]
                                   },
@@ -324978,11 +325282,14 @@
                                 "status",
                                 "attestedByMembershipId",
                                 "attestedAt",
+                                "expiresAt",
                                 "attestationNote",
                                 "approvedByMembershipId",
+                                "approvedByLabel",
                                 "approvedAt",
                                 "approvalReason",
                                 "revokedByMembershipId",
+                                "revokedByLabel",
                                 "revokedAt",
                                 "revokeReason"
                               ],
@@ -325013,6 +325320,17 @@
                                   "format": "date-time",
                                   "type": "string"
                                 },
+                                "expiresAt": {
+                                  "anyOf": [
+                                    {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
                                 "attestationNote": {
                                   "anyOf": [
                                     {
@@ -325024,6 +325342,16 @@
                                   ]
                                 },
                                 "approvedByMembershipId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "approvedByLabel": {
                                   "anyOf": [
                                     {
                                       "type": "string"
@@ -325055,6 +325383,16 @@
                                   ]
                                 },
                                 "revokedByMembershipId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "revokedByLabel": {
                                   "anyOf": [
                                     {
                                       "type": "string"
@@ -325296,11 +325634,19 @@
                                 "required": [
                                   "membershipId",
                                   "actorKind",
+                                  "label",
                                   "at"
                                 ],
                                 "properties": {
                                   "membershipId": {
-                                    "type": "string"
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
                                   },
                                   "actorKind": {
                                     "anyOf": [
@@ -325311,6 +325657,16 @@
                                       {
                                         "const": "tenant",
                                         "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "label": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
                                       }
                                     ]
                                   },
@@ -325622,11 +325978,19 @@
                           "required": [
                             "membershipId",
                             "actorKind",
+                            "label",
                             "at"
                           ],
                           "properties": {
                             "membershipId": {
-                              "type": "string"
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             },
                             "actorKind": {
                               "anyOf": [
@@ -325637,6 +326001,16 @@
                                 {
                                   "const": "tenant",
                                   "type": "string"
+                                }
+                              ]
+                            },
+                            "label": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
                                 }
                               ]
                             },
@@ -325956,11 +326330,19 @@
                           "required": [
                             "membershipId",
                             "actorKind",
+                            "label",
                             "at"
                           ],
                           "properties": {
                             "membershipId": {
-                              "type": "string"
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             },
                             "actorKind": {
                               "anyOf": [
@@ -325971,6 +326353,16 @@
                                 {
                                   "const": "tenant",
                                   "type": "string"
+                                }
+                              ]
+                            },
+                            "label": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
                                 }
                               ]
                             },
@@ -326286,11 +326678,19 @@
                           "required": [
                             "membershipId",
                             "actorKind",
+                            "label",
                             "at"
                           ],
                           "properties": {
                             "membershipId": {
-                              "type": "string"
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             },
                             "actorKind": {
                               "anyOf": [
@@ -326301,6 +326701,16 @@
                                 {
                                   "const": "tenant",
                                   "type": "string"
+                                }
+                              ]
+                            },
+                            "label": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
                                 }
                               ]
                             },
@@ -326444,7 +326854,7 @@
         "tags": [
           "34-saas-tenant-platform"
         ],
-        "summary": "Re-open a done or skipped step to edit it (later steps keep their state; refused while a go-live attestation is pending)",
+        "summary": "Re-open a done or skipped step to edit it, with a required written reason (later steps keep their state; refused while a go-live attestation is pending)",
         "parameters": [
           {
             "name": "taskId",
@@ -326622,11 +327032,19 @@
                           "required": [
                             "membershipId",
                             "actorKind",
+                            "label",
                             "at"
                           ],
                           "properties": {
                             "membershipId": {
-                              "type": "string"
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             },
                             "actorKind": {
                               "anyOf": [
@@ -326637,6 +327055,16 @@
                                 {
                                   "const": "tenant",
                                   "type": "string"
+                                }
+                              ]
+                            },
+                            "label": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
                                 }
                               ]
                             },
@@ -326752,8 +327180,12 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": [
+                  "reason"
+                ],
                 "properties": {
                   "reason": {
+                    "minLength": 8,
                     "maxLength": 1000,
                     "type": "string"
                   }
@@ -326948,11 +327380,19 @@
                           "required": [
                             "membershipId",
                             "actorKind",
+                            "label",
                             "at"
                           ],
                           "properties": {
                             "membershipId": {
-                              "type": "string"
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             },
                             "actorKind": {
                               "anyOf": [
@@ -326963,6 +327403,16 @@
                                 {
                                   "const": "tenant",
                                   "type": "string"
+                                }
+                              ]
+                            },
+                            "label": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
                                 }
                               ]
                             },
