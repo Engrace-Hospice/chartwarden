@@ -1438,6 +1438,7 @@ import {
   TenantListQuerySchema as M34TenantListQuerySchema,
   TenantListResponseSchema as M34TenantListResponseSchema,
   TenantOverviewViewSchema as M34TenantOverviewViewSchema,
+  TenantSlugAvailabilitySchema as M34TenantSlugAvailabilitySchema,
   TenantStatusAckSchema as M34TenantStatusAckSchema,
   UpdateBaaRequest as M34UpdateBaaRequest,
   UpsertFeatureFlagRequest as M34UpsertFeatureFlagRequest,
@@ -10290,6 +10291,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Platform tenant inventory (cross-tenant; status/plan/search filters)",
     query: M34TenantListQuerySchema,
     response: M34TenantListResponseSchema,
+  },
+  "GET /api/v1/platform/tenant-slugs/:slug/availability": {
+    summary:
+      "Is a tenant subdomain usable? Label rules, reserved names, live and retired slugs (read; no step-up)",
+    response: M34TenantSlugAvailabilitySchema,
   },
   "POST /api/v1/platform/tenants": {
     summary:

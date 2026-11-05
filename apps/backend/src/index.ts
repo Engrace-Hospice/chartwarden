@@ -5969,6 +5969,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             }),
           };
           mountTenantPlatformRoutes(app, dbHandle.db, {
+            tenantBaseDomain,
             platform: m34PlatformBackend,
             onboarding: m34Onboarding,
             tenant: buildDrizzleTenantService({

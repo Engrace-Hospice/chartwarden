@@ -78,6 +78,8 @@ for (const [name, pw] of [
 const PLATFORM_READ_TABLES = [
   // M1/M2 spine — the enumerators (active orgs; the M36 D9 sole-tenant membership read).
   "organization",
+  // ADR-0049 D3: retired slugs are never reused, so the New tenant form's availability check reads them (names only, no PHI).
+  "organization_slug_alias",
   "membership",
   "patient",
   // M1 feature flags - the M34 platform + tenant flag admin reads every tenant's flag rows (GAP-164).

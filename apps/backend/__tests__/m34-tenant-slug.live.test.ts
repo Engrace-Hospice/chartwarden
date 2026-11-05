@@ -11,7 +11,9 @@
  *   - a taken slug, a former (aliased) slug and a slug the label rules refuse are all 409 TENANT_SLUG_UNAVAILABLE, and
  *     a refused request leaves no tenant account behind;
  *   - a re-provision naming a DIFFERENT slug is 409 (never a silent ignore); naming the same one is accepted;
- *   - no slug still yields a valid generated label.
+ *   - no slug still yields a valid generated label;
+ *   - the availability read (`isTenantSlugTaken`, behind GET /platform/tenant-slugs/:slug/availability) sees a live slug AND a
+ *     retired alias on the same platform login: the alias table is a platform-carrier SELECT grant, so a missing one fails here.
  *
  *   CHARTWARDEN_TEST_DATABASE_URL=postgres://… (SUPERUSER, THROWAWAY db) bun run test:m34:tenant-slug:live
  * For a local PG without pgvector: also set CHARTWARDEN_TEST_NO_PGVECTOR=1.
@@ -270,5 +272,20 @@ describe.skipIf(!DB_URL)("M34 tenant slug provisioning — LIVE Postgres, real p
     expect(rows).toHaveLength(1);
     expect(validateTenantSlug(rows[0].slug).ok).toBe(true);
     expect(rows[0].slug).toMatch(/^maple-pine-hospice-inc-[0-9a-f]{8}$/);
+  });
+
+  it("the availability read sees a live slug and a retired alias, and a free slug is free", async () => {
+    const id = nextId();
+    await admin.query(
+      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'avail-before','A','A')",
+      [id],
+    );
+    await admin.query("UPDATE organization SET slug = 'avail-after' WHERE id = $1", [id]);
+
+    const taken = async (slug: string) => service().isTenantSlugTaken(slug);
+
+    expect(await taken("avail-after")).toBe(true);
+    expect(await taken("avail-before")).toBe(true);
+    expect(await taken("avail-never-used")).toBe(false);
   });
 });

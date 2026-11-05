@@ -1,4 +1,3 @@
-import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 // apps/backend/src/modules/34-saas-tenant-platform/routes/platform/tenants.ts — M34 (§4.1 platform-ops).
 //
 // The platform-ops tenant-lifecycle route surface (§4.1 platform-ops table; §4.2 per-route specs; §6/D10
@@ -15,9 +14,14 @@ import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth
 // The lifecycle-COMMAND routes (provision / status / offboard / shred / dek-rotate) ENQUEUE the matching
 // §4.3 worker job through the service's injected enqueue port + emit the outbox descriptor; the live
 // BullMQ worker construction is Phase 2D (see service.ts TODO).
-import { type PreHandler, writeActorOf } from "@chartwarden/shared/route-kit";
-import { ChartWardenError, UnauthorizedError, validateTenantSlug } from "@chartwarden/types";
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
+import {
+  ChartWardenError,
+  UnauthorizedError,
+  tenantOriginForSlug,
+  validateTenantSlug,
+} from "@chartwarden/types";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   DekRotateRequest,
   OffboardTenantRequest,
@@ -26,13 +30,33 @@ import {
   ShredTenantRequest,
   StatusTransitionRequest,
   TenantListQuerySchema,
+  TenantSlugParamsSchema,
   parse,
 } from "./platform-typebox";
 import type { TenantPlatformRouteService } from "./service";
 
+/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
+type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+
 export interface TenantPlatformRouteDeps {
   /** The §4.1 platform-ops route service (in-memory in the slice; Drizzle under `withPlatformContext` in prod). */
   service: TenantPlatformRouteService;
+  /** `TENANT_BASE_DOMAIN`; absent or null (single-host mode) leaves the availability answer without an address. */
+  tenantBaseDomain?: string | null;
+}
+
+/** The org-scoped actor (org/actor binding is server-side: the context, never the body). */
+function actorOf(request: FastifyRequest): {
+  organizationId: string;
+  userId: string;
+  membershipId: string;
+  roles: readonly string[];
+} {
+  const ctx = request.context;
+  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
+  const membershipId = ctx.attributes?.membershipId;
+  if (typeof membershipId !== "string") throw new UnauthorizedError();
+  return { organizationId: ctx.organizationId, userId: ctx.userId, membershipId, roles: ctx.roles };
 }
 
 const orgSlugOf = (request: FastifyRequest): string =>
@@ -78,11 +102,11 @@ export function registerTenantPlatformRoutes(
   app: FastifyInstance,
   deps: TenantPlatformRouteDeps,
 ): void {
-  const { service } = deps;
+  const { service, tenantBaseDomain } = deps;
 
   // 1 — list tenants (cross-tenant, cursor-paginated; filters status/plan/created_after/legal-name). §4.1.
   app.get("/api/v1/platform/tenants", { preHandler: [LIST, ABAC_LIST] }, async (request) => {
-    writeActorOf(request);
+    actorOf(request);
     const q = parse(TenantListQuerySchema, request.query);
     return service.listTenants(
       { status: q.status, planLabel: q.planLabel, createdAfter: q.createdAfter, search: q.search },
@@ -91,12 +115,34 @@ export function registerTenantPlatformRoutes(
     );
   });
 
+  // 1a — is this subdomain usable? Format/reserved are decided here (no data read); taken covers a live slug AND a retired
+  // alias (a slug is never reused; ADR-0049 D3). Read-only and non-PHI, so no step-up; the platform read is audited.
+  app.get(
+    "/api/v1/platform/tenant-slugs/:slug/availability",
+    { preHandler: [READ, ABAC_READ] },
+    async (request) => {
+      actorOf(request);
+      const { slug } = parse(TenantSlugParamsSchema, request.params);
+      const checked = validateTenantSlug(slug);
+      if (!checked.ok) return { slug, valid: false, available: false, reason: checked.reason };
+      const url = tenantBaseDomain ? tenantOriginForSlug(slug, tenantBaseDomain) : null;
+      const taken = await service.isTenantSlugTaken(slug);
+      return {
+        slug,
+        valid: true,
+        available: !taken,
+        ...(taken ? { reason: "taken" as const } : {}),
+        ...(url ? { url } : {}),
+      };
+    },
+  );
+
   // 3 — provision a tenant from a signup_intent OR raw input (step-up; enqueues `tenant.provision`). §4.1/§4.2.
   app.post(
     "/api/v1/platform/tenants",
     { preHandler: [PROVISION, ABAC_PROVISION, STEPUP_PROVISION] },
     async (request, reply) => {
-      const { membershipId } = writeActorOf(request);
+      const { membershipId } = actorOf(request);
       const body = parse(ProvisionTenantRequest, request.body);
       // ADR-0049 D3: the host label follows the rules the database enforces, refused here with an actionable reason.
       const checked = body.slug === undefined ? null : validateTenantSlug(body.slug);
@@ -126,7 +172,7 @@ export function registerTenantPlatformRoutes(
     "/api/v1/platform/tenants/:orgSlug",
     { preHandler: [READ, ABAC_READ] },
     async (request) => {
-      writeActorOf(request);
+      actorOf(request);
       return service.getTenantOverview(orgSlugOf(request));
     },
   );
@@ -141,7 +187,7 @@ export function registerTenantPlatformRoutes(
       // (`void actorUserId` in service-drizzle.ts) and hardcodes `actorMembershipId: null` on the
       // status-event row, but the moment that plumbing is wired up it must receive a membership id,
       // not the raw Better Auth user id.
-      const { membershipId } = writeActorOf(request);
+      const { membershipId } = actorOf(request);
       const body = parse(StatusTransitionRequest, request.body);
       const res = await service.transitionStatus(orgSlugOf(request), membershipId, {
         toStatus: body.toStatus,
@@ -156,7 +202,7 @@ export function registerTenantPlatformRoutes(
     "/api/v1/platform/tenants/:orgSlug/provision-status",
     { preHandler: [READ, ABAC_READ] },
     async (request) => {
-      writeActorOf(request);
+      actorOf(request);
       return service.getProvisionStatus(orgSlugOf(request));
     },
   );
@@ -166,7 +212,7 @@ export function registerTenantPlatformRoutes(
     "/api/v1/platform/tenants/:orgSlug/provision/retry",
     { preHandler: [PROVISION, ABAC_PROVISION, STEPUP_PROVISION] },
     async (request, reply) => {
-      const { membershipId } = writeActorOf(request);
+      const { membershipId } = actorOf(request);
       return reply.code(202).send(await service.retryProvision(orgSlugOf(request), membershipId));
     },
   );
@@ -177,7 +223,7 @@ export function registerTenantPlatformRoutes(
     { preHandler: [OFFBOARD, ABAC_OFFBOARD, STEPUP_OFFBOARD] },
     async (request, reply) => {
       // membershipId (not userId) — same reasoning as the status-transition route above.
-      const { membershipId } = writeActorOf(request);
+      const { membershipId } = actorOf(request);
       const body = parse(OffboardTenantRequest, request.body);
       const res = await service.offboardTenant(orgSlugOf(request), membershipId, {
         transitionReason: body.transitionReason,
@@ -192,7 +238,7 @@ export function registerTenantPlatformRoutes(
     "/api/v1/platform/tenants/:orgSlug/shred",
     { preHandler: [SHRED, ABAC_SHRED, STEPUP_SHRED] },
     async (request, reply) => {
-      const { membershipId } = writeActorOf(request);
+      const { membershipId } = actorOf(request);
       const body = parse(ShredTenantRequest, request.body);
       const res = await service.requestShred(orgSlugOf(request), membershipId, {
         transitionReason: body.transitionReason,
@@ -207,7 +253,7 @@ export function registerTenantPlatformRoutes(
     "/api/v1/platform/tenants/:orgSlug/dek-rotate",
     { preHandler: [DEK_ROTATE, ABAC_DEK_ROTATE, STEPUP_DEK_ROTATE] },
     async (request, reply) => {
-      const { membershipId } = writeActorOf(request);
+      const { membershipId } = actorOf(request);
       const body = parse(DekRotateRequest, request.body);
       const res = await service.requestDekRotate(orgSlugOf(request), membershipId, {
         reason: body.reason,

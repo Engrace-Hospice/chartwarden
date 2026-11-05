@@ -199,7 +199,7 @@ function buildTestAbacResolver(): TenantPlatformAbacResolver {
   };
 }
 
-function makeServer() {
+function makeServer(options: { tenantBaseDomain?: string | null } = {}) {
   const platformSeed: TenantPlatformRouteSeed = {
     // GAP-098 — one HELD bundle and one already-released job, so the `?held=true` filter has something
     // to include AND something to exclude (a filter proven only against an all-held set proves nothing).
@@ -332,6 +332,9 @@ function makeServer() {
     platform: { service: platform.service },
     tenant: { service: tenant.service },
     onboarding: { wizard },
+    ...(options.tenantBaseDomain !== undefined
+      ? { tenantBaseDomain: options.tenantBaseDomain }
+      : {}),
   });
   return { app, platform, tenant };
 }
@@ -433,6 +436,75 @@ describe("M34-saas-tenant-platform-inject — provisioning slug (POST /api/v1/pl
 
   it("accepts a valid slug", async () => {
     expect((await post("sunrise")).statusCode).toBe(202);
+  });
+});
+
+// ── slug availability (GET /api/v1/platform/tenant-slugs/:slug/availability) ─────────────────────────
+describe("M34-saas-tenant-platform-inject — tenant slug availability", () => {
+  const check = async (
+    slug: string,
+    opts: { headers?: Record<string, string>; tenantBaseDomain?: string | null } = {},
+  ) => {
+    const { app } = makeServer(
+      opts.tenantBaseDomain === undefined ? {} : { tenantBaseDomain: opts.tenantBaseDomain },
+    );
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/platform/tenant-slugs/${slug}/availability`,
+      headers: opts.headers ?? PLATFORM_OPS,
+    });
+    await app.close();
+    return res;
+  };
+
+  it("401 without a session and 403 without tenant.read_platform", async () => {
+    expect((await check("sunrise", { headers: {} })).statusCode).toBe(401);
+    expect((await check("sunrise", { headers: NOPERM })).statusCode).toBe(403);
+  });
+
+  it("a free, valid slug is available and carries its address when a base domain is set", async () => {
+    const res = await check("sunrise", { tenantBaseDomain: "chartwarden.cloud" });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      slug: "sunrise",
+      valid: true,
+      available: true,
+      url: "https://sunrise.chartwarden.cloud",
+    });
+  });
+
+  it("answers without a url in single-host mode (no base domain)", async () => {
+    const res = await check("sunrise");
+
+    expect(res.json()).toEqual({ slug: "sunrise", valid: true, available: true });
+  });
+
+  it("a slug an organization already holds is valid but not available", async () => {
+    const res = await check("acme");
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      slug: "acme",
+      valid: true,
+      available: false,
+      reason: "taken",
+    });
+  });
+
+  it.each([
+    ["admin", "reserved"],
+    ["app", "reserved"],
+    ["ab", "format"],
+    ["Sunrise", "format"],
+    ["sun_rise", "format"],
+    ["xn--sunrise", "punycode"],
+    ["x".repeat(64), "format"],
+  ])("refuses %s as invalid (%s) without consulting the data", async (slug, reason) => {
+    const res = await check(slug, { tenantBaseDomain: "chartwarden.cloud" });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ slug, valid: false, available: false, reason });
   });
 });
 
