@@ -411,6 +411,7 @@ export {
   createMemoryOrgProfile,
   createMemoryWizardRunner,
   createMemoryWizardState,
+  memoryMember,
   memoryTask,
 } from "./onboarding/wizard-store-memory";
 export type { OrgProfilePort } from "./onboarding/org-profile";

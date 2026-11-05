@@ -19,6 +19,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
+import { OnboardingRepository } from "@chartwarden/saas-tenant-platform";
 import { registerPlatformJob } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
 import { Client } from "pg";
@@ -657,11 +658,11 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       await tenantClient.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
       await expect(
         tenantClient.query(
-          `INSERT INTO tenant_go_live_attestation (organization_id, tenant_account_id, status, attested_by_membership_id, approved_by_membership_id, approved_at, approval_reason)
-           VALUES ($1,$2,'approved',$3,$4,now(),'self approved by the tenant')`,
-          [ORG_A, T_A, memberships["officer-a"], OPS_MEMBERSHIP],
+          `INSERT INTO tenant_go_live_attestation (organization_id, tenant_account_id, status, attested_by_membership_id, attested_by_user_id, approved_by_membership_id, approved_by_user_id, approved_at, approval_reason)
+           VALUES ($1,$2,'approved',$3,$4,$5,$6,now(),'self approved by the tenant')`,
+          [ORG_A, T_A, memberships["officer-a"], users["officer-a"], OPS_MEMBERSHIP, OPS_USER],
         ),
-      ).rejects.toThrow(/row-level security|violates/);
+      ).rejects.toThrow(/row-level security/);
       await tenantClient.query("ROLLBACK");
       await tenantClient.query("BEGIN");
       await tenantClient.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
@@ -883,5 +884,434 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       true,
     );
     expect(strangerB.roles).toEqual(["org_admin"]);
+  });
+
+  // ════════════════════════════════════════════════════════════════════════════════════════════════════════
+  // Security review: go-live integrity. Fresh organisations, so the sequential story above is untouched.
+  // ════════════════════════════════════════════════════════════════════════════════════════════════════════
+  describe("go-live integrity (security review)", () => {
+    const ORG_C = "77777777-7777-4777-8777-777777777c01";
+    const ORG_D = "88888888-8888-4888-8888-888888888d01";
+    const ORG_E = "99999999-9999-4999-8999-999999999e01";
+    const ORG_PLATFORM = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa01";
+    const T_C = "77777777-7777-4777-8777-777777777c02";
+    const T_D = "88888888-8888-4888-8888-888888888d02";
+    const T_E = "99999999-9999-4999-8999-999999999e02";
+
+    let dual: { userId: string; tenantMembershipId: string; platformMembershipId: string };
+    let officerC: TenantActor;
+    let officerD1: TenantActor;
+    let officerD2: TenantActor;
+    let memberE: TenantActor;
+    let inactiveE: TenantActor;
+    let opsTwo: PlatformActor;
+
+    /** A tenant whose every gating step is done and whose BAA is long: only go-live is left. */
+    async function readyTenant(org: string, tenant: string, slug: string): Promise<void> {
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
+        [org, slug],
+      );
+      await admin.query(
+        "INSERT INTO tenant_account (id, organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,'onboarding',$3,'b@x.test','p@x.test')",
+        [tenant, org, slug],
+      );
+      await admin.query(
+        `INSERT INTO onboarding_task (organization_id, tenant_account_id, template_key, status)
+         SELECT $1, $2, key, CASE WHEN key = 'go_live_checklist_complete' THEN 'pending' ELSE 'done' END::onboarding_task_status
+           FROM onboarding_task_template WHERE retired_at IS NULL`,
+        [org, tenant],
+      );
+      await admin.query(
+        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
+         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
+        [org, tenant],
+      );
+    }
+    const assignOfficer = (tenant: string, membership: string) =>
+      admin.query("UPDATE tenant_account SET compliance_officer_membership_id=$2 WHERE id=$1", [
+        tenant,
+        membership,
+      ]);
+    const attestationRows = async (tenant: string) =>
+      (
+        await admin.query(
+          "SELECT * FROM tenant_go_live_attestation WHERE tenant_account_id=$1 ORDER BY attested_at",
+          [tenant],
+        )
+      ).rows;
+    const stepped = (membershipId: string, userId: string): PlatformActor => ({
+      kind: "platform",
+      userId,
+      membershipId,
+    });
+
+    beforeAll(async () => {
+      for (const [org, tenant, slug] of [
+        [ORG_C, T_C, "wiz-c"],
+        [ORG_D, T_D, "wiz-d"],
+        [ORG_E, T_E, "wiz-e"],
+      ] as const) {
+        await readyTenant(org, tenant, slug);
+      }
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'wiz-platform','ChartWarden Operations','ChartWarden Operations')",
+        [ORG_PLATFORM],
+      );
+      // ONE human with two hats: the tenant's compliance officer (ORG_C) and a platform operator (the platform org).
+      officerC = await person(ORG_C, "dual-tenant-hat", ["compliance_officer"]);
+      const platformMembership = (
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+          [officerC.userId, ORG_PLATFORM],
+        )
+      ).rows[0].id as string;
+      dual = {
+        userId: officerC.userId,
+        tenantMembershipId: officerC.membershipId,
+        platformMembershipId: platformMembership,
+      };
+      await assignOfficer(T_C, officerC.membershipId);
+      // The genuine second party: a different human with a platform membership.
+      const second = await person(ORG_PLATFORM, "ops-two", []);
+      opsTwo = stepped(second.membershipId, second.userId);
+
+      officerD1 = await person(ORG_D, "officer-d1", ["compliance_officer"]);
+      officerD2 = await person(ORG_D, "officer-d2", ["compliance_officer"]);
+      await assignOfficer(T_D, officerD1.membershipId);
+
+      memberE = await person(ORG_E, "member-e", ["compliance_officer"]);
+      inactiveE = await person(ORG_E, "inactive-e", ["compliance_officer"]);
+      await admin.query("UPDATE membership SET status='suspended' WHERE id=$1", [
+        inactiveE.membershipId,
+      ]);
+    }, 120_000);
+
+    // ── HIGH 1: two people, not two memberships ───────────────────────────────────────────────────────────
+    it("refuses one human attesting AND approving through two memberships (tenant officer + platform operator)", async () => {
+      await wizard(false).attestGoLive(officerC, ORG_C, "all checks reviewed");
+      const samePerson = stepped(dual.platformMembershipId, dual.userId);
+
+      const refused = await refusal(
+        wizard(false).approveGoLive("wiz-c", samePerson, "reviewed the evidence and the BAA"),
+      );
+
+      expect(refused).toMatchObject({ code: "GO_LIVE_SAME_PERSON", statusCode: 409 });
+      expect(await tenantStatus(T_C)).toBe("onboarding");
+      expect((await attestationRows(T_C))[0]).toMatchObject({
+        status: "pending",
+        attested_by_user_id: dual.userId,
+        attested_by_membership_id: dual.tenantMembershipId,
+      });
+    });
+
+    it("the database itself refuses an approval by the same user, or the same membership, on the platform login", async () => {
+      const platformClient = new Client({
+        connectionString: urlAs("chartwarden_platform_login", PLATFORM_PASSWORD),
+      });
+      await platformClient.connect();
+      try {
+        const approve = (membership: string, user: string) =>
+          platformClient.query(
+            `UPDATE tenant_go_live_attestation
+                SET status='approved', approved_by_membership_id=$2, approved_by_user_id=$3,
+                    approved_at=now(), approval_reason='approved by the very same person', updated_at=now()
+              WHERE tenant_account_id=$1 AND status='pending'`,
+            [T_C, membership, user],
+          );
+        await expect(approve(dual.platformMembershipId, dual.userId)).rejects.toThrow(
+          /tenant_go_live_attestation_state_ck/,
+        );
+        await expect(approve(opsTwo.membershipId, dual.userId)).rejects.toThrow(
+          /tenant_go_live_attestation_state_ck/,
+        );
+        await expect(approve(dual.tenantMembershipId, opsTwo.userId)).rejects.toThrow(
+          /tenant_go_live_attestation_state_ck/,
+        );
+      } finally {
+        await platformClient.end();
+      }
+      expect((await attestationRows(T_C))[0]?.status).toBe("pending");
+    });
+
+    it("a different human approves it, and both users are recorded on the row", async () => {
+      const live = await wizard(false).approveGoLive(
+        "wiz-c",
+        opsTwo,
+        "reviewed the evidence and the BAA",
+      );
+      expect(live.goLive.state).toBe("live");
+      expect(await tenantStatus(T_C)).toBe("active");
+      expect((await attestationRows(T_C))[0]).toMatchObject({
+        status: "approved",
+        attested_by_user_id: dual.userId,
+        approved_by_user_id: opsTwo.userId,
+        approved_by_membership_id: opsTwo.membershipId,
+      });
+    });
+
+    // ── MEDIUM 2: a stale or expired attestation is not approvable ───────────────────────────────────────
+    const staleCase = async (label: string, change: () => Promise<unknown>, detail: string) => {
+      await wizard(false).attestGoLive(officerD1, ORG_D, label);
+      await change();
+      const err = await refusal(
+        wizard(false).approveGoLive("wiz-d", opsTwo, "reviewed the evidence and the BAA"),
+      );
+      expect(err).toMatchObject({ code: "GO_LIVE_ATTESTATION_STALE", statusCode: 409 });
+      expect(err.details?.map((d) => d.code)).toEqual([detail]);
+      expect(await tenantStatus(T_D)).toBe("onboarding");
+      // platform operations revoke it, which frees the tenant's single pending slot
+      await wizard(false).revokeGoLive("wiz-d", opsTwo, "attester changed; attestation voided");
+    };
+
+    it("refuses to approve once the attester is no longer an active member", async () => {
+      await staleCase(
+        "attested, then the officer was suspended",
+        () =>
+          admin.query("UPDATE membership SET status='suspended' WHERE id=$1", [
+            officerD1.membershipId,
+          ]),
+        "attester_not_active",
+      );
+      await admin.query("UPDATE membership SET status='active' WHERE id=$1", [
+        officerD1.membershipId,
+      ]);
+    });
+
+    it("refuses to approve once the attester no longer holds compliance_officer", async () => {
+      await staleCase(
+        "attested, then the role was taken away",
+        () =>
+          admin.query(
+            `DELETE FROM membership_role WHERE membership_id=$1
+               AND role_id = (SELECT id FROM role WHERE organization_id=$2 AND key='compliance_officer')`,
+            [officerD1.membershipId, ORG_D],
+          ),
+        "attester_not_compliance_officer",
+      );
+      await admin.query(
+        `INSERT INTO membership_role (organization_id, membership_id, role_id)
+         SELECT $1, $2, id FROM role WHERE organization_id=$1 AND key='compliance_officer'`,
+        [ORG_D, officerD1.membershipId],
+      );
+    });
+
+    it("refuses to approve once the attester is no longer the assigned officer", async () => {
+      await staleCase(
+        "attested, then another officer was assigned out of band",
+        () => assignOfficer(T_D, officerD2.membershipId),
+        "attester_not_assigned_officer",
+      );
+      await assignOfficer(T_D, officerD1.membershipId);
+    });
+
+    it("refuses to approve a 15-day-old attestation, blocks a fresh one until it is revoked, then approves the new one", async () => {
+      await wizard(false).attestGoLive(officerD1, ORG_D, "attested a fortnight ago");
+      await admin.query(
+        "UPDATE tenant_go_live_attestation SET attested_at = now() - interval '15 days' WHERE tenant_account_id=$1 AND status='pending'",
+        [T_D],
+      );
+      expect(
+        (
+          await refusal(
+            wizard(false).approveGoLive("wiz-d", opsTwo, "reviewed the evidence and the BAA"),
+          )
+        ).code,
+      ).toBe("GO_LIVE_ATTESTATION_EXPIRED");
+      expect((await refusal(wizard(false).attestGoLive(officerD1, ORG_D, undefined))).code).toBe(
+        "GO_LIVE_ATTESTATION_EXPIRED",
+      );
+      await wizard(false).revokeGoLive("wiz-d", opsTwo, "expired after fourteen days");
+      await wizard(false).attestGoLive(officerD1, ORG_D, "attested again today");
+      const live = await wizard(false).approveGoLive(
+        "wiz-d",
+        opsTwo,
+        "reviewed the evidence and the BAA",
+      );
+      expect(live.goLive.state).toBe("live");
+      expect((await attestationRows(T_D)).map((r) => r.status)).toEqual([
+        "revoked",
+        "revoked",
+        "revoked",
+        "revoked",
+        "approved",
+      ]);
+    });
+
+    // ── MEDIUM 3: the database refuses a forged or cross-organisation write ─────────────────────────────
+    /** Runs `fn` on the NOBYPASSRLS app role inside a transaction that is always rolled back. */
+    async function asTenant<T>(
+      org: string,
+      user: string,
+      fn: (c: Client) => Promise<T>,
+    ): Promise<T> {
+      const client = new Client({ connectionString: appUrl });
+      await client.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SELECT set_config('app.org_id', $1, true)", [org]);
+        await client.query("SELECT set_config('app.user_id', $1, true)", [user]);
+        return await fn(client);
+      } finally {
+        await client.query("ROLLBACK").catch(() => undefined);
+        await client.end();
+      }
+    }
+    const file = (
+      c: Client,
+      v: { org: string; tenant: string; membership: string; user: string },
+    ) =>
+      c.query(
+        `INSERT INTO tenant_go_live_attestation (organization_id, tenant_account_id, attested_by_membership_id, attested_by_user_id)
+         VALUES ($1,$2,$3,$4)`,
+        [v.org, v.tenant, v.membership, v.user],
+      );
+    const RLS = /row-level security/;
+
+    it("lets a tenant session file an attestation as itself (the positive control for every refusal below)", async () => {
+      await asTenant(ORG_E, memberE.userId, async (c) => {
+        const out = await file(c, {
+          org: ORG_E,
+          tenant: T_E,
+          membership: memberE.membershipId,
+          user: memberE.userId,
+        });
+        expect(out.rowCount).toBe(1);
+      });
+    });
+
+    it("refuses an attestation filed in another user's name, or by a membership of another organisation", async () => {
+      await asTenant(ORG_E, memberE.userId, async (c) => {
+        await expect(
+          file(c, {
+            org: ORG_E,
+            tenant: T_E,
+            membership: memberE.membershipId,
+            user: officerD1.userId,
+          }),
+        ).rejects.toThrow(RLS);
+      });
+      // The user binding holds (the session user is officer D1) but the membership belongs to ANOTHER organisation.
+      await asTenant(ORG_E, officerD1.userId, async (c) => {
+        await expect(
+          file(c, {
+            org: ORG_E,
+            tenant: T_E,
+            membership: officerD1.membershipId,
+            user: officerD1.userId,
+          }),
+        ).rejects.toThrow(RLS);
+      });
+    });
+
+    it("refuses an attestation by an inactive membership, and one filed into another organisation", async () => {
+      await asTenant(ORG_E, inactiveE.userId, async (c) => {
+        await expect(
+          file(c, {
+            org: ORG_E,
+            tenant: T_E,
+            membership: inactiveE.membershipId,
+            user: inactiveE.userId,
+          }),
+        ).rejects.toThrow(RLS);
+      });
+      await asTenant(ORG_E, memberE.userId, async (c) => {
+        await expect(
+          file(c, {
+            org: ORG_D,
+            tenant: T_D,
+            membership: memberE.membershipId,
+            user: memberE.userId,
+          }),
+        ).rejects.toThrow(RLS);
+      });
+    });
+
+    it("refuses a row that pairs this organisation with ANOTHER organisation's tenant (composite foreign key)", async () => {
+      await asTenant(ORG_E, memberE.userId, async (c) => {
+        await expect(
+          file(c, {
+            org: ORG_E,
+            tenant: T_D,
+            membership: memberE.membershipId,
+            user: memberE.userId,
+          }),
+        ).rejects.toThrow(/tenant_go_live_attestation_tenant_org_fk/);
+      });
+    });
+
+    const setOfficer = (c: Client, tenant: string, membership: string | null) =>
+      c.query("UPDATE tenant_account SET compliance_officer_membership_id=$2 WHERE id=$1", [
+        tenant,
+        membership,
+      ]);
+
+    it("lets the tenant set its officer to an active member of its own organisation", async () => {
+      await asTenant(ORG_E, memberE.userId, async (c) => {
+        expect((await setOfficer(c, T_E, memberE.membershipId)).rowCount).toBe(1);
+      });
+    });
+
+    it("refuses to point the officer at another organisation's member, an inactive member, or nobody", async () => {
+      await asTenant(ORG_E, memberE.userId, async (c) => {
+        await expect(setOfficer(c, T_E, officerD1.membershipId)).rejects.toThrow(RLS);
+      });
+      await asTenant(ORG_E, memberE.userId, async (c) => {
+        await expect(setOfficer(c, T_E, inactiveE.membershipId)).rejects.toThrow(RLS);
+      });
+      await asTenant(ORG_E, memberE.userId, async (c) => {
+        await expect(setOfficer(c, T_E, null)).rejects.toThrow(RLS);
+      });
+    });
+
+    it("touches no row of another organisation's tenant", async () => {
+      await asTenant(ORG_E, memberE.userId, async (c) => {
+        expect((await setOfficer(c, T_D, memberE.membershipId)).rowCount).toBe(0);
+      });
+      expect(
+        (
+          await admin.query(
+            "SELECT compliance_officer_membership_id AS m FROM tenant_account WHERE id=$1",
+            [T_D],
+          )
+        ).rows[0].m,
+      ).toBe(officerD1.membershipId);
+    });
+
+    it("lets the officer change while the tenant is onboarding or ACTIVE, and freezes it otherwise", async () => {
+      // Decision: a compliance officer legitimately changes after go-live (staff turnover), so `active` is allowed;
+      // a suspended or closing tenant is frozen. T_D went active above.
+      expect(await tenantStatus(T_D)).toBe("active");
+      await asTenant(ORG_D, officerD2.userId, async (c) => {
+        expect((await setOfficer(c, T_D, officerD2.membershipId)).rowCount).toBe(1);
+      });
+      for (const frozen of ["suspended", "offboarding_initiated"]) {
+        await admin.query("UPDATE tenant_account SET status=$2 WHERE id=$1", [T_E, frozen]);
+        await asTenant(ORG_E, memberE.userId, async (c) => {
+          expect((await setOfficer(c, T_E, memberE.membershipId)).rowCount).toBe(0);
+        });
+      }
+      await admin.query("UPDATE tenant_account SET status='onboarding' WHERE id=$1", [T_E]);
+    });
+
+    // ── LOW: the sweep's write is compare-and-set ───────────────────────────────────────────────────────
+    it("a sweep that read `pending` cannot overwrite a step that has since moved", async () => {
+      const id = await taskId(T_E, "go_live_checklist_complete");
+      await admin.query("UPDATE onboarding_task SET status='in_progress' WHERE id=$1", [id]);
+
+      const missed = await new OnboardingRepository(platform.db).updateTaskStatus(id, "pending", {
+        status: "done",
+        completedAt: new Date(),
+      });
+      expect(missed).toBeNull();
+      expect(await statusOf(T_E, "go_live_checklist_complete")).toBe("in_progress");
+
+      const landed = await new OnboardingRepository(platform.db).updateTaskStatus(
+        id,
+        "in_progress",
+        { status: "pending" },
+      );
+      expect(landed?.status).toBe("pending");
+    });
   });
 });

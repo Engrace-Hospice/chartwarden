@@ -9,13 +9,30 @@ import {
   evaluateActivationGuards,
 } from "../routes/platform/activation-guards";
 import {
+  COMPLIANCE_OFFICER_ROLE,
   GO_LIVE_TEMPLATE_KEY,
   type GoLiveAttestation,
   ONBOARDING_STATUS,
   type StepTask,
   type StepTemplate,
+  type WizardMember,
 } from "./model";
 import { assertStepActionable, currentStepKey, gatingTemplateKeys, isSettled } from "./sequence";
+
+/**
+ * How long a pending attestation stays approvable. Readiness is a statement about a moment: after two weeks the platform
+ * operator would be approving something nobody has looked at since. Past this the approval is refused and platform
+ * operations revoke the attestation, so the officer can attest again.
+ */
+export const GO_LIVE_ATTESTATION_TTL_DAYS = 14;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** The instant after which a pending attestation can no longer be approved. */
+export const attestationExpiresAt = (attestation: GoLiveAttestation): Date =>
+  new Date(attestation.attestedAt.getTime() + GO_LIVE_ATTESTATION_TTL_DAYS * DAY_MS);
+
+const isExpired = (attestation: GoLiveAttestation, now: Date): boolean =>
+  now.getTime() > attestationExpiresAt(attestation).getTime();
 
 export type GoLiveState =
   | "not_ready"
@@ -116,6 +133,13 @@ const refuse = (code: string, message: string, status: number): ChartWardenError
 const notOnboarding = (): ChartWardenError =>
   refuse("TENANT_NOT_ONBOARDING", "the tenant is not in onboarding", 409);
 
+const expired = (): ChartWardenError =>
+  refuse(
+    "GO_LIVE_ATTESTATION_EXPIRED",
+    `the go-live attestation is more than ${GO_LIVE_ATTESTATION_TTL_DAYS} days old; platform operations must revoke it before the compliance officer attests again`,
+    409,
+  );
+
 export function assertCanAttest(input: {
   readonly tenantStatus: string;
   readonly templates: readonly StepTemplate[];
@@ -123,9 +147,12 @@ export function assertCanAttest(input: {
   readonly attestations: readonly GoLiveAttestation[];
   readonly assignedOfficer: string | null;
   readonly actorMembershipId: string;
+  readonly now: Date;
 }): void {
   if (input.tenantStatus !== ONBOARDING_STATUS) throw notOnboarding();
-  if (pendingOf(input.attestations)) {
+  const pending = pendingOf(input.attestations);
+  if (pending) {
+    if (isExpired(pending, input.now)) throw expired();
     throw refuse(
       "GO_LIVE_ALREADY_ATTESTED",
       "readiness is already attested and awaiting platform approval",
@@ -145,7 +172,8 @@ export function assertCanAttest(input: {
 export function assertCanApprove(input: {
   readonly tenantStatus: string;
   readonly attestations: readonly GoLiveAttestation[];
-  readonly approverMembershipId: string;
+  readonly approver: { readonly membershipId: string; readonly userId: string };
+  readonly now: Date;
 }): GoLiveAttestation {
   if (input.tenantStatus !== ONBOARDING_STATUS) throw notOnboarding();
   const pending = pendingOf(input.attestations);
@@ -156,10 +184,61 @@ export function assertCanApprove(input: {
       409,
     );
   }
-  if (pending.attestedByMembershipId === input.approverMembershipId) {
-    throw refuse("GO_LIVE_SELF_APPROVAL", "the attester cannot approve their own attestation", 409);
+  // Two PEOPLE, not two memberships: one user holds a different membership in every organisation they belong to, so a
+  // platform operator invited into the tenant as its compliance officer has two memberships and is still one person.
+  if (
+    pending.attestedByUserId === input.approver.userId ||
+    pending.attestedByMembershipId === input.approver.membershipId
+  ) {
+    throw refuse(
+      "GO_LIVE_SAME_PERSON",
+      "the person who attested readiness cannot also approve the go-live",
+      409,
+    );
   }
+  if (isExpired(pending, input.now)) throw expired();
   return pending;
+}
+
+/**
+ * The attestation is a statement by a specific officer; it only counts while that officer still stands behind it. Judged
+ * at approval time, against the membership as it is NOW: still active in the organisation, still holding the
+ * compliance_officer role, and still the officer the tenant has assigned (no officer assigned = the attester stands alone).
+ */
+export function assertAttesterStillValid(input: {
+  readonly pending: GoLiveAttestation;
+  readonly attester: WizardMember | null;
+  readonly assignedOfficer: string | null;
+}): void {
+  const stale = (detail: string, message: string): ChartWardenError =>
+    new ChartWardenError(
+      "GO_LIVE_ATTESTATION_STALE",
+      `the go-live attestation is stale: ${message}; platform operations must revoke it and the compliance officer attest again`,
+      409,
+      [{ field: "attestation", code: detail, message }],
+    );
+  const { attester } = input;
+  if (!attester || !attester.active) {
+    throw stale(
+      "attester_not_active",
+      "the attester is no longer an active member of the organization",
+    );
+  }
+  if (!attester.roleKeys.includes(COMPLIANCE_OFFICER_ROLE)) {
+    throw stale(
+      "attester_not_compliance_officer",
+      "the attester no longer holds the compliance_officer role",
+    );
+  }
+  if (
+    input.assignedOfficer !== null &&
+    input.assignedOfficer !== input.pending.attestedByMembershipId
+  ) {
+    throw stale(
+      "attester_not_assigned_officer",
+      "the attester is no longer the assigned compliance officer",
+    );
+  }
 }
 
 export function assertCanRevoke(input: {

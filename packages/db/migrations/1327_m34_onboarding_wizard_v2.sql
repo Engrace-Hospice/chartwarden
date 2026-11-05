@@ -51,10 +51,11 @@ UPDATE "onboarding_task_template"
    AND "retired_at" IS NULL;--> statement-breakpoint
 
 -- The steps that stay, in their new wizard position.
--- ROLLBACK TRIPWIRE: the go-live row carries `context.goLiveApproved == true`, a field no release produces. If deploy.sh
--- restores the previous release over this `expand` migration, its sweep reads a NULL precondition as met and would take
--- the tenant live with no attestation or approval; with this expression its evaluator throws on the unknown field instead
--- (that tenant's pass fails loud and retries). This release never evaluates it: go-live is `attestation` mode and the
+-- ROLLBACK TRIPWIRE: the go-live row carries `context.goLiveApproved == true`, a field no release produces. If the previous
+-- release is ever run against this schema (deploy.sh will not auto-restore over the batch, 1328 being `contract`, so that
+-- means an operator did), its sweep reads a NULL precondition as met and would take the tenant live with no attestation or
+-- approval; with this expression its evaluator throws on the unknown field instead (that tenant's pass fails loud and
+-- retries). This release never evaluates it: go-live is `attestation` mode and the
 -- machine config drops every attestation step's DSL (steps.ts GO_LIVE_ROLLBACK_GUARD_DSL; a test pins the two together).
 UPDATE "onboarding_task_template" AS t
    SET "display_label" = v.label,

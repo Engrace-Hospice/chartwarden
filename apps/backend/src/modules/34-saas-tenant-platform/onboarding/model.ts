@@ -82,21 +82,39 @@ export interface TenantRef {
 
 export type GoLiveStatus = "pending" | "approved" | "revoked";
 
-/** One `tenant_go_live_attestation` row. */
+/**
+ * One `tenant_go_live_attestation` row. Both parties are recorded as a membership AND as the user behind it: a person has
+ * a different membership in every organisation (a platform operator can also be invited into the tenant), so the
+ * two-person rule compares USERS; the membership ids stay as the audit trail of which hat each one wore.
+ */
 export interface GoLiveAttestation {
   readonly id: string;
   readonly tenantAccountId: string;
   readonly status: GoLiveStatus;
   readonly attestedByMembershipId: string;
+  readonly attestedByUserId: string;
   readonly attestedAt: Date;
   readonly attestationNote: string | null;
   readonly approvedByMembershipId: string | null;
+  readonly approvedByUserId: string | null;
   readonly approvedAt: Date | null;
   readonly approvalReason: string | null;
   readonly revokedByMembershipId: string | null;
   readonly revokedAt: Date | null;
   readonly revokeReason: string | null;
 }
+
+/** A membership of the tenant's organisation as the wizard judges it: who it is, whether it is live, what it may do. */
+export interface WizardMember {
+  readonly membershipId: string;
+  readonly userId: string;
+  readonly active: boolean;
+  /** Keys of the enabled, unexpired roles the membership holds in the organisation. */
+  readonly roleKeys: readonly string[];
+}
+
+/** The role that attests go-live readiness, and the only role an assigned compliance officer may be missing none of. */
+export const COMPLIANCE_OFFICER_ROLE = "compliance_officer";
 
 /** A tenant status is `onboarding` while the wizard is open. */
 export const ONBOARDING_STATUS = "onboarding";

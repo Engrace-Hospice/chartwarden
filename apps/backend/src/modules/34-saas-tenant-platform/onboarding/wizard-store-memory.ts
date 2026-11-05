@@ -11,17 +11,22 @@ import type {
   TaskStatus,
   TenantActor,
   TenantRef,
+  WizardMember,
 } from "./model";
 import type { OrgProfile, OrgProfilePatch, OrgProfilePort } from "./org-profile";
 import type { TaskPatch, WizardRunner, WizardStore } from "./wizard-store";
+
+/** An attestation row with the organisation the real table scopes it by. */
+export type MemoryGoLive = GoLiveAttestation & { organizationId: string };
 
 export interface MemoryWizardState {
   tenants: TenantRef[];
   templates: StepTemplate[];
   tasks: (StepTask & { tenantAccountId: string; completionEvidence: Record<string, unknown> })[];
-  goLive: GoLiveAttestation[];
+  goLive: MemoryGoLive[];
   baa: Map<string, { baaStatus: string; expiresOn: string | null }>;
-  activeMembers: Set<string>;
+  /** Memberships by id; a membership is visible only to its own organisation. */
+  members: Map<string, WizardMember & { organizationId: string }>;
   activations: { tenantAccountId: string; actorMembershipId: string; reason: string }[];
   profiles: Map<string, OrgProfile>;
 }
@@ -33,11 +38,22 @@ export function createMemoryWizardState(seed: Partial<MemoryWizardState> = {}): 
     tasks: [],
     goLive: [],
     baa: new Map(),
-    activeMembers: new Set(),
+    members: new Map(),
     activations: [],
     profiles: new Map(),
     ...seed,
   };
+}
+
+/** A membership of `organizationId` for the member map: active by default. */
+export function memoryMember(
+  organizationId: string,
+  membershipId: string,
+  userId: string,
+  roleKeys: readonly string[],
+  active = true,
+): [string, MemoryWizardState["members"] extends Map<string, infer V> ? V : never] {
+  return [membershipId, { membershipId, organizationId, userId, roleKeys, active }];
 }
 
 /** A task row for a tenant, defaulting every column the wizard reads. */
@@ -106,18 +122,27 @@ export function createMemoryWizardStore(
       state.tasks[index] = next;
       return publicTask(next);
     },
-    async listGoLive(tenantAccountId) {
-      return state.goLive.filter((g) => g.tenantAccountId === tenantAccountId);
+    async listGoLive(scope) {
+      return state.goLive
+        .filter(
+          (g) =>
+            g.tenantAccountId === scope.tenantAccountId &&
+            g.organizationId === scope.organizationId,
+        )
+        .sort((a, b) => b.attestedAt.getTime() - a.attestedAt.getTime());
     },
     async insertGoLive(input) {
-      const row: GoLiveAttestation = {
+      const row: MemoryGoLive = {
         id: randomUUID(),
+        organizationId: input.organizationId,
         tenantAccountId: input.tenantAccountId,
         status: "pending",
         attestedByMembershipId: input.attestedByMembershipId,
+        attestedByUserId: input.attestedByUserId,
         attestedAt: new Date(),
         attestationNote: input.attestationNote,
         approvedByMembershipId: null,
+        approvedByUserId: null,
         approvedAt: null,
         approvalReason: null,
         revokedByMembershipId: null,
@@ -127,17 +152,20 @@ export function createMemoryWizardStore(
       state.goLive.push(row);
       return row;
     },
-    async settleGoLive(id, patch) {
-      const index = state.goLive.findIndex((g) => g.id === id && g.status === "pending");
+    async settleGoLive(organizationId, id, patch) {
+      const index = state.goLive.findIndex(
+        (g) => g.id === id && g.organizationId === organizationId && g.status === "pending",
+      );
       if (index < 0) return null;
       const at = new Date();
-      const current = state.goLive[index] as GoLiveAttestation;
-      const next: GoLiveAttestation =
+      const current = state.goLive[index] as MemoryGoLive;
+      const next: MemoryGoLive =
         patch.status === "approved"
           ? {
               ...current,
               status: "approved",
               approvedByMembershipId: patch.approvedByMembershipId,
+              approvedByUserId: patch.approvedByUserId,
               approvedAt: at,
               approvalReason: patch.approvalReason,
             }
@@ -161,8 +189,11 @@ export function createMemoryWizardStore(
           : t,
       );
     },
-    async isActiveMember(_organizationId, membershipId) {
-      return state.activeMembers.has(membershipId);
+    async loadMember(organizationId, membershipId) {
+      const member = state.members.get(membershipId);
+      if (!member || member.organizationId !== organizationId) return null;
+      const { organizationId: _org, ...visible } = member;
+      return visible;
     },
     async activate(input) {
       if (!allowActivate) throw new Error("a tenant store cannot activate a tenant");

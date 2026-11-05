@@ -12,7 +12,7 @@ import {
   withOrgContext,
   withPlatformContext,
 } from "@chartwarden/tenancy";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { pickGoverningBaa } from "../routes/platform/activation-guards";
 import type {
   CompletionMode,
@@ -23,6 +23,7 @@ import type {
   StepTemplate,
   TaskStatus,
   TenantRef,
+  WizardMember,
 } from "./model";
 import type { TaskPatch, WizardRunner, WizardStore } from "./wizard-store";
 
@@ -81,9 +82,11 @@ const toGoLive = (row: schema.TenantGoLiveAttestation): GoLiveAttestation => ({
   tenantAccountId: row.tenantAccountId,
   status: row.status,
   attestedByMembershipId: row.attestedByMembershipId,
+  attestedByUserId: row.attestedByUserId,
   attestedAt: row.attestedAt,
   attestationNote: row.attestationNote,
   approvedByMembershipId: row.approvedByMembershipId,
+  approvedByUserId: row.approvedByUserId,
   approvedAt: row.approvedAt,
   approvalReason: row.approvalReason,
   revokedByMembershipId: row.revokedByMembershipId,
@@ -142,11 +145,16 @@ export function createDrizzleWizardStore(tx: DbClient, activation?: WizardActiva
         .returning();
       return row ? toTask(row) : null;
     },
-    async listGoLive(tenantAccountId) {
+    async listGoLive(scope) {
       const rows = await tx
         .select()
         .from(G)
-        .where(eq(G.tenantAccountId, tenantAccountId))
+        .where(
+          and(
+            eq(G.tenantAccountId, scope.tenantAccountId),
+            eq(G.organizationId, scope.organizationId),
+          ),
+        )
         .orderBy(desc(G.attestedAt));
       return rows.map(toGoLive);
     },
@@ -157,19 +165,21 @@ export function createDrizzleWizardStore(tx: DbClient, activation?: WizardActiva
           organizationId: input.organizationId,
           tenantAccountId: input.tenantAccountId,
           attestedByMembershipId: input.attestedByMembershipId,
+          attestedByUserId: input.attestedByUserId,
           attestationNote: input.attestationNote,
         })
         .returning();
       if (!row) throw new Error("tenant_go_live_attestation insert returned no row");
       return toGoLive(row);
     },
-    async settleGoLive(id, patch) {
+    async settleGoLive(organizationId, id, patch) {
       const at = new Date();
       const set =
         patch.status === "approved"
           ? {
               status: "approved" as const,
               approvedByMembershipId: patch.approvedByMembershipId,
+              approvedByUserId: patch.approvedByUserId,
               approvedAt: at,
               approvalReason: patch.approvalReason,
               updatedAt: at,
@@ -184,7 +194,7 @@ export function createDrizzleWizardStore(tx: DbClient, activation?: WizardActiva
       const [row] = await tx
         .update(G)
         .set(set)
-        .where(and(eq(G.id, id), eq(G.status, "pending")))
+        .where(and(eq(G.id, id), eq(G.organizationId, organizationId), eq(G.status, "pending")))
         .returning();
       return row ? toGoLive(row) : null;
     },
@@ -199,19 +209,44 @@ export function createDrizzleWizardStore(tx: DbClient, activation?: WizardActiva
         .set({ complianceOfficerMembershipId: membershipId, updatedAt: new Date() })
         .where(eq(A.id, tenantAccountId));
     },
-    async isActiveMember(organizationId, membershipId) {
-      const [row] = await tx
-        .select({ id: schema.memberships.id })
+    async loadMember(organizationId, membershipId): Promise<WizardMember | null> {
+      const [member] = await tx
+        .select({
+          userId: schema.memberships.userId,
+          status: schema.memberships.status,
+        })
         .from(schema.memberships)
         .where(
           and(
             eq(schema.memberships.id, membershipId),
             eq(schema.memberships.organizationId, organizationId),
-            eq(schema.memberships.status, "active"),
           ),
         )
         .limit(1);
-      return row !== undefined;
+      if (!member) return null;
+      // The roles it holds NOW: an enabled role, a grant that has not expired. Explicit columns only: the platform
+      // credential holds column-level SELECT on exactly these.
+      const held = await tx
+        .select({ key: schema.roles.key })
+        .from(schema.membershipRoles)
+        .innerJoin(schema.roles, eq(schema.membershipRoles.roleId, schema.roles.id))
+        .where(
+          and(
+            eq(schema.membershipRoles.membershipId, membershipId),
+            eq(schema.membershipRoles.organizationId, organizationId),
+            eq(schema.roles.enabled, true),
+            or(
+              isNull(schema.membershipRoles.expiresAt),
+              gt(schema.membershipRoles.expiresAt, sql`now()`),
+            ),
+          ),
+        );
+      return {
+        membershipId,
+        userId: member.userId,
+        active: member.status === "active",
+        roleKeys: held.map((r) => r.key),
+      };
     },
     async activate(input) {
       if (!activation) throw new Error("a tenant-scoped wizard store cannot activate a tenant");

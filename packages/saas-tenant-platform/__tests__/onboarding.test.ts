@@ -498,7 +498,7 @@ describe("§2.3 advanceOnboarding — completion modes", () => {
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
-// 5. Rollback safety of the go-live row. If deploy.sh restores the previous release (these migrations are `expand`),
+// 5. Rollback safety of the go-live row. If the previous release is ever run against this schema (an operator restore),
 //    the OLD sweep reads a NULL precondition as met and would settle go-live and auto-activate the tenant. The row
 //    therefore carries a DSL the old evaluator cannot satisfy; the new code never evaluates it.
 // ════════════════════════════════════════════════════════════════════════════════════════════════════

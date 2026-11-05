@@ -40,8 +40,9 @@ export type CanonicalOnboardingStep = (typeof CANONICAL_ONBOARDING_STEPS)[number
 /**
  * The `precondition_dsl` migration 1327 writes on the `go_live_checklist_complete` template.
  *
- * ROLLBACK SAFETY. Migrations 1327-1329 are `expand`, so deploy.sh may restore the previous release over them. That
- * release's sweep settles a step whose precondition holds, treats a NULL precondition as met, and then activates the
+ * ROLLBACK SAFETY. Should the previous release ever run against this schema (deploy.sh will not restore it automatically
+ * over the batch carrying 1327-1329, because 1328 is `contract`; an operator would), that release's sweep settles a step
+ * whose precondition holds, treats a NULL precondition as met, and then activates the
  * tenant once every canonical step is settled: a NULL here would let a restored release take a tenant live with no
  * compliance-officer attestation and no platform approval. `goLiveApproved` is a context field NO release produces, so
  * the previous evaluator throws `PreconditionDslError` (unknown context field): that tenant's pass fails loud and is
