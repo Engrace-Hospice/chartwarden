@@ -9,8 +9,10 @@
  *   - the partial unique index admits one live row per (org, add-on), and the service answers 409 on a second grant;
  *   - grant / cancel write M4 audit rows and their outbox events through the REAL catalog-validating publisher;
  *   - a canceled add-on, a suspended base subscription and an expired trial all deny with their own reason.
- * The platform runner is the superuser connection (production's platform credential is BYPASSRLS).
+ * The platform runner is the REAL provisioned `chartwarden_platform_login` (BYPASSRLS, but bound by its enumerated table
+ * grants), so a missing grant in scripts/db/provision-runtime-roles.ts fails here, not in production.
  */
+import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { type DbClient, createDbClient } from "@chartwarden/db";
@@ -29,6 +31,7 @@ import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_li
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
+const PLATFORM_PASSWORD = "platform-live-password-addon";
 
 const ORG_A = "a1000000-0000-4000-8000-000000000001";
 const ORG_B = "b2000000-0000-4000-8000-000000000002";
@@ -94,7 +97,20 @@ describe.skipIf(!DB_URL)("ADR-0108 claims-billing add-on — LIVE Postgres", () 
     app = createDbClient({
       connectionString: await appRoleConnectionString(admin, DB_URL as string),
     });
-    platformDb = createDbClient({ connectionString: DB_URL as string });
+    const provisioned = spawnSync("bun", ["run", "scripts/db/provision-runtime-roles.ts"], {
+      cwd: join(__dirname, "../../.."),
+      env: {
+        ...process.env,
+        PROVISION_DATABASE_URL: DB_URL,
+        CHARTWARDEN_PLATFORM_PASSWORD: PLATFORM_PASSWORD,
+      },
+      encoding: "utf8",
+    });
+    expect(provisioned.status, provisioned.stderr).toBe(0);
+    const platformUrl = new URL(DB_URL as string);
+    platformUrl.username = "chartwarden_platform_login";
+    platformUrl.password = PLATFORM_PASSWORD;
+    platformDb = createDbClient({ connectionString: platformUrl.toString() });
     platformRunner = (fn) => platformDb.db.transaction((tx) => fn(tx as unknown as DbClient));
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M35_OUTBOX_EVENTS]));
     outbox = {
@@ -232,6 +248,14 @@ describe.skipIf(!DB_URL)("ADR-0108 claims-billing add-on — LIVE Postgres", () 
       [ORG_A],
     );
     expect(events).toHaveLength(1);
+  });
+
+  it("the admin list and usage reads work on the platform credential (they back GET /api/admin/usage/:org/current)", async () => {
+    const addons = buildDrizzleAddonService(app.db, { platformRunner, outbox });
+    expect((await addons.listAddons()).map((a) => a.slug)).toContain("claims_billing");
+    // Both orgs: one that holds the add-on and one that never did. A missing grant rejects here.
+    await addons.adminAddonUsage(ORG_A);
+    await addons.adminAddonUsage(ORG_B);
   });
 
   it("a trial entitles until it ends; a new grant then closes the expired row", async () => {
