@@ -357,6 +357,7 @@ export type { ClaimMdAnomaly, ClaimMdTransportOptions } from "./clearinghouse/cl
 export type { ClaimMdRequestCounter } from "./clearinghouse/claimmd-rate-limit";
 export {
   CLAIMMD_EVENT_ID_MAX,
+  CLAIMMD_MAX_SPLIT_EVENTS,
   CLAIMMD_SIGNATURE_HEADER,
   parseClaimMdDelivery,
   verifyClaimMdSignature,

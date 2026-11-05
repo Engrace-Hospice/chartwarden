@@ -27943,6 +27943,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/webhooks/claimmd/production": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inbound Claim.MD webhook, production account (Auth-Signature-Base64 HMAC-verified) */
+        post: operations["postApiV1WebhooksClaimmdProduction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/webhooks/claimmd/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inbound Claim.MD webhook, test account (Auth-Signature-Base64 HMAC-verified) */
+        post: operations["postApiV1WebhooksClaimmdTest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/webhooks/minio/access-log": {
         parameters: {
             query?: never;
@@ -112413,6 +112447,96 @@ export interface operations {
                         ratio: number | null;
                         status: "unavailable" | "green" | "yellow" | "red";
                         reason?: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1WebhooksClaimmdProduction: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    UTCTime?: string;
+                    acct_number: string | number;
+                    remote_acct_number?: string;
+                    events: ({
+                        eventid: string | number;
+                        /** @description enroll | appeal | test (the list is not documented) */
+                        event_type: string;
+                        event_time?: string;
+                        event_data?: {
+                            [key: string]: unknown;
+                        };
+                    } & {
+                        [key: string]: unknown;
+                    })[];
+                } & {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        received: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1WebhooksClaimmdTest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    UTCTime?: string;
+                    acct_number: string | number;
+                    remote_acct_number?: string;
+                    events: ({
+                        eventid: string | number;
+                        /** @description enroll | appeal | test (the list is not documented) */
+                        event_type: string;
+                        event_time?: string;
+                        event_data?: {
+                            [key: string]: unknown;
+                        };
+                    } & {
+                        [key: string]: unknown;
+                    })[];
+                } & {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        received: number;
                     };
                 };
             };

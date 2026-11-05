@@ -526,6 +526,26 @@ describe("CLEARINGHOUSE_VENDOR (ADR-0053 D3)", () => {
       }),
     ).toEqual([]);
   });
+  it("the Claim.MD webhook is off by default and, once enabled, needs the account key and a payload key", () => {
+    expect(keysFor({ CLAIMMD_WEBHOOK_ENABLED: "false" })).toEqual([]);
+    expect(keysFor({ CLAIMMD_WEBHOOK_ENABLED: "yes" })).toEqual(["CLAIMMD_WEBHOOK_ENABLED"]);
+    expect(keysFor({ CLAIMMD_WEBHOOK_ENABLED: "true" })).toEqual([
+      "CLAIMMD_ACCOUNT_KEY",
+      "CLAIMMD_ACCOUNT_USAGE",
+      "CLAIMMD_WEBHOOK_PAYLOAD_KEY",
+    ]);
+    const enabled = {
+      CLAIMMD_WEBHOOK_ENABLED: "true",
+      CLAIMMD_ACCOUNT_KEY: "a-real-looking-key-0001",
+      CLAIMMD_ACCOUNT_USAGE: "test",
+    };
+    expect(
+      keysFor({ ...enabled, CLAIMMD_WEBHOOK_PAYLOAD_KEY: Buffer.alloc(16).toString("base64") }),
+    ).toEqual(["CLAIMMD_WEBHOOK_PAYLOAD_KEY"]);
+    expect(
+      keysFor({ ...enabled, CLAIMMD_WEBHOOK_PAYLOAD_KEY: Buffer.alloc(32, 1).toString("base64") }),
+    ).toEqual([]);
+  });
   it("refuses the in_memory test double and an unknown vendor in production", () => {
     expect(keysFor({ CLEARINGHOUSE_VENDOR: "in_memory" })).toEqual(["CLEARINGHOUSE_VENDOR"]);
     expect(keysFor({ CLEARINGHOUSE_VENDOR: "acme" })).toEqual(["CLEARINGHOUSE_VENDOR"]);

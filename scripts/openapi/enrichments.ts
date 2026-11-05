@@ -2487,6 +2487,32 @@ import {
   WebhookReceiptListResponseDto as M35WebhookReceiptListResponseDto,
 } from "../../apps/backend/src/modules/35-subscription/routes/subscription-typebox";
 
+// Claim.MD's webhook delivery (https://api.claim.md/, Webhook Events, read 2026-11-05). Documentation of the VENDOR's
+// shape only: the route HMACs the raw bytes and stores every signed body, valid or not (M23 claimmd-webhook/routes.ts).
+const ClaimMdWebhookDeliveryDoc = Type.Object(
+  {
+    UTCTime: Type.Optional(Type.String()),
+    acct_number: Type.Union([Type.String(), Type.Integer()]),
+    remote_acct_number: Type.Optional(Type.String()),
+    events: Type.Array(
+      Type.Object(
+        {
+          eventid: Type.Union([Type.String(), Type.Integer()]),
+          event_type: Type.String({
+            description: "enroll | appeal | test (the list is not documented)",
+          }),
+          event_time: Type.Optional(Type.String()),
+          event_data: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+        },
+        { additionalProperties: true },
+      ),
+      { maxItems: 100 },
+    ),
+  },
+  { additionalProperties: true },
+);
+const ClaimMdWebhookReceivedDoc = Type.Object({ received: Type.Integer({ minimum: 0 }) });
+
 // M36 service view shapes (packages/messaging/src/interfaces/route-service.ts + provider.ts). The
 // routes return TS service results (not TypeBox), so the response shapes are declared here for the client.
 const _ChannelSummarySchema = Type.Object({
@@ -3214,6 +3240,16 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
     summary: "Replay a webhook",
   },
   "POST /api/v1/webhooks/stripe": { summary: "Inbound Stripe webhook (HMAC-verified)" },
+  "POST /api/v1/webhooks/claimmd/test": {
+    summary: "Inbound Claim.MD webhook, test account (Auth-Signature-Base64 HMAC-verified)",
+    body: ClaimMdWebhookDeliveryDoc,
+    response: ClaimMdWebhookReceivedDoc,
+  },
+  "POST /api/v1/webhooks/claimmd/production": {
+    summary: "Inbound Claim.MD webhook, production account (Auth-Signature-Base64 HMAC-verified)",
+    body: ClaimMdWebhookDeliveryDoc,
+    response: ClaimMdWebhookReceivedDoc,
+  },
 
   // ── M30 HQRP & Quality (§4.1–4.2). 47 routes across seven sub-surfaces (CAHPS / CoP / incidents /
   // infection / measures / mortality / QAPI / SRA / risk register) published with NO request contract:

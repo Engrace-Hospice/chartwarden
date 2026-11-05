@@ -348489,6 +348489,220 @@
         }
       }
     },
+    "/api/v1/webhooks/claimmd/production": {
+      "post": {
+        "operationId": "postApiV1WebhooksClaimmdProduction",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Inbound Claim.MD webhook, production account (Auth-Signature-Base64 HMAC-verified)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "received"
+                  ],
+                  "properties": {
+                    "received": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "required": [
+                  "acct_number",
+                  "events"
+                ],
+                "properties": {
+                  "UTCTime": {
+                    "type": "string"
+                  },
+                  "acct_number": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "remote_acct_number": {
+                    "type": "string"
+                  },
+                  "events": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object",
+                      "required": [
+                        "eventid",
+                        "event_type"
+                      ],
+                      "properties": {
+                        "eventid": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "event_type": {
+                          "description": "enroll | appeal | test (the list is not documented)",
+                          "type": "string"
+                        },
+                        "event_time": {
+                          "type": "string"
+                        },
+                        "event_data": {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {}
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/claimmd/test": {
+      "post": {
+        "operationId": "postApiV1WebhooksClaimmdTest",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Inbound Claim.MD webhook, test account (Auth-Signature-Base64 HMAC-verified)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "received"
+                  ],
+                  "properties": {
+                    "received": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "required": [
+                  "acct_number",
+                  "events"
+                ],
+                "properties": {
+                  "UTCTime": {
+                    "type": "string"
+                  },
+                  "acct_number": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "remote_acct_number": {
+                    "type": "string"
+                  },
+                  "events": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object",
+                      "required": [
+                        "eventid",
+                        "event_type"
+                      ],
+                      "properties": {
+                        "eventid": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "integer"
+                            }
+                          ]
+                        },
+                        "event_type": {
+                          "description": "enroll | appeal | test (the list is not documented)",
+                          "type": "string"
+                        },
+                        "event_time": {
+                          "type": "string"
+                        },
+                        "event_data": {
+                          "type": "object",
+                          "patternProperties": {
+                            "^(.*)$": {}
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/webhooks/minio/access-log": {
       "post": {
         "operationId": "postApiV1WebhooksMinioAccesslog",

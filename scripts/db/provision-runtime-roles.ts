@@ -285,6 +285,16 @@ async function main(): Promise<void> {
       await run(
         'GRANT UPDATE (last_health_status, last_health_check_at) ON "ai_model_backend" TO chartwarden_platform;',
       );
+      // M23 Claim.MD webhook (migration 1322): the receipt table is platform-only (the route stores, the sweep settles; no
+      // DELETE: retention clears the cipher column). The sweep resolves a tenant from two COLUMN grants only: the
+      // platform-unique provider NPI and the platform-unique live control number.
+      await run('GRANT SELECT, INSERT, UPDATE ON "claimmd_webhook_event" TO chartwarden_platform;');
+      await run(
+        'GRANT SELECT ("id", "organization_id", "npi") ON "provider_entity" TO chartwarden_platform;',
+      );
+      await run(
+        'GRANT SELECT ("organization_id", "provider_entity_id", "usage", "control_number", "status") ON "clearinghouse_submission_attempt" TO chartwarden_platform;',
+      );
       for (const t of PLATFORM_WRITE_TABLES) {
         await run(`GRANT SELECT, INSERT, UPDATE, DELETE ON "${t}" TO chartwarden_platform;`);
       }

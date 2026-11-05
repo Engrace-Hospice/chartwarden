@@ -931,6 +931,7 @@ export const MODULES: ModuleDef[] = [
     dependsOn: [1, 6, 8, 22, 38, 40],
     ownedTables: [
       "billing_edi_profile",
+      "claimmd_webhook_event",
       "claim",
       "claim_acknowledgment",
       "claim_line",

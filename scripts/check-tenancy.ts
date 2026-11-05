@@ -332,6 +332,10 @@ const NON_ORG_SCOPED = new Set<string>([
   // code_system precedent). The other nine M29 tables carry organization_id and get standard app.org_id RLS.
   "nppes_provider",
   "nppes_sync_run",
+  // M23 Claim.MD webhook receipts (ADR-0053 amendment D7/D8): one Claim.MD account serves every tenant, so a delivery
+  // has no tenant until the sweep resolves it (unique NPI / platform-unique control number). Platform-only like
+  // stripe_webhook_event: RLS FORCEd, no chartwarden_app grant, `derived_organization_id` is best-effort, not RLS.
+  "claimmd_webhook_event",
 ]);
 // PHI signal: a table referencing a patient is PHI-bearing and MUST be fully org-scoped.
 const PHI_SIGNAL_RE =
