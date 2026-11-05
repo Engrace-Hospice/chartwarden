@@ -154,6 +154,7 @@ export interface StaffSignatureStore {
     requestId: string,
     input: {
       readonly reviewerId: string;
+      readonly uploadId: string;
       readonly targetRef: string;
       readonly signerGrantKind: string;
       readonly signerRole: schema.PortalSignerRole;
@@ -405,7 +406,13 @@ export function buildStaffSignatureStore(
             signerGrantKind: input.signerGrantKind,
             signerRole: input.signerRole,
           })
-          .where(and(eq(SR.id, requestId), eq(SR.status, "uploaded_pending_review")))
+          .where(
+            and(
+              eq(SR.id, requestId),
+              eq(SR.status, "uploaded_pending_review"),
+              eq(SR.uploadedDocumentUploadId, input.uploadId),
+            ),
+          )
           .returning();
         if (!row) {
           // A retry, or a second reviewer, that lands on the SAME consent already recorded: the same answer, nothing re-emitted.

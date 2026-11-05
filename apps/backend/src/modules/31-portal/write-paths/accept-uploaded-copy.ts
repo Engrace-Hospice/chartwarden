@@ -27,6 +27,7 @@ export interface AcceptReviewTarget {
   readonly docKind: schema.PortalSignatureDocKind;
   readonly templateVersion: string;
   readonly status: schema.PortalSignatureStatus;
+  readonly uploadId: string | null;
   readonly documentId: string | null;
   readonly uploaderGrant: {
     readonly grantKind: string;
@@ -69,6 +70,8 @@ export interface AcceptUploadedCopyDeps {
     requestId: string,
     input: {
       reviewerId: string;
+      /** The copy this accept reviewed: a request whose copy was rejected and replaced meanwhile is not signed with it. */
+      uploadId: string;
       targetRef: string;
       signerGrantKind: string;
       signerRole: schema.PortalSignerRole;
@@ -98,7 +101,7 @@ export async function acceptUploadedCopy(
     "template_pending_legal_review"
   )
     return deny("template_pending_legal_review");
-  if (!target.documentId) return deny("uploaded_copy_missing");
+  if (!target.uploadId || !target.documentId) return deny("uploaded_copy_missing");
   if (!target.uploaderGrant) return deny("uploader_grant_missing");
 
   const grantKind = target.uploaderGrant.grantKind as PortalSigningGrantKind;
@@ -135,6 +138,7 @@ export async function acceptUploadedCopy(
   });
   const marked = await deps.markAccepted(organizationId, requestId, {
     reviewerId: reviewerUserId,
+    uploadId: target.uploadId,
     targetRef: signed.recordId,
     signerGrantKind: grantKind,
     signerRole: decision.signerRole,
@@ -142,6 +146,9 @@ export async function acceptUploadedCopy(
   if (marked.ok) return { ok: true };
   // The request was voided, rejected or accepted with another consent while M39 signed this one (two transactions, D2): revoke it, so a
   // consent never stays active without the request that justifies it. A retry landing on the same consent is `ok` above, never revoked.
+  // Another reviewer's accept may have revoked the same consent already; revoking it twice is an M39 invalid transition.
+  const current = await deps.readConsent(organizationId, signed.recordId);
+  if (current?.status !== "active") return deny("request_not_pending_review");
   await deps.revokeConsent({
     organizationId,
     consentId: signed.recordId,

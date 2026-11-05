@@ -1800,6 +1800,48 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     expect(consents).toEqual([{ status: "revoked" }]);
   });
 
+  it("a second reviewer who accepts the same copy mid-accept lands on the same consent: both succeed, nothing is revoked", async () => {
+    const { id, patientId } = await sentWithCopy("staffNpp");
+    afterAcceptSigned = async () => {
+      afterAcceptSigned = null;
+      const second = await review(id, "accepted");
+      expect(second.statusCode, second.body).toBe(200);
+    };
+    const res = await review(id, "accepted");
+    expect(res.statusCode, res.body).toBe(200);
+    expect((await reqRow(id)).status).toBe("signed");
+    const consents = (
+      await admin.query(
+        "SELECT status FROM consent_record WHERE patient_id=$1 AND scope_descriptor->>'requestId'=$2",
+        [patientId, id],
+      )
+    ).rows;
+    expect(consents).toEqual([{ status: "active" }]);
+  });
+
+  it("a copy rejected and replaced while it is being accepted is not signed with the replacement; the consent is revoked", async () => {
+    const { id, patientId, actor } = await sentWithCopy("staffNpp");
+    const replacement = await seedUpload(actor);
+    afterAcceptSigned = async () => {
+      afterAcceptSigned = null;
+      expect((await review(id, "rejected")).statusCode).toBe(200);
+      expect((await attach(actor, id, replacement)).statusCode).toBe(200);
+    };
+    const res = await review(id, "accepted");
+    expect(res.statusCode, res.body).toBe(409);
+    expect(await reqRow(id)).toMatchObject({
+      status: "uploaded_pending_review",
+      uploaded_document_upload_id: replacement,
+    });
+    const consents = (
+      await admin.query(
+        "SELECT status FROM consent_record WHERE patient_id=$1 AND scope_descriptor->>'requestId'=$2",
+        [patientId, id],
+      )
+    ).rows;
+    expect(consents).toEqual([{ status: "revoked" }]);
+  });
+
   it("a queued push for draft wording is dropped at delivery on production", async () => {
     const { patientId } = staffFixtures.staffElection;
     await clearOpen(patientId, CTT);
