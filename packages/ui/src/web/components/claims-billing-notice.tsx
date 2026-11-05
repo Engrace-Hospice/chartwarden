@@ -1,6 +1,6 @@
 // @chartwarden/ui — ClaimsBillingNotice + useClaimsBilling (ADR-0108). The tenant's claims-billing add-on posture, shown
-// atop the Medicare, Medicaid, remittance and commercial billing areas. One shared store: the app shell primes it once
-// per page load (`primeClaimsBilling`, GET /api/v1/billing/status); a 402 CLAIMS_BILLING_ADDON_REQUIRED observed anywhere
+// atop the Medicare, Medicaid, remittance and commercial billing areas. One shared store: the app shell primes it per org
+// and re-reads it after CLAIMS_BILLING_POSTURE_TTL_MS (`primeClaimsBilling`, GET /api/v1/billing/status); a 402 CLAIMS_BILLING_ADDON_REQUIRED observed anywhere
 // (`noteClaimsBillingRefusal`, fed from the app's response hook or a screen's error path) flips every reader to
 // blocked at once. `blocked` is what disables create / submit actions: only when the server enforces the add-on.
 // In-flight work, voids and NOE/NOTR are never disabled by this; a replacement (TOB 817) is new work and is.
@@ -39,8 +39,12 @@ const REASON_TEXT: Record<ClaimsBillingDenyReason, string> = {
   subscription_paused: "Your subscription is paused.",
 };
 
+/** How long a read posture is trusted before the next prime re-reads it (a platform grant shows without a reload). */
+export const CLAIMS_BILLING_POSTURE_TTL_MS = 5 * 60_000;
+
 let posture: ClaimsBillingPosture | null = null;
-let requested = false;
+/** The org the posture was last requested for, and when. */
+let requested: { readonly orgKey: string; readonly at: number } | null = null;
 const listeners = new Set<() => void>();
 const emit = (): void => {
   for (const l of listeners) l();
@@ -74,22 +78,34 @@ export function noteClaimsBillingRefusal(error: unknown): boolean {
 /** Test-only: forget the cached posture. */
 export function __resetClaimsBillingForTest(): void {
   posture = null;
-  requested = false;
+  requested = null;
   emit();
 }
 
 /**
- * Read the posture once per page load (idempotent). The app shell calls it for a signed-in user who may read the
- * billing status; anyone else stays "unknown" until a 402 refusal tells the store.
+ * Read the posture for `orgKey` unless it was read for that org less than the TTL ago (cheap to call on every
+ * navigation). The app shell calls it for a signed-in user who may read the billing status; anyone else stays
+ * "unknown" until a 402 refusal tells the store. An org switch drops the previous org's posture at once.
  */
-export function primeClaimsBilling(client: ApiClient): void {
-  if (requested) return;
-  requested = true;
+export function primeClaimsBilling(
+  client: ApiClient,
+  opts: { readonly orgKey?: string; readonly now?: number } = {},
+): void {
+  const orgKey = opts.orgKey ?? "";
+  const now = opts.now ?? Date.now();
+  if (requested?.orgKey === orgKey && now - requested.at < CLAIMS_BILLING_POSTURE_TTL_MS) return;
+  if (requested !== null && requested.orgKey !== orgKey && posture !== null) {
+    posture = null;
+    emit();
+  }
+  const mine = { orgKey, at: now };
+  requested = mine;
   void client
     .GET("/api/v1/billing/status")
     .then(({ data }) => {
       const cb = data?.claimsBilling;
-      if (!cb) return; // no add-on service bound: stay unknown, never block
+      // A newer prime (another org, a later refresh) owns the store; no add-on service bound: stay as is.
+      if (requested !== mine || !cb) return;
       posture = { entitled: cb.entitled, enforced: cb.enforced, reason: cb.reason };
       emit();
     })
