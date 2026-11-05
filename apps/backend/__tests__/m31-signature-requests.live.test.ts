@@ -40,7 +40,12 @@ import {
 import { createPortalAdmissionSigners } from "../src/modules/06-admission/portal-document-signers";
 import { createPortalSigningTargetCheck } from "../src/modules/06-admission/portal-signing-targets";
 import { createM31EventEmitter } from "../src/modules/31-portal/events";
+import type { M31EventEmitter } from "../src/modules/31-portal/events";
 import { M31_OUTBOX_EVENTS } from "../src/modules/31-portal/events-by-m31";
+import {
+  M31_SIGNATURE_REMINDER_INTERVAL_MS,
+  runSignatureReminderSweepOnce,
+} from "../src/modules/31-portal/jobs/signature-reminder-sweep";
 import { mountM31Routes } from "../src/modules/31-portal/routes/mount";
 import { buildStaffSignatureStore } from "../src/modules/31-portal/routes/signature-staff-store";
 import { buildPortalSignatureStore } from "../src/modules/31-portal/routes/signature-store";
@@ -115,6 +120,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     { patientId: string; actor: Actor }
   >;
   let unsitedPatient = "";
+  let m31EventsForTests: M31EventEmitter;
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -503,12 +509,12 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     const publisher = buildTxOutboxPublisher(
       buildBootOutboxCatalog([M39_OUTBOX_EVENTS, M31_OUTBOX_EVENTS]),
     );
-    const m31Events = createM31EventEmitter({
+    const m31Events = (m31EventsForTests = createM31EventEmitter({
       db: handle.db,
       publisher: {
         publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m31" }),
       },
-    });
+    }));
     const consentService = createDbConsentRouteService(handle.db, {
       outbox: {
         publish: (tx, input) =>
@@ -1554,5 +1560,70 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
         [id],
       ),
     ).rejects.toThrow(/signed_chk/);
+  });
+
+  it("the daily reminder sweep reminds only still-pending requests, once per interval, in the right org", async () => {
+    const reminded = async (org: string, offsetMs: number) =>
+      runSignatureReminderSweepOnce({
+        db: handle.db,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: org }] },
+        events: m31EventsForTests,
+        now: () => new Date(Date.now() + offsetMs),
+      });
+    const DAY = M31_SIGNATURE_REMINDER_INTERVAL_MS + 60_000;
+
+    const pending = staffFixtures.staffNpp;
+    await clearOpen(pending.patientId, NPP);
+    const pendingId = (
+      await staffPost(staff.admin, ADMIN, { patientId: pending.patientId, docKind: NPP })
+    ).json().id as string;
+    const voided = staffFixtures.staffVoid;
+    await clearOpen(voided.patientId, NPP);
+    const voidedId = (
+      await staffPost(staff.admin, ADMIN, { patientId: voided.patientId, docKind: NPP })
+    ).json().id as string;
+    await staffPost(staff.admin, `${ADMIN}/${voidedId}/void`, { reason: "sent_in_error" });
+    const parked = staffFixtures.staffElection;
+    const parkedId = await seedRequest(ORG_A, parked.patientId, ELECTION, {
+      targetRef: randomUUID(),
+    });
+    await admin.query(
+      "UPDATE portal_signature_request SET status='uploaded_pending_review', uploaded_document_upload_id=$2 WHERE id=$1",
+      [parkedId, await seedUpload(parked.actor)],
+    );
+
+    // Not due yet: a just-sent request is announced by the request itself.
+    await reminded(ORG_A, 0);
+    expect((await reqRow(pendingId)).reminder_count).toBe(0);
+
+    // Another tenant's tick never touches this tenant's request (RLS-scoped, org-explicit).
+    await reminded(ORG_B, DAY);
+    expect((await reqRow(pendingId)).reminder_count).toBe(0);
+
+    await reminded(ORG_A, DAY);
+    expect(await reqRow(pendingId)).toMatchObject({ reminder_count: 1 });
+    expect((await reqRow(pendingId)).last_reminded_at).not.toBeNull();
+    // A second tick inside the interval does not remind again.
+    await reminded(ORG_A, DAY);
+    expect((await reqRow(pendingId)).reminder_count).toBe(1);
+    // The next day it does, and it repeats with no expiry.
+    await reminded(ORG_A, DAY * 2);
+    expect((await reqRow(pendingId)).reminder_count).toBe(2);
+
+    // Voided and parked-for-review requests are never reminded.
+    expect((await reqRow(voidedId)).reminder_count).toBe(0);
+    expect((await reqRow(parkedId)).reminder_count).toBe(0);
+
+    const events = (await outboxFor(pendingId)).filter(
+      (e) => e.event_type === "m31.signature_request.reminded",
+    );
+    expect(events.map((e) => e.payload.reminderCount)).toEqual([1, 2]);
+
+    // Once signed, the reminders stop.
+    expect(
+      (await sign(pending.actor, pendingId, { signedTypedName: "Reminder Stops" })).statusCode,
+    ).toBe(200);
+    await reminded(ORG_A, DAY * 5);
+    expect((await reqRow(pendingId)).reminder_count).toBe(2);
   });
 });

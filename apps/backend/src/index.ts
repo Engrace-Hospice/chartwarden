@@ -1413,8 +1413,10 @@ import {
   M31_PLATFORM_JOB_ID,
   registerM31LateJoinWatchdogWorker,
   registerM31PostDischargeGraceWorker,
+  registerM31SignatureReminderWorker,
   scheduleM31LateJoinWatchdogJob,
   scheduleM31PostDischargeGraceJob,
+  scheduleM31SignatureReminderJob,
   wireM31Tenancy,
 } from "./modules/31-portal/jobs/index";
 import { buildM31EncounterSignedTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m8-encounter-signed-telehealth";
@@ -8925,6 +8927,25 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       app.addHook("onClose", async () => {
         await m31LateJoinWatchdogWorker.close();
       });
+      // ADR-0107 D7 - the daily reminder for signature requests still waiting; stamps the cadence and emits the event a push consumer follows.
+      const m31SignatureReminderWorker = registerM31SignatureReminderWorker({
+        connection: queueConnection,
+        db: dbHandle.db,
+        events: m31Events,
+        activeOrgs: m31ActiveOrgs,
+        warn: (message, context) => app.log.warn(context, message),
+      });
+      app.addHook("onClose", async () => {
+        await m31SignatureReminderWorker.close();
+      });
+      try {
+        const m31SignatureReminderQueue = await scheduleM31SignatureReminderJob(queueConnection);
+        app.addHook("onClose", async () => {
+          await m31SignatureReminderQueue.close();
+        });
+      } catch (err) {
+        app.log.error(err, "M31 signature-reminder cron schedule registration failed");
+      }
       try {
         const m31LateJoinWatchdogQueue = await scheduleM31LateJoinWatchdogJob(queueConnection);
         app.addHook("onClose", async () => {
