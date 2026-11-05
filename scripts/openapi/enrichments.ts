@@ -10512,7 +10512,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/messaging/channels/:id/mention-candidates": {
     summary:
-      "Search staff, the linked patient and (ADR-0107, PROPOSED; only while the tenant flag `messaging.group_tags` is on) the group tags `role`, `team` and `on_call` eligible for a structured reference. A group candidate is a label: who is behind it is never listed",
+      "Search staff, the linked patient and (ADR-0108, PROPOSED; only while the tenant flag `messaging.group_tags` is on) the group tags `role`, `team` and `on_call` eligible for a structured reference. A group candidate is a label: who is behind it is never listed",
     query: M36MentionCandidateQuerySchema,
     response: M36MentionCandidateResponseSchema,
   },
@@ -10524,7 +10524,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/messaging/channels/:id/messages": {
     summary:
-      "Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original). A reference of kind `role`, `team` or `on_call` is a group tag (ADR-0107, PROPOSED; tenant flag `messaging.group_tags`): the server resolves it to people who are active members of the channel, freezes them, and sends each one an ordinary mention notification. Typed 422: GROUP_TAGS_DISABLED, GROUP_TAG_INVALID, GROUP_TAG_EMPTY, GROUP_TAG_TOO_MANY (50 people per tag, 3 tags per message), GROUP_TAG_ON_CALL_UNRESOLVED (no confirmed on-call person; nothing is sent)",
+      "Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original). A reference of kind `role`, `team` or `on_call` is a group tag (ADR-0108, PROPOSED; tenant flag `messaging.group_tags`): the server resolves it to people who are active members of the channel, freezes them, and sends each one an ordinary mention notification. Typed 422: GROUP_TAGS_DISABLED, GROUP_TAG_INVALID, GROUP_TAG_EMPTY, GROUP_TAG_TOO_MANY (50 people per tag, 3 tags per message), GROUP_TAG_ON_CALL_UNRESOLVED (no confirmed on-call person; nothing is sent)",
     headers: IDEMPOTENCY_KEY_HEADER,
     body: M36SendMessageBodySchema,
     response: M36SendMessageResponseSchema,

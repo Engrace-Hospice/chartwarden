@@ -1,4 +1,4 @@
-# ADR-0107 — Group tags in messages: `@role`, `@care-team` and `@on-call` resolved to people at send, inside the channel
+# ADR-0108 — Group tags in messages: `@role`, `@care-team` and `@on-call` resolved to people at send, inside the channel
 
 - **Status:** **Proposed** (2026-11-01)
 - **Date:** 2026-11-01
