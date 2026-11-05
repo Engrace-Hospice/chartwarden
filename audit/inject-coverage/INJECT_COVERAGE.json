@@ -2,8 +2,8 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1890,
-    "coveredRoutes": 1890,
+    "routes": 1892,
+    "coveredRoutes": 1892,
     "directRoutesReferenced": 1725
   },
   "modules": [
@@ -505,7 +505,7 @@
     },
     {
       "module": "31-portal",
-      "routes": 65,
+      "routes": 67,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts",
@@ -566,6 +566,7 @@
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap064-messaging-read-audit.test.ts",
+        "apps/backend/__tests__/m31-signature-requests.live.test.ts",
         "apps/backend/__tests__/m34-platform-alert-audience-no-authority.test.ts",
         "apps/backend/__tests__/m36-ack-broadcast.live.test.ts",
         "apps/backend/__tests__/m36-ack-delivery-failure.live.test.ts",

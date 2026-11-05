@@ -23,6 +23,7 @@
 import {
   type AbacContext,
   abacRegistry,
+  isPortalSessionClass,
   registerPredicate,
   requireAbac,
   requirePermission,
@@ -973,6 +974,19 @@ export function registerMessagingRoutes(app: FastifyInstance, deps: MessagingRou
       // WP 5.5: link the endpoint to the session that registers it, so revoking that session expires it. Server-side context only.
       const sessionId = request.context.attributes?.sessionId;
       const provider = body.provider ?? "web";
+      // ADR-0107 D7: a portal session may register only its own phone's native push token (FCM or APNs). It cannot name a web-push URL
+      // (the server would POST to it) or an sms / email target (the server would send a verification code to it).
+      const sessionClass = request.context.attributes?.sessionClass;
+      if (
+        typeof sessionClass === "string" &&
+        isPortalSessionClass(sessionClass) &&
+        (body.channel !== "push" || provider === "web")
+      )
+        throw new ChartWardenError(
+          "VALIDATION_FAILED",
+          "a portal session can register only a phone's push token (fcm or apns)",
+          422,
+        );
       if (provider === "web" && parseNativeDestination(body.target) !== null)
         throw new ChartWardenError(
           "VALIDATION_FAILED",

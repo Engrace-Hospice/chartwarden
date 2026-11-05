@@ -179,6 +179,13 @@ export const M31_EVENT_NAMES = [
   "m31.portal_session.opened",
   "m31.portal_session.closed",
   "m31.portal_message.sent_via_m36",
+  // ADR-0107 portal signing: ids and structural facts only, never the signer's name, relationship or reason.
+  "m31.signature_request.requested",
+  "m31.signature_request.signed",
+  "m31.signature_request.voided",
+  "m31.signature_request.uploaded",
+  "m31.signature_request.reviewed",
+  "m31.signature_request.reminded",
 ] as const;
 
 export type M31EventName = (typeof M31_EVENT_NAMES)[number];
@@ -231,6 +238,9 @@ export const M31_SUBSCRIBED_EVENT_NAMES = [
   "m39.consent.created",
   "m4.legal_hold.applied",
   "m4.legal_hold.released",
+  // ADR-0107 D7 - M31's own signature-request events, consumed by the push consumer (`signature-request-push.ts`).
+  "m31.signature_request.requested",
+  "m31.signature_request.reminded",
 ] as const;
 
 export type M31SubscribedEventName = (typeof M31_SUBSCRIBED_EVENT_NAMES)[number];

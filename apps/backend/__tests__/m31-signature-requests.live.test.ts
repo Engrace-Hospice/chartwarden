@@ -28,7 +28,7 @@ import {
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Client } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { wireModuleSeams } from "../src/index";
@@ -39,11 +39,36 @@ import {
 } from "../src/modules/06-admission/admission-route-service-db";
 import { createPortalAdmissionSigners } from "../src/modules/06-admission/portal-document-signers";
 import { createPortalSigningTargetCheck } from "../src/modules/06-admission/portal-signing-targets";
+import { createM31EventEmitter } from "../src/modules/31-portal/events";
+import type { M31EventEmitter } from "../src/modules/31-portal/events";
+import { M31_OUTBOX_EVENTS } from "../src/modules/31-portal/events-by-m31";
+import {
+  M31_SIGNATURE_REMINDER_INTERVAL_MS,
+  runSignatureReminderSweepOnce,
+} from "../src/modules/31-portal/jobs/signature-reminder-sweep";
+import { buildM31SignatureRequestPushConsumer } from "../src/modules/31-portal/outbox-consumers/signature-request-push";
 import { mountM31Routes } from "../src/modules/31-portal/routes/mount";
-import { buildStaffSignatureStore } from "../src/modules/31-portal/routes/signature-staff-store";
+import {
+  SIGNED_COPY_REJECTED,
+  buildStaffSignatureStore,
+} from "../src/modules/31-portal/routes/signature-staff-store";
 import { buildPortalSignatureStore } from "../src/modules/31-portal/routes/signature-store";
-import { attestationTextFor } from "../src/modules/31-portal/routes/signature.routes";
+import {
+  attestationTextFor,
+  signedContentFor,
+} from "../src/modules/31-portal/routes/signature.routes";
 import { buildDrizzlePortalStore } from "../src/modules/31-portal/routes/store";
+import {
+  activePortalUserIds,
+  signatureRecipientUserIds,
+  signatureRequestStillPending,
+} from "../src/modules/31-portal/seams/signature-push-recipients";
+import {
+  createDrizzleAlertEmitter,
+  getAlertEmitter,
+  registerMessagingSeams,
+  wireAlertRuleSeed,
+} from "../src/modules/36-messaging/index";
 import { M39_OUTBOX_EVENTS, createDbConsentRouteService } from "../src/modules/39-consent";
 import { createPortalConsentSigner } from "../src/modules/39-consent/portal-consent-signer";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
@@ -57,6 +82,7 @@ const ORG_B = "22222222-2222-4222-8222-222222223107";
 const STALE_MS = 60 * 60_000;
 const BASE = "/api/v1/portal/signature-requests";
 const NPP = "hipaa_npp_acknowledgement";
+const ELECTION = "election_statement";
 const CTT = "consent_to_treat";
 /** The signing layer's own refusal text, to tell it apart from an ABAC / RBAC denial ("abac predicate … denied"). */
 const NOT_ABLE = "You are not able to sign this document for this patient.";
@@ -98,6 +124,10 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   const peByOrg: Record<string, string> = {};
   let staffUserId = "";
   let seq = 0;
+  let allowDrafts = false;
+  afterEach(() => {
+    allowDrafts = false;
+  });
   const m06Calls: string[] = [];
   let m06: ReturnType<typeof createDbAdmissionRouteService>;
   const m06Fixtures = {} as Record<
@@ -105,13 +135,16 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     { patientId: string; actor: Actor; proxy?: Actor }
   >;
   const actors: Actor[] = [];
-  const staff = {} as Record<"admin" | "noScope" | "noPerm" | "orgB", string>;
+  const staff = {} as Record<"admin" | "noScope" | "noPerm" | "orgB" | "reviewOnly", string>;
   const staffPerms = new Map<string, Set<string>>();
+  /** Each staff user's fresh-step-up session, and a stale one (accept carries M39's sign step-up). */
+  const staffSessions = new Map<string, { readonly fresh: string; readonly stale: string }>();
   const staffFixtures = {} as Record<
     "staffNpp" | "staffElection" | "staffNor" | "staffVoid",
     { patientId: string; actor: Actor }
   >;
   let unsitedPatient = "";
+  let m31EventsForTests: M31EventEmitter;
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -407,13 +440,20 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       "portal.signature_request.create",
       "portal.signature_request.read",
       "portal.signature_request.void",
+      "portal.signature_request.review",
     ];
+    // Accepting a copy signs an M39 consent, so it also needs M39's own sign permission.
+    const SIGNER_KEYS = [...STAFF_KEYS, "consent.sign"];
     staff.admin = await seedUser("staff-admin");
     staff.noScope = await seedUser("staff-noscope");
     staff.noPerm = await seedUser("staff-noperm");
     staff.orgB = await seedUser("staff-orgb");
+    staff.reviewOnly = await seedUser("staff-reviewonly");
     for (const u of [staff.admin, staff.noScope, staff.orgB])
-      staffPerms.set(u, new Set(STAFF_KEYS));
+      staffPerms.set(u, new Set(SIGNER_KEYS));
+    staffPerms.set(staff.reviewOnly, new Set(STAFF_KEYS));
+    for (const u of Object.values(staff))
+      staffSessions.set(u, { fresh: randomUUID(), stale: randomUUID() });
     // Patients with a real, SITED `patient` row (the staff create route reads the agency from it), each with its own portal login.
     for (const key of ["staffNpp", "staffElection", "staffNor", "staffVoid"] as const) {
       const patientId = randomUUID();
@@ -482,12 +522,30 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       lastStepUpAt: new Date(Date.now() - ageMs),
       lastStepUpFactor: "totp" as const,
     });
-    const { store: sessionStore } = createInMemorySessionContextStore(
-      actors.flatMap((a) => [
+    const staffSessionOf = (userId: string, sessionId: string, ageMs: number) => ({
+      sessionClass: "staff",
+      portalAccountId: null,
+      sessionPatientId: null,
+      sessionId,
+      userId,
+      membershipId: null,
+      organizationId: ORG_A,
+      roles: [],
+      providerEntityIds: [],
+      locationIds: [],
+      lastStepUpAt: new Date(Date.now() - ageMs),
+      lastStepUpFactor: "totp" as const,
+    });
+    const { store: sessionStore } = createInMemorySessionContextStore([
+      ...actors.flatMap((a) => [
         sessionOf(a, a.sessionId, 0),
         sessionOf(a, a.staleSessionId, STALE_MS),
       ]),
-    );
+      ...[...staffSessions].flatMap(([userId, { fresh, stale }]) => [
+        staffSessionOf(userId, fresh, 0),
+        staffSessionOf(userId, stale, STALE_MS),
+      ]),
+    ]);
     // Real portal ABAC predicates over the real grant rows (wireModuleSeams, db-present), and the real session-class RBAC sets.
     wireModuleSeams({ db: handle.db, sessionContextStore: sessionStore });
     setEffectivePermissionResolver(
@@ -496,7 +554,16 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       ),
     );
 
-    const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M39_OUTBOX_EVENTS]));
+    const publisher = buildTxOutboxPublisher(
+      buildBootOutboxCatalog([M39_OUTBOX_EVENTS, M31_OUTBOX_EVENTS]),
+    );
+    const m31Events = createM31EventEmitter({
+      db: handle.db,
+      publisher: {
+        publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m31" }),
+      },
+    });
+    m31EventsForTests = m31Events;
     const consentService = createDbConsentRouteService(handle.db, {
       outbox: {
         publish: (tx, input) =>
@@ -542,7 +609,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     mountM31Routes(app, {
       store: buildDrizzlePortalStore(handle.db),
       signing: {
-        store: buildPortalSignatureStore(handle.db),
+        store: buildPortalSignatureStore(handle.db, m31Events),
         signers: {
           election: async (i) => {
             m06Calls.push(`election:${i.signatureMethod}`);
@@ -560,9 +627,14 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
             return c ? { patientId: c.patientId, typeKey: c.typeKey, status: c.status } : null;
           },
         },
-        allowUnreviewedTemplates: false,
+        agencyName: async () => "Cedar Valley Hospice",
+        // Production default; a test that exercises draft (pending legal review) wording turns it on, and afterEach turns it back off.
+        get allowUnreviewedTemplates() {
+          return allowDrafts;
+        },
         staff: {
-          store: buildStaffSignatureStore(handle.db),
+          store: buildStaffSignatureStore(handle.db, m31Events),
+          uploadedCopyConsent: (i) => consentSigner.acceptUploadedCopy(i),
           patientSite: async (organizationId, patientId) => {
             const r = await admin.query(
               "SELECT provider_entity_id, location_id FROM patient WHERE id=$1 AND organization_id=$2",
@@ -629,19 +701,33 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       "SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND resource_kind='portal_signature_request'",
       [ORG_A],
     );
-    expect(audit.rows[0].n).toBeGreaterThanOrEqual(1);
+    // The list read is audited: the count rises across one more list call, over and above the rows the seeding itself audited.
+    await get(self, "");
+    const after = await admin.query(
+      "SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND resource_kind='portal_signature_request'",
+      [ORG_A],
+    );
+    expect(after.rows[0].n).toBeGreaterThan(audit.rows[0].n);
   });
 
   it("opens one request with the exact attestation text, records the resource id, and 404s another patient's or tenant's", async () => {
     const mine = await seedRequest(ORG_A, patientA, NPP);
+    const auditCount = async () =>
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM audit_event WHERE organization_id=$1 AND resource_kind='portal_signature_request' AND resource_id=$2",
+          [ORG_A, mine],
+        )
+      ).rows[0].n as number;
+    const auditedBefore = await auditCount();
     const res = await get(self, `/${mine}`);
     expect(res.statusCode).toBe(200);
     expect(res.json().attestationText).toBe(attestationTextFor(NPP, "1.0.0"));
-    const audit = await admin.query(
-      "SELECT 1 FROM audit_event WHERE organization_id=$1 AND resource_kind='portal_signature_request' AND resource_id=$2",
-      [ORG_A, mine],
-    );
-    expect(audit.rows.length).toBeGreaterThanOrEqual(1);
+    expect(res.json().documentTitle).toMatch(/Notice of Privacy Practices/);
+    expect(res.json().documentParagraphs.join(" ")).toMatch(/164\.520/);
+    expect(res.json().documentParagraphs.join(" ")).toContain("Cedar Valley Hospice");
+    // The read adds an audit row for exactly this request id (the seeding insert had already added one).
+    expect(await auditCount()).toBeGreaterThan(auditedBefore);
     expect((await get(otherPatient, `/${mine}`)).statusCode).toBe(404);
     expect((await get(orgBActor, `/${mine}`)).statusCode).toBe(404);
   });
@@ -662,7 +748,9 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     });
     expect(r.signed_at).toBeInstanceOf(Date);
     expect(r.attestation_sha256).toBe(
-      createHash("sha256").update(attestationTextFor(NPP, "1.0.0")).digest("hex"),
+      createHash("sha256")
+        .update(signedContentFor(NPP, "1.0.0", "Cedar Valley Hospice"))
+        .digest("hex"),
     );
     const consent = (await admin.query("SELECT * FROM consent_record WHERE id=$1", [r.target_ref]))
       .rows[0];
@@ -675,15 +763,32 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     expect(consent.capture_evidence_jsonb.portalSessionId).toBe(self.sessionId);
     // The write was audited (ids, status, instants) and the signer's typed name never reached the audit trail.
     const audited = await admin.query(
-      `SELECT before::text AS b, after::text AS a FROM audit_event
+      `SELECT before::text AS b, after::text AS a, actor_user_id, actor_kind FROM audit_event
         WHERE organization_id=$1 AND resource_kind='portal_signature_request' AND resource_id=$2 AND event_type LIKE '%update'`,
       [ORG_A, id],
     );
     expect(audited.rows.length).toBeGreaterThanOrEqual(1);
     for (const row of audited.rows) expect(`${row.b}${row.a}`).not.toContain("Pat Example");
+    // The legal act is attributed to the portal login who signed, not to the system.
+    expect(audited.rows.map((r) => r.actor_user_id)).toContain(self.userId);
+  });
+
+  it("attaching a signed copy needs a fresh step-up, like signing", async () => {
+    const id = await seedRequest(ORG_A, patientA, NPP);
+    const res = await app.inject({
+      method: "POST",
+      url: `${BASE}/${id}/signed-copy`,
+      headers: headers(self, {
+        "x-test-session": self.staleSessionId,
+        "idempotency-key": `k-stale-attach-${randomUUID()}`,
+      }),
+      payload: { uploadId: randomUUID() },
+    });
+    expect(res.statusCode).toBe(403);
   });
 
   it("a replay under the same Idempotency-Key signs nothing twice", async () => {
+    allowDrafts = true; // signs a Consent to Treat, whose wording is still a pending-legal-review draft
     const id = await seedRequest(ORG_A, patientA, CTT);
     const key = `k-replay-${randomUUID()}`;
     const before = await consentCount(patientA, CTT);
@@ -731,6 +836,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   });
 
   it("a caregiver must say who they are and why the patient did not sign; with both, the consent is a healthcare surrogate's", async () => {
+    allowDrafts = true; // signs a Consent to Treat, whose wording is still a pending-legal-review draft
     const id = await seedRequest(ORG_A, patientA, CTT);
     const noReason = await sign(caregiver, id, {
       signedTypedName: "Care Giver",
@@ -772,6 +878,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   });
 
   it("a healthcare agent's M39 signature cites the live DPOA consent; a grant from a REVOKED DPOA is refused and creates nothing", async () => {
+    allowDrafts = true; // signs a Consent to Treat, whose wording is still a pending-legal-review draft
     const id = await seedRequest(ORG_A, patientA, NPP);
     const res = await sign(agent, id, {
       signedTypedName: "Agent Person",
@@ -911,6 +1018,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   }
 
   it("M06 live: the patient signs the staff-drafted election statement with the portal method, recording the PATIENT's name", async () => {
+    allowDrafts = true; // the M06 wording is a pending-legal-review placeholder
     const { patientId, actor, electionId } = await realAdmission("election", true);
     const id = await seedRequest(ORG_A, patientId, "election_statement", { targetRef: electionId });
     const res = await sign(actor, id, { signedTypedName: "Pat Example" });
@@ -943,6 +1051,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   });
 
   it("M06 live: a crash after M06 signs but before the request is marked is healed by the retry (election signed once)", async () => {
+    allowDrafts = true; // the M06 wording is a pending-legal-review placeholder
     const { patientId, actor, electionId } = await realAdmission("retry", true);
     const id = await seedRequest(ORG_A, patientId, "election_statement", { targetRef: electionId });
     // M06 signs first, as a crashed first attempt would have left it.
@@ -961,6 +1070,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   });
 
   it("M06 live: the patient acknowledges the Notice of Patient Rights; a retry links the same acknowledgement", async () => {
+    allowDrafts = true; // the M06 wording is a pending-legal-review placeholder
     const { patientId, actor, admissionId } = await realAdmission("nor", false);
     const id = await seedRequest(ORG_A, patientId, "notice_of_patient_rights", {
       targetRef: admissionId,
@@ -995,6 +1105,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   });
 
   it("M06 live: a healthcare agent signs the election as a representative, under R-EL-01's DPOA check", async () => {
+    allowDrafts = true; // the M06 wording is a pending-legal-review placeholder
     const { patientId, electionId } = await realAdmission("agent", true);
     const proxy = m06Fixtures.agent.proxy as Actor;
     const id = await seedRequest(ORG_A, patientId, "election_statement", { targetRef: electionId });
@@ -1038,6 +1149,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     "x-test-user": user,
     "x-test-org": ORG_A,
     "x-test-roles": "org_admin",
+    "x-test-session": staffSessions.get(user)?.fresh ?? "",
     ...over,
   });
   const staffPost = (
@@ -1073,7 +1185,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       docKind: NPP,
       status: "pending",
       templateKey: "hipaa_npp_acknowledgement_v1",
-      templateVersion: "1.0.0",
+      templateVersion: "1.1.0",
       requestedBy: staff.admin,
       targetRef: null,
     });
@@ -1123,6 +1235,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   });
 
   it("an election request names its drafted statement; a wrong, foreign or signed target is refused, and the patient can then sign it", async () => {
+    allowDrafts = true; // the M06 wording is a pending-legal-review placeholder
     const { patientId, actor } = staffFixtures.staffElection;
     await clearOpen(patientId, "election_statement");
     const { admissionId, electionId } = await (async () => {
@@ -1175,6 +1288,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
   });
 
   it("a notice-of-rights request names the patient's admission, and stops being sendable once acknowledged", async () => {
+    allowDrafts = true; // the M06 wording is a pending-legal-review placeholder
     const { patientId, actor } = staffFixtures.staffNor;
     await clearOpen(patientId, "notice_of_patient_rights");
     const { admissionId } = await admitViaQualifiedReferral(m06, admin, {
@@ -1225,12 +1339,18 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     ).toBe(422);
   });
 
-  it("the Consent to Treat request is sent at the pending-legal-review version, which the patient cannot yet sign", async () => {
+  it("draft wording (pending legal review) is refused at send on production, and sent at that version only where drafts are allowed", async () => {
     const { patientId, actor } = staffFixtures.staffNpp;
     await clearOpen(patientId, CTT);
+    const refused = await staffPost(staff.admin, ADMIN, { patientId, docKind: CTT });
+    expect(refused.statusCode, refused.body).toBe(422);
+    expect(refused.json().error.code).toBe("SIGNATURE_DOCUMENT_NOT_SIGNABLE");
+    allowDrafts = true;
     const res = await staffPost(staff.admin, ADMIN, { patientId, docKind: CTT });
     expect(res.statusCode, res.body).toBe(201);
     expect(res.json().templateVersion).toBe("0.0.0-pending-legal-review");
+    // Turned back off (a production tenant): the request that slipped through still cannot be signed.
+    allowDrafts = false;
     const signAttempt = await sign(actor, res.json().id, { signedTypedName: "Pat Example" });
     expect(signAttempt.statusCode).toBe(409);
     expect((await reqRow(res.json().id)).status).toBe("pending");
@@ -1323,5 +1443,495 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       c.release();
     }
     expect((await reqRow(id)).void_reason).toBe("patient_declined");
+  });
+
+  // ── ADR-0107 D6/D7: outbox events, uploaded signed copies, staff review ─────────────────────────────────────────────────────────
+  const outboxFor = async (aggregateId: string) =>
+    (
+      await admin.query(
+        "SELECT event_type, payload FROM outbox_event WHERE aggregate_id=$1 ORDER BY created_at, id",
+        [aggregateId],
+      )
+    ).rows as Array<{ event_type: string; payload: Record<string, unknown> }>;
+  /** A completed `signed_admission_document` upload by `a` (a real M22 document id is a logical FK, so any uuid stands in for it). */
+  const seedUpload = async (
+    a: Actor,
+    over: { purpose?: string; accountId?: string; documentId?: string | null } = {},
+  ) =>
+    (
+      await admin.query(
+        `INSERT INTO portal_document_upload
+           (organization_id, provider_entity_id, portal_account_id, patient_id, purpose, declared_mime, expected_byte_size, status,
+            document_id, intake_batch_id, submitted_at, expires_at)
+         VALUES ($1,$2,$3,$4,$5,'application/pdf',1000,'submitted',$6,$7,now(), now() + interval '1 day') RETURNING id`,
+        [
+          a.org,
+          peByOrg[a.org],
+          over.accountId ?? a.accountId,
+          a.patientId,
+          over.purpose ?? "signed_admission_document",
+          over.documentId === undefined ? randomUUID() : over.documentId,
+          randomUUID(),
+        ],
+      )
+    ).rows[0].id as string;
+  const attach = (a: Actor, requestId: string, uploadId: string) =>
+    app.inject({
+      method: "POST",
+      url: `${BASE}/${requestId}/signed-copy`,
+      headers: headers(a, { "idempotency-key": `k-3107-${++seq}` }),
+      payload: { uploadId },
+    });
+  const review = (requestId: string, decision: string, user = staff.admin) =>
+    staffPost(
+      user,
+      `${ADMIN}/${requestId}/review`,
+      { decision },
+      { "x-test-roles": "administrator" },
+    );
+  /** Send an NPP request as staff, then park it with an uploaded copy, returning the ids. */
+  async function sentWithCopy(key: "staffNpp" | "staffVoid") {
+    const { patientId, actor } = staffFixtures[key];
+    await clearOpen(patientId, NPP);
+    const created = await staffPost(staff.admin, ADMIN, { patientId, docKind: NPP });
+    expect(created.statusCode, created.body).toBe(201);
+    const id = created.json().id as string;
+    const uploadId = await seedUpload(actor);
+    const res = await attach(actor, id, uploadId);
+    expect(res.statusCode, res.body).toBe(200);
+    return { id, patientId, actor, uploadId };
+  }
+
+  it("emits the request lifecycle to the outbox with ids only: requested, signed, voided", async () => {
+    const { patientId, actor } = staffFixtures.staffNpp;
+    await clearOpen(patientId, NPP);
+    const sent = (await staffPost(staff.admin, ADMIN, { patientId, docKind: NPP })).json().id;
+    expect((await sign(actor, sent, { signedTypedName: "Outbox Typed Name" })).statusCode).toBe(
+      200,
+    );
+    const events = await outboxFor(sent);
+    expect(events.map((e) => e.event_type)).toEqual([
+      "m31.signature_request.requested",
+      "m31.signature_request.signed",
+    ]);
+    expect(JSON.stringify(events)).not.toContain("Outbox Typed Name");
+    expect(events[1]?.payload).toMatchObject({ requestId: sent, patientId, signerRole: "patient" });
+
+    const { patientId: p2 } = staffFixtures.staffVoid;
+    await clearOpen(p2, NPP);
+    const voidedId = (await staffPost(staff.admin, ADMIN, { patientId: p2, docKind: NPP })).json()
+      .id;
+    await staffPost(staff.admin, `${ADMIN}/${voidedId}/void`, { reason: "sent_in_error" });
+    expect((await outboxFor(voidedId)).map((e) => e.event_type)).toEqual([
+      "m31.signature_request.requested",
+      "m31.signature_request.voided",
+    ]);
+  });
+
+  it("the patient attaches a completed signed copy: the request parks in uploaded_pending_review, never signed", async () => {
+    const { id, patientId, uploadId } = await sentWithCopy("staffNpp");
+    const row = await reqRow(id);
+    expect(row.status).toBe("uploaded_pending_review");
+    expect(row.uploaded_document_upload_id).toBe(uploadId);
+    expect(row.signed_at).toBeNull();
+    expect((await outboxFor(id)).map((e) => e.event_type)).toContain(
+      "m31.signature_request.uploaded",
+    );
+    const listed = (await staffGet(staff.admin, `${ADMIN}?patientId=${patientId}`)).json()
+      .items as Array<{ id: string; status: string; uploadedDocumentId: string | null }>;
+    const mine = listed.find((i) => i.id === id);
+    expect(mine?.status).toBe("uploaded_pending_review");
+    expect(mine?.uploadedDocumentId).not.toBeNull();
+  });
+
+  it("refuses an attach that is not the session account's own completed signed-copy upload", async () => {
+    const { patientId, actor } = staffFixtures.staffNpp;
+    await clearOpen(patientId, NPP);
+    const id = (await staffPost(staff.admin, ADMIN, { patientId, docKind: NPP })).json().id;
+    const other = staffFixtures.staffVoid.actor;
+    const cases = [
+      await seedUpload(actor, { purpose: "insurance_card" }),
+      await seedUpload(actor, { accountId: other.accountId }),
+      randomUUID(),
+    ];
+    for (const uploadId of cases) {
+      const res = await attach(actor, id, uploadId);
+      expect(res.statusCode, res.body).toBe(422);
+    }
+    expect((await attach(actor, randomUUID(), await seedUpload(actor))).statusCode).toBe(404);
+    expect((await reqRow(id)).status).toBe("pending");
+    // Once parked, a second attach is refused.
+    expect((await attach(actor, id, await seedUpload(actor))).statusCode).toBe(200);
+    expect((await attach(actor, id, await seedUpload(actor))).statusCode).toBe(409);
+  });
+
+  it("a caregiver cannot attach a copy of the election statement (same authority matrix as signing)", async () => {
+    const id = await seedRequest(ORG_A, caregiver.patientId, ELECTION, { targetRef: randomUUID() });
+    const res = await attach(caregiver, id, await seedUpload(caregiver));
+    expect(res.statusCode, res.body).toBe(403);
+    expect((await reqRow(id)).status).toBe("pending");
+  });
+
+  it("staff ACCEPT an uploaded copy: M39 records an uploaded signed PDF by the reviewer, the request is signed, events land", async () => {
+    const { id, patientId, uploadId } = await sentWithCopy("staffNpp");
+    const res = await review(id, "accepted");
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({ status: "signed", reviewOutcome: "accepted" });
+    const row = await reqRow(id);
+    expect(row).toMatchObject({
+      status: "signed",
+      review_outcome: "accepted",
+      reviewed_by: staff.admin,
+      uploaded_document_upload_id: uploadId,
+    });
+    expect(row.signed_at).not.toBeNull();
+    const consent = (
+      await admin.query(
+        "SELECT capture_method, created_by_id, status, capture_evidence_jsonb FROM consent_record WHERE id=$1",
+        [row.target_ref],
+      )
+    ).rows[0];
+    expect(consent).toMatchObject({
+      capture_method: "uploaded_signed_pdf",
+      created_by_id: staff.admin,
+      status: "active",
+    });
+    expect(JSON.stringify(consent.capture_evidence_jsonb)).toContain("uploadedPdfDocumentId");
+    const types = (await outboxFor(id)).map((e) => e.event_type);
+    expect(types).toEqual(
+      expect.arrayContaining(["m31.signature_request.reviewed", "m31.signature_request.signed"]),
+    );
+    expect(patientId).toBeTruthy();
+    // A second accept finds nothing waiting.
+    expect((await review(id, "accepted")).statusCode).toBe(409);
+  });
+
+  it("staff REJECT an uploaded copy: the request reopens, and the patient can then sign electronically", async () => {
+    const { id, actor } = await sentWithCopy("staffVoid");
+    const res = await review(id, "rejected");
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({
+      status: "pending",
+      reviewOutcome: "rejected",
+      uploadedDocumentId: null,
+    });
+    expect((await reqRow(id)).uploaded_document_upload_id).toBeNull();
+    expect((await sign(actor, id, { signedTypedName: "Signed After Reject" })).statusCode).toBe(
+      200,
+    );
+    expect((await reqRow(id)).status).toBe("signed");
+  });
+
+  it("a copy staff rejected is marked rejected and can never be attached again", async () => {
+    const { id, actor, uploadId } = await sentWithCopy("staffVoid");
+    expect((await review(id, "rejected")).statusCode).toBe(200);
+    const upload = (
+      await admin.query("SELECT status, rejection_code FROM portal_document_upload WHERE id=$1", [
+        uploadId,
+      ])
+    ).rows[0];
+    expect(upload).toEqual({ status: "rejected", rejection_code: SIGNED_COPY_REJECTED });
+    const again = await attach(actor, id, uploadId);
+    expect(again.statusCode, again.body).toBe(422);
+    expect((await reqRow(id)).status).toBe("pending");
+  });
+
+  it("one upload backs at most one request: two concurrent attaches of the same file, one wins; the DB index refuses a second link", async () => {
+    allowDrafts = true; // the second request is a Consent to Treat (draft wording)
+    const { patientId, actor } = staffFixtures.staffNpp;
+    await clearOpen(patientId, NPP);
+    await clearOpen(patientId, CTT);
+    const npp = await seedRequest(ORG_A, patientId, NPP);
+    const ctt = await seedRequest(ORG_A, patientId, CTT);
+    const uploadId = await seedUpload(actor);
+    const codes = (
+      await Promise.all([attach(actor, npp, uploadId), attach(actor, ctt, uploadId)])
+    ).map((r) => r.statusCode);
+    expect([...codes].sort()).toEqual([200, 422]);
+    const linked = (
+      await admin.query(
+        "SELECT count(*)::int AS n FROM portal_signature_request WHERE uploaded_document_upload_id=$1",
+        [uploadId],
+      )
+    ).rows[0].n;
+    expect(linked).toBe(1);
+    await expect(
+      admin.query(
+        "UPDATE portal_signature_request SET uploaded_document_upload_id=$2 WHERE id IN ($1, $3)",
+        [npp, uploadId, ctt],
+      ),
+    ).rejects.toMatchObject({ code: "23505" });
+  });
+
+  it("a paper copy of draft wording is refused at attach on production, and a parked one is not accepted: no consent", async () => {
+    const { patientId, actor } = staffFixtures.staffNpp;
+    await clearOpen(patientId, CTT);
+    const id = await seedRequest(ORG_A, patientId, CTT);
+    // On production the copy is refused at attach already: draft wording is never parked for a review that must refuse it.
+    const refused = await attach(actor, id, await seedUpload(actor));
+    expect(refused.statusCode, refused.body).toBe(409);
+    expect((await reqRow(id)).status).toBe("pending");
+    // Parked while drafts were allowed, then reviewed on a production tenant: the accept is refused too.
+    allowDrafts = true;
+    expect((await attach(actor, id, await seedUpload(actor))).statusCode).toBe(200);
+    allowDrafts = false;
+    const before = (
+      await admin.query("SELECT count(*)::int AS n FROM consent_record WHERE patient_id=$1", [
+        patientId,
+      ])
+    ).rows[0].n;
+    const res = await review(id, "accepted");
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().error.code).toBe("TEMPLATE_PENDING_LEGAL_REVIEW");
+    expect((await reqRow(id)).status).toBe("uploaded_pending_review");
+    const after = (
+      await admin.query("SELECT count(*)::int AS n FROM consent_record WHERE patient_id=$1", [
+        patientId,
+      ])
+    ).rows[0].n;
+    expect(after).toBe(before);
+  });
+
+  it("the reminder sweep never reminds draft wording on production, and does where drafts are allowed", async () => {
+    const { patientId } = staffFixtures.staffElection;
+    await clearOpen(patientId, CTT);
+    const id = await seedRequest(ORG_A, patientId, CTT);
+    const run = (allowUnreviewedTemplates: boolean) =>
+      runSignatureReminderSweepOnce({
+        db: handle.db,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        events: m31EventsForTests,
+        allowUnreviewedTemplates,
+        now: () => new Date(Date.now() + M31_SIGNATURE_REMINDER_INTERVAL_MS + 60_000),
+      });
+    await run(false);
+    expect((await reqRow(id)).reminder_count).toBe(0);
+    await run(true);
+    expect((await reqRow(id)).reminder_count).toBe(1);
+  });
+
+  it("an election or notice-of-rights copy is not accepted here: M06 records a wet-ink signature in the admission workflow", async () => {
+    const { patientId } = staffFixtures.staffElection;
+    const id = await seedRequest(ORG_A, patientId, ELECTION, { targetRef: randomUUID() });
+    const uploadId = await seedUpload(staffFixtures.staffElection.actor);
+    await admin.query(
+      "UPDATE portal_signature_request SET status='uploaded_pending_review', uploaded_document_upload_id=$2 WHERE id=$1",
+      [id, uploadId],
+    );
+    const res = await review(id, "accepted");
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().error?.code ?? res.json().code).toBe("M06_DOCUMENT_RECORDED_IN_ADMISSION");
+    expect((await reqRow(id)).status).toBe("uploaded_pending_review");
+  });
+
+  it("review needs its own permission and patient scope", async () => {
+    const { id } = await sentWithCopy("staffNpp");
+    expect((await review(id, "accepted", staff.noPerm)).statusCode).toBe(403);
+    // No org-wide role, no caseload, no session scope: the same single 404 as the other staff routes.
+    const offScope = await staffPost(
+      staff.noScope,
+      `${ADMIN}/${id}/review`,
+      { decision: "accepted" },
+      { "x-test-roles": "" },
+    );
+    expect(offScope.statusCode).toBe(404);
+    expect((await reqRow(id)).status).toBe("uploaded_pending_review");
+  });
+
+  it("accepting a copy signs a consent, so it needs consent.sign and a fresh step-up; rejecting needs neither", async () => {
+    const { id } = await sentWithCopy("staffNpp");
+    // A reviewer without M39's sign permission cannot accept.
+    expect((await review(id, "accepted", staff.reviewOnly)).statusCode).toBe(403);
+    // A signer whose step-up has lapsed is sent to re-verify, not refused outright.
+    const stale = await staffPost(
+      staff.admin,
+      `${ADMIN}/${id}/review`,
+      { decision: "accepted" },
+      { "x-test-session": staffSessions.get(staff.admin)?.stale ?? "" },
+    );
+    expect(stale.statusCode).toBe(403);
+    expect(stale.json().error?.code ?? stale.json().code).toBe("STEP_UP_REQUIRED");
+    expect((await reqRow(id)).status).toBe("uploaded_pending_review");
+    // Rejecting only reopens the request: the review permission alone is enough.
+    expect((await review(id, "rejected", staff.reviewOnly)).statusCode).toBe(200);
+    expect((await reqRow(id)).status).toBe("pending");
+  });
+
+  it("the DB refuses a signed request that has neither portal signer evidence nor an accepted review", async () => {
+    const { id } = await sentWithCopy("staffNpp");
+    await expect(
+      admin.query("UPDATE portal_signature_request SET status='signed' WHERE id=$1", [id]),
+    ).rejects.toThrow(/signed_chk/);
+    await expect(
+      admin.query(
+        "UPDATE portal_signature_request SET status='signed', review_outcome='accepted' WHERE id=$1",
+        [id],
+      ),
+    ).rejects.toThrow(/signed_chk/);
+  });
+
+  it("the daily reminder sweep reminds only still-pending requests, once per interval, in the right org", async () => {
+    const reminded = async (org: string, offsetMs: number) =>
+      runSignatureReminderSweepOnce({
+        db: handle.db,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: org }] },
+        events: m31EventsForTests,
+        now: () => new Date(Date.now() + offsetMs),
+      });
+    const DAY = M31_SIGNATURE_REMINDER_INTERVAL_MS + 60_000;
+
+    const pending = staffFixtures.staffNpp;
+    await clearOpen(pending.patientId, NPP);
+    const pendingId = (
+      await staffPost(staff.admin, ADMIN, { patientId: pending.patientId, docKind: NPP })
+    ).json().id as string;
+    const voided = staffFixtures.staffVoid;
+    await clearOpen(voided.patientId, NPP);
+    const voidedId = (
+      await staffPost(staff.admin, ADMIN, { patientId: voided.patientId, docKind: NPP })
+    ).json().id as string;
+    await staffPost(staff.admin, `${ADMIN}/${voidedId}/void`, { reason: "sent_in_error" });
+    const parked = staffFixtures.staffElection;
+    const parkedId = await seedRequest(ORG_A, parked.patientId, ELECTION, {
+      targetRef: randomUUID(),
+    });
+    await admin.query(
+      "UPDATE portal_signature_request SET status='uploaded_pending_review', uploaded_document_upload_id=$2 WHERE id=$1",
+      [parkedId, await seedUpload(parked.actor)],
+    );
+
+    // Not due yet: a just-sent request is announced by the request itself.
+    await reminded(ORG_A, 0);
+    expect((await reqRow(pendingId)).reminder_count).toBe(0);
+
+    // Another tenant's tick never touches this tenant's request (RLS-scoped, org-explicit).
+    await reminded(ORG_B, DAY);
+    expect((await reqRow(pendingId)).reminder_count).toBe(0);
+
+    await reminded(ORG_A, DAY);
+    expect(await reqRow(pendingId)).toMatchObject({ reminder_count: 1 });
+    expect((await reqRow(pendingId)).last_reminded_at).not.toBeNull();
+    // A second tick inside the interval does not remind again.
+    await reminded(ORG_A, DAY);
+    expect((await reqRow(pendingId)).reminder_count).toBe(1);
+    // The next day it does, and it repeats with no expiry.
+    await reminded(ORG_A, DAY * 2);
+    expect((await reqRow(pendingId)).reminder_count).toBe(2);
+
+    // Voided and parked-for-review requests are never reminded.
+    expect((await reqRow(voidedId)).reminder_count).toBe(0);
+    expect((await reqRow(parkedId)).reminder_count).toBe(0);
+
+    const events = (await outboxFor(pendingId)).filter(
+      (e) => e.event_type === "m31.signature_request.reminded",
+    );
+    expect(events.map((e) => e.payload.reminderCount)).toEqual([1, 2]);
+
+    // Once signed, the reminders stop.
+    expect(
+      (await sign(pending.actor, pendingId, { signedTypedName: "Reminder Stops" })).statusCode,
+    ).toBe(200);
+    await reminded(ORG_A, DAY * 5);
+    expect((await reqRow(pendingId)).reminder_count).toBe(2);
+  });
+  it("pushes to exactly the people whose live grant may sign, through M36's real pipeline, once per event", async () => {
+    registerMessagingSeams({
+      emitter: createDrizzleAlertEmitter(handle.db, {
+        activePortalRecipients: (org, ids) => activePortalUserIds(handle.db, org, ids),
+      }),
+    });
+    await wireAlertRuleSeed(handle.db);
+    const consumer = buildM31SignatureRequestPushConsumer({
+      alerts: getAlertEmitter(),
+      stillPending: (org, id) => signatureRequestStillPending(handle.db, org, id),
+      recipients: (org, patient, kind) => signatureRecipientUserIds(handle.db, org, patient, kind),
+    });
+    const endpoint = (userId: string) =>
+      admin.query(
+        `INSERT INTO delivery_endpoint (user_id, channel, endpoint_value, provider, verification_status, verified_at)
+         VALUES ($1,'push',$2,'web','verified', now())`,
+        [userId, JSON.stringify({ endpoint: `https://push.example.test/${userId}`, keys: {} })],
+      );
+    for (const who of [self, caregiver, bereaved]) await endpoint(who.userId);
+
+    await clearOpen(patientA, NPP);
+    const requestId = await seedRequest(ORG_A, patientA, NPP);
+    const event = {
+      id: randomUUID(),
+      organizationId: ORG_A,
+      eventType: "m31.signature_request.requested",
+      aggregateKind: "portal_signature_request",
+      aggregateId: requestId,
+      payload: { requestId, patientId: patientA, docKind: NPP, templateVersion: "1.0.0" },
+      attemptCount: 1,
+      createdAt: new Date(),
+    };
+    const pushedTo = async () =>
+      (
+        await admin.query(
+          `SELECT nd.recipient_user_id AS uid, nd.channel, nd.status
+             FROM notification_delivery nd JOIN alert a ON a.id = nd.alert_id
+            WHERE a.organization_id = $1 AND a.correlation_id = $2`,
+          [ORG_A, `signature_request:${requestId}:${event.id}`],
+        )
+      ).rows as { uid: string; channel: string; status: string }[];
+
+    // Eligible by live grant AND with a verified push device: the agent has no device so is not pushed; the bereaved account has a
+    // device but no authority to sign.
+    expect([...(await signatureRecipientUserIds(handle.db, ORG_A, patientA, NPP))].sort()).toEqual(
+      [self, caregiver].map((a) => a.userId).sort(),
+    );
+
+    await consumer.handle(event);
+    const rows = await pushedTo();
+    // Push goes to the people with a verified device who may sign; never to the bereaved-family account, never over another channel.
+    const pushRows = rows.filter((r) => r.channel === "push");
+    expect(pushRows.map((r) => r.uid).sort()).toEqual([self.userId, caregiver.userId].sort());
+    expect(rows.map((r) => r.uid)).not.toContain(bereaved.userId);
+    expect(new Set(rows.map((r) => r.channel))).toEqual(new Set(["push", "in_app"]));
+    // The alert carries ids only: no document name, no patient name.
+    const alert = (
+      await admin.query(
+        "SELECT payload::text AS p FROM alert WHERE organization_id=$1 AND correlation_id=$2",
+        [ORG_A, `signature_request:${requestId}:${event.id}`],
+      )
+    ).rows[0].p as string;
+    expect(alert).not.toMatch(/hipaa|privacy|Patient|npp/i);
+
+    // The dispatcher redelivering the same event does not push twice.
+    await consumer.handle(event);
+    expect((await pushedTo()).length).toBe(rows.length);
+
+    // A grant revoked after the event was queued is not pushed.
+    await admin.query(
+      "UPDATE portal_access_grant SET revoked_at = now(), revoke_cascade_source = 'test' WHERE portal_account_id = $1",
+      [caregiver.accountId],
+    );
+    const second = { ...event, id: randomUUID() };
+    await consumer.handle(second);
+    const secondRows = (
+      await admin.query(
+        `SELECT nd.recipient_user_id AS uid FROM notification_delivery nd JOIN alert a ON a.id = nd.alert_id
+          WHERE a.organization_id=$1 AND a.correlation_id=$2 AND nd.channel='push'`,
+        [ORG_A, `signature_request:${requestId}:${second.id}`],
+      )
+    ).rows.map((r) => r.uid);
+    expect(secondRows).toEqual([self.userId]);
+
+    // A request that is no longer pending sends nothing.
+    await admin.query(
+      "UPDATE portal_signature_request SET status='voided', voided_at=now(), voided_by=$2, void_reason='sent_in_error' WHERE id=$1",
+      [requestId, staffUserId],
+    );
+    const third = { ...event, id: randomUUID() };
+    await consumer.handle(third);
+    expect(
+      (
+        await admin.query(
+          `SELECT count(*)::int AS n FROM alert WHERE organization_id=$1 AND correlation_id=$2`,
+          [ORG_A, `signature_request:${requestId}:${third.id}`],
+        )
+      ).rows[0].n,
+    ).toBe(0);
   });
 });

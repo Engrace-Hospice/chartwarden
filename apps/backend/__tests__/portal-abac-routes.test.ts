@@ -81,7 +81,7 @@ const ports = (consentAllowed: boolean, over: Partial<PortalAbacPorts> = {}): Po
 
 describe("M31-T07 §4.6 permission keys", () => {
   it("registers exactly forty-nine keys, each with a resource/action/category/abac", () => {
-    expect(M31_PERMISSION_KEY_LIST).toHaveLength(52);
+    expect(M31_PERMISSION_KEY_LIST).toHaveLength(53);
     for (const def of Object.values(M31_CONTRIBUTED_PERMISSIONS)) {
       expect(def.resource.length).toBeGreaterThan(0);
       expect(def.action.length).toBeGreaterThan(0);

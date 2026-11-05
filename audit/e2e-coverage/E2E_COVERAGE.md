@@ -213,7 +213,7 @@
 
 ## Dynamic web screens (#852)
 
-27/113 registered `web` screens carrying a `:param` segment are axe-walked by the second test in `axe-route-walk.spec.ts`: every screen whose ONLY param is the patient id, with the id resolved at run time through the app (`openFirstPatientChart`). The rest are excluded, each with its reason:
+28/114 registered `web` screens carrying a `:param` segment are axe-walked by the second test in `axe-route-walk.spec.ts`: every screen whose ONLY param is the patient id, with the id resolved at run time through the app (`openFirstPatientChart`). The rest are excluded, each with its reason:
 
 | Screen id | Path | Permission | Why not walked |
 |---|---|---|---|

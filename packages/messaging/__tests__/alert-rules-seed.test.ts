@@ -23,6 +23,7 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
     // (m8.encounter.unsigned / documentation_late). The full set is pinned so a rule cannot be added
     // or dropped silently.
     expect(PLATFORM_DEFAULT_ALERT_RULES.map((r) => r.eventType)).toEqual([
+      "m36.portal_signature.pending",
       "m36.message.mentioned",
       "m36.task.created",
       "m36.task.reassigned",

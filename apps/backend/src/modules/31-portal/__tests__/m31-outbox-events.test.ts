@@ -25,7 +25,7 @@ const row = (over: Partial<Parameters<typeof lifecycleEventsFor>[1]> = {}) => ({
 });
 
 describe("M31_OUTBOX_EVENTS", () => {
-  it("catalogues exactly the 22 spec 4.10 event names", () => {
+  it("catalogues exactly the declared event names (the 22 spec 4.10 events plus the ADR-0107 signature events)", () => {
     expect(M31_OUTBOX_EVENTS.map((e) => e.eventName).sort()).toEqual([...M31_EVENT_NAMES].sort());
   });
 

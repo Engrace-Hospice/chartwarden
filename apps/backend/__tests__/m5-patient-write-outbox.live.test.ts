@@ -204,22 +204,37 @@ describe.skipIf(!DB_URL)("GAP-016 M5 write outbox — LIVE Postgres", () => {
     });
   });
 
-  it("a write that fails after the insert leaves no event and no row (same transaction)", async () => {
+  it("a write that fails mid-transaction leaves no event, no row, and undoes the earlier update", async () => {
     const patientId = await admit();
+    const { addressId: firstPrimary } = await service.addAddress(
+      ORG_A,
+      patientId,
+      { line1: "1 Main", city: "Austin", state: "TX", postalCode: "78701", isPrimary: true } as never,
+      STAFF,
+    );
     await admin.query("DELETE FROM outbox_event");
     const before = (await admin.query("SELECT count(*)::int AS n FROM patient_address")).rows[0].n;
-    // US address without a state violates the patient_address CHECK -> the whole tx rolls back.
-    await expect(
-      service.addAddress(
+    // The new primary first closes the open one (UPDATE), then its insert fails in the database on the
+    // patient_address_kind enum -> the whole tx, UPDATE included, rolls back.
+    const failure = await service
+      .addAddress(
         ORG_A,
         patientId,
-        { line1: "1", city: "A", postalCode: "1", isPrimary: false } as never,
+        { kind: "bogus", line1: "2", city: "A", state: "TX", postalCode: "1", isPrimary: true } as never,
         STAFF,
-      ),
-    ).rejects.toBeTruthy();
+      )
+      .then(
+        () => null,
+        (e: unknown) => e as { message?: string; cause?: { message?: string } },
+      );
+    expect(String(failure?.cause?.message ?? failure?.message)).toMatch(/patient_address_kind/);
     expect(await events()).toEqual([]);
     const { rows } = await admin.query("SELECT count(*)::int AS n FROM patient_address");
     expect(rows[0].n).toBe(before);
+    const open = await admin.query("SELECT effective_to FROM patient_address WHERE id = $1", [
+      firstPrimary,
+    ]);
+    expect(open.rows[0].effective_to).toBeNull();
   });
 
   it("another tenant cannot write an address for this patient (RLS) and nothing is published", async () => {

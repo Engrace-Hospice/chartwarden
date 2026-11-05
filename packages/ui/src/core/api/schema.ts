@@ -1514,6 +1514,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/portal-signature-requests/{requestId}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept or reject an uploaded signed paper copy; accepting records it through M39 (ADR-0107) */
+        post: operations["postApiV1AdminPortalsignaturerequestsByRequestIdReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/portal-signature-requests/{requestId}/void": {
         parameters: {
             query?: never;
@@ -15793,7 +15810,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Search staff and the linked patient eligible for a structured reference */
+        /** Search staff, the linked patient and (ADR-0107, PROPOSED; only while the tenant flag `messaging.group_tags` is on) the group tags `role`, `team` and `on_call` eligible for a structured reference. A group candidate is a label: who is behind it is never listed */
         get: operations["getApiV1MessagingChannelsByIdMentioncandidates"];
         put?: never;
         post?: never;
@@ -15830,7 +15847,7 @@ export interface paths {
         /** Paginated message history (bodies decrypted for entitled readers) */
         get: operations["getApiV1MessagingChannelsByIdMessages"];
         put?: never;
-        /** Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original) */
+        /** Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original). A reference of kind `role`, `team` or `on_call` is a group tag (ADR-0107, PROPOSED; tenant flag `messaging.group_tags`): the server resolves it to people who are active members of the channel, freezes them, and sends each one an ordinary mention notification. Typed 422: GROUP_TAGS_DISABLED, GROUP_TAG_INVALID, GROUP_TAG_EMPTY, GROUP_TAG_TOO_MANY (50 people per tag, 3 tags per message), GROUP_TAG_ON_CALL_UNRESOLVED (no confirmed on-call person; nothing is sent) */
         post: operations["postApiV1MessagingChannelsByIdMessages"];
         delete?: never;
         options?: never;
@@ -21721,6 +21738,23 @@ export interface paths {
         put?: never;
         /** Sign an admission document with a typed name and an attestation; TOTP step-up, Idempotency-Key required (ADR-0107) */
         post: operations["postApiV1PortalSignaturerequestsByRequestIdSign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/portal/signature-requests/{requestId}/signed-copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach a completed signed-copy upload to an open request; parks it for staff review, never signs it (ADR-0107) */
+        post: operations["postApiV1PortalSignaturerequestsByRequestIdSignedcopy"];
         delete?: never;
         options?: never;
         head?: never;
@@ -32168,6 +32202,8 @@ export interface operations {
                             signedAt: string | null;
                             signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
                             voidReason: string | null;
+                            uploadedDocumentId: string | null;
+                            reviewOutcome: "accepted" | "rejected" | null;
                         }[];
                     };
                 };
@@ -32220,6 +32256,59 @@ export interface operations {
                         signedAt: string | null;
                         signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
                         voidReason: string | null;
+                        uploadedDocumentId: string | null;
+                        reviewOutcome: "accepted" | "rejected" | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminPortalsignaturerequestsByRequestIdReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    decision: "accepted" | "rejected";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                        status: ("pending" | "signed" | "uploaded_pending_review") | "voided";
+                        templateKey: string;
+                        templateVersion: string;
+                        targetRef: string | null;
+                        /** Format: uuid */
+                        requestedBy: string;
+                        /** Format: date-time */
+                        requestedAt: string;
+                        lastRemindedAt: string | null;
+                        reminderCount: number;
+                        signedAt: string | null;
+                        signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
+                        voidReason: string | null;
+                        uploadedDocumentId: string | null;
+                        reviewOutcome: "accepted" | "rejected" | null;
                     };
                 };
             };
@@ -32269,6 +32358,8 @@ export interface operations {
                         signedAt: string | null;
                         signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
                         voidReason: string | null;
+                        uploadedDocumentId: string | null;
+                        reviewOutcome: "accepted" | "rejected" | null;
                     };
                 };
             };
@@ -74555,7 +74646,7 @@ export interface operations {
                             parentMessageId: string | null;
                             body: string;
                             references: {
-                                kind: "staff" | "patient";
+                                kind: "staff" | "patient" | "role" | "team" | "on_call";
                                 entityId: string;
                                 start: number;
                                 end: number;
@@ -74595,7 +74686,7 @@ export interface operations {
                     parentMessageId?: string;
                     body: string;
                     references?: {
-                        kind: "staff" | "patient";
+                        kind: "staff" | "patient" | "role" | "team" | "on_call";
                         entityId: string;
                         start: number;
                         end: number;
@@ -74627,7 +74718,7 @@ export interface operations {
                             parentMessageId: string | null;
                             body: string;
                             references: {
-                                kind: "staff" | "patient";
+                                kind: "staff" | "patient" | "role" | "team" | "on_call";
                                 entityId: string;
                                 start: number;
                                 end: number;
@@ -74849,7 +74940,7 @@ export interface operations {
                                 entity_id: string;
                             }[];
                             references: {
-                                kind: "staff" | "patient";
+                                kind: "staff" | "patient" | "role" | "team" | "on_call";
                                 entityId: string;
                                 start: number;
                                 end: number;
@@ -75096,7 +75187,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         candidates: {
-                            kind: "staff" | "patient";
+                            kind: "staff" | "patient" | "role" | "team" | "on_call";
                             entityId: string;
                             displayName: string;
                             detail: string | null;
@@ -75214,7 +75305,7 @@ export interface operations {
                                 entity_id: string;
                             }[];
                             references: {
-                                kind: "staff" | "patient";
+                                kind: "staff" | "patient" | "role" | "team" | "on_call";
                                 entityId: string;
                                 start: number;
                                 end: number;
@@ -75275,7 +75366,7 @@ export interface operations {
                         attachmentId: string;
                     }[];
                     references?: {
-                        kind: "staff" | "patient";
+                        kind: "staff" | "patient" | "role" | "team" | "on_call";
                         entityId: string;
                         start: number;
                         end: number;
@@ -75797,7 +75888,7 @@ export interface operations {
                                 entity_id: string;
                             }[];
                             references: {
-                                kind: "staff" | "patient";
+                                kind: "staff" | "patient" | "role" | "team" | "on_call";
                                 entityId: string;
                                 start: number;
                                 end: number;
@@ -75867,7 +75958,7 @@ export interface operations {
                                 entity_id: string;
                             }[];
                             references: {
-                                kind: "staff" | "patient";
+                                kind: "staff" | "patient" | "role" | "team" | "on_call";
                                 entityId: string;
                                 start: number;
                                 end: number;
@@ -75964,7 +76055,7 @@ export interface operations {
                                 entity_id: string;
                             }[];
                             references: {
-                                kind: "staff" | "patient";
+                                kind: "staff" | "patient" | "role" | "team" | "on_call";
                                 entityId: string;
                                 start: number;
                                 end: number;
@@ -76320,7 +76411,7 @@ export interface operations {
                                 entity_id: string;
                             }[];
                             references: {
-                                kind: "staff" | "patient";
+                                kind: "staff" | "patient" | "role" | "team" | "on_call";
                                 entityId: string;
                                 start: number;
                                 end: number;
@@ -80304,7 +80395,7 @@ export interface operations {
                         };
                     };
                     references?: {
-                        kind: "staff" | "patient";
+                        kind: "staff" | "patient" | "role" | "team" | "on_call";
                         entityId: string;
                         start: number;
                         end: number;
@@ -81260,7 +81351,7 @@ export interface operations {
                                 entity_id: string;
                             }[];
                             references: {
-                                kind: "staff" | "patient";
+                                kind: "staff" | "patient" | "role" | "team" | "on_call";
                                 entityId: string;
                                 start: number;
                                 end: number;
@@ -91839,7 +91930,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    purpose: "insurance_card" | "prior_records" | "wound_photo" | "advance_directive_copy" | "other";
+                    purpose: "insurance_card" | "prior_records" | "wound_photo" | "advance_directive_copy" | "signed_admission_document" | "other";
                     purposeDetail?: string;
                     mimeType: string;
                     expectedByteSize: number;
@@ -92459,6 +92550,8 @@ export interface operations {
                         signedAt: string | null;
                         signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
                         attestationText: string;
+                        documentTitle?: string;
+                        documentParagraphs?: string[];
                     };
                 };
             };
@@ -92507,6 +92600,50 @@ export interface operations {
                             signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
                         };
                         alreadySigned: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PortalSignaturerequestsByRequestIdSignedcopy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    uploadId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        request: {
+                            /** Format: uuid */
+                            id: string;
+                            docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                            status: "pending" | "signed" | "uploaded_pending_review";
+                            templateKey: string;
+                            templateVersion: string;
+                            /** Format: date-time */
+                            requestedAt: string;
+                            signedAt: string | null;
+                            signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
+                        };
                     };
                 };
             };

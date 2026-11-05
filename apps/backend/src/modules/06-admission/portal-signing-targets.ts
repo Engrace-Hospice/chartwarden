@@ -17,7 +17,10 @@ interface ElectionScope {
   ): Promise<{ readonly patientId: string } | null>;
 }
 
-export function createPortalSigningTargetCheck(service: TargetService, electionScope: ElectionScope) {
+export function createPortalSigningTargetCheck(
+  service: TargetService,
+  electionScope: ElectionScope,
+) {
   return async (input: {
     readonly organizationId: string;
     readonly docKind: "election_statement" | "notice_of_patient_rights";

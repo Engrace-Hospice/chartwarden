@@ -45,6 +45,7 @@ const COMPONENTS: Record<string, PortalScreen> = {
   ),
   "portal.medications": lazyScreen(() => import("./medications"), "PortalMedicationList"),
   "portal.documents": lazyScreen(() => import("./documents"), "PortalDocumentList"),
+  "portal.signatures": lazyScreen(() => import("./signatures"), "PortalSignatures"),
   "portal.messages": lazyScreen(() => import("./messages"), "PortalMessages"),
   "portal.amendments": lazyScreen(() => import("./amendments"), "PortalAmendments"),
   "portal.preferences": lazyScreen(() => import("./preferences"), "PortalNotificationPreferences"),

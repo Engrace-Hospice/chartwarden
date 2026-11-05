@@ -1,5 +1,6 @@
 import type {
   ClinicalLinkKind,
+  MentionKind,
   MessageReactionSummary,
   PollView,
   RichBody,
@@ -84,7 +85,7 @@ export interface MessageAttachment {
 }
 
 export interface MessageReference {
-  kind: "staff" | "patient";
+  kind: MentionKind;
   entityId: string;
   start: number;
   end: number;
@@ -93,7 +94,8 @@ export interface MessageReference {
 }
 
 export interface MessageReferenceInput {
-  kind: "staff" | "patient";
+  /** ADR-0107: includes the server-resolved group tags (role, team, on_call). */
+  kind: MentionKind;
   entityId: string;
   start: number;
   end: number;

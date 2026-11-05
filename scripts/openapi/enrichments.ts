@@ -2405,6 +2405,8 @@ import {
   PortalSignInAccountsResponse as M31PortalSignInAccountsResponse,
   PortalSignInEstablishRequest as M31PortalSignInEstablishRequest,
   PortalSignInEstablishResponse as M31PortalSignInEstablishResponse,
+  PortalSignatureAttachResponse as M31PortalSignatureAttachResponse,
+  PortalSignatureAttachUpload as M31PortalSignatureAttachUpload,
   PortalSignatureRequestDetailResponse as M31PortalSignatureRequestDetailResponse,
   PortalSignatureRequestListResponse as M31PortalSignatureRequestListResponse,
   PortalSignatureSignRequest as M31PortalSignatureSignRequest,
@@ -2414,6 +2416,7 @@ import {
   StaffSignatureRequestCreate as M31StaffSignatureRequestCreate,
   StaffSignatureRequestListResponse as M31StaffSignatureRequestListResponse,
   StaffSignatureRequestQuery as M31StaffSignatureRequestQuery,
+  StaffSignatureRequestReview as M31StaffSignatureRequestReview,
   StaffSignatureRequestView as M31StaffSignatureRequestView,
   StaffSignatureRequestVoid as M31StaffSignatureRequestVoid,
   StartRecordingRequest as M31StartRecordingRequest,
@@ -4251,6 +4254,18 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
       "Sign an admission document with a typed name and an attestation; TOTP step-up, Idempotency-Key required (ADR-0107)",
     body: M31PortalSignatureSignRequest,
     response: M31PortalSignatureSignResponse,
+  },
+  "POST /api/v1/portal/signature-requests/:requestId/signed-copy": {
+    summary:
+      "Attach a completed signed-copy upload to an open request; parks it for staff review, never signs it (ADR-0107)",
+    body: M31PortalSignatureAttachUpload,
+    response: M31PortalSignatureAttachResponse,
+  },
+  "POST /api/v1/admin/portal-signature-requests/:requestId/review": {
+    summary:
+      "Accept or reject an uploaded signed paper copy; accepting records it through M39 (ADR-0107)",
+    body: M31StaffSignatureRequestReview,
+    response: M31StaffSignatureRequestView,
   },
   "POST /api/v1/admin/portal-signature-requests": {
     summary:
@@ -10496,7 +10511,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M36CancelScheduledResponseSchema,
   },
   "GET /api/v1/messaging/channels/:id/mention-candidates": {
-    summary: "Search staff and the linked patient eligible for a structured reference",
+    summary:
+      "Search staff, the linked patient and (ADR-0107, PROPOSED; only while the tenant flag `messaging.group_tags` is on) the group tags `role`, `team` and `on_call` eligible for a structured reference. A group candidate is a label: who is behind it is never listed",
     query: M36MentionCandidateQuerySchema,
     response: M36MentionCandidateResponseSchema,
   },
@@ -10508,7 +10524,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/messaging/channels/:id/messages": {
     summary:
-      "Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original)",
+      "Post a message (201; CHANNEL_ARCHIVED 410; Idempotency-Key required, replay returns the original). A reference of kind `role`, `team` or `on_call` is a group tag (ADR-0107, PROPOSED; tenant flag `messaging.group_tags`): the server resolves it to people who are active members of the channel, freezes them, and sends each one an ordinary mention notification. Typed 422: GROUP_TAGS_DISABLED, GROUP_TAG_INVALID, GROUP_TAG_EMPTY, GROUP_TAG_TOO_MANY (50 people per tag, 3 tags per message), GROUP_TAG_ON_CALL_UNRESOLVED (no confirmed on-call person; nothing is sent)",
     headers: IDEMPOTENCY_KEY_HEADER,
     body: M36SendMessageBodySchema,
     response: M36SendMessageResponseSchema,

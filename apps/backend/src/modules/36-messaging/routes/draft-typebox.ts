@@ -2,7 +2,7 @@ import { SBAR_MAX_SECTION_CHARS } from "@chartwarden/types";
 // apps/backend/src/modules/36-messaging/routes/draft-typebox.ts — WP 2.5 draft request/response schemas (kept apart
 // from draft-routes.ts so the OpenAPI emitter imports schemas only, not the auth stack).
 import { Type } from "@sinclair/typebox";
-import { UUID_PATTERN } from "./messaging-typebox";
+import { MentionKindSchema, UUID_PATTERN } from "./messaging-typebox";
 
 const Id = Type.String({ minLength: 1, maxLength: 64 });
 
@@ -40,7 +40,7 @@ export const SaveDraftBodySchema = Type.Object({
   references: Type.Optional(
     Type.Array(
       Type.Object({
-        kind: Type.Union([Type.Literal("staff"), Type.Literal("patient")]),
+        kind: MentionKindSchema,
         entityId: Id,
         start: Type.Integer({ minimum: 0, maximum: 8000 }),
         end: Type.Integer({ minimum: 1, maximum: 8001 }),
@@ -61,7 +61,7 @@ export const DraftViewSchema = Type.Object({
   body: Type.String(),
   references: Type.Array(
     Type.Object({
-      kind: Type.Union([Type.Literal("staff"), Type.Literal("patient")]),
+      kind: MentionKindSchema,
       entityId: Type.String(),
       start: Type.Integer(),
       end: Type.Integer(),
