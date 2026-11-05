@@ -27,6 +27,8 @@ export const subscriptionAddon = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     endsAt: timestamp("ends_at", { withTimezone: true }),
     canceledAt: timestamp("canceled_at", { withTimezone: true }),
+    /** The operator who canceled it (migration 1325); null when the system closed an expired row. */
+    canceledByMembershipId: uuid("canceled_by_membership_id"),
     grantedByMembershipId: uuid("granted_by_membership_id"),
     grantReason: text("grant_reason").notNull(),
     stripeSubscriptionItemId: text("stripe_subscription_item_id"),

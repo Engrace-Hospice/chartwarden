@@ -248,6 +248,18 @@ describe.skipIf(!DB_URL)("ADR-0108 claims-billing add-on — LIVE Postgres", () 
       [ORG_A],
     );
     expect(events).toHaveLength(1);
+    // The cancel names its operator, on the row and so in the write-audit row's after-image.
+    const [row] = await q<{ canceled_by_membership_id: string | null }>(
+      "SELECT canceled_by_membership_id FROM subscription_addon WHERE id=$1",
+      [canceled.id],
+    );
+    expect(row?.canceled_by_membership_id).toBe(MEMBERSHIP);
+    const audited = await q<{ who: string | null }>(
+      `SELECT after->>'canceled_by_membership_id' AS who FROM audit_event
+        WHERE resource_kind='subscription_addon' AND resource_id=$1 AND after->>'status'='canceled'`,
+      [canceled.id],
+    );
+    expect(audited.map((a) => a.who)).toEqual([MEMBERSHIP]);
   });
 
   it("the admin list and usage reads work on the platform credential (they back GET /api/admin/usage/:org/current)", async () => {
