@@ -1850,6 +1850,8 @@ import {
   buildCommercialClaimAssemblyService,
   buildCommercialClaimLifecycleService,
   buildCommercialClaimReadService,
+  buildEnrollmentReportService,
+  buildM41EnrollmentReportConsumer,
   buildM41RemittanceConsumer,
   registerCommercialAckQuarantineRoutes,
   registerCommercialBillingRoutes,
@@ -6522,6 +6524,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   : {}),
               }),
               admin: createCommercialAdminService(buildDrizzleEligibilityStore(dbHandle.db)),
+              // ADR-0053 amendment D7 - advisory Claim.MD enrollment reports (staff confirm through the enrollments routes).
+              reports: buildEnrollmentReportService(dbHandle.db),
             }),
           );
           // M26 (Cap Management) — mount the §4.1 route plugins over the Drizzle READ + WRITE services; the
@@ -12610,6 +12614,16 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   state: info.currentState,
                 },
                 "M24 remittance transition skipped",
+              ),
+          }),
+          // ADR-0053 amendment D7 — M41 records Claim.MD enrollment reports as ADVISORY rows for staff to confirm; it never
+          // writes commercial_payer_enrollment, so no send gate opens on a vendor's word.
+          buildM41EnrollmentReportConsumer({
+            db: dbHandle.db,
+            onSkipped: (info) =>
+              app.log.warn(
+                { reason: info.reason, org: info.organizationId },
+                "M41 enrollment report skipped",
               ),
           }),
           // #835 (ADR-0100 D8) — M41's consumer of the same three 835 posting events: moves a COMMERCIAL claim to

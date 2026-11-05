@@ -47,6 +47,11 @@ export const enrollmentDraftKey = (
     enrollmentId ?? providerEntityId,
   );
 
+/** Values a confirmed clearinghouse report pre-fills (an edit takes only status and evidence). Shown, never submitted unseen. */
+export type EnrollmentPrefill = Partial<
+  Pick<Fields, "payerId" | "key" | "status" | "from" | "evidence">
+>;
+
 export type EnrollmentFormMode =
   | { readonly kind: "create"; readonly payers: readonly { id: string; name: string }[] }
   | { readonly kind: "edit"; readonly enrollment: EnrollmentView };
@@ -79,7 +84,7 @@ const STATUS_OPTIONS = ENROLLMENT_STATUS_VALUES.map((v) => ({
   label: enrollmentLabel(v),
 }));
 
-const initialFields = (mode: EnrollmentFormMode): Fields =>
+const initialFields = (mode: EnrollmentFormMode, prefill: EnrollmentPrefill = {}): Fields =>
   mode.kind === "edit"
     ? {
         payerId: mode.enrollment.payerId,
@@ -88,11 +93,21 @@ const initialFields = (mode: EnrollmentFormMode): Fields =>
         from: mode.enrollment.effectiveFrom,
         to: mode.enrollment.effectiveTo ?? "",
         evidence: mode.enrollment.evidenceRef ?? "",
+        ...(prefill.status ? { status: prefill.status } : {}),
+        ...(prefill.evidence ? { evidence: prefill.evidence } : {}),
       }
-    : { payerId: "", key: "", status: "pending", from: "", to: "", evidence: "" };
+    : {
+        payerId: prefill.payerId ?? "",
+        key: prefill.key ?? "",
+        status: prefill.status ?? "pending",
+        from: prefill.from ?? "",
+        to: "",
+        evidence: prefill.evidence ?? "",
+      };
 
 export function EnrollmentForm({
   mode,
+  prefill,
   providerEntityId,
   resume,
   onSaved,
@@ -100,6 +115,8 @@ export function EnrollmentForm({
   onReload,
 }: {
   mode: EnrollmentFormMode;
+  /** From a clearinghouse report the user chose to confirm; the user still reviews and submits. */
+  prefill?: EnrollmentPrefill;
   providerEntityId: string;
   /** True when the user is genuinely back from /step-up: a stashed draft for this form is restored. */
   resume: boolean;
@@ -116,8 +133,8 @@ export function EnrollmentForm({
   const [fields, setFields] = useState<Fields>(() => {
     const draft = resume ? peekStepUpDraft<unknown>(draftKey) : null;
     // Only the editable fields come back for an edit: payer, clearinghouse and start are the record's own.
-    if (!isFields(draft)) return initialFields(mode);
-    const base = initialFields(mode);
+    if (!isFields(draft)) return initialFields(mode, prefill);
+    const base = initialFields(mode, prefill);
     if (editing) return { ...base, status: draft.status, to: draft.to, evidence: draft.evidence };
     // A restored payer that is no longer offered would render a blank select: back to "Choose a payer".
     return mode.payers.some((p) => p.id === draft.payerId) ? draft : { ...draft, payerId: "" };

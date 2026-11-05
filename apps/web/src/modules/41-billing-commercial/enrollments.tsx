@@ -24,14 +24,26 @@ import { useStepUpOwner, useStepUpReturn } from "../../shell/use-step-up-return"
 import { AuthorizationDrawerShell } from "./authorization-drawer";
 import { CommercialTabs, EntityGate, EntityPicker } from "./commercial-chrome";
 import {
+  type EnrollmentReportView,
   type EnrollmentView,
   enrollmentLabel,
   enrollmentPeriod,
+  enrollmentReportEvidence,
   enrollmentTone,
   localToday,
   shortId,
 } from "./commercial-model";
-import { ENROLLMENT_DRAFT_ACTIONS, EnrollmentForm, enrollmentDraftKey } from "./enrollment-form";
+import {
+  ENROLLMENT_DRAFT_ACTIONS,
+  EnrollmentForm,
+  type EnrollmentPrefill,
+  enrollmentDraftKey,
+} from "./enrollment-form";
+import {
+  EnrollmentReportsPanel,
+  resolveEnrollmentReport,
+  useEnrollmentReports,
+} from "./enrollment-reports";
 import { useAuthorizationPlans } from "./use-authorization-plans";
 import { usePayerNames } from "./use-payer-names";
 import { useProviderEntity } from "./use-provider-entity";
@@ -54,6 +66,8 @@ const failedLoad = (prev: EnrollmentsLoad, entityId: string): EnrollmentsLoad =>
     : { status: "error" };
 
 const ENROLLMENT_PARAM = "enrollment";
+/** The clearinghouse report a drawer was opened to confirm (kept in the URL so a step-up return restores it). */
+const REPORT_PARAM = "report";
 const NEW_ENROLLMENT = "new";
 const MANAGE_PERMISSION = "commercial_billing.manage_enrollment";
 
@@ -65,6 +79,7 @@ export function CommercialEnrollments(): JSX.Element {
   const { state: entities, entityId, retry: retryEntities } = useProviderEntity();
   const { plans, retry: retryPlans } = useAuthorizationPlans(entityId);
   const drawerParam = params.get(ENROLLMENT_PARAM) ?? "";
+  const reportParam = params.get(REPORT_PARAM) ?? "";
   const [rawLoad, setLoad] = useState<EnrollmentsLoad>({ status: "loading" });
   const [reloadKey, setReloadKey] = useState(0);
   const refocusPending = useRef(false);
@@ -125,17 +140,28 @@ export function CommercialEnrollments(): JSX.Element {
     [planList],
   );
 
+  const reports = useEnrollmentReports(entityId, reloadKey);
   const reload = (): void => setReloadKey((k) => k + 1);
-  const setDrawer = (value: string): void =>
+  const setDrawer = (value: string, reportId = ""): void =>
     setParams(
       (prev) => {
         const next = new URLSearchParams(prev);
         if (value) next.set(ENROLLMENT_PARAM, value);
         else next.delete(ENROLLMENT_PARAM);
+        if (value && reportId) next.set(REPORT_PARAM, reportId);
+        else next.delete(REPORT_PARAM);
         return next;
       },
       { replace: true },
     );
+  // Confirm a report: edit the enrollment it names when one exists on that payer and clearinghouse, otherwise add one.
+  const confirmReport = (r: EnrollmentReportView): void => {
+    const existing = items.find(
+      (e) =>
+        r.payerId !== null && e.payerId === r.payerId && e.clearinghouseKey === r.clearinghouseKey,
+    );
+    setDrawer(existing ? existing.id : NEW_ENROLLMENT, r.id);
+  };
   // After the drawer closes, focus returns to the opener via the drawer; if that opener is gone, land on the page heading.
   useEffect(() => {
     if (!refocusPending.current || drawerParam) return;
@@ -143,6 +169,35 @@ export function CommercialEnrollments(): JSX.Element {
     const active = document.activeElement;
     if (!active || active === document.body) heading.current?.focus();
   }, [drawerParam]);
+  const confirming =
+    reports.status === "ready" ? (reports.items.find((r) => r.id === reportParam) ?? null) : null;
+  const prefill: EnrollmentPrefill | undefined = confirming
+    ? {
+        // A payer the add form does not offer would render a blank select: the user picks one instead.
+        ...(confirming.payerId && payers.includes(confirming.payerId)
+          ? { payerId: confirming.payerId }
+          : {}),
+        key: confirming.clearinghouseKey,
+        ...(confirming.suggestedStatus ? { status: confirming.suggestedStatus } : {}),
+        from: localToday(),
+        evidence: enrollmentReportEvidence(confirming),
+      }
+    : undefined;
+  // The enrollment was saved by the user's own submit; only now is the report closed as applied.
+  const saved = async (message: string): Promise<void> => {
+    if (
+      confirming &&
+      !(await resolveEnrollmentReport(client, entityId, confirming.id, "applied"))
+    ) {
+      toast.show(
+        "The enrollment was saved, but the report could not be closed. Dismiss it from the list.",
+        {
+          tone: "error",
+        },
+      );
+    }
+    finish(message);
+  };
   const finish = (message: string): void => {
     setDrawer("");
     toast.show(message, { tone: "success" });
@@ -221,6 +276,15 @@ export function CommercialEnrollments(): JSX.Element {
           <div className="wx-filter-panel">
             <EntityPicker state={entities} value={entityId} onChange={changeEntity} />
           </div>
+
+          <EnrollmentReportsPanel
+            load={reports}
+            entityId={entityId}
+            canManage={canManage}
+            payerName={nameOf}
+            onConfirm={confirmReport}
+            onChanged={reload}
+          />
 
           <div aria-live="polite">
             {load.status === "ready" && load.failed ? (
@@ -320,9 +384,10 @@ export function CommercialEnrollments(): JSX.Element {
         >
           <EnrollmentForm
             mode={{ kind: "edit", enrollment: selected }}
+            {...(prefill ? { prefill } : {})}
             providerEntityId={entityId}
             resume={returning}
-            onSaved={() => finish("Enrollment updated.")}
+            onSaved={() => void saved("Enrollment updated.")}
             onClose={closeDrawer}
             onReload={reload}
           />
@@ -356,9 +421,10 @@ export function CommercialEnrollments(): JSX.Element {
                 kind: "create",
                 payers: payers.map((id) => ({ id, name: nameOf(id) })),
               }}
+              {...(prefill ? { prefill } : {})}
               providerEntityId={entityId}
               resume={returning}
-              onSaved={() => finish("Enrollment added.")}
+              onSaved={() => void saved("Enrollment added.")}
               onClose={closeDrawer}
               onReload={reload}
             />
