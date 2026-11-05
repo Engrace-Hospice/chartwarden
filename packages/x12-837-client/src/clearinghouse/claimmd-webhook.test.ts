@@ -122,6 +122,21 @@ describe("parseClaimMdDelivery", () => {
     expect(d.events.map((e) => e.eventType)).toEqual(["brand_new", null]);
   });
 
+  it("keeps a printable event_time and nulls one with a NUL or control character (the element keeps it)", () => {
+    const d = parseClaimMdDelivery(
+      body([
+        element("1"),
+        element("2", { event_time: "2026-11-05\u000012:00" }),
+        element("3", { event_time: "2026-11-05\n12:00" }),
+        element("4", { event_time: "" }),
+        element("5", { event_time: "x".repeat(65) }),
+      ]),
+    );
+    if (d.kind !== "events") throw new Error("expected events");
+    expect(d.events.map((e) => e.eventTime)).toEqual(["2026-11-05 12:00:00", null, null, null, null]);
+    expect(JSON.parse(d.events[1]?.element ?? "{}").event_time).toBe("2026-11-05\u000012:00");
+  });
+
   it("reads remote_acct_number when present", () => {
     const d = parseClaimMdDelivery(body([element("1")], { remote_acct_number: "CW-1" }));
     expect(d.kind === "events" && d.remoteAcctNumber).toBe("CW-1");

@@ -24,7 +24,9 @@ const SHA256_BYTES = 32;
 const ACCOUNT_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const EVENT_ID_RE = /^[\x21-\x7e]+$/;
 const EVENT_TYPE_RE = /^[a-z0-9_.-]{1,64}$/i;
-const EVENT_TIME_MAX = 64;
+/** Printable ASCII only: a NUL or control character would fail the receipt INSERT on every retry. The sweep reads the
+ *  time from the encrypted element, so a refused value only drops the plaintext column copy. */
+const EVENT_TIME_RE = /^[\x20-\x7e]{1,64}$/;
 
 /**
  * True only when `header` is one canonical base64 SHA-256 HMAC of `rawBody` under the key's Latin-1 bytes. A missing or
@@ -94,7 +96,7 @@ function eventOf(raw: unknown): ClaimMdDeliveryEvent {
   const type =
     typeof e.event_type === "string" && EVENT_TYPE_RE.test(e.event_type) ? e.event_type : null;
   const time =
-    typeof e.event_time === "string" && e.event_time.length <= EVENT_TIME_MAX ? e.event_time : null;
+    typeof e.event_time === "string" && EVENT_TIME_RE.test(e.event_time) ? e.event_time : null;
   return {
     eventId: id ?? `x:${sha256(element)}`,
     eventType: type,
