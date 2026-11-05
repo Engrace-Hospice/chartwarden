@@ -59,6 +59,12 @@ export const PORTAL_NAVIGATION: readonly PortalNavItem[] = [
     section: "primary",
   },
   {
+    id: "portal.signatures",
+    label: "Documents to sign",
+    icon: "pencil",
+    section: "primary",
+  },
+  {
     id: "portal.bereavement",
     label: "Bereavement support",
     icon: "heart",

@@ -5901,3 +5901,105 @@
     max-width: calc(100% - 1rem);
   }
 }
+
+/* ADR-0107 "Documents to sign" */
+.wx-signatures-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.wx-signatures-list > li {
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.wx-signatures-list > li > div {
+  flex: 1 1 14rem;
+}
+.wx-signatures-list h2 {
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+}
+.wx-signatures-list p {
+  margin-top: var(--space-1);
+  color: var(--color-on-surface-variant);
+  font-size: .875rem;
+}
+.wx-signatures-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-primary-tint);
+  color: var(--color-primary-strong);
+  font-weight: 600;
+}
+.wx-signatures-dialog {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.wx-signatures-dialog h2 {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+}
+.wx-signatures-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.wx-signatures-attestation {
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+  line-height: 1.5;
+}
+.wx-signatures-behalf > summary {
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  cursor: pointer;
+}
+.wx-signatures-behalf[open] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.wx-signatures-check {
+  min-height: 2.75rem;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.wx-signatures-message {
+  color: var(--color-error);
+  font-weight: 600;
+}
+.wx-signatures-copy {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px dashed var(--color-outline);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-low);
+}
+.wx-signatures-copy h3 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+.wx-signatures-dialog > footer {
+  display: flex;
+  justify-content: flex-end;
+}
