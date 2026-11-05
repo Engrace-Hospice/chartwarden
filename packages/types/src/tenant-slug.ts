@@ -33,6 +33,44 @@ export function validateTenantSlug(slug: string): TenantSlugValidation {
   return { ok: true };
 }
 
+const MAX_TENANT_SLUG_LENGTH = 63;
+/** Trailing entity words dropped from a legal name ("Foo Hospice, LLC" -> "foo-hospice"). "of" and the like stay. */
+const LEGAL_ENTITY_SUFFIXES: ReadonlySet<string> = new Set([
+  "llc",
+  "inc",
+  "incorporated",
+  "corp",
+  "corporation",
+  "ltd",
+  "limited",
+  "pllc",
+  "lp",
+  "llp",
+  "co",
+  "company",
+]);
+
+/**
+ * A proposed host label for a legal business name, or "" when no valid one can be made (too short, reserved, no
+ * Latin letters). Lower-case, accents folded, periods and apostrophes dropped, other punctuation becomes a hyphen,
+ * trailing entity words (LLC, Inc, Corp, Ltd, PLLC, LP, Co ...) removed. It only suggests: the operator edits it,
+ * and the server's availability check and the database rules still decide.
+ */
+export function suggestTenantSlug(legalName: string): string {
+  const tokens = legalName
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[.'\u2019]/g, "")
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token !== "");
+  while (tokens.length > 1 && LEGAL_ENTITY_SUFFIXES.has(tokens[tokens.length - 1] ?? "")) {
+    tokens.pop();
+  }
+  const slug = tokens.join("-").slice(0, MAX_TENANT_SLUG_LENGTH).replace(/-+$/, "");
+  return validateTenantSlug(slug).ok ? slug : "";
+}
+
 export type TenantHostClass =
   | { kind: "tenant"; label: string }
   | { kind: "apex" }
