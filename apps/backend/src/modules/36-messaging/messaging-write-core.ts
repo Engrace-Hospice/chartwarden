@@ -446,12 +446,17 @@ export async function channelOr404(
   tx: Tx,
   orgId: string,
   channelId: string,
-): Promise<{ id: string; kind: string; isArchived: boolean }> {
+): Promise<{ id: string; kind: string; isArchived: boolean; subjectId: string | null }> {
   const rows = (await tx
-    .select({ id: CH.id, kind: CH.channelKind, isArchived: CH.isArchived })
+    .select({ id: CH.id, kind: CH.channelKind, isArchived: CH.isArchived, subjectId: CH.subjectId })
     .from(CH)
     .where(and(eq(CH.organizationId, orgId), eq(CH.id, channelId)))
-    .limit(1)) as Array<{ id: string; kind: string; isArchived: boolean }>;
+    .limit(1)) as Array<{
+    id: string;
+    kind: string;
+    isArchived: boolean;
+    subjectId: string | null;
+  }>;
   if (!rows[0]) throw new NotFoundError("channel", channelId);
   return rows[0];
 }

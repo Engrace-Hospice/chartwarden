@@ -10,7 +10,7 @@ import type {
   NotificationPreferencesView as ServiceNotificationPreferencesView,
   ResolvedMessage as ServiceResolvedMessage,
 } from "@chartwarden/messaging";
-import { MESSAGE_REACTION_KEYS, ValidationError } from "@chartwarden/types";
+import { MENTION_KINDS, MESSAGE_REACTION_KEYS, ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/36-messaging/routes/messaging-typebox.ts — M36-T07 complete TypeBox
 // route schemas for the messaging / notification / alert-rule API surface (M36 spec §4.1–4.2).
 // Named `messaging-typebox` (not `*schema*`) so the table-ownership import heuristic never
@@ -71,12 +71,15 @@ export const ListMessagesQuerySchema = Type.Object({
   anchorMessageId: Type.Optional(Id),
 });
 
+/** ADR-0107: staff, patient and the three group tags (role, team, on_call). */
+export const MentionKindSchema = Type.Union(MENTION_KINDS.map((kind) => Type.Literal(kind)));
+
 export const MentionCandidateQuerySchema = Type.Object({
   q: Type.Optional(Type.String({ maxLength: 100 })),
 });
 
 const MessageReferenceInputSchema = Type.Object({
-  kind: Type.Union([Type.Literal("staff"), Type.Literal("patient")]),
+  kind: MentionKindSchema,
   entityId: Id,
   start: Type.Integer({ minimum: 0, maximum: 8000 }),
   end: Type.Integer({ minimum: 1, maximum: 8001 }),
@@ -419,7 +422,7 @@ export const ResolvedMessageSchema = Type.Object({
   clinicalLinks: Type.Optional(Type.Array(ClinicalLinkViewSchema)),
   references: Type.Array(
     Type.Object({
-      kind: Type.Union([Type.Literal("staff"), Type.Literal("patient")]),
+      kind: MentionKindSchema,
       entityId: Type.String(),
       start: Type.Integer(),
       end: Type.Integer(),
@@ -487,7 +490,7 @@ export const MentionNonMemberResponseSchema = Type.Object({
 export const MentionCandidateResponseSchema = Type.Object({
   candidates: Type.Array(
     Type.Object({
-      kind: Type.Union([Type.Literal("staff"), Type.Literal("patient")]),
+      kind: MentionKindSchema,
       entityId: Type.String(),
       displayName: Type.String(),
       detail: NullableString(),

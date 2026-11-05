@@ -15,6 +15,7 @@
 // and realtime/jobs tasks (M36-T07/T08).
 
 import type {
+  MentionKind,
   MessageReactionSummary,
   MessageUrgency,
   PollView,
@@ -40,7 +41,8 @@ export interface MessageAttachmentView {
   readonly availability: "available" | "scanning";
 }
 
-export type MessageReferenceKind = "staff" | "patient";
+/** ADR-0107: `role` / `team` / `on_call` are group tags the server resolves to people at send. */
+export type MessageReferenceKind = MentionKind;
 
 /** UTF-16 code-unit offsets, matching the browser textarea selection model. */
 export interface MessageReferenceInput {
