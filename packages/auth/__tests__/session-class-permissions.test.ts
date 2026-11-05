@@ -28,7 +28,11 @@ describe("session-class permissions (portal / funeral-home sessions hold no memb
   });
 
   it("every key a class grants exists in the M31 catalog or is the funeral key (no typo grants nothing silently)", () => {
-    const known = new Set<string>(Object.keys(M31_CONTRIBUTED_PERMISSIONS));
+    // `notifications.endpoint.manage` is M36's self-only key, granted to the portal classes that can be asked to sign so they can register a push device (ADR-0107 D7).
+    const known = new Set<string>([
+      ...Object.keys(M31_CONTRIBUTED_PERMISSIONS),
+      "notifications.endpoint.manage",
+    ]);
     for (const [cls, keys] of Object.entries(SESSION_CLASS_PERMISSIONS)) {
       for (const key of keys) {
         if (cls === "funeral_home") expect(key).toBe("funeral.case_read");

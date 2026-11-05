@@ -11,7 +11,11 @@ import { createHash } from "node:crypto";
 import { ChartWardenError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { type PortalSigningGrantKind, decideSigningAuthority } from "../portal-signing-authority";
-import { SIGNATURE_TEMPLATES, type SignatureDocumentText } from "../signature-templates";
+import {
+  SIGNATURE_TEMPLATES,
+  type SignatureDocumentText,
+  renderDocumentText,
+} from "../signature-templates";
 import { type SignDenyCode, signAdmissionDocument } from "../write-paths/sign-admission-document";
 import { actorOf, portalAccountIdOf, portalPatientIdOf, portalSessionIdOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
@@ -27,14 +31,21 @@ export function attestationTextFor(docKind: string, templateVersion: string): st
   return `By typing my name and checking this box I confirm that I have read this document (${docKind.replaceAll("_", " ")}, version ${templateVersion}), that the information I gave about myself is true, and that I understand my typed name is my legal electronic signature.`;
 }
 /** The wording registered for this kind, or null (the M06 documents carry theirs in the admission record). The version is the request's own, so a later template never rewrites an old request. */
-export function documentTextFor(docKind: string): SignatureDocumentText | null {
-  return (
-    (SIGNATURE_TEMPLATES as Record<string, { text?: SignatureDocumentText }>)[docKind]?.text ?? null
-  );
+export function documentTextFor(
+  docKind: string,
+  agencyName: string | null = null,
+): SignatureDocumentText | null {
+  const text = (SIGNATURE_TEMPLATES as Record<string, { text?: SignatureDocumentText }>)[docKind]
+    ?.text;
+  return text ? renderDocumentText(text, agencyName) : null;
 }
 /** What the evidence hash covers: the document wording the person was shown plus the attestation sentence. */
-export function signedContentFor(docKind: string, templateVersion: string): string {
-  const doc = documentTextFor(docKind);
+export function signedContentFor(
+  docKind: string,
+  templateVersion: string,
+  agencyName: string | null = null,
+): string {
+  const doc = documentTextFor(docKind, agencyName);
   const body = doc ? `${doc.title}\n\n${doc.paragraphs.join("\n\n")}\n\n` : "";
   return body + attestationTextFor(docKind, templateVersion);
 }
@@ -121,7 +132,10 @@ export function registerPortalSignatureRoutes(app: FastifyInstance, deps: Portal
         requestId,
       );
       if (!view) throw new NotFoundError("signature request", requestId);
-      const doc = documentTextFor(view.docKind);
+      const doc = documentTextFor(
+        view.docKind,
+        await signingOf(deps).agencyName(actor.organizationId),
+      );
       return {
         ...view,
         attestationText: attestationTextFor(view.docKind, view.templateVersion),
@@ -188,7 +202,13 @@ export function registerPortalSignatureRoutes(app: FastifyInstance, deps: Portal
               ? { signerRelationshipText: body.signerRelationshipText }
               : {}),
             ...(body.patientUnableReason ? { patientUnableReason: body.patientUnableReason } : {}),
-            attestationSha256: sha256(signedContentFor(view.docKind, view.templateVersion)),
+            attestationSha256: sha256(
+              signedContentFor(
+                view.docKind,
+                view.templateVersion,
+                await signing.agencyName(actor.organizationId),
+              ),
+            ),
             idempotencyKey,
           },
         },

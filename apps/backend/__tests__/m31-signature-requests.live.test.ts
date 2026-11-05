@@ -46,6 +46,7 @@ import {
   M31_SIGNATURE_REMINDER_INTERVAL_MS,
   runSignatureReminderSweepOnce,
 } from "../src/modules/31-portal/jobs/signature-reminder-sweep";
+import { buildM31SignatureRequestPushConsumer } from "../src/modules/31-portal/outbox-consumers/signature-request-push";
 import { mountM31Routes } from "../src/modules/31-portal/routes/mount";
 import { buildStaffSignatureStore } from "../src/modules/31-portal/routes/signature-staff-store";
 import { buildPortalSignatureStore } from "../src/modules/31-portal/routes/signature-store";
@@ -54,6 +55,17 @@ import {
   signedContentFor,
 } from "../src/modules/31-portal/routes/signature.routes";
 import { buildDrizzlePortalStore } from "../src/modules/31-portal/routes/store";
+import {
+  activePortalUserIds,
+  signatureRecipientUserIds,
+  signatureRequestStillPending,
+} from "../src/modules/31-portal/seams/signature-push-recipients";
+import {
+  createDrizzleAlertEmitter,
+  getAlertEmitter,
+  registerMessagingSeams,
+  wireAlertRuleSeed,
+} from "../src/modules/36-messaging/index";
 import { M39_OUTBOX_EVENTS, createDbConsentRouteService } from "../src/modules/39-consent";
 import { createPortalConsentSigner } from "../src/modules/39-consent/portal-consent-signer";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
@@ -582,6 +594,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
             return c ? { patientId: c.patientId, typeKey: c.typeKey, status: c.status } : null;
           },
         },
+        agencyName: async () => "Cedar Valley Hospice",
         allowUnreviewedTemplates: false,
         staff: {
           store: buildStaffSignatureStore(handle.db, m31Events),
@@ -662,6 +675,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     expect(res.json().attestationText).toBe(attestationTextFor(NPP, "1.0.0"));
     expect(res.json().documentTitle).toMatch(/Notice of Privacy Practices/);
     expect(res.json().documentParagraphs.join(" ")).toMatch(/164\.520/);
+    expect(res.json().documentParagraphs.join(" ")).toContain("Cedar Valley Hospice");
     const audit = await admin.query(
       "SELECT 1 FROM audit_event WHERE organization_id=$1 AND resource_kind='portal_signature_request' AND resource_id=$2",
       [ORG_A, mine],
@@ -687,7 +701,9 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     });
     expect(r.signed_at).toBeInstanceOf(Date);
     expect(r.attestation_sha256).toBe(
-      createHash("sha256").update(signedContentFor(NPP, "1.0.0")).digest("hex"),
+      createHash("sha256")
+        .update(signedContentFor(NPP, "1.0.0", "Cedar Valley Hospice"))
+        .digest("hex"),
     );
     const consent = (await admin.query("SELECT * FROM consent_record WHERE id=$1", [r.target_ref]))
       .rows[0];
@@ -1631,5 +1647,105 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     ).toBe(200);
     await reminded(ORG_A, DAY * 5);
     expect((await reqRow(pendingId)).reminder_count).toBe(2);
+  });
+  it("pushes to exactly the people whose live grant may sign, through M36's real pipeline, once per event", async () => {
+    registerMessagingSeams({
+      emitter: createDrizzleAlertEmitter(handle.db, {
+        activePortalRecipients: (org, ids) => activePortalUserIds(handle.db, org, ids),
+      }),
+    });
+    await wireAlertRuleSeed(handle.db);
+    const consumer = buildM31SignatureRequestPushConsumer({
+      alerts: getAlertEmitter(),
+      stillPending: (org, id) => signatureRequestStillPending(handle.db, org, id),
+      recipients: (org, patient, kind) => signatureRecipientUserIds(handle.db, org, patient, kind),
+    });
+    const endpoint = (userId: string) =>
+      admin.query(
+        `INSERT INTO delivery_endpoint (user_id, channel, endpoint_value, provider, verification_status, verified_at)
+         VALUES ($1,'push',$2,'web','verified', now())`,
+        [userId, JSON.stringify({ endpoint: `https://push.example.test/${userId}`, keys: {} })],
+      );
+    for (const who of [self, caregiver, bereaved]) await endpoint(who.userId);
+
+    await clearOpen(patientA, NPP);
+    const requestId = await seedRequest(ORG_A, patientA, NPP);
+    const event = {
+      id: randomUUID(),
+      organizationId: ORG_A,
+      eventType: "m31.signature_request.requested",
+      aggregateKind: "portal_signature_request",
+      aggregateId: requestId,
+      payload: { requestId, patientId: patientA, docKind: NPP, templateVersion: "1.0.0" },
+      attemptCount: 1,
+      createdAt: new Date(),
+    };
+    const pushedTo = async () =>
+      (
+        await admin.query(
+          `SELECT nd.recipient_user_id AS uid, nd.channel, nd.status
+             FROM notification_delivery nd JOIN alert a ON a.id = nd.alert_id
+            WHERE a.organization_id = $1 AND a.correlation_id = $2`,
+          [ORG_A, `signature_request:${requestId}:${event.id}`],
+        )
+      ).rows as { uid: string; channel: string; status: string }[];
+
+    // Eligible by live grant AND with a verified push device: the agent has no device so is not pushed; the bereaved account has a
+    // device but no authority to sign.
+    expect((await signatureRecipientUserIds(handle.db, ORG_A, patientA, NPP)).sort()).toEqual(
+      [self, caregiver].map((a) => a.userId).sort(),
+    );
+
+    await consumer.handle(event);
+    const rows = await pushedTo();
+    // Push goes to the people with a verified device who may sign; never to the bereaved-family account, never over another channel.
+    const pushRows = rows.filter((r) => r.channel === "push");
+    expect(pushRows.map((r) => r.uid).sort()).toEqual([self.userId, caregiver.userId].sort());
+    expect(rows.map((r) => r.uid)).not.toContain(bereaved.userId);
+    expect(new Set(rows.map((r) => r.channel))).toEqual(new Set(["push", "in_app"]));
+    // The alert carries ids only: no document name, no patient name.
+    const alert = (
+      await admin.query(
+        "SELECT payload::text AS p FROM alert WHERE organization_id=$1 AND correlation_id=$2",
+        [ORG_A, `signature_request:${requestId}:${event.id}`],
+      )
+    ).rows[0].p as string;
+    expect(alert).not.toMatch(/hipaa|privacy|Patient|npp/i);
+
+    // The dispatcher redelivering the same event does not push twice.
+    await consumer.handle(event);
+    expect((await pushedTo()).length).toBe(rows.length);
+
+    // A grant revoked after the event was queued is not pushed.
+    await admin.query(
+      "UPDATE portal_access_grant SET revoked_at = now(), revoke_cascade_source = 'test' WHERE portal_account_id = $1",
+      [caregiver.accountId],
+    );
+    const second = { ...event, id: randomUUID() };
+    await consumer.handle(second);
+    const secondRows = (
+      await admin.query(
+        `SELECT nd.recipient_user_id AS uid FROM notification_delivery nd JOIN alert a ON a.id = nd.alert_id
+          WHERE a.organization_id=$1 AND a.correlation_id=$2 AND nd.channel='push'`,
+        [ORG_A, `signature_request:${requestId}:${second.id}`],
+      )
+    ).rows.map((r) => r.uid);
+    expect(secondRows).toEqual([self.userId]);
+
+    // A request that is no longer pending sends nothing.
+    await admin.query(
+      "UPDATE portal_signature_request SET status='voided', voided_at=now(), voided_by=$2, void_reason='sent_in_error' WHERE id=$1",
+      [requestId, staffUserId],
+    );
+    const third = { ...event, id: randomUUID() };
+    await consumer.handle(third);
+    expect(
+      (
+        await admin.query(
+          `SELECT count(*)::int AS n FROM alert WHERE organization_id=$1 AND correlation_id=$2`,
+          [ORG_A, `signature_request:${requestId}:${third.id}`],
+        )
+      ).rows[0].n,
+    ).toBe(0);
   });
 });

@@ -16,12 +16,12 @@ export interface SignatureTemplate {
   readonly text?: SignatureDocumentText;
 }
 
-/** HIPAA NPP acknowledgement (45 CFR 164.520). Wording follows the agency's paper form; the agency name is the patient's own hospice, not hard-coded. */
+/** HIPAA NPP acknowledgement (45 CFR 164.520). Wording follows the agency's paper form; `{agency}` is replaced with the tenant's agency name when shown. */
 const NPP_TEXT: SignatureDocumentText = {
   title: "Acknowledgment of Receipt of Notice of Privacy Practices",
   paragraphs: [
-    "Federal law (HIPAA, 45 CFR 164.520) requires your hospice to give you its Notice of Privacy Practices and to make a good-faith effort to get your written acknowledgment that you received it. Signing this form does not mean you agree with the Notice; it only confirms you received a copy.",
-    "I acknowledge that I received a copy of my hospice's Notice of Privacy Practices. The Notice explains how my health information may be used and disclosed, my rights regarding that information, and how to file a complaint. I understand I may request another copy at any time and that the Notice is posted on my hospice's website.",
+    "Federal law (HIPAA, 45 CFR 164.520) requires {agency} to give you its Notice of Privacy Practices and to make a good-faith effort to get your written acknowledgment that you received it. Signing this form does not mean you agree with the Notice; it only confirms you received a copy.",
+    "I acknowledge that I received a copy of {agency}'s Notice of Privacy Practices. The Notice explains how my health information may be used and disclosed, my rights regarding that information, and how to file a complaint. I understand I may request another copy at any time and that the Notice is posted on {agency}'s website.",
     "If you are signing for the patient, you will be asked for your relationship or legal authority and, if the patient could not sign, the reason.",
   ],
 };
@@ -57,3 +57,18 @@ export const M06_DOC_KINDS: ReadonlySet<schema.PortalSignatureDocKind> = new Set
   "election_statement",
   "notice_of_patient_rights",
 ]);
+
+/** The word used when a tenant's agency name cannot be read: the wording still makes sense, it just does not name the agency. */
+export const AGENCY_NAME_FALLBACK = "your hospice";
+
+/** Fills the `{agency}` marker with the tenant's agency name (or the fallback). Pure. */
+export function renderDocumentText(
+  text: SignatureDocumentText,
+  agencyName: string | null,
+): SignatureDocumentText {
+  const name = agencyName?.trim() || AGENCY_NAME_FALLBACK;
+  return {
+    title: text.title.replaceAll("{agency}", name),
+    paragraphs: text.paragraphs.map((p) => p.replaceAll("{agency}", name)),
+  };
+}

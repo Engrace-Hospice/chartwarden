@@ -32,6 +32,8 @@ export interface PortalSigningDeps {
   readonly store: PortalSignatureStore;
   readonly signers: AdmissionDocumentSigners;
   readonly consents: ConsentStatusReader;
+  /** The tenant's agency display name for the document wording; null when unresolved (the wording then says "your hospice"). */
+  readonly agencyName: (organizationId: string) => Promise<string | null>;
   /** false on production tenants: a "pending legal review" template cannot be signed. */
   readonly allowUnreviewedTemplates: boolean;
   /** Staff routes; absent ⇒ they answer 503 rather than create requests nobody can verify. */

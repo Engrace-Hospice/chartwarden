@@ -238,6 +238,9 @@ export const M31_SUBSCRIBED_EVENT_NAMES = [
   "m39.consent.created",
   "m4.legal_hold.applied",
   "m4.legal_hold.released",
+  // ADR-0107 D7 - M31's own signature-request events, consumed by the push consumer (`signature-request-push.ts`).
+  "m31.signature_request.requested",
+  "m31.signature_request.reminded",
 ] as const;
 
 export type M31SubscribedEventName = (typeof M31_SUBSCRIBED_EVENT_NAMES)[number];

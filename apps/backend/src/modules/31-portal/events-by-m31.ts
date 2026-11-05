@@ -298,15 +298,15 @@ export const M31_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m31.signature_request.requested",
     moduleOwner: "m31",
     description:
-      "Staff sent a portal signature request (ADR-0107). Record-only; ids and structural facts, never the signer's text.",
+      "Staff sent a portal signature request (ADR-0107). Pushed to the people who can sign (m31 consumer, ADR-0107 D7); ids and structural facts, never the signer's text.",
     payloadSchema: Type.Object({
       requestId: str,
       patientId: str,
       docKind: str,
       templateVersion: str,
     }),
-    declaredConsumers: [],
-    isOutboxOnly: true,
+    declaredConsumers: ["m31"],
+    isOutboxOnly: false,
   },
   {
     eventName: "m31.signature_request.signed",
@@ -368,14 +368,14 @@ export const M31_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m31.signature_request.reminded",
     moduleOwner: "m31",
     description:
-      "A daily reminder fired for a still-open signature request (ADR-0107). Record-only; ids and structural facts, never the signer's text.",
+      "A daily reminder fired for a still-open signature request (ADR-0107). Pushed to the people who can sign (m31 consumer, ADR-0107 D7); ids and structural facts, never the signer's text.",
     payloadSchema: Type.Object({
       requestId: str,
       patientId: str,
       docKind: str,
       reminderCount: Type.Integer({ minimum: 1 }),
     }),
-    declaredConsumers: [],
-    isOutboxOnly: true,
+    declaredConsumers: ["m31"],
+    isOutboxOnly: false,
   },
 ];

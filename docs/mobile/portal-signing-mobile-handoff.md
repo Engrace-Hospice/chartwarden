@@ -88,17 +88,22 @@ Error bodies carry a code and a lay message, never record content.
 - The attestation text can change with the template version. Always display what `GET` returned for this
   request.
 
-## Notifications (open dependency, not yet usable)
+## Notifications
 
-Product decision: a push when a request is sent, then a daily reminder until it is signed or withdrawn.
-The backend already emits `m31.signature_request.requested` and `m31.signature_request.reminded` (ids only)
-and runs the daily reminder cadence. **Delivery to a patient's or caregiver's device is not built:** a
-portal session cannot register a native push endpoint (`notifications.endpoint.manage` is not held by any
-portal session class), and the alert recipient model only reaches staff and portal-caregiver channel
-members. Until that decision is made, the app should show requests from the list and must not assume a push
-arrives. When it is built, the payload will stay generic and PHI-free (ADR-0072 decisions 8 to 12): no
-document name, patient name or request id in the notification text; the app opens the Signatures list on
-tap.
+Product decision: a push when a request is sent, then a daily reminder (14:00 UTC) until it is signed or withdrawn. A request that is
+signed, parked for review or withdrawn is never pushed about.
+
+- **Register the phone:** the same portal session calls `POST /api/v1/notifications/endpoints` with
+  `{ channel: "push", provider: "fcm" | "apns", target: <device token>, installId, environment, appVersion, appBuild }` (and
+  `Idempotency-Key`). Portal sessions of the patient, caregiver and bereaved classes hold the self-only `notifications.endpoint.manage`
+  key. Re-register on token rotation with the same `installId`; remove it on sign-out with `DELETE /api/v1/notifications/endpoints/{id}`.
+- **Who is pushed:** only the people who may sign that document (a live grant allowed by the authority matrix) and who have a registered
+  device. A caregiver is not pushed about an Election Statement. A bereaved-family account is never pushed.
+- **What arrives:** one fixed, PHI-free line ("You have a new notification in ChartWarden. Sign in to view."), the same as every
+  out-of-band alert (ADR-0072 decisions 8 to 12). No document name, patient name or request id appears in it. On tap, open the Signatures
+  list and refresh; do not rely on the push content.
+- **Not a guarantee:** push is a nudge. The list endpoint stays the source of truth, and a person who has not registered a device or has
+  denied notifications is reached only by the app showing the list.
 
 ## Test checklist for the app
 

@@ -72,6 +72,12 @@ const PORTAL_PATIENT_ONLY_KEYS = ["portal.amendment.submit", "portal.amendment.r
  */
 const PORTAL_SIGNATURE_KEYS = ["portal.signature.read", "portal.signature.sign"] as const;
 
+/**
+ * ADR-0107 D7 - a person who can be asked to sign registers the phone that gets the "a document is waiting" push. The routes are self-only
+ * (the actor's own endpoints); the push itself carries only M36's generic line.
+ */
+const PORTAL_PUSH_KEYS = ["notifications.endpoint.manage"] as const;
+
 /** The bereaved-family surface: the program, the resources, one's own opt-out, plus documents and messages. */
 const PORTAL_BEREAVED_KEYS = [
   "portal.bereavement.read_program",
@@ -92,14 +98,21 @@ export const SESSION_CLASS_PERMISSIONS: Readonly<Record<string, readonly string[
       ...PORTAL_CARE_WRITE_KEYS,
       ...PORTAL_PATIENT_ONLY_KEYS,
       ...PORTAL_SIGNATURE_KEYS,
+      ...PORTAL_PUSH_KEYS,
     ],
     caregiver_portal: [
       ...PORTAL_COMMON_KEYS,
       ...PORTAL_CARE_READ_KEYS,
       ...PORTAL_CARE_WRITE_KEYS,
       ...PORTAL_SIGNATURE_KEYS,
+      ...PORTAL_PUSH_KEYS,
     ],
-    bereaved_portal: [...PORTAL_COMMON_KEYS, ...PORTAL_BEREAVED_KEYS, ...PORTAL_SIGNATURE_KEYS],
+    bereaved_portal: [
+      ...PORTAL_COMMON_KEYS,
+      ...PORTAL_BEREAVED_KEYS,
+      ...PORTAL_SIGNATURE_KEYS,
+      ...PORTAL_PUSH_KEYS,
+    ],
     // GAP-115 follow-up — a redeemed funeral-home link reads the one deceased patient's disposition facts, nothing else.
     funeral_home: ["funeral.case_read"],
   },
