@@ -1116,6 +1116,7 @@ import {
   buildM23WorkerDeps,
   buildMacFeedConfiguredReader,
   buildMacJurisdictionLister,
+  buildMacOnboardingCredentialPort,
   buildMacSecretCipherFromEnv,
   buildNoticeWindowPort,
   buildSubmissionControlNumberReader,
@@ -1182,6 +1183,7 @@ import {
   buildM24SubmissionQueuePort,
   buildM24SubmissionRequestConsumer,
   buildM24SubmissionWorkerDeps,
+  buildMedicaidOnboardingCredentialPort,
   buildStateChannelHealthProbe,
   createDrizzleMedicaidRedactStore,
   mountM24Routes,
@@ -1533,6 +1535,7 @@ import {
   type SignupIntentRouteService,
   type TenantPlatformAbacResolver,
   bootstrapModule34,
+  buildDrizzleOnboardingDataService,
   buildDrizzlePlatformService,
   buildDrizzleTenantPlatformAbacResolver,
   buildDrizzleTenantService,
@@ -1541,6 +1544,7 @@ import {
   buildM34ProvisionStartedConsumer,
   buildM34WorkerDeps,
   buildPlatformEnqueue,
+  buildPlatformTenantResolver,
   buildTenantEnqueue,
   createDrizzleM34AlertResolverPorts,
   createDrizzlePlatformOpsService,
@@ -5190,16 +5194,18 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // GAP-115 — the M2 org-admin surface (organizations, provider entities, locations, tenant step-up
           // overrides). `POST /provider-entities` seals the EIN with the tax-id cipher bound below; unbound it would
           // answer 503 TAX_ID_CIPHER_UNBOUND — an EIN is never stored in the clear.
+          // The EIN is sealed under the tenant's own DEK from M34's key ring (resolved per call, so this is safe to
+          // build before M34 registers; until a platform KEK is bound the provider refuses and the create fails
+          // closed with a 5xx rather than storing an EIN in the clear). One cipher serves the tenant's own admin
+          // routes and the platform operator's onboarding routes (M34), so both seal the EIN identically.
+          const taxIdCipher = createTaxIdCipher({
+            dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+            dekForOrgVersion: (orgId, version) =>
+              getTenantKeyProvider().dekForOrgVersion(orgId, version),
+          });
           mountOrgAdminRoutes(app, dbHandle.db, {
             outbox: m2OutboxPublisher,
-            // The EIN is sealed under the tenant's own DEK from M34's key ring (resolved per call, so this is safe to
-            // build before M34 registers; until a platform KEK is bound the provider refuses and the create fails
-            // closed with a 5xx rather than storing an EIN in the clear).
-            taxIdCipher: createTaxIdCipher({
-              dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
-              dekForOrgVersion: (orgId, version) =>
-                getTenantKeyProvider().dekForOrgVersion(orgId, version),
-            }),
+            taxIdCipher,
           });
           // M2 (ADR-0023 D2 / SecHardening §12.2/§12.4) — the device-attestation write path. This is what
           // puts rows in `device_attestation`, which is what lets the authenticate hook stamp
@@ -5935,6 +5941,43 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               service: createDrizzleTenantAccountFlagsService({
                 db: dbHandle.db,
                 flags: createDrizzleFeatureFlagAdmin(platformDbHandle?.db ?? dbHandle.db),
+              }),
+            },
+            // A platform operator enters a tenant's provider entities, locations and MAC credential while it is
+            // onboarding. Writes run on the TENANT pool under the target org's RLS (never the platform bypass),
+            // through the same M2 / M23 logic the tenant's own admin screens call; the EIN and the MAC secret are
+            // sealed by the same ciphers and never returned.
+            onboardingData: {
+              service: buildDrizzleOnboardingDataService({
+                db: dbHandle.db,
+                // The slug lookup is the only cross-tenant step (an audited platform context); no platform pool => 503.
+                ...(platformDbHandle
+                  ? {
+                      resolveTenant: buildPlatformTenantResolver({
+                        platformDb: platformDbHandle.db,
+                        auditBypass: m34PlatformBypassAuditor,
+                        platformJobId: M34_PLATFORM_JOB_ID,
+                      }),
+                    }
+                  : {}),
+                taxIdCipher,
+                macCredentials: buildMacOnboardingCredentialPort({
+                  writeService: buildDrizzleM23WriteService(dbHandle.db, {
+                    outbox: m23OutboxPublisher,
+                    ...(m23MacSecretCipher ? { secretCipher: m23MacSecretCipher } : {}),
+                  }),
+                  readService: buildDrizzleM23ReadService(dbHandle.db),
+                }),
+                medicaidCredentials: buildMedicaidOnboardingCredentialPort({
+                  writeService: buildDrizzleM24WriteService(
+                    dbHandle.db,
+                    m24OutboxPublisher,
+                    m24CredentialCipher,
+                  ),
+                  readService: buildDrizzleM24ReadService(dbHandle.db),
+                }),
+                logError: (err, context) =>
+                  app.log.error({ err, ...context }, "tax-id encryption failed"),
               }),
             },
             // AC-05 — SECURITY_HARDENING §22.1's 5/IP/hour on the public signup surface. The route

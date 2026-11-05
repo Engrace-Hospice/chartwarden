@@ -295,6 +295,8 @@ import {
   createMemoryWizardState,
 } from "./onboarding/wizard-store-memory";
 import { registerOnboardingWizardRoutes } from "./routes/platform/onboarding-wizard-routes";
+import { registerOnboardingDataRoutes } from "./routes/platform/onboarding-data-routes";
+import type { OnboardingDataService } from "./routes/platform/onboarding-data-service";
 import { registerPlatformOpsRoutes } from "./routes/platform/ops-routes";
 import {
   type PlatformOpsService,
@@ -318,6 +320,8 @@ export function mountTenantPlatformRoutes(
     onboarding?: { wizard: OnboardingWizard };
     /** GAP-164 - tenant account + feature-flag read/write (absent => in-memory slice). */
     tenantAccountFlags?: { service: TenantAccountFlagsService };
+    /** Operator-entered tenant onboarding data (provider entities, locations, MAC credential); absent => not mounted. */
+    onboardingData?: { service: OnboardingDataService };
     public?: {
       service?: _SignupIntentRouteService;
       /** AC-05 — §22.1's 5/IP/hour limiter. Absent ⇒ `createAllowAllRateLimiter()`, i.e. UNLIMITED,
@@ -356,6 +360,12 @@ export function mountTenantPlatformRoutes(
     }),
   };
   registerOnboardingWizardRoutes(app, { wizard });
+
+  // Operator-entered tenant onboarding data: it runs on the TENANT pool under the target org's RLS, so there is no
+  // in-memory slice to fall back to — the routes mount only when the composition root binds the service.
+  if (services?.onboardingData) {
+    registerOnboardingDataRoutes(app, { service: services.onboardingData.service });
+  }
 
   // ── tenant-scoped surface (withOrgContext; the tenant's own org) ──
   const { service: tenantService } = services?.tenant ?? _createInMemoryTenantBackend();
@@ -423,3 +433,17 @@ export {
   createInMemoryTenantAccountFlagsService,
 } from "./routes/tenant/account-flags-service";
 export { registerTenantAccountFlagsRoutes } from "./routes/tenant/account-flags-routes";
+
+// Operator-entered tenant onboarding data (provider entities, locations, MAC credential) on the tenant's behalf.
+export {
+  type OnboardingDataDeps,
+  type OnboardingDataService,
+  type OnboardingOperator,
+  type OnboardingTenantResolver,
+  buildDrizzleOnboardingDataService,
+  buildPlatformTenantResolver,
+} from "./routes/platform/onboarding-data-service";
+export {
+  type OnboardingDataRouteDeps,
+  registerOnboardingDataRoutes,
+} from "./routes/platform/onboarding-data-routes";
