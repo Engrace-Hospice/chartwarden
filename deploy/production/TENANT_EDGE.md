@@ -10,7 +10,7 @@ API same-origin at `/api/`. Two environments use this mechanism, each with its o
 | Server, database, object store, secrets | the existing demo install | its **own**, never the demo's |
 | Web image | `deploy.yml`, build args from the repository variable `DEMO_TENANT_BASE_DOMAIN` | manual workflow **Release tenant web image** |
 | Switched on by | that variable plus the five settings in the demo's `.env.production` | the `.env.tenant.example` overlay |
-| Hosts that already exist | `app.`, `api.`, `storage.` (and the legacy `wardenx.` redirects) keep working: they are reserved names | none |
+| Hosts that already exist | `app.`, `api.`, `storage.` and the legacy `wardenx.` host (a 308 redirect, `nginx/chartwarden-legacy-redirects.conf`) keep working: they are all reserved names, so none can be a tenant slug | none |
 
 The demo's per-tenant mode is an owner decision that supersedes ADR-0088 decision 2 ("the demo stays single-host"); until it
 is switched on the demo behaves exactly as before. `/ready` is proxied on the tenant vhost like the demo's `api.` vhost; it
@@ -70,7 +70,7 @@ One certificate for the base domain **and** `*.<base>` (HTTP-01 cannot issue a w
 ### 4. Pangolin resources (skip with Option 2)
 
 - [ ] One **wildcard** public resource for `*.<base>`, target the host nginx (`http://<host>:80`), the "custom host header" left **empty** so the original `Host` is preserved.
-- [ ] **Exact-host** resources for the reserved names (`app`, `www`, `admin`, `api`, `portal`, `storage`, `status`, `docs`, `mail`): exact hosts take precedence, so the wildcard never swallows them. Point the ones that serve something at their upstream (`app` at the web upstream, `storage` at the object store); point the rest at a static 404 or a redirect to the apex rather than leaving them to the wildcard. Reserved names can never be a tenant slug (backend rule).
+- [ ] **Exact-host** resources for the reserved names (`app`, `www`, `admin`, `api`, `portal`, `storage`, `status`, `docs`, `mail`, `wardenx`): exact hosts take precedence, so the wildcard never swallows them. Point the ones that serve something at their upstream (`app` at the web upstream, `storage` at the object store); point the rest at a static 404 or a redirect to the apex rather than leaving them to the wildcard (`wardenx` exists only on the demo, where it keeps its 308 to `app.`; the real environment points it at a 404). Reserved names can never be a tenant slug (backend rule).
 - [ ] Wildcard-resource support is version dependent: confirm it exists in your Pangolin before building around it; ADR-0049 D2 is the design.
 - [ ] The nginx vhost listens on port 80 behind this terminator, like the demo vhosts.
 
@@ -143,7 +143,7 @@ Warnings first.
 - **Changing `PASSKEY_RP_ID` invalidates every existing demo passkey.** The demo's value is `app.chartwarden.cloud`; per-tenant
   mode needs `chartwarden.cloud`. Demo users must re-enrol a passkey (the demo is reseeded rather than remediated, so this is acceptable). Rolling back changes the id again and invalidates the ones enrolled in between.
 - Sessions are per host and the CSRF cookie becomes host-only (`__Host-`): demo users sign in again on their tenant host.
-- `app.`, `api.`, `storage.` (and `www`, `admin`, `portal`, `status`, `docs`, `mail`) are **reserved names** that can never be a tenant. `app.chartwarden.cloud` becomes the "find my organization" landing; the demo organization's own address is `https://chartwarden-demo.chartwarden.cloud`.
+- `app.`, `api.`, `storage.` (and `www`, `admin`, `portal`, `status`, `docs`, `mail`, plus the legacy `wardenx`) are **reserved names** that can never be a tenant. `app.chartwarden.cloud` becomes the "find my organization" landing; the demo organization's own address is `https://chartwarden-demo.chartwarden.cloud`.
 - Do steps 5 to 7 in one sitting: the host's env, the web image and the API settings must change together.
 
 Steps:
