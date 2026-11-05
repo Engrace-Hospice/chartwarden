@@ -25,18 +25,24 @@ export const PRODUCTION_CLEARINGHOUSE_VENDORS: readonly string[] = [
   "claimmd",
 ];
 
-/**
- * The cursor-signing key `buildServer` hands the route kit. Production fails closed when it is missing (the
- * strength rule is `assertProductionEnv`'s); dev/test return undefined and the kit signs with a process-local
- * random key.
- */
-export function cursorSigningKeyFrom(env: EnvLike): string | undefined {
-  const key = env.CURSOR_SIGNING_KEY?.trim();
-  if (key) return key;
-  if (env.NODE_ENV === "production") {
-    throw new Error("CURSOR_SIGNING_KEY is required in production (pagination cursors are signed)");
+/** ADR-0108 D6 — the claims-billing add-on enforcement mode (the gate lives in ./claims-billing-gate.ts). */
+export const CLAIMS_BILLING_ENFORCEMENT_ENV = "CLAIMS_BILLING_ENFORCEMENT";
+export const CLAIMS_BILLING_ENFORCEMENT_MODES = ["off", "shadow", "enforce"] as const;
+export type ClaimsBillingEnforcementMode = (typeof CLAIMS_BILLING_ENFORCEMENT_MODES)[number];
+export const DEFAULT_CLAIMS_BILLING_ENFORCEMENT: ClaimsBillingEnforcementMode = "shadow";
+
+/** Parse the mode; unset → shadow; anything else than the three values throws (fail closed at boot). */
+export function parseClaimsBillingEnforcement(
+  env: Readonly<Record<string, string | undefined>>,
+): ClaimsBillingEnforcementMode {
+  const raw = env[CLAIMS_BILLING_ENFORCEMENT_ENV]?.trim().toLowerCase();
+  if (!raw) return DEFAULT_CLAIMS_BILLING_ENFORCEMENT;
+  if ((CLAIMS_BILLING_ENFORCEMENT_MODES as readonly string[]).includes(raw)) {
+    return raw as ClaimsBillingEnforcementMode;
   }
-  return undefined;
+  throw new Error(
+    `${CLAIMS_BILLING_ENFORCEMENT_ENV} must be one of ${CLAIMS_BILLING_ENFORCEMENT_MODES.join(", ")} (got '${raw}')`,
+  );
 }
 
 /** One unmet production requirement. */
@@ -61,8 +67,10 @@ interface Requirement {
 export const M23_LAUNCH_GATEWAY_ENABLED_ENV = "M23_LAUNCH_GATEWAY_ENABLED";
 export const M34_PROVISION_GATEWAY_ENABLED_ENV = "M34_PROVISION_GATEWAY_ENABLED";
 export const FHIR_TOKEN_ENDPOINT_ENABLED_ENV = "FHIR_TOKEN_ENDPOINT_ENABLED";
-/** M24 Oregon gateway gate. Explicit opt-in in every environment; an unset value must never bind a state
- * transport or start its workers. Configuration alone is not state certification. */
+/** GAP-146 — the M24 Oregon launch-gateway capability gate. Opt-OUT in production like the M23 switch (it was
+ *  opt-in, so a production deploy that never set it silently built no Medicaid submit/poll workers). It is a
+ *  capability gate only: every real endpoint comes from a provider entity's own trading-partner credential, so
+ *  an enabled gate with no credential calls nothing. dev/test keep the unset-means-off default. */
 export const M24_LAUNCH_GATEWAY_ENABLED_ENV = "M24_LAUNCH_GATEWAY_ENABLED";
 
 const INTEGRATION_SWITCHES = [
@@ -72,7 +80,7 @@ const INTEGRATION_SWITCHES = [
   M24_LAUNCH_GATEWAY_ENABLED_ENV,
 ] as const;
 
-/** Whether a legacy opt-out production integration capability should be bound (defaults to true). */
+/** Whether an opt-out production integration capability should be bound (defaults to true). */
 export function integrationEnabled(
   env: EnvLike,
   key: (typeof INTEGRATION_SWITCHES)[number],
@@ -80,9 +88,14 @@ export function integrationEnabled(
   return env[key]?.trim().toLowerCase() !== "false";
 }
 
-/** M24 is deliberately opt-in: preserve the environment as provided in all runtimes. */
+/**
+ * GAP-146 — the env the M24 launch-gateway gate reads: in production an UNSET switch means enabled (an explicit
+ * `false` still disables); outside production the value is passed through untouched, so dev/test/CI keep
+ * "unset = nothing calls out by accident".
+ */
 export function withM24LaunchGatewayDefault(env: EnvLike): EnvLike {
-  return env;
+  if (env.NODE_ENV !== "production" || env[M24_LAUNCH_GATEWAY_ENABLED_ENV]?.trim()) return env;
+  return { ...env, [M24_LAUNCH_GATEWAY_ENABLED_ENV]: "true" };
 }
 
 /**
@@ -213,30 +226,6 @@ const REQUIREMENTS: readonly Requirement[] = [
   // ADR-0053 amendment 2026-11-04: the Claim.MD account key and which account it opens (test or production).
   {
     key: "CLAIMMD_ACCOUNT_KEY",
-    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
-  },
-  {
-    key: "CLAIMMD_ACCOUNT_REFERENCE",
-    rule: (v) =>
-      /^[A-Za-z0-9._:-]{1,128}$/.test(v) ? null : "must be a stable non-secret account reference",
-    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
-  },
-  {
-    key: "CLAIM_PREVIEW_INTEGRITY_KEY",
-    rule: (v) => (v.length < 32 ? "must contain at least 32 characters" : null),
-    when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
-  },
-  {
-    key: "CLAIMMD_M23_PAYER_ROUTES",
-    rule: (v) => {
-      try {
-        return Array.isArray(JSON.parse(v)) && JSON.parse(v).length > 0
-          ? null
-          : "must be a non-empty JSON array of scoped effective-dated payer routes";
-      } catch {
-        return "must be valid JSON containing scoped effective-dated payer routes";
-      }
-    },
     when: (env) => env[CLEARINGHOUSE_VENDOR_ENV]?.trim() === "claimmd",
   },
   {
@@ -375,17 +364,12 @@ const REQUIREMENTS: readonly Requirement[] = [
     },
   },
   {
-    // TASK-010/SEC-005 — the secret every pagination cursor is HMAC-signed with (the route kit,
-    // `@chartwarden/shared/route-kit`, configured by `buildServer` via `cursorSigningKeyFrom`). Production
-    // refuses to boot without it; dev/test sign with a process-local random key instead.
+    // TASK-010/SEC-005 — the shared cursor-signing secret M19/M20 concurrency.ts fall back to (each also
+    // accepts a module-specific M19_/M20_CURSOR_SIGNING_KEY override). Unset, cursors are signed with a
+    // process-local random key and stop verifying across a restart/redeploy — safe, but an avoidable
+    // re-page for every caller in production.
     key: "CURSOR_SIGNING_KEY",
-    // The .env.production.example placeholder is itself 32+ characters, so length alone would boot on a public key.
-    rule: (v) =>
-      v.length < 32
-        ? "must be at least 32 characters"
-        : /REPLACE_WITH/i.test(v)
-          ? "is still the .env.production.example placeholder"
-          : null,
+    rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
   },
   {
     // TASK-010/OPS-010 — the trusted-proxy CIDR allowlist (bootstrap/index.ts parseTrustedProxies).
@@ -550,6 +534,14 @@ export function collectEnvProblems(env: EnvLike): EnvProblem[] {
     if (value && value !== "true" && value !== "false") {
       problems.push({ key, problem: "must be 'true' or 'false'" });
     }
+  }
+  try {
+    parseClaimsBillingEnforcement(env);
+  } catch {
+    problems.push({
+      key: CLAIMS_BILLING_ENFORCEMENT_ENV,
+      problem: `must be one of ${CLAIMS_BILLING_ENFORCEMENT_MODES.join(", ")} (or unset for shadow)`,
+    });
   }
   const clearinghouseVendor = env[CLEARINGHOUSE_VENDOR_ENV]?.trim();
   if (clearinghouseVendor && !PRODUCTION_CLEARINGHOUSE_VENDORS.includes(clearinghouseVendor)) {

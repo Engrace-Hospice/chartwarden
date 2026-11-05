@@ -1,0 +1,31 @@
+// apps/backend/src/modules/25-remittance/routes/route-classes.ts — ADR-0108 D5: in M25 only a NEW reopening (create,
+// submit) is new claims-billing work. Remittance, denials, appeals, ADR / audit responses, TPE, representatives,
+// playbooks and the recording of an already-made submission stay open. Ordered, first match wins.
+import type { RouteClassRule } from "../../../bootstrap/claims-billing-gate";
+
+export const M25_ROUTE_CLASSES: readonly RouteClassRule[] = [
+  { cls: "new_work", method: "POST", path: "/api/v1/reopenings" },
+  { cls: "new_work", method: "POST", path: "/api/v1/reopenings/:id/submit" },
+  { cls: "open", method: "*", path: "/api/v1/reopenings/*" },
+  { cls: "open", method: "*", path: "/api/v1/remittance/*" },
+  { cls: "open", method: "*", path: "/api/v1/denials/*" },
+  { cls: "open", method: "*", path: "/api/v1/denial-route-rules/*" },
+  { cls: "open", method: "*", path: "/api/v1/appeals/*" },
+  { cls: "open", method: "*", path: "/api/v1/payer-appeal-paths/*" },
+  { cls: "open", method: "*", path: "/api/v1/payer-appeals/*" },
+  { cls: "open", method: "*", path: "/api/v1/beneficiary-appeals/*" },
+  { cls: "open", method: "*", path: "/api/v1/claims/*" },
+  { cls: "open", method: "*", path: "/api/v1/representative-appointments/*" },
+  { cls: "open", method: "*", path: "/api/v1/representative-form-versions/*" },
+  { cls: "open", method: "*", path: "/api/v1/adrs/*" },
+  { cls: "open", method: "*", path: "/api/v1/audit-requests/*" },
+  { cls: "open", method: "*", path: "/api/v1/mac-rules/*" },
+  { cls: "open", method: "*", path: "/api/v1/tpe-programs/*" },
+  { cls: "open", method: "*", path: "/api/v1/tpe-rounds/*" },
+  { cls: "open", method: "*", path: "/api/v1/tpe-rules/*" },
+  { cls: "open", method: "*", path: "/api/v1/playbooks/*" },
+  { cls: "open", method: "*", path: "/api/v1/playbook-versions/*" },
+  { cls: "open", method: "*", path: "/api/v1/taxonomy/*" },
+  { cls: "open", method: "*", path: "/api/v1/medical-review/*" },
+  { cls: "open", method: "*", path: "/api/v1/internal/*" },
+];
