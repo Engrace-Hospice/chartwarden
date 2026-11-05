@@ -113,15 +113,32 @@ describe("signAdmissionDocument", () => {
   });
 
   it("routes the election to M06 with the portal method, using the staff-drafted target", async () => {
-    const h = harness({ docKind: "election_statement", targetRef: "es-1" });
+    const h = harness(
+      { docKind: "election_statement", targetRef: "es-1" },
+      { allowUnreviewed: true },
+    );
     expect(await sign(h, "dpoa_healthcare")).toMatchObject({ ok: true });
     expect(h.calls).toEqual(["election", "markSigned"]);
   });
 
   it("denies an M06 document whose staff-drafted target is missing", async () => {
-    const h = harness({ docKind: "notice_of_patient_rights", targetRef: null });
+    const h = harness(
+      { docKind: "notice_of_patient_rights", targetRef: null },
+      { allowUnreviewed: true },
+    );
     expect(await sign(h, "patient_self")).toEqual({ ok: false, code: "request_target_missing" });
     expect(h.calls).toEqual([]);
+  });
+
+  it("refuses an M06 document while its current wording is a draft, even for an older approved-looking version", async () => {
+    for (const docKind of ["election_statement", "notice_of_patient_rights"] as const) {
+      const h = harness({ docKind, targetRef: "es-1", templateVersion: "1.0.0" });
+      expect(await sign(h, "patient_self")).toEqual({
+        ok: false,
+        code: "template_pending_legal_review",
+      });
+      expect(h.calls).toEqual([]);
+    }
   });
 
   it("retry after a crash between M39 and the request update links the same consent, signing once", async () => {

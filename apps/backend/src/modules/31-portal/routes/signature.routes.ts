@@ -5,17 +5,25 @@
 // Every id and every fact about WHO is signing comes from the SESSION (account, patient, session id) and the grant row, never from the body.
 // The route only authorizes and shapes; the authority matrix, the DPOA check and the call-then-record order live in `signAdmissionDocument`.
 //
-// Deferred (next slice): uploading a signed paper copy (needs a `signed_admission_document` upload purpose and the M22 intake).
+//   POST /api/v1/portal/signature-requests/:requestId/signed-copy  attach a completed `signed_admission_document` upload as the signed paper copy (D6)
+// An attached copy parks the request in `uploaded_pending_review`; it is never marked signed here (staff accept or reject it). Attaching needs the same
+// fresh step-up as signing: a hijacked low-assurance session must not be able to put a document in front of staff as the patient's signed copy.
 import { createHash } from "node:crypto";
 import { ChartWardenError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { type PortalSigningGrantKind, decideSigningAuthority } from "../portal-signing-authority";
+import {
+  SIGNATURE_TEMPLATES,
+  type SignatureDocumentText,
+  portalSigningBlocker,
+  renderDocumentText,
+} from "../signature-templates";
 import { type SignDenyCode, signAdmissionDocument } from "../write-paths/sign-admission-document";
 import { actorOf, portalAccountIdOf, portalPatientIdOf, portalSessionIdOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
 import { ABAC_GRANT, P, STEP_UP } from "./guards";
 import type { PortalRouteDeps } from "./index";
-import { PortalSignatureSignRequest, parse } from "./portal-typebox";
+import { PortalSignatureAttachUpload, PortalSignatureSignRequest, parse } from "./portal-typebox";
 import type { PortalSigningDeps } from "./signature-deps";
 
 const IDEMPOTENT = requireIdempotencyKey();
@@ -23,6 +31,25 @@ const IDEMPOTENT = requireIdempotencyKey();
 /** The exact sentence a signer agrees to. The server shows it and hashes it; a client-supplied text is never trusted. */
 export function attestationTextFor(docKind: string, templateVersion: string): string {
   return `By typing my name and checking this box I confirm that I have read this document (${docKind.replaceAll("_", " ")}, version ${templateVersion}), that the information I gave about myself is true, and that I understand my typed name is my legal electronic signature.`;
+}
+/** The wording registered for this kind (null only for an unknown kind). It is the CURRENT wording, which is why a draft kind blocks its older requests too (`portalSigningBlocker`). */
+export function documentTextFor(
+  docKind: string,
+  agencyName: string | null = null,
+): SignatureDocumentText | null {
+  const text = (SIGNATURE_TEMPLATES as Record<string, { text?: SignatureDocumentText }>)[docKind]
+    ?.text;
+  return text ? renderDocumentText(text, agencyName) : null;
+}
+/** What the evidence hash covers: the document wording the person was shown plus the attestation sentence. */
+export function signedContentFor(
+  docKind: string,
+  templateVersion: string,
+  agencyName: string | null = null,
+): string {
+  const doc = documentTextFor(docKind, agencyName);
+  const body = doc ? `${doc.title}\n\n${doc.paragraphs.join("\n\n")}\n\n` : "";
+  return body + attestationTextFor(docKind, templateVersion);
 }
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 
@@ -36,6 +63,18 @@ function signingOf(deps: PortalRouteDeps): PortalSigningDeps {
   }
   return deps.signing;
 }
+
+const ATTACH_DENY = {
+  request_not_found: { status: 404, message: "That request was not found." },
+  request_not_pending: {
+    status: 409,
+    message: "That request is no longer waiting for a signature.",
+  },
+  upload_not_usable: {
+    status: 422,
+    message: "That file cannot be used as the signed copy. Please upload it again.",
+  },
+} as const;
 
 const NOT_READY = "This document is not ready to sign yet. Your care team will let you know.";
 const NOT_ABLE = "You are not able to sign this document for this patient.";
@@ -95,7 +134,15 @@ export function registerPortalSignatureRoutes(app: FastifyInstance, deps: Portal
         requestId,
       );
       if (!view) throw new NotFoundError("signature request", requestId);
-      return { ...view, attestationText: attestationTextFor(view.docKind, view.templateVersion) };
+      const doc = documentTextFor(
+        view.docKind,
+        await signingOf(deps).agencyName(actor.organizationId),
+      );
+      return {
+        ...view,
+        attestationText: attestationTextFor(view.docKind, view.templateVersion),
+        ...(doc ? { documentTitle: doc.title, documentParagraphs: doc.paragraphs } : {}),
+      };
     },
   );
 
@@ -157,7 +204,13 @@ export function registerPortalSignatureRoutes(app: FastifyInstance, deps: Portal
               ? { signerRelationshipText: body.signerRelationshipText }
               : {}),
             ...(body.patientUnableReason ? { patientUnableReason: body.patientUnableReason } : {}),
-            attestationSha256: sha256(attestationTextFor(view.docKind, view.templateVersion)),
+            attestationSha256: sha256(
+              signedContentFor(
+                view.docKind,
+                view.templateVersion,
+                await signing.agencyName(actor.organizationId),
+              ),
+            ),
             idempotencyKey,
           },
         },
@@ -168,6 +221,58 @@ export function registerPortalSignatureRoutes(app: FastifyInstance, deps: Portal
       }
       const done = await signing.store.viewForPatient(actor.organizationId, patientId, requestId);
       return { request: done ?? view, alreadySigned: outcome.alreadySigned };
+    },
+  );
+
+  app.post(
+    "/api/v1/portal/signature-requests/:requestId/signed-copy",
+    {
+      preHandler: [
+        P("portal.signature.sign"),
+        STEP_UP("portal.signature.sign"),
+        ABAC_GRANT("portal.signature.sign"),
+        IDEMPOTENT,
+      ],
+    },
+    async (request) => {
+      const actor = actorOf(request);
+      const accountId = portalAccountIdOf(actor);
+      const patientId = portalPatientIdOf(actor);
+      const { requestId } = request.params as { requestId: string };
+      const { uploadId } = parse(PortalSignatureAttachUpload, request.body);
+      const signing = signingOf(deps);
+
+      const view = await signing.store.viewForPatient(actor.organizationId, patientId, requestId);
+      if (!view) throw new NotFoundError("signature request", requestId);
+      const grant = await signing.store.activeGrantSource(
+        actor.organizationId,
+        accountId,
+        patientId,
+      );
+      if (!grant) throw new ForbiddenError("no active grant for this patient");
+      // The same authority matrix as signing: someone who may not sign this document may not stand behind a paper copy of it either.
+      const grantKind = grant.grantKind as PortalSigningGrantKind;
+      if (!decideSigningAuthority({ grantKind, docKind: view.docKind }).allowed) {
+        throw new ForbiddenError(NOT_ABLE);
+      }
+      // A copy of draft wording could never be accepted (the review applies the same rule), so it is not parked for review either.
+      if (
+        portalSigningBlocker(view.docKind, view.templateVersion, signing.allowUnreviewedTemplates)
+      ) {
+        throw new ChartWardenError("TEMPLATE_PENDING_LEGAL_REVIEW", NOT_READY, 409);
+      }
+      const outcome = await signing.store.attachSignedCopy(actor.organizationId, {
+        patientId,
+        portalUserId: actor.userId,
+        portalAccountId: accountId,
+        requestId,
+        uploadId,
+      });
+      if (!outcome.ok) {
+        const refusal = ATTACH_DENY[outcome.code];
+        throw new ChartWardenError(outcome.code.toUpperCase(), refusal.message, refusal.status);
+      }
+      return { request: outcome.request };
     },
   );
 }

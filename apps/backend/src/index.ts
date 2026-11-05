@@ -1413,13 +1413,13 @@ import {
   M31_PLATFORM_JOB_ID,
   registerM31LateJoinWatchdogWorker,
   registerM31PostDischargeGraceWorker,
+  registerM31SignatureReminderWorker,
   scheduleM31LateJoinWatchdogJob,
   scheduleM31PostDischargeGraceJob,
+  scheduleM31SignatureReminderJob,
   wireM31Tenancy,
 } from "./modules/31-portal/jobs/index";
 import { buildM31EncounterSignedTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m8-encounter-signed-telehealth";
-// F-167 (#248) — the per-contact-exact D6 lateral-flip trigger `plan_opened`'s own sibling names as "the
-// real primary trigger." Fed by M16's new single-contact seam read (`bereavedContactFlipCandidateForOrg`).
 import { buildM31BereavementContactActiveConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-contact-active";
 import { buildM31BereavementPlanClosedConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-plan-closed";
 import { buildM31BereavementPlanOpenedConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-plan-opened";
@@ -1428,6 +1428,14 @@ import { buildM31BereavementPlanOpenedConsumer } from "./modules/31-portal/outbo
 import { buildM31VisitCancelledTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m17-visit-cancelled-telehealth";
 import { buildM31VisitRescheduledTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m17-visit-rescheduled-telehealth";
 import { buildM31ConsentRevokedGrantCascadeConsumer } from "./modules/31-portal/outbox-consumers/m39-consent-revoked";
+// F-167 (#248) — the per-contact-exact D6 lateral-flip trigger `plan_opened`'s own sibling names as "the
+// real primary trigger." Fed by M16's new single-contact seam read (`bereavedContactFlipCandidateForOrg`).
+import { buildM31SignatureRequestPushConsumer } from "./modules/31-portal/outbox-consumers/signature-request-push";
+import {
+  activePortalUserIds,
+  signatureRecipientUserIds,
+  signatureRequestStillPending,
+} from "./modules/31-portal/seams/signature-push-recipients";
 // M32 (AI Platform) boot surface — M32-T02's §3.7 destruction contract, M32-T06's §4.4 seam registration
 // and M32-T07's HTTP surface: the §4.11 `m32.*` outbox catalog, the six §4.7 ABAC predicate resolvers and
 // the §4.1 route mount over the T03/T04/T05 command services + T07's read port. `ai.full` stays OFF.
@@ -1949,6 +1957,9 @@ export function wireModuleSeams(
           emitter: createDrizzleAlertEmitter(deps.db, {
             // WP 4.6 (ADR-0073): the notification policy's flag gate (default off per tenant).
             flags: createDrizzleFeatureFlagReader(deps.db),
+            // ADR-0107 D7: a portal account holds no membership; M31 says which user ids have an ACTIVE portal account.
+            activePortalRecipients: (organizationId, userIds) =>
+              deps.db ? activePortalUserIds(deps.db, organizationId, userIds) : Promise.resolve([]),
             extendResolvers: m34ResolverExtension(
               createDrizzleM34AlertResolverPorts(deps.db, {
                 roleSetMembers: createDrizzleRoleSetMembersReader(deps.db),
@@ -6750,7 +6761,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           });
           mountM31Routes(app, {
             signing: {
-              store: buildPortalSignatureStore(dbHandle.db),
+              store: buildPortalSignatureStore(dbHandle.db, m31Events ?? undefined),
               signers: {
                 election: (input) => portalAdmissionSigners.election(input),
                 noticeOfRights: (input) => portalAdmissionSigners.noticeOfRights(input),
@@ -6764,10 +6775,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                     : null;
                 },
               },
+              agencyName: async (organizationId) =>
+                (await siteDisplayForOrg(dbHandle.db, organizationId, [])).organizationName,
               // A "pending legal review" template (Consent to Treat today) is never signable unless this is set on purpose.
               allowUnreviewedTemplates: process.env.PORTAL_ALLOW_UNREVIEWED_TEMPLATES === "true",
               staff: {
-                store: buildStaffSignatureStore(dbHandle.db),
+                store: buildStaffSignatureStore(dbHandle.db, m31Events ?? undefined),
+                uploadedCopyConsent: (input) => portalConsentSigner.acceptUploadedCopy(input),
                 patientSite: async (organizationId, patientId) => {
                   const patient = await getSeam("PatientReader").findById({
                     organizationId,
@@ -8926,6 +8940,26 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       app.addHook("onClose", async () => {
         await m31LateJoinWatchdogWorker.close();
       });
+      // ADR-0107 D7 - the daily reminder for signature requests still waiting; stamps the cadence and emits the event a push consumer follows.
+      const m31SignatureReminderWorker = registerM31SignatureReminderWorker({
+        connection: queueConnection,
+        db: dbHandle.db,
+        events: m31Events,
+        activeOrgs: m31ActiveOrgs,
+        allowUnreviewedTemplates: process.env.PORTAL_ALLOW_UNREVIEWED_TEMPLATES === "true",
+        warn: (message, context) => app.log.warn(context, message),
+      });
+      app.addHook("onClose", async () => {
+        await m31SignatureReminderWorker.close();
+      });
+      try {
+        const m31SignatureReminderQueue = await scheduleM31SignatureReminderJob(queueConnection);
+        app.addHook("onClose", async () => {
+          await m31SignatureReminderQueue.close();
+        });
+      } catch (err) {
+        app.log.error(err, "M31 signature-reminder cron schedule registration failed");
+      }
       try {
         const m31LateJoinWatchdogQueue = await scheduleM31LateJoinWatchdogJob(queueConnection);
         app.addHook("onClose", async () => {
@@ -11815,6 +11849,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             db: dbHandle.db,
             events: m31Events,
             bereavedContactFlipCandidateForContact: bereavedContactFlipCandidateForOrg,
+          }),
+          // ADR-0107 D7: the push to the people who can sign. One fixed PHI-free alert per eligible person through M36's emitter.
+          buildM31SignatureRequestPushConsumer({
+            alerts: getSeam("AlertEmitter") as AlertEmitter,
+            stillPending: (organizationId, requestId) =>
+              signatureRequestStillPending(dbHandle.db, organizationId, requestId),
+            recipients: (organizationId, patientId, docKind) =>
+              signatureRecipientUserIds(dbHandle.db, organizationId, patientId, docKind),
           }),
           buildM8VisitPublishedConsumer({
             db: dbHandle.db,

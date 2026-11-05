@@ -2405,6 +2405,8 @@ import {
   PortalSignInAccountsResponse as M31PortalSignInAccountsResponse,
   PortalSignInEstablishRequest as M31PortalSignInEstablishRequest,
   PortalSignInEstablishResponse as M31PortalSignInEstablishResponse,
+  PortalSignatureAttachResponse as M31PortalSignatureAttachResponse,
+  PortalSignatureAttachUpload as M31PortalSignatureAttachUpload,
   PortalSignatureRequestDetailResponse as M31PortalSignatureRequestDetailResponse,
   PortalSignatureRequestListResponse as M31PortalSignatureRequestListResponse,
   PortalSignatureSignRequest as M31PortalSignatureSignRequest,
@@ -2414,6 +2416,7 @@ import {
   StaffSignatureRequestCreate as M31StaffSignatureRequestCreate,
   StaffSignatureRequestListResponse as M31StaffSignatureRequestListResponse,
   StaffSignatureRequestQuery as M31StaffSignatureRequestQuery,
+  StaffSignatureRequestReview as M31StaffSignatureRequestReview,
   StaffSignatureRequestView as M31StaffSignatureRequestView,
   StaffSignatureRequestVoid as M31StaffSignatureRequestVoid,
   StartRecordingRequest as M31StartRecordingRequest,
@@ -4251,6 +4254,18 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
       "Sign an admission document with a typed name and an attestation; TOTP step-up, Idempotency-Key required (ADR-0107)",
     body: M31PortalSignatureSignRequest,
     response: M31PortalSignatureSignResponse,
+  },
+  "POST /api/v1/portal/signature-requests/:requestId/signed-copy": {
+    summary:
+      "Attach a completed signed-copy upload to an open request; parks it for staff review, never signs it (ADR-0107)",
+    body: M31PortalSignatureAttachUpload,
+    response: M31PortalSignatureAttachResponse,
+  },
+  "POST /api/v1/admin/portal-signature-requests/:requestId/review": {
+    summary:
+      "Accept or reject an uploaded signed paper copy; accepting records it through M39 (ADR-0107)",
+    body: M31StaffSignatureRequestReview,
+    response: M31StaffSignatureRequestView,
   },
   "POST /api/v1/admin/portal-signature-requests": {
     summary:

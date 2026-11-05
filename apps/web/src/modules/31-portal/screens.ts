@@ -6,6 +6,9 @@ import type { ScreenRegistryModule } from "@chartwarden/types";
 import { lazy } from "react";
 import type { ComponentType } from "react";
 const PortalAdmin = lazy(() => import("./portal-admin").then((m) => ({ default: m.PortalAdmin })));
+const PatientSignatures = lazy(() =>
+  import("./patient-signatures").then((m) => ({ default: m.PatientSignatures })),
+);
 const TelehealthRoom = lazy(() =>
   import("./telehealth-room").then((m) => ({ default: m.TelehealthRoom })),
 );
@@ -21,6 +24,15 @@ export const portalStaffScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Admin",
       requiredPermission: "portal.account.read_list",
       screen: PortalAdmin,
+    },
+    {
+      // ADR-0107: the patient chart's Signatures tab (send admission documents for portal signing, review uploaded copies). Reached from
+      // the chart tab strip (param path, no nav).
+      id: "portal.patient-signatures",
+      path: "/patients/:patientId/signatures",
+      title: "Signatures",
+      requiredPermission: "portal.signature_request.read",
+      screen: PatientSignatures,
     },
     {
       id: "portal.telehealth",

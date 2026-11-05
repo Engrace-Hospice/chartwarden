@@ -283,6 +283,18 @@ const REQUIREMENTS: readonly Requirement[] = [
     when: (env) => env.EVV_DEVICE_ATTESTATION_ENFORCED !== undefined,
   },
   {
+    // ADR-0107 - lets a template marked "pending legal review" (a draft Consent to Treat) be signed. For a dev or demo tenant only: a
+    // production boot must not carry it, so it refuses unless unset or exactly `false`.
+    key: "PORTAL_ALLOW_UNREVIEWED_TEMPLATES",
+    rule: (v) =>
+      v === "false"
+        ? null
+        : "must be unset or 'false' in production (it lets a draft consent be signed)",
+    when: (env) =>
+      env.PORTAL_ALLOW_UNREVIEWED_TEMPLATES !== undefined &&
+      env.PORTAL_ALLOW_UNREVIEWED_TEMPLATES !== "",
+  },
+  {
     // GAP-009 — closed registration. `true`/`false` only (a typo must refuse the boot, not silently read as
     // the default). Unset: strict in production, open in dev (the seeds sign users up without an invite).
     key: "CHARTWARDEN_SIGNUP_REQUIRES_INVITE",

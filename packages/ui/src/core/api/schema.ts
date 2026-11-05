@@ -1514,6 +1514,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/portal-signature-requests/{requestId}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept or reject an uploaded signed paper copy; accepting records it through M39 (ADR-0107) */
+        post: operations["postApiV1AdminPortalsignaturerequestsByRequestIdReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/portal-signature-requests/{requestId}/void": {
         parameters: {
             query?: never;
@@ -21727,6 +21744,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/portal/signature-requests/{requestId}/signed-copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attach a completed signed-copy upload to an open request; parks it for staff review, never signs it (ADR-0107) */
+        post: operations["postApiV1PortalSignaturerequestsByRequestIdSignedcopy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/portal/supplies/upcoming": {
         parameters: {
             query?: never;
@@ -32168,6 +32202,8 @@ export interface operations {
                             signedAt: string | null;
                             signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
                             voidReason: string | null;
+                            uploadedDocumentId: string | null;
+                            reviewOutcome: "accepted" | "rejected" | null;
                         }[];
                     };
                 };
@@ -32220,6 +32256,59 @@ export interface operations {
                         signedAt: string | null;
                         signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
                         voidReason: string | null;
+                        uploadedDocumentId: string | null;
+                        reviewOutcome: "accepted" | "rejected" | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdminPortalsignaturerequestsByRequestIdReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    decision: "accepted" | "rejected";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        patientId: string;
+                        docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                        status: ("pending" | "signed" | "uploaded_pending_review") | "voided";
+                        templateKey: string;
+                        templateVersion: string;
+                        targetRef: string | null;
+                        /** Format: uuid */
+                        requestedBy: string;
+                        /** Format: date-time */
+                        requestedAt: string;
+                        lastRemindedAt: string | null;
+                        reminderCount: number;
+                        signedAt: string | null;
+                        signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
+                        voidReason: string | null;
+                        uploadedDocumentId: string | null;
+                        reviewOutcome: "accepted" | "rejected" | null;
                     };
                 };
             };
@@ -32269,6 +32358,8 @@ export interface operations {
                         signedAt: string | null;
                         signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
                         voidReason: string | null;
+                        uploadedDocumentId: string | null;
+                        reviewOutcome: "accepted" | "rejected" | null;
                     };
                 };
             };
@@ -91839,7 +91930,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    purpose: "insurance_card" | "prior_records" | "wound_photo" | "advance_directive_copy" | "other";
+                    purpose: "insurance_card" | "prior_records" | "wound_photo" | "advance_directive_copy" | "signed_admission_document" | "other";
                     purposeDetail?: string;
                     mimeType: string;
                     expectedByteSize: number;
@@ -92459,6 +92550,8 @@ export interface operations {
                         signedAt: string | null;
                         signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
                         attestationText: string;
+                        documentTitle?: string;
+                        documentParagraphs?: string[];
                     };
                 };
             };
@@ -92507,6 +92600,50 @@ export interface operations {
                             signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
                         };
                         alreadySigned: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PortalSignaturerequestsByRequestIdSignedcopy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    uploadId: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        request: {
+                            /** Format: uuid */
+                            id: string;
+                            docKind: "election_statement" | "notice_of_patient_rights" | "hipaa_npp_acknowledgement" | "consent_to_treat";
+                            status: "pending" | "signed" | "uploaded_pending_review";
+                            templateKey: string;
+                            templateVersion: string;
+                            /** Format: date-time */
+                            requestedAt: string;
+                            signedAt: string | null;
+                            signerRole: "patient" | "legal_representative" | "caregiver_on_behalf" | null;
+                        };
                     };
                 };
             };

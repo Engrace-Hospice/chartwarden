@@ -22,6 +22,18 @@ export type { PlatformAlertRuleSeed } from "./alert-rule-seed-type";
  */
 export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
   {
+    // ADR-0107 D7: a portal signature request is waiting. The M31 consumer puts the ELIGIBLE people's user ids on the payload; push only,
+    // because a portal user has no inbox. The phone shows the sanitizer's generic line (no document, patient or request id).
+    eventType: "m36.portal_signature.pending",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: [], userIdPaths: ["recipientUserIds"] },
+    channelsOverride: ["push"],
+    systemLocked: false,
+    enabled: true,
+  },
+  {
     eventType: "m36.message.mentioned",
     category: "clinical_routine",
     severityFloor: "info",

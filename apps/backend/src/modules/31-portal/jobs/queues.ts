@@ -10,6 +10,8 @@ export const M31_CRON_QUEUES = {
   postDischargeGrace: "m31-post-discharge-grace",
   /** GAP-159 - spec 4.8 `m31.telehealth-late-join-watchdog.cron`. */
   lateJoinWatchdog: "m31-telehealth-late-join-watchdog",
+  /** ADR-0107 D7 - the daily reminder for signature requests still waiting to be signed. */
+  signatureReminder: "m31-signature-reminder",
 } as const;
 
 /** Daily 02:30 UTC — spec §4.8. */
@@ -17,11 +19,14 @@ export const M31_JOB_SCHEDULES = {
   postDischargeGrace: "30 2 * * *",
   /** Every 5 minutes - spec 4.8. */
   lateJoinWatchdog: "*/5 * * * *",
+  /** Daily 14:00 UTC (mid-morning to mid-day across US time zones). */
+  signatureReminder: "0 14 * * *",
 } as const;
 
 export const M31_QUEUE_PARAMS = {
   postDischargeGrace: { concurrency: 1 },
   lateJoinWatchdog: { concurrency: 1 },
+  signatureReminder: { concurrency: 1 },
 } as const;
 
 /** Spec §3.3 / §2.3: "configurable per tenant; FLOOR is 30 days". The sweep never uses fewer. */

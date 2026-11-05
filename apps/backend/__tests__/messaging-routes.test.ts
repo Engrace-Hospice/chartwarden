@@ -42,6 +42,11 @@ function headerAuth(request: FastifyRequest): void {
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
   request.context.locationIds = [];
+  const klass = request.headers["x-test-session-class"];
+  if (typeof klass === "string" && klass.length > 0) {
+    request.context.attributes.sessionClass = klass;
+    request.context.attributes.portalAccountId = "acct_1";
+  }
 }
 
 const ORG = "org_a";
@@ -1212,6 +1217,33 @@ describe("M36-T07 messaging route inventory", () => {
       expect(
         (await register({ channel: "push", target: "https://push.example.test/x" })).statusCode,
       ).toBe(201);
+    });
+  });
+
+  describe("ADR-0107 portal sessions register only a phone's native push token", () => {
+    const PORTAL = { ...RN1, "x-test-session-class": "patient_portal" };
+    const register = async (payload: Record<string, unknown>) => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/v1/notifications/endpoints",
+        headers: PORTAL,
+        payload,
+      });
+      await app.close();
+      return res;
+    };
+
+    it("refuses an sms, an email and a web-push endpoint from a portal session", async () => {
+      for (const payload of [
+        { channel: "sms", target: "+15555550123" },
+        { channel: "email", target: "someone@example.test" },
+        { channel: "push", target: "https://push.example.test/x" },
+      ]) {
+        const res = await register(payload);
+        expect(res.statusCode, JSON.stringify(payload)).toBe(422);
+        expect(res.json().error.message).toMatch(/portal session/);
+      }
     });
   });
 

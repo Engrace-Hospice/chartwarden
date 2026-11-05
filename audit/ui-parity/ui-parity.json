@@ -2120,6 +2120,14 @@
       "app": "web",
       "module": "31-portal",
       "moduleId": 31,
+      "id": "portal.patient-signatures",
+      "path": "/patients/:patientId/signatures",
+      "permission": "portal.signature_request.read"
+    },
+    {
+      "app": "web",
+      "module": "31-portal",
+      "moduleId": 31,
       "id": "portal.telehealth",
       "path": "/telehealth",
       "permission": "telehealth.read_list"
@@ -3067,6 +3075,14 @@
       "id": "portal.documents",
       "path": "/p/:patientId/documents",
       "permission": "portal.documents.read_list"
+    },
+    {
+      "app": "portal",
+      "module": "31-portal",
+      "moduleId": 31,
+      "id": "portal.signatures",
+      "path": "/p/:patientId/signatures",
+      "permission": "portal.signature.read"
     },
     {
       "app": "portal",

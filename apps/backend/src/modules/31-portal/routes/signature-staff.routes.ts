@@ -2,22 +2,40 @@
 //   POST /api/v1/admin/portal-signature-requests              send a patient a request (one open per patient and document kind)
 //   GET  /api/v1/admin/portal-signature-requests?patientId=   a patient's requests, newest first (read-audited list)
 //   POST /api/v1/admin/portal-signature-requests/:id/void     withdraw an OPEN request, with a coded reason
+//   POST /api/v1/admin/portal-signature-requests/:id/review   accept or reject an uploaded signed paper copy (ADR-0107 D6)
 // Each route gates on the permission AND on `caseload_or_scope` over the patient the request concerns (the invitation-scope convention), so a
 // holder of the key cannot reach a patient off their caseload. For void the patient is read from the request row server-side, never the body.
 // Template key and version are stamped from the server registry. An M06 document must name the M06 record it will sign into, checked here so a
 // mistaken target fails at send time, not when the patient tries to sign.
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { M06_DOC_KINDS, SIGNATURE_TEMPLATES } from "../signature-templates";
-import { actorOf } from "./actor";
+import { M06_DOC_KINDS, SIGNATURE_TEMPLATES, portalSigningBlocker } from "../signature-templates";
+import { type AcceptDenyCode, acceptUploadedCopy } from "../write-paths/accept-uploaded-copy";
+import { type PreHandler, actorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
-import { P } from "./guards";
+import { P, STEP_UP } from "./guards";
 import type { PortalRouteDeps } from "./index";
 import { invitationPatientScope } from "./invitation-scope";
-import { StaffSignatureRequestCreate, StaffSignatureRequestVoid, parse } from "./portal-typebox";
+import {
+  StaffSignatureRequestCreate,
+  StaffSignatureRequestReview,
+  StaffSignatureRequestVoid,
+  parse,
+} from "./portal-typebox";
 import type { PortalStaffSigningDeps } from "./signature-deps";
 
 const IDEMPOTENT = requireIdempotencyKey();
+
+/**
+ * ADR-0107 D6: accepting an uploaded copy signs an M39 consent with the reviewer as signer, so it carries
+ * M39's own sign gate (`consent.sign` + a fresh step-up, as `POST /api/v1/consents/:id/sign`). Reject only
+ * reopens the request and stays on the review permission alone.
+ */
+const ACCEPT_SIGN_GATE: readonly PreHandler[] = [P("consent.sign"), STEP_UP("consent.sign")];
+const acceptSignGate: PreHandler = async (request, reply) => {
+  if ((request.body as { decision?: unknown } | null)?.decision !== "accepted") return;
+  for (const guard of ACCEPT_SIGN_GATE) await guard(request, reply);
+};
 
 function staffOf(deps: PortalRouteDeps): PortalStaffSigningDeps {
   if (!deps.signing?.staff) {
@@ -29,6 +47,37 @@ function staffOf(deps: PortalRouteDeps): PortalStaffSigningDeps {
   }
   return deps.signing.staff;
 }
+
+const ACCEPT_DENY: Readonly<Record<AcceptDenyCode, { status: number; message: string }>> = {
+  request_not_found: { status: 404, message: "That request was not found." },
+  request_not_pending_review: {
+    status: 409,
+    message: "That request has no uploaded copy waiting for review.",
+  },
+  template_pending_legal_review: {
+    status: 409,
+    message:
+      "This document's wording is still pending legal review, so a signed copy cannot be accepted yet.",
+  },
+  m06_document_recorded_in_admission: {
+    status: 409,
+    message:
+      "Record this paper signature in the admission workflow, then void the request as signed on paper.",
+  },
+  uploaded_copy_missing: { status: 409, message: "The uploaded copy is not available to review." },
+  uploader_grant_missing: {
+    status: 409,
+    message: "The person who uploaded this copy no longer has access to this patient.",
+  },
+  uploader_not_authorized: {
+    status: 409,
+    message: "The person who uploaded this copy may not sign this document for the patient.",
+  },
+  dpoa_consent_not_active: {
+    status: 409,
+    message: "The uploader's authority to act for this patient could not be confirmed.",
+  },
+};
 
 const patientFromQuery = async (request: FastifyRequest): Promise<readonly string[]> => {
   const patientId = (request.query as { patientId?: unknown } | undefined)?.patientId;
@@ -60,6 +109,21 @@ export function registerPortalSignatureStaffRoutes(
       const staff = staffOf(deps);
       const actor = actorOf(request);
       const body = parse(StaffSignatureRequestCreate, request.body);
+
+      // Never send what nobody can sign: unapproved wording would only be pushed and reminded daily, then refused at the signature step.
+      if (
+        portalSigningBlocker(
+          body.docKind,
+          SIGNATURE_TEMPLATES[body.docKind].version,
+          deps.signing?.allowUnreviewedTemplates ?? false,
+        )
+      ) {
+        throw new ChartWardenError(
+          "SIGNATURE_DOCUMENT_NOT_SIGNABLE",
+          "This document's wording is still pending legal review and cannot be sent yet.",
+          422,
+        );
+      }
 
       const targetRequired = M06_DOC_KINDS.has(body.docKind);
       if (targetRequired !== (body.targetRef !== undefined)) {
@@ -128,6 +192,64 @@ export function registerPortalSignatureStaffRoutes(
         patientId as string,
       );
       return { items };
+    },
+  );
+
+  const reviewScope = invitationPatientScope("portal.signature_request.review", async (request) => {
+    const { requestId } = request.params as { requestId: string };
+    const row = await staffOf(deps).store.get(actorOf(request).organizationId, requestId);
+    return row ? [row.patientId] : [];
+  });
+
+  app.post(
+    "/api/v1/admin/portal-signature-requests/:requestId/review",
+    { preHandler: [P("portal.signature_request.review"), reviewScope, acceptSignGate, IDEMPOTENT] },
+    async (request, reply) => {
+      await reviewScope(request, reply);
+      const staff = staffOf(deps);
+      const actor = actorOf(request);
+      const { requestId } = request.params as { requestId: string };
+      const { decision } = parse(StaffSignatureRequestReview, request.body);
+
+      if (decision === "rejected") {
+        const rejected = await staff.store.rejectUpload(
+          actor.organizationId,
+          requestId,
+          actor.userId,
+        );
+        if (!rejected.ok) {
+          if (rejected.reason === "not_found")
+            throw new NotFoundError("signature request", requestId);
+          throw new ConflictError("That request has no uploaded copy waiting for review.");
+        }
+        return rejected.request;
+      }
+
+      const consents = deps.signing?.consents;
+      if (!consents) {
+        throw new ChartWardenError(
+          "PORTAL_SIGNING_UNAVAILABLE",
+          "Review is not available right now.",
+          503,
+        );
+      }
+      const outcome = await acceptUploadedCopy(
+        {
+          allowUnreviewedTemplates: deps.signing?.allowUnreviewedTemplates ?? false,
+          loadForReview: (org, id) => staff.store.loadForReview(org, id),
+          consent: staff.uploadedCopyConsent,
+          readConsent: (org, id) => consents.read(org, id),
+          markAccepted: (org, id, input) => staff.store.markAccepted(org, id, input),
+        },
+        { organizationId: actor.organizationId, requestId, reviewerUserId: actor.userId },
+      );
+      if (!outcome.ok) {
+        const refusal = ACCEPT_DENY[outcome.code];
+        throw new ChartWardenError(outcome.code.toUpperCase(), refusal.message, refusal.status);
+      }
+      const done = await staff.store.get(actor.organizationId, requestId);
+      if (!done) throw new NotFoundError("signature request", requestId);
+      return done;
     },
   );
 
