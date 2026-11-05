@@ -1,0 +1,95 @@
+// apps/backend/src/modules/34-saas-tenant-platform/onboarding/wizard-store.ts — what the wizard needs from storage.
+//
+// The business rules (sequence, owner, attestation, go-live) live in wizard-service.ts and run against this port, so the
+// same code serves the tenant surface (an org-scoped transaction) and the platform surface (an audited platform
+// transaction), over Drizzle in production and over memory in tests. A store is bound to ONE open transaction.
+import type {
+  GoLiveAttestation,
+  PlatformActor,
+  StepTask,
+  StepTemplate,
+  TaskStatus,
+  TenantActor,
+  TenantRef,
+} from "./model";
+
+/** Columns a service call may change on a task. `completionEvidence` replaces the jsonb bag (the caller merges). */
+export interface TaskPatch {
+  readonly status?: TaskStatus;
+  readonly startedAt?: Date | null;
+  readonly completedAt?: Date | null;
+  readonly blockerReason?: string | null;
+  readonly evidenceNote?: string | null;
+  readonly evidenceRef?: string | null;
+  readonly attestedByMembershipId?: string | null;
+  readonly attestedByActorKind?: "platform_ops" | "tenant" | null;
+  readonly attestedAt?: Date | null;
+  readonly completionEvidence?: Record<string, unknown>;
+}
+
+export interface WizardStore {
+  loadTenant(
+    by: { readonly orgSlug: string } | { readonly organizationId: string },
+  ): Promise<TenantRef | null>;
+  /** ACTIVE templates only, in any order. */
+  listTemplates(): Promise<StepTemplate[]>;
+  /** The tenant's tasks for active templates. */
+  listTasks(tenantAccountId: string): Promise<StepTask[]>;
+  /** The task's raw `completion_evidence` bag (so a re-open can keep the history). */
+  getCompletionEvidence(taskId: string): Promise<Record<string, unknown>>;
+  /** Compare-and-set on the status read: null when the task changed underneath the caller. */
+  updateTask(
+    taskId: string,
+    expectedStatus: TaskStatus,
+    patch: TaskPatch,
+  ): Promise<StepTask | null>;
+  listGoLive(tenantAccountId: string): Promise<GoLiveAttestation[]>;
+  insertGoLive(input: {
+    readonly organizationId: string;
+    readonly tenantAccountId: string;
+    readonly attestedByMembershipId: string;
+    readonly attestationNote: string | null;
+  }): Promise<GoLiveAttestation>;
+  /** Moves a PENDING attestation to approved or revoked; null when it was no longer pending. */
+  settleGoLive(
+    id: string,
+    patch:
+      | {
+          readonly status: "approved";
+          readonly approvedByMembershipId: string;
+          readonly approvalReason: string;
+        }
+      | {
+          readonly status: "revoked";
+          readonly revokedByMembershipId: string;
+          readonly revokeReason: string;
+        },
+  ): Promise<GoLiveAttestation | null>;
+  latestBaa(
+    tenantAccountId: string,
+  ): Promise<{ readonly baaStatus: string; readonly expiresOn: string | null } | undefined>;
+  setComplianceOfficer(tenantAccountId: string, membershipId: string): Promise<void>;
+  /** The membership exists in the organisation and is active. */
+  isActiveMember(organizationId: string, membershipId: string): Promise<boolean>;
+  /**
+   * onboarding -> active through the lifecycle machine, inside this same transaction (platform stores only: a tenant
+   * store refuses). Publishes `m34.tenant.onboarding_completed`.
+   */
+  activate(input: {
+    readonly tenant: TenantRef;
+    readonly actor: PlatformActor;
+    readonly reason: string;
+    readonly tasksCompleted: number;
+    readonly tasksSkipped: number;
+  }): Promise<void>;
+}
+
+/** Opens one transaction and hands the callback a store bound to it. */
+export interface WizardRunner {
+  inTenant<T>(
+    actor: TenantActor,
+    organizationId: string,
+    fn: (store: WizardStore) => Promise<T>,
+  ): Promise<T>;
+  inPlatform<T>(reason: string, fn: (store: WizardStore) => Promise<T>): Promise<T>;
+}

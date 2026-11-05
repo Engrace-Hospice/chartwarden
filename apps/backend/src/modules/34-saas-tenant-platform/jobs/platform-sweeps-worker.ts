@@ -12,7 +12,6 @@
 import { auditPlatformEvent } from "@chartwarden/audit";
 import { type DbClient, schema } from "@chartwarden/db";
 import {
-  type ActivationOutcome,
   type BaaExpirySweepResult,
   BaaRegisterRepository,
   type ExpiredSessionCandidate,
@@ -24,7 +23,6 @@ import {
   closeExpiredSupportSessions,
   runBaaExpirySweep,
   runOnboardingAdvance,
-  shouldAlertActivationRefusal,
 } from "@chartwarden/saas-tenant-platform";
 import {
   type PlatformBypassAuditor,
@@ -35,7 +33,11 @@ import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, lte } from "drizzle-orm";
 import { M34_JOB_SCHEDULES, M34_QUEUES } from "./index";
 
-/** The M36 alert event for a tenant whose automatic activation keeps being refused (rule: alert-rules.ts). */
+/**
+ * The M36 alert event the stuck-activation rule is keyed on (alert-rules.ts). Retained as the seeded rule's name only:
+ * nothing raises it since go-live became a two-party approval (the sweep no longer attempts to activate anything).
+ * Follow-up: retire the rule and the refusal-streak helpers together.
+ */
 export const M34_ACTIVATION_STUCK_EVENT = "m34.tenant.onboarding_activation_stuck";
 
 const PLATFORM_JOB_ID = "m34.platform_ops";
@@ -171,9 +173,14 @@ export async function gatherOnboardingContext(
     : { providerEntities: [], locationCount: 0 };
   const adminCount = readers.orgAdminCount ? await readers.orgAdminCount(orgId) : 0;
   const [latestBaa] = await new BaaRegisterRepository(tx).listByTenantAccountId(tenantAccountId);
+  const [account] = await tx
+    .select({ officer: schema.tenantAccount.complianceOfficerMembershipId })
+    .from(schema.tenantAccount)
+    .where(eq(schema.tenantAccount.id, tenantAccountId))
+    .limit(1);
   const templates = await repo.listTemplates();
   const tasks = await repo.listTasksByTenant(tenantAccountId);
-  const canonical = templates.filter((t) => t.isCanonical);
+  const canonical = templates.filter((t) => t.isCanonical && !t.isOptional);
   const settled = new Set(
     tasks.filter((t) => t.status === "done" || t.status === "skipped").map((t) => t.templateKey),
   );
@@ -189,6 +196,7 @@ export async function gatherOnboardingContext(
     dosespotKickoffRecorded: await read(readers.dosespotKickoffRecorded),
     xeroConnected: await read(readers.xeroConnected),
     gustoConnected: await read(readers.gustoConnected),
+    complianceOfficerAssigned: Boolean(account?.officer),
     baaExecuted: latestBaa?.baaStatus === "executed",
     allCanonicalTasksDoneOrSkipped: canonical.every((t) => settled.has(t.key)),
   };
@@ -227,95 +235,6 @@ export async function runOnboardingFanOut(
 
 // ── live construction ────────────────────────────────────────────────────────────────────────────────
 
-/** Outcome of an automatic `onboarding → active` attempt; `reason` is the unmet lifecycle guard's code. */
-export type AutoActivationResult =
-  | { readonly activated: true }
-  | {
-      readonly activated: false;
-      readonly reason: string;
-      /** Consecutive-daily refusal streak, counted server-side in the same transaction as the guard. */
-      readonly refusalStreak?: { readonly days: number; readonly advanced: boolean };
-    };
-
-/** Operator-visible hooks of the activation port (both optional; a missing sink is simply silent). */
-export interface ActivationPortHooks {
-  readonly info?: (message: string, context: Record<string, string>) => void;
-  /** Raised on every newly counted day at or past the threshold (see `shouldAlertActivationRefusal`). */
-  readonly alertStuck?: (input: {
-    tenantAccountId: string;
-    orgId: string;
-    reason: string;
-    consecutiveDays: number;
-  }) => Promise<unknown>;
-}
-
-/**
- * The onboarding worker's `activateTenant` port: hand the tenant to the lifecycle service. An unmet guard (BAA not
- * executed yet, BAA expiring within 90 days) is a normal "not yet" that tomorrow's sweep retries, and a failure must
- * never throw into the org transaction that just wrote the completion event and alert, so both become warnings.
- */
-export function buildActivateTenantPort(
-  activate:
-    | ((input: { tenantAccountId: string; orgId: string }) => Promise<AutoActivationResult>)
-    | undefined,
-  warn: ((message: string, context: Record<string, string>) => void) | undefined,
-  hooks: ActivationPortHooks = {},
-): (input: { tenantAccountId: string; orgId: string }) => Promise<ActivationOutcome> {
-  return async ({ tenantAccountId, orgId }) => {
-    const context = { tenantAccountId, orgId };
-    if (!activate) {
-      warn?.(
-        "m34.onboarding_advance: all canonical steps settled but no activation is bound; activation left to platform ops",
-        context,
-      );
-      return "unbound";
-    }
-    try {
-      const result = await activate({ tenantAccountId, orgId });
-      if (result.activated) {
-        hooks.info?.("m34.onboarding_advance: tenant auto-activated", context);
-        return "activated";
-      }
-      warn?.(
-        `m34.onboarding_advance: tenant not activated yet (${result.reason}); the next sweep retries`,
-        context,
-      );
-      const streak = result.refusalStreak;
-      if (streak && shouldAlertActivationRefusal(streak)) {
-        await raiseStuckAlert(hooks, warn, {
-          ...context,
-          reason: result.reason,
-          days: streak.days,
-        });
-      }
-    } catch (err) {
-      warn?.(
-        `m34.onboarding_advance: automatic activation failed (${err instanceof Error ? err.message : String(err)}); the next sweep retries`,
-        context,
-      );
-    }
-    return "pending";
-  };
-}
-
-// Trade-off: the streak is persisted (advanced=true) before this emit, so a failed emit loses that day's alert;
-// the next day's refusal advances the streak again and alerts again.
-async function raiseStuckAlert(
-  hooks: ActivationPortHooks,
-  warn: ((message: string, context: Record<string, string>) => void) | undefined,
-  a: { tenantAccountId: string; orgId: string; reason: string; days: number },
-): Promise<void> {
-  const context = { tenantAccountId: a.tenantAccountId, orgId: a.orgId };
-  try {
-    await hooks.alertStuck?.({ ...context, reason: a.reason, consecutiveDays: a.days });
-  } catch (err) {
-    warn?.(
-      `m34.onboarding_advance: stuck-activation alert failed (${err instanceof Error ? err.message : String(err)})`,
-      context,
-    );
-  }
-}
-
 export interface PlatformSweepWorkerDeps {
   readonly connection: ConnectionOptions;
   /** Tenant-pool client (org-scoped onboarding work). */
@@ -329,11 +248,6 @@ export interface PlatformSweepWorkerDeps {
   readonly now?: () => Date;
   readonly warn?: (message: string, context: Record<string, string>) => void;
   readonly info?: (message: string, context: Record<string, string>) => void;
-  /** Runs `onboarding → active` through the lifecycle service once every canonical step settles (system actor). */
-  readonly activate?: (input: {
-    tenantAccountId: string;
-    orgId: string;
-  }) => Promise<AutoActivationResult>;
 }
 
 function platformTx<T>(
@@ -442,10 +356,25 @@ export function registerM34SupportSessionCloseWorker(deps: PlatformSweepWorkerDe
   );
 }
 
-/** Construct the `tenant.onboarding_advance` Worker: a job with a tenant advances it; an empty tick fans out. */
-export function registerM34OnboardingAdvanceWorker(deps: PlatformSweepWorkerDeps): Worker {
+/** What the advance pass needs (the sweep worker and the wizard's post-change settle share it). */
+export interface OnboardingAdvanceDeps {
+  /** Tenant-pool client (org-scoped onboarding work). */
+  readonly db: DbClient;
+  readonly outbox: M34SweepOutbox;
+  readonly alerts: M34SweepAlerts;
+  readonly facts?: OnboardingFactReaders;
+  readonly now?: () => Date;
+}
+
+/**
+ * One advance pass for a tenant, inside its own org transaction: settle `auto`/`either` steps whose fact now holds,
+ * block an unmet `auto` step, raise overdue alerts. It never activates a tenant.
+ */
+export function createOnboardingAdvancer(
+  deps: OnboardingAdvanceDeps,
+): (input: { tenantAccountId: string; orgId: string }) => Promise<OnboardingAdvanceReport> {
   const now = deps.now ?? (() => new Date());
-  const advance = (input: { tenantAccountId: string; orgId: string }) =>
+  return (input) =>
     withOrgContext(deps.db, { organizationId: input.orgId, userId: SYSTEM_USER_ID }, (rawTx) => {
       const tx = rawTx as unknown as DbClient;
       const repo = new OnboardingRepository(tx);
@@ -467,28 +396,19 @@ export function registerM34OnboardingAdvanceWorker(deps: PlatformSweepWorkerDeps
           await deps.alerts.emit(input.orgId, {
             eventType: alert.alertKey,
             payload: { tenantAccountId: alert.tenantAccountId, templateKey: alert.templateKey },
-            severity: alert.alertKey === "tenant.onboarding_completed" ? "info" : "warn",
-            correlationId: `m34-onboarding-${alert.alertKey}-${alert.tenantAccountId}-${alert.templateKey ?? "all"}-${now().toISOString().slice(0, 10)}`,
+            severity: "warn",
+            correlationId: `m34-onboarding-${alert.alertKey}-${alert.tenantAccountId}-${alert.templateKey ?? "all"}-${now()
+              .toISOString()
+              .slice(0, 10)}`,
           });
         },
-        activateTenant: buildActivateTenantPort(deps.activate, deps.warn, {
-          info: deps.info,
-          alertStuck: (a) =>
-            deps.alerts.emit(a.orgId, {
-              eventType: M34_ACTIVATION_STUCK_EVENT,
-              payload: {
-                tenantAccountId: a.tenantAccountId,
-                orgId: a.orgId,
-                reason: a.reason,
-                consecutiveDays: a.consecutiveDays,
-              },
-              severity: "warn",
-              // One alert per tenant per day: a retried sweep collapses onto the same row.
-              correlationId: `m34-onboarding-activation-stuck-${a.tenantAccountId}-${now().toISOString().slice(0, 10)}`,
-            }),
-        }),
       });
     });
+}
+
+/** Construct the `tenant.onboarding_advance` Worker: a job with a tenant advances it; an empty tick fans out. */
+export function registerM34OnboardingAdvanceWorker(deps: PlatformSweepWorkerDeps): Worker {
+  const advance = createOnboardingAdvancer(deps);
   return new Worker(
     M34_QUEUES.onboardingAdvance,
     async (job) => {

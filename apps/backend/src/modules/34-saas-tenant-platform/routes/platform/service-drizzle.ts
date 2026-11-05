@@ -26,7 +26,6 @@ import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import type { AlertEmitter } from "@chartwarden/messaging";
 import {
-  ACTIVATION_REFUSAL_METADATA_KEY,
   BaaRegisterRepository,
   FIRST_ADMIN_INVITATION_TTL_DAYS,
   OnboardingRepository,
@@ -36,11 +35,6 @@ import {
   TenantAccountRepository,
   TenantExportRepository,
   TenantKeyRingRepository,
-  TenantLifecycleError,
-  nextActivationRefusal,
-  readActivationRefusal,
-  withActivationRefusal,
-  withoutActivationRefusal,
 } from "@chartwarden/saas-tenant-platform";
 import {
   type LifecycleActorKind,
@@ -64,8 +58,8 @@ import {
   canInviteFirstAdmin,
   mintInvitationToken,
 } from "../../invitation-token";
-import type { AutoActivationResult } from "../../jobs/platform-sweeps-worker";
 import type { ProvisionJobPort } from "../../jobs/provision-job-port";
+import type { WizardActivation } from "../../onboarding/wizard-store-drizzle";
 import { evaluateActivationGuards, pickGoverningBaa } from "./activation-guards";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf, paginate } from "./concurrency";
 import { partitionEffects } from "./effect-ledger";
@@ -241,10 +235,9 @@ function outboxPayloadFor(
         : null;
     default:
       // `activated` is deliberately not published here: the catalog has no `m34.tenant.activated`, and its mirror
-      // `m34.tenant.onboarding_completed` is already published by the onboarding-advance sweep once every canonical
-      // step settles. Also unreached: `final_export_pending`/`retained`/`destruction_pending` — the machine can name
+      // `m34.tenant.onboarding_completed` is published by `activateApprovedTenant` with the go-live approval. Also unreached: `final_export_pending`/`retained`/`destruction_pending` — the machine can name
       // these, but no current caller of applyTransition reaches the events that emit them (`activate`
-      // fires from the onboarding worker outside this file; `requestFinalExport`/`completeExport`/
+      // fires from the go-live approval (`activateApprovedTenant`) below; `requestFinalExport`/`completeExport`/
       // `scheduleDestruction`/`shred` have no route here at all — see lifecycleEventForStatus below).
       // Scoped out of this fix deliberately (#103/#205 fixed the reachable four: suspend/reactivate/
       // at_risk/offboard); null here means "skip the publish", never "crash the mutation that already
@@ -256,8 +249,12 @@ function outboxPayloadFor(
 
 export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDeps): {
   service: TenantPlatformRouteService;
-  /** The onboarding sweep's system-actor `onboarding → active` (not a route: no human is on the other end). */
-  activateOnboardedTenant: (tenantAccountId: string) => Promise<AutoActivationResult>;
+  /**
+   * `onboarding → active` for the two-party go-live, run inside the CALLER's open platform transaction (the wizard's
+   * approval): the lifecycle machine, its ledger/effects, and the `m34.tenant.onboarding_completed` event commit or roll
+   * back together with the approval. Not a route, and never called by the sweep.
+   */
+  activateApprovedTenant: WizardActivation;
 } {
   /** Run `fn` in one audited platform-context tx (the only place cross-tenant rows are read/written). */
   const inPlatformCtx = <T>(reason: string, fn: (tx: PlatformTx) => Promise<T>): Promise<T> =>
@@ -324,7 +321,9 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       new BaaRegisterRepository(tx).listByTenantAccountId(tenantAccountId),
     ]);
     const guards = evaluateActivationGuards({
-      canonicalTemplateKeys: templates.filter((t) => t.isCanonical).map((t) => t.key),
+      canonicalTemplateKeys: templates
+        .filter((t) => t.isCanonical && !t.isOptional)
+        .map((t) => t.key),
       tasks,
       latestBaa: pickGoverningBaa(baaRows),
       today: new Date(),
@@ -636,12 +635,19 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     async transitionStatus(orgSlug, actorUserId, args: StatusTransitionArgs) {
       return inPlatformCtx("platform-ops transition tenant status", async (tx) => {
         const { account } = await loadByOrgSlug(tx, orgSlug);
+        if (account.status === "onboarding" && args.toStatus === "active") {
+          // Going live is two-party: the compliance officer attests, a platform operator approves. One operator
+          // activating by hand would bypass the officer's attestation, so this edge has no direct path.
+          throw new ChartWardenError(
+            "GO_LIVE_TWO_PARTY_REQUIRED",
+            "a tenant goes live through the compliance officer's attestation and a platform approval (POST /api/v1/platform/tenants/:orgSlug/go-live/approve), not a status change",
+            409,
+          );
+        }
         const event =
-          account.status === "onboarding" && args.toStatus === "active"
-            ? await activateEventFor(tx, account.id, args.transitionReason)
-            : account.status === "retained" && args.toStatus === "destruction_pending"
-              ? await destructionEventFor(account, args.transitionReason)
-              : lifecycleEventForStatus(account.status, args.toStatus, args.transitionReason);
+          account.status === "retained" && args.toStatus === "destruction_pending"
+            ? await destructionEventFor(account, args.transitionReason)
+            : lifecycleEventForStatus(account.status, args.toStatus, args.transitionReason);
         const updated = await applyTransition(tx, account, actorUserId, "platform_ops", event);
         return { tenantAccountId: updated.id, status: updated.status };
       });
@@ -1355,65 +1361,44 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
   };
 
   /**
-   * Automatic `onboarding → active` once the sweep sees every canonical step settled. Same guards and effects as the
-   * platform route, with a system actor and no membership. The tenant row is locked and re-read so two overlapping
-   * sweeps cannot both apply it, and an unmet guard is a normal "not yet" (returned, not thrown).
+   * `onboarding → active` for an approved go-live, inside the wizard's open platform transaction. The tenant row is
+   * locked and re-read so two approvals cannot both apply, the lifecycle machine re-judges its own guards over the tasks
+   * the wizard has just settled, and the `m34.tenant.onboarding_completed` event commits with the transition.
    */
-  async function activateOnboardedTenant(tenantAccountId: string): Promise<AutoActivationResult> {
-    return inPlatformCtx("m34 onboarding sweep: automatic activation", async (tx) => {
-      const [account] = await tx
-        .select()
-        .from(A)
-        .where(eq(A.id, tenantAccountId))
-        .limit(1)
-        .for("update");
-      if (!account || account.status !== "onboarding") {
-        return { activated: false, reason: "NOT_IN_ONBOARDING" };
-      }
-      try {
-        const event = await activateEventFor(
-          tx,
-          account.id,
-          "all canonical onboarding steps settled and the BAA executed (automatic activation)",
-          "system_automated",
-        );
-        // The machine's guards throw from inside applyTransition, so the streak is only cleared once it succeeded.
-        await applyTransition(tx, account, null, "system_automated", event);
-        const metadata = account.metadata as Record<string, unknown>;
-        if (readActivationRefusal(metadata)) {
-          await tx
-            .update(A)
-            .set({ metadata: withoutActivationRefusal(metadata) })
-            .where(eq(A.id, account.id));
-        }
-        return { activated: true };
-      } catch (err) {
-        if (!(err instanceof TenantLifecycleError)) throw err;
-        // The reason is the server-side guard's own code (never tenant-written status). The streak is counted in
-        // this same row-locked transaction, so overlapping sweeps cannot double count and a retry the same UTC
-        // day is a no-op.
-        const metadata = account.metadata as Record<string, unknown>;
-        const { state, advanced } = nextActivationRefusal(
-          metadata[ACTIVATION_REFUSAL_METADATA_KEY],
-          err.code,
-          new Date().toISOString().slice(0, 10),
-        );
-        if (advanced) {
-          await tx
-            .update(A)
-            .set({ metadata: withActivationRefusal(metadata, state) })
-            .where(eq(A.id, account.id));
-        }
-        return {
-          activated: false,
-          reason: err.code,
-          refusalStreak: { days: state.days, advanced },
-        };
-      }
+  const activateApprovedTenant: WizardActivation = async (tx, input) => {
+    const [account] = await tx
+      .select()
+      .from(A)
+      .where(eq(A.id, input.tenant.tenantAccountId))
+      .limit(1)
+      .for("update");
+    if (!account || account.status !== "onboarding") {
+      throw new ChartWardenError("TENANT_NOT_ONBOARDING", "the tenant is not in onboarding", 409);
+    }
+    const event = await activateEventFor(tx, account.id, input.reason, "platform_ops");
+    const activated = await applyTransition(
+      tx,
+      account,
+      input.actor.membershipId,
+      "platform_ops",
+      event,
+    );
+    await deps.outbox.publish(tx, {
+      eventName: "m34.tenant.onboarding_completed",
+      organizationId: account.organizationId,
+      aggregateKind: "tenant_account",
+      aggregateId: account.id,
+      payload: {
+        tenantAccountId: account.id,
+        orgId: account.organizationId,
+        activatedAt: (activated.activatedAt ?? new Date()).toISOString(),
+        tasksCompleted: input.tasksCompleted,
+        tasksSkipped: input.tasksSkipped,
+      },
     });
-  }
+  };
 
-  return { service, activateOnboardedTenant };
+  return { service, activateApprovedTenant };
 }
 
 // ── projection + mapping helpers ─────────────────────────────────────────────────────────────────────

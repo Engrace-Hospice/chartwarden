@@ -167,7 +167,6 @@ export {
 // The §2.3 onboarding-advance worker (the IO-bearing consumer of the strictly-observable onboarding
 // machine — ../onboarding/machine.ts; pure over injected ports, the packages/mdm/src/jobs precedent).
 export {
-  type ActivationOutcome,
   type OnboardingAdvancePorts,
   type OnboardingAdvanceReport,
   type OnboardingOutboxPayload,

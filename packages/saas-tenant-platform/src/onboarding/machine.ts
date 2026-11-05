@@ -38,7 +38,16 @@ export interface OnboardingStepState {
   readonly status: OnboardingTaskStatus;
   readonly dueAt: Date | null;
   readonly blockedSince: Date | null;
+  /** How the step settles (see {@link OnboardingCompletionMode}); absent reads as `auto`. */
+  readonly completionMode?: OnboardingCompletionMode;
+  /** An optional step never gates the walk and is never driven by it; absent reads as false. */
+  readonly isOptional?: boolean;
 }
+
+/** `auto`: the sweep settles it from its precondition (and blocks it when that does not hold). `attestation`: only a
+ *  human settles it, so the walk waits. `either`: the sweep settles it when the precondition holds, otherwise the
+ *  walk waits silently (a human may attest). */
+export type OnboardingCompletionMode = "auto" | "attestation" | "either";
 
 // ── the events the machine EMITS for the persistence layer to consume (§2.3 "strictly observable") ───
 
@@ -48,8 +57,7 @@ export interface OnboardingStepState {
  *  apps/backend/src/modules/34-saas-tenant-platform/events-by-m34.ts. */
 export type OnboardingOutboxEvent =
   | "m34.tenant.onboarding_step_blocked"
-  | "m34.tenant.onboarding_overdue"
-  | "m34.tenant.onboarding_completed";
+  | "m34.tenant.onboarding_overdue";
 
 /**
  * One event the machine emits (§2.3). The worker consumes these to (a) transition `onboarding_task` rows
@@ -87,15 +95,6 @@ export type OnboardingEmit =
       readonly dueAt: Date;
       readonly hoursOverdue: number;
       readonly outbox: "m34.tenant.onboarding_overdue";
-    }
-  /** Every CANONICAL step is `done`/`skipped` → the onboarding flow is complete; the worker drives the
-   *  `onboarding → active` lifecycle transition (which itself re-checks BAA, §2.4.12) and publishes
-   *  `m34.tenant.onboarding_completed`. The `[*]` terminal of the §2.3 mermaid. */
-  | {
-      readonly kind: "onboarding_completed";
-      readonly outbox: "m34.tenant.onboarding_completed";
-      readonly canonicalCompleted: number;
-      readonly canonicalSkipped: number;
     };
 
 /** The full pure result of one advance attempt: the observed current step (the first non-terminal step),
@@ -124,6 +123,8 @@ export interface OnboardingStateNode {
   readonly key: string;
   readonly isCanonical: boolean;
   readonly preconditionDsl: string | null;
+  readonly completionMode: OnboardingCompletionMode;
+  readonly isOptional: boolean;
   readonly onAdvance: OnboardingStateTransition;
 }
 
@@ -147,6 +148,8 @@ export function buildOnboardingMachineConfig(
     readonly preconditionDsl: string | null;
     readonly isCanonical: boolean;
     readonly canonicalOrder: number;
+    readonly completionMode?: OnboardingCompletionMode;
+    readonly isOptional?: boolean;
   }>,
 ): OnboardingMachineConfig {
   if (templates.length === 0) {
@@ -159,6 +162,8 @@ export function buildOnboardingMachineConfig(
       key: t.key,
       isCanonical: t.isCanonical,
       preconditionDsl: t.preconditionDsl,
+      completionMode: t.completionMode ?? "auto",
+      isOptional: t.isOptional ?? false,
       onAdvance: {
         target: next ? next.key : ONBOARDING_DONE,
         whenPreconditionHolds: t.preconditionDsl,
@@ -189,12 +194,12 @@ const MS_PER_HOUR = 3_600_000;
  * machine config, the per-tenant step states (the observed `onboarding_task` rows), the populated
  * {@link OnboardingContext}, and the evaluation instant `now`, it walks the steps in order and EMITS the
  * events the worker consumes:
- *   • a non-completed step whose precondition holds → `step_completed` (preceded by `step_unblocked` if it
- *     was `blocked`) — the seed's `in_progress/blocked → [*]` edge;
- *   • a non-completed step whose precondition does NOT hold → `step_blocked` (+ the blocked outbox) — the
- *     `in_progress → blocked` edge — and the walk STOPS (later steps can't advance past a blocker);
- *   • any non-completed step past `due_at` → `step_overdue` (+ the overdue outbox, alert-only);
- *   • when every CANONICAL step is `done`/`skipped` → `onboarding_completed` (the `[*]` terminal).
+ *   • an `auto`/`either` step whose precondition holds → `step_completed` (preceded by `step_unblocked` if it
+ *     was `blocked`), and the walk carries on to the next step in the same pass;
+ *   • an `auto` step whose precondition does NOT hold → `step_blocked` (+ the blocked outbox) and the walk
+ *     STOPS; an `either` step waits silently and an `attestation` step waits for a human;
+ *   • any non-completed step past `due_at` → `step_overdue` (+ the overdue outbox, alert-only).
+ * It never activates a tenant: going live is the two-party approval, not a machine edge.
  * It performs NO IO and mutates nothing — the worker turns the emits into row writes + outbox/alerts.
  */
 export function advanceOnboarding(
@@ -222,63 +227,49 @@ export function advanceOnboarding(
     }
   }
 
-  // The advance walk: find the first non-terminal step and try to settle it.
+  // The advance walk. Every non-terminal, non-optional step is tried in order:
+  //   • `attestation`  → only a human settles it: the walk stops here, emitting nothing;
+  //   • precondition holds → settle it (unblocking first if it was blocked) and carry on to the next step;
+  //   • precondition fails → `either` waits silently for the fact or a human; `auto` blocks (+ outbox/alert).
+  // An optional step is skipped over: it never gates the walk and is never driven by it.
   let currentStep: string = ONBOARDING_DONE;
   let nextStep: string = ONBOARDING_DONE;
   for (const node of config.nodes) {
     const step = byKey.get(node.key);
     if (step === undefined) continue;
     if (step.status === "done" || step.status === "skipped") continue;
+    if (node.isOptional) continue;
 
-    currentStep = node.key;
-    const holds = evaluatePrecondition(node.preconditionDsl, ctx);
+    if (currentStep === ONBOARDING_DONE) currentStep = node.key;
+    // A step only a human can settle: `attestation`, or `either` with no fact to read (nothing for the sweep to see).
+    if (
+      node.completionMode === "attestation" ||
+      (node.completionMode === "either" && node.preconditionDsl === null)
+    ) {
+      nextStep = node.key;
+      break;
+    }
 
-    if (holds) {
+    if (evaluatePrecondition(node.preconditionDsl, ctx)) {
       if (step.status === "blocked") {
         emits.push({ kind: "step_unblocked", templateKey: node.key });
       }
+      emits.push({ kind: "step_completed", templateKey: node.key, fromStatus: step.status });
+      continue;
+    }
+
+    nextStep = node.key;
+    // A blocked-and-still-blocked step emits nothing new (the §4.8 5d-age sweep is the worker's job).
+    if (node.completionMode === "auto" && step.status !== "blocked") {
       emits.push({
-        kind: "step_completed",
+        kind: "step_blocked",
         templateKey: node.key,
         fromStatus: step.status,
+        blockerReason: blockerReasonFor(node.key, node.preconditionDsl),
+        outbox: "m34.tenant.onboarding_step_blocked",
       });
-      nextStep = node.onAdvance.target;
-      // This step settles; the next advance attempt (next worker pass) handles the following step.
-    } else {
-      if (step.status !== "blocked") {
-        emits.push({
-          kind: "step_blocked",
-          templateKey: node.key,
-          fromStatus: step.status,
-          blockerReason: blockerReasonFor(node.key, node.preconditionDsl),
-          outbox: "m34.tenant.onboarding_step_blocked",
-        });
-      }
-      // Already-blocked-and-still-blocked emits nothing new (the §4.8 5d-age sweep is the worker's job).
-      nextStep = node.key;
     }
-    // Stop at the first non-terminal step — a blocker (or a just-settled step) gates the rest.
     break;
-  }
-
-  // Completion: every CANONICAL step done/skipped → the §2.3 `[*]` terminal. Computed AFTER any settle
-  // emit above so a final-step completion in this same pass rolls straight into onboarding_completed.
-  const settledThisPass = new Set(
-    emits
-      .filter((e) => e.kind === "step_completed")
-      .map((e) => (e as { templateKey: string }).templateKey),
-  );
-  const canonicalSteps = steps.filter((s) => s.isCanonical);
-  const isSettled = (s: OnboardingStepState) =>
-    s.status === "done" || s.status === "skipped" || settledThisPass.has(s.templateKey);
-  if (canonicalSteps.length > 0 && canonicalSteps.every(isSettled)) {
-    emits.push({
-      kind: "onboarding_completed",
-      outbox: "m34.tenant.onboarding_completed",
-      canonicalCompleted: canonicalSteps.filter((s) => s.status !== "skipped").length,
-      canonicalSkipped: canonicalSteps.filter((s) => s.status === "skipped").length,
-    });
-    nextStep = ONBOARDING_DONE;
   }
 
   return { currentStep, nextStep, emits };

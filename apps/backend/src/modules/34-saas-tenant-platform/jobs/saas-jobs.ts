@@ -988,12 +988,13 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
 
   // ── tenant.onboarding_advance (runs under withOrgContext — onboarding_task is org-scoped, §3.10) ──────
   // The OnboardingRepository IS bindable; gatherContext (M2/M27/M40 reads via seams), the outbox publish,
-  // the M36 alert router, and the lifecycle activate hook need the integrator's seams/dispatcher.
+  // and the M36 alert router need the integrator's seams/dispatcher. The worker never activates a tenant: going
+  // live is the two-party approval.
   const onboardingAdvance: OnboardingAdvancePorts = {
     // BOUND: the M34-owned onboarding data port over the org-scoped Drizzle client (`onboarding_task` is
     // org-scoped, §3.10). The worker closure applies the per-job withOrgContext envelope (F09); this repo
     // issues plain Drizzle inside whichever transaction the envelope opens. The remaining onboarding ports
-    // (gatherContext / publishOutbox / routeAlert / activateTenant) stay fail-closed thunks until their
+    // (gatherContext / publishOutbox / routeAlert) stay fail-closed thunks until their
     // cross-module seams + the live outbox dispatcher land — the onboarding worker only throws once it runs
     // a job, never at construction (so the host boots with the queue connection enabled).
     repo: new OnboardingRepository(db),
@@ -1010,11 +1011,6 @@ export function buildM34WorkerPorts(deps: M34WorkerDeps): {
       ),
     routeAlert: () =>
       unbound("onboardingAdvance.routeAlert", "bind to the M36 alert router (§4.8)"),
-    activateTenant: () =>
-      unbound(
-        "onboardingAdvance.activateTenant",
-        "bind to the lifecycle-transition activate effect-runner (re-checks BAA guards §2.4.12)",
-      ),
   };
 
   // ── tenant.bundle_expiry_sweep (runs under withOrgContext per org, §3.7 F09) ─────────────────────────

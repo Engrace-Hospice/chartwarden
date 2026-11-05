@@ -53,6 +53,9 @@ export interface OnboardingContext {
   // ── first_admin_invited ──────────────────────────────────────────────────────────────────────
   /** Count of accepted `membership.role = 'org_admin'` (`context.orgAdminAcceptedMembershipCount > 0`). */
   readonly orgAdminAcceptedMembershipCount: number;
+  // ── compliance_officer_assigned ──────────────────────────────────────────────────────────────
+  /** `tenant_account.compliance_officer_membership_id` is set (`context.complianceOfficerAssigned == true`). */
+  readonly complianceOfficerAssigned: boolean;
   // ── go_live_checklist_complete ───────────────────────────────────────────────────────────────
   /** Every canonical onboarding task is done/skipped (mirrors the TenantOnboardingProvider seam). */
   readonly allCanonicalTasksDoneOrSkipped: boolean;

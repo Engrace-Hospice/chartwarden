@@ -23,7 +23,6 @@ import {
   BaaRegisterRepository,
   type DsarExportJobInput,
   DsarExportRepository,
-  OnboardingRepository,
   SupportRepository,
   TenantAccountRepository,
   TenantExportRepository,
@@ -32,14 +31,12 @@ import { getRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError, type OrgId } from "@chartwarden/types";
 import { eq } from "drizzle-orm";
 import { paginate } from "./concurrency";
-import { tenantMayCompleteStep } from "./onboarding-completion-guard";
 import type {
   BaaRecordView,
   DownloadUrlView,
   DsarExportJobView,
   EnqueuePort,
   IssueGrantArgs,
-  OnboardingTaskView,
   RequestDsarArgs,
   SupportConsentGrantView,
   TenantExportJobView,
@@ -71,7 +68,6 @@ export interface DrizzleTenantRouteDeps {
 }
 
 const SCG = schema.supportConsentGrant;
-const ONB = schema.onboardingTask;
 const BAA = schema.platformTenantBaaRecord;
 
 const PRESIGN_TTL_SECONDS = 24 * 60 * 60;
@@ -333,56 +329,6 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
       });
     },
 
-    // ── onboarding ──
-    async listOnboarding(organizationId, cursor, limit) {
-      return inOrgCtx(organizationId, async (tx) => {
-        const rows = await tx.select().from(ONB);
-        const views = rows.map(onboardingView).sort(byCreatedDesc);
-        return paginate(views, cursor, limit);
-      });
-    },
-
-    async startOnboardingTask(organizationId, taskId) {
-      return inOrgCtx(organizationId, async (tx) => {
-        const repo = new OnboardingRepository(tx);
-        await loadOnboarding(tx, organizationId, taskId);
-        const row = await repo.updateTaskStatus(taskId, {
-          status: "in_progress",
-          startedAt: deps.now(),
-        });
-        return onboardingView(row);
-      });
-    },
-
-    async completeOnboardingTask(organizationId, taskId, completionEvidence) {
-      return inOrgCtx(organizationId, async (tx) => {
-        const repo = new OnboardingRepository(tx);
-        const task = await loadOnboarding(tx, organizationId, taskId);
-        const template = await repo.findTemplateByKey(task.templateKey);
-        if (!template || !tenantMayCompleteStep(template))
-          throw new ChartWardenError(
-            "ONBOARDING_STEP_PLATFORM_VERIFIED",
-            "this step is verified by the platform and completes on its own once its requirement is met",
-            422,
-          );
-        const row = await repo.updateTaskStatus(taskId, {
-          status: "done",
-          completedAt: deps.now(),
-          completionEvidence: completionEvidence ?? undefined,
-        });
-        return onboardingView(row);
-      });
-    },
-
-    async blockOnboardingTask(organizationId, taskId, blockerReason) {
-      return inOrgCtx(organizationId, async (tx) => {
-        const repo = new OnboardingRepository(tx);
-        await loadOnboarding(tx, organizationId, taskId);
-        const row = await repo.updateTaskStatus(taskId, { status: "blocked", blockerReason });
-        return onboardingView(row);
-      });
-    },
-
     // ── BAA (tenant-side read + attest) ──
     async listBaa(organizationId, cursor, limit) {
       return inOrgCtx(organizationId, async (tx) => {
@@ -433,16 +379,6 @@ async function loadTenantExport(
   return r;
 }
 
-async function loadOnboarding(
-  tx: TenantTx,
-  organizationId: OrgId,
-  id: string,
-): Promise<schema.OnboardingTask> {
-  const r = await new OnboardingRepository(tx).findTaskById(id);
-  if (!r || r.organizationId !== organizationId) throw new NotFoundError("onboarding task");
-  return r;
-}
-
 // ── projections to the slice's DTO shapes (each carries `createdAt` for keyset pagination) ─────────────
 
 function grantView(g: schema.SupportConsentGrant): SupportConsentGrantView {
@@ -483,20 +419,6 @@ function tenantExportView(j: schema.TenantExportJob): TenantExportJobView {
     fulfilledAt: iso(j.fulfilledAt),
     bundleSizeBytes: j.bundleSizeBytes === null ? null : Number(j.bundleSizeBytes),
     createdAt: isoReq(j.requestedAt),
-  };
-}
-
-function onboardingView(t: schema.OnboardingTask): OnboardingTaskView {
-  return {
-    id: t.id,
-    templateKey: t.templateKey,
-    status: t.status,
-    assignedToMembershipId: t.assignedToMembershipId ?? null,
-    dueAt: iso(t.dueAt),
-    startedAt: iso(t.startedAt),
-    completedAt: iso(t.completedAt),
-    blockerReason: t.blockerReason ?? null,
-    createdAt: isoReq(t.createdAt),
   };
 }
 

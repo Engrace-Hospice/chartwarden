@@ -151,6 +151,7 @@ export {
   buildM23WorkQueueEnqueuePort,
   buildNoticeWindowPort,
   buildDrizzleOrgMacJurisdictionReader,
+  buildMacFeedConfiguredReader,
   buildClearinghouseContextPort,
   buildDirectMacGateway,
   buildSubmissionControlNumberReader,

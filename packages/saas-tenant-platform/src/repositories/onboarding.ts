@@ -8,7 +8,7 @@
 // applicable template for the tenant; this repo reads the templates and drives the per-tenant task rows
 // (status transitions pending → in_progress → done/skipped/blocked).
 import { type DbClient, schema } from "@chartwarden/db";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 
 const T = schema.onboardingTaskTemplate;
 const K = schema.onboardingTask;
@@ -19,12 +19,15 @@ export class OnboardingRepository {
 
   // ── onboarding_task_template (platform-shared, read-only catalog) ───────────────────────────
 
-  /** All onboarding templates in canonical order — the step floor the service materializes from. */
+  /**
+   * The ACTIVE onboarding templates in canonical order — the step floor the service materializes from, the sweep walks
+   * and the activation guard judges. A retired template (`retired_at` set) is excluded; its tasks stay as history.
+   */
   async listTemplates(): Promise<readonly schema.OnboardingTaskTemplate[]> {
-    return this.db.select().from(T).orderBy(asc(T.canonicalOrder));
+    return this.db.select().from(T).where(isNull(T.retiredAt)).orderBy(asc(T.canonicalOrder));
   }
 
-  /** Fetch a single template by its `key`, or `null`. */
+  /** Fetch a single template by its `key` (retired or not: history still resolves), or `null`. */
   async findTemplateByKey(key: string): Promise<schema.OnboardingTaskTemplate | null> {
     const [row] = await this.db.select().from(T).where(eq(T.key, key)).limit(1);
     return row ?? null;
@@ -59,13 +62,13 @@ export class OnboardingRepository {
     return row ?? null;
   }
 
-  /** A tenant's onboarding tasks, ordered by template canonical order (joined to the catalog). */
+  /** A tenant's onboarding tasks for ACTIVE templates, ordered by template canonical order (joined to the catalog). */
   async listTasksByTenant(tenantAccountId: string): Promise<readonly schema.OnboardingTask[]> {
     return this.db
       .select()
       .from(K)
       .innerJoin(T, eq(K.templateKey, T.key))
-      .where(eq(K.tenantAccountId, tenantAccountId))
+      .where(and(eq(K.tenantAccountId, tenantAccountId), isNull(T.retiredAt)))
       .orderBy(asc(T.canonicalOrder))
       .then((rows) => rows.map((r) => r.onboarding_task));
   }
@@ -86,6 +89,11 @@ export class OnboardingRepository {
         | "completedAt"
         | "blockerReason"
         | "completionEvidence"
+        | "evidenceNote"
+        | "evidenceRef"
+        | "attestedByMembershipId"
+        | "attestedByActorKind"
+        | "attestedAt"
       >
     >,
   ): Promise<schema.OnboardingTask> {

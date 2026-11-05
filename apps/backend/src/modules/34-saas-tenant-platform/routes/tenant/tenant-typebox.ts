@@ -16,7 +16,6 @@ import type {
   BaaRecordView as ServiceBaaRecordView,
   DownloadUrlView as ServiceDownloadUrlView,
   DsarExportJobView as ServiceDsarExportJobView,
-  OnboardingTaskView as ServiceOnboardingTaskView,
   SupportConsentGrantView as ServiceSupportConsentGrantView,
   TenantExportJobView as ServiceTenantExportJobView,
 } from "./service";
@@ -60,7 +59,6 @@ const TENANT_EXPORT_STATUS = [
   "expired",
   "cancelled",
 ] as const;
-const ONBOARDING_STATUS = ["pending", "in_progress", "done", "skipped", "blocked"] as const;
 const BAA_STATUS = ["executed", "pending", "terminated", "missing"] as const;
 const DSAR_DENIAL_REASON = [
   "psychotherapy_notes",
@@ -131,10 +129,6 @@ export const TenantExportRequest = Type.Object({
 
 // §4.1 — onboarding task advance bodies (start / complete-with-evidence / block-with-reason).
 export const OnboardingStartRequest = Type.Object({});
-
-export const OnboardingCompleteRequest = Type.Object({
-  completionEvidence: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
-});
 
 export const OnboardingBlockRequest = Type.Object({
   blockerReason: Type.String({ minLength: 5, maxLength: 1000 }),
@@ -214,19 +208,6 @@ export const TenantExportJobViewSchema = Type.Object({
 });
 export const TenantExportJobListResponseSchema = CursorPageOf(TenantExportJobViewSchema);
 
-export const OnboardingTaskViewSchema = Type.Object({
-  id: Type.String(),
-  templateKey: Type.String(),
-  status: lit(ONBOARDING_STATUS),
-  assignedToMembershipId: Type.Union([Type.String(), Type.Null()]),
-  dueAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
-  startedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
-  completedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
-  blockerReason: Type.Union([Type.String(), Type.Null()]),
-  createdAt: Type.String({ format: "date-time" }),
-});
-export const OnboardingTaskListResponseSchema = CursorPageOf(OnboardingTaskViewSchema);
-
 export const BaaRecordViewSchema = Type.Object({
   id: Type.String(),
   tenantAccountId: Type.String(),
@@ -254,7 +235,6 @@ type _Grant = Conforms<
 >;
 type _Dsar = Conforms<Static<typeof DsarExportJobViewSchema>, ServiceDsarExportJobView>;
 type _TenantExport = Conforms<Static<typeof TenantExportJobViewSchema>, ServiceTenantExportJobView>;
-type _Onboarding = Conforms<Static<typeof OnboardingTaskViewSchema>, ServiceOnboardingTaskView>;
 type _Baa = Conforms<Static<typeof BaaRecordViewSchema>, ServiceBaaRecordView>;
 type _Download = Conforms<Static<typeof DownloadUrlViewSchema>, ServiceDownloadUrlView>;
 
