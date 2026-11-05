@@ -351,6 +351,21 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // --- tenant onboarding data entered on the tenant's behalf (provider entities, locations, MAC credentials) ---
+  // Writes are platform-ops only, step-up, reason-recorded and refused unless the tenant is still provisioning /
+  // onboarding (routes/platform/onboarding-data-routes.ts).
+  "tenant_onboarding_data.read_platform": {
+    resource: "tenant_onboarding_data",
+    action: "read_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant_onboarding_data.write_platform": {
+    resource: "tenant_onboarding_data",
+    action: "write_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M34 contributed permission keys (forty-six). */

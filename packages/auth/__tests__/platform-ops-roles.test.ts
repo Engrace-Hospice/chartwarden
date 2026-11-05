@@ -15,6 +15,7 @@ import {
   M35_BILLING_ADMIN_WRITE_KEYS,
   M35_CONTRIBUTED_PERMISSIONS,
   M35_REFUND_APPROVE_KEY,
+  PLATFORM_ONBOARDING_DATA_KEYS,
   PLATFORM_OPS_ROLE_GRANTS,
   PLATFORM_OPS_ROLE_KEYS,
   ROLE_TEMPLATES,
@@ -56,7 +57,7 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
     }
   });
 
-  it("the union of all platform-ops grants is the `billing_admin.*` keys, user lifecycle and the M34 onboarding write keys", () => {
+  it("the union of all platform-ops grants includes billing, lifecycle and both M34 onboarding permission sets", () => {
     const granted = new Set(Object.values(PLATFORM_OPS_ROLE_GRANTS).flat());
     expect([...granted].sort()).toEqual(
       [
@@ -64,6 +65,7 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
         "user.deactivate",
         "user.password.reset",
         ...M34_PLATFORM_OPS_ONBOARDING_KEYS,
+        ...PLATFORM_ONBOARDING_DATA_KEYS,
       ].sort(),
     );
   });
@@ -71,6 +73,16 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
   it("the M34 onboarding write keys (BAA write, go-live approval, platform onboarding) bind to platform_ops alone", () => {
     for (const key of M34_PLATFORM_OPS_ONBOARDING_KEYS) {
       expect(rolesForPermission(key)).toEqual(["platform_ops"]);
+    }
+  });
+
+  it("the platform onboarding-data pair binds to platform_ops/admin/owner only", () => {
+    for (const key of PLATFORM_ONBOARDING_DATA_KEYS) {
+      expect([...rolesForPermission(key)].sort()).toEqual([
+        "platform_admin",
+        "platform_ops",
+        "platform_owner",
+      ]);
     }
   });
 
@@ -118,6 +130,7 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
       "user.deactivate",
       "user.password.reset",
       ...M34_PLATFORM_OPS_ONBOARDING_KEYS,
+      ...PLATFORM_ONBOARDING_DATA_KEYS,
     ]);
   });
 });
@@ -134,6 +147,7 @@ describe("ADMIN-T02 platform-ops grant seed", () => {
         "user.deactivate",
         "user.password.reset",
         ...M34_PLATFORM_OPS_ONBOARDING_KEYS,
+        ...PLATFORM_ONBOARDING_DATA_KEYS,
       ]).toContain(row.permissionKey);
     }
   });
