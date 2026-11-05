@@ -267,11 +267,18 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
    */
   activateApprovedTenant: WizardActivation;
 } {
-  /** Run `fn` in one audited platform-context tx (the only place cross-tenant rows are read/written). */
-  const inPlatformCtx = <T>(reason: string, fn: (tx: PlatformTx) => Promise<T>): Promise<T> =>
+  /**
+   * Run `fn` in one audited platform-context tx (the only place cross-tenant rows are read/written). `crossTenant` (default
+   * true) is the audit severity: critical when the unit of work reads or writes tenant DATA, warn when it does not.
+   */
+  const inPlatformCtx = <T>(
+    reason: string,
+    fn: (tx: PlatformTx) => Promise<T>,
+    crossTenant = true,
+  ): Promise<T> =>
     withPlatformContext<PlatformTx, T>(
       deps.platformDb,
-      { jobId: deps.platformJobId, reason, crossTenant: true },
+      { jobId: deps.platformJobId, reason, crossTenant },
       deps.auditBypass,
       fn,
     );
@@ -511,9 +518,16 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       });
     },
 
+    // `crossTenant` is FALSE deliberately (the partition-rotation precedent: the flag asks whether the work reads or writes
+    // tenant DATA, not whether it runs on the platform login). The probe selects one id from `organization` or
+    // `organization_slug_alias` and returns a boolean: no organization row, name or id leaves the function, and the label
+    // arrives from a form on every settled keystroke. Critical severity would bury the real support-session and shred
+    // bypasses under routine form traffic. The audit row is still written (warn, fail-closed, reason names the check).
     async isTenantSlugTaken(slug): Promise<boolean> {
-      return inPlatformCtx("platform-ops tenant slug availability", (tx) =>
-        isTenantSlugTaken(tx, slug),
+      return inPlatformCtx(
+        "platform-ops tenant slug availability",
+        (tx) => isTenantSlugTaken(tx, slug),
+        false,
       );
     },
 

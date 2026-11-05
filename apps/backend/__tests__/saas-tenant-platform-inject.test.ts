@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 // apps/backend/__tests__/saas-tenant-platform-inject.test.ts — M34 (SaaS Tenant Platform) §4.1 route-
 // inventory HTTP-layer smoke test (TASK-050A / TEST-001). Before this file, M34 had zero `app.inject()`
 // coverage — the module is the largest fan-out in this remediation effort: fifteen `register*Routes`
@@ -54,8 +56,14 @@ import {
 } from "@chartwarden/auth";
 import type { DbClient } from "@chartwarden/db";
 import type { FastifyRequest } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { createInMemoryRateLimitStore } from "../src/bootstrap/plugins/rate-limit-store";
+import {
+  type RouteRateLimit,
+  TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT,
+  createRouteRateLimit,
+} from "../src/bootstrap/plugins/route-rate-limit";
 import {
   type TenantPlatformAbacResolver,
   type TenantPlatformRouteSeed,
@@ -199,7 +207,9 @@ function buildTestAbacResolver(): TenantPlatformAbacResolver {
   };
 }
 
-function makeServer(options: { tenantBaseDomain?: string | null } = {}) {
+function makeServer(
+  options: { tenantBaseDomain?: string | null; slugAvailabilityRateLimit?: RouteRateLimit } = {},
+) {
   const platformSeed: TenantPlatformRouteSeed = {
     // GAP-098 — one HELD bundle and one already-released job, so the `?held=true` filter has something
     // to include AND something to exclude (a filter proven only against an all-held set proves nothing).
@@ -306,6 +316,18 @@ function makeServer(options: { tenantBaseDomain?: string | null } = {}) {
     },
     {
       orgId: ORG,
+      userId: "reader_without_role_1",
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: ["tenant.read_platform"],
+        },
+      ],
+    },
+    {
+      orgId: ORG,
       userId: "noperm_1",
       grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }],
     },
@@ -335,6 +357,15 @@ function makeServer(options: { tenantBaseDomain?: string | null } = {}) {
     ...(options.tenantBaseDomain !== undefined
       ? { tenantBaseDomain: options.tenantBaseDomain }
       : {}),
+    ...(options.slugAvailabilityRateLimit
+      ? {
+          slugAvailabilityRateLimit: createRouteRateLimit({
+            store: createInMemoryRateLimitStore(),
+            limit: options.slugAvailabilityRateLimit,
+            keyPrefix: "m34-slug-availability-test",
+          }),
+        }
+      : {}),
   });
   return { app, platform, tenant };
 }
@@ -357,6 +388,13 @@ const ORG_ADMIN = {
 };
 const ORG_ADMIN_STEPUP = { ...ORG_ADMIN, "x-step-up": "fresh" };
 const NOPERM = { "x-test-user": "noperm_1", "x-test-org": ORG, "x-test-roles": "none" };
+// Holds `tenant.read_platform` (RBAC passes) but not the `platform_ops` role, so only the ABAC predicate can refuse it.
+const READER_WITHOUT_ROLE = {
+  "x-test-user": "reader_without_role_1",
+  "x-test-org": ORG,
+  "x-test-roles": "none",
+  "x-test-membership": MEMBER_PLATFORM_OPS,
+};
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -462,6 +500,21 @@ describe("M34-saas-tenant-platform-inject — tenant slug availability", () => {
     expect((await check("sunrise", { headers: NOPERM })).statusCode).toBe(403);
   });
 
+  it("403 when the permission is held but the tenant_lifecycle_platform_ops ABAC predicate denies (no platform_ops role)", async () => {
+    const { app, platform } = makeServer();
+    const lookup = vi.spyOn(platform.service, "isTenantSlugTaken");
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/platform/tenant-slugs/sunrise/availability",
+      headers: READER_WITHOUT_ROLE,
+    });
+    await app.close();
+
+    expect(res.statusCode).toBe(403);
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
   it("a free, valid slug is available and carries its address when a base domain is set", async () => {
     const res = await check("sunrise", { tenantBaseDomain: "chartwarden.cloud" });
 
@@ -505,6 +558,85 @@ describe("M34-saas-tenant-platform-inject — tenant slug availability", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ slug, valid: false, available: false, reason });
+  });
+
+  it("never calls the taken-lookup for a reserved, malformed or punycode slug, but does for a valid one", async () => {
+    const { app, platform } = makeServer();
+    const lookup = vi.spyOn(platform.service, "isTenantSlugTaken");
+    const probe = (slug: string) =>
+      app.inject({
+        method: "GET",
+        url: `/api/v1/platform/tenant-slugs/${slug}/availability`,
+        headers: PLATFORM_OPS,
+      });
+
+    for (const refused of ["admin", "wardenx", "ab", "Sunrise", "sun_rise", "xn--sunrise"]) {
+      expect((await probe(refused)).json().valid).toBe(false);
+    }
+    expect(lookup).not.toHaveBeenCalled();
+
+    expect((await probe("sunrise")).json().valid).toBe(true);
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect(lookup).toHaveBeenCalledWith("sunrise");
+    await app.close();
+  });
+
+  describe("per-route rate limit (a probe is an audited platform read)", () => {
+    const TWO_PER_MINUTE: RouteRateLimit = {
+      perUser: 2,
+      perOrg: 100,
+      windowMs: 60_000,
+      failMode: "open",
+    };
+    const probe = (app: ReturnType<typeof makeServer>["app"], headers: Record<string, string>) =>
+      app.inject({
+        method: "GET",
+        url: "/api/v1/platform/tenant-slugs/sunrise/availability",
+        headers,
+      });
+
+    it("answers 429 RATE_LIMITED with Retry-After once a user is over the cap", async () => {
+      const { app } = makeServer({ slugAvailabilityRateLimit: TWO_PER_MINUTE });
+
+      const first = await probe(app, PLATFORM_OPS);
+      const second = await probe(app, PLATFORM_OPS);
+      const third = await probe(app, PLATFORM_OPS);
+      await app.close();
+
+      expect([first.statusCode, second.statusCode]).toEqual([200, 200]);
+      expect(third.statusCode).toBe(429);
+      expect(third.json().error.code).toBe("RATE_LIMITED");
+      expect(third.headers["retry-after"]).toBe("60");
+    });
+
+    it("is not spent by callers the permission or ABAC gate refuses", async () => {
+      const { app } = makeServer({ slugAvailabilityRateLimit: TWO_PER_MINUTE });
+
+      for (let i = 0; i < 5; i++) {
+        expect((await probe(app, READER_WITHOUT_ROLE)).statusCode).toBe(403);
+        expect((await probe(app, NOPERM)).statusCode).toBe(403);
+      }
+      const allowed = await probe(app, PLATFORM_OPS);
+      await app.close();
+
+      expect(allowed.statusCode).toBe(200);
+    });
+
+    it("the composition root builds the limiter from the shipped budget and mounts it on the platform routes", () => {
+      const root = readFileSync(join(__dirname, "../src/index.ts"), "utf8");
+
+      expect(root).toMatch(
+        /slugAvailabilityRateLimit: createRouteRateLimit\(\{[^}]*limit: TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT/s,
+      );
+    });
+
+    it("the shipped budget is 30 per minute per user and fails open (an availability control, not a probing oracle)", () => {
+      expect(TENANT_SLUG_AVAILABILITY_ROUTE_RATE_LIMIT).toMatchObject({
+        perUser: 30,
+        windowMs: 60_000,
+        failMode: "open",
+      });
+    });
   });
 });
 

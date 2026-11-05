@@ -223,7 +223,7 @@ export {
 
 import type { DbClient } from "@chartwarden/db";
 import { ChartWardenError } from "@chartwarden/types";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   type TenantPlatformRouteService as _TenantPlatformRouteService,
   createInMemoryTenantPlatformBackend as _createInMemoryTenantPlatformBackend,
@@ -320,6 +320,8 @@ export function mountTenantPlatformRoutes(
     onboarding?: { wizard: OnboardingWizard };
     /** `TENANT_BASE_DOMAIN` (null/absent = single-host): the slug availability route answers with the tenant's address. */
     tenantBaseDomain?: string | null;
+    /** Per-route cap on the slug availability probe (absent = only the global limiter applies; tests, no-db boot). */
+    slugAvailabilityRateLimit?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
     /** GAP-164 - tenant account + feature-flag read/write (absent => in-memory slice). */
     tenantAccountFlags?: { service: TenantAccountFlagsService };
     /** Operator-entered tenant onboarding data (provider entities, locations, MAC credential); absent => not mounted. */
@@ -340,6 +342,9 @@ export function mountTenantPlatformRoutes(
   _registerTenantPlatformRoutes(app, {
     service: platformService,
     tenantBaseDomain: services?.tenantBaseDomain ?? null,
+    ...(services?.slugAvailabilityRateLimit
+      ? { slugAvailabilityRateLimit: services.slugAvailabilityRateLimit }
+      : {}),
   });
   _registerTenantInvitationRoutes(app, { service: platformService });
   _registerTenantKeyRingRoutes(app, { service: platformService });
