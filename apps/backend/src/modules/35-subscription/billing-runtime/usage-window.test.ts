@@ -44,6 +44,12 @@ describe("previousUsageWindow", () => {
     expect(previousUsageWindow(current)).toEqual({ start: utc(2026, 2, 15), end: utc(2026, 3, 15) });
   });
 
+  it("steps an annual window back a whole year", () => {
+    const sub = { currentPeriodStart: utc(2026, 3, 15), currentPeriodEnd: utc(2027, 3, 15) };
+    const current = usageWindowFor(sub, utc(2026, 6, 1));
+    expect(previousUsageWindow(current)).toEqual({ start: utc(2025, 3, 15), end: utc(2026, 3, 15) });
+  });
+
   it("clamps a month-end anchor to the shorter month's last day", () => {
     const sub = { currentPeriodStart: utc(2026, 3, 31), currentPeriodEnd: utc(2026, 4, 30) };
     const current = usageWindowFor(sub, utc(2026, 4, 1));

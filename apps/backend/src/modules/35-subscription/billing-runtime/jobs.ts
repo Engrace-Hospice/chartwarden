@@ -290,14 +290,20 @@ export function usageWindowFor(
 }
 
 /**
- * The window that ended where `current` starts: one calendar month back on the same UTC day/time, clamped to the
- * shorter month's last day (a 31st anchor gives Feb 28/29, as Stripe does). Never `start - (end - start)`: months
- * differ in length, so a duration lands on Jan 29 for March and on Mar 31 for May.
+ * The window that ended where `current` starts: as many calendar months back as `current` spans (1 monthly, 12
+ * annual) on the same UTC day/time, clamped to the shorter month's last day (a 31st anchor gives Feb 28/29, as Stripe
+ * does). Never `start - (end - start)`: months differ in length, so a duration lands on Jan 29 for March and on Mar 31
+ * for May.
  */
 export function previousUsageWindow(current: UsageWindow): UsageWindow {
   const s = current.start;
+  const e = current.end;
+  const span = Math.max(
+    1,
+    (e.getUTCFullYear() - s.getUTCFullYear()) * 12 + e.getUTCMonth() - s.getUTCMonth(),
+  );
   const year = s.getUTCFullYear();
-  const month = s.getUTCMonth() - 1;
+  const month = s.getUTCMonth() - span;
   const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
   const start = new Date(
     Date.UTC(
