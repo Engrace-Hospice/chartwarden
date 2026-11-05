@@ -11,7 +11,8 @@
 // An unknown NPI or claim is terminal `unroutable_*` (ids-only log). Once the tenant is known the Billing add-on is
 // checked through BillingEntitlementPort: not entitled → `awaiting_entitlement` (kept encrypted, re-checked hourly,
 // processed when the add-on is granted, `expired_not_entitled` after the retention window); a port error leaves the row
-// as it was for the next sweep. Entitled → one PHI-free `m23.clearinghouse.*_reported` event in the SAME transaction
+// as it was for the next sweep, and so does a payload the sweep cannot decrypt (a key fault; one ops alert per sweep).
+// Entitled → one PHI-free `m23.clearinghouse.*_reported` event in the SAME transaction
 // that marks the row `published`, so a row is published at most once.
 //
 // The decrypted element (which can hold a provider TIN, possibly an SSN, and untrusted vendor text) never leaves this
@@ -57,6 +58,14 @@ export interface ClaimMdSweepDeps {
     readonly usage: string;
     readonly eventId: string;
     readonly attempts: number;
+    readonly errorClass: string;
+  }) => void;
+  /**
+   * Payloads this sweep could not decrypt: a key/config fault (a wrong CLAIMMD_WEBHOOK_PAYLOAD_KEY), not a bad row, so
+   * no attempt is spent and the rows wait for the next sweep. Raised once per sweep with the count, never per row.
+   */
+  readonly onUndecryptable?: (detail: {
+    readonly count: number;
     readonly errorClass: string;
   }) => void;
 }
@@ -107,7 +116,8 @@ type Settlement =
   | { readonly outcome: "unsupported_type" | "unroutable_npi" | "unroutable_claim" | "malformed" }
   | { readonly outcome: "awaiting_entitlement"; readonly org: string; readonly pe: string }
   | { readonly outcome: "published"; readonly org: string; readonly pe: string }
-  | { readonly outcome: "entitlement_unavailable"; readonly org: string; readonly pe: string };
+  | { readonly outcome: "entitlement_unavailable"; readonly org: string; readonly pe: string }
+  | { readonly outcome: "payload_undecryptable"; readonly errorClass: string };
 
 interface Route {
   readonly org: string;
@@ -190,10 +200,9 @@ async function settle(deps: ClaimMdSweepDeps, tx: DbClient, row: PendingRow): Pr
   try {
     element = obj(JSON.parse(deps.cipher.decrypt(row.payload_cipher)));
   } catch (err) {
-    // A cipher we cannot open is not content we can retry into sense; it is a key/config fault: count the attempt.
-    throw Object.assign(new Error("payload could not be decrypted"), {
-      errorClass: (err as Error).name,
-    });
+    // A cipher we cannot open is a key/config fault, not a bad row: spending attempts would fail every pending receipt
+    // for good within five sweeps of a wrong key. Leave the row for the next sweep (like entitlement_unavailable).
+    return { outcome: "payload_undecryptable", errorClass: (err as Error).name };
   }
   const route = await routeOf(tx, row, element, row.received_at.toISOString());
   if ("outcome" in route) return route;
@@ -220,6 +229,12 @@ const keyOf = (row: PendingRow) =>
 async function record(tx: DbClient, row: PendingRow, s: Settlement, now: Date): Promise<void> {
   const org = "org" in s ? s.org : null;
   const pe = "pe" in s ? s.pe : null;
+  if (s.outcome === "payload_undecryptable") {
+    await tx.execute(
+      sql`UPDATE claimmd_webhook_event SET last_error_class = 'payload_undecryptable' WHERE ${keyOf(row)}`,
+    );
+    return;
+  }
   if (s.outcome === "entitlement_unavailable") {
     await tx.execute(sql`UPDATE claimmd_webhook_event SET derived_organization_id = ${org},
       derived_provider_entity_id = ${pe}, last_error_class = 'entitlement_unavailable' WHERE ${keyOf(row)}`);
@@ -291,6 +306,7 @@ export async function runClaimMdWebhookSweep(deps: ClaimMdSweepDeps): Promise<Cl
         FOR UPDATE SKIP LOCKED`)) as unknown as { rows: PendingRow[] }
     ).rows.map((r) => ({ ...r, received_at: new Date(r.received_at) }));
     const outcomes: Record<string, number> = {};
+    let undecryptableClass = "";
     for (const row of pending) {
       let outcome: string;
       try {
@@ -301,6 +317,7 @@ export async function runClaimMdWebhookSweep(deps: ClaimMdSweepDeps): Promise<Cl
           return settled;
         });
         outcome = s.outcome;
+        if (s.outcome === "payload_undecryptable") undecryptableClass = s.errorClass;
       } catch (err) {
         const failedClass = await recordFailure(tx, row, err, now);
         outcome = failedClass === null ? "retry" : "failed";
@@ -317,6 +334,10 @@ export async function runClaimMdWebhookSweep(deps: ClaimMdSweepDeps): Promise<Cl
       if (outcome !== "published") {
         deps.log?.("claimmd.webhook.settled", { usage: row.usage, eventId: row.event_id, outcome });
       }
+    }
+    const undecryptable = outcomes.payload_undecryptable ?? 0;
+    if (undecryptable > 0) {
+      deps.onUndecryptable?.({ count: undecryptable, errorClass: undecryptableClass });
     }
     return { seen: pending.length, outcomes };
   });

@@ -7953,6 +7953,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             error: errorClass,
             occurredAt: new Date().toISOString(),
           }),
+        // A payload key fault leaves every receipt pending (no attempt spent): one alert per sweep, same sink.
+        onUndecryptable: ({ count, errorClass }) =>
+          dlqPromotionSink({
+            source: "m23:claimmd-webhook-decrypt",
+            error: `${count} receipt(s) could not be decrypted (${errorClass}); check CLAIMMD_WEBHOOK_PAYLOAD_KEY`,
+            occurredAt: new Date().toISOString(),
+          }),
       });
       attachDlqAlertsToAll([claimMdSweepWorker], "m23");
       app.addHook("onClose", () => claimMdSweepWorker.close());
