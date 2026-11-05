@@ -75,12 +75,15 @@ export interface AppLayoutProps {
 export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   const session = useSession();
   const client = useApiClient();
-  // ADR-0108 — read the claims-billing add-on posture once, for a user allowed to read the billing status (the
-  // route's own permission); the billing screens' notice and gated actions read it from the shared store.
+  // ADR-0108 — read the claims-billing add-on posture for a user allowed to read the billing status (the route's own
+  // permission); the billing screens' notice and gated actions read it from the shared store. Re-primed per org and on
+  // navigation (a no-op until the posture's TTL lapses), so a platform grant shows without a reload.
   const canReadBillingStatus = session?.permissions?.includes("subscription.read") === true;
+  const orgKey = session?.organizationId ?? "";
+  const { pathname, key: locationKey } = useLocation();
   useEffect(() => {
-    if (canReadBillingStatus) primeClaimsBilling(client);
-  }, [client, canReadBillingStatus]);
+    if (canReadBillingStatus) primeClaimsBilling(client, { orgKey });
+  }, [client, canReadBillingStatus, orgKey, pathname]);
   const ipu = useIpuNavigationAvailability();
   // Below the responsive breakpoint (TASK-033 / UI-004) the sidebar becomes an off-canvas drawer —
   // a fixed-width sidebar plus content leaves too little room at 390px wide, so it's hidden by
@@ -94,7 +97,6 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   // destination page rendered off-screen above the viewport (live-browser audit #3).
   const mainRef = useRef<HTMLElement>(null);
   const headerRef = useRef<HTMLElement>(null);
-  const { pathname, key: locationKey } = useLocation();
   const navigate = useNavigate();
   // Tabs and sidebar entries are links, so "previous page" is history back; "default" = no earlier entry.
   const canGoBackInChart = pathname !== "/" && locationKey !== "default";
