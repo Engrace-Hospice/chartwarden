@@ -39,6 +39,8 @@ import {
 } from "../src/modules/06-admission/admission-route-service-db";
 import { createPortalAdmissionSigners } from "../src/modules/06-admission/portal-document-signers";
 import { createPortalSigningTargetCheck } from "../src/modules/06-admission/portal-signing-targets";
+import { createM31EventEmitter } from "../src/modules/31-portal/events";
+import { M31_OUTBOX_EVENTS } from "../src/modules/31-portal/events-by-m31";
 import { mountM31Routes } from "../src/modules/31-portal/routes/mount";
 import { buildStaffSignatureStore } from "../src/modules/31-portal/routes/signature-staff-store";
 import { buildPortalSignatureStore } from "../src/modules/31-portal/routes/signature-store";
@@ -57,6 +59,7 @@ const ORG_B = "22222222-2222-4222-8222-222222223107";
 const STALE_MS = 60 * 60_000;
 const BASE = "/api/v1/portal/signature-requests";
 const NPP = "hipaa_npp_acknowledgement";
+const ELECTION = "election_statement";
 const CTT = "consent_to_treat";
 /** The signing layer's own refusal text, to tell it apart from an ABAC / RBAC denial ("abac predicate … denied"). */
 const NOT_ABLE = "You are not able to sign this document for this patient.";
@@ -407,6 +410,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       "portal.signature_request.create",
       "portal.signature_request.read",
       "portal.signature_request.void",
+      "portal.signature_request.review",
     ];
     staff.admin = await seedUser("staff-admin");
     staff.noScope = await seedUser("staff-noscope");
@@ -496,7 +500,15 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       ),
     );
 
-    const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M39_OUTBOX_EVENTS]));
+    const publisher = buildTxOutboxPublisher(
+      buildBootOutboxCatalog([M39_OUTBOX_EVENTS, M31_OUTBOX_EVENTS]),
+    );
+    const m31Events = createM31EventEmitter({
+      db: handle.db,
+      publisher: {
+        publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m31" }),
+      },
+    });
     const consentService = createDbConsentRouteService(handle.db, {
       outbox: {
         publish: (tx, input) =>
@@ -542,7 +554,7 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
     mountM31Routes(app, {
       store: buildDrizzlePortalStore(handle.db),
       signing: {
-        store: buildPortalSignatureStore(handle.db),
+        store: buildPortalSignatureStore(handle.db, m31Events),
         signers: {
           election: async (i) => {
             m06Calls.push(`election:${i.signatureMethod}`);
@@ -562,7 +574,8 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
         },
         allowUnreviewedTemplates: false,
         staff: {
-          store: buildStaffSignatureStore(handle.db),
+          store: buildStaffSignatureStore(handle.db, m31Events),
+          uploadedCopyConsent: (i) => consentSigner.acceptUploadedCopy(i),
           patientSite: async (organizationId, patientId) => {
             const r = await admin.query(
               "SELECT provider_entity_id, location_id FROM patient WHERE id=$1 AND organization_id=$2",
@@ -1323,5 +1336,223 @@ describe.skipIf(!DB_URL)("ADR-0107 portal signature requests — LIVE Postgres",
       c.release();
     }
     expect((await reqRow(id)).void_reason).toBe("patient_declined");
+  });
+
+  // ── ADR-0107 D6/D7: outbox events, uploaded signed copies, staff review ─────────────────────────────────────────────────────────
+  const outboxFor = async (aggregateId: string) =>
+    (
+      await admin.query(
+        "SELECT event_type, payload FROM outbox_event WHERE aggregate_id=$1 ORDER BY created_at, id",
+        [aggregateId],
+      )
+    ).rows as Array<{ event_type: string; payload: Record<string, unknown> }>;
+  /** A completed `signed_admission_document` upload by `a` (a real M22 document id is a logical FK, so any uuid stands in for it). */
+  const seedUpload = async (
+    a: Actor,
+    over: { purpose?: string; accountId?: string; documentId?: string | null } = {},
+  ) =>
+    (
+      await admin.query(
+        `INSERT INTO portal_document_upload
+           (organization_id, provider_entity_id, portal_account_id, patient_id, purpose, declared_mime, expected_byte_size, status,
+            document_id, intake_batch_id, submitted_at, expires_at)
+         VALUES ($1,$2,$3,$4,$5,'application/pdf',1000,'submitted',$6,$7,now(), now() + interval '1 day') RETURNING id`,
+        [
+          a.org,
+          peByOrg[a.org],
+          over.accountId ?? a.accountId,
+          a.patientId,
+          over.purpose ?? "signed_admission_document",
+          over.documentId === undefined ? randomUUID() : over.documentId,
+          randomUUID(),
+        ],
+      )
+    ).rows[0].id as string;
+  const attach = (a: Actor, requestId: string, uploadId: string) =>
+    app.inject({
+      method: "POST",
+      url: `${BASE}/${requestId}/signed-copy`,
+      headers: headers(a, { "idempotency-key": `k-3107-${++seq}` }),
+      payload: { uploadId },
+    });
+  const review = (requestId: string, decision: string, user = staff.admin) =>
+    staffPost(
+      user,
+      `${ADMIN}/${requestId}/review`,
+      { decision },
+      { "x-test-roles": "administrator" },
+    );
+  /** Send an NPP request as staff, then park it with an uploaded copy, returning the ids. */
+  async function sentWithCopy(key: "staffNpp" | "staffVoid") {
+    const { patientId, actor } = staffFixtures[key];
+    await clearOpen(patientId, NPP);
+    const created = await staffPost(staff.admin, ADMIN, { patientId, docKind: NPP });
+    expect(created.statusCode, created.body).toBe(201);
+    const id = created.json().id as string;
+    const uploadId = await seedUpload(actor);
+    const res = await attach(actor, id, uploadId);
+    expect(res.statusCode, res.body).toBe(200);
+    return { id, patientId, actor, uploadId };
+  }
+
+  it("emits the request lifecycle to the outbox with ids only: requested, signed, voided", async () => {
+    const { patientId, actor } = staffFixtures.staffNpp;
+    await clearOpen(patientId, NPP);
+    const sent = (await staffPost(staff.admin, ADMIN, { patientId, docKind: NPP })).json().id;
+    expect((await sign(actor, sent, { signedTypedName: "Outbox Typed Name" })).statusCode).toBe(
+      200,
+    );
+    const events = await outboxFor(sent);
+    expect(events.map((e) => e.event_type)).toEqual([
+      "m31.signature_request.requested",
+      "m31.signature_request.signed",
+    ]);
+    expect(JSON.stringify(events)).not.toContain("Outbox Typed Name");
+    expect(events[1]?.payload).toMatchObject({ requestId: sent, patientId, signerRole: "patient" });
+
+    const { patientId: p2 } = staffFixtures.staffVoid;
+    await clearOpen(p2, NPP);
+    const voidedId = (await staffPost(staff.admin, ADMIN, { patientId: p2, docKind: NPP })).json()
+      .id;
+    await staffPost(staff.admin, `${ADMIN}/${voidedId}/void`, { reason: "sent_in_error" });
+    expect((await outboxFor(voidedId)).map((e) => e.event_type)).toEqual([
+      "m31.signature_request.requested",
+      "m31.signature_request.voided",
+    ]);
+  });
+
+  it("the patient attaches a completed signed copy: the request parks in uploaded_pending_review, never signed", async () => {
+    const { id, patientId, uploadId } = await sentWithCopy("staffNpp");
+    const row = await reqRow(id);
+    expect(row.status).toBe("uploaded_pending_review");
+    expect(row.uploaded_document_upload_id).toBe(uploadId);
+    expect(row.signed_at).toBeNull();
+    expect((await outboxFor(id)).map((e) => e.event_type)).toContain(
+      "m31.signature_request.uploaded",
+    );
+    const listed = (await staffGet(staff.admin, `${ADMIN}?patientId=${patientId}`)).json()
+      .items as Array<{ id: string; status: string; uploadedDocumentId: string | null }>;
+    const mine = listed.find((i) => i.id === id);
+    expect(mine?.status).toBe("uploaded_pending_review");
+    expect(mine?.uploadedDocumentId).not.toBeNull();
+  });
+
+  it("refuses an attach that is not the session account's own completed signed-copy upload", async () => {
+    const { patientId, actor } = staffFixtures.staffNpp;
+    await clearOpen(patientId, NPP);
+    const id = (await staffPost(staff.admin, ADMIN, { patientId, docKind: NPP })).json().id;
+    const other = staffFixtures.staffVoid.actor;
+    const cases = [
+      await seedUpload(actor, { purpose: "insurance_card" }),
+      await seedUpload(actor, { accountId: other.accountId }),
+      randomUUID(),
+    ];
+    for (const uploadId of cases) {
+      const res = await attach(actor, id, uploadId);
+      expect(res.statusCode, res.body).toBe(422);
+    }
+    expect((await attach(actor, randomUUID(), await seedUpload(actor))).statusCode).toBe(404);
+    expect((await reqRow(id)).status).toBe("pending");
+    // Once parked, a second attach is refused.
+    expect((await attach(actor, id, await seedUpload(actor))).statusCode).toBe(200);
+    expect((await attach(actor, id, await seedUpload(actor))).statusCode).toBe(409);
+  });
+
+  it("a caregiver cannot attach a copy of the election statement (same authority matrix as signing)", async () => {
+    const id = await seedRequest(ORG_A, caregiver.patientId, ELECTION, { targetRef: randomUUID() });
+    const res = await attach(caregiver, id, await seedUpload(caregiver));
+    expect(res.statusCode, res.body).toBe(403);
+    expect((await reqRow(id)).status).toBe("pending");
+  });
+
+  it("staff ACCEPT an uploaded copy: M39 records an uploaded signed PDF by the reviewer, the request is signed, events land", async () => {
+    const { id, patientId, uploadId } = await sentWithCopy("staffNpp");
+    const res = await review(id, "accepted");
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({ status: "signed", reviewOutcome: "accepted" });
+    const row = await reqRow(id);
+    expect(row).toMatchObject({
+      status: "signed",
+      review_outcome: "accepted",
+      reviewed_by: staff.admin,
+      uploaded_document_upload_id: uploadId,
+    });
+    expect(row.signed_at).not.toBeNull();
+    const consent = (
+      await admin.query(
+        "SELECT capture_method, created_by_id, status, capture_evidence_jsonb FROM consent_record WHERE id=$1",
+        [row.target_ref],
+      )
+    ).rows[0];
+    expect(consent).toMatchObject({
+      capture_method: "uploaded_signed_pdf",
+      created_by_id: staff.admin,
+      status: "active",
+    });
+    expect(JSON.stringify(consent.capture_evidence_jsonb)).toContain("uploadedPdfDocumentId");
+    const types = (await outboxFor(id)).map((e) => e.event_type);
+    expect(types).toEqual(
+      expect.arrayContaining(["m31.signature_request.reviewed", "m31.signature_request.signed"]),
+    );
+    expect(patientId).toBeTruthy();
+    // A second accept finds nothing waiting.
+    expect((await review(id, "accepted")).statusCode).toBe(409);
+  });
+
+  it("staff REJECT an uploaded copy: the request reopens, and the patient can then sign electronically", async () => {
+    const { id, actor } = await sentWithCopy("staffVoid");
+    const res = await review(id, "rejected");
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.json()).toMatchObject({
+      status: "pending",
+      reviewOutcome: "rejected",
+      uploadedDocumentId: null,
+    });
+    expect((await reqRow(id)).uploaded_document_upload_id).toBeNull();
+    expect((await sign(actor, id, { signedTypedName: "Signed After Reject" })).statusCode).toBe(
+      200,
+    );
+    expect((await reqRow(id)).status).toBe("signed");
+  });
+
+  it("an election or notice-of-rights copy is not accepted here: M06 records a wet-ink signature in the admission workflow", async () => {
+    const { patientId } = staffFixtures.staffElection;
+    const id = await seedRequest(ORG_A, patientId, ELECTION, { targetRef: randomUUID() });
+    const uploadId = await seedUpload(staffFixtures.staffElection.actor);
+    await admin.query(
+      "UPDATE portal_signature_request SET status='uploaded_pending_review', uploaded_document_upload_id=$2 WHERE id=$1",
+      [id, uploadId],
+    );
+    const res = await review(id, "accepted");
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().error?.code ?? res.json().code).toBe("M06_DOCUMENT_RECORDED_IN_ADMISSION");
+    expect((await reqRow(id)).status).toBe("uploaded_pending_review");
+  });
+
+  it("review needs its own permission and patient scope", async () => {
+    const { id } = await sentWithCopy("staffNpp");
+    expect((await review(id, "accepted", staff.noPerm)).statusCode).toBe(403);
+    // No org-wide role, no caseload, no session scope: the same single 404 as the other staff routes.
+    const offScope = await staffPost(
+      staff.noScope,
+      `${ADMIN}/${id}/review`,
+      { decision: "accepted" },
+      { "x-test-roles": "" },
+    );
+    expect(offScope.statusCode).toBe(404);
+    expect((await reqRow(id)).status).toBe("uploaded_pending_review");
+  });
+
+  it("the DB refuses a signed request that has neither portal signer evidence nor an accepted review", async () => {
+    const { id } = await sentWithCopy("staffNpp");
+    await expect(
+      admin.query("UPDATE portal_signature_request SET status='signed' WHERE id=$1", [id]),
+    ).rejects.toThrow(/signed_chk/);
+    await expect(
+      admin.query(
+        "UPDATE portal_signature_request SET status='signed', review_outcome='accepted' WHERE id=$1",
+        [id],
+      ),
+    ).rejects.toThrow(/signed_chk/);
   });
 });

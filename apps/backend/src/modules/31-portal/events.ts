@@ -28,7 +28,12 @@ export interface M31OutboxPublisher {
 }
 
 export interface M31Aggregate {
-  readonly kind: "portal_account" | "portal_access_grant" | "telehealth_visit" | "portal_session";
+  readonly kind:
+    | "portal_account"
+    | "portal_access_grant"
+    | "telehealth_visit"
+    | "portal_session"
+    | "portal_signature_request";
   readonly id: string;
 }
 

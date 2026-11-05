@@ -25,49 +25,98 @@ export interface PortalConsentSignInput {
   readonly existingConsentId: string | null;
 }
 
+/** Staff accepting an uploaded signed paper copy (ADR-0107 D6): the reviewer is creator and signer, the M22 document is the evidence. */
+export interface UploadedCopyConsentInput {
+  readonly organizationId: string;
+  readonly patientId: string;
+  readonly typeKey: "hipaa_npp_acknowledgement" | "consent_to_treat";
+  readonly grantorKind: "patient_self" | "dpoa_healthcare_agent" | "healthcare_surrogate";
+  readonly actingConsentId: string | null;
+  readonly grantorRelationshipText: string | null;
+  readonly requestId: string;
+  readonly reviewerUserId: string;
+  /** The M22 document the portal upload became; sealed into the consent's capture evidence. */
+  readonly uploadedPdfDocumentId: string;
+}
+
 type PortalConsentService = Pick<
   ConsentRouteService,
   "getConsent" | "listConsentsForPatient" | "createDraft" | "signConsent"
 >;
 
 export function createPortalConsentSigner(service: PortalConsentService, nowIso: () => string) {
-  return {
-    async sign(input: PortalConsentSignInput): Promise<{ recordId: string }> {
-      const { organizationId, portalUserId } = input;
-      const known = input.existingConsentId
-        ? await service.getConsent(organizationId, input.existingConsentId)
-        : ((await service.listConsentsForPatient(organizationId, input.patientId)).find(
-            (c) =>
-              c.typeKey === input.typeKey &&
-              c.createdById === portalUserId &&
-              (c.scopeDescriptor as { requestId?: unknown } | null)?.requestId ===
-                input.requestId &&
-              (c.status === "draft" || c.status === "active"),
-          ) ?? null);
-      if (known?.status === "active") return { recordId: known.id };
+  type Known = { id: string; status: string } | null;
 
-      const draft =
-        known?.status === "draft"
-          ? known
-          : await service.createDraft(organizationId, {
-              patientId: input.patientId,
-              typeKey: input.typeKey,
-              grantorKind: input.grantorKind,
-              captureMethod: "electronic_portal_signature",
-              scopeDescriptor: {
-                kind: "categorical",
-                documentKind: input.typeKey,
-                requestId: input.requestId,
-              },
-              createdById: portalUserId,
-              grantorRelationshipText: input.grantorRelationshipText,
-              actingConsentId: input.actingConsentId,
-            });
-      const signed = await service.signConsent(organizationId, draft.id, portalUserId, nowIso(), {
-        portalSessionId: input.portalSessionId,
-        typedSignatureName: input.signerName,
+  /** The consent THIS request already created (retry-safe), else a fresh draft; then sign it. An active one is returned as-is. */
+  async function findOrCreateAndSign(a: {
+    organizationId: string;
+    patientId: string;
+    typeKey: PortalConsentSignInput["typeKey"];
+    requestId: string;
+    createdById: string;
+    existingConsentId: string | null;
+    captureMethod: "electronic_portal_signature" | "uploaded_signed_pdf";
+    grantorKind: PortalConsentSignInput["grantorKind"];
+    actingConsentId: string | null;
+    grantorRelationshipText: string | null;
+    evidence: Parameters<PortalConsentService["signConsent"]>[4];
+  }): Promise<{ recordId: string }> {
+    const { organizationId } = a;
+    const known: Known = a.existingConsentId
+      ? await service.getConsent(organizationId, a.existingConsentId)
+      : ((await service.listConsentsForPatient(organizationId, a.patientId)).find(
+          (c) =>
+            c.typeKey === a.typeKey &&
+            c.createdById === a.createdById &&
+            (c.scopeDescriptor as { requestId?: unknown } | null)?.requestId === a.requestId &&
+            (c.status === "draft" || c.status === "active"),
+        ) ?? null);
+    if (known?.status === "active") return { recordId: known.id };
+
+    const draft =
+      known?.status === "draft"
+        ? known
+        : await service.createDraft(organizationId, {
+            patientId: a.patientId,
+            typeKey: a.typeKey,
+            grantorKind: a.grantorKind,
+            captureMethod: a.captureMethod,
+            scopeDescriptor: {
+              kind: "categorical",
+              documentKind: a.typeKey,
+              requestId: a.requestId,
+            },
+            createdById: a.createdById,
+            grantorRelationshipText: a.grantorRelationshipText,
+            actingConsentId: a.actingConsentId,
+          });
+    const signed = await service.signConsent(
+      organizationId,
+      draft.id,
+      a.createdById,
+      nowIso(),
+      a.evidence,
+    );
+    return { recordId: signed.id };
+  }
+
+  return {
+    sign(input: PortalConsentSignInput): Promise<{ recordId: string }> {
+      return findOrCreateAndSign({
+        ...input,
+        createdById: input.portalUserId,
+        captureMethod: "electronic_portal_signature",
+        evidence: { portalSessionId: input.portalSessionId, typedSignatureName: input.signerName },
       });
-      return { recordId: signed.id };
+    },
+    acceptUploadedCopy(input: UploadedCopyConsentInput): Promise<{ recordId: string }> {
+      return findOrCreateAndSign({
+        ...input,
+        createdById: input.reviewerUserId,
+        existingConsentId: null,
+        captureMethod: "uploaded_signed_pdf",
+        evidence: { uploadedPdfDocumentId: input.uploadedPdfDocumentId },
+      });
     },
   };
 }

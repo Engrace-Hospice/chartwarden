@@ -1,3 +1,4 @@
+import type { AcceptUploadedCopyDeps } from "../write-paths/accept-uploaded-copy";
 // M31 ADR-0107 (PROPOSED) - the signing ports the composition root binds. Its own file so `routes/index.ts` (which names the type on
 // `PortalRouteDeps`) and `signature.routes.ts` (which imports `PortalRouteDeps` from there) do not import each other.
 import type {
@@ -10,6 +11,8 @@ import type { PortalSignatureStore } from "./signature-store";
 /** The ports behind the STAFF create / list / void routes (the composition root binds them to M5 and M06). */
 export interface PortalStaffSigningDeps {
   readonly store: StaffSignatureStore;
+  /** M39 seam: record an ACCEPTED uploaded paper copy as a consent (uploaded signed PDF; the reviewer is creator and signer). */
+  readonly uploadedCopyConsent: AcceptUploadedCopyDeps["consent"];
   /** The patient's agency and service location (M5's reader). null when the patient is unknown or has no agency: a request is never created unsited. */
   readonly patientSite: (
     organizationId: string,

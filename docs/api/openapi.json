@@ -12508,7 +12508,9 @@
                           "reminderCount",
                           "signedAt",
                           "signerRole",
-                          "voidReason"
+                          "voidReason",
+                          "uploadedDocumentId",
+                          "reviewOutcome"
                         ],
                         "properties": {
                           "id": {
@@ -12642,6 +12644,32 @@
                                 "type": "null"
                               }
                             ]
+                          },
+                          "uploadedDocumentId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reviewOutcome": {
+                            "anyOf": [
+                              {
+                                "const": "accepted",
+                                "type": "string"
+                              },
+                              {
+                                "const": "rejected",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           }
                         }
                       }
@@ -12687,7 +12715,9 @@
                     "reminderCount",
                     "signedAt",
                     "signerRole",
-                    "voidReason"
+                    "voidReason",
+                    "uploadedDocumentId",
+                    "reviewOutcome"
                   ],
                   "properties": {
                     "id": {
@@ -12815,6 +12845,32 @@
                     "voidReason": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "uploadedDocumentId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reviewOutcome": {
+                      "anyOf": [
+                        {
+                          "const": "accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rejected",
                           "type": "string"
                         },
                         {
@@ -12881,13 +12937,13 @@
         }
       }
     },
-    "/api/v1/admin/portal-signature-requests/{requestId}/void": {
+    "/api/v1/admin/portal-signature-requests/{requestId}/review": {
       "post": {
-        "operationId": "postApiV1AdminPortalsignaturerequestsByRequestIdVoid",
+        "operationId": "postApiV1AdminPortalsignaturerequestsByRequestIdReview",
         "tags": [
           "31-portal"
         ],
-        "summary": "Withdraw an open signature request with a coded reason (ADR-0107)",
+        "summary": "Accept or reject an uploaded signed paper copy; accepting records it through M39 (ADR-0107)",
         "parameters": [
           {
             "name": "requestId",
@@ -12919,7 +12975,9 @@
                     "reminderCount",
                     "signedAt",
                     "signerRole",
-                    "voidReason"
+                    "voidReason",
+                    "uploadedDocumentId",
+                    "reviewOutcome"
                   ],
                   "properties": {
                     "id": {
@@ -13047,6 +13105,275 @@
                     "voidReason": {
                       "anyOf": [
                         {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "uploadedDocumentId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reviewOutcome": {
+                      "anyOf": [
+                        {
+                          "const": "accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rejected",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "decision"
+                ],
+                "properties": {
+                  "decision": {
+                    "anyOf": [
+                      {
+                        "const": "accepted",
+                        "type": "string"
+                      },
+                      {
+                        "const": "rejected",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/portal-signature-requests/{requestId}/void": {
+      "post": {
+        "operationId": "postApiV1AdminPortalsignaturerequestsByRequestIdVoid",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Withdraw an open signature request with a coded reason (ADR-0107)",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "patientId",
+                    "docKind",
+                    "status",
+                    "templateKey",
+                    "templateVersion",
+                    "targetRef",
+                    "requestedBy",
+                    "requestedAt",
+                    "lastRemindedAt",
+                    "reminderCount",
+                    "signedAt",
+                    "signerRole",
+                    "voidReason",
+                    "uploadedDocumentId",
+                    "reviewOutcome"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "docKind": {
+                      "anyOf": [
+                        {
+                          "const": "election_statement",
+                          "type": "string"
+                        },
+                        {
+                          "const": "notice_of_patient_rights",
+                          "type": "string"
+                        },
+                        {
+                          "const": "hipaa_npp_acknowledgement",
+                          "type": "string"
+                        },
+                        {
+                          "const": "consent_to_treat",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "signed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "uploaded_pending_review",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "const": "voided",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "templateKey": {
+                      "type": "string"
+                    },
+                    "templateVersion": {
+                      "type": "string"
+                    },
+                    "targetRef": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestedBy": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "requestedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "lastRemindedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reminderCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "signedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "signerRole": {
+                      "anyOf": [
+                        {
+                          "const": "patient",
+                          "type": "string"
+                        },
+                        {
+                          "const": "legal_representative",
+                          "type": "string"
+                        },
+                        {
+                          "const": "caregiver_on_behalf",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "voidReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "uploadedDocumentId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reviewOutcome": {
+                      "anyOf": [
+                        {
+                          "const": "accepted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rejected",
                           "type": "string"
                         },
                         {
@@ -255977,6 +256304,10 @@
                         "type": "string"
                       },
                       {
+                        "const": "signed_admission_document",
+                        "type": "string"
+                      },
+                      {
                         "const": "other",
                         "type": "string"
                       }
@@ -257501,6 +257832,163 @@
                   "attested": {
                     "const": true,
                     "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/portal/signature-requests/{requestId}/signed-copy": {
+      "post": {
+        "operationId": "postApiV1PortalSignaturerequestsByRequestIdSignedcopy",
+        "tags": [
+          "31-portal"
+        ],
+        "summary": "Attach a completed signed-copy upload to an open request; parks it for staff review, never signs it (ADR-0107)",
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "request"
+                  ],
+                  "properties": {
+                    "request": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "docKind",
+                        "status",
+                        "templateKey",
+                        "templateVersion",
+                        "requestedAt",
+                        "signedAt",
+                        "signerRole"
+                      ],
+                      "properties": {
+                        "id": {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        "docKind": {
+                          "anyOf": [
+                            {
+                              "const": "election_statement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "notice_of_patient_rights",
+                              "type": "string"
+                            },
+                            {
+                              "const": "hipaa_npp_acknowledgement",
+                              "type": "string"
+                            },
+                            {
+                              "const": "consent_to_treat",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "pending",
+                              "type": "string"
+                            },
+                            {
+                              "const": "signed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "uploaded_pending_review",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "templateKey": {
+                          "type": "string"
+                        },
+                        "templateVersion": {
+                          "type": "string"
+                        },
+                        "requestedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "signedAt": {
+                          "anyOf": [
+                            {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "signerRole": {
+                          "anyOf": [
+                            {
+                              "const": "patient",
+                              "type": "string"
+                            },
+                            {
+                              "const": "legal_representative",
+                              "type": "string"
+                            },
+                            {
+                              "const": "caregiver_on_behalf",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "uploadId"
+                ],
+                "properties": {
+                  "uploadId": {
+                    "format": "uuid",
+                    "type": "string"
                   }
                 }
               }

@@ -6748,7 +6748,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           });
           mountM31Routes(app, {
             signing: {
-              store: buildPortalSignatureStore(dbHandle.db),
+              store: buildPortalSignatureStore(dbHandle.db, m31Events ?? undefined),
               signers: {
                 election: (input) => portalAdmissionSigners.election(input),
                 noticeOfRights: (input) => portalAdmissionSigners.noticeOfRights(input),
@@ -6765,7 +6765,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               // A "pending legal review" template (Consent to Treat today) is never signable unless this is set on purpose.
               allowUnreviewedTemplates: process.env.PORTAL_ALLOW_UNREVIEWED_TEMPLATES === "true",
               staff: {
-                store: buildStaffSignatureStore(dbHandle.db),
+                store: buildStaffSignatureStore(dbHandle.db, m31Events ?? undefined),
+                uploadedCopyConsent: (input) => portalConsentSigner.acceptUploadedCopy(input),
                 patientSite: async (organizationId, patientId) => {
                   const patient = await getSeam("PatientReader").findById({
                     organizationId,

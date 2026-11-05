@@ -6172,7 +6172,7 @@ export const M31_CONTRIBUTED_PERMISSIONS = {
     abac: "portal_grant_active_for_patient",
   },
   // ADR-0107 (PROPOSED) - STAFF side of admission-document signing: send a patient a request, see its status, void an open one. Each route also
-  // composes the shared `caseload_or_scope` guard over the patient the request concerns. (Reviewing an uploaded signed copy arrives with the upload route.)
+  // composes the shared `caseload_or_scope` guard over the patient the request concerns. Staff also REVIEW an uploaded signed copy (accept or reject).
   "portal.signature_request.create": {
     resource: "portal_signature_request",
     action: "create",
@@ -6191,6 +6191,12 @@ export const M31_CONTRIBUTED_PERMISSIONS = {
     category: "admin",
     abac: "caseload_membership",
   },
+  "portal.signature_request.review": {
+    resource: "portal_signature_request",
+    action: "review",
+    category: "admin",
+    abac: "caseload_membership",
+  },
   // Engagement-scoped auditor surface (M3 engagement scope resolves the row set).
   "portal.engagement.read_auditor": {
     resource: "portal_engagement",
@@ -6200,7 +6206,7 @@ export const M31_CONTRIBUTED_PERMISSIONS = {
   },
 } satisfies Record<string, PermissionDef>;
 
-/** Union of the M31 contributed permission keys (fifty-two; ADR-0107 added portal.signature.read/.sign and the staff portal.signature_request.create/.read/.void). */
+/** Union of the M31 contributed permission keys (fifty-three; ADR-0107 added portal.signature.read/.sign and the staff portal.signature_request.create/.read/.void/.review). */
 export type M31ContributedPermissionKey = keyof typeof M31_CONTRIBUTED_PERMISSIONS;
 
 /** Project the M31 contributed keys into `permission`-table mirror rows (M31 §4.6). */

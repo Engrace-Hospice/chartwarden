@@ -5,7 +5,8 @@
 // Every id and every fact about WHO is signing comes from the SESSION (account, patient, session id) and the grant row, never from the body.
 // The route only authorizes and shapes; the authority matrix, the DPOA check and the call-then-record order live in `signAdmissionDocument`.
 //
-// Deferred (next slice): uploading a signed paper copy (needs a `signed_admission_document` upload purpose and the M22 intake).
+//   POST /api/v1/portal/signature-requests/:requestId/signed-copy  attach a completed `signed_admission_document` upload as the signed paper copy (D6)
+// An attached copy parks the request in `uploaded_pending_review`; it is never marked signed here (staff accept or reject it).
 import { createHash } from "node:crypto";
 import { ChartWardenError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
@@ -15,7 +16,7 @@ import { actorOf, portalAccountIdOf, portalPatientIdOf, portalSessionIdOf } from
 import { requireIdempotencyKey } from "./concurrency";
 import { ABAC_GRANT, P, STEP_UP } from "./guards";
 import type { PortalRouteDeps } from "./index";
-import { PortalSignatureSignRequest, parse } from "./portal-typebox";
+import { PortalSignatureAttachUpload, PortalSignatureSignRequest, parse } from "./portal-typebox";
 import type { PortalSigningDeps } from "./signature-deps";
 
 const IDEMPOTENT = requireIdempotencyKey();
@@ -36,6 +37,18 @@ function signingOf(deps: PortalRouteDeps): PortalSigningDeps {
   }
   return deps.signing;
 }
+
+const ATTACH_DENY = {
+  request_not_found: { status: 404, message: "That request was not found." },
+  request_not_pending: {
+    status: 409,
+    message: "That request is no longer waiting for a signature.",
+  },
+  upload_not_usable: {
+    status: 422,
+    message: "That file cannot be used as the signed copy. Please upload it again.",
+  },
+} as const;
 
 const NOT_READY = "This document is not ready to sign yet. Your care team will let you know.";
 const NOT_ABLE = "You are not able to sign this document for this patient.";
@@ -168,6 +181,44 @@ export function registerPortalSignatureRoutes(app: FastifyInstance, deps: Portal
       }
       const done = await signing.store.viewForPatient(actor.organizationId, patientId, requestId);
       return { request: done ?? view, alreadySigned: outcome.alreadySigned };
+    },
+  );
+
+  app.post(
+    "/api/v1/portal/signature-requests/:requestId/signed-copy",
+    { preHandler: [P("portal.signature.sign"), ABAC_GRANT("portal.signature.sign"), IDEMPOTENT] },
+    async (request) => {
+      const actor = actorOf(request);
+      const accountId = portalAccountIdOf(actor);
+      const patientId = portalPatientIdOf(actor);
+      const { requestId } = request.params as { requestId: string };
+      const { uploadId } = parse(PortalSignatureAttachUpload, request.body);
+      const signing = signingOf(deps);
+
+      const view = await signing.store.viewForPatient(actor.organizationId, patientId, requestId);
+      if (!view) throw new NotFoundError("signature request", requestId);
+      const grant = await signing.store.activeGrantSource(
+        actor.organizationId,
+        accountId,
+        patientId,
+      );
+      if (!grant) throw new ForbiddenError("no active grant for this patient");
+      // The same authority matrix as signing: someone who may not sign this document may not stand behind a paper copy of it either.
+      const grantKind = grant.grantKind as PortalSigningGrantKind;
+      if (!decideSigningAuthority({ grantKind, docKind: view.docKind }).allowed) {
+        throw new ForbiddenError(NOT_ABLE);
+      }
+      const outcome = await signing.store.attachSignedCopy(actor.organizationId, {
+        patientId,
+        portalAccountId: accountId,
+        requestId,
+        uploadId,
+      });
+      if (!outcome.ok) {
+        const refusal = ATTACH_DENY[outcome.code];
+        throw new ChartWardenError(outcome.code.toUpperCase(), refusal.message, refusal.status);
+      }
+      return { request: outcome.request };
     },
   );
 }

@@ -175,6 +175,8 @@ export const PortalDocumentUploadInitRequest = Type.Object({
     Type.Literal("prior_records"),
     Type.Literal("wound_photo"),
     Type.Literal("advance_directive_copy"),
+    // ADR-0107: a signed paper copy of an admission document; attached to its signature request, never shown in the generic picker.
+    Type.Literal("signed_admission_document"),
     Type.Literal("other"),
   ]),
   purposeDetail: Type.Optional(Type.String({ maxLength: 500 })),
@@ -424,6 +426,12 @@ export const PortalSignatureSignRequest = Type.Object(
   },
   { additionalProperties: false },
 );
+/** Attach a completed `signed_admission_document` upload to an open request as its signed paper copy. */
+export const PortalSignatureAttachUpload = Type.Object(
+  { uploadId: Uuid },
+  { additionalProperties: false },
+);
+export const PortalSignatureAttachResponse = Type.Object({ request: PortalSignatureRequestView });
 export const PortalSignatureSignResponse = Type.Object({
   request: PortalSignatureRequestView,
   alreadySigned: Type.Boolean(),
@@ -452,6 +460,11 @@ export const StaffSignatureRequestVoid = Type.Object(
   },
   { additionalProperties: false },
 );
+/** Accept or reject an uploaded signed copy. Accepting records the signature through M39 (uploaded signed PDF); rejecting reopens the request. */
+export const StaffSignatureRequestReview = Type.Object(
+  { decision: Type.Union([Type.Literal("accepted"), Type.Literal("rejected")]) },
+  { additionalProperties: false },
+);
 export const StaffSignatureRequestView = Type.Object({
   id: Uuid,
   patientId: Uuid,
@@ -472,6 +485,9 @@ export const StaffSignatureRequestView = Type.Object({
     Type.Null(),
   ]),
   voidReason: Type.Union([LayStr, Type.Null()]),
+  /** The M22 document of the uploaded signed copy awaiting review (open it in the document viewer), else null. */
+  uploadedDocumentId: Type.Union([Uuid, Type.Null()]),
+  reviewOutcome: Type.Union([Type.Literal("accepted"), Type.Literal("rejected"), Type.Null()]),
 });
 export const StaffSignatureRequestListResponse = Type.Object({
   items: Type.Array(StaffSignatureRequestView),

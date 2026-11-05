@@ -1,9 +1,9 @@
 {
   "totals": {
-    "routes": 1901,
-    "enriched": 1901,
+    "routes": 1903,
+    "enriched": 1903,
     "deficit": 0,
-    "mutating": 1084,
+    "mutating": 1086,
     "mutatingNoBody": 1,
     "gets": 764,
     "getsNoResponse": 9
@@ -301,10 +301,10 @@
     },
     {
       "module": "31-portal",
-      "routes": 65,
-      "enriched": 65,
+      "routes": 67,
+      "enriched": 67,
       "deficit": 0,
-      "mutating": 31,
+      "mutating": 33,
       "mutatingNoBody": 0,
       "gets": 34,
       "getsNoResponse": 0

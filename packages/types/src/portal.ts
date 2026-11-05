@@ -179,6 +179,13 @@ export const M31_EVENT_NAMES = [
   "m31.portal_session.opened",
   "m31.portal_session.closed",
   "m31.portal_message.sent_via_m36",
+  // ADR-0107 portal signing: ids and structural facts only, never the signer's name, relationship or reason.
+  "m31.signature_request.requested",
+  "m31.signature_request.signed",
+  "m31.signature_request.voided",
+  "m31.signature_request.uploaded",
+  "m31.signature_request.reviewed",
+  "m31.signature_request.reminded",
 ] as const;
 
 export type M31EventName = (typeof M31_EVENT_NAMES)[number];
