@@ -99826,7 +99826,8 @@
                         "status",
                         "reason",
                         "trialEndsAt",
-                        "activePatientCount"
+                        "activePatientCount",
+                        "enforced"
                       ],
                       "properties": {
                         "entitled": {
@@ -99903,6 +99904,9 @@
                               "type": "null"
                             }
                           ]
+                        },
+                        "enforced": {
+                          "type": "boolean"
                         }
                       }
                     }

@@ -3,7 +3,8 @@ import type { operations } from "@chartwarden/ui";
 // apps/admin/src/modules/35-subscription-billing — §5.2 Subscription detail (`/admin/subscriptions/:id`,
 // subscription.admin.read). One tenant subscription over GET /api/admin/subscriptions/:id, with its current
 // dunning state (on the row), a usage drill-down (GET /api/admin/usage/:orgId/current), and its refund
-// history (GET /api/admin/refunds, narrowed to this org). Links to the pause + apply-promo gated actions.
+// history (GET /api/admin/refunds, narrowed to this org). Links to the pause + apply-promo gated actions, and the
+// ADR-0108 Add-ons panel (grant / trial / cancel the claims-billing add-on).
 // Redesign frame: usage + refunds in the main column, the subscription summary in the right drawer.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
@@ -18,6 +19,7 @@ import {
   subscriptionTone,
   usageThresholdTone,
 } from "./status";
+import { type AddonUsage, AddonsPanel } from "./subscription-addons";
 import { DrawerHead, StateError, StateLoading, isNotFound } from "./ui";
 
 type AdminSub =
@@ -33,6 +35,7 @@ export function SubscriptionDetail(): JSX.Element {
   const { id } = useParams<{ id: string }>();
   const [sub, setSub] = useState<AdminSub | null>(null);
   const [usage, setUsage] = useState<UsageMeter[] | null>(null);
+  const [addonUsage, setAddonUsage] = useState<AddonUsage | null>(null);
   const [refunds, setRefunds] = useState<Refund[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +69,7 @@ export function SubscriptionDetail(): JSX.Element {
     });
     if (!isCurrent()) return;
     setUsage(usageRes.error ? [] : usageRes.data.meters);
+    setAddonUsage(usageRes.error ? null : usageRes.data.claimsBillingAddon);
     const refundRes = await client.GET("/api/admin/refunds", { params: { query: {} } });
     if (!isCurrent()) return;
     const allRefunds = refundRes.error ? [] : refundRes.data.items;
@@ -125,6 +129,7 @@ export function SubscriptionDetail(): JSX.Element {
         ) : (
           <UsageTable meters={usage} />
         )}
+        <AddonsPanel subscriptionId={sub.id} usage={addonUsage} />
         <h2 className="m-0 text-base font-semibold">Refund history</h2>
         {refunds.length === 0 ? (
           <p className="m-0 text-sm">No refunds requested for this organization.</p>

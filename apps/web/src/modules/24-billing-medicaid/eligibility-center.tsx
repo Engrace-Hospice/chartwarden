@@ -1,5 +1,6 @@
 import {
   Button,
+  ClaimsBillingNotice,
   EmptyState,
   Glyph,
   KpiCard,
@@ -11,6 +12,7 @@ import {
   StatusPill,
   WorkQueueLayout,
   useApiClient,
+  useClaimsBilling,
 } from "@chartwarden/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
@@ -66,6 +68,8 @@ export function MedicaidEligibilityCenter(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // ADR-0108 — a new eligibility check is new claims-billing work: paused without the add-on (when enforced).
+  const claimsBilling = useClaimsBilling();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -143,6 +147,9 @@ export function MedicaidEligibilityCenter(): JSX.Element {
           </div>
           <div style={{ marginTop: "0.75rem" }}>
             <MedicaidBillingTabs />
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <ClaimsBillingNotice />
           </div>
         </PageHeader>
       }
@@ -250,7 +257,7 @@ export function MedicaidEligibilityCenter(): JSX.Element {
               tone="primary"
               size="sm"
               onClick={() => void refresh()}
-              disabled={!canRefresh || busy}
+              disabled={!canRefresh || busy || claimsBilling.blocked}
             >
               {busy ? "Checking..." : "Refresh eligibility"}
             </Button>

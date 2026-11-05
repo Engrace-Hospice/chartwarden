@@ -23,6 +23,20 @@ export type {
 } from "./components/data-table";
 export { DegradedBanner } from "./components/degraded-banner";
 export { InlineAlert } from "./components/inline-alert";
+export {
+  CLAIMS_BILLING_ADDON_REQUIRED_CODE,
+  ClaimsBillingNotice,
+  __resetClaimsBillingForTest,
+  claimsBillingRefusalReason,
+  noteClaimsBillingRefusal,
+  primeClaimsBilling,
+  useClaimsBilling,
+} from "./components/claims-billing-notice";
+export type {
+  ClaimsBillingDenyReason,
+  ClaimsBillingPosture,
+  ClaimsBillingState,
+} from "./components/claims-billing-notice";
 export type { InlineAlertProps } from "./components/inline-alert";
 export { CodeSearchInput } from "./components/code-search-input";
 export type { CodeSearchInputProps, CodeSearchSystem } from "./components/code-search-input";

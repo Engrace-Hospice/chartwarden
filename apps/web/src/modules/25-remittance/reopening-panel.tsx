@@ -1,11 +1,13 @@
 import {
   Button,
+  ClaimsBillingNotice,
   LoadingSpinner,
   SelectField,
   StatusPill,
   TextField,
   toLocalInput,
   useApiClient,
+  useClaimsBilling,
 } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the MAC REOPENING section of the denial work panel (hospice ADR/TPE/QIC PRD,
 // milestone 3). A denial the routing rules send to a reopening (a 56900 ADR non-response) is worked here, not in the
@@ -76,6 +78,8 @@ export function ReopeningPanel({
   onChanged,
 }: ReopeningPanelProps): JSX.Element {
   const client = useApiClient();
+  // ADR-0108 — filing (submitting) a reopening is new claims-billing work: paused without the add-on (when enforced).
+  const claimsBilling = useClaimsBilling();
   const navigate = useNavigate();
   const location = useLocation();
   const session = useSession();
@@ -287,8 +291,12 @@ export function ReopeningPanel({
             value={filedAt}
             onChange={(e) => setFiledAt(e.target.value)}
           />
+          <ClaimsBillingNotice />
           <ButtonRow end>
-            <Button disabled={busy || filingBlocked} onClick={() => void file()}>
+            <Button
+              disabled={busy || filingBlocked || claimsBilling.blocked}
+              onClick={() => void file()}
+            >
               Record filing
             </Button>
           </ButtonRow>

@@ -5,7 +5,15 @@
 // previewed. Refusals are shown in fixed words by status and code (assemble-claim-model.ts), never the server's message.
 // Idempotency: one key per attempt. The server stores every answer under the key for 24h and replays it for the same body, so the
 // key is kept only when no HTTP response arrived (a thrown fetch) and dropped on any response and on any field change.
-import { Button, InlineAlert, SelectField, TextField, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  ClaimsBillingNotice,
+  InlineAlert,
+  SelectField,
+  TextField,
+  useApiClient,
+  useClaimsBilling,
+} from "@chartwarden/ui";
 import { useRef, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
@@ -55,6 +63,8 @@ function validate(fields: Fields): FieldErrors {
 
 export function CommercialAssembleClaim(): JSX.Element {
   const client = useApiClient();
+  // ADR-0108 — assembling a claim is new claims-billing work: paused without the add-on (when enforced).
+  const claimsBilling = useClaimsBilling();
   const navigate = useNavigate();
   const canWrite = (useSession()?.permissions ?? []).includes(WRITE_PERMISSION);
   const { state: entities, entityId, setEntityId, retry: retryEntities } = useProviderEntity();
@@ -142,6 +152,7 @@ export function CommercialAssembleClaim(): JSX.Element {
           </p>
         </div>
       </header>
+      <ClaimsBillingNotice />
 
       <BillingTabs />
       <CommercialTabs />
@@ -218,7 +229,7 @@ export function CommercialAssembleClaim(): JSX.Element {
                 <Button tone="tertiary" size="sm" onClick={() => navigate(COMMERCIAL_PATHS.queue)}>
                   Cancel
                 </Button>
-                <Button type="submit" size="sm" disabled={busy}>
+                <Button type="submit" size="sm" disabled={busy || claimsBilling.blocked}>
                   {busy ? "Assembling…" : "Assemble claim"}
                 </Button>
               </div>

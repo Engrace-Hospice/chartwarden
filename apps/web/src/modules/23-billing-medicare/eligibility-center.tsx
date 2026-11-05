@@ -1,5 +1,6 @@
 import {
   Button,
+  ClaimsBillingNotice,
   DetailPageLayout,
   EmptyState,
   FilterBar,
@@ -10,6 +11,7 @@ import {
   ghostBorder,
   t,
   useApiClient,
+  useClaimsBilling,
 } from "@chartwarden/ui";
 // apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the ELIGIBILITY CENTER (R2, §5.1
 // admin / §4.1 #22-23). The HETS 270/271 surface, per patient: enter a patient, read the eligibility-check
@@ -104,6 +106,9 @@ export function EligibilityCenter(): JSX.Element {
           </div>
           <div style={{ marginTop: "0.75rem" }}>
             <BillingTabs />
+          </div>
+          <div style={{ marginTop: "0.75rem" }}>
+            <ClaimsBillingNotice />
           </div>
         </PageHeader>
       }
@@ -281,6 +286,8 @@ function RefreshPanel({
   const [asOf, setAsOf] = useState(todayIso());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
+  // ADR-0108 — a new eligibility check is new claims-billing work: paused without the add-on (when enforced).
+  const claimsBilling = useClaimsBilling();
 
   const run = useCallback(async () => {
     if (!patientId) return;
@@ -359,7 +366,11 @@ function RefreshPanel({
               style={inputStyle}
             />
           </div>
-          <Button disabled={busy} loading={busy} onClick={() => void run()}>
+          <Button
+            disabled={busy || claimsBilling.blocked}
+            loading={busy}
+            onClick={() => void run()}
+          >
             {busy ? "Running…" : "Run check"}
           </Button>
           {msg ? (

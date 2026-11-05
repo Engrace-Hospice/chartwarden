@@ -1,4 +1,12 @@
-import { Button, LoadingSpinner, StatusPill, TextField, useApiClient } from "@chartwarden/ui";
+import {
+  Button,
+  ClaimsBillingNotice,
+  LoadingSpinner,
+  StatusPill,
+  TextField,
+  useApiClient,
+  useClaimsBilling,
+} from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — the PATH section of the denial work panel (hospice ADR/TPE/QIC PRD, milestone
 // 3): which route the denial takes (an appeal, or a reopening the MAC handles itself), which rule decided it, and the
 // reopening once there is one. The route is computed by the server from the organization's dated rules plus a
@@ -58,6 +66,8 @@ export function DenialRoutePanel({
   refreshToken = 0,
 }: DenialRoutePanelProps): JSX.Element {
   const client = useApiClient();
+  // ADR-0108 — opening a reopening is new claims-billing work: paused without the add-on (when enforced).
+  const claimsBilling = useClaimsBilling();
   const [route, setRoute] = useState<DenialRouteView | null>(null);
   const [live, setLive] = useState<ReopeningSummary | null>(null);
   /** False when the reopenings list could not be read: then "Open reopening" must not be offered (a live one may exist). */
@@ -251,8 +261,12 @@ export function DenialRoutePanel({
             onChange={(e) => setMacName(e.target.value)}
             maxLength={120}
           />
+          <ClaimsBillingNotice />
           <ButtonRow end>
-            <Button disabled={busy || macName.trim() === ""} onClick={() => void openReopening()}>
+            <Button
+              disabled={busy || macName.trim() === "" || claimsBilling.blocked}
+              onClick={() => void openReopening()}
+            >
               Open reopening
             </Button>
           </ButtonRow>

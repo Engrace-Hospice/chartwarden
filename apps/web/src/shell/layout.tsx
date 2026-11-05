@@ -5,7 +5,9 @@ import {
   Glyph,
   InlineAlert,
   SkipLink,
+  primeClaimsBilling,
   setSearchTerm,
+  useApiClient,
   useDisclosureDismiss,
   useOffCanvasNav,
   useTheme,
@@ -72,6 +74,13 @@ export interface AppLayoutProps {
 
 export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   const session = useSession();
+  const client = useApiClient();
+  // ADR-0108 — read the claims-billing add-on posture once, for a user allowed to read the billing status (the
+  // route's own permission); the billing screens' notice and gated actions read it from the shared store.
+  const canReadBillingStatus = session?.permissions.includes("subscription.read") === true;
+  useEffect(() => {
+    if (canReadBillingStatus) primeClaimsBilling(client);
+  }, [client, canReadBillingStatus]);
   const ipu = useIpuNavigationAvailability();
   // Below the responsive breakpoint (TASK-033 / UI-004) the sidebar becomes an off-canvas drawer —
   // a fixed-width sidebar plus content leaves too little room at 390px wide, so it's hidden by
