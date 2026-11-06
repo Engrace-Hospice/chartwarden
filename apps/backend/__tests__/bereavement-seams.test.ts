@@ -23,6 +23,7 @@ import type {
   BereavementRiskFactorInputs,
 } from "@chartwarden/types";
 import { afterEach, describe, expect, it } from "vitest";
+import { seamPortalAbacPorts } from "../src/modules/31-portal/abac-predicates";
 import { REQUIRED_SEAMS, __resetSeamsForTest, validateSeams } from "../src/bootstrap/index";
 import {
   type BereavementPlanFacts,
@@ -242,6 +243,22 @@ describe("M16-T05 — registration into the M1 seam registry (§4.6 / D13)", () 
     await expect(
       getBereavementAssignmentReader().assignmentForPlan(ORG, PLAN),
     ).resolves.toMatchObject({ counselorUserId: COUNSELOR });
+  });
+
+  it("M31's production predicate port reaches the registered M16 provider (no fake ports)", async () => {
+    // The PR #960 bug: the port called a method M16 never registered, and the swallowed TypeError denied.
+    __resetSeamsForTest();
+    const { store } = createInMemoryBereavementSeamStore({ plans: [plan()], contacts: [contact()] });
+    registerBereavementSeams({ store, clock });
+    const ask = (patientId: string) =>
+      seamPortalAbacPorts.bereavedWindowOpen({
+        organizationId: ORG,
+        portalAccountId: PORTAL_ACCOUNT,
+        patientId,
+        asOf: NOW,
+      });
+    await expect(ask(PATIENT)).resolves.toBe(true);
+    await expect(ask(ADMISSION)).resolves.toBe(false);
   });
 });
 
@@ -632,6 +649,27 @@ describe("BereavedPortalScopeProvider — the M31 bereaved-family scope (§4.6 /
     }).store;
     expect(await ask(closed)).toBe(false);
     expect(await ask(open, { asOf: daysAfterDeath(400) })).toBe(false);
+    // The first row being another patient's plan must not hide a match further down.
+    const twoPlans = createInMemoryBereavementSeamStore({
+      plans: [plan({ planId: PLAN_B, patientId: ADMISSION }), plan()],
+      contacts: [contact({ contactId: CONTACT_B, planId: PLAN_B }), contact()],
+    }).store;
+    expect(await ask(twoPlans)).toBe(true);
+    await expect(ask(brokenStore())).rejects.toThrow(/connection terminated/);
+  });
+
+  it("offers opt-out only to an active contact", async () => {
+    for (const status of ["proposed", "unreachable", "ineligible_post_review", "deceased"] as const) {
+      const { store } = createInMemoryBereavementSeamStore({
+        plans: [plan()],
+        contacts: [contact({ status })],
+      });
+      const [scope] = await createBereavedPortalScopeProvider(store, clock).scopeForPortalAccount(
+        ORG,
+        PORTAL_ACCOUNT,
+      );
+      expect(scope).toMatchObject({ status, mayOptOut: false });
+    }
   });
 });
 

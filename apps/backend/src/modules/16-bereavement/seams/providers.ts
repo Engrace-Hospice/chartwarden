@@ -329,7 +329,9 @@ export function createBereavedPortalScopeProvider(
           planId: contact.planId,
           status: contact.status,
           inBereavementWindow: inWindow,
-          mayOptOut: inWindow && !optedOut,
+          // `optOut` is legal only from `active` (lifecycle/contact.ts); a proposed or unreachable contact is
+          // not offered it, so the portal handler never hits ILLEGAL_TRANSITION midway through its loop.
+          mayOptOut: inWindow && contact.status === "active",
           mayRescindOptOut:
             inWindow &&
             optedOut &&
