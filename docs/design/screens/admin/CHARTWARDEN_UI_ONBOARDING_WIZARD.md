@@ -88,6 +88,14 @@ and where a contract is signed its billing service mode is set to none now (onbo
 (a live tenant); with no contract it says nothing about the mode. The system sets the mode and attributes it, in the platform
 audit row, to whoever set it off (the tenant, an operator, or the hourly sweep that applies it again).
 
+Billing outside is an invariant: a tenant that bills outside is on mode none, an operator cannot set another mode on it (409), and the
+tenant itself cannot move off outside while it has a contract (409): only an operator can, in this step. When the operator moves a
+tenant with a signed contract from outside to a vendor, the form asks for a **Billing service mode** (None, Billing software or
+Managed billing; no default, and None is an explicit choice to keep the tenant unbilled), says what it will do (set before the
+clearinghouse, put back to none if the clearinghouse change fails, dated now while onboarding), and sends it with the choice. Nothing
+is asked for a first choice, a vendor-to-vendor change or a tenant with no contract, and the server's own refusal of the field is shown.
+A stale pin (412) or a missing one (428) closes the form and the prompt, reloads the record and says so.
+
 A vendor is then walked to active, each fact shown as met or not yet:
 
 1. the credential is on file;
