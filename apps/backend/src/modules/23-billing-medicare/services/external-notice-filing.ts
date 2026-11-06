@@ -188,6 +188,39 @@ export async function nextNoticeAttemptIndex(
   return latest.outcome === "queued" ? latest.attemptIndex : latest.attemptIndex + 1;
 }
 
+/** One try plus one retry (see {@link appendQueuedNoticeAttempt}). */
+const APPEND_QUEUED_ATTEMPT_TRIES = 2;
+
+/**
+ * Append the QUEUED attempt a submit enqueues its job for, at the next index. `append` is idempotent on the attempt index and the
+ * index comes from a read that is not locked, so a worker can end the notice's latest queued attempt in between (a park, a
+ * recorded filing) and the append then hands back a row that is already CLOSED. A job enqueued for a closed attempt transmits
+ * nothing (its own attempt is not queued, so it ends), leaving the notice READY with nothing in flight: one retry re-reads the
+ * latest attempt (terminal now, so the index moves on); a row still closed after that is a typed 409, never a job and an event
+ * for a closed attempt.
+ */
+export async function appendQueuedNoticeAttempt(
+  submissions: Pick<Submissions, "append" | "findLatestAttempt">,
+  values: Omit<Parameters<Submissions["append"]>[0], "attemptIndex" | "outcome">,
+): Promise<Awaited<ReturnType<Submissions["append"]>>> {
+  for (let tries = 0; tries < APPEND_QUEUED_ATTEMPT_TRIES; tries++) {
+    const attempt = await submissions.append({
+      ...values,
+      outcome: "queued",
+      attemptIndex: await nextNoticeAttemptIndex(
+        submissions,
+        values.providerEntityId,
+        values.claimControlNumber,
+      ),
+    });
+    if (attempt.outcome === "queued") return attempt;
+  }
+  throw new ChartWardenError(
+    "NOTICE_SUBMIT_CONFLICT",
+    "the notice's transmission attempt changed while it was being submitted; submit it again",
+    409,
+  );
+}
 export interface ExternalNoticeFilingPorts {
   readonly billsOutside?: BillsOutsidePort;
   /** The catalog-validating publisher (callerModule m23): a LATE filing publishes its event here, in the record's transaction. */

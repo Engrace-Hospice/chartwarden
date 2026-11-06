@@ -12,6 +12,12 @@ const fakes = vi.hoisted(() => ({
   submissions: [] as Record<string, unknown>[],
   /** Earlier transmission attempts by `${providerEntityId}:${controlNumber}` (what a vendor-era submit left behind). */
   attempts: new Map<string, Record<string, unknown>>(),
+  /**
+   * The race the submit route can lose: a worker ends the notice's latest QUEUED attempt (a park, a recorded filing) right after
+   * the route read it. "once": the first latest-attempt read still sees it queued (then it is closed); "always": the row `append`
+   * hands back is closed every time.
+   */
+  race: null as null | "once" | "always",
 }));
 
 vi.mock("@chartwarden/billing", async (importOriginal) => {
@@ -42,13 +48,28 @@ vi.mock("@chartwarden/billing", async (importOriginal) => {
       NoeRepository: notice(fakes.noes),
       NotrRepository: notice(fakes.notrs),
       ClaimSubmissionRepository: class {
+        // Idempotent on (provider entity, control number, attempt index), like the table: a held index hands the held row back.
         append = async (values: Row) => {
+          const held = fakes.attempts.get(
+            `${values.providerEntityId}:${values.claimControlNumber}`,
+          );
+          if (held && held.attemptIndex === values.attemptIndex) return held;
+          if (fakes.race === "always") {
+            return { id: "att-closed", ...values, outcome: "failed_worker" };
+          }
           const row = { id: `sub-${fakes.submissions.length + 1}`, ...values };
           fakes.submissions.push(row);
           return row;
         };
-        findLatestAttempt = async (providerEntityId: string, controlNumber: string) =>
-          fakes.attempts.get(`${providerEntityId}:${controlNumber}`) ?? null;
+        findLatestAttempt = async (providerEntityId: string, controlNumber: string) => {
+          const key = `${providerEntityId}:${controlNumber}`;
+          const latest = fakes.attempts.get(key) ?? null;
+          if (latest && fakes.race === "once") {
+            fakes.attempts.set(key, { ...latest, outcome: "failed_worker" });
+            fakes.race = null;
+          }
+          return latest; // the snapshot the route read: still queued when the race closes it right after
+        };
         terminalize = async (id: string, patch: Row) => {
           for (const [key, row] of fakes.attempts) {
             if (row.id === id) fakes.attempts.set(key, { ...row, ...patch });
@@ -168,6 +189,7 @@ beforeEach(() => {
   fakes.notrs.clear();
   fakes.submissions.length = 0;
   fakes.attempts.clear();
+  fakes.race = null;
 });
 
 describe.each([
@@ -317,9 +339,46 @@ describe.each([
       table.set(id, row);
       const key = `pe-1:${(row.noeControlNumber ?? row.notrControlNumber) as string}`;
       fakes.attempts.set(key, { id: "att-live", attemptIndex: 2, outcome: "queued" });
-      const { service } = harness(transmits);
-      await submit(service)(actor, id);
-      expect(fakes.submissions).toMatchObject([{ attemptIndex: 2, outcome: "queued" }]);
+      const { service, enqueued } = harness(transmits);
+      const res = await submit(service)(actor, id);
+      // the append collapses onto the live attempt (no new row); the job is enqueued for THAT attempt
+      expect(fakes.submissions).toEqual([]);
+      expect(res.submissionId).toBe("att-live");
+      expect(enqueued[0]).toMatchObject({ payload: { submissionId: "att-live" } });
+    });
+
+    // Round 3, L1b: the next index comes from a read that is not locked, so a worker can end the latest queued attempt between that
+    // read and the append, and the idempotent append then hands back a CLOSED row. A job enqueued for a closed attempt transmits
+    // nothing (its own attempt is not queued, so it ends), leaving the notice READY with nothing in flight.
+    it("an attempt the route read as queued but a worker closed before the append: one retry at the next index, the job and the event follow the LIVE attempt", async () => {
+      const row = make({ state: "ready", version: 1 });
+      table.set(id, row);
+      const key = `pe-1:${(row.noeControlNumber ?? row.notrControlNumber) as string}`;
+      fakes.attempts.set(key, { id: "att-raced", attemptIndex: 0, outcome: "queued" });
+      fakes.race = "once";
+      const { service, enqueued, published } = harness(transmits);
+
+      const res = await submit(service)(actor, id);
+
+      expect(fakes.submissions).toMatchObject([{ attemptIndex: 1, outcome: "queued" }]);
+      expect(res.submissionId).toBe("sub-1");
+      expect(enqueued).toHaveLength(1);
+      expect(enqueued[0]).toMatchObject({ payload: { submissionId: "sub-1" } });
+      expect(published).toMatchObject([{ eventName: event, payload: { submissionId: "sub-1" } }]);
+    });
+
+    it("an attempt that is still closed after the retry is a typed 409: nothing is enqueued or announced against a closed attempt", async () => {
+      table.set(id, make({ state: "ready", version: 1 }));
+      fakes.race = "always";
+      const { service, enqueued, published } = harness(transmits);
+
+      await expect(submit(service)(actor, id)).rejects.toMatchObject({
+        code: "NOTICE_SUBMIT_CONFLICT",
+        statusCode: 409,
+      });
+
+      expect(enqueued).toEqual([]);
+      expect(published).toEqual([]);
     });
 
     it("is unchanged when no clearinghouse-choice port is bound (a deployment where nobody bills outside)", async () => {
