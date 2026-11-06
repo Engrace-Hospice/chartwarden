@@ -70,10 +70,14 @@ import {
   type M23TransportDeps,
   type TransportAck,
   activeTransport,
+  assertOrgBound,
+  hasPerOrgTransport,
   priorClaimAttempt,
   pullTransportAcks,
   submissionKeyFor,
+  transportForOrg,
   transportUpload,
+  transportUploadPerOrg,
 } from "./clearinghouse-submission";
 import { type AckPayerDates, applyNoticeAck, sanitizeAckReasonCodes } from "./notice-ack-jobs";
 import {
@@ -609,6 +613,8 @@ function macPortalOf(deps: M23WorkerDeps): MacPortalPort {
   };
   // #707: a configured vendor owns every upload; the legacy portal is never the fallback. (The pending-file pulls and
   // the health probe stay legacy: the ack crons branch on `activeTransport` before they reach the portal.)
+  // Tenant clearinghouses: every organization resolves its own transport and never falls back to the legacy portal.
+  if (hasPerOrgTransport(deps)) return { ...legacy, upload: transportUploadPerOrg(deps) };
   const transport = activeTransport(deps);
   return transport ? { ...legacy, upload: transportUpload(transport) } : legacy;
 }
@@ -855,7 +861,7 @@ async function generateClaim837i(
   readonly stediJson?: StediClaimJson;
   readonly correlationId: string;
 }> {
-  const transport = activeTransport(deps);
+  const transport = await transportForOrg(deps, organizationId);
   if (!transport) {
     return x12Of(deps).generate837i({
       organizationId,
@@ -864,6 +870,8 @@ async function generateClaim837i(
       claimDocument: claimDocumentFor(claim, claimControlNumber),
     });
   }
+  // An organization with no live clearinghouse is refused here, before the claim is rendered for a vendor it does not have.
+  assertOrgBound(transport, "claim_837i");
   if (!deps.claim837i && !deps.renderClaim) {
     return unboundWorkerPort(
       "claim837i",
@@ -1108,8 +1116,8 @@ export async function runClaimSubmitRetry(
   // An operator's settlement (the clearinghouse-attempt resolve route) is the way out: "not filed" voids the key so a
   // fresh control number may be sent; "filed" means the claim is already at the MAC and must not be sent again.
   let filedAs: string | null = null;
-  const transport = activeTransport(deps);
-  if (transport && priorSubmission.outcomeReason?.includes(CH.IN_DOUBT)) {
+  const transport = await transportForOrg(deps, job.organizationId);
+  if (transport?.binding.vendor && priorSubmission.outcomeReason?.includes(CH.IN_DOUBT)) {
     const earlier = await priorClaimAttempt(
       transport,
       job.organizationId,
@@ -1931,12 +1939,21 @@ async function applyAcks(
  */
 async function runTransportAckPull(
   deps: M23WorkerDeps,
-  transport: M23TransportDeps,
   kind: "ack_999" | "ack_277ca",
 ): Promise<void> {
   const now = deps.now ?? (() => new Date());
   const failures: string[] = [];
   for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
+    // Tenant clearinghouses: each organization pulls from ITS OWN vendor; one with no live clearinghouse has nothing to
+    // pull (skipped, not a failure). A binding that cannot be resolved fails that organization only.
+    let orgTransport: M23TransportDeps | null;
+    try {
+      orgTransport = await transportForOrg(deps, organizationId);
+    } catch (err) {
+      failures.push(`org ${organizationId}: ${err instanceof Error ? err.message : "failed"}`);
+      continue;
+    }
+    if (!orgTransport || orgTransport.binding.vendor === null) continue;
     // Each page is applied before its cursor advances (#749), so a failed apply throws out of the handler and the
     // page is read again next tick.
     const onPage = async (page: readonly TransportAck[]): Promise<void> => {
@@ -1987,7 +2004,7 @@ async function runTransportAckPull(
       await applyAcks(deps, acks);
     };
     try {
-      const pulled = await pullTransportAcks(transport, organizationId, kind, onPage);
+      const pulled = await pullTransportAcks(orgTransport, organizationId, kind, onPage);
       failures.push(...pulled.failures);
       for (const q of pulled.quarantined) {
         // Skipped, not retried: the cursor moves past it (a retry would only re-read the same unroutable event).
@@ -2018,8 +2035,8 @@ async function runTransportAckPull(
 
 /** `ack.pull-999` (§4.8 cron). Exported for the transfer-notice and NOE/NOTR live suites. */
 export async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
-  const transport = activeTransport(deps);
-  if (transport) return runTransportAckPull(deps, transport, "ack_999");
+  if (hasPerOrgTransport(deps) || activeTransport(deps))
+    return runTransportAckPull(deps, "ack_999");
   const portal = macPortalOf(deps);
   const x12 = x12Of(deps);
   const now = deps.now ?? (() => new Date());
@@ -2053,8 +2070,8 @@ export async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
 
 /** `ack.pull-277ca` (§4.8 cron): the 277CA twin of {@link runAckPull999} (accepted/rejected/partial outcomes). */
 export async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
-  const transport = activeTransport(deps);
-  if (transport) return runTransportAckPull(deps, transport, "ack_277ca");
+  if (hasPerOrgTransport(deps) || activeTransport(deps))
+    return runTransportAckPull(deps, "ack_277ca");
   const portal = macPortalOf(deps);
   const x12 = x12Of(deps);
   const now = deps.now ?? (() => new Date());
@@ -2704,6 +2721,9 @@ export function assertTransportInjected(
   env: Readonly<Record<string, string | undefined>>,
   deps: Pick<M23WorkerDeps, "transport">,
 ): void {
+  // Tenant clearinghouses: any organization may be bound at runtime, so there is no single vendor to compare. (The payer-id
+  // env var below still matters to every claim; its absence is a loud per-claim payer gap and a boot warning, not a refusal.)
+  if (hasPerOrgTransport(deps)) return;
   const vendor = parseClearinghouseVendor(
     env[CLEARINGHOUSE_VENDOR_ENV],
     env.NODE_ENV === "production",
@@ -2734,7 +2754,7 @@ export function registerM23LaunchWorkers(
     );
   }
   assertTransportInjected(env, deps);
-  if (activeTransport(deps) && !deps.claim837i) {
+  if ((activeTransport(deps) || hasPerOrgTransport(deps)) && !deps.claim837i) {
     throw new Error(
       "M23LaunchCapabilityIncomplete: a clearinghouse vendor is bound but the workers were built without the 837I loader ports (claim837i)",
     );

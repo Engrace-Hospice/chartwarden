@@ -30,6 +30,11 @@ export function clearinghouseUsageFromEnv(env: EnvMap): ClearinghouseContext["us
 export interface ClearinghouseContextDeps {
   readonly db: DbClient;
   readonly env: EnvMap;
+  /**
+   * The vendor mode of an organization's own live clearinghouse config (ADR-0053 amendment 2026-11-06), or null when it has
+   * none (the platform's env usage then applies). A value replaces the env usage for that organization only.
+   */
+  readonly usageFor?: (organizationId: string) => Promise<ClearinghouseContext["usage"] | null>;
   /** The provider entity's NPI (M1 owns the table), or null when unknown. */
   readonly providerNpi: (
     organizationId: string,
@@ -62,6 +67,7 @@ export function buildClearinghouseContextPort(
         },
       );
       const billingNpi = await deps.providerNpi(organizationId, providerEntityId);
+      const orgUsage = (await deps.usageFor?.(organizationId)) ?? usage;
       if (!credential || !billingNpi) {
         throw new Error(
           "clearinghouse context: provider entity has no MAC submitter credential or NPI on file",
@@ -72,7 +78,7 @@ export function buildClearinghouseContextPort(
         providerEntityId,
         payerId: payerOverride || credential.macJurisdiction,
         correlationId: randomUUID(),
-        usage,
+        usage: orgUsage,
         billingNpi,
         jurisdiction: credential.macJurisdiction,
       };

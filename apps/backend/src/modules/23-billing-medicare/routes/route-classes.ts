@@ -42,6 +42,8 @@ export function m23RouteClasses(isVoidClaim?: IsVoidClaim): readonly RouteClassR
     { cls: "open", method: "*", path: "/api/v1/billing/sequestration-policies/*" },
     { cls: "open", method: "*", path: "/api/v1/billing/mac-credentials/*" },
     { cls: "open", method: "*", path: "/api/v1/billing/edi-profiles/*" },
+    // ADR-0053 amendment 2026-11-06: choosing the clearinghouse is configuration, never new claims work.
+    { cls: "open", method: "*", path: "/api/v1/tenant/clearinghouse/*" },
     { cls: "open", method: "*", path: "/api/v1/billing/rate-tables/*" },
     { cls: "open", method: "*", path: "/api/v1/billing/visit-charge-schedules/*" },
     { cls: "open", method: "*", path: "/api/v1/billing/wage-indexes/*" },
