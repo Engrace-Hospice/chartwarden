@@ -18,37 +18,80 @@
 // Runs under `withOrgContext` (RLS scopes it to the asked org); a worker calls it, hence the org-explicit signature.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type { NetCollectionsReader } from "@chartwarden/types";
+import type {
+  NetCollections,
+  NetCollectionsMonth,
+  NetCollectionsReader,
+  OrgId,
+} from "@chartwarden/types";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { refuseForeignAmbientOrg } from "../../bootstrap/ambient-org-guard";
 
 const RA = schema.remittanceAdvice;
 const POSTED = sql`${RA.parseStatus} IN ('posted', 'partial_posted')`;
+// total_payment_amount is dollars numeric(12,2); the contract is integer cents.
+const CENTS = sql<string>`coalesce(sum(round(${RA.totalPaymentAmount} * 100)) FILTER (WHERE ${POSTED}), 0)::bigint`;
+const POSTED_COUNT = sql<string>`count(*) FILTER (WHERE ${POSTED})`;
+const PENDING_COUNT = sql<string>`count(*) FILTER (WHERE NOT (${POSTED}))`;
+/** The UTC calendar month of the payment date, `YYYY-MM`. */
+const PAYMENT_MONTH = sql<string>`to_char(${RA.productionDate} AT TIME ZONE 'UTC', 'YYYY-MM')`;
+
+interface Period {
+  readonly periodStart: Date;
+  readonly periodEnd: Date;
+}
+
+const toNetCollections = (
+  row: { cents: string; posted: string; pending: string } | undefined,
+): NetCollections => ({
+  netCents: Number(row?.cents ?? 0),
+  remittanceCount: Number(row?.posted ?? 0),
+  pendingCount: Number(row?.pending ?? 0),
+});
+
+function checkedPeriod(organizationId: string, { periodStart, periodEnd }: Period): void {
+  refuseForeignAmbientOrg(organizationId, "NetCollectionsReader");
+  if (!(periodStart < periodEnd)) throw new RangeError("periodStart must be before periodEnd");
+}
 
 export function buildNetCollectionsReader(db: DbClient): NetCollectionsReader {
+  const inPeriod = (organizationId: string, { periodStart, periodEnd }: Period) =>
+    and(
+      eq(RA.organizationId, organizationId),
+      gte(RA.productionDate, periodStart),
+      lt(RA.productionDate, periodEnd),
+    );
+
   return {
-    async netCollectionsForPeriod(organizationId, { periodStart, periodEnd }) {
-      if (!(periodStart < periodEnd)) throw new RangeError("periodStart must be before periodEnd");
+    async netCollectionsForPeriod(organizationId: OrgId, period: Period): Promise<NetCollections> {
+      checkedPeriod(organizationId, period);
       return withOrgContext(db, { organizationId, userId: "system" }, async (tx) => {
         const [row] = await tx
+          .select({ cents: CENTS, posted: POSTED_COUNT, pending: PENDING_COUNT })
+          .from(RA)
+          .where(inPeriod(organizationId, period));
+        return toNetCollections(row);
+      });
+    },
+
+    async netCollectionsByMonth(
+      organizationId: OrgId,
+      period: Period,
+    ): Promise<NetCollectionsMonth[]> {
+      checkedPeriod(organizationId, period);
+      return withOrgContext(db, { organizationId, userId: "system" }, async (tx) => {
+        const rows = await tx
           .select({
-            // total_payment_amount is dollars numeric(12,2); the contract is integer cents.
-            cents: sql<string>`coalesce(sum(round(${RA.totalPaymentAmount} * 100)) FILTER (WHERE ${POSTED}), 0)::bigint`,
-            posted: sql<string>`count(*) FILTER (WHERE ${POSTED})`,
-            pending: sql<string>`count(*) FILTER (WHERE NOT (${POSTED}))`,
+            yearMonth: PAYMENT_MONTH,
+            cents: CENTS,
+            posted: POSTED_COUNT,
+            pending: PENDING_COUNT,
           })
           .from(RA)
-          .where(
-            and(
-              eq(RA.organizationId, organizationId),
-              gte(RA.productionDate, periodStart),
-              lt(RA.productionDate, periodEnd),
-            ),
-          );
-        return {
-          netCents: Number(row?.cents ?? 0),
-          remittanceCount: Number(row?.posted ?? 0),
-          pendingCount: Number(row?.pending ?? 0),
-        };
+          .where(inPeriod(organizationId, period))
+          .groupBy(PAYMENT_MONTH)
+          .orderBy(PAYMENT_MONTH);
+        return rows.map((row) => ({ yearMonth: row.yearMonth, ...toNetCollections(row) }));
       });
     },
   };

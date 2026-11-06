@@ -1593,7 +1593,10 @@ import {
   wireM34Tenancy,
 } from "./modules/34-saas-tenant-platform/index";
 import { canInviteFirstAdmin } from "./modules/34-saas-tenant-platform/invitation-token";
-import { buildPricingOnboardingPort } from "./modules/34-saas-tenant-platform/onboarding/pricing-port";
+import {
+  buildPricingOnboardingPort,
+  readTenantGoLive,
+} from "./modules/34-saas-tenant-platform/onboarding/pricing-port";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
 // §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
 // the bound transactional-outbox publisher; the platform-ops cross-tenant reads/writes run through the
@@ -1602,7 +1605,6 @@ import { buildPricingOnboardingPort } from "./modules/34-saas-tenant-platform/on
 // bound as deny-stubs in T05 and are still dormant (GAP-208): nothing registers a live impl and no
 // in-repo consumer resolves them via `getSeam`.
 import {
-  type PlatformAuditEntry as M35PlatformAuditEntry,
   M35_JOBS_PLATFORM_JOB_ID,
   M35_OUTBOX_EVENTS,
   type PlatformRunner,
@@ -1613,6 +1615,7 @@ import {
   buildM35PatientActivePeriodConsumer,
   buildM35SessionCreatedConsumer,
   buildM35WebhookIngest,
+  buildPlatformAuditPort,
   buildPricingPlanService,
   createDrizzlePseudonymKeyProvider,
   loadM35StripeConfig,
@@ -6321,24 +6324,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // M34 wizard, bound here as a port because M35 has no edge to M34) and the tenant's own pricing read. Writes run on the
             // platform runner only; each is audited with the operator's reason (the platform audit writer, M4).
             pricing: (() => {
-              const m35PricingAudit = {
-                record: (tx: unknown, entry: M35PlatformAuditEntry) =>
-                  auditPlatformEvent(tx as Parameters<typeof auditPlatformEvent>[0], {
-                    eventType: entry.eventType,
-                    resourceKind: entry.resourceKind,
-                    resourceId: entry.resourceId,
-                    outcome: "success",
-                    severity: "warn",
-                    correlationId: `m35-pricing:${entry.eventType}:${entry.resourceId}:${randomUUID()}`,
-                    context: {
-                      ...(entry.organizationId ? { organizationId: entry.organizationId } : {}),
-                      operatorUserId: entry.operator.userId,
-                      operatorMembershipId: entry.operator.membershipId,
-                      reason: entry.reason,
-                      ...entry.detail,
-                    },
-                  }),
-              };
+              // The ONE audit mapping (M35 `buildPlatformAuditPort`); the live suite injects the same `auditPlatformEvent`.
+              const m35PricingAudit = buildPlatformAuditPort((tx, row) =>
+                auditPlatformEvent(tx as Parameters<typeof auditPlatformEvent>[0], row),
+              );
               return {
                 plans: buildPricingPlanService({
                   ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
@@ -8220,7 +8209,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 netCollections: {
                   netCollectionsForPeriod: (orgId, period) =>
                     getSeam("NetCollectionsReader").netCollectionsForPeriod(orgId, period),
+                  netCollectionsByMonth: (orgId, period) =>
+                    getSeam("NetCollectionsReader").netCollectionsByMonth(orgId, period),
                 },
+                // M34 owns the go-live date (tenant activation); M35 has no edge to it, so it reads it through this port.
+                goLive: { goLiveAt: (tx, orgId) => readTenantGoLive(tx, orgId) },
               },
             }
           : {}),

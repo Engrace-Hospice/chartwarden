@@ -1940,6 +1940,9 @@ export const netCollectionsReaderDenyStub: NetCollectionsReader = {
   async netCollectionsForPeriod() {
     throw new NotImplementedError("NetCollectionsReader");
   },
+  async netCollectionsByMonth() {
+    throw new NotImplementedError("NetCollectionsReader");
+  },
 };
 
 /** M35 §4.5 — platform-shared MRR/ARR snapshots + status counts (M33). Denies until M35-T06 registers the reader. */

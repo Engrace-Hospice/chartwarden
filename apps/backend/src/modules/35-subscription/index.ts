@@ -131,6 +131,7 @@ export {
   PLAN_CONTRACT_STEP_KEY,
   type PlatformAuditEntry,
   type PlatformAuditPort,
+  buildPlatformAuditPort,
 } from "./pricing/ports";
 export { recordDailyCensusForOrg } from "./pricing/census-daily";
 export { countActiveStaffForMonth } from "./pricing/staff-meter";

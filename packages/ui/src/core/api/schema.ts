@@ -578,7 +578,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Default census band thresholds (a form's starting point, never a price) */
+        /** Default census band thresholds: the five bands 0, 10, 17, 26 and 30 (a form's starting point, never a price) */
         get: operations["getApiAdminPricingDefaults"];
         put?: never;
         post?: never;
@@ -20902,7 +20902,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Price a plan for entered staff, census, collections and billing service mode (no write) */
+        /** Price a plan for entered staff, census, collections and billing service mode (no write); a planned go-live date prices the first month by the days live */
         post: operations["postApiV1PlatformPricingPreview"];
         delete?: never;
         options?: never;
@@ -21519,7 +21519,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** A tenant's signed contract and statements (platform) */
+        /** A tenant's signed contract and statements (platform; writes a read-audit row naming the operator) */
         get: operations["getApiV1PlatformTenantsByOrgSlugSubscription"];
         put?: never;
         /** Onboarding step 2: sign the tenant onto a plan version and settle the plan_contract step */
@@ -21538,7 +21538,7 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Change a tenant's billing service mode (none, billing_software, managed_billing) */
+        /** Change a tenant's billing service mode (none, billing_software, managed_billing); it takes effect from the 1st of the next month, immediately only while onboarding with no statement yet */
         put: operations["putApiV1PlatformTenantsByOrgSlugSubscriptionBillingservicemode"];
         post?: never;
         delete?: never;
@@ -91844,6 +91844,8 @@ export interface operations {
                     averageDailyCensus: number;
                     expectedNetCollectionsCents: number;
                     billingServiceMode: "none" | "billing_software" | "managed_billing";
+                    /** Format: date */
+                    plannedGoLiveOn?: string;
                 };
             };
         };
@@ -91869,6 +91871,8 @@ export interface operations {
                             averageDailyCensus: number;
                             expectedNetCollectionsCents: number;
                             billingServiceMode: "none" | "billing_software" | "managed_billing";
+                            /** Format: date */
+                            plannedGoLiveOn?: string;
                         };
                         platformFee: {
                             perUserSubtotalCents: number;
@@ -91887,6 +91891,8 @@ export interface operations {
                         monthlyCents: number;
                         implementationFeeCents: number;
                         firstMonthCents: number;
+                        firstMonthDaysLive: number | null;
+                        firstMonthDaysInPeriod: number | null;
                         contractTermMonths: number;
                     };
                 };
@@ -93945,6 +93951,11 @@ export interface operations {
                             };
                             billingServiceMode: "none" | "billing_software" | "managed_billing";
                             billingBps: number;
+                            pendingBillingServiceMode: {
+                                billingServiceMode: "none" | "billing_software" | "managed_billing";
+                                /** Format: date */
+                                effectiveOn: string;
+                            } | null;
                             /** Format: date */
                             contractStartOn: string;
                             contractTermMonths: number;
@@ -93981,6 +93992,7 @@ export interface operations {
                                 averageDailyCensus: number;
                                 adcDaysObserved: number;
                                 adcDaysInPeriod: number;
+                                daysLive: number;
                                 billingServiceMode: "none" | "billing_software" | "managed_billing";
                                 netCollectionsCents: number;
                                 netCollectionsRemittanceCount: number;
@@ -94000,9 +94012,19 @@ export interface operations {
                                 basis: "per_user" | "census_band";
                             };
                             billingFeeCents: number;
+                            priorPeriodLines: {
+                                sourceYearMonth: string;
+                                netCollectionsCents: number;
+                                remittanceCount: number;
+                                billingServiceMode: "none" | "billing_software" | "managed_billing";
+                                billingBps: number;
+                                feeCents: number;
+                            }[];
+                            priorPeriodFeeCents: number;
                             oneTimeFeeCents: number;
                             minimumAdjustmentCents: number;
                             totalCents: number;
+                            needsReview: boolean;
                             /** Format: date-time */
                             computedAt: string;
                             finalizedAt: string | null;
@@ -94057,6 +94079,11 @@ export interface operations {
                             };
                             billingServiceMode: "none" | "billing_software" | "managed_billing";
                             billingBps: number;
+                            pendingBillingServiceMode: {
+                                billingServiceMode: "none" | "billing_software" | "managed_billing";
+                                /** Format: date */
+                                effectiveOn: string;
+                            } | null;
                             /** Format: date */
                             contractStartOn: string;
                             contractTermMonths: number;
@@ -94129,6 +94156,11 @@ export interface operations {
                         };
                         billingServiceMode: "none" | "billing_software" | "managed_billing";
                         billingBps: number;
+                        pendingBillingServiceMode: {
+                            billingServiceMode: "none" | "billing_software" | "managed_billing";
+                            /** Format: date */
+                            effectiveOn: string;
+                        } | null;
                         /** Format: date */
                         contractStartOn: string;
                         contractTermMonths: number;
@@ -106646,6 +106678,11 @@ export interface operations {
                             };
                             billingServiceMode: "none" | "billing_software" | "managed_billing";
                             billingBps: number;
+                            pendingBillingServiceMode: {
+                                billingServiceMode: "none" | "billing_software" | "managed_billing";
+                                /** Format: date */
+                                effectiveOn: string;
+                            } | null;
                             /** Format: date */
                             contractStartOn: string;
                             contractTermMonths: number;
@@ -106678,6 +106715,7 @@ export interface operations {
                                 averageDailyCensus: number;
                                 adcDaysObserved: number;
                                 adcDaysInPeriod: number;
+                                daysLive: number;
                                 billingServiceMode: "none" | "billing_software" | "managed_billing";
                                 netCollectionsCents: number;
                                 netCollectionsRemittanceCount: number;
@@ -106697,9 +106735,19 @@ export interface operations {
                                 basis: "per_user" | "census_band";
                             };
                             billingFeeCents: number;
+                            priorPeriodLines: {
+                                sourceYearMonth: string;
+                                netCollectionsCents: number;
+                                remittanceCount: number;
+                                billingServiceMode: "none" | "billing_software" | "managed_billing";
+                                billingBps: number;
+                                feeCents: number;
+                            }[];
+                            priorPeriodFeeCents: number;
                             oneTimeFeeCents: number;
                             minimumAdjustmentCents: number;
                             totalCents: number;
+                            needsReview: boolean;
                             /** Format: date-time */
                             computedAt: string;
                             finalizedAt: string | null;

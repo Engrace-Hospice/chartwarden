@@ -128,6 +128,7 @@ const PLATFORM_READ_TABLES = [
   // Slice 2 (tenant pricing) — the census bands of a plan, the signed contract, the daily census and the monthly statement.
   "plan_census_band",
   "subscription_contract",
+  "subscription_contract_mode",
   "patient_census_daily",
   "subscription_statement",
   // WX-PR-025 — M33 §2.4 nightly MV refresh source tables (see MV_REFRESH_MATERIALIZED_VIEWS below):
@@ -233,6 +234,7 @@ const PLATFORM_PROVISION_INSERT_TABLES = [
   "subscription",
   "subscription_state_history",
   "subscription_contract",
+  "subscription_contract_mode",
 ] as const;
 
 const PLATFORM_PROVISION_UPDATE_TABLES = [
@@ -375,12 +377,10 @@ async function main(): Promise<void> {
       await run(
         'GRANT UPDATE ("baa_status", "executed_on", "effective_on", "expires_on", "breach_notification_contact_email", "breach_notification_contact_phone", "document_id", "updated_by_user_id") ON "platform_tenant_baa_record" TO chartwarden_platform;',
       );
-      // subscription_contract: INSERT above, UPDATE of the billing service mode alone (the guard trigger freezes the rest). REVOKE first
-      // so a re-provision takes back a table-wide grant.
+      // subscription_contract and subscription_contract_mode: INSERT above and never UPDATE (a signed contract does not change; the mode
+      // history is append-only). REVOKE so a re-provision takes back any older table-wide or column grant.
       await run('REVOKE UPDATE ON "subscription_contract" FROM chartwarden_platform;');
-      await run(
-        'GRANT UPDATE ("billing_service_mode", "updated_at") ON "subscription_contract" TO chartwarden_platform;',
-      );
+      await run('REVOKE UPDATE ON "subscription_contract_mode" FROM chartwarden_platform;');
       // plan (slice 2): the editor INSERTs a draft and UPDATEs by COLUMN (never tier, slug, family, version, cadence, lineage,
       // created_at); the bands of a draft are only ever inserted and deleted, never updated in place. REVOKE first so a
       // re-provision takes back an older table-wide grant.

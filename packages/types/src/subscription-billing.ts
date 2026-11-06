@@ -740,11 +740,25 @@ export interface NetCollections {
   readonly pendingCount: number;
 }
 
+/** One UTC calendar month of {@link NetCollections}, keyed `YYYY-MM` by the month of the payment date. */
+export interface NetCollectionsMonth extends NetCollections {
+  readonly yearMonth: string;
+}
+
 export interface NetCollectionsReader {
   netCollectionsForPeriod(
     organizationId: OrgId,
     period: { readonly periodStart: Date; readonly periodEnd: Date },
   ): Promise<NetCollections>;
+  /**
+   * The same meter grouped by UTC calendar month of the payment date, one row per month that has any remittance in
+   * [periodStart, periodEnd). The statement run reads its whole range in ONE call, because a CLOSED month's collections can
+   * grow after it finalizes (a remittance dated inside it posts late) and that growth is billed on the next open statement.
+   */
+  netCollectionsByMonth(
+    organizationId: OrgId,
+    period: { readonly periodStart: Date; readonly periodEnd: Date },
+  ): Promise<NetCollectionsMonth[]>;
 }
 
 /** §4.5 platform-shared revenue metrics (consumed by M33 for the platform-ops revenue dashboard). */

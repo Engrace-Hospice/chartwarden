@@ -1351,6 +1351,7 @@ export const MODULES: ModuleDef[] = [
         "subscription",
         "subscription_addon", // ADR-0108 (tenant read-only; platform-runner writes)
         "subscription_contract", // slice 2 tenant pricing: the signed terms (tenant read-only; platform-runner writes)
+        "subscription_contract_mode", // slice 2 tenant pricing: the billing service mode history (tenant read-only; append-only)
         "subscription_state_history",
         "subscription_statement", // slice 2 tenant pricing: the monthly statement (tenant read-only; platform-runner writes)
         "usage_event",

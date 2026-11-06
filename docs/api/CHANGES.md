@@ -19,7 +19,8 @@ from-status.
 
 **Why.** The flat starter / professional / enterprise tiers are retired. A tenant now signs a *census-banded* plan version at
 onboarding step 2: the monthly platform fee is the **greater of** (active staff accounts x the per-user price) and the flat fee of the
-average-daily-census band the tenant falls in, plus a percentage of net collections when the tenant bills through ChartWarden. Every
+average-daily-census band the tenant falls in, plus a percentage of net collections when the tenant bills through ChartWarden. The default
+bands are five: 0-9, 10-16, 17-25, 26-29 and 30+ patients (`GET /api/admin/pricing/defaults` returns `[0, 10, 17, 26, 30]`). Every
 price is a column on a plan version and a published version is frozen, so a tenant keeps the price it signed. Money is integer cents,
 rates are basis points.
 
@@ -27,10 +28,11 @@ rates are basis points.
 
 - `tier` on plan and subscription responses can now be `census_banded` (the three old values stay readable on existing rows).
 - `GET /api/v1/plans` (the tenant catalog) never lists a `census_banded` plan, and the retired flat plans are no longer offered.
-- `POST /api/v1/subscription` and `PATCH /api/v1/subscription` answer `403 PLAN_ASSIGNED_BY_OPERATIONS` for a `census_banded` plan, and for a
-  tenant that is on one: a contracted plan is assigned by ChartWarden operations.
-- `POST /api/admin/plans` no longer accepts `tier: census_banded` and `POST /api/admin/plans/{id}/activate` refuses such a plan: use the
-  pricing plan editor below.
+- `POST /api/v1/subscription` and `PATCH /api/v1/subscription` answer `404` for a `census_banded` slug (exactly what a plan that does not
+  exist answers), and `403 PLAN_ASSIGNED_BY_OPERATIONS` for a tenant that is already on one; so does `POST /api/v1/subscription/cancel`: a
+  contracted plan is assigned and ended by ChartWarden operations.
+- `POST /api/admin/plans` no longer accepts `tier: census_banded`; `activate`, `deprecate` and `meters` on such a plan answer
+  `403 PLAN_ASSIGNED_BY_OPERATIONS` (use the pricing plan editor below), and the legacy edit and activate answer `409` for a retired flat plan.
 
 ### 2. New routes
 
@@ -50,7 +52,10 @@ audit row) and then settles the wizard's `plan_contract` step through the wizard
 `planContractStep.status`: `settled`, `already_settled`, or `pending` (the subscription exists but the step could not be settled; repeat the
 same POST to resume, nothing is duplicated).
 
-`billingServiceMode` is `none` (the tenant bills outside ChartWarden, no percentage), `billing_software` or `managed_billing`.
+`billingServiceMode` is `none` (the tenant bills outside ChartWarden, no percentage), `billing_software` or `managed_billing`. The mode is an
+effective-dated history: a change takes effect from the **1st of the next month** (the contract view shows it as `pendingBillingServiceMode`), and
+immediately only while the tenant is still onboarding with no statement yet. A statement prices with the mode in force for its period, and a
+month that is already final can never be re-dated. `GET .../subscription` writes a read-audit row naming the operator.
 
 ### 3. The statement
 
@@ -58,6 +63,20 @@ One statement per subscription per UTC month, `draft` while the month is open an
 late-posted remittances dated inside the month still count). It shows both sides of the greater-of rule, the meters it used (active staff
 accounts, average daily census with its days observed, net collections with its remittance and pending counts) and the total. The tenant reads
 its latest statement on `GET /api/v1/subscription/pricing`; it never carries the ChartWarden operator who signed the contract.
+
+- **Charged from go-live, by days.** The platform fee and the plan minimum are charged by `inputs.daysLive / inputs.adcDaysInPeriod`: the
+  subscription's live days in the month, the go-live day (and a cancel day) counting in full, half up to the cent. A go-live on the 1st is a whole
+  month; mid-month it is a part. The implementation fee is not prorated. The billing percentage is on what was collected, so it is naturally partial.
+- **The minimum floors the platform fee only.** `minimumAdjustmentCents` lifts the (prorated) platform fee to the (prorated) plan minimum; the billing
+  fee is added on top.
+- **Late money is never lost.** A remittance dated inside a closed month that posts after the month finalized is billed on the next open
+  statement as a `priorPeriodLines` entry stored with its source month and that month's own rate (`priorPeriodFeeCents`), and never re-bills the
+  closed month. After a subscription ended, a settlement statement (`daysLive` 0) carries it.
+- **`needsReview`** marks a statement an operator should look at: its staff count fell back to the unfiltered ledger, or a remittance of the month had
+  not posted when it closed. Statements finalize on schedule either way.
+- **A canceled or paused subscription** is billed for the days it was live; a month already closed finalizes whatever the subscription has become.
+- New fields on the statement and contract views: `inputs.daysLive`, `priorPeriodLines`, `priorPeriodFeeCents`, `needsReview`,
+  `pendingBillingServiceMode`; the price preview takes an optional `plannedGoLiveOn` and returns `firstMonthDaysLive` / `firstMonthDaysInPeriod`.
 
 ---
 

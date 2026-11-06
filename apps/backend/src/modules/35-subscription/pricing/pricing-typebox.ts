@@ -26,6 +26,12 @@ const intNull = () => Type.Union([Type.Integer(), Type.Null()]);
 /** $1 billion, in cents: far above any real price and far below the safe-integer ceiling the math relies on. */
 const MAX_CENTS = 100_000_000_000;
 const MAX_ADC = 100_000;
+/**
+ * Staff x per-user price is a plain JS product, so the two caps are chosen to keep it exact: 1,000,000 staff x 1,000,000,000 cents
+ * ($10 million a seat a month, far above any price) is 10^15, below 2^53 (9.007 x 10^15). The pure math also refuses an unsafe product.
+ */
+export const MAX_STAFF = 1_000_000;
+const MAX_PER_USER_CENTS = 1_000_000_000;
 const cents = () => Type.Integer({ minimum: 0, maximum: MAX_CENTS });
 const bps = () => Type.Integer({ minimum: 0, maximum: 10_000 });
 const REASON = Type.String({ minLength: 1, maxLength: 2000 });
@@ -45,7 +51,7 @@ const pricingFields = {
   name: Type.String({ minLength: 1, maxLength: 120 }),
   description: Type.Optional(Type.Union([Type.String({ maxLength: 1000 }), Type.Null()])),
   currencyCode: Type.Optional(Type.String({ pattern: "^[A-Z]{3}$" })),
-  perUserPriceCents: cents(),
+  perUserPriceCents: Type.Integer({ minimum: 0, maximum: MAX_PER_USER_CENTS }),
   bands: Type.Array(PricingBandBody, { minItems: 1, maxItems: 20 }),
   billingSoftwareBps: bps(),
   managedBillingBps: bps(),
@@ -71,11 +77,13 @@ export const OrgSlugParams = Type.Object({
 export const PricePreviewBody = Type.Object(
   {
     planId: uuid(),
-    staffCount: Type.Integer({ minimum: 0, maximum: 1_000_000 }),
+    staffCount: Type.Integer({ minimum: 0, maximum: MAX_STAFF }),
     /** Expected average daily census, in patients (up to two decimals are kept). */
     averageDailyCensus: Type.Number({ minimum: 0, maximum: MAX_ADC }),
     expectedNetCollectionsCents: Type.Integer({ minimum: 0, maximum: MAX_CENTS }),
     billingServiceMode: BillingServiceModeLit,
+    /** The planned go-live date: when given, the first month is priced by the days live from that day (the go-live day counts). */
+    plannedGoLiveOn: Type.Optional(Type.String({ format: "date" })),
   },
   { additionalProperties: false },
 );
@@ -147,6 +155,7 @@ export const PricePreviewDto = Type.Object({
     averageDailyCensus: Type.Number(),
     expectedNetCollectionsCents: Type.Integer(),
     billingServiceMode: BillingServiceModeLit,
+    plannedGoLiveOn: Type.Optional(Type.String({ format: "date" })),
   }),
   platformFee: Type.Object({
     perUserSubtotalCents: Type.Integer(),
@@ -165,6 +174,9 @@ export const PricePreviewDto = Type.Object({
   monthlyCents: Type.Integer(),
   implementationFeeCents: Type.Integer(),
   firstMonthCents: Type.Integer(),
+  /** Days of the first month the tenant would be live (null without a planned go-live date: the first month is then priced whole). */
+  firstMonthDaysLive: intNull(),
+  firstMonthDaysInPeriod: intNull(),
   contractTermMonths: Type.Integer(),
 });
 
@@ -179,6 +191,14 @@ const contractFields = {
   }),
   billingServiceMode: BillingServiceModeLit,
   billingBps: Type.Integer(),
+  /** A recorded change that has not taken effect yet (it takes effect from the 1st of the next month). */
+  pendingBillingServiceMode: Type.Union([
+    Type.Object({
+      billingServiceMode: BillingServiceModeLit,
+      effectiveOn: Type.String({ format: "date" }),
+    }),
+    Type.Null(),
+  ]),
   contractStartOn: Type.String({ format: "date" }),
   contractTermMonths: Type.Integer(),
   contractEndsOn: Type.String({ format: "date" }),
@@ -213,6 +233,7 @@ export const StatementDto: TSchema = Type.Object({
     averageDailyCensus: Type.Number(),
     adcDaysObserved: Type.Integer(),
     adcDaysInPeriod: Type.Integer(),
+    daysLive: Type.Integer(),
     billingServiceMode: BillingServiceModeLit,
     netCollectionsCents: Type.Integer(),
     netCollectionsRemittanceCount: Type.Integer(),
@@ -232,9 +253,21 @@ export const StatementDto: TSchema = Type.Object({
     basis: Type.Union([Type.Literal("per_user"), Type.Literal("census_band")]),
   }),
   billingFeeCents: Type.Integer(),
+  priorPeriodLines: Type.Array(
+    Type.Object({
+      sourceYearMonth: Type.String(),
+      netCollectionsCents: Type.Integer(),
+      remittanceCount: Type.Integer(),
+      billingServiceMode: BillingServiceModeLit,
+      billingBps: Type.Integer(),
+      feeCents: Type.Integer(),
+    }),
+  ),
+  priorPeriodFeeCents: Type.Integer(),
   oneTimeFeeCents: Type.Integer(),
   minimumAdjustmentCents: Type.Integer(),
   totalCents: Type.Integer(),
+  needsReview: Type.Boolean(),
   computedAt: iso(),
   finalizedAt: isoNull(),
 });

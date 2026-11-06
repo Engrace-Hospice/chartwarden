@@ -22,9 +22,12 @@
 // excluded ones are dropped, and each survivor's pseudonym is recomputed under the ledger's key epoch and matched to the ledger.
 // Raw ids live in this function's memory only.
 //
-// CEILING (flagged, like the patient census): the ledger can be matched only under the ACTIVE key epoch. If the month's newest ledger epoch
-// is no longer the active one (a key rotation since), the roles cannot be applied and the count falls back to the UNFILTERED ledger
-// (`ledger_unfiltered`), which the statement records so an operator sees it.
+// CEILING (flagged, like the patient census): the ledger can be matched only under the ACTIVE key epoch, and only when the month's
+// ledger holds ONE epoch. If the month's ledger spans more than one key epoch (a rotation mid-month: a member who signed in before and
+// after it has a different pseudonym under each key, so identities cannot be told apart across epochs), or its one epoch is no longer
+// the active one, the roles cannot be applied and the count falls back to the UNFILTERED ledger (`ledger_unfiltered`): the busiest
+// SINGLE epoch's distinct pseudonyms (never the sum, which would count a rotated member twice). The statement records the basis and is
+// flagged `needs_review`, so an operator sees it.
 import { isReservedPlatformRoleKey } from "@chartwarden/auth";
 import { type DbClient, schema } from "@chartwarden/db";
 import {
@@ -32,7 +35,8 @@ import {
   computeBillingPseudonym,
   toBillingYearMonth,
 } from "@chartwarden/subscription-billing";
-import { and, eq, gt, inArray, isNotNull, isNull, lt, max, or } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import type { MonthWindow } from "./statement-period";
 
 const UAP = schema.userActivePeriod;
 const MB = schema.memberships;
@@ -48,11 +52,6 @@ export type StaffCountBasis = "identity_filtered" | "ledger_unfiltered";
 export interface StaffCount {
   readonly count: number;
   readonly basis: StaffCountBasis;
-}
-
-export interface MonthWindow {
-  readonly start: Date;
-  readonly end: Date;
 }
 
 export interface RoleFacts {
@@ -86,33 +85,31 @@ export function nonStaffMembershipIds(
   return new Set([...onlyNonStaff].filter(([, only]) => only).map(([id]) => id));
 }
 
-export async function countActiveStaffForMonth(
+/** The month's ledger: the distinct pseudonyms that signed in, per key epoch. */
+async function readLedgerByEpoch(
   tx: DbClient,
-  keyProvider: PseudonymKeyProvider,
   organizationId: string,
   window: MonthWindow,
-): Promise<StaffCount> {
-  const period = toBillingYearMonth(window.start);
-  const ledgerScope = and(
-    eq(UAP.organizationId, organizationId),
-    eq(UAP.periodYearMonth, period),
-    eq(UAP.wasActive, true),
-  );
-  const [newest] = await tx
-    .select({ epoch: max(UAP.pseudonymKeyEpoch) })
+): Promise<ReadonlyMap<string, ReadonlySet<string>>> {
+  const rows = await tx
+    .select({ epoch: UAP.pseudonymKeyEpoch, pseudonym: UAP.membershipPseudonym })
     .from(UAP)
-    .where(ledgerScope);
-  if (!newest?.epoch) return { count: 0, basis: "identity_filtered" };
-  const ledgerRows = await tx
-    .select({ pseudonym: UAP.membershipPseudonym })
-    .from(UAP)
-    .where(and(ledgerScope, eq(UAP.pseudonymKeyEpoch, newest.epoch)));
-  const signedIn = new Set(ledgerRows.map((r) => r.pseudonym));
+    .where(
+      and(
+        eq(UAP.organizationId, organizationId),
+        eq(UAP.periodYearMonth, toBillingYearMonth(window.start)),
+        eq(UAP.wasActive, true),
+      ),
+    );
+  const byEpoch = new Map<string, Set<string>>();
+  for (const row of rows) {
+    byEpoch.set(row.epoch, (byEpoch.get(row.epoch) ?? new Set<string>()).add(row.pseudonym));
+  }
+  return byEpoch;
+}
 
-  const key = await keyProvider.activeKey();
-  if (key.keyEpoch !== newest.epoch) return { count: signedIn.size, basis: "ledger_unfiltered" };
-
-  // Memberships live at some point in the month.
+/** Memberships that held at some point in the month, with every grant they hold: a membership is excluded only if ALL are non-staff. */
+async function liveMemberships(tx: DbClient, organizationId: string, window: MonthWindow) {
   const candidates = await tx
     .select({ id: MB.id, userId: MB.userId })
     .from(MB)
@@ -124,9 +121,7 @@ export async function countActiveStaffForMonth(
         or(isNull(MB.revokedAt), gt(MB.revokedAt, window.start)),
       ),
     );
-  if (candidates.length === 0) return { count: 0, basis: "identity_filtered" };
-
-  // Every role grant of those memberships, expired or not: a membership is excluded only if ALL of them are non-staff.
+  if (candidates.length === 0) return { candidates, excluded: new Set<string>() };
   const grants = await tx
     .select({
       membershipId: MR.membershipId,
@@ -146,8 +141,25 @@ export async function countActiveStaffForMonth(
         ),
       ),
     );
-  const excluded = nonStaffMembershipIds(grants);
+  return { candidates, excluded: nonStaffMembershipIds(grants) };
+}
 
+export async function countActiveStaffForMonth(
+  tx: DbClient,
+  keyProvider: PseudonymKeyProvider,
+  organizationId: string,
+  window: MonthWindow,
+): Promise<StaffCount> {
+  const byEpoch = await readLedgerByEpoch(tx, organizationId, window);
+  if (byEpoch.size === 0) return { count: 0, basis: "identity_filtered" };
+  const key = await keyProvider.activeKey();
+  const [onlyEpoch] = byEpoch.size === 1 ? [...byEpoch.keys()] : [undefined];
+  if (onlyEpoch === undefined || key.keyEpoch !== onlyEpoch) {
+    const busiest = Math.max(...[...byEpoch.values()].map((pseudonyms) => pseudonyms.size));
+    return { count: busiest, basis: "ledger_unfiltered" };
+  }
+  const signedIn = byEpoch.get(onlyEpoch) ?? new Set<string>();
+  const { candidates, excluded } = await liveMemberships(tx, organizationId, window);
   const staffUsers = new Set<string>();
   for (const candidate of candidates) {
     if (excluded.has(candidate.id)) continue;

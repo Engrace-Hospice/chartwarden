@@ -65,7 +65,8 @@ const plan: PricingPlanView = {
     { minAdc: 0, maxAdc: 9, monthlyFeeCents: 100_000 },
     { minAdc: 10, maxAdc: 16, monthlyFeeCents: 200_000 },
     { minAdc: 17, maxAdc: 25, monthlyFeeCents: 300_000 },
-    { minAdc: 26, maxAdc: null, monthlyFeeCents: 400_000 },
+    { minAdc: 26, maxAdc: 29, monthlyFeeCents: 400_000 },
+    { minAdc: 30, maxAdc: null, monthlyFeeCents: 500_000 },
   ],
   billingSoftwareBps: 100,
   managedBillingBps: 400,
@@ -84,6 +85,7 @@ const contract: PlatformContractView = {
   plan: { id: PLAN_ID, slug: plan.slug, name: plan.name, version: 1, currencyCode: "USD" },
   billingServiceMode: "billing_software",
   billingBps: 100,
+  pendingBillingServiceMode: null,
   contractStartOn: "2026-11-05",
   contractTermMonths: 12,
   contractEndsOn: "2027-11-05",
@@ -102,6 +104,7 @@ interface Calls {
   readonly created: unknown[];
   readonly planWrites: unknown[];
   readonly tenantReads: unknown[];
+  readonly platformReads: unknown[];
 }
 
 function makeServices(calls: Calls): { plans: PricingPlanService; contracts: ContractService } {
@@ -139,7 +142,10 @@ function makeServices(calls: Calls): { plans: PricingPlanService; contracts: Con
       ...contract,
       billingServiceMode: mode,
     }),
-    platformView: async () => ({ contract, statements: [] }),
+    platformView: async (actor, orgSlug) => {
+      calls.platformReads.push({ actor, orgSlug });
+      return { contract, statements: [] };
+    },
     tenantView: async (organizationId, userId) => {
       calls.tenantReads.push({ organizationId, userId });
       const {
@@ -160,7 +166,7 @@ const grantsOf = (role: keyof typeof PLATFORM_OPS_ROLE_GRANTS) => [
 ];
 
 function makeServer() {
-  const calls: Calls = { created: [], planWrites: [], tenantReads: [] };
+  const calls: Calls = { created: [], planWrites: [], tenantReads: [], platformReads: [] };
   const store = createInMemoryEffectivePermissionStore([
     {
       orgId: PLATFORM_ORG,
@@ -492,6 +498,64 @@ describe("the platform pricing reads and the price preview", () => {
     expect(body.firstMonthCents).toBe(950_000);
   });
 
+  it("prices the FIRST month by the days live from a planned go-live date: Nov 20 is 11 of 30 days (the go-live day counts)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/platform/pricing/preview",
+      headers: OPS,
+      payload: {
+        planId: PLAN_ID,
+        staffCount: 0,
+        averageDailyCensus: 12,
+        expectedNetCollectionsCents: 0,
+        billingServiceMode: "none",
+        plannedGoLiveOn: "2026-11-20",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    // a full month on the $2,000 band is $2,000; 11/30 of it is $733.33; the implementation fee is added whole
+    expect(body.monthlyCents).toBe(200_000);
+    expect(body.firstMonthDaysLive).toBe(11);
+    expect(body.firstMonthDaysInPeriod).toBe(30);
+    expect(body.firstMonthCents).toBe(73_333 + 250_000);
+  });
+
+  it("a go-live on the 1st is a whole first month, and on the last day it is one day; a date that does not exist is refused", async () => {
+    const { app } = makeServer();
+    const preview = (plannedGoLiveOn: string) =>
+      app.inject({
+        method: "POST",
+        url: "/api/v1/platform/pricing/preview",
+        headers: OPS,
+        payload: {
+          planId: PLAN_ID,
+          staffCount: 0,
+          averageDailyCensus: 12,
+          expectedNetCollectionsCents: 0,
+          billingServiceMode: "none",
+          plannedGoLiveOn,
+        },
+      });
+    expect((await preview("2026-11-01")).json().firstMonthCents).toBe(200_000 + 250_000);
+    expect((await preview("2026-11-30")).json().firstMonthCents).toBe(6_667 + 250_000);
+    expect((await preview("2026-02-31")).statusCode).toBe(422);
+  });
+
+  it("bounds staff x per-user price below 2^53: a per-user price above the cap is refused on a plan write", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/pricing/plans",
+      headers: { ...BILLING, ...idem() },
+      payload: { ...PLAN_BODY, perUserPriceCents: 1_000_000_001 },
+    });
+    expect(res.statusCode).toBe(422);
+    // 1,000,000 staff x the cap is exactly 10^15, which a double holds exactly
+    expect(1_000_000 * 1_000_000_000).toBeLessThan(Number.MAX_SAFE_INTEGER);
+  });
+
   it("prices a tenant that bills outside ChartWarden with no percentage", async () => {
     const { app } = makeServer();
     const res = await app.inject({
@@ -524,6 +588,37 @@ describe("the platform pricing reads and the price preview", () => {
       },
     });
     expect(res.statusCode).toBe(422);
+  });
+});
+
+describe("the platform read of a tenant's pricing: GET /api/v1/platform/tenants/:orgSlug/subscription", () => {
+  const url = "/api/v1/platform/tenants/acme-hospice/subscription";
+
+  it("hands the SESSION's operator to the service, which writes the read-audit row naming operator and tenant", async () => {
+    const { app, calls } = makeServer();
+    const res = await app.inject({ method: "GET", url, headers: OPS });
+    expect(res.statusCode).toBe(200);
+    expect(calls.platformReads).toEqual([
+      {
+        actor: expect.objectContaining({ userId: "ops", membershipId: OPS_MEMBERSHIP }),
+        orgSlug: "acme-hospice",
+      },
+    ]);
+  });
+
+  it("a tenant cannot read it", async () => {
+    const { app, calls } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url,
+      headers: {
+        "x-test-user": "tenant_admin",
+        "x-test-org": TENANT_ORG,
+        "x-test-roles": "org_admin",
+      },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(calls.platformReads).toHaveLength(0);
   });
 });
 
@@ -623,7 +718,8 @@ describe("the plan editor: /api/admin/pricing/plans", () => {
       url: "/api/admin/pricing/defaults",
       headers: BILLING,
     });
-    expect(res.json()).toEqual({ bandThresholds: [0, 10, 17, 26], currencyCode: "USD" });
+    // the owner's five bands: 0-9, 10-16, 17-25, 26-29, 30+
+    expect(res.json()).toEqual({ bandThresholds: [0, 10, 17, 26, 30], currencyCode: "USD" });
   });
 });
 
