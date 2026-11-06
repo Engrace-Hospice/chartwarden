@@ -12,7 +12,6 @@ import {
   BEREAVEMENT_CADENCE_FLOOR,
   BEREAVEMENT_RISK_WEIGHTS,
   BEREAVEMENT_WINDOW_DAYS,
-  CLOSEOUT_CADENCE_ITEM,
   COMPLICATED_GRIEF_SCREEN_THRESHOLD,
   OUTREACH_DUE_AT_CEILING_DAYS,
   applyCosignReceipt,
@@ -79,18 +78,20 @@ describe("D4 — the per-tier cadence floor is cumulative and tighten-only", () 
     ] as const) {
       for (const mark of marks(lower)) expect(marks(higher).has(mark)).toBe(true);
     }
-    // moderate's 9-month milestone survives at high and complicated (D4 beats the §7.4 narrative).
+    // the 9-month milestone is in every tier's floor now (ADR-0110 D2) and so survives every step up.
     expect(marks("high").has("nine_month")).toBe(true);
   });
 
-  it("puts every floor contact inside the due_at ceiling and the closeout on day 396", () => {
+  it("puts every floor contact inside the due_at ceiling and the closeout letter before the window ends", () => {
     for (const tier of ["low", "moderate", "high", "complicated"] as const) {
       for (const item of BEREAVEMENT_CADENCE_FLOOR[tier]) {
         expect(item.offsetDays).toBeGreaterThanOrEqual(0);
         expect(item.offsetDays).toBeLessThanOrEqual(OUTREACH_DUE_AT_CEILING_DAYS);
       }
+      const closeout = BEREAVEMENT_CADENCE_FLOOR[tier].find((i) => i.mark === "closeout_letter");
+      expect(closeout?.offsetDays).toBe(390);
+      expect(closeout?.offsetDays).toBeLessThan(BEREAVEMENT_WINDOW_DAYS);
     }
-    expect(CLOSEOUT_CADENCE_ITEM.offsetDays).toBe(BEREAVEMENT_WINDOW_DAYS);
   });
 
   it("converts the complicated-tier week-1 contact to an in-person visit", () => {
@@ -105,7 +106,9 @@ describe("D4 — the per-tier cadence floor is cumulative and tighten-only", () 
   it("accepts a tenant policy that adds, moves earlier, or converts upward", () => {
     const tightened = [
       ...BEREAVEMENT_CADENCE_FLOOR.low.map((i) =>
-        i.mark === "one_month" ? { ...i, offsetDays: 21, kind: "in_person_visit" as const } : i,
+        i.mark === "initial_outreach"
+          ? { ...i, offsetDays: 21, kind: "in_person_visit" as const }
+          : i,
       ),
       {
         mark: "two_month" as const,
@@ -116,7 +119,7 @@ describe("D4 — the per-tier cadence floor is cumulative and tighten-only", () 
     ];
     expect(validateTenantCadence("low", tightened)).toEqual([]);
     expect(effectiveCadence("low", tightened).map((i) => i.offsetDays)).toEqual([
-      7, 21, 60, 90, 180, 365,
+      2, 21, 60, 90, 180, 270, 365, 365, 390,
     ]);
   });
 
@@ -124,7 +127,9 @@ describe("D4 — the per-tier cadence floor is cumulative and tighten-only", () 
     const loosened = BEREAVEMENT_CADENCE_FLOOR.low
       .filter((i) => i.mark !== "six_month")
       .map((i) =>
-        i.mark === "one_month" ? { ...i, offsetDays: 45, kind: "portal_message" as const } : i,
+        i.mark === "initial_outreach"
+          ? { ...i, offsetDays: 45, kind: "portal_message" as const }
+          : i,
       );
     const violations = validateTenantCadence("low", loosened);
     expect(violations.map((v) => v.code).sort()).toEqual([
