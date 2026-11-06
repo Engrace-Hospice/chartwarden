@@ -46,6 +46,8 @@ export interface BereavementEraseCounts {
   readonly outreach: number;
   /** `bereavement_anniversary_reminder` rows deleted. */
   readonly anniversaryReminders: number;
+  /** `bereavement_assessment_task` rows deleted (ADR-0109 D3). */
+  readonly assessmentTasks: number;
   /** `bereaved_contact` rows deleted. */
   readonly contacts: number;
   /** `bereavement_plan` roots tombstoned (rows PRESERVED for FK integrity — not part of the tally). */
@@ -107,6 +109,7 @@ export async function eraseBereavementRecord(
     counts.optOuts +
     counts.outreach +
     counts.anniversaryReminders +
+    counts.assessmentTasks +
     counts.contacts;
   return { erased, shredded, counts };
 }
@@ -117,6 +120,7 @@ const ZERO: BereavementEraseCounts = {
   optOuts: 0,
   outreach: 0,
   anniversaryReminders: 0,
+  assessmentTasks: 0,
   contacts: 0,
   plansTombstoned: 0,
   closuresShredded: 0,
@@ -167,6 +171,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
   const SCORE = schema.bereavementRiskScore;
   const OPT_OUT = schema.bereavementOptOut;
   const REMINDER = schema.bereavementAnniversaryReminder;
+  const TASK = schema.bereavementAssessmentTask;
   const CLOSURE = schema.bereavementPlanClosure;
 
   /** The decedent's plan-root ids — every child table is keyed on `plan_id`, not on the patient. */
@@ -257,9 +262,13 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
         const del = async <T extends { id: string }>(run: () => Promise<T[]>): Promise<number> =>
           (await run()).length;
 
-        // FK order: contact_log → risk_score / opt_out → outreach → anniversary_reminder → contact.
+        // FK order: contact_log → assessment_task (names a risk score) → risk_score / opt_out → outreach →
+        // anniversary_reminder → contact.
         const contactLogs = await del(() =>
           tx.delete(LOG).where(inArray(LOG.planId, planIds)).returning({ id: LOG.id }),
+        );
+        const assessmentTasks = await del(() =>
+          tx.delete(TASK).where(inArray(TASK.planId, planIds)).returning({ id: TASK.id }),
         );
         const riskScores = await del(() =>
           tx.delete(SCORE).where(inArray(SCORE.planId, planIds)).returning({ id: SCORE.id }),
@@ -309,6 +318,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
           optOuts,
           outreach,
           anniversaryReminders,
+          assessmentTasks,
           contacts,
           plansTombstoned: tombstoned.length,
           closuresShredded: closures.length,

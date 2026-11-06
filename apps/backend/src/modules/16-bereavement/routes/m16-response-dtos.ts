@@ -11,6 +11,7 @@ import type { Static } from "@sinclair/typebox";
 import type { CursorPage } from "./concurrency";
 import type {
   BereavedContactRowViewResponseSchema,
+  BereavementAssessmentTaskListResponseSchema,
   BereavementClosureViewResponseSchema,
   BereavementContactLogViewResponseSchema,
   BereavementOutreachPageResponseSchema,
@@ -27,6 +28,7 @@ import type {
 } from "./m16-typebox";
 import type {
   BereavedContactRowView as SvcBereavedContactRowView,
+  BereavementAssessmentTaskList as SvcBereavementAssessmentTaskList,
   BereavementClosureView as SvcBereavementClosureView,
   BereavementOutreachRowView as SvcBereavementOutreachRowView,
   BereavementPlanDetail as SvcBereavementPlanDetail,
@@ -98,4 +100,8 @@ type _OutreachPage = Conforms<
 type _RiskScorePage = Conforms<
   Static<typeof BereavementRiskScorePageResponseSchema>,
   CursorPage<SvcBereavementRiskScoreView>
+>;
+type _AssessmentTasks = Conforms<
+  Static<typeof BereavementAssessmentTaskListResponseSchema>,
+  SvcBereavementAssessmentTaskList
 >;

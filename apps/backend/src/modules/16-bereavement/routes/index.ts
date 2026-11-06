@@ -3,6 +3,8 @@
 // the composition root binds (the M15/M24/M25/M26 routes/index.ts precedent).
 export type {
   BereavedContactRowView,
+  BereavementAssessmentTaskList,
+  BereavementAssessmentTaskView,
   BereavementClosureView,
   BereavementOutreachRowView,
   BereavementPlanDetail,

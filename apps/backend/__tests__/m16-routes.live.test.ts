@@ -440,6 +440,34 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     expect(unmarked.rows[0].n).toBe(0);
   });
 
+  it("seed generates both assessment checkpoints per contact; the automatic initial score completes neither (ADR-0109 D3)", async () => {
+    const { rows } = await admin.query(
+      `SELECT bereaved_contact_id, task_kind, status, risk_score_id, due_at, late_grace_until,
+              (SELECT death_date FROM bereavement_plan WHERE id=$1) AS death_date
+         FROM bereavement_assessment_task WHERE plan_id=$1 ORDER BY due_at`,
+      [planId],
+    );
+    expect(rows).toHaveLength(Object.keys(contacts).length * 2);
+    for (const r of rows) {
+      expect(r.status).toBe("scheduled");
+      expect(r.risk_score_id).toBeNull();
+    }
+    const days = (r: { due_at: Date; death_date: Date }) =>
+      Math.round((new Date(r.due_at).getTime() - new Date(r.death_date).getTime()) / 86_400_000);
+    expect(new Set(rows.filter((r) => r.task_kind === "initial_assessment").map(days))).toEqual(
+      new Set([28]),
+    );
+    expect(new Set(rows.filter((r) => r.task_kind === "midpoint_reassessment").map(days))).toEqual(
+      new Set([180]),
+    );
+    // Tasks are not outreach rows: nothing in the outreach ledger is an assessment.
+    const assessmentOutreach = await admin.query(
+      "SELECT count(*)::int AS n FROM bereavement_outreach WHERE plan_id=$1 AND cadence_mark ILIKE '%assess%'",
+      [planId],
+    );
+    expect(assessmentOutreach.rows[0].n).toBe(0);
+  });
+
   // ── reads ────────────────────────────────────────────────────────────────────────────────────────
   it("reads: list, detail, outreach, risk scores — the assigned counselor yes, an unassigned one 404", async () => {
     const list = await call("GET", "/api/v1/bereavement/plans?status=active", "don");
@@ -994,6 +1022,261 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     expect(regen.statusCode).toBe(200);
     const live = held(await rowsOf()).filter((m) => m !== null);
     expect(new Set(live).size).toBe(live.length);
+  });
+
+  it("a human recompute naming an assessment task completes it; the factors merge true-wins and stick; the IDG flag is assessed (ADR-0109 D3/D5)", async () => {
+    const pat = contacts.Pat as string;
+    const url = `/api/v1/bereavement/plans/${planId}/recompute-risk`;
+    const taskOf = async (contactId: string, kind: string) =>
+      (
+        await admin.query(
+          "SELECT id, status, risk_score_id, completed_by_membership_id FROM bereavement_assessment_task WHERE bereaved_contact_id=$1 AND task_kind=$2",
+          [contactId, kind],
+        )
+      ).rows[0] as {
+        id: string;
+        status: string;
+        risk_score_id: string | null;
+        completed_by_membership_id: string | null;
+      };
+    const factorsOf = async (scoreId: string) =>
+      (
+        await admin.query("SELECT risk_factors_jsonb FROM bereavement_risk_score WHERE id=$1", [
+          scoreId,
+        ])
+      ).rows[0].risk_factors_jsonb as {
+        factors: Record<string, boolean | string>;
+        manualFactors: Record<string, boolean | string>;
+      };
+    const unknowns = {
+      ambivalent_relationship: "unknown",
+      sudden_unexpected_death: "unknown",
+      prior_unresolved_loss: "unknown",
+      preexisting_mental_health: "unknown",
+      social_isolation: "unknown",
+      financial_strain: "unknown",
+      primary_caregiver_role: "unknown",
+      active_substance_use: "unknown",
+    };
+    const patientId = (
+      await admin.query("SELECT patient_id FROM bereavement_plan WHERE id=$1", [planId])
+    ).rows[0].patient_id as string;
+    const flagId = (
+      await admin.query(
+        `INSERT INTO bereavement_idg_risk_flag (organization_id, idg_decision_id, idg_meeting_id, patient_id,
+           risk_level, rationale_text, recorded_by_membership_id, recorded_at)
+         VALUES ($1,$2,$3,$4,'high','synthetic rationale',$5,now()) RETURNING id`,
+        [ORG_A, randomUUID(), randomUUID(), patientId, actors.don?.membership],
+      )
+    ).rows[0].id as string;
+
+    const initial = await taskOf(pat, "initial_assessment");
+    expect(initial.status).toBe("scheduled");
+    const done = await call("POST", url, "counselor", {
+      assessmentTaskId: initial.id,
+      factors: {
+        ...unknowns,
+        ambivalent_relationship: true,
+        prior_unresolved_loss: false,
+        social_isolation: true,
+        financial_strain: false,
+        active_substance_use: true,
+      },
+    });
+    expect(done.statusCode).toBe(201);
+    expect(done.json().contactId).toBe(pat);
+    const scoreId = done.json().scoreId as string;
+
+    const completed = await taskOf(pat, "initial_assessment");
+    expect(completed).toMatchObject({
+      status: "completed",
+      risk_score_id: scoreId,
+      completed_by_membership_id: actors.counselor?.membership,
+    });
+    // The honored `factors`: stated slots merged in; the Part 2 slot is NOT accepted from an uncleared reader.
+    const stored = await factorsOf(scoreId);
+    expect(stored.manualFactors).toMatchObject({
+      ambivalentRelationship: true,
+      priorUnresolvedLoss: false,
+      socialIsolation: true,
+      financialStrain: false,
+    });
+    expect(stored.manualFactors.activeSubstanceUse).toBeUndefined();
+    expect(stored.factors.ambivalentRelationship).toBe(true);
+    expect(stored.factors.priorUnresolvedLoss).toBe(false);
+    expect(stored.factors.activeSubstanceUse).toBe("unknown");
+
+    // Completing the INITIAL assessment answers the IDG's request: the pending flag is `assessed` by that score.
+    const flag = (
+      await admin.query(
+        "SELECT status, assessed_risk_score_id FROM bereavement_idg_risk_flag WHERE id=$1",
+        [flagId],
+      )
+    ).rows[0];
+    expect(flag).toMatchObject({ status: "assessed", assessed_risk_score_id: scoreId });
+
+    // Sticky + true wins: a later score that states the OPPOSITE of what was recorded never lowers it.
+    const later = await call("POST", url, "counselor", {
+      bereavedContactId: pat,
+      factors: { ...unknowns, ambivalent_relationship: false },
+    });
+    expect(later.statusCode).toBe(201);
+    expect((await factorsOf(later.json().scoreId as string)).factors.ambivalentRelationship).toBe(
+      true,
+    );
+
+    // The same checkpoint cannot be completed twice; another contact's checkpoint is not Pat's to score.
+    expect(
+      (await call("POST", url, "counselor", { assessmentTaskId: initial.id })).statusCode,
+    ).toBe(409);
+    const chrisMid = await taskOf(contacts.Chris as string, "midpoint_reassessment");
+    expect(
+      (
+        await call("POST", url, "counselor", {
+          assessmentTaskId: chrisMid.id,
+          bereavedContactId: pat,
+        })
+      ).statusCode,
+    ).toBe(422);
+    expect(
+      (await call("POST", url, "counselor", { assessmentTaskId: randomUUID() })).statusCode,
+    ).toBe(404);
+    // The midpoint is still open for its own contact; naming only the task aims the score at its contact.
+    const mid = await call("POST", url, "counselor", { assessmentTaskId: chrisMid.id });
+    expect(mid.statusCode).toBe(201);
+    expect(mid.json().contactId).toBe(contacts.Chris);
+    expect((await taskOf(contacts.Chris as string, "midpoint_reassessment")).status).toBe(
+      "completed",
+    );
+    // The IDG flag stays assessed by the FIRST score (the midpoint is not the initial assessment).
+    expect(
+      (
+        await admin.query(
+          "SELECT assessed_risk_score_id FROM bereavement_idg_risk_flag WHERE id=$1",
+          [flagId],
+        )
+      ).rows[0].assessed_risk_score_id,
+    ).toBe(scoreId);
+  });
+
+  it("GET assessment-tasks: the plan's checkpoints for the assigned counselor; an unassigned counselor 404s", async () => {
+    const ok = await call(
+      "GET",
+      `/api/v1/bereavement/plans/${planId}/assessment-tasks`,
+      "counselor",
+    );
+    expect(ok.statusCode).toBe(200);
+    const body = ok.json() as {
+      items: { taskKind: string; status: string }[];
+      redactedCategories: string[];
+    };
+    expect(body.items.length).toBeGreaterThanOrEqual(2);
+    expect(body.items.some((t) => t.status === "completed")).toBe(true);
+    expect(
+      (await call("GET", `/api/v1/bereavement/plans/${planId}/assessment-tasks`, "counselor2"))
+        .statusCode,
+    ).toBe(404);
+  });
+
+  it("a full opt-out and a pause cancel never-attempted rows and checkpoints even when PAST DUE, so the miss cron cannot count them (ADR-0109)", async () => {
+    // An active plan whose death was 60 days ago (held by the supervisor, so the counselor's caseload stays 1), with a contact holding a past-due scheduled call + checkpoint.
+    const seedOld = async () => {
+      const plan = (
+        await admin.query(
+          `INSERT INTO bereavement_plan (organization_id, patient_id, admission_id, provider_entity_id, status,
+             death_date, assigned_counselor_user_id, opened_at)
+           VALUES ($1,$2,$3,$4,'active', CURRENT_DATE - 60, $5, now()) RETURNING id`,
+          [ORG_A, randomUUID(), randomUUID(), pe[ORG_A], actors.don?.membership],
+        )
+      ).rows[0].id as string;
+      const contact = (
+        await admin.query(
+          `INSERT INTO bereaved_contact (organization_id, provider_entity_id, plan_id, display_name,
+             relationship_code, status, confirmed_at)
+           VALUES ($1,$2,$3,'Old Contact','spouse','active', now()) RETURNING id`,
+          [ORG_A, pe[ORG_A], plan],
+        )
+      ).rows[0].id as string;
+      const pastDue = (
+        await admin.query(
+          `INSERT INTO bereavement_outreach (organization_id, provider_entity_id, plan_id, bereaved_contact_id,
+             kind, status, death_anchor_at, due_at, late_grace_until)
+           SELECT $1,$2,p.id,$4,'phone_call','scheduled', p.death_date::timestamptz,
+                  p.death_date::timestamptz + interval '30 days', p.death_date::timestamptz + interval '37 days'
+             FROM bereavement_plan p WHERE p.id=$3 RETURNING id`,
+          [ORG_A, pe[ORG_A], plan, contact],
+        )
+      ).rows[0].id as string;
+      const pastDueTask = (
+        await admin.query(
+          `INSERT INTO bereavement_assessment_task (organization_id, provider_entity_id, plan_id,
+             bereaved_contact_id, task_kind, due_at, late_grace_until)
+           SELECT $1,$2,p.id,$4,'initial_assessment', p.death_date::timestamptz + interval '28 days',
+                  p.death_date::timestamptz + interval '35 days'
+             FROM bereavement_plan p WHERE p.id=$3 RETURNING id`,
+          [ORG_A, pe[ORG_A], plan, contact],
+        )
+      ).rows[0].id as string;
+      const futureTask = (
+        await admin.query(
+          `INSERT INTO bereavement_assessment_task (organization_id, provider_entity_id, plan_id,
+             bereaved_contact_id, task_kind, due_at, late_grace_until)
+           SELECT $1,$2,p.id,$4,'midpoint_reassessment', p.death_date::timestamptz + interval '180 days',
+                  p.death_date::timestamptz + interval '187 days'
+             FROM bereavement_plan p WHERE p.id=$3 RETURNING id`,
+          [ORG_A, pe[ORG_A], plan, contact],
+        )
+      ).rows[0].id as string;
+      return { plan, contact, pastDue, pastDueTask, futureTask };
+    };
+    const status = async (table: string, id: string) =>
+      (await admin.query(`SELECT status FROM ${table} WHERE id=$1`, [id])).rows[0].status as string;
+
+    // full opt-out
+    const a = await seedOld();
+    const optOut = await call("POST", `/api/v1/bereavement/contacts/${a.contact}/opt-out`, "don", {
+      optOutKind: "full",
+      sourceKind: "counselor_recorded",
+      reason: "Asked by phone",
+    });
+    expect(optOut.statusCode).toBe(200);
+    expect(await status("bereavement_outreach", a.pastDue)).toBe("cancelled");
+    expect(await status("bereavement_assessment_task", a.pastDueTask)).toBe("cancelled");
+    expect(await status("bereavement_assessment_task", a.futureTask)).toBe("cancelled");
+
+    // plan pause, then resume: past-due rows stay cancelled (no backdated obligations); the forward checkpoint is revived
+    const b = await seedOld();
+    const version = (
+      await admin.query("SELECT version FROM bereavement_plan WHERE id=$1", [b.plan])
+    ).rows[0].version as number;
+    const paused = await call(
+      "POST",
+      `/api/v1/bereavement/plans/${b.plan}/pause`,
+      "don",
+      { pauseKind: "family_request", reason: "Family asked for a quiet month" },
+      { "if-match": `"${version}"` },
+    );
+    expect(paused.statusCode).toBe(200);
+    expect(await status("bereavement_outreach", b.pastDue)).toBe("cancelled");
+    expect(await status("bereavement_assessment_task", b.pastDueTask)).toBe("cancelled");
+    expect(await status("bereavement_assessment_task", b.futureTask)).toBe("cancelled");
+
+    const resumed = await call(
+      "POST",
+      `/api/v1/bereavement/plans/${b.plan}/resume`,
+      "don",
+      {},
+      {
+        "if-match": `"${
+          (await admin.query("SELECT version FROM bereavement_plan WHERE id=$1", [b.plan])).rows[0]
+            .version
+        }"`,
+      },
+    );
+    expect(resumed.statusCode).toBe(200);
+    expect(await status("bereavement_outreach", b.pastDue)).toBe("cancelled");
+    expect(await status("bereavement_assessment_task", b.pastDueTask)).toBe("cancelled");
+    expect(await status("bereavement_assessment_task", b.futureTask)).toBe("scheduled");
   });
 
   it("dashboards: the counselor sees her caseload; the supervisor board needs oversight", async () => {

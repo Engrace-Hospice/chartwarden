@@ -34,9 +34,14 @@
 //      a plaintext row in a `_cipher` column is worse than an absent one, and silently discarding it told the
 //      counselor it was saved. Sealing runs before the transaction opens (the key provider has its own pool).
 import {
+  COMPLICATED_GRIEF_SCREEN_THRESHOLD,
+  type ManualRiskFactors,
   bereavementWindowEnd,
+  generateAssessmentTasks,
   isClosedPlanStatus,
   isEngageableContactStatus,
+  mergeManualFactors,
+  omitGatedFactors,
   requiresSourceEncounter,
 } from "@chartwarden/bereavement";
 import { type DbClient, schema } from "@chartwarden/db";
@@ -70,11 +75,13 @@ import {
   assertCompletionKindMatchesOutreach,
   assertCosignerDistinct,
   assertEarlyCloseRequestable,
+  assertTaskCompletable,
   checkExternalSourceFirstContactGate,
   checkOutreachKindAllowed,
   checkVersion,
   generateOutreachSchedule,
   planScheduleTopUp,
+  stickyManualFactorsOf,
   transitionBereavedContact,
   transitionBereavementOutreach,
   transitionBereavementPlan,
@@ -219,6 +226,8 @@ export function buildDrizzleM16WriteService(
   const CLOSURE = schema.bereavementPlanClosure;
   const OPT_OUT = schema.bereavementOptOut;
   const REMINDER = schema.bereavementAnniversaryReminder;
+  const TASK = schema.bereavementAssessmentTask;
+  const IDG_FLAG = schema.bereavementIdgRiskFlags;
 
   const outbox = deps.outbox ?? NOOP_OUTBOX;
   const alerts = deps.alerts;
@@ -393,6 +402,7 @@ export function buildDrizzleM16WriteService(
   type PlanRow = typeof PLAN.$inferSelect;
   type ContactRow = typeof CONTACT.$inferSelect;
   type OutreachRow = typeof OUTREACH.$inferSelect;
+  type TaskRow = typeof TASK.$inferSelect;
 
   /** Load the plan aggregate root, or 404 (an absent/cross-tenant plan is invisible under RLS). */
   async function planOr404(tx: Tx, planId: string): Promise<PlanRow> {
@@ -566,24 +576,31 @@ export function buildDrizzleM16WriteService(
       .where(eq(PLAN.id, plan.id));
   }
 
-  /** §2.2 / §2.3 `cancel_future_outreach` — cancel every FUTURE-dated `scheduled` row in the scope. */
+  /**
+   * §2.2 / §2.3 `cancel_future_outreach` — cancel every FUTURE-dated `scheduled` row in the scope.
+   *
+   * `includePastDue` widens it to EVERY `scheduled` (never attempted) row, past due or not. The exits that stop the
+   * program for a person (a full opt-out, a death, a referral out) and a plan pause pass it: a row left `scheduled`
+   * past its due date would be marked `missed` by the hourly cron after the contact asked to stop, or while the plan
+   * sat paused, and that counts against the agency for a call it was told not to make. A regeneration does not pass
+   * it: a touchpoint already past due when a schedule is rebuilt is a real miss, not a cancellation.
+   */
   async function cancelFutureOutreach(
     tx: Tx,
     scopeKey: { planId: string } | { contactId: string },
     at: string,
     reason: string,
+    options: { readonly includePastDue?: boolean } = {},
   ): Promise<number> {
+    const dueFilter =
+      options.includePastDue === true ? undefined : gte(OUTREACH.dueAt, new Date(at));
     const where =
       "planId" in scopeKey
-        ? and(
-            eq(OUTREACH.planId, scopeKey.planId),
-            eq(OUTREACH.status, "scheduled"),
-            gte(OUTREACH.dueAt, new Date(at)),
-          )
+        ? and(eq(OUTREACH.planId, scopeKey.planId), eq(OUTREACH.status, "scheduled"), dueFilter)
         : and(
             eq(OUTREACH.bereavedContactId, scopeKey.contactId),
             eq(OUTREACH.status, "scheduled"),
-            gte(OUTREACH.dueAt, new Date(at)),
+            dueFilter,
           );
     const rows = await tx.select({ id: OUTREACH.id }).from(OUTREACH).where(where);
     if (rows.length === 0) return 0;
@@ -606,6 +623,79 @@ export function buildDrizzleM16WriteService(
   }
 
   /**
+   * ADR-0109 D3 — a person who leaves the program (opt-out, death, referral) or a paused plan stops owing its assessment
+   * checkpoints: every still-`scheduled` task in the scope is `cancelled`, past due or not, so the miss pass never raises
+   * `risk_assessment_overdue` for it. A resume / rescind revives the forward ones (`ensureAssessmentTasks`).
+   */
+  async function cancelScheduledTasks(
+    tx: Tx,
+    scopeKey: { planId: string } | { contactId: string },
+    at: string,
+  ): Promise<void> {
+    await tx
+      .update(TASK)
+      .set({ status: "cancelled", version: sql`${TASK.version} + 1`, updatedAt: new Date(at) })
+      .where(
+        and(
+          "planId" in scopeKey
+            ? eq(TASK.planId, scopeKey.planId)
+            : eq(TASK.bereavedContactId, scopeKey.contactId),
+          eq(TASK.status, "scheduled"),
+        ),
+      );
+  }
+
+  /**
+   * ADR-0109 D3 — make sure a contact holds its two assessment checkpoints. `ON CONFLICT DO NOTHING` against the
+   * (contact, kind) unique index: the seed creates both, every later call adds only what is missing. With `fromIso` it is
+   * forward-only (a checkpoint already past due is never backdated) and it revives a `cancelled` checkpoint whose due date
+   * is still ahead — the rescind / resume / regenerate paths. Never touches a completed or missed task.
+   */
+  async function ensureAssessmentTasks(
+    tx: Tx,
+    plan: PlanRow,
+    contact: ContactRow,
+    fromIso: string | undefined,
+  ): Promise<void> {
+    const planned = generateAssessmentTasks(
+      localDate(plan.deathDate),
+      fromIso === undefined ? {} : { fromIso },
+    );
+    if (planned.length > 0) {
+      await tx
+        .insert(TASK)
+        .values(
+          planned.map((p) => ({
+            ...inherit(plan),
+            planId: plan.id,
+            bereavedContactId: contact.id,
+            taskKind: p.taskKind,
+            dueAt: new Date(p.dueAt),
+            lateGraceUntil: new Date(p.lateGraceUntil),
+            assigneeUserId: plan.assignedCounselorUserId,
+          })),
+        )
+        .onConflictDoNothing();
+    }
+    if (fromIso !== undefined) {
+      await tx
+        .update(TASK)
+        .set({
+          status: "scheduled",
+          version: sql`${TASK.version} + 1`,
+          updatedAt: new Date(fromIso),
+        })
+        .where(
+          and(
+            eq(TASK.bereavedContactId, contact.id),
+            eq(TASK.status, "cancelled"),
+            gte(TASK.dueAt, new Date(fromIso)),
+          ),
+        );
+    }
+  }
+
+  /**
    * D4 — materialize the schedule for one contact and emit one `outreach_scheduled` per row. `fromIso`
    * makes it forward-only (a resume / rescind / regenerate / tier-change fill), which is what stops a paused
    * plan from manufacturing backdated obligations it would then report as missed. A forward fill is also
@@ -624,6 +714,9 @@ export function buildDrizzleM16WriteService(
       riskTier: tier,
       allowedKinds: allowedKindsOf(contact.outreachPreferencesJsonb),
     };
+    // ADR-0109 D3 — the assessment checkpoints ride every path that materializes the schedule (seed, resume, rescind,
+    // regenerate, tier-change top-up), forward-only after the seed. They are tasks, not outreach rows.
+    await ensureAssessmentTasks(tx, plan, contact, fromIso);
     const planned =
       fromIso === undefined
         ? generateOutreachSchedule(localDate(plan.deathDate), facts)
@@ -786,6 +879,38 @@ export function buildDrizzleM16WriteService(
     return streak;
   }
 
+  /**
+   * ADR-0109 D5 — the human-stated factors a new score for this subject starts from: the newest plan-level score's, and for
+   * a contact-level score also that contact's own newest (they describe the family and the death, so they follow every
+   * survivor). Merged "true wins"; never lowers anything already stated.
+   */
+  async function stickyManualFactorsFor(
+    tx: Tx,
+    plan: PlanRow,
+    contact: ContactRow | null,
+    prior: typeof SCORE.$inferSelect | undefined,
+  ): Promise<ManualRiskFactors> {
+    if (contact === null) return stickyManualFactorsOf(prior?.riskFactorsJsonb);
+    const [planLevel] = await tx
+      .select({ riskFactorsJsonb: SCORE.riskFactorsJsonb })
+      .from(SCORE)
+      .where(and(eq(SCORE.planId, plan.id), isNull(SCORE.bereavedContactId)))
+      .orderBy(desc(SCORE.assessedAt), desc(SCORE.id))
+      .limit(1);
+    return mergeManualFactors(
+      stickyManualFactorsOf(planLevel?.riskFactorsJsonb),
+      stickyManualFactorsOf(prior?.riskFactorsJsonb),
+    );
+  }
+
+  /** What `appendScore` may be asked to do beyond appending the row. */
+  interface AppendScoreOptions {
+    /** ADR-0109 D5 — factors carried in from the pre-death draft (the initial score only). */
+    readonly carriedManualFactors?: ManualRiskFactors;
+    /** ADR-0109 D3 — the checkpoint this HUMAN score completes (already validated by the caller). */
+    readonly completesTask?: TaskRow;
+  }
+
   /** §4.3.3 — append one immutable score row and return the view the route answers with. */
   async function appendScore(
     tx: Tx,
@@ -793,7 +918,12 @@ export function buildDrizzleM16WriteService(
     plan: PlanRow,
     contact: ContactRow | null,
     input: RecomputeRiskInput,
-    amendmentKind: "initial" | "scheduled_reassessment" | "counselor_override",
+    amendmentKind:
+      | "initial"
+      | "scheduled_reassessment"
+      | "counselor_override"
+      | "complicated_grief_promotion",
+    options: AppendScoreOptions = {},
   ): Promise<BereavementRiskScoreView> {
     const assessedAt = now();
     const [prior] = await tx
@@ -806,6 +936,25 @@ export function buildDrizzleM16WriteService(
       )
       .orderBy(desc(SCORE.assessedAt), desc(SCORE.id))
       .limit(1);
+    const sudDisclosureAllowed = await sudAllowed({
+      organizationId: actor.organizationId,
+      patientId: plan.patientId,
+    });
+    // The new request's own SUD slot counts only from a reader cleared for Part 2 content; the sticky and carried
+    // slots were accepted from cleared sources, and the derivation still ignores them for this reader if uncleared.
+    const requested =
+      input.manualFactors === undefined || sudDisclosureAllowed
+        ? input.manualFactors
+        : omitGatedFactors(input.manualFactors);
+    const manualFactors = mergeManualFactors(
+      mergeManualFactors(
+        await stickyManualFactorsFor(tx, plan, contact, prior),
+        options.carriedManualFactors === undefined || sudDisclosureAllowed
+          ? options.carriedManualFactors
+          : omitGatedFactors(options.carriedManualFactors),
+      ),
+      requested,
+    );
 
     const rosterCount = await tx
       .select({ n: sql<number>`count(*)::int` })
@@ -835,10 +984,8 @@ export function buildDrizzleM16WriteService(
           isPrimaryCaregiver: null,
           enrolledSurvivorCount: rosterCount,
         },
-        sudDisclosureAllowed: await sudAllowed({
-          organizationId: actor.organizationId,
-          patientId: plan.patientId,
-        }),
+        sudDisclosureAllowed,
+        manualFactors,
       },
       {
         planId: plan.id as never,
@@ -849,6 +996,14 @@ export function buildDrizzleM16WriteService(
         assessedAt,
         amendmentKind,
         amendedFromScoreId: prior?.id ?? null,
+        ...(input.pg13Score === undefined && input.ipgrScore === undefined
+          ? {}
+          : {
+              griefScreen: {
+                pg13Score: input.pg13Score ?? null,
+                ipgrScore: input.ipgrScore ?? null,
+              },
+            }),
         ...(input.overrideTier === undefined
           ? {}
           : { overrideTier: input.overrideTier as BereavementRiskTier }),
@@ -886,6 +1041,9 @@ export function buildDrizzleM16WriteService(
         .update(CONTACT)
         .set({ currentRiskTier: row.ruleTier, currentRiskScoreId: row.id })
         .where(eq(CONTACT.id, contact.id));
+    }
+    if (options.completesTask !== undefined) {
+      await completeAssessmentTask(tx, actor, plan, options.completesTask, row.id, assessedAt);
     }
     // ADR-0109 D4 — a tier change tops the live schedule up (forward-only, never cancels).
     await topUpScheduleOnTierChange(
@@ -946,6 +1104,57 @@ export function buildDrizzleM16WriteService(
       evidenceDegraded: result.draft.riskFactorsJsonb.evidenceDegraded,
       redactedCategories: [],
     };
+  }
+
+  /**
+   * ADR-0109 D3 — a HUMAN-appended score completes its checkpoint, in the score's own transaction: the task names the
+   * score, the assessor and the instant. Completing the INITIAL assessment also answers the IDG's request for a
+   * reassessment: every still-pending `bereavement_idg_risk_flag` for the patient is marked `assessed` (the score is the
+   * assessment it asked for). The guarded UPDATE refuses a task another writer already completed or cancelled.
+   */
+  async function completeAssessmentTask(
+    tx: Tx,
+    actor: M16WriteActor,
+    plan: PlanRow,
+    task: TaskRow,
+    riskScoreId: string,
+    assessedAt: string,
+  ): Promise<void> {
+    const done = await tx
+      .update(TASK)
+      .set({
+        status: "completed",
+        completedAt: new Date(assessedAt),
+        completedByMembershipId: actor.membershipId,
+        riskScoreId,
+        version: task.version + 1,
+        updatedAt: new Date(assessedAt),
+      })
+      .where(
+        and(
+          eq(TASK.id, task.id),
+          eq(TASK.version, task.version),
+          inArray(TASK.status, ["scheduled", "missed"]),
+        ),
+      )
+      .returning({ id: TASK.id });
+    if (done.length !== 1) {
+      throw new BereavementStateError(
+        "ASSESSMENT_TASK_NOT_OPEN",
+        "the assessment task changed while the score was being recorded",
+      );
+    }
+    if (task.taskKind !== "initial_assessment") return;
+    await tx
+      .update(IDG_FLAG)
+      .set({
+        status: "assessed",
+        assessedRiskScoreId: riskScoreId,
+        assessedAt: new Date(assessedAt),
+      })
+      .where(
+        and(eq(IDG_FLAG.patientId, plan.patientId), eq(IDG_FLAG.status, "pending_assessment")),
+      );
   }
 
   /**
@@ -1245,7 +1454,10 @@ export function buildDrizzleM16WriteService(
             },
           }),
         );
-        await cancelFutureOutreach(tx, { planId: plan.id }, at, "plan paused");
+        await cancelFutureOutreach(tx, { planId: plan.id }, at, "plan paused", {
+          includePastDue: true,
+        });
+        await cancelScheduledTasks(tx, { planId: plan.id }, at);
         await tx
           .update(PLAN)
           .set({
@@ -1576,7 +1788,10 @@ export function buildDrizzleM16WriteService(
           recordedByUserId: actor.membershipId,
           sourceKind: input.sourceKind,
         });
-        await cancelFutureOutreach(tx, { contactId: contact.id }, at, "contact opted out");
+        await cancelFutureOutreach(tx, { contactId: contact.id }, at, "contact opted out", {
+          includePastDue: true,
+        });
+        await cancelScheduledTasks(tx, { contactId: contact.id }, at);
         const [row] = await tx
           .update(CONTACT)
           .set({
@@ -1665,7 +1880,10 @@ export function buildDrizzleM16WriteService(
             "m16.bereavement.contact_deceased": { planId: plan.id, contactId: contact.id },
           }),
         );
-        await cancelFutureOutreach(tx, { contactId }, now(), "contact deceased");
+        await cancelFutureOutreach(tx, { contactId }, now(), "contact deceased", {
+          includePastDue: true,
+        });
+        await cancelScheduledTasks(tx, { contactId }, now());
         const [row] = await tx
           .update(CONTACT)
           .set({
@@ -1811,7 +2029,10 @@ export function buildDrizzleM16WriteService(
           contactRespondedDirectly: false,
           externalResourceIdFromM40: input.externalResourceId,
         });
-        await cancelFutureOutreach(tx, { contactId }, at, "referred to external grief services");
+        await cancelFutureOutreach(tx, { contactId }, at, "referred to external grief services", {
+          includePastDue: true,
+        });
+        await cancelScheduledTasks(tx, { contactId }, at);
         const [row] = await tx
           .update(CONTACT)
           .set({
@@ -2203,20 +2424,38 @@ export function buildDrizzleM16WriteService(
     async recomputeRisk(actor, planId, input: RecomputeRiskInput) {
       return withOrgContext(db, scope(actor), async (tx) => {
         const plan = await planOr404(tx, planId);
-        const contact =
-          input.bereavedContactId === undefined
-            ? null
-            : await contactOr404(tx, input.bereavedContactId);
+        // ADR-0109 D3 — a score that names an assessment checkpoint completes it. The task decides which contact is
+        // being assessed (a request that names another one is refused, never silently re-aimed).
+        let task: TaskRow | undefined;
+        if (input.assessmentTaskId !== undefined) {
+          [task] = await tx.select().from(TASK).where(eq(TASK.id, input.assessmentTaskId)).limit(1);
+          if (!task) {
+            throw new BereavementStateError(
+              "ASSESSMENT_TASK_NOT_FOUND",
+              "assessment task not found on this plan",
+            );
+          }
+          assertTaskCompletable(task, { planId, contactId: input.bereavedContactId });
+        }
+        const contactId = input.bereavedContactId ?? task?.bereavedContactId;
+        const contact = contactId === undefined ? null : await contactOr404(tx, contactId);
         if (contact !== null && contact.planId !== planId) {
           throw new NotFoundError("bereaved contact not found on this plan");
         }
+        const promotes =
+          input.pg13Score !== undefined && input.pg13Score >= COMPLICATED_GRIEF_SCREEN_THRESHOLD;
         return appendScore(
           tx,
           actor,
           plan,
           contact,
           input,
-          input.overrideTier === undefined ? "scheduled_reassessment" : "counselor_override",
+          input.overrideTier !== undefined
+            ? "counselor_override"
+            : promotes
+              ? "complicated_grief_promotion"
+              : "scheduled_reassessment",
+          task === undefined ? {} : { completesTask: task },
         );
       });
     },

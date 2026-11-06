@@ -6,6 +6,9 @@
 //                                    future outreach + `plan_closed_completed` in ONE tx.
 //   · `m16-miss-deadline`         → `missDeadline` for every `scheduled` outreach whose `late_grace_until`
 //                                    passed; `outreach_missed` outbox + best-effort M36 alert in the same tx.
+//                                    A second pass does the same for the ADR-0109 D3 assessment checkpoints:
+//                                    `scheduled` tasks past their late grace become `missed` and raise the
+//                                    `risk_assessment_overdue` alert.
 //   · `m16-anniversary-lookahead` → `anniversary_due_in_14_days` for each unfired reminder landing in the next
 //                                    14 days; `alert_fired_at` is stamped in the SAME tx as the outbox write.
 //   · `m16-unreachable-detector` → PROPOSES `markUnreachable` (§2.3 / §4.9) for each active contact of an active
@@ -34,7 +37,11 @@ import type {
 } from "@chartwarden/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
-import { transitionBereavementOutreach, transitionBereavementPlan } from "../lifecycle/index";
+import {
+  isAssessmentTaskOverdue,
+  transitionBereavementOutreach,
+  transitionBereavementPlan,
+} from "../lifecycle/index";
 import { runEffects } from "../routes/effects-runner";
 import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
 import {
@@ -52,6 +59,7 @@ const CLOSURE = schema.bereavementPlanClosure;
 const REMINDER = schema.bereavementAnniversaryReminder;
 const CONTACT = schema.bereavedContact;
 const LOG = schema.bereavementContactLog;
+const TASK = schema.bereavementAssessmentTask;
 
 const MS_PER_DAY = 86_400_000;
 
@@ -369,10 +377,64 @@ async function missOneOutreach(
   });
 }
 
-/** §4.9 `m16-miss-deadline` — fan out over active orgs; mark every overdue `scheduled` outreach `missed`. */
-export async function runMissDeadlineCron(deps: M16WorkerDeps): Promise<{ missed: number }> {
+/**
+ * ADR-0109 D3 — mark one overdue assessment checkpoint `missed` and tell oversight. The guarded UPDATE (`WHERE status =
+ * 'scheduled'`) makes two overlapping ticks race safely; the plan must be `active` and the contact still in the program
+ * (a contact that opted out, died or was referred out had its tasks cancelled, and a stray one is skipped here too).
+ */
+async function missOneAssessmentTask(
+  tx: DbClient,
+  deps: M16WorkerDeps,
+  organizationId: string,
+  taskId: string,
+  now: Date,
+): Promise<void> {
+  const [row] = await tx
+    .select({
+      task: TASK,
+      planStatus: PLAN.status,
+      contactStatus: CONTACT.status,
+    })
+    .from(TASK)
+    .innerJoin(PLAN, eq(PLAN.id, TASK.planId))
+    .innerJoin(CONTACT, eq(CONTACT.id, TASK.bereavedContactId))
+    .where(eq(TASK.id, taskId))
+    .limit(1);
+  if (!row || !isAssessmentTaskOverdue(row.task, now)) throw new LostRaceError();
+  if (row.planStatus !== "active") throw new LostRaceError();
+  if (row.contactStatus !== "proposed" && row.contactStatus !== "active") throw new LostRaceError();
+
+  const updated = await tx
+    .update(TASK)
+    .set({ status: "missed", version: sql`${TASK.version} + 1`, updatedAt: now })
+    .where(and(eq(TASK.id, taskId), eq(TASK.status, "scheduled")))
+    .returning({ id: TASK.id });
+  if (updated.length !== 1) throw new LostRaceError();
+
+  // An alert is advisory and best-effort (rule 3 of the effect runner): a notification outage never un-misses the task.
+  await deps.alerts
+    ?.emit({
+      organizationId,
+      kind: "risk_assessment_overdue",
+      payload: {
+        planId: row.task.planId,
+        contactId: row.task.bereavedContactId,
+        taskId: row.task.id,
+        taskKind: row.task.taskKind,
+        dueAt: row.task.dueAt.toISOString(),
+      },
+    })
+    .catch(() => undefined);
+}
+
+/** §4.9 `m16-miss-deadline` — fan out over active orgs; mark every overdue `scheduled` outreach `missed`, then (ADR-0109
+ *  D3) every overdue assessment checkpoint. */
+export async function runMissDeadlineCron(
+  deps: M16WorkerDeps,
+): Promise<{ missed: number; assessmentsMissed: number }> {
   const now = (deps.now ?? (() => new Date()))();
   let missed = 0;
+  let assessmentsMissed = 0;
   for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
     const ids = await listInOrg(deps, organizationId, async (tx) =>
       (
@@ -398,8 +460,32 @@ export async function runMissDeadlineCron(deps: M16WorkerDeps): Promise<{ missed
       );
       if (won) missed += 1;
     }
+    const taskIds = await listInOrg(deps, organizationId, async (tx) =>
+      (
+        await tx
+          .select({ id: TASK.id })
+          .from(TASK)
+          .innerJoin(PLAN, eq(PLAN.id, TASK.planId))
+          .where(
+            and(
+              eq(TASK.organizationId, organizationId),
+              eq(TASK.status, "scheduled"),
+              lt(TASK.lateGraceUntil, now),
+              eq(PLAN.status, "active"),
+            ),
+          )
+          .orderBy(asc(TASK.lateGraceUntil))
+          .limit(M16_CRON_BATCH_LIMIT)
+      ).map((r) => r.id),
+    );
+    for (const taskId of taskIds) {
+      const won = await inRowTx(deps, organizationId, "miss-assessment", taskId, (tx) =>
+        missOneAssessmentTask(tx, deps, organizationId, taskId, now),
+      );
+      if (won) assessmentsMissed += 1;
+    }
   }
-  return { missed };
+  return { missed, assessmentsMissed };
 }
 
 // ── m16-anniversary-lookahead ─────────────────────────────────────────────────────────────────────────

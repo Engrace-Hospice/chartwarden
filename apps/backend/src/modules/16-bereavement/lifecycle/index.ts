@@ -13,6 +13,7 @@
 //                 rescind, the 3-strikes unreachable proposal, the §7.7 complicated-grief referral
 //   • ./outreach  §2.4 — the touchpoint lifecycle + the D15 M8-encounter binding rule
 //   • ./schedule  D4 — the death-anchored cadence floor materialized into `bereavement_outreach` rows
+//   • ./assessment-task  ADR-0109 D3 — the assessment-checkpoint rules (who completes one, when it is overdue)
 //   • ./cascades  §2.6 — the D9 patient-flag flip, the M39 consent-revocation cascade, the D6 roster close
 //   • ./validation §2.5 — the guards that belong to paths which do not move state (D18 gate, `If-Match`)
 //   • ./errors    the §2.5 / §4.2 code → status catalog on the M1 `ChartWardenError` envelope
@@ -22,6 +23,7 @@ export * from "./plan";
 export * from "./contact";
 export * from "./outreach";
 export * from "./schedule";
+export * from "./assessment-task";
 export * from "./cascades";
 export * from "./validation";
 export * from "./early-close";

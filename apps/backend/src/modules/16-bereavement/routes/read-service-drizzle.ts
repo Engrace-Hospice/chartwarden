@@ -64,6 +64,7 @@ import type {
 } from "./m16-typebox";
 import type {
   BereavedContactRowView,
+  BereavementAssessmentTaskView,
   BereavementClosureView,
   BereavementOutreachRowView,
   BereavementPlanDetail,
@@ -141,6 +142,7 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
   const SCORE = schema.bereavementRiskScore;
   const CLOSURE = schema.bereavementPlanClosure;
   const OPT_OUT = schema.bereavementOptOut;
+  const TASK = schema.bereavementAssessmentTask;
   const GATE_OVERRIDE = schema.tenantBereavementExternalSourceGateOverride;
 
   const now = deps.now ?? (() => new Date().toISOString() as IsoInstant);
@@ -560,6 +562,43 @@ export function buildDrizzleM16ReadService(db: DbClient, deps: M16ReadDeps = {})
           };
         },
       );
+    },
+
+    // ── 37 — the plan's assessment checkpoints (ADR-0109 D3) ─────────────────────────────────────────
+    async listAssessmentTasks(actor, planId) {
+      const plan = await loadReachablePlan(actor, planId);
+      if (plan === null) return null;
+      const gate = await resolveBereavementDisclosure(actor, plan.patientId, disclosurePort);
+      // D10 — a volunteer's scope holds no clinical risk content, and an assessment task is exactly that: the
+      // list is empty and the category is named, never a 403 (the row shape decides, as for the score ledger).
+      if (!gate.clinicalRiskAllowed)
+        return { items: [], redactedCategories: gate.redactedCategories };
+      const rows = await withOrgContext(db, scope(actor), async (tx) =>
+        tx
+          .select()
+          .from(TASK)
+          .where(eq(TASK.planId, planId))
+          .orderBy(asc(TASK.dueAt), asc(TASK.taskKind), asc(TASK.id)),
+      );
+      return {
+        items: rows.map(
+          (r): BereavementAssessmentTaskView => ({
+            taskId: r.id,
+            planId: r.planId,
+            contactId: r.bereavedContactId,
+            taskKind: r.taskKind,
+            status: r.status,
+            dueAt: iso(r.dueAt) as IsoInstant,
+            lateGraceUntil: iso(r.lateGraceUntil) as IsoInstant,
+            completedAt: isoN(r.completedAt) as IsoInstant | null,
+            completedByMembershipId: (r.completedByMembershipId ?? null) as MembershipId | null,
+            riskScoreId: (r.riskScoreId ?? null) as BereavementAssessmentTaskView["riskScoreId"],
+            assigneeUserId: (r.assigneeUserId ?? null) as MembershipId | null,
+            version: r.version,
+          }),
+        ),
+        redactedCategories: gate.redactedCategories,
+      };
     },
 
     // ── 30 — the counselor's own caseload + what is coming due ───────────────────────────────────────
