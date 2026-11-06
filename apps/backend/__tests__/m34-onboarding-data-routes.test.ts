@@ -113,8 +113,13 @@ function recordingService(calls: Call[]): OnboardingDataService {
       calls.push({ method: "activateClearinghouse", op, orgSlug, reason });
       return { status: "active" };
     },
-    verifyClearinghouseBaa: async (op: OnboardingOperator, orgSlug: string, reason: string) => {
-      calls.push({ method: "verifyClearinghouseBaa", op, orgSlug, reason });
+    verifyClearinghouseBaa: async (
+      op: OnboardingOperator,
+      orgSlug: string,
+      reason: string,
+      expected: { recordedAt: string },
+    ) => {
+      calls.push({ method: "verifyClearinghouseBaa", op, orgSlug, reason, expected });
       return { status: "verified", baa: { verified: { at: "2026-11-06T00:00:00.000Z" } } };
     },
   } as unknown as OnboardingDataService;
@@ -188,6 +193,9 @@ const fresh = (): Record<string, string> => ({
   "idempotency-key": key(),
 });
 const URL_BASE = "/api/v1/platform/tenants/tenant-b";
+/** The `baa.recordedAt` of the record an operator read, as the verify route's If-Match names it. */
+const BAA_PIN = "2026-11-05T21:30:00.123Z";
+const BAA_PIN_HEADER = `"${BAA_PIN}"`;
 
 const NEW_PE = {
   ccn: "444444",
@@ -528,7 +536,12 @@ describe("clearinghouse routes", () => {
     const calls: Call[] = [];
     const app = makeServer(calls);
     const post = (headers: Record<string, string>, payload: object = { reason: "ticket CHG-1" }) =>
-      app.inject({ method: "POST", url: `${URL_BASE}/clearinghouse/baa/verify`, headers, payload });
+      app.inject({
+        method: "POST",
+        url: `${URL_BASE}/clearinghouse/baa/verify`,
+        headers: { "if-match": BAA_PIN_HEADER, ...headers },
+        payload,
+      });
     const writerOnly = await post({ ...fresh(), "x-test-user": "writer-only-user" });
     expect(writerOnly.statusCode).toBe(403);
     expect(calls).toEqual([]);
@@ -538,6 +551,40 @@ describe("clearinghouse routes", () => {
     expect(calls.map((c) => c.method)).toEqual(["verifyClearinghouseBaa"]);
     expect(calls[0]).toMatchObject({ orgSlug: "tenant-b", reason: "ticket CHG-1" });
     expect(calls[0]?.op.userId).toBe(OPERATOR_USER);
+    await app.close();
+  });
+
+  it("baa/verify is pinned to the record the operator read: If-Match (the record's recordedAt) is required and must be a real timestamp (re-review M1)", async () => {
+    const calls: Call[] = [];
+    const app = makeServer(calls);
+    const post = (headers: Record<string, string>) =>
+      app.inject({
+        method: "POST",
+        url: `${URL_BASE}/clearinghouse/baa/verify`,
+        headers: { ...fresh(), ...headers },
+        payload: { reason: "ticket CHG-1" },
+      });
+
+    const missing = await post({});
+    expect(missing.statusCode).toBe(428);
+    expect(missing.json().error?.code ?? missing.json().code).toBe("IF_MATCH_REQUIRED");
+    for (const bad of ['"3"', '"yesterday"', '"2026-11-06"', '"2026-02-30T00:00:00.000Z"']) {
+      const res = await post({ "if-match": bad });
+      expect(res.statusCode, bad).toBe(422);
+    }
+    expect(calls).toEqual([]); // none of them reached the service
+
+    // quoted (ETag style), weak-prefixed and bare all name the same record
+    for (const header of [
+      BAA_PIN_HEADER,
+      `W/${BAA_PIN_HEADER}`,
+      BAA_PIN_HEADER.replaceAll('"', ""),
+    ]) {
+      calls.length = 0;
+      const ok = await post({ "if-match": header });
+      expect(ok.statusCode, header).toBe(200);
+      expect(calls[0]).toMatchObject({ expected: { recordedAt: BAA_PIN } });
+    }
     await app.close();
   });
 });
@@ -791,7 +838,12 @@ describe("service: the clearinghouse choice", () => {
   const SECRET = "fake-key-not-a-secret#1";
 
   function fakePort(over: Partial<OnboardingClearinghousePort> = {}, trace: string[] = []) {
-    const seen: { method: string; body?: unknown; expectedVersion?: number | undefined }[] = [];
+    const seen: {
+      method: string;
+      body?: unknown;
+      expectedVersion?: number | undefined;
+      expected?: unknown;
+    }[] = [];
     const port: OnboardingClearinghousePort = {
       get: async () => ({ vendor: null }),
       put: async (_tx, _scope, body, expectedVersion) => {
@@ -827,8 +879,8 @@ describe("service: the clearinghouse choice", () => {
         seen.push({ method: "activate" });
         return { resourceId: CONFIG_ID, view: { status: "active" } };
       },
-      verifyBaa: async () => {
-        seen.push({ method: "verifyBaa" });
+      verifyBaa: async (_tx: unknown, _scope: unknown, expected: unknown) => {
+        seen.push({ method: "verifyBaa", expected });
         return { resourceId: CONFIG_ID, view: { status: "verified", baa: { verified: {} } } };
       },
       ...over,
@@ -1028,12 +1080,15 @@ describe("service: the clearinghouse choice", () => {
         settleOnboarding: async (org) => void settled.push(org),
       });
       await expect(
-        service.verifyClearinghouseBaa(OPERATOR, "tenant-b", "ticket CHG-7"),
+        service.verifyClearinghouseBaa(OPERATOR, "tenant-b", "ticket CHG-7", {
+          recordedAt: BAA_PIN,
+        }),
       ).resolves.toMatchObject({ status: "verified" });
       expect(
         seen.map((x) => x.method),
         status,
       ).toEqual(["verifyBaa"]);
+      expect(seen[0]?.expected, status).toEqual({ recordedAt: BAA_PIN }); // the port compares it under the row lock
       expect(inserts, status).toHaveLength(1);
       expect(inserts[0]?.values, status).toMatchObject({
         eventType: ONBOARDING_DATA_AUDIT_EVENTS.clearinghouseBaaVerified,
@@ -1055,7 +1110,9 @@ describe("service: the clearinghouse choice", () => {
     const { port } = fakePort();
     const service = buildDrizzleOnboardingDataService({ db, resolveTenant, clearinghouse: port });
     await expect(
-      service.verifyClearinghouseBaa(OPERATOR, "no-such-tenant", "ticket CHG-7"),
+      service.verifyClearinghouseBaa(OPERATOR, "no-such-tenant", "ticket CHG-7", {
+        recordedAt: BAA_PIN,
+      }),
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 });

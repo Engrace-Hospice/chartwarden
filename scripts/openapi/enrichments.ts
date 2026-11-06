@@ -15443,9 +15443,16 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M34OnboardingClearinghouseVerifyResponseSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/baa/verify": {
-    summary: `Verify the vendor BAA the tenant recorded for its own clearinghouse account (409 CLEARINGHOUSE_BAA_NOT_RECORDED if it has not; idempotent). ${M34_CLEARINGHOUSE_BAA_NOTE}`,
+    summary: `Verify the vendor BAA the tenant recorded for its own clearinghouse account (409 CLEARINGHOUSE_BAA_NOT_RECORDED if it has not; idempotent). Pinned to the record the operator read: If-Match is that record's baa.recordedAt, required (428), and a record the tenant changed since is a 409 CLEARINGHOUSE_BAA_CHANGED; the audit row names the document reference and effective date verified. ${M34_CLEARINGHOUSE_BAA_NOTE}`,
     body: M34OnboardingReasonSchema,
-    headers: IDEMPOTENCY_KEY_HEADER,
+    headers: {
+      ...IDEMPOTENCY_KEY_HEADER,
+      "If-Match": {
+        required: true,
+        description:
+          "The `baa.recordedAt` (UTC ISO timestamp) of the BAA record the operator read from the clearinghouse view; a changed record is refused with 409 CLEARINGHOUSE_BAA_CHANGED.",
+      },
+    },
     response: M34OnboardingClearinghouseViewSchema,
   },
   "POST /api/v1/platform/tenants/:orgSlug/clearinghouse/activate": {

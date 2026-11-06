@@ -114,7 +114,13 @@ export interface OnboardingDataService {
    * The operator verifies the vendor BAA the tenant recorded. NOT gated on the tenant's onboarding status: a live tenant that
    * changed vendor or re-recorded its BAA needs this too.
    */
-  verifyClearinghouseBaa(op: OnboardingOperator, orgSlug: string, reason: string): Promise<unknown>;
+  /** `expected` is the `baa.recordedAt` the operator read: a record that changed since is a 409, not a verification. */
+  verifyClearinghouseBaa(
+    op: OnboardingOperator,
+    orgSlug: string,
+    reason: string,
+    expected: { readonly recordedAt: string },
+  ): Promise<unknown>;
   listMedicaidCredentials(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
   upsertMedicaidCredential(
     op: OnboardingOperator,
@@ -631,7 +637,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
       return settleStepAfter(organizationId, view);
     },
 
-    verifyClearinghouseBaa: (op, orgSlug, reason) =>
+    verifyClearinghouseBaa: (op, orgSlug, reason, expected) =>
       write(
         op,
         orgSlug,
@@ -642,7 +648,11 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
           anyTenantStatus: true,
         },
         async (tx, t) => {
-          const done = await clearinghousePort().verifyBaa(tx, scopeOf(op, t.organizationId));
+          const done = await clearinghousePort().verifyBaa(
+            tx,
+            scopeOf(op, t.organizationId),
+            expected,
+          );
           return {
             value: done.view,
             resourceId: done.resourceId,

@@ -116,11 +116,21 @@ export function buildTenantClearinghouseOnboardingPort(deps: {
       return withId(tx, scope, view);
     },
 
-    async verifyBaa(tx, scope) {
+    async verifyBaa(tx, scope, expected) {
       await assertTxScopedToOrg(tx, scope.organizationId);
-      const view = await service.verifyBaa(createDrizzleConfigStore(tx), actorFor(scope));
+      const view = await service.verifyBaa(createDrizzleConfigStore(tx), actorFor(scope), expected);
+      // The audit row names the record that was verified (a screened document reference and a date: never patient data).
       return withId(tx, scope, view, {
-        detail: { baaVerified: view.baa?.verified !== null && view.baa?.verified !== undefined },
+        detail: {
+          baaVerified: view.baa?.verified !== null && view.baa?.verified !== undefined,
+          ...(view.baa
+            ? {
+                baaDocumentRef: view.baa.documentRef,
+                baaEffectiveDate: view.baa.effectiveDate,
+                baaRecordedAt: view.baa.recordedAt,
+              }
+            : {}),
+        },
       });
     },
   };

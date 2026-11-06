@@ -38,6 +38,19 @@ const verify = (
   actor: ClearinghouseActor,
   input: { evidenceNote?: string; confirmNoPatientInformation?: boolean } = {},
 ) => verifyConnection(service, (fn) => fn(store), actor, input);
+/** The BAA record the operator was looking at: its own `recordedAt`, read off the masked view (the route's If-Match). */
+const pinOf = async (
+  service: TenantClearinghouseService,
+  store: ReturnType<typeof createInMemoryConfigStore>,
+): Promise<{ recordedAt: string }> => ({
+  recordedAt: (await service.view(store, ORG)).baa?.recordedAt ?? "no BAA recorded",
+});
+/** The operator verifies the record as it stands now (what a fresh read shows). */
+const verifyBaaSeen = async (
+  service: TenantClearinghouseService,
+  store: ReturnType<typeof createInMemoryConfigStore>,
+) => service.verifyBaa(store, OPERATOR, await pinOf(service, store));
+
 const ATTEST = {
   evidenceNote: "Sandbox claim accepted by Stedi test mode, ticket OPS-123",
   confirmNoPatientInformation: true,
@@ -51,7 +64,7 @@ async function makeActive(
   await service.put(store, ACTOR, { vendor: "claimmd", mode: "test", secret: FAKE_KEY }, undefined);
   await verify(service, store, ACTOR);
   await service.recordBaa(store, ACTOR, BAA);
-  await service.verifyBaa(store, OPERATOR);
+  await verifyBaaSeen(service, store);
   return service.activate(store, ACTOR);
 }
 
@@ -253,6 +266,8 @@ describe("tenant clearinghouse service: choosing", () => {
   it("keeps the vendor BAA across a same-vendor rotation or mode change, and voids it when the vendor changes", async () => {
     const { store, service } = setup();
     const live = await makeActive(service, store);
+    // the record names the vendor it was made for (the table's CHECK keeps an active config on that vendor's BAA)
+    expect(store.rows()[0]?.baaVendor).toBe("claimmd");
     const rotated = await service.put(
       store,
       ACTOR,
@@ -260,6 +275,9 @@ describe("tenant clearinghouse service: choosing", () => {
       live.version as number,
     );
     expect(rotated.view.baa?.verified).not.toBeNull();
+    // chosen (L1): a key change inside the same vendor keeps the BAA; the BAA is with the vendor, not with a key or an account id
+    // ChartWarden can see, and the tenant re-records it when its agreement changes
+    expect(store.rows()[0]?.baaVendor).toBe("claimmd");
     const remoded = await service.put(
       store,
       ACTOR,
@@ -274,7 +292,30 @@ describe("tenant clearinghouse service: choosing", () => {
       remoded.view.version as number,
     );
     expect(switched.view.baa).toBeNull();
+    expect(store.rows()[0]?.baaVendor).toBeNull();
     expect(switched.view.status).toBe("draft");
+  });
+
+  it("a BAA recorded after a switch names the NEW vendor, and a switch to outside leaves no BAA vendor behind", async () => {
+    const { store, service } = setup();
+    const live = await makeActive(service, store);
+    const switched = await service.put(
+      store,
+      ACTOR,
+      { vendor: "stedi", mode: "production", secret: `${FAKE_KEY}-stedi` },
+      live.version as number,
+    );
+    await service.recordBaa(store, ACTOR, { ...BAA, documentRef: "Stedi BAA, contract folder 8" });
+    expect(store.rows()[0]?.baaVendor).toBe("stedi");
+    const outside = await service.put(
+      store,
+      ACTOR,
+      { vendor: "outside" },
+      (await service.view(store, ORG)).version as number,
+    );
+    expect(outside.view.baa).toBeNull();
+    expect(store.rows()[0]?.baaVendor).toBeNull();
+    expect(switched.view.baa).toBeNull();
   });
 
   it("reports which fields a put changed (names only), for the field-level audit row", async () => {
@@ -495,7 +536,7 @@ describe("tenant clearinghouse service: verifying and activating", () => {
     expect(await codeOf(service.activate(store, ACTOR))).toBe("CLEARINGHOUSE_NOT_VERIFIED");
     await verify(service, store, ACTOR);
     await service.recordBaa(store, ACTOR, BAA);
-    await service.verifyBaa(store, OPERATOR);
+    await verifyBaaSeen(service, store);
     const first = await service.activate(store, ACTOR);
     expect(first).toMatchObject({ status: "active" });
     expect(first.activatedAt).not.toBeNull();
@@ -534,7 +575,7 @@ describe("tenant clearinghouse service: the tenant-held vendor BAA (owner decisi
     expect(err).toMatchObject({ code: "CLEARINGHOUSE_BAA_NOT_VERIFIED", statusCode: 409 });
     expect((await service.view(store, ORG)).status).toBe("verified");
     // verified by the operator: now it may go live
-    await service.verifyBaa(store, OPERATOR);
+    await verifyBaaSeen(service, store);
     expect((await service.activate(store, ACTOR)).status).toBe("active");
   });
 
@@ -548,7 +589,7 @@ describe("tenant clearinghouse service: the tenant-held vendor BAA (owner decisi
       documentRef: BAA.documentRef,
       verified: null,
     });
-    const verified = await service.verifyBaa(store, OPERATOR);
+    const verified = await verifyBaaSeen(service, store);
     expect(verified.baa?.verified?.at).toEqual(expect.any(String));
   });
 
@@ -578,18 +619,50 @@ describe("tenant clearinghouse service: the tenant-held vendor BAA (owner decisi
     expect(await codeOf(service.recordBaa(store, ACTOR, BAA))).toBe(
       "CLEARINGHOUSE_BAA_NOT_APPLICABLE",
     );
-    expect(await codeOf(service.verifyBaa(store, OPERATOR))).toBe(
-      "CLEARINGHOUSE_BAA_NOT_APPLICABLE",
-    );
+    expect(await codeOf(verifyBaaSeen(service, store))).toBe("CLEARINGHOUSE_BAA_NOT_APPLICABLE");
   });
 
   it("will not verify a BAA nobody recorded, and verifying twice changes nothing", async () => {
     const { store, service } = await verifiedClaimMd();
-    expect(await codeOf(service.verifyBaa(store, OPERATOR))).toBe("CLEARINGHOUSE_BAA_NOT_RECORDED");
+    expect(await codeOf(verifyBaaSeen(service, store))).toBe("CLEARINGHOUSE_BAA_NOT_RECORDED");
     await service.recordBaa(store, ACTOR, BAA);
-    const first = await service.verifyBaa(store, OPERATOR);
-    const again = await service.verifyBaa(store, OPERATOR);
+    const first = await verifyBaaSeen(service, store);
+    const again = await verifyBaaSeen(service, store);
     expect(again.version).toBe(first.version);
+  });
+
+  it("pins the verification to the record the operator saw: a record changed after the read is a 409 and stays unverified (re-review M1)", async () => {
+    const { store, service } = await verifiedClaimMd();
+    await service.recordBaa(store, ACTOR, BAA);
+    const seen = await pinOf(service, store); // the operator reads the record ...
+    // ... and the tenant swaps it for another document before the operator's click lands
+    await new Promise((r) => setTimeout(r, 5));
+    await service.recordBaa(store, ACTOR, {
+      ...BAA,
+      documentRef: "Claim.MD BAA, a different agreement, contract folder 9",
+    });
+
+    const err = await service.verifyBaa(store, OPERATOR, seen).catch((e: unknown) => e);
+    expect(err).toMatchObject({ code: "CLEARINGHOUSE_BAA_CHANGED", statusCode: 409 });
+    expect((await service.view(store, ORG)).baa?.verified).toBeNull();
+
+    // verifying what the record now says works, and an operator still holding the old pin is refused even when verified
+    const verified = await verifyBaaSeen(service, store);
+    expect(verified.baa?.verified?.at).toEqual(expect.any(String));
+    expect(await codeOf(service.verifyBaa(store, OPERATOR, seen))).toBe(
+      "CLEARINGHOUSE_BAA_CHANGED",
+    );
+  });
+
+  it("an idempotent re-verify needs the right pin too", async () => {
+    const { store, service } = await verifiedClaimMd();
+    await service.recordBaa(store, ACTOR, BAA);
+    const pin = await pinOf(service, store);
+    const first = await service.verifyBaa(store, OPERATOR, pin);
+    expect((await service.verifyBaa(store, OPERATOR, pin)).version).toBe(first.version);
+    expect(
+      await codeOf(service.verifyBaa(store, OPERATOR, { recordedAt: "2000-01-01T00:00:00.000Z" })),
+    ).toBe("CLEARINGHOUSE_BAA_CHANGED");
   });
 
   it("re-recording the same BAA is a no-op; a changed record voids the verification and takes a live config out of service", async () => {
@@ -608,7 +681,7 @@ describe("tenant clearinghouse service: the tenant-held vendor BAA (owner decisi
     expect(changed.view.status).toBe("verified");
     expect(changed.view.activatedAt).toBeNull();
     expect(await codeOf(service.activate(store, ACTOR))).toBe("CLEARINGHOUSE_BAA_NOT_VERIFIED");
-    await service.verifyBaa(store, OPERATOR);
+    await verifyBaaSeen(service, store);
     expect((await service.activate(store, ACTOR)).status).toBe("active");
   });
 });
