@@ -12,7 +12,7 @@ import {
   useApiClient,
   useStepUpDraft,
 } from "@chartwarden/ui";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { JSX } from "react";
 import { FailureNotice } from "./failure-notice";
 import type { PanelContext } from "./panel-types";
@@ -100,27 +100,17 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         response?: { status: number };
       }>,
   );
-  // What was being replaced is the provider entity in the form; the If-Match is re-read from the credential as loaded NOW.
-  const restored = useStepUpDraft<{ form: Form }>(draftKey(orgSlug));
-  const [editing, setEditing] = useState<{
-    pinnedVersion: number | null;
-    resumed?: boolean;
-  } | null>(restored ? { pinnedVersion: null, resumed: true } : null);
+  // Back from Re-verify the edit resumes PINNED to the version the operator first read (null: a create). It is never re-read, so a
+  // credential changed while they re-verified is a 412 that reloads it, not a replace the operator did not see.
+  const restored = useStepUpDraft<{ form: Form; pinnedVersion: number | null }>(draftKey(orgSlug));
+  const [editing, setEditing] = useState<{ pinnedVersion: number | null } | null>(
+    restored ? { pinnedVersion: restored.pinnedVersion ?? null } : null,
+  );
   const [form, setForm] = useState<Form>(restored?.form ?? BLANK);
   const [clientSecret, setClientSecret] = useState("");
   const [errors, setErrors] = useState<Errors>({});
   const [asking, setAsking] = useState(false);
   const write = useOpsWrite();
-
-  // Back from Re-verify: the pin is the version of the credential as loaded NOW (null when there is none to replace).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: resumed and the loaded list are the triggers.
-  useEffect(() => {
-    if (!editing?.resumed || !credentials.data) return;
-    const existing = credentials.data.items.find(
-      (c) => c.providerEntityId === form.providerEntityId,
-    );
-    setEditing({ pinnedVersion: existing?.version ?? null });
-  }, [editing?.resumed, credentials.data]);
 
   const entityList = entities.data?.items ?? [];
   const items = credentials.data?.items ?? [];
@@ -199,8 +189,7 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
   ];
   const fieldError = (field: keyof Errors): string | undefined =>
     errors[field] ?? write.failure?.fieldErrors[field];
-  const resuming = editing?.resumed === true;
-  const creating = editing !== null && !resuming && editing.pinnedVersion === null;
+  const creating = editing !== null && editing.pinnedVersion === null;
 
   return (
     <StepFrame ctx={ctx}>
@@ -266,13 +255,7 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
       {editing && canWrite ? (
         <section className="wx-drawer-card" aria-label="MAC credential form">
           <div className="wx-drawer-card-head">
-            <h3>
-              {resuming
-                ? "MAC credential"
-                : creating
-                  ? "New MAC credential"
-                  : "Replace MAC credential"}
-            </h3>
+            <h3>{creating ? "New MAC credential" : "Replace MAC credential"}</h3>
           </div>
           <PendingAttestationWarning view={view} />
           <div className="wx-form-grid">
@@ -327,9 +310,7 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
             <Button tone="secondary" onClick={() => setEditing(null)}>
               Cancel
             </Button>
-            <Button onClick={askForReason} disabled={resuming}>
-              Save credential
-            </Button>
+            <Button onClick={askForReason}>Save credential</Button>
           </div>
           {write.failure && !asking ? (
             <FailureNotice failure={write.failure} orgSlug={orgSlug} />
@@ -343,7 +324,12 @@ export function MacPanel({ ctx }: { ctx: PanelContext }): JSX.Element {
         confirmLabel="Save"
         write={write}
         orgSlug={orgSlug}
-        onReverify={() => stashStepUpDraft(draftKey(orgSlug), { form })}
+        onReverify={() =>
+          stashStepUpDraft(draftKey(orgSlug), {
+            form,
+            pinnedVersion: editing?.pinnedVersion ?? null,
+          })
+        }
         onConfirm={(reason) => void save(reason)}
         onCancel={() => {
           write.clear();

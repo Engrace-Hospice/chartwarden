@@ -228,6 +228,8 @@ describe("ClearinghousePanel: choosing", () => {
     await waitFor(() =>
       expect(client.GET.mock.calls.filter((c) => c[0] === CH).length).toBeGreaterThan(1),
     );
+    // the form closed (its pin is stale): reopening it starts on what the record says now, with no credential typed
+    fireEvent.click(await screen.findByRole("button", { name: "Change" }));
     expect((secretBox() as HTMLInputElement).value).toBe("");
   });
 
@@ -250,6 +252,50 @@ describe("ClearinghousePanel: choosing", () => {
     expect(await screen.findByRole("heading", { name: "Choose the clearinghouse" })).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect((secretBox() as HTMLInputElement).value).toBe("");
+  });
+});
+
+describe("ClearinghousePanel: coming back from Re-verify keeps the pin", () => {
+  it("resumes a CHANGE pinned to the version the operator first read (3), so a change made meanwhile is a 412, not one they never saw", async () => {
+    mount(CLAIMMD, { PUT: { [CH]: () => refused(403, "STEP_UP_REQUIRED") } });
+    fireEvent.click(await screen.findByRole("button", { name: "Change" }));
+    fireEvent.change(screen.getByLabelText("Mode"), { target: { value: "test" } });
+    fireEvent.change(secretBox(), { target: { value: TYPED_VALUE } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("Customer moved to their sandbox account", "Save");
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    cleanup();
+
+    // someone else changed the config while the operator was re-verifying: it is version 4 now
+    const { client } = mount(
+      { ...CLAIMMD, version: 4 },
+      { PUT: { [CH]: () => refused(412, "VERSION_CONFLICT", "stale") } },
+    );
+    expect(await screen.findByRole("heading", { name: "Change the clearinghouse" })).toBeTruthy();
+    fireEvent.change(secretBox(), { target: { value: TYPED_VALUE } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("Customer moved to their sandbox account", "Save");
+    await waitFor(() => expect(client.PUT).toHaveBeenCalledTimes(1));
+    expect(lastCall(client.PUT.mock.calls)[1].params.header["If-Match"]).toBe("3");
+    expect(await screen.findByText(/changed since you opened it/i)).toBeTruthy();
+  });
+
+  it("resumes a FIRST choice as a first choice (no If-Match), never as a change of whatever is on file now", async () => {
+    mount(NOTHING, { PUT: { [CH]: () => refused(403, "STEP_UP_REQUIRED") } });
+    fireEvent.click(await screen.findByRole("button", { name: "Choose clearinghouse" }));
+    fireEvent.change(secretBox(), { target: { value: TYPED_VALUE } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("Customer sent us their Claim.MD account key", "Save");
+    fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
+    cleanup();
+
+    const { client } = mount(NOTHING, { PUT: { [CH]: () => ok(CLAIMMD, 201) } });
+    await screen.findByRole("heading", { name: "Choose the clearinghouse" });
+    fireEvent.change(secretBox(), { target: { value: TYPED_VALUE } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("Customer sent us their Claim.MD account key", "Save");
+    await waitFor(() => expect(client.PUT).toHaveBeenCalledTimes(1));
+    expect(lastCall(client.PUT.mock.calls)[1].params.header["If-Match"]).toBeUndefined();
   });
 });
 

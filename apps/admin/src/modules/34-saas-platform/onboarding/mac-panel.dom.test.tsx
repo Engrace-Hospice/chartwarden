@@ -182,23 +182,58 @@ describe("MacPanel", () => {
 });
 
 describe("MacPanel: coming back from Re-verify", () => {
-  it("restores a REPLACE as a replace, re-pinned to the version loaded now, never a create without If-Match", async () => {
-    mount([CRED], { POST: { [MAC]: () => refused(403, "STEP_UP_REQUIRED") } });
+  const reverify = async (credentials: unknown[]) => {
+    mount(credentials, { POST: { [MAC]: () => refused(403, "STEP_UP_REQUIRED") } });
     fireEvent.click(
-      await screen.findByRole("button", { name: "Replace credential for Beta Hospice" }),
+      await screen.findByRole(
+        "button",
+        credentials.length > 0
+          ? { name: "Replace credential for Beta Hospice" }
+          : { name: "Add MAC credential" },
+      ),
     );
     fill();
     save("Customer rotated their client key");
     fireEvent.click(await screen.findByRole("link", { name: /Re-verify/ }));
     cleanup();
+  };
+
+  it("resumes a REPLACE pinned to the version the operator first read (3), so a change made meanwhile is a 412, not a replace they never saw", async () => {
+    await reverify([CRED]);
 
     // someone else replaced it while the operator was re-verifying: the version is now 4
-    const { client } = mount([{ ...CRED, version: 4 }], { POST: { [MAC]: () => ok(CRED) } });
+    const { client } = mount([{ ...CRED, version: 4 }], {
+      POST: {
+        [MAC]: (init) =>
+          (init as { params?: { header?: Record<string, string> } }).params?.header?.[
+            "If-Match"
+          ] === "4"
+            ? ok(CRED)
+            : refused(412, "VERSION_CONFLICT", "stale"),
+      },
+    });
     expect(await screen.findByText("Replace MAC credential")).toBeTruthy();
     fireEvent.change(screen.getByLabelText(/^Client secret/), { target: { value: TYPED_VALUE } });
     save("Customer rotated their client key");
     await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
     const init = client.POST.mock.calls[0]?.[1] as { params: { header: Record<string, string> } };
-    expect(init.params.header["If-Match"]).toBe("4");
+    expect(init.params.header["If-Match"]).toBe("3");
+    expect(await screen.findByText(/changed since you opened it/i)).toBeTruthy();
+  });
+
+  it("resumes a CREATE as a create (no If-Match) for the same provider entity, never as a replace of whatever is loaded now", async () => {
+    await reverify([]);
+
+    const { client } = mount([], { POST: { [MAC]: () => ok(CRED, 201) } });
+    expect(await screen.findByText("New MAC credential")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/^Client secret/), { target: { value: TYPED_VALUE } });
+    save("Customer sent their Noridian enrolment");
+    await waitFor(() => expect(client.POST).toHaveBeenCalledTimes(1));
+    const init = client.POST.mock.calls[0]?.[1] as {
+      params: { header: Record<string, string> };
+      body: Record<string, unknown>;
+    };
+    expect(init.params.header["If-Match"]).toBeUndefined();
+    expect(init.body).toMatchObject({ providerEntityId: "pe-1", clientSecret: TYPED_VALUE });
   });
 });

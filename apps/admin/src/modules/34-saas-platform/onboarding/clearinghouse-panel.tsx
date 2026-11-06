@@ -103,7 +103,14 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
   const load = useLoad<ClearinghouseView>(`clearinghouse:${orgSlug}`, () =>
     client.GET(PATH, { params: { path: { orgSlug } } }),
   );
-  const restored = useStepUpDraft<{ form: ChoiceForm }>(draftKey(orgSlug));
+  // The version the operator read when the form opened (null: a first choice). It is stashed through Re-verify and sent from there,
+  // never re-read, so a config changed while they re-verified is a 412 that reloads it, not a change they did not see.
+  const restored = useStepUpDraft<{ form: ChoiceForm; pinnedVersion: number | null }>(
+    draftKey(orgSlug),
+  );
+  const [pinnedVersion, setPinnedVersion] = useState<number | null>(
+    restored?.pinnedVersion ?? null,
+  );
   const [dialog, setDialog] = useState<Dialog>(null);
   const [editing, setEditing] = useState(restored !== undefined);
   const [form, setForm] = useState<ChoiceForm>(restored?.form ?? BLANK_CHOICE);
@@ -150,6 +157,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
           }
         : BLANK_CHOICE,
     );
+    setPinnedVersion(current.source === "tenant" ? current.version : null);
     setEditing(true);
   }
 
@@ -168,7 +176,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
 
   async function choose(reason: string): Promise<void> {
     if (!current) return;
-    const pinned = current.source === "tenant" ? current.version : null;
+    const pinned = pinnedVersion;
     const body =
       form.vendor === "outside"
         ? { vendor: "outside" as const, reason }
@@ -195,8 +203,10 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
       setSecret("");
       await settled();
     } else if (outcome.failure.kind === "conflict") {
-      // Someone changed it since it was read: the dialog closes, the record is read again, and the operator enters the credential anew.
+      // Someone changed it since it was read: the form closes (its pin is stale), the record is read again, and the operator opens the
+      // form anew on what it says now and enters the credential again.
       setDialog(null);
+      setEditing(false);
       setSecret("");
       await load.reload(true);
     }
@@ -365,10 +375,10 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
             }}
             onContinue={continueChoice}
           />
-          {write.failure && dialog === null ? (
-            <FailureNotice failure={write.failure} orgSlug={orgSlug} />
-          ) : null}
         </>
+      ) : null}
+      {write.failure && dialog === null && !attesting ? (
+        <FailureNotice failure={write.failure} orgSlug={orgSlug} />
       ) : null}
 
       {attesting && canWrite ? (
@@ -424,7 +434,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
         confirmLabel="Save"
         write={write}
         orgSlug={orgSlug}
-        onReverify={() => stashStepUpDraft(draftKey(orgSlug), { form })}
+        onReverify={() => stashStepUpDraft(draftKey(orgSlug), { form, pinnedVersion })}
         onConfirm={(reason) => void choose(reason)}
         onCancel={() => {
           write.clear();
