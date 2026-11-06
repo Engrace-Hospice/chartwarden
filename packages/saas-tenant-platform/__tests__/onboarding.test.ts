@@ -53,21 +53,25 @@ const t = (
   isOptional,
 });
 
+// Every attestation-mode row carries the rollback tripwire, as migration 1327 seeds it (a NULL there would let the PREVIOUS
+// release's sweep settle the step on its own); the new machine must ignore it. A test below pins the migration to this.
+const attestation = (key: string, canonicalOrder: number, isOptional = false): Template =>
+  t(key, canonicalOrder, "attestation", GO_LIVE_ROLLBACK_GUARD_DSL, isOptional);
 const CANONICAL_TEMPLATES: readonly Template[] = [
-  t("account_created", 1, "attestation", null),
-  t("plan_contract", 2, "attestation", null),
+  attestation("account_created", 1),
+  attestation("plan_contract", 2),
   t("baa_executed", 3, "auto", "context.baaExecuted == true"),
   t("provisioning_complete", 4, "auto", null),
-  t("ccn_registered", 5, "attestation", null),
+  attestation("ccn_registered", 5),
   t("locations_seeded", 6, "either", "context.primaryLocationExists == true"),
-  t("clearinghouse_selected", 7, "attestation", null),
+  attestation("clearinghouse_selected", 7),
   t("mac_configured", 8, "either", "context.macFeedConfigured == true"),
-  t("payer_enrollment", 9, "attestation", null),
+  attestation("payer_enrollment", 9),
   t("dosespot_kickoff_initiated", 10, "either", "context.dosespotKickoffRecorded == true"),
   t("first_admin_invited", 11, "auto", "context.orgAdminAcceptedMembershipCount > 0"),
   t("compliance_officer_assigned", 12, "either", "context.complianceOfficerAssigned == true"),
-  t("sample_data_loaded", 13, "attestation", null, true),
-  t("go_live_checklist_complete", 14, "attestation", GO_LIVE_ROLLBACK_GUARD_DSL),
+  attestation("sample_data_loaded", 13, true),
+  attestation("go_live_checklist_complete", 14),
 ];
 
 const pe = (id: string, ccn: string | null): OnboardingProviderEntityView => ({
@@ -516,6 +520,49 @@ describe("go-live rollback guard", () => {
     );
     const row = sql.split("\n").find((line) => line.includes("'go_live_checklist_complete'"));
     expect(row).toContain(`'${GO_LIVE_ROLLBACK_GUARD_DSL}'`);
+  });
+
+  it("is on EVERY attestation-mode row of migration 1327, not only go-live (review fix L1: a NULL lets the old sweep settle the step)", () => {
+    const sql = readFileSync(
+      join(__dirname, "../../db/migrations/1327_m34_onboarding_wizard_v2.sql"),
+      "utf8",
+    );
+    // The seed rows are the VALUES tuples that name a template key and a completion mode.
+    const rows = sql
+      .split("\n")
+      .filter(
+        (line) =>
+          /^\s*\('[a-z_]+',/.test(line) &&
+          /'(attestation|either|auto)',\s*(true|false)\)/.test(line),
+      );
+    const attestationRows = rows.filter((line) => /'attestation',\s*(true|false)\)/.test(line));
+    const keys = attestationRows.map((line) => /^\s*\('([a-z_]+)'/.exec(line)?.[1]);
+    expect(keys.sort()).toEqual(
+      [
+        "account_created",
+        "ccn_registered",
+        "clearinghouse_selected",
+        "go_live_checklist_complete",
+        "payer_enrollment",
+        "plan_contract",
+        "sample_data_loaded",
+      ].sort(),
+    );
+    for (const line of attestationRows) {
+      expect(line, line).toContain(`'${GO_LIVE_ROLLBACK_GUARD_DSL}'`);
+    }
+    // ...and the fixture above mirrors it: every attestation-mode template carries it.
+    expect(
+      CANONICAL_TEMPLATES.filter((tpl) => tpl.completionMode === "attestation").every(
+        (tpl) => tpl.preconditionDsl === GO_LIVE_ROLLBACK_GUARD_DSL,
+      ),
+    ).toBe(true);
+  });
+
+  it("is ignored by the new machine for every attestation step: the walk waits at the first one and nothing is emitted or thrown", () => {
+    const res = advanceOnboarding(CONFIG, makeSteps(), metContext(), NOW);
+    expect(res.currentStep).toBe("account_created");
+    expect(res.emits.filter((e) => e.kind !== "step_overdue")).toEqual([]);
   });
 
   it("is ignored by the new machine: an attested tenant waits at go-live and nothing is emitted or thrown", () => {

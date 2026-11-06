@@ -51,12 +51,14 @@ UPDATE "onboarding_task_template"
    AND "retired_at" IS NULL;--> statement-breakpoint
 
 -- The steps that stay, in their new wizard position.
--- ROLLBACK TRIPWIRE: the go-live row carries `context.goLiveApproved == true`, a field no release produces. If the previous
--- release is ever run against this schema (deploy.sh will not auto-restore over the batch, 1328 being `contract`, so that
--- means an operator did), its sweep reads a NULL precondition as met and would take the tenant live with no attestation or
--- approval; with this expression its evaluator throws on the unknown field instead (that tenant's pass fails loud and
--- retries). This release never evaluates it: go-live is `attestation` mode and the
--- machine config drops every attestation step's DSL (steps.ts GO_LIVE_ROLLBACK_GUARD_DSL; a test pins the two together).
+-- ROLLBACK TRIPWIRE: EVERY attestation-mode row (account_created, plan_contract, ccn_registered, clearinghouse_selected,
+-- payer_enrollment, sample_data_loaded and go_live_checklist_complete) carries `context.goLiveApproved == true`, a field no
+-- release produces. If the previous release is ever run against this schema (deploy.sh will not auto-restore over the batch,
+-- 1328 being `contract`, so that means an operator did), its sweep reads a NULL precondition as met: it would settle every
+-- attestation step on its own (no human evidence) and take the tenant live with no attestation or approval. With this
+-- expression its evaluator throws on the unknown field instead (that tenant's pass fails loud and retries). This release never
+-- evaluates it: these steps are `attestation` mode and the machine config drops every attestation step's DSL (steps.ts
+-- GO_LIVE_ROLLBACK_GUARD_DSL; a test pins the migration rows and the machine's indifference together).
 UPDATE "onboarding_task_template" AS t
    SET "display_label" = v.label,
        "description" = v.descr,
@@ -67,13 +69,13 @@ UPDATE "onboarding_task_template" AS t
        "completion_mode" = v.mode,
        "is_optional" = v.optional
   FROM (VALUES
-    ('account_created', 'Organisation', 'Legal name, display name and time zone confirmed with the customer', 1, 'platform_ops', NULL, 0, 'attestation', false),
-    ('ccn_registered', 'Provider entity & NPI verification', 'Provider entity registered with its CCN and its NPI verified against the registry', 5, 'either', NULL, 7, 'attestation', false),
+    ('account_created', 'Organisation', 'Legal name, display name and time zone confirmed with the customer', 1, 'platform_ops', 'context.goLiveApproved == true', 0, 'attestation', false),
+    ('ccn_registered', 'Provider entity & NPI verification', 'Provider entity registered with its CCN and its NPI verified against the registry', 5, 'either', 'context.goLiveApproved == true', 7, 'attestation', false),
     ('locations_seeded', 'Locations', 'All expected locations created with at least one primary', 6, 'org_admin', 'context.primaryLocationExists == true', 10, 'either', false),
     ('mac_configured', 'Billing: MAC credentials', 'Medicare MAC submitter credentials recorded', 8, 'either', 'context.macFeedConfigured == true', 14, 'either', false),
     ('dosespot_kickoff_initiated', 'e-Prescribing (DoseSpot)', 'DoseSpot clinic registration started', 10, 'either', 'context.dosespotKickoffRecorded == true', 21, 'either', false),
     ('first_admin_invited', 'People: first admin', 'At least one org_admin membership exists and has accepted', 11, 'platform_ops', 'context.orgAdminAcceptedMembershipCount > 0', 1, 'auto', false),
-    ('sample_data_loaded', 'Sample data (optional)', 'Optional starter data for staff training', 13, 'platform_ops', NULL, 45, 'attestation', true),
+    ('sample_data_loaded', 'Sample data (optional)', 'Optional starter data for staff training', 13, 'platform_ops', 'context.goLiveApproved == true', 45, 'attestation', true),
     ('go_live_checklist_complete', 'Go-live', 'The compliance officer attests readiness and a platform operator approves; the tenant then goes active', 14, 'compliance_officer', 'context.goLiveApproved == true', 60, 'attestation', false)
   ) AS v(key, label, descr, seq, owner, dsl, due, mode, optional)
  WHERE t."key" = v.key;--> statement-breakpoint
@@ -84,11 +86,11 @@ INSERT INTO "onboarding_task_template"
   ("key", "display_label", "description", "canonical_order", "required_role", "precondition_dsl",
    "default_due_days_after_provisioning", "is_canonical", "completion_mode", "is_optional")
 VALUES
-  ('plan_contract', 'Plan & contract', 'Subscription plan and signed order form confirmed', 2, 'platform_ops', NULL, 0, true, 'attestation', false),
+  ('plan_contract', 'Plan & contract', 'Subscription plan and signed order form confirmed', 2, 'platform_ops', 'context.goLiveApproved == true', 0, true, 'attestation', false),
   ('baa_executed', 'BAA', 'Platform business associate agreement executed', 3, 'platform_ops', 'context.baaExecuted == true', 3, true, 'auto', false),
   ('provisioning_complete', 'Provisioning', 'Tenant organisation, encryption key ring and first-admin invitation provisioned', 4, 'platform_ops', NULL, 1, true, 'auto', false),
-  ('clearinghouse_selected', 'Billing: clearinghouse', 'Clearinghouse chosen: Stedi, Claim.MD, or billing outside ChartWarden', 7, 'either', NULL, 14, true, 'attestation', false),
-  ('payer_enrollment', 'Billing: payer enrollment', 'Payer enrollment submitted or confirmed', 9, 'either', NULL, 21, true, 'attestation', false),
+  ('clearinghouse_selected', 'Billing: clearinghouse', 'Clearinghouse chosen: Stedi, Claim.MD, or billing outside ChartWarden', 7, 'either', 'context.goLiveApproved == true', 14, true, 'attestation', false),
+  ('payer_enrollment', 'Billing: payer enrollment', 'Payer enrollment submitted or confirmed', 9, 'either', 'context.goLiveApproved == true', 21, true, 'attestation', false),
   ('compliance_officer_assigned', 'People: compliance officer', 'A compliance officer is assigned to attest go-live readiness', 12, 'either', 'context.complianceOfficerAssigned == true', 14, true, 'either', false)
 ON CONFLICT ("key") DO NOTHING;--> statement-breakpoint
 
