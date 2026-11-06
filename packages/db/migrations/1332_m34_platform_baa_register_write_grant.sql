@@ -10,12 +10,12 @@
 --                  rewrite which tenant or organisation a row belongs to, its addendum version, the subcontractor disclosure
 --                  set, or the tenant compliance officer's attestation (compliance_officer_attestation_membership_id /
 --                  attested_at): that attestation is the tenant's own statement and is written on the tenant surface.
--- REVOKE UPDATE first so a re-provision takes back an older table-wide grant. The carrier exists only where
--- scripts/db/provision-runtime-roles.ts has run, and that script re-grants the same on every run (both must agree).
+-- The carrier held no UPDATE here before, so nothing is revoked (which also keeps this `expand`: arch:migration-compat reads a
+-- REVOKE as contracting). The carrier exists only where scripts/db/provision-runtime-roles.ts has run, and that script re-grants
+-- the same on every run, REVOKE-ing UPDATE first so a re-provision also takes back any table-wide grant (both must agree).
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chartwarden_platform') THEN
     GRANT INSERT ON "platform_tenant_baa_record" TO chartwarden_platform;
-    REVOKE UPDATE ON "platform_tenant_baa_record" FROM chartwarden_platform;
     GRANT UPDATE ("baa_status", "executed_on", "effective_on", "expires_on", "breach_notification_contact_email", "breach_notification_contact_phone", "document_id") ON "platform_tenant_baa_record" TO chartwarden_platform;
   END IF;
 END $$;
