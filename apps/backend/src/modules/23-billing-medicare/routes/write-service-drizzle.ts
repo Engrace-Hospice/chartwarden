@@ -45,8 +45,8 @@ import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-po
 import { M23_QUEUES } from "../jobs/queues";
 import {
   UNPARK_PATCH,
+  appendQueuedNoticeAttempt,
   buildExternalNoticeFilingService,
-  nextNoticeAttemptIndex,
   noticeFiledExternally,
   orgBillsOutside,
   parkNotice,
@@ -1173,19 +1173,13 @@ export function buildDrizzleM23WriteService(
           noe = await patchExternalFiling(repo, noe, UNPARK_PATCH);
         }
         const submissions = new repositories.ClaimSubmissionRepository(tx);
-        const submission = await submissions.append({
+        // the NEXT index after a closed attempt (a park, then a switch back): index 0 would hand back the closed row
+        const submission = await appendQueuedNoticeAttempt(submissions, {
           organizationId: actor.organizationId,
           providerEntityId: noe.providerEntityId,
           kind: "noe",
           noeId: noe.id,
           claimControlNumber: noe.noeControlNumber,
-          // the NEXT index after a closed attempt (a park, then a switch back): index 0 would hand back the closed row
-          attemptIndex: await nextNoticeAttemptIndex(
-            submissions,
-            noe.providerEntityId,
-            noe.noeControlNumber,
-          ),
-          outcome: "queued",
         });
         const { jobId } = await jobs.enqueue("noe.submit", `${actor.organizationId}:${noe.id}`, {
           noeId: noe.id,
@@ -1250,18 +1244,12 @@ export function buildDrizzleM23WriteService(
           notr = await patchExternalFiling(repo, notr, UNPARK_PATCH);
         }
         const submissions = new repositories.ClaimSubmissionRepository(tx);
-        const submission = await submissions.append({
+        const submission = await appendQueuedNoticeAttempt(submissions, {
           organizationId: actor.organizationId,
           providerEntityId: notr.providerEntityId,
           kind: "notr",
           notrId: notr.id,
           claimControlNumber: notr.notrControlNumber,
-          attemptIndex: await nextNoticeAttemptIndex(
-            submissions,
-            notr.providerEntityId,
-            notr.notrControlNumber,
-          ),
-          outcome: "queued",
         });
         const { jobId } = await jobs.enqueue("notr.submit", `${actor.organizationId}:${notr.id}`, {
           notrId: notr.id,
