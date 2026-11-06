@@ -818,6 +818,7 @@ import {
   createBereavementCipher,
   createDrizzleBereavementEraseStore,
   createDrizzleBereavementSeamStore,
+  createM16AlertPort,
   denyStubBereavementAbacResolver,
   mountM16Routes,
   registerBereavementAbacPredicates,
@@ -6558,8 +6559,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           // The write service takes the READ service so every plan-shaped mutation answers with the SAME
           // projection route 2 serves (one DTO, one disclosure gate, no drift).
           const m16ReadService = buildDrizzleM16ReadService(dbHandle.db);
+          const m16AlertPort = createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter);
           const m16WriteService = buildDrizzleM16WriteService(dbHandle.db, m16ReadService, {
             outbox: m16OutboxPublisher,
+            // ADR-0110 D7 — M16 alerts ride the M36 AlertEmitter seam (routed kinds only; see alert-port.ts).
+            alerts: m16AlertPort,
             // GAP-129 — the tenant-DEK envelope (M34 key ring, resolved lazily like every other cipher below) for
             // a contact's email / phone / mailing address and a counselor's notes.
             cipher: createBereavementCipher({
@@ -9838,8 +9842,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     // months, no outreach was ever marked `missed` (so M30's missed/overdue counts were permanently 0) and no
     // anniversary reminder was ever alerted. Three time-driven queues now produce them (`m16-close-13mo`,
     // `m16-miss-deadline`, `m16-anniversary-lookahead`); each writes its row change + the m16.* outbox event
-    // through the real catalog-validating tx publisher in ONE per-row org tx. `alerts` is left unbound like
-    // M16's routes: the M36 alerts ride the outbox events, and the workers' best-effort alert port is optional.
+    // through the real catalog-validating tx publisher in ONE per-row org tx. `alerts` is the ADR-0110 D7
+    // adapter over the M36 AlertEmitter seam (routed kinds only; an unrouted kind is a no-op).
     const m16ActiveOrgs = buildActiveOrgEnumerator({
       platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
@@ -9851,6 +9855,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       db: dbHandle.db,
       outbox: m16OutboxPublisher,
       activeOrgs: m16ActiveOrgs,
+      alerts: createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter),
     });
     const m16Workers = registerM16CronWorkers(m16WorkerDeps);
     attachDlqAlertsToAll(m16Workers, "m16");
@@ -11733,6 +11738,8 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM16BereavementIntakeConsumer({
             db: dbHandle.db,
             outbox: m16OutboxPublisher,
+            // ADR-0110 D7 — `death_intake`: the oversight roles are told an `eligible` plan awaits a counselor.
+            alerts: createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter),
             resolveAdmission: async (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
           }),
@@ -11754,6 +11761,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM16DischargeDeathSecondaryConsumer({
             db: dbHandle.db,
             outbox: m16OutboxPublisher,
+            alerts: createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter),
             resolveAdmission: async (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
           }),

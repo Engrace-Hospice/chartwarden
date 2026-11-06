@@ -38,7 +38,8 @@ import {
   decideEligibilityIntake,
   resolveDeathFact,
 } from "../consumers/index";
-import type { WriteOutboxPort } from "../routes/write-service";
+import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
+import { emitDeathIntakeAlert } from "./death-intake-alert";
 
 const PLAN = schema.bereavementPlan;
 
@@ -54,6 +55,8 @@ export interface DischargeDeathSecondaryDeps {
   readonly db: DbClient;
   /** The bound publisher — `Value.Check`s `m16.*` against the boot catalog. */
   readonly outbox: WriteOutboxPort;
+  /** ADR-0110 D7 — the M36-backed alert port; unbound => the `death_intake` alert is skipped. */
+  readonly alerts?: AlertPort;
   /** Same org-explicit admission-siting port the primary intake consumer uses — see
    *  ../consumers/death-discharge.ts for why the request-scoped §4.7 seam cannot be used here. */
   readonly resolveAdmission: AdmissionAnchorResolver;
@@ -149,10 +152,10 @@ export function buildM16DischargeDeathSecondaryConsumer(deps: DischargeDeathSeco
 
       if (action.kind === "idempotent_skip") return;
 
-      await withOrgContext(
+      const openedPlanId = await withOrgContext(
         deps.db,
         { organizationId, userId: CONSUMER_USER_ID },
-        async (scoped) => {
+        async (scoped): Promise<string | null> => {
           const tx = scoped as unknown as DbClient;
 
           if (action.kind === "skip_per_patient_opt_out") {
@@ -167,10 +170,10 @@ export function buildM16DischargeDeathSecondaryConsumer(deps: DischargeDeathSeco
                 deathDate: action.deathDate ?? "",
               },
             });
-            return;
+            return null;
           }
 
-          await tx
+          const inserted = await tx
             .insert(PLAN)
             .values({
               organizationId,
@@ -183,9 +186,20 @@ export function buildM16DischargeDeathSecondaryConsumer(deps: DischargeDeathSeco
               deathTime: new Date(action.deathAt),
               externalSourceMetadata: action.externalSourceMetadata,
             })
-            .onConflictDoNothing();
+            .onConflictDoNothing()
+            .returning({ id: PLAN.id });
+          return inserted[0]?.id ?? null;
         },
       );
+
+      // Only the delivery that actually opened the plan alerts (a conflict-absorbed redelivery inserts nothing).
+      if (openedPlanId !== null && action.kind === "open_plan") {
+        await emitDeathIntakeAlert(deps.alerts, {
+          organizationId,
+          planId: openedPlanId,
+          deathDate: action.deathDate,
+        });
+      }
     },
   };
 }

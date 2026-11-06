@@ -626,7 +626,31 @@ export interface BereavementCloseEarlyPendingCosignAlert {
   readonly reason: string;
 }
 
-/** The §4.10 discriminated union of every typed alert M16 emits to M36. */
+/** ADR-0110 D7 — a death opened a bereavement plan (`eligible`); oversight assigns a counselor. Ids and the
+ *  death date only: no name, no cause. */
+export interface BereavementDeathIntakeAlert {
+  readonly kind: "death_intake";
+  readonly planId: BereavementPlanId;
+  readonly deathDate: LocalDate;
+}
+
+/** ADR-0110 D6/D7 — the condolence letter to the attending clinician is waiting for a human review. */
+export interface BereavementPhysicianLetterPendingReviewAlert {
+  readonly kind: "physician_letter_pending_review";
+  readonly planId: BereavementPlanId;
+}
+
+/** ADR-0110 D3/D7 — an assessment checkpoint passed its late grace uncompleted (the task is now `missed`). */
+export interface BereavementRiskAssessmentOverdueAlert {
+  readonly kind: "risk_assessment_overdue";
+  readonly planId: BereavementPlanId;
+  readonly contactId: BereavedContactId;
+  readonly taskId: string;
+  readonly taskKind: "initial_assessment" | "midpoint_reassessment";
+  readonly dueAt: IsoInstant;
+}
+
+/** The §4.10 discriminated union of every typed alert M16 emits to M36 (+ the ADR-0110 D7 kinds). */
 export type BereavementAlertPayload =
   | BereavementAnniversaryDueAlert
   | BereavementOutreachMissedAlert
@@ -634,7 +658,10 @@ export type BereavementAlertPayload =
   | BereavementComplicatedGriefReferralAlert
   | BereavementConsentRevokedCascadeAlert
   | BereavementRiskTierEscalatedAlert
-  | BereavementCloseEarlyPendingCosignAlert;
+  | BereavementCloseEarlyPendingCosignAlert
+  | BereavementDeathIntakeAlert
+  | BereavementPhysicianLetterPendingReviewAlert
+  | BereavementRiskAssessmentOverdueAlert;
 
 // ── §4.6 read DTOs ────────────────────────────────────────────────────────────────────────────────────
 
