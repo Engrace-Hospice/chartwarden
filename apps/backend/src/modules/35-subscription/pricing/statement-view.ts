@@ -1,5 +1,5 @@
 // apps/backend/src/modules/35-subscription/pricing/statement-view.ts — what a statement looks like on the wire (slice 2).
-// The row is the truth (migration 1342 holds its arithmetic as CHECK constraints); the view is a flat, explained rendering of it that
+// The row is the truth (migration 1362 holds its arithmetic as CHECK constraints); the view is a flat, explained rendering of it that
 // the tenant, the platform operator and the Stripe seam all read the same way.
 import type { schema } from "@chartwarden/db";
 import type { BillingServiceMode } from "@chartwarden/types";

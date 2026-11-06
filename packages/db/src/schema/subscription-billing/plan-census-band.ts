@@ -1,4 +1,4 @@
-// @chartwarden/db — `plan_census_band` (M35, slice 2 — migration 1341). One row per census band of a census_banded plan.
+// @chartwarden/db — `plan_census_band` (M35, slice 2 — migration 1361). One row per census band of a census_banded plan.
 // A band is a THRESHOLD: it starts at `min_adc` patients and runs until the next band starts, so bands cannot overlap or
 // leave a gap. PLATFORM-SHARED (no organization_id BY DESIGN: the same offer for every tenant): read-all to chartwarden_app,
 // written only by the platform carrier / chartwarden_admin. The bands of a published plan are frozen with it (guard trigger).

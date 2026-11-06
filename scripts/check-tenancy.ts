@@ -327,10 +327,10 @@ const NON_ORG_SCOPED = new Set<string>([
   "addon",
   // Slice 2 (tenant pricing) — `plan_census_band`, the census bands of a census_banded plan: the same offer for every tenant, so no
   // organization_id by design (the `plan` / `plan_meter` shape: read-all USING (true) TO chartwarden_app, written only by the platform
-  // carrier / chartwarden_admin; migration 1341). Its tenant-scoped siblings (`subscription_contract`, `patient_census_daily`,
-  // `subscription_statement`, migration 1342) carry organization_id with app.org_id RLS, SELECT-only to the app role.
+  // carrier / chartwarden_admin; migration 1361). Its tenant-scoped siblings (`subscription_contract`, `patient_census_daily`,
+  // `subscription_statement`, migration 1362) carry organization_id with app.org_id RLS, SELECT-only to the app role.
   "plan_census_band",
-  // Slice 2 — `subscription_statement_review` (migration 1342): a subscription-month the statement run could not bill, recorded once. PLATFORM-ONLY
+  // Slice 2 — `subscription_statement_review` (migration 1362): a subscription-month the statement run could not bill, recorded once. PLATFORM-ONLY
   // (the claimmd_webhook_event shape): RLS enabled + FORCEd with no policy and no chartwarden_app grant; its tenant column is
   // `subject_organization_id`, so it is not an org-scoped row.
   "subscription_statement_review",

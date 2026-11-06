@@ -233,7 +233,7 @@ describe.skipIf(!DB_URL)("F-093 M3 role catalog floor — LIVE Postgres", () => 
 
   // Slice 2 - `external_auditor` is the role M3's auditor grant creates in a tenant org (system_default, category external_auditor), and a
   // real auditor must always land on THAT row. The route refuses a tenant role under the key (unit-tested); the database refuses it for
-  // every writer (migration 1345), which is what this proves as the NOBYPASSRLS app role through the store production mounts.
+  // every writer (migration 1365), which is what this proves as the NOBYPASSRLS app role through the store production mounts.
   it("a tenant cannot create a role under the system-managed key external_auditor through the store (the database backstop), whatever the category; an ordinary role still creates", async () => {
     for (const category of ["external_auditor", "clinical_staff", "admin_executive"]) {
       await expect(

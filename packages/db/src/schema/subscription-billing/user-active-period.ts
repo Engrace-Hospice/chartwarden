@@ -22,7 +22,7 @@ export const userActivePeriod = pgTable(
     pseudonymKeyEpoch: text("pseudonym_key_epoch").notNull(),
     periodYearMonth: text("period_year_month").notNull(),
     wasActive: boolean("was_active").notNull().default(false),
-    // Slice 2 (migration 1346): every sign-in observed this month was by a membership whose grants were all non-staff (the system
+    // Slice 2 (migration 1366): every sign-in observed this month was by a membership whose grants were all non-staff (the system
     // auditor role, a platform-owned role). Decided when the sign-in is observed; a staff sign-in clears it for the month.
     nonStaffObserved: boolean("non_staff_observed").notNull().default(false),
     firstSessionAt: timestamp("first_session_at", { withTimezone: true }),

@@ -29,7 +29,7 @@ export const POST_END_SETTLEMENT_MONTHS = 12;
 export type ContractScope = "live" | "statements" | "latest";
 
 /**
- * The contract columns EVERY reader may see: the tenant role holds a COLUMN-level SELECT on exactly these (migration 1342), never on who
+ * The contract columns EVERY reader may see: the tenant role holds a COLUMN-level SELECT on exactly these (migration 1362), never on who
  * signed, why, or the order form. The signature facts are read separately, on a platform transaction (`contract-service.ts`).
  */
 const CONTRACT_COLUMNS = {

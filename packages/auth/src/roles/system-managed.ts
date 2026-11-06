@@ -8,7 +8,7 @@
 // (so the auditor lands on a tenant-editable role), and a role it could attach to staff to try to hide them from the bill.
 //
 // So a tenant may not create a role under a system-managed key (M3 `POST /api/v1/roles` answers 422 RESERVED_ROLE, and the database
-// backstop, migration 1345, refuses it for any writer), and the auditor grant refuses to adopt a row of that key that is not the
+// backstop, migration 1365, refuses it for any writer), and the auditor grant refuses to adopt a row of that key that is not the
 // system one. The list is deliberately the keys the system CREATES in a tenant org on demand; the platform keys have their own
 // reservation (./platform-reserved) and the CoP / org-wide-scope keys are materialized from the templates at provisioning.
 

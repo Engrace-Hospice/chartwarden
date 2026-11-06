@@ -1,4 +1,4 @@
-// @chartwarden/db — `subscription_statement` (M35, slice 2 — migration 1342). One row per subscription per calendar month:
+// @chartwarden/db — `subscription_statement` (M35, slice 2 — migration 1362). One row per subscription per calendar month:
 // the inputs (staff, ADC, net collections), the price terms applied, BOTH sides of the greater-of rule, and the total.
 // `draft` while the month is open (recomputed, idempotently), `final` once closed; a final row is frozen by its trigger except
 // for the Stripe push columns (the seam: nothing writes them until M35's Stripe subscription wiring exists).

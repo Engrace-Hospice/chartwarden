@@ -6424,7 +6424,7 @@ export const M35_CONTRIBUTED_PERMISSIONS = {
   },
   // ── slice 2 (tenant pricing): the onboarding contract. `category: "platform"` (not `billing_admin`), like the M34 onboarding keys. ──
   // Create a tenant's subscription at onboarding step 2 and change its billing service mode. Only the `platform_ops` role carries it
-  // (migration 1343), because `tenant_lifecycle_platform_ops` admits that role alone.
+  // (migration 1363), because `tenant_lifecycle_platform_ops` admits that role alone.
   "subscription.onboard_platform": {
     resource: "subscription",
     action: "onboard_platform",

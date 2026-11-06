@@ -33,7 +33,7 @@ export const plan = pgTable(
     deprecatedAt: timestamp("deprecated_at", { withTimezone: true }),
     stripeProductId: text("stripe_product_id"),
     stripePriceId: text("stripe_price_id"),
-    // Slice 2 (migration 1341) — the contracted census_banded model. All null on the retired flat tiers. A row is one
+    // Slice 2 (migration 1361) — the contracted census_banded model. All null on the retired flat tiers. A row is one
     // VERSION: slug = `<family_slug>-v<version>`; once `published_at` is set the prices are frozen (guard trigger), so a
     // subscription keeps the price it signed and a price change is a new row that supersedes this one.
     familySlug: text("family_slug"),

@@ -1,4 +1,4 @@
-// @chartwarden/db — `subscription_contract` (M35, slice 2 — migration 1342). The signed terms of a subscription on a
+// @chartwarden/db — `subscription_contract` (M35, slice 2 — migration 1362). The signed terms of a subscription on a
 // census_banded plan: the plan VERSION it signed (frozen once published, so the price cannot move under it), who signed
 // and why. IMMUTABLE once signed (a trigger refuses any UPDATE). The billing service mode lives in its own append-only,
 // effective-dated history (`subscription_contract_mode`). TENANT-SCOPED (organization_id, RLS on app.org_id) and
@@ -39,7 +39,7 @@ export const subscriptionContract = pgTable(
 export type SubscriptionContractRow = typeof subscriptionContract.$inferSelect;
 export type NewSubscriptionContractRow = typeof subscriptionContract.$inferInsert;
 
-// `subscription_contract_mode` (migration 1342): the billing service mode as an append-only, effective-dated history. The mode in
+// `subscription_contract_mode` (migration 1362): the billing service mode as an append-only, effective-dated history. The mode in
 // force on a date is the row with the latest `effective_from` at or before it (the newest row wins a tie), so a pending change is
 // superseded by another row for the same date. A change takes effect from the 1st of the NEXT month, immediately only while the
 // tenant has no statement yet, and the database refuses a change dated inside a month whose statement is final.

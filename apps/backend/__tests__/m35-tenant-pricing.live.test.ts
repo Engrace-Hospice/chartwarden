@@ -691,7 +691,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       );
       // the migration's retirement statement, run against a still-active flat plan
       const retire =
-        readFileSync(join(MIGRATIONS_DIR, "1341_m35_census_banded_plan.sql"), "utf8").split(
+        readFileSync(join(MIGRATIONS_DIR, "1361_m35_census_banded_plan.sql"), "utf8").split(
           "-- Retire the flat tiers",
         )[1] ?? "";
       await admin.query(retire.replace(/^[^\n]*\n(--[^\n]*\n)*/, ""));
@@ -1436,7 +1436,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
     });
 
     it("the FAKE-KEY case: a look-alike external_auditor role (a legacy row, never system_default) hides nobody, and the database refuses to create one", async () => {
-      // the database backstop (migration 1345): any writer, even a superuser, is refused a non-system role under the key
+      // the database backstop (migration 1365): any writer, even a superuser, is refused a non-system role under the key
       const insertRole = (systemDefault: boolean, category: string) =>
         admin.query(
           `INSERT INTO role (organization_id,key,name,category,enabled,system_default)

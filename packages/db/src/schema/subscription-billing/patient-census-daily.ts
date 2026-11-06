@@ -1,4 +1,4 @@
-// @chartwarden/db — `patient_census_daily` (M35, slice 2 — migration 1342). One row per organisation per UTC day: the
+// @chartwarden/db — `patient_census_daily` (M35, slice 2 — migration 1362). One row per organisation per UTC day: the
 // active-patient COUNT the `m35.patient-census` sweep read from M5's PatientCensusReader (the latest observation of the day
 // wins). The average daily census is the mean of these rows. A count only: no patient id, pseudonym or name, so it is not
 // PHI-bearing. TENANT-SCOPED, SELECT-ONLY to the app role (a tenant cannot write the census it is billed on).
