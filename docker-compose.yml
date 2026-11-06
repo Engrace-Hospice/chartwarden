@@ -24,6 +24,9 @@ x-m34-provision-gateway-env: &m34-provision-gateway-env
   M34_PROVISION_GATEWAY_TOKEN: chartwarden-local-provision-gateway-dev-token-not-for-production
   M34_INVITATION_ACCEPT_URL: http://localhost:5173/tenant-invite
 
+# Fixed project name: containers, volumes and images are chartwarden-* whatever directory the stack runs from.
+name: chartwarden
+
 services:
   postgres:
     image: pgvector/pgvector:pg18
@@ -51,23 +54,27 @@ services:
       timeout: 5s
       retries: 30
 
-  # No healthcheck: the official image's minimal base has no confirmed curl/wget/mc available to
-  # probe it with, and a wrong healthcheck command would block the whole stack on a false negative
-  # (worse than no healthcheck at all). Not a boot-time dependency for api/worker either way — the
-  # S3 adapter binds unconditionally when MINIO_* is set (s3ObjectStoreConfigFromEnv) and only
-  # touches the network on an actual document read/write, not at process boot.
-  minio:
-    # Chainguard's build of MinIO: `minio/minio` is no longer published to Docker Hub.
-    image: cgr.dev/chainguard/minio:latest
-    command: server /data --console-address ":9001"
+  # Local object store: RustFS (Apache-2.0, speaks the S3 + MinIO admin APIs). It replaced MinIO here and in CI; production
+  # still runs MinIO until the SeaweedFS cutover (ADR-0050 D6). The backend reaches it through the same `MINIO_*` env
+  # names: they are the S3 adapter's contract, not a MinIO dependency. `bun run test:object-store:conformance:live`
+  # proves the adapter against RustFS (scripts/object-store-conformance/rustfs-up.sh). Console on :9001.
+  rustfs:
+    image: rustfs/rustfs:1.0.4
     environment:
-      MINIO_ROOT_USER: chartwarden
-      MINIO_ROOT_PASSWORD: chartwarden-minio-secret
+      RUSTFS_ACCESS_KEY: chartwarden
+      RUSTFS_SECRET_KEY: chartwarden-object-store-dev-secret
+      RUSTFS_VOLUMES: /data
+      RUSTFS_CONSOLE_ENABLE: "true"
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
-      - chartwarden-compose-minio:/data
+      - chartwarden-compose-rustfs:/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:9000/health/ready"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
 
   # M36 WP 1.5 — the attachment malware scanner (clamd over TCP INSTREAM). Reachable only on the compose network:
   # NO published host port. deploy/clamav/clamd.conf sets the alert-on-unscannable policy (encrypted, over-limit) and
@@ -79,7 +86,7 @@ services:
   clamav:
     image: clamav/clamav-debian:1.4
     # clamd loads the whole signature set (a reload briefly doubles it): bound it so a scan flood or a bad update
-    # cannot starve postgres/minio/api on the same host.
+    # cannot starve postgres/rustfs/api on the same host.
     mem_limit: 4g
     cpus: 2
     networks: [scan]
@@ -106,7 +113,7 @@ services:
       [
         "sh",
         "-c",
-        # The bucket backfill is best-effort here (MinIO may still be starting): the attachment upload path also
+        # The bucket backfill is best-effort here (the object store may still be starting): the attachment upload path also
         # creates a missing tenant bucket on demand, so a miss only costs the first upload a bucket-create round trip.
         "bun run scripts/db/migrate.ts && bun run scripts/db/provision-runtime-roles.ts && (bun run scripts/backfill-tenant-buckets.ts || echo 'tenant bucket backfill skipped (will be created on first use)')",
       ]
@@ -116,14 +123,14 @@ services:
       CHARTWARDEN_APP_PASSWORD: chartwarden-app-dev-password
       CHARTWARDEN_PLATFORM_PASSWORD: chartwarden-platform-dev-password
       CHARTWARDEN_DESTRUCTION_PASSWORD: chartwarden-destruction-dev-password
-      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ENDPOINT: http://rustfs:9000
       MINIO_ACCESS_KEY: chartwarden
-      MINIO_SECRET_KEY: chartwarden-minio-secret
+      MINIO_SECRET_KEY: chartwarden-object-store-dev-secret
       MINIO_REGION: us-east-1
     depends_on:
       postgres:
         condition: service_healthy
-      minio:
+      rustfs:
         condition: service_started
     restart: "no"
 
@@ -153,9 +160,9 @@ services:
       DATABASE_PLATFORM_URL: postgres://chartwarden_platform_login:chartwarden-platform-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       DATABASE_DESTRUCTION_URL: postgres://chartwarden_destruction_login:chartwarden-destruction-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       REDIS_URL: redis://redis:6379
-      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ENDPOINT: http://rustfs:9000
       MINIO_ACCESS_KEY: chartwarden
-      MINIO_SECRET_KEY: chartwarden-minio-secret
+      MINIO_SECRET_KEY: chartwarden-object-store-dev-secret
       MINIO_REGION: us-east-1
       # M36 attachment scanner: the ClamAV sidecar. The builtin scanner (EICAR + type check, NOT an antivirus) is
       # opt-in only: MESSAGING_ATTACHMENT_SCANNER=builtin ALLOW_BUILTIN_ATTACHMENT_SCANNER=1 in your .env.
@@ -204,14 +211,14 @@ services:
     ports:
       - "3000:3000"
     # M36: clamd is reachable only over the dedicated `scan` network (joined by clamav, api and worker alone), so a
-    # compromised sidecar (postgres, minio, docling, ...) cannot reach it and clamd cannot reach them.
+    # compromised sidecar (postgres, rustfs, docling, ...) cannot reach it and clamd cannot reach them.
     networks: [default, scan]
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-      minio:
+      rustfs:
         condition: service_started
       clamav:
         condition: service_started
@@ -238,9 +245,9 @@ services:
       DATABASE_PLATFORM_URL: postgres://chartwarden_platform_login:chartwarden-platform-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       DATABASE_DESTRUCTION_URL: postgres://chartwarden_destruction_login:chartwarden-destruction-dev-password@postgres:5432/${CHARTWARDEN_DB_NAME:-chartwarden}
       REDIS_URL: redis://redis:6379
-      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ENDPOINT: http://rustfs:9000
       MINIO_ACCESS_KEY: chartwarden
-      MINIO_SECRET_KEY: chartwarden-minio-secret
+      MINIO_SECRET_KEY: chartwarden-object-store-dev-secret
       MINIO_REGION: us-east-1
       # M36 attachment scanner: the ClamAV sidecar. The builtin scanner (EICAR + type check, NOT an antivirus) is
       # opt-in only: MESSAGING_ATTACHMENT_SCANNER=builtin ALLOW_BUILTIN_ATTACHMENT_SCANNER=1 in your .env.
@@ -258,14 +265,14 @@ services:
     ports:
       - "3001:3001"
     # M36: clamd is reachable only over the dedicated `scan` network (joined by clamav, api and worker alone), so a
-    # compromised sidecar (postgres, minio, docling, ...) cannot reach it and clamd cannot reach them.
+    # compromised sidecar (postgres, rustfs, docling, ...) cannot reach it and clamd cannot reach them.
     networks: [default, scan]
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-      minio:
+      rustfs:
         condition: service_started
       clamav:
         condition: service_started
@@ -280,7 +287,7 @@ services:
 
   # F-236 (ADR-0048) — DocLens stage 2: OCR + layout with page coordinates. CPU-only; the models are baked
   # into the image (no runtime download). Only the backend calls it, with DOCLING_WORKER_TOKEN, handing it a
-  # short-lived presigned MinIO URL — it holds no object-store credentials. Not published on the host.
+  # short-lived presigned object-store URL — it holds no object-store credentials. Not published on the host.
   docling-worker:
     build:
       context: ./services/docling-worker
@@ -317,5 +324,5 @@ networks:
 
 volumes:
   chartwarden-compose-pgdata:
-  chartwarden-compose-minio:
+  chartwarden-compose-rustfs:
   chartwarden-compose-clamav:

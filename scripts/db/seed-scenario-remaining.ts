@@ -67,7 +67,7 @@ import { Client } from "pg";
  *     unconditionally hard-coded to throw `DegradedError` regardless of config
  *     (`documents-route-service-db.ts`'s `uploadDocument`) — dead code, not a config gap. (b) The real
  *     two-step verified-upload handshake needs a live MinIO the local environment doesn't have running
- *     (`docker compose up -d minio` + `MINIO_*` env vars, neither present) — confirmed via the backend's
+ *     (`docker compose up -d rustfs` + `MINIO_*` env vars, neither present) — confirmed via the backend's
  *     own readiness probe reading `disabled`. The M39-consent-signing auto-render alt-path is ALSO a dead
  *     end for a third, independent reason: `registerDocumentSeams` in `index.ts` never passes a `store:`
  *     override, so the render consumer's document-row write lands in `createInMemoryDocumentSeamStore()`'s

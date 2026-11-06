@@ -1666,13 +1666,15 @@ jobs:
       - name: Shared fixed-window counter across two clients (real Valkey)
         run: bun run test:rate-limit-store:live
 
-  # ADR-0050 D6 — "proof before cutover". Production object storage moves MinIO -> SeaweedFS; this runs the
-  # REAL M22 SigV4 adapter against SeaweedFS (+ Fluent Bit shipping its S3 audit log to the suite's sink) and
-  # asserts every store behaviour ChartWarden depends on: SHA-256 checksums stored AND verified, presigned
-  # PUT/GET, the D12 version-aware erase, the M25 prefix-expiry rule, the GAP-141 per-download audit record,
-  # and the GAP-139 key scope. `docker run`, not `services:`: the store needs its command and config mounts.
+  # ADR-0050 D6 — "proof before cutover". Production object storage moves MinIO -> SeaweedFS, with RustFS as the
+  # second copy (and the local/CI store). Runs the REAL M22 SigV4 adapter against both:
+  #   conformance (each store): SHA-256 checksums stored AND verified, presigned PUT/GET, the D12 version-aware
+  #     erase, the M25 prefix-expiry rule, the GAP-141 per-download audit record, the GAP-139 key scope;
+  #   resilience (SeaweedFS primary + RustFS copy): fault injection (paused / restarted store, upload cut
+  #     mid-body, hung copy target), tenant isolation, and backup -> loss -> restore via scripts/object-store-copy.ts.
+  # `docker run`, not `services:`: the stores need commands and config mounts, and the fault tests pause them.
   object-store-conformance-live:
-    name: Object-store conformance live (SeaweedFS) — ADR-0050 D6
+    name: Object-store conformance + resilience live (SeaweedFS, RustFS) — ADR-0050 D6
     runs-on: [self-hosted, Linux, X64, ci]
     steps:
       - uses: actions/checkout@v7
@@ -1682,22 +1684,39 @@ jobs:
           bun-version: "1.3.5"
       - name: Install dependencies (frozen lockfile)
         run: bun install --frozen-lockfile
-      - name: Start SeaweedFS + Fluent Bit
-        run: scripts/object-store-conformance/seaweedfs-up.sh
-      - name: Conformance suite (real adapter, real SeaweedFS)
+      - name: Start SeaweedFS + Fluent Bit, and RustFS
+        run: |
+          scripts/object-store-conformance/seaweedfs-up.sh
+          scripts/object-store-conformance/rustfs-up.sh
+      # an empty env would make a suite SKIP and the job go green: each step fails instead
+      - name: Conformance suite against SeaweedFS
         run: |
           eval "$(scripts/object-store-conformance/seaweedfs-up.sh --env)"
-          # an empty env would make the suite SKIP and the job go green: fail instead
           test -n "${OBJECT_STORE_ENDPOINT:-}" || { echo "OBJECT_STORE_ENDPOINT unset" >&2; exit 1; }
           bun run test:object-store:conformance:live
+      - name: Conformance suite against RustFS
+        run: |
+          eval "$(scripts/object-store-conformance/rustfs-up.sh --env)"
+          test -n "${OBJECT_STORE_ENDPOINT:-}" || { echo "OBJECT_STORE_ENDPOINT unset" >&2; exit 1; }
+          bun run test:object-store:conformance:live
+      - name: Resilience suite (SeaweedFS primary, RustFS copy)
+        run: |
+          eval "$(scripts/object-store-conformance/seaweedfs-up.sh --env)"
+          eval "$(scripts/object-store-conformance/rustfs-up.sh --backup-env)"
+          export OBJECT_STORE_CONTAINER=cw-osc-seaweedfs
+          test -n "${OBJECT_STORE_ENDPOINT:-}" && test -n "${BACKUP_STORE_ENDPOINT:-}" || { echo "store env unset" >&2; exit 1; }
+          bun run test:object-store:resilience:live
       - name: Store logs on failure
         if: failure()
         run: |
           docker logs cw-osc-seaweedfs 2>&1 | tail -100 || true
           docker logs cw-osc-fluent-bit 2>&1 | tail -50 || true
-      - name: Cleanup SeaweedFS
+          docker logs cw-osc-rustfs 2>&1 | tail -100 || true
+      - name: Cleanup stores
         if: always()
-        run: scripts/object-store-conformance/seaweedfs-up.sh --down
+        run: |
+          scripts/object-store-conformance/seaweedfs-up.sh --down
+          scripts/object-store-conformance/rustfs-up.sh --down
 
   e2e:
     # F-024 (#41, second half): the 18-test Playwright suite — and the SIX axe-core WCAG 2A/AA scans it
@@ -1802,11 +1821,11 @@ jobs:
       # gateway capability gate is on (outside production an unset gate is OFF). Throwaway key, this run only.
       M24_CREDENTIAL_ENCRYPTION_KEY: Y2ktbTI0LWNyZWRlbnRpYWwta2VrLTAxMjM0NTY3ODk=
       M24_LAUNCH_GATEWAY_ENABLED: "true"
-      # Document upload (documents.spec) needs the MinIO/S3 adapter: without MINIO_* the upload route answers
+      # Document upload (documents.spec) needs the S3 adapter (RustFS here): without MINIO_* the upload route answers
       # 503 DEGRADED and the SPA drops to its maintenance page. The adapter creates its own buckets.
       MINIO_ENDPOINT: http://localhost:9000
       MINIO_ACCESS_KEY: chartwarden
-      MINIO_SECRET_KEY: chartwarden-minio-ci-secret
+      MINIO_SECRET_KEY: chartwarden-object-store-ci-secret
       MINIO_REGION: us-east-1
     steps:
       - uses: actions/checkout@v7
@@ -1829,20 +1848,19 @@ jobs:
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs chartwarden-ci-pg-e2e; exit 1
-      # `docker run`, not a `services:` container: MinIO needs its `server /data` argument, which a service
-      # container cannot take.
-      # Chainguard's build of the same MinIO server: MinIO no longer publishes `minio/minio` to Docker Hub
-      # (`docker pull` is denied).
-      - name: Start MinIO (document storage)
+      # `docker run`, not a `services:` container, so the readiness wait below can print the store's logs.
+      # RustFS replaced MinIO as the local/CI object store (the dev stack runs the same image).
+      - name: Start RustFS (document storage)
         run: |
-          docker run -d --name chartwarden-ci-minio-e2e \
-            -e MINIO_ROOT_USER=chartwarden -e MINIO_ROOT_PASSWORD=chartwarden-minio-ci-secret \
-            -p 9000:9000 cgr.dev/chainguard/minio:latest server /data
+          docker run -d --name chartwarden-ci-rustfs-e2e \
+            -e RUSTFS_ACCESS_KEY=chartwarden -e RUSTFS_SECRET_KEY=chartwarden-object-store-ci-secret \
+            -e RUSTFS_VOLUMES=/data -e RUSTFS_CONSOLE_ENABLE=false \
+            -p 9000:9000 rustfs/rustfs:1.0.4
           for i in $(seq 1 60); do
-            curl -sf http://localhost:9000/minio/health/live > /dev/null && exit 0
+            curl -sf http://localhost:9000/health/ready > /dev/null && exit 0
             sleep 1
           done
-          echo "MinIO did not become ready" >&2; docker logs chartwarden-ci-minio-e2e; exit 1
+          echo "RustFS did not become ready" >&2; docker logs chartwarden-ci-rustfs-e2e; exit 1
       # No `--with-deps`: it shells out to `sudo apt-get`, and the self-hosted runner user has no
       # passwordless sudo, so the job used to die here in ~20s ("sudo: a password is required") before a
       # single spec ran. The browser download itself needs no root.
@@ -1932,4 +1950,4 @@ jobs:
         if: always()
         run: |
           docker rm -f chartwarden-ci-pg-e2e 2>/dev/null || true
-          docker rm -f chartwarden-ci-minio-e2e 2>/dev/null || true
+          docker rm -fv chartwarden-ci-rustfs-e2e 2>/dev/null || true

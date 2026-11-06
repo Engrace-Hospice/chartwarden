@@ -1,7 +1,7 @@
 # Start ChartWarden Locally
 
 This guide starts the complete local development experience: PostgreSQL, Valkey/Redis,
-MinIO, the Fastify API, its worker, and the Vite web application. It is for local
+RustFS (the local S3 object store), the Fastify API, its worker, and the Vite web application. It is for local
 development only; do not use the example credentials or development bypass outside a
 throwaway environment.
 
@@ -50,7 +50,7 @@ CHARTWARDEN_DEV_BYPASSRLS=1
 REDIS_URL=redis://localhost:6379
 MINIO_ENDPOINT=http://localhost:9000
 MINIO_ACCESS_KEY=chartwarden
-MINIO_SECRET_KEY=chartwarden-minio-secret
+MINIO_SECRET_KEY=chartwarden-object-store-dev-secret
 MINIO_REGION=us-east-1
 
 BETTER_AUTH_URL=http://localhost:3000
@@ -63,14 +63,15 @@ WORKER_PORT=3001
 
 The provided `.env.example` is a broad configuration template. These values align it
 with the local Compose services and ensure that the runtime role password stays in sync
-with the migration bootstrap.
+with the migration bootstrap. The `MINIO_*` names are the backend's S3 adapter contract and
+point at RustFS locally; they are not a MinIO dependency.
 
 ## 3. Start local dependencies
 
-Start PostgreSQL, Valkey, and MinIO in Docker:
+Start PostgreSQL, Valkey, and RustFS in Docker (`bun run db:up` does the same):
 
 ```bash
-docker compose up -d postgres redis minio
+docker compose up -d postgres redis rustfs
 ```
 
 Wait until PostgreSQL and Valkey are healthy:
@@ -80,7 +81,7 @@ docker compose ps
 ```
 
 The expected local endpoints are PostgreSQL on `localhost:5432`, Valkey on
-`localhost:6379`, MinIO S3 on `localhost:9000`, and the MinIO console on
+`localhost:6379`, RustFS S3 on `localhost:9000`, and the RustFS console on
 `http://localhost:9001`.
 
 ## 4. Create the database schema
@@ -123,8 +124,8 @@ notFoundOnDeny: true
 ```
 
 ```bash
-# Terminal 4 - Mimio
-docker compose up -d minio
+# Terminal 4 - object store (RustFS)
+docker compose up -d rustfs
 ```
 
 
@@ -205,7 +206,7 @@ Stop the Bun processes with `Ctrl+C`. Keep the dependency containers for the nex
 or stop them with:
 
 ```bash
-docker compose stop postgres redis minio
+docker compose stop postgres redis rustfs
 ```
 
 To start them again, repeat step 3; the Docker volumes preserve the local database and
@@ -219,7 +220,7 @@ object-store data. Re-run `bun run db:migrate` after pulling migrations.
 | Migration cannot connect | Confirm `docker compose ps` shows `postgres` healthy and that `DATABASE_ADMIN_URL` uses port `5432`. |
 | Sign-in has no users or organization choices | Start the API, run `bun run db:seed`, then read `CREDENTIALS.local.md`. Set `CHARTWARDEN_DEV_BYPASSRLS=1` and rerun `bun run db:migrate` for the local single-org demo. |
 | Web app cannot reach the API | Confirm the API is listening on port `3000`; the Vite proxy is configured for that address. |
-| A local reset is required | Stop the local stack, run `docker compose down -v`, then restart from step 3. This permanently removes this Compose project's PostgreSQL and MinIO volumes, so use it only when you intend to discard local data. |
+| A local reset is required | Stop the local stack, run `docker compose down -v`, then restart from step 3. This permanently removes this Compose project's PostgreSQL and RustFS volumes, so use it only when you intend to discard local data. |
 
 For development architecture and module-extension guidance, continue with
 [DEVELOPMENT.md](./DEVELOPMENT.md).

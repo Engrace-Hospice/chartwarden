@@ -223,6 +223,36 @@ OS with no SSH and no shell.
 
 ### D6 — Storage *(object store decided; volume provisioner recommended, needs decision)*
 
+> **Amendment 2026-11-05 (product owner): SeaweedFS in production, RustFS for local/CI and as the second
+> copy. Garage is superseded.** The object-store text below still describes Garage; read it through this note.
+>
+> - **Why not Garage:** the app now depends on S3 features Garage lacks: object versioning and
+>   `ListObjectVersions` (the D12 version-aware erase), `NoncurrentVersionExpiration` (the M25 `m25-835/`
+>   staging-expiry rule), a per-request audit feed (GAP-141 download confirmation), and Object Lock (the
+>   off-site backup). The sentence below that the adapter "uses no bucket versioning … lifecycle rules" is no
+>   longer true.
+> - **Production primary: SeaweedFS** (Apache-2.0; pinned `chrislusf/seaweedfs:4.52` in tests). Its S3 audit
+>   log speaks the Fluent forward protocol, so Fluent Bit ships it as JSON. In the audit config, `timeout` and
+>   `write_timeout` are Go durations in **nanoseconds**: the wiki's `"timeout": 3000` (3 µs) silently drops
+>   every record. Bucket creation and lifecycle need `Admin:tenant-*` there, which also lets the app key delete
+>   tenant buckets and change versioning (MinIO's policy does not). Decide before cutover whether to move bucket
+>   creation to a privileged provisioning identity.
+> - **Local development, CI and the second copy: RustFS** (Apache-2.0; `rustfs/rustfs:1.0.4`). The dev
+>   `docker-compose.yml` and the CI e2e job run it. It speaks MinIO's admin API (`rc` CLI) but names the
+>   lifecycle IAM actions `s3:Get/PutBucketLifecycle` and wraps audit records in a `Records` envelope, so the
+>   app's MinIO access-log parser does not read it as-is.
+> - **Second copy:** `scripts/object-store-copy.ts` syncs every `tenant-*` / `chartwarden-*` bucket from the
+>   primary to RustFS on another host, and back again for a restore. It re-puts each object with its SHA-256:
+>   `rclone` and `mc mirror` drop `x-amz-checksum-sha256`, and the app's verified reads then refuse the restored
+>   objects. A primary-side erase reaches the copy on the next run. The off-site Object Lock backup stays the
+>   archive; the copy does not replace it.
+> - **Proof:** `test:object-store:conformance:live` (each store) and `test:object-store:resilience:live`
+>   (fault injection, tenant isolation, backup → loss → restore), both in the `object-store-conformance-live`
+>   CI job. Finding from fault injection: a write that times out on the client may still land once a hung
+>   store resumes, so callers treat a timed-out write as unknown and verify it.
+> - **Status:** production still runs MinIO. The SeaweedFS production service, provisioning, audit forwarding
+>   and the migration runbook are not built yet.
+
 - **Databases:** CloudNativePG and Valkey use node-local persistent volumes (OpenEBS LocalPV or Talos
   local-path). The database replicates at the application layer, so network block storage under it
   would only add latency.
