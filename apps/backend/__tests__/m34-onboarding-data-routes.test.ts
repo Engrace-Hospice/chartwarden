@@ -27,7 +27,10 @@ import {
   targetTenantScopeOf,
 } from "../src/modules/34-saas-tenant-platform/index";
 import { ONBOARDING_DATA_AUDIT_EVENTS } from "../src/modules/34-saas-tenant-platform/routes/platform/onboarding-data-audit";
-import { toMemberViews } from "../src/modules/34-saas-tenant-platform/routes/platform/onboarding-members";
+import {
+  capMembers,
+  toMemberViews,
+} from "../src/modules/34-saas-tenant-platform/routes/platform/onboarding-members";
 
 const PLATFORM_ORG = "11111111-1111-4111-8111-111111111111";
 const TARGET_ORG = "22222222-2222-4222-8222-222222222222";
@@ -873,6 +876,19 @@ describe("toMemberViews (the projection behind the picker)", () => {
       },
       { membershipId: "m2", displayName: null, email: "zed@clinic.example", roleKeys: [] },
     ]);
+  });
+});
+
+describe("capMembers (the picker's bound is visible, not silent)", () => {
+  const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ membershipId: `m${i}` }));
+
+  it("keeps everything and says it is complete when the list fits", () => {
+    expect(capMembers(rows(3), 3)).toEqual({ rows: rows(3), truncated: false });
+    expect(capMembers([], 3)).toEqual({ rows: [], truncated: false });
+  });
+
+  it("keeps the first `cap` and says the list was cut when there was one more", () => {
+    expect(capMembers(rows(4), 3)).toEqual({ rows: rows(3), truncated: true });
   });
 });
 

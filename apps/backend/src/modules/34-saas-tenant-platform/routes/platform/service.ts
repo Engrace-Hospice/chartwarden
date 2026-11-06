@@ -52,8 +52,9 @@ export interface TenantSummaryView {
   readonly createdAt: string;
   readonly updatedAt: string;
   /**
-   * Where the tenant is in the onboarding wizard ("7 of 13, current step, go-live state"); null unless it is provisioning or
-   * onboarding. Judged over the gating steps only, exactly as the wizard and the activation guard judge them.
+   * Where the tenant is in the onboarding wizard ("7 of 13, current step, go-live state"), whatever its lifecycle status (a live
+   * tenant reads `live`, one past onboarding `closed`); null only where the progress is not read (the in-memory slice). Judged over
+   * the gating steps only, exactly as the wizard and the activation guard judge them.
    */
   readonly onboardingProgress: OnboardingProgress | null;
 }

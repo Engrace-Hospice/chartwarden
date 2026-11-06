@@ -21,7 +21,8 @@ export interface OnboardingProgress {
 export function summarizeOnboarding(input: {
   readonly tenantStatus: string;
   readonly templates: readonly StepTemplate[];
-  readonly tasks: readonly StepTask[];
+  /** Only each task's template and status matter here, so a caller may read just those two columns. */
+  readonly tasks: readonly Pick<StepTask, "templateKey" | "status">[];
   readonly attestations: readonly GoLiveAttestation[];
 }): OnboardingProgress {
   const gating = new Set(gatingTemplateKeys(input.templates));

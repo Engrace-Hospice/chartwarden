@@ -6,9 +6,9 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { OnboardingRepository } from "@chartwarden/saas-tenant-platform";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
-import type { GoLiveAttestation, StepTask } from "../../onboarding/model";
+import type { GoLiveAttestation, TaskStatus } from "../../onboarding/model";
 import { type OnboardingProgress, summarizeOnboarding } from "../../onboarding/progress";
-import { toGoLive, toTask, toTemplate } from "../../onboarding/wizard-store-drizzle";
+import { toGoLive, toTemplate } from "../../onboarding/wizard-store-drizzle";
 
 const K = schema.onboardingTask;
 const T = schema.onboardingTaskTemplate;
@@ -37,7 +37,7 @@ export async function readOnboardingProgress(
   const ids = subjects.map((s) => s.id);
   const templates = (await new OnboardingRepository(tx).listTemplates()).map(toTemplate);
   const taskRows = await tx
-    .select({ row: K })
+    .select({ tenantAccountId: K.tenantAccountId, templateKey: K.templateKey, status: K.status })
     .from(K)
     .innerJoin(T, eq(K.templateKey, T.key))
     .where(and(inArray(K.tenantAccountId, ids), isNull(T.retiredAt)));
@@ -46,11 +46,14 @@ export async function readOnboardingProgress(
     .from(G)
     .where(inArray(G.tenantAccountId, ids))
     .orderBy(desc(G.attestedAt));
-  const tasksByTenant = groupBy(taskRows, (r) => r.row.tenantAccountId);
+  const tasksByTenant = groupBy(taskRows, (r) => r.tenantAccountId);
   const attestationsByTenant = groupBy(attestationRows, (r) => r.tenantAccountId);
   return new Map(
     subjects.map((s) => {
-      const tasks: StepTask[] = (tasksByTenant.get(s.id) ?? []).map((r) => toTask(r.row));
+      const tasks = (tasksByTenant.get(s.id) ?? []).map((r) => ({
+        templateKey: r.templateKey,
+        status: r.status as TaskStatus,
+      }));
       const attestations: GoLiveAttestation[] = (attestationsByTenant.get(s.id) ?? []).map(
         toGoLive,
       );

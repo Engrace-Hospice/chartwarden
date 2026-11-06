@@ -187,7 +187,6 @@ export interface DrizzleTenantPlatformDeps {
 const A = schema.tenantAccount;
 const ORG = schema.organizations;
 const BAA = schema.platformTenantBaaRecord;
-const TASK = schema.onboardingTask;
 const SS = schema.supportSession;
 const SCG = schema.supportConsentGrant;
 
@@ -532,13 +531,8 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           .from(A)
           .innerJoin(ORG, eq(A.organizationId, ORG.id))
           .orderBy(desc(A.createdAt), desc(A.id));
-        // One batched read for the whole inventory (three queries, not three per tenant).
-        const progress = await readOnboardingProgress(
-          tx,
-          rows.map((r) => ({ id: r.account.id, status: r.account.status })),
-        );
         const views = rows
-          .map((r) => toSummary(r.account, r.slug, progress.get(r.account.id) ?? null))
+          .map((r) => toSummary(r.account, r.slug, null))
           .filter((v) => (filter.status ? v.status === filter.status : true))
           .filter((v) => (filter.planLabel ? v.planLabel === filter.planLabel : true))
           .filter((v) => (filter.createdAfter ? v.createdAt > filter.createdAfter : true))
@@ -547,7 +541,16 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
               ? v.legalBusinessName.toLowerCase().includes(filter.search.toLowerCase())
               : true,
           );
-        return paginate(views, cursor, limit);
+        const page = paginate(views, cursor, limit);
+        // Progress is read for the tenants on THIS page only (three queries, never three per tenant), after the filter and the cut.
+        const progress = await readOnboardingProgress(
+          tx,
+          page.items.map((v) => ({ id: v.id, status: v.status })),
+        );
+        return {
+          ...page,
+          items: page.items.map((v) => ({ ...v, onboardingProgress: progress.get(v.id) ?? null })),
+        };
       });
     },
 

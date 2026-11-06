@@ -116,7 +116,7 @@ const pendingOf = (attestations: readonly GoLiveAttestation[]): GoLiveAttestatio
 export function goLiveStateOf(input: {
   readonly tenantStatus: string;
   readonly templates: readonly StepTemplate[];
-  readonly tasks: readonly StepTask[];
+  readonly tasks: readonly Pick<StepTask, "templateKey" | "status">[];
   readonly attestations: readonly GoLiveAttestation[];
 }): GoLiveState {
   if (input.tenantStatus === "active") return "live";

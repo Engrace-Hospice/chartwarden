@@ -93914,6 +93914,8 @@ export interface operations {
                             /** @description Enabled, unexpired roles the member holds in the tenant (compliance_officer first in a picker). */
                             roleKeys: string[];
                         }[];
+                        /** @description True when the tenant has more active staff than the 500 returned (the first 500 by name, then id). */
+                        truncated: boolean;
                     };
                 };
             };

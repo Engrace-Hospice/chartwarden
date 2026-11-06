@@ -311,7 +311,7 @@ const CursorPageOf = <T extends TSchema>(item: T) =>
     hasMore: Type.Boolean(),
   });
 
-/** Where a provisioning or onboarding tenant is in the wizard (null for any other tenant). */
+/** Where a tenant is in the wizard whatever its status: `live` for an active tenant, `closed` once it is past onboarding. */
 export const OnboardingProgressViewSchema = Type.Object({
   doneCount: Type.Integer({ description: "Gating steps that are done or skipped." }),
   totalCount: Type.Integer({

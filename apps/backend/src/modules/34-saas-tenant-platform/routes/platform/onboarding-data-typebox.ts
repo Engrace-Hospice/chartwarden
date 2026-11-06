@@ -127,6 +127,10 @@ export const OnboardingMemberViewSchema = Type.Object({
 });
 export const OnboardingMemberListSchema = Type.Object({
   items: Type.Array(OnboardingMemberViewSchema),
+  truncated: Type.Boolean({
+    description:
+      "True when the tenant has more active staff than the 500 returned (the first 500 by name, then id).",
+  }),
 });
 
 export const OnboardingProviderEntityListSchema = Type.Object({

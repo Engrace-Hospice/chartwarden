@@ -15,15 +15,20 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { type DbClient, createDbClient } from "@chartwarden/db";
 import { registerPlatformJob, withPlatformContext } from "@chartwarden/tenancy";
+import type { AlertEmitter } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { m34PlatformBypassAuditor } from "../src/index";
+import { M34_OUTBOX_EVENTS } from "../src/modules/34-saas-tenant-platform/events-by-m34";
 import {
   type OnboardingOperator,
   buildDrizzleOnboardingDataService,
   buildPlatformTenantResolver,
 } from "../src/modules/34-saas-tenant-platform/index";
+import { listActiveMembers } from "../src/modules/34-saas-tenant-platform/routes/platform/onboarding-members";
 import { readOnboardingProgress } from "../src/modules/34-saas-tenant-platform/routes/platform/onboarding-progress-drizzle";
+import { createDrizzleTenantPlatformBackend } from "../src/modules/34-saas-tenant-platform/routes/platform/service-drizzle";
 import { appRoleConnectionString, dropLiveRoles, resetPublicSchema } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -290,6 +295,14 @@ describe.skipIf(!DB_URL)("M34 tenant hub reads, LIVE Postgres on the real roles"
     ]);
   });
 
+  it("says when the list was cut, and always cuts the same members: named ones first, by name, then by id", async () => {
+    const whole = await listActiveMembers(tenantPool.db, ORG_ONBOARDING, OPERATOR);
+    expect(whole.truncated).toBe(false);
+    const cut = await listActiveMembers(tenantPool.db, ORG_ONBOARDING, OPERATOR, 1);
+    expect(cut.truncated).toBe(true);
+    expect(cut.items.map((m) => m.membershipId)).toEqual([M_ADA]);
+  });
+
   it("never returns a suspended member or another tenant's staff", async () => {
     const { items } = await service().listMembers(OPERATOR_CONTEXT, "hub-onboarding");
     const ids = items.map((m) => m.membershipId);
@@ -318,5 +331,70 @@ describe.skipIf(!DB_URL)("M34 tenant hub reads, LIVE Postgres on the real roles"
     expect(serialized).not.toContain("ada@clinic.test");
     expect(serialized).not.toContain("Ada Admin");
     expect(rows[0]?.context).toMatchObject({ count: 2, targetOrgSlug: "hub-onboarding" });
+  });
+
+  // The inventory and the overview as the platform-ops routes read them (the Drizzle service on the real platform credential).
+  function platformService() {
+    const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M34_OUTBOX_EVENTS]));
+    const unused = async (): Promise<never> => {
+      throw new Error("not used by this suite");
+    };
+    return createDrizzleTenantPlatformBackend({
+      platformDb: platformPool.db,
+      enqueue: { enqueue: async (queue, jobKey) => ({ jobId: `${queue}-${jobKey}` }) },
+      legalHoldClear: async () => true,
+      invitationDelivery: { acceptBaseUrl: "http://localhost/tenant-invite", send: unused },
+      provisionJobs: { status: unused, retry: unused },
+      auditBypass: m34PlatformBypassAuditor,
+      outbox: {
+        publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m34" } as never),
+      },
+      organizations: { ensure: unused },
+      featureFlags: { list: unused, upsert: unused, setKillSwitch: unused },
+      lifecycleAlerts: {
+        emit: async () => ({ alertId: "none", resolvedRecipientCount: 0 }),
+      } as AlertEmitter,
+      supportSessionPorts: {
+        audit: { async emitCriticalAudit() {} },
+        outbox: { async publish() {} },
+        alerts: { async emitAlert() {} },
+        now: () => new Date(),
+      },
+      platformJobId: JOB_ID,
+    }).service;
+  }
+
+  it("the inventory carries each tenant's progress, one page at a time, and the status filter narrows it", async () => {
+    const service = platformService();
+    const first = await service.listTenants({}, undefined, 2);
+    expect(first.items).toHaveLength(2);
+    expect(first.hasMore).toBe(true);
+    const second = await service.listTenants({}, first.nextCursor ?? undefined, 2);
+    const slugs = [...first.items, ...second.items].map((t) => t.orgSlug).sort();
+    expect(slugs).toEqual(["hub-active", "hub-awaiting", "hub-onboarding", "hub-provisioning"]);
+    for (const t of [...first.items, ...second.items]) expect(t.onboardingProgress).not.toBeNull();
+
+    const onboarding = await service.listTenants({ status: "onboarding" }, undefined, undefined);
+    const bySlug = new Map(onboarding.items.map((t) => [t.orgSlug, t.onboardingProgress]));
+    expect([...bySlug.keys()].sort()).toEqual(["hub-awaiting", "hub-onboarding"]);
+    expect(bySlug.get("hub-onboarding")).toMatchObject({
+      doneCount: 2,
+      currentStepKey: "baa_executed",
+    });
+    expect(bySlug.get("hub-awaiting")).toMatchObject({ goLiveState: "awaiting_approval" });
+  });
+
+  it("the overview's older onboarding counts follow the same rule: no retired history, the first open gating step", async () => {
+    const overview = await platformService().getTenantOverview("hub-onboarding");
+    const [{ n }] = await q<{ n: number }>(
+      `SELECT count(*)::int AS n FROM onboarding_task_template
+        WHERE retired_at IS NULL AND is_canonical AND NOT is_optional`,
+    );
+    expect(overview.onboarding).toEqual({
+      totalTasks: n,
+      doneTasks: 2,
+      currentStep: "baa_executed",
+    });
+    expect(overview.onboardingProgress).toMatchObject({ doneCount: 2, totalCount: n });
   });
 });

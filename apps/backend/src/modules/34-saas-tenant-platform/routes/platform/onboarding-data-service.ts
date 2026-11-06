@@ -143,7 +143,10 @@ export interface OnboardingDataService {
   ): Promise<OnboardingNoticeView>;
   listMedicaidCredentials(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
   /** The tenant's active staff, for assigning its compliance officer (minimum necessary; an audited read). */
-  listMembers(op: OnboardingOperator, orgSlug: string): Promise<{ items: TenantMemberView[] }>;
+  listMembers(
+    op: OnboardingOperator,
+    orgSlug: string,
+  ): Promise<{ items: TenantMemberView[]; truncated: boolean }>;
   upsertMedicaidCredential(
     op: OnboardingOperator,
     orgSlug: string,
@@ -439,9 +442,7 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
   }
 
   const listMembers = (op: OnboardingOperator, orgSlug: string) =>
-    read(op, orgSlug, "membership", async (t) => ({
-      items: await listActiveMembers(db, t.organizationId, op.userId),
-    }));
+    read(op, orgSlug, "membership", (t) => listActiveMembers(db, t.organizationId, op.userId));
 
   const sitesFor = (op: OnboardingOperator) => createDrizzleSiteAdminRepository(db, op.userId);
 

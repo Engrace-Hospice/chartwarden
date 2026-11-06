@@ -44,7 +44,7 @@ export function lockedByStep(
 /** The first gating step not yet settled (the wizard's "you are here"), or null when every one is. */
 export function currentStepKey(
   templates: readonly StepTemplate[],
-  tasks: readonly StepTask[],
+  tasks: readonly Pick<StepTask, "templateKey" | "status">[],
 ): string | null {
   const statusByKey = new Map(tasks.map((t) => [t.templateKey, t.status]));
   for (const t of orderedTemplates(templates)) {

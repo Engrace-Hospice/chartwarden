@@ -263711,7 +263711,8 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "items"
+                    "items",
+                    "truncated"
                   ],
                   "properties": {
                     "items": {
@@ -263758,6 +263759,10 @@
                           }
                         }
                       }
+                    },
+                    "truncated": {
+                      "description": "True when the tenant has more active staff than the 500 returned (the first 500 by name, then id).",
+                      "type": "boolean"
                     }
                   }
                 }
