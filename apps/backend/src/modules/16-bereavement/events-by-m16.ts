@@ -357,7 +357,7 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m16.bereavement.document_requested",
     moduleOwner: "m16",
     description:
-      "ADR-0109 D6/D9 — the outbox-only handoff to M22 for a plan-level document: the approved physician condolence letter (aggregate = the letter) and the internal discharge summary (aggregate = the closure). `documentKind` names which; `aggregateId` is the row M22 files the document against and the back-ref stamps. M22 answers with `m22.document.rendered`; M16 imports no M22 schema. `payloadJsonb` is the typed render payload M22 draws from (the discharge summary carries no contact notes, care goals, risk factors or substance-use data).",
+      "ADR-0109 D6/D9 — the outbox-only handoff to M22 for a plan-level document: the approved physician condolence letter (aggregate = the letter) and the internal discharge summary (aggregate = the closure). `documentKind` names which; `aggregateId` is the row M22 files the document against and the back-ref stamps. M22 answers with `m22.document.rendered`; M16 imports no M22 schema. `payloadJsonb` is the typed render payload M22 draws from (the letter's carries the death date only: the reviewer's sealed note never rides the outbox, M22 pulls it at render time; the discharge summary carries no contact names or notes, care goals, risk factors or substance-use data).",
     payloadSchema: Type.Object({
       planId: Id,
       /** The DECEDENT — the chart M22 files the rendered document against. */

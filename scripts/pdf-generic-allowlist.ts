@@ -67,7 +67,7 @@ export const GENERIC_ALLOWLIST: Readonly<Record<string, string>> = {
   bereavement_letter: `m16.bereavement.outreach_artifact_requested ships payloadJsonb {outreachKind, anniversaryMark, deathDate, dueAt} only: no decedent name, no recipient (bereaved_contact.display_name is plaintext but is not on the wire), no counselor or hospice name, so a letter has no addressee; and ${BEREAVEMENT_WORDING} (seven outreach kinds).`,
   bereavement_welcome_packet: `the plan-open request ships payloadJsonb {deathDate} only: no decedent or recipient name, no counselor, no hospice contact details, and ${BEREAVEMENT_WORDING}.`,
   bereavement_closeout_letter: `the closeout request ships payloadJsonb {cadenceMark, outreachKind, deathDate, dueAt} only: no decedent or recipient name and no counselor or hospice contact details, so the letter has no addressee; and ${BEREAVEMENT_WORDING}.`,
-  bereavement_physician_condolence_letter: `the approved-letter request ships payloadJsonb {deathDate, personalNote} only: no decedent name, no recipient name (attending_user_id is a user id and M16 reads no user directory), no hospice name or signatory, so the letter has no addressee; and ${BEREAVEMENT_WORDING}.`,
+  bereavement_physician_condolence_letter: `the approved-letter request ships payloadJsonb {deathDate} only and M22 merges the reviewer's sealed personalNote at render time (it never rides the outbox): no decedent name, no recipient name (attending_user_id is a user id and M16 reads no user directory), no hospice name or signatory, so the letter has no addressee; and ${BEREAVEMENT_WORDING}.`,
   report_export: TABULAR_BY_DESIGN,
   scheduled_report: TABULAR_BY_DESIGN,
 };
