@@ -28,6 +28,7 @@ import { useLoad } from "./onboarding/use-load";
 import { useOpsWrite } from "./onboarding/use-ops-write";
 import { ProvisioningCard } from "./provisioning-card";
 import { BAA_TONE, cap, lifecycleTone, statusLabel } from "./saas-status";
+import { TenantClearinghouseCard } from "./tenant-clearinghouse-card";
 import { TenantTransitionDialog } from "./tenant-transition-dialog";
 
 interface StatusEvent {
@@ -248,6 +249,7 @@ export function TenantOverview(): JSX.Element {
             }
           />
           <ContractCard orgSlug={orgSlug} />
+          <TenantClearinghouseCard orgSlug={orgSlug} />
           <KeyRingCard
             tenant={tenant}
             onRotate={() => {
