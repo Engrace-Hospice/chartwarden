@@ -30,7 +30,10 @@ import { and, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 // platform credential — they run through the injected {@link PlatformRunner}. The composition root binds it
 // to M1's gated `withPlatformContext` (the M34 platform-runner precedent); until a platform pool is bound
 // it fails closed (PLATFORM_CONTEXT_UNAVAILABLE), never silently reading nothing under tenant RLS.
-import type { PlatformAuditPort } from "../pricing/ports";
+import type { PlatformAuditPort, PlatformRunner, WriteTx } from "../pricing/ports";
+
+// The two handles live in pricing/ports (the leaf both files read); re-exported so existing importers keep this path.
+export type { PlatformRunner, WriteTx };
 import type { M35ReadActor, M35WriteActor } from "./actor";
 import { type CursorPage, decodeCursor, encodeCursor, pageSizeOf } from "./concurrency";
 import { redeemPromoInTx } from "./promo-redemption";
@@ -72,9 +75,6 @@ import type {
   WebhookReceiptView,
 } from "./service";
 
-/** The structural org-context transaction handle the queries run through (mirrors M27's WriteTx). */
-export type WriteTx = DbClient;
-
 /**
  * The §4.11 `m35.*` transactional-outbox emitter — the composition-root-bound publisher (callerModule
  * `m35` preset). `publish` writes the `outbox_event` row on the caller's tx so it commits atomically with
@@ -94,13 +94,6 @@ export interface WriteOutboxPort {
     },
   ): Promise<void>;
 }
-
-/**
- * The gated cross-tenant runner the platform-ops methods execute under. The composition root binds it to
- * M1's `withPlatformContext(platformDb, caller, auditor, fn)` (the M34 precedent). The default fails
- * closed: a platform-ops route refuses (503) rather than reading nothing under tenant RLS.
- */
-export type PlatformRunner = <T>(fn: (tx: WriteTx) => Promise<T>) => Promise<T>;
 
 const failClosedPlatformRunner: PlatformRunner = async () => {
   throw new ChartWardenError(
