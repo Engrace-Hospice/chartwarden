@@ -947,6 +947,55 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     expect(await events("m16.bereavement.risk_score_computed")).toBeGreaterThanOrEqual(2);
   });
 
+  it("a tier change tops the schedule up forward-only and never cancels; regenerate adds no duplicate mark (ADR-0110 D4)", async () => {
+    const pat = contacts.Pat as string;
+    const rowsOf = async () =>
+      (
+        await admin.query(
+          "SELECT cadence_mark, status FROM bereavement_outreach WHERE bereaved_contact_id=$1",
+          [pat],
+        )
+      ).rows as Array<{ cadence_mark: string | null; status: string }>;
+    const held = (rows: Array<{ cadence_mark: string | null; status: string }>) =>
+      rows.filter((r) => r.status !== "cancelled").map((r) => r.cadence_mark);
+
+    // The previous test moved Pat low -> high with recompute-risk: the high-tier additions are on her schedule.
+    const afterHigh = await rowsOf();
+    for (const mark of ["week_1", "week_2", "two_month"]) expect(held(afterHigh)).toContain(mark);
+    expect(held(afterHigh)).not.toContain("immediate_screen");
+    const cancelledBefore = afterHigh.filter((r) => r.status === "cancelled").length;
+
+    const override = {
+      bereavedContactId: pat,
+      overrideTier: "complicated",
+      overrideReason:
+        "Expressed hopelessness on the last call; the counselor wants a same-week screen.",
+    };
+    const url = `/api/v1/bereavement/plans/${planId}/recompute-risk`;
+    expect((await call("POST", url, "counselor", override)).statusCode).toBe(201);
+    const afterComplicated = await rowsOf();
+    expect(held(afterComplicated)).toContain("immediate_screen");
+    // never cancels: nothing was cancelled by the top-up, and the week_1 contact was not duplicated.
+    expect(afterComplicated.filter((r) => r.status === "cancelled").length).toBe(cancelledBefore);
+    expect(held(afterComplicated).filter((m) => m === "week_1").length).toBe(1);
+    expect(afterComplicated.length).toBe(afterHigh.length + 1);
+
+    // idempotent: the same tier again adds nothing.
+    expect((await call("POST", url, "counselor", override)).statusCode).toBe(201);
+    expect((await rowsOf()).length).toBe(afterComplicated.length);
+
+    // regenerate-schedule fills by mark: no duplicate mark among the rows that are still live.
+    const regen = await call(
+      "POST",
+      `/api/v1/bereavement/plans/${planId}/regenerate-schedule`,
+      "counselor",
+      { contactId: pat },
+    );
+    expect(regen.statusCode).toBe(200);
+    const live = held(await rowsOf()).filter((m) => m !== null);
+    expect(new Set(live).size).toBe(live.length);
+  });
+
   it("dashboards: the counselor sees her caseload; the supervisor board needs oversight", async () => {
     const mine = await call("GET", "/api/v1/bereavement/dashboard/counselor", "counselor");
     expect(mine.statusCode).toBe(200);

@@ -931,6 +931,17 @@ describe("D4 outreach schedule generation", () => {
       expect(rows.map((r) => r.mark)).toEqual(["immediate_screen"]);
     });
 
+    it("treats a held legacy `one_month` call as the initial outreach (the deprecated alias)", () => {
+      const rows = planScheduleTopUp(
+        DEATH_DATE,
+        { riskTier: "low" },
+        ["condolence_letter", "one_month"],
+        "2026-03-05T00:00:00.000Z",
+      );
+      expect(rows.map((r) => r.mark)).not.toContain("initial_outreach");
+      expect(rows.map((r) => r.mark)).toContain("three_month");
+    });
+
     it("a move DOWN adds nothing: a lower tier's floor is a subset of what the plan already holds", () => {
       expect(
         planScheduleTopUp(

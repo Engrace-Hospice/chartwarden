@@ -36,6 +36,7 @@
 import {
   bereavementWindowEnd,
   isClosedPlanStatus,
+  isEngageableContactStatus,
   requiresSourceEncounter,
 } from "@chartwarden/bereavement";
 import { type DbClient, schema } from "@chartwarden/db";
@@ -73,6 +74,7 @@ import {
   checkOutreachKindAllowed,
   checkVersion,
   generateOutreachSchedule,
+  planScheduleTopUp,
   transitionBereavedContact,
   transitionBereavementOutreach,
   transitionBereavementPlan,
@@ -83,6 +85,7 @@ import { planCaregiverSeeds } from "../roster-seed";
 import { getBereavementEncounterReader, getVolunteerComplianceProvider } from "../seams/index";
 import type { M16MutatingActor, M16WriteActor } from "./actor";
 import { type EffectPatch, runEffects } from "./effects-runner";
+import { heldCadenceMarks } from "./held-cadence-marks";
 import type {
   BereavedContactRowView,
   BereavementClosureView,
@@ -604,8 +607,11 @@ export function buildDrizzleM16WriteService(
 
   /**
    * D4 — materialize the schedule for one contact and emit one `outreach_scheduled` per row. `fromIso`
-   * makes it forward-only (a resume / rescind regeneration), which is what stops a paused plan from
-   * manufacturing backdated obligations it would then report as missed.
+   * makes it forward-only (a resume / rescind / regenerate / tier-change fill), which is what stops a paused
+   * plan from manufacturing backdated obligations it would then report as missed. A forward fill is also
+   * BY MARK (ADR-0110 D4): it adds only the floor contacts the contact does not already hold, so a completed
+   * early call, an in-progress one or a row from a previous fill is never duplicated. The initial seed
+   * (`fromIso` undefined) has nothing to hold and generates the whole book.
    */
   async function materializeSchedule(
     tx: Tx,
@@ -614,11 +620,19 @@ export function buildDrizzleM16WriteService(
     fromIso: string | undefined,
   ): Promise<OutreachRow[]> {
     const tier: BereavementRiskTier = contact.currentRiskTier ?? plan.currentRiskTier ?? "low";
-    const planned = generateOutreachSchedule(
-      localDate(plan.deathDate),
-      { riskTier: tier, allowedKinds: allowedKindsOf(contact.outreachPreferencesJsonb) },
-      fromIso === undefined ? {} : { fromIso: fromIso as IsoInstant },
-    );
+    const facts = {
+      riskTier: tier,
+      allowedKinds: allowedKindsOf(contact.outreachPreferencesJsonb),
+    };
+    const planned =
+      fromIso === undefined
+        ? generateOutreachSchedule(localDate(plan.deathDate), facts)
+        : planScheduleTopUp(
+            localDate(plan.deathDate),
+            facts,
+            await heldCadenceMarks(tx, contact.id),
+            fromIso as IsoInstant,
+          );
     if (planned.length === 0) return [];
     const inserted = await tx
       .insert(OUTREACH)
@@ -655,6 +669,39 @@ export function buildDrizzleM16WriteService(
       });
     }
     return inserted;
+  }
+
+  /**
+   * ADR-0110 D4 — a risk-tier change on an ACTIVE plan tops the schedule up with the new tier's floor
+   * contacts. Forward-only and add-only (`materializeSchedule` fills by mark from `at`): nothing is cancelled,
+   * moved or re-modalized, and the same tier twice adds nothing. A contact-level score moves that contact; a
+   * plan-level score moves the contacts that have no tier of their own (they inherit the plan's).
+   */
+  async function topUpScheduleOnTierChange(
+    tx: Tx,
+    plan: PlanRow,
+    contact: ContactRow | null,
+    priorTier: BereavementRiskTier | null,
+    newTier: BereavementRiskTier,
+    at: string,
+  ): Promise<void> {
+    if (plan.status !== "active" || priorTier === null || priorTier === newTier) return;
+    const targets =
+      contact === null
+        ? await tx
+            .select()
+            .from(CONTACT)
+            .where(and(eq(CONTACT.planId, plan.id), isNull(CONTACT.currentRiskTier)))
+        : [contact];
+    for (const target of targets) {
+      if (!isEngageableContactStatus(target.status)) continue;
+      await materializeSchedule(
+        tx,
+        { ...plan, currentRiskTier: contact === null ? newTier : plan.currentRiskTier },
+        { ...target, currentRiskTier: contact === null ? target.currentRiskTier : newTier },
+        at,
+      );
+    }
   }
 
   /** Insert the §3.3.6 anniversary reminders the §4.9 lookahead cron alerts off. */
@@ -840,6 +887,15 @@ export function buildDrizzleM16WriteService(
         .set({ currentRiskTier: row.ruleTier, currentRiskScoreId: row.id })
         .where(eq(CONTACT.id, contact.id));
     }
+    // ADR-0110 D4 — a tier change tops the live schedule up (forward-only, never cancels).
+    await topUpScheduleOnTierChange(
+      tx,
+      plan,
+      contact,
+      contact?.currentRiskTier ?? plan.currentRiskTier ?? null,
+      row.ruleTier,
+      assessedAt,
+    );
 
     await runEffects(
       tx,
