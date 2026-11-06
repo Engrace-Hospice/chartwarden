@@ -188,6 +188,10 @@ CREATE TABLE IF NOT EXISTS "subscription_statement_review" (
 ALTER TABLE "subscription_statement_review" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "subscription_statement_review" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
 GRANT ALL ON "subscription_statement_review" TO chartwarden_admin;--> statement-breakpoint
+-- Audited through M1's baseline trigger (the capability_snapshot / supply_item precedent): the row carries ids and a reason code only,
+-- and the trigger resolves the absent org from the session (NULL under the platform role), so the audit_event row is platform-scoped.
+CREATE TRIGGER "subscription_statement_review_audit" AFTER INSERT OR UPDATE OR DELETE ON subscription_statement_review
+  FOR EACH ROW EXECUTE FUNCTION chartwarden_audit_trigger();--> statement-breakpoint
 
 -- RLS: a tenant reads its own rows and writes none.
 ALTER TABLE "subscription_contract" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint

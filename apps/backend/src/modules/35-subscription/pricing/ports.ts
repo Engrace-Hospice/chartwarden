@@ -2,9 +2,9 @@
 // composition root binds (ADR-0025: M35 has no edge to M34 or M4, so neither the onboarding wizard nor the platform audit writer is
 // imported here). Both fail CLOSED when unbound: a pricing write that cannot be audited, or cannot find its tenant, is refused.
 import { randomUUID } from "node:crypto";
+import type { DbClient } from "@chartwarden/db";
 import { ChartWardenError, type OrgId } from "@chartwarden/types";
 import type { M35WriteActor } from "../routes/actor";
-import type { PlatformRunner, WriteTx } from "../routes/service-drizzle";
 
 /** One structured platform audit row: WHO, to WHICH organisation (null = the platform catalog), and WHY. Ids and codes only. */
 export interface PlatformAuditEntry {
@@ -16,6 +16,16 @@ export interface PlatformAuditEntry {
   readonly reason: string;
   readonly detail?: Readonly<Record<string, string | number | boolean | null>>;
 }
+
+/** The structural org-context transaction handle the queries run through (mirrors M27's WriteTx). */
+export type WriteTx = DbClient;
+
+/**
+ * The gated cross-tenant runner the platform-ops methods execute under. The composition root binds it to
+ * M1's `withPlatformContext(platformDb, caller, auditor, fn)` (the M34 precedent). The default fails
+ * closed: a platform-ops route refuses (503) rather than reading nothing under tenant RLS.
+ */
+export type PlatformRunner = <T>(fn: (tx: WriteTx) => Promise<T>) => Promise<T>;
 
 /** Writes `entry` on the caller's platform transaction, atomically with the change it describes. */
 export interface PlatformAuditPort {

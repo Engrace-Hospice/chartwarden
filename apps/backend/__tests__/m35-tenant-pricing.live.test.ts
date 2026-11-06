@@ -2809,6 +2809,13 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       expect(flags).toEqual([
         { period_year_month: "2026-12", reason: "no_census", subject_organization_id: ORG_G },
       ]);
+      // the flag itself is audited (M04): one platform-scoped insert event (no org, because the carrier holds no tenant context)
+      const flagAudit = await q<{ event_type: string; organization_id: string | null }>(
+        "SELECT event_type, organization_id FROM audit_event WHERE resource_kind='subscription_statement_review' AND resource_id=(SELECT id FROM subscription_statement_review WHERE subject_organization_id=$1)",
+        [ORG_G],
+      );
+      expect(flagAudit).toHaveLength(1);
+      expect(flagAudit[0]?.organization_id).toBeNull();
       // exactly one log line over three hourly runs, and it names the organisation (not just the month)
       const flagged = logged.filter((d) => d.periodYearMonth === "2026-12");
       expect(flagged).toHaveLength(1);
