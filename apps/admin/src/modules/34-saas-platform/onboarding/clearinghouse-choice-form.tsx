@@ -10,13 +10,35 @@ import {
   needsSecret,
 } from "./clearinghouse-model";
 
+/** The billing service mode a contracted tenant takes when it leaves outside for a vendor; "" until the operator picks (never defaulted). */
+export type BillingModePick = "" | "none" | "billing_software" | "managed_billing";
+
 export interface ChoiceForm {
   vendor: ClearinghouseVendor;
   mode: ClearinghouseMode;
+  billingServiceMode: BillingModePick;
 }
-export type ChoiceErrors = Partial<Record<"vendor" | "mode" | "secret", string>>;
+export type ChoiceErrors = Partial<
+  Record<"vendor" | "mode" | "secret" | "billingServiceMode", string>
+>;
 
-export const BLANK_CHOICE: ChoiceForm = { vendor: "claimmd", mode: "production" };
+export const BLANK_CHOICE: ChoiceForm = {
+  vendor: "claimmd",
+  mode: "production",
+  billingServiceMode: "",
+};
+
+const BILLING_MODES: readonly { value: BillingModePick; label: string }[] = [
+  { value: "", label: "Choose the billing service mode…" },
+  { value: "none", label: "None (keep it unbilled)" },
+  { value: "billing_software", label: "Billing software" },
+  { value: "managed_billing", label: "Managed billing service" },
+];
+const BILLING_MODE_NAME: Record<Exclude<BillingModePick, "">, string> = {
+  none: "None",
+  billing_software: "Billing software",
+  managed_billing: "Managed billing",
+};
 
 const VENDORS: readonly { value: ClearinghouseVendor; label: string }[] = [
   { value: "claimmd", label: "Claim.MD" },
@@ -31,10 +53,25 @@ const MODES: readonly { value: ClearinghouseMode; label: string }[] = [
 export const SECRET_MIN = 8;
 export const SECRET_MAX = 512;
 
+/** This write moves a contracted tenant OUT of outside for a vendor: the operator names the billing mode it takes (the server requires it). */
+export function isLeavingOutside(
+  view: ClearinghouseView,
+  form: Pick<ChoiceForm, "vendor">,
+  context: ChoiceContext,
+): boolean {
+  return (
+    context.hasContract &&
+    view.source === "tenant" &&
+    view.vendor === "outside" &&
+    form.vendor !== "outside"
+  );
+}
+
 export function validateChoice(
   view: ClearinghouseView,
   form: ChoiceForm,
   secret: string,
+  context: ChoiceContext,
 ): ChoiceErrors {
   if (form.vendor === "outside") return {};
   const errors: ChoiceErrors = {};
@@ -44,6 +81,9 @@ export function validateChoice(
     errors.secret = `The credential is at least ${SECRET_MIN} characters.`;
   } else if (secret.length > SECRET_MAX) {
     errors.secret = `The credential is at most ${SECRET_MAX} characters.`;
+  }
+  if (isLeavingOutside(view, form, context) && form.billingServiceMode === "") {
+    errors.billingServiceMode = "Choose the billing service mode.";
   }
   return errors;
 }
@@ -80,6 +120,13 @@ export function consequenceOf(
     parts.push("The tenant files its own notices of election and termination.");
     return parts.join(" ");
   }
+  if (isLeavingOutside(view, form, context) && form.billingServiceMode !== "") {
+    const mode = BILLING_MODE_NAME[form.billingServiceMode];
+    const when = context.tenantStatus === "onboarding" ? "now" : "from the 1st of next month";
+    return form.billingServiceMode === "none"
+      ? "Moving this tenant to a clearinghouse keeps its billing service mode at None. The vendor credential is sealed under the tenant's own key."
+      : `Moving this tenant to a clearinghouse also sets its billing service mode to ${mode}, ${when}. The mode is set before the clearinghouse and put back to none if the clearinghouse change fails.`;
+  }
   if (view.vendor !== null && view.source === "tenant" && needsSecret(view, form)) {
     return "Changing the vendor or the mode starts the new configuration at draft: it must be verified and activated again, and claims work waits until then. A change of vendor also voids the vendor BAA.";
   }
@@ -109,6 +156,7 @@ export function ChoiceFormCard({
 }): JSX.Element {
   const outside = form.vendor === "outside";
   const secretNeeded = needsSecret(view, form);
+  const leavingOutside = isLeavingOutside(view, form, context);
   return (
     <section className="wx-drawer-card" aria-label="Clearinghouse choice">
       <div className="wx-drawer-card-head">
@@ -131,6 +179,18 @@ export function ChoiceFormCard({
               options={MODES}
               error={errors.mode}
             />
+            {leavingOutside ? (
+              <SelectField
+                label="Billing service mode"
+                hint="A tenant that bills outside ChartWarden is on None. Moving it to a clearinghouse means choosing the mode its billing calls for."
+                value={form.billingServiceMode}
+                onChange={(e) =>
+                  onChange({ ...form, billingServiceMode: e.target.value as BillingModePick })
+                }
+                options={BILLING_MODES}
+                error={errors.billingServiceMode}
+              />
+            ) : null}
             <TextField
               label="Vendor credential"
               hint={

@@ -272,6 +272,99 @@ describe("ClearinghousePanel: choosing", () => {
   });
 });
 
+describe("ClearinghousePanel: leaving outside for a vendor (a contracted tenant's billing mode)", () => {
+  const OUTSIDE_TENANT: ClearinghouseView = {
+    ...NOTHING,
+    vendor: "outside",
+    status: "active",
+    source: "tenant",
+    version: 4,
+  };
+  const withContract = () =>
+    wizardView([wizardStep("plan_contract", 1, { status: "done" }), step({ sequence: 2 })]);
+  const open = async () => {
+    fireEvent.click(await screen.findByRole("button", { name: "Change" }));
+    // the form opens on what is chosen now (outside): the operator picks the vendor to move to
+    fireEvent.change(screen.getByRole("combobox", { name: "Clearinghouse" }), {
+      target: { value: "claimmd" },
+    });
+    fireEvent.change(secretBox(), { target: { value: TYPED_VALUE } });
+  };
+
+  it("asks for the billing service mode (no default), refuses to continue without it, and sends it with the pin", async () => {
+    const { client } = mount(OUTSIDE_TENANT, { PUT: { [CH]: () => ok(CLAIMMD) } }, withContract());
+    await open();
+    const modeBox = screen.getByLabelText(/^Billing service mode/) as HTMLSelectElement;
+    expect(modeBox.value).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByText("Choose the billing service mode.")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.change(modeBox, { target: { value: "managed_billing" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(within(screen.getByRole("dialog")).getByText(/Managed billing/)).toBeTruthy();
+    confirm("The customer moves to Claim.MD, ticket CHG-9101", "Save");
+    await waitFor(() => expect(client.PUT).toHaveBeenCalledTimes(1));
+    const [, init] = lastCall(client.PUT.mock.calls);
+    expect(init.params.header["If-Match"]).toBe("4");
+    expect(init.body).toMatchObject({
+      vendor: "claimmd",
+      billingServiceMode: "managed_billing",
+      reason: "The customer moves to Claim.MD, ticket CHG-9101",
+    });
+  });
+
+  it("accepts an explicit None as the answer", async () => {
+    const { client } = mount(OUTSIDE_TENANT, { PUT: { [CH]: () => ok(CLAIMMD) } }, withContract());
+    await open();
+    fireEvent.change(screen.getByLabelText(/^Billing service mode/), { target: { value: "none" } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("The customer moves to Claim.MD, ticket CHG-9101", "Save");
+    await waitFor(() => expect(client.PUT).toHaveBeenCalledTimes(1));
+    expect(lastCall(client.PUT.mock.calls)[1].body).toMatchObject({ billingServiceMode: "none" });
+  });
+
+  it("does not ask, and sends no billing mode, for a tenant with no contract, a vendor-to-vendor change or a first choice", async () => {
+    const { client } = mount(OUTSIDE_TENANT, { PUT: { [CH]: () => ok(CLAIMMD) } }); // no plan_contract step: no contract
+    await open();
+    expect(screen.queryByLabelText(/^Billing service mode/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("The customer moves to Claim.MD, ticket CHG-9101", "Save");
+    await waitFor(() => expect(client.PUT).toHaveBeenCalledTimes(1));
+    expect(lastCall(client.PUT.mock.calls)[1].body).not.toHaveProperty("billingServiceMode");
+    cleanup();
+
+    mount(CLAIMMD, {}, withContract());
+    fireEvent.click(await screen.findByRole("button", { name: "Change" }));
+    expect(screen.queryByLabelText(/^Billing service mode/)).toBeNull();
+  });
+
+  it("shows the server's own refusal under the mode box when it judged the contract differently (422, field billingServiceMode)", async () => {
+    mount(
+      OUTSIDE_TENANT,
+      {
+        PUT: {
+          [CH]: () =>
+            refused(422, "VALIDATION_FAILED", "invalid", [
+              {
+                field: "billingServiceMode",
+                code: "BILLING_SERVICE_MODE_REQUIRED",
+                message: "choose the billing service mode it takes with the vendor",
+              },
+            ]),
+        },
+      },
+      view(), // the console saw no contract; the server did
+    );
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("The customer moves to Claim.MD, ticket CHG-9101", "Save");
+    // the prompt steps aside; the form is still open, and the mode box is not there to attach to, so the notice carries it
+    expect(await screen.findByText(/Some details need attention/)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
 describe("ClearinghousePanel: the write-only credential box and the no-patient confirmation", () => {
   it("asks the browser to offer no saved password for the vendor credential", async () => {
     mount(NOTHING);

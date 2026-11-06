@@ -24,6 +24,7 @@ import {
   type ChoiceForm,
   ChoiceFormCard,
   consequenceOf,
+  isLeavingOutside,
   validateChoice,
 } from "./clearinghouse-choice-form";
 import {
@@ -57,7 +58,7 @@ const TEST_PROBLEM: Record<Exclude<TestOutcome, "ok">, string> = {
   unreachable: "The vendor could not be reached. Nothing was verified; try the test again shortly.",
 };
 
-const CHOICE_FIELDS = ["vendor", "mode", "secret"] as const;
+const CHOICE_FIELDS = ["vendor", "mode", "secret", "billingServiceMode"] as const;
 
 /** What the server said about each choice input, merged under what the form itself found. */
 function withServerErrors(
@@ -138,7 +139,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
   );
   const [dialog, setDialog] = useState<Dialog>(null);
   const [editing, setEditing] = useState(restored !== undefined);
-  const [form, setForm] = useState<ChoiceForm>(restored?.form ?? BLANK_CHOICE);
+  const [form, setForm] = useState<ChoiceForm>({ ...BLANK_CHOICE, ...restored?.form });
   const [secret, setSecret] = useState("");
   const [errors, setErrors] = useState<ChoiceErrors>({});
   const [attesting, setAttesting] = useState(false);
@@ -148,6 +149,12 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
   const [testProblem, setTestProblem] = useState<string | null>(null);
   const write = useOpsWrite();
 
+  const choiceContext: ChoiceContext = {
+    tenantStatus: wizard.tenantStatus,
+    hasContract: wizard.steps.some(
+      (step) => step.key === "plan_contract" && step.status === "done",
+    ),
+  };
   const current = load.data;
   const available = current ? clearinghouseActions(current) : null;
 
@@ -170,6 +177,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
                 ? current.vendor
                 : "claimmd",
             mode: current.mode ?? "production",
+            billingServiceMode: "",
           }
         : BLANK_CHOICE,
     );
@@ -180,7 +188,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
   function continueChoice(): void {
     if (!current) return;
     write.clear(); // an earlier refusal of an input has been read; this attempt starts clean
-    const found = validateChoice(current, form, secret);
+    const found = validateChoice(current, form, secret, choiceContext);
     setErrors(found);
     if (Object.keys(found).length === 0) setDialog("choose");
   }
@@ -201,6 +209,10 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
             vendor: form.vendor,
             mode: form.mode,
             ...(secret !== "" ? { secret } : {}),
+            // Leaving outside with a contract: the billing mode the vendor billing calls for (the server sets it first, undoes it on failure).
+            ...(isLeavingOutside(current, form, choiceContext) && form.billingServiceMode !== ""
+              ? { billingServiceMode: form.billingServiceMode }
+              : {}),
             reason,
           };
     const outcome = await write.run(`choose:${pinned ?? "new"}:${JSON.stringify(body)}`, (key) =>
@@ -282,12 +294,6 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
   }
 
   const facts: Fact[] = current ? clearinghouseFacts(current) : [];
-  const choiceContext: ChoiceContext = {
-    tenantStatus: wizard.tenantStatus,
-    hasContract: wizard.steps.some(
-      (step) => step.key === "plan_contract" && step.status === "done",
-    ),
-  };
   const vendorChosen = current !== null && isTransmitting(current) && current.source === "tenant";
 
   return (
