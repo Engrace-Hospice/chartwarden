@@ -312,7 +312,7 @@ controls:
       - file: scripts/__tests__/harness-bypasses.test.ts
       - file: .github/CODEOWNERS
     gap:
-      reason: The PreToolUse guard is a set of shell-text heuristics for a cooperative agent, not a sandbox (a determined process can read a file through a construct the rules do not anticipate), and the local ledger is an unkeyed hash chain that catches accidents, not tampering. Closes with a filesystem sandbox or secrets kept outside the working tree, plus the ledger head published somewhere the agent cannot write, and code-owner review enforced on .claude/, scripts/harness/ and compliance/ (needs the branch protection in CW-CM-01).
+      reason: The PreToolUse guard is a set of shell-text heuristics for a cooperative agent, not a sandbox (a determined process can read a file through a construct the rules do not anticipate), and the local ledger is an unkeyed hash chain that catches accidents, not tampering. Remote shells are an ask, not a deny (owner decision 2026-11-05) - .claude/settings.json no longer denies ssh/scp/rsync outright, so a non-local ssh/scp/sftp/rsync relies on the guard's per-host human confirmation and on the human authorizing one named host for one session (.claude/rules/phi-and-secrets.md). Closes with a filesystem sandbox or secrets kept outside the working tree, plus the ledger head published somewhere the agent cannot write, and code-owner review enforced on .claude/, scripts/harness/ and compliance/ (needs the branch protection in CW-CM-01).
       owner: engineering
       review_by: 2027-01-31
 
