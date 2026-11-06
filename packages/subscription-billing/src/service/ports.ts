@@ -192,6 +192,12 @@ export interface ActivePeriodStore {
     pseudonymKeyEpoch: string;
     periodYearMonth: BillingYearMonth;
     becameActiveAt: Date;
+    /**
+     * Slice 2: every grant of the membership at THIS sign-in was non-staff (the system auditor role, a platform-owned role). Recorded at
+     * the moment the sign-in is observed; a staff sign-in (the default, false) clears it for the month and a later non-staff one does not
+     * set it back, so changing a member's roles afterwards cannot move a member off the staff count.
+     */
+    nonStaffObserved?: boolean;
   }): Promise<{ inserted: boolean }>;
 }
 
