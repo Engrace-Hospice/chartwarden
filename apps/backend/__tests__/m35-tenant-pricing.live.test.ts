@@ -2742,6 +2742,136 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       }
     });
 
+    /** What an admin transition could change on a subscription, plus the rows it would leave behind. */
+    const subscriptionFootprint = async (subscriptionId: string) => ({
+      subscription: (
+        await q(
+          "SELECT status, canceled_at, paused_at, paused_until, cancel_at_period_end, updated_at FROM subscription WHERE id=$1",
+          [subscriptionId],
+        )
+      )[0],
+      history: await q(
+        `SELECT id, from_status, to_status, transitioned_at, reason_code FROM subscription_state_history
+          WHERE subscription_id=$1 ORDER BY transitioned_at, id`,
+        [subscriptionId],
+      ),
+      auditRows: (
+        await q<{ n: number }>("SELECT count(*)::int AS n FROM audit_event WHERE resource_id=$1", [
+          subscriptionId,
+        ])
+      )[0]?.n,
+    });
+
+    it("MEDIUM: a canceled subscription is final, and a resume of one that is not paused or a pause of a paused one is refused: a typed 409 that changes nothing", async () => {
+      const audit = buildPlatformAuditPort((tx, row) => auditPlatformEvent(tx as never, row));
+      const route = buildDrizzleM35RouteService(app.db, { platformRunner, outbox, audit });
+      const subscriptionIdOf = async (org: string) =>
+        (await q<{ id: string }>("SELECT id FROM subscription WHERE organization_id=$1", [org]))[0]
+          ?.id ?? "";
+      // ORG_I's subscription was canceled by the case above; state it here so this case stands on its own
+      const canceledId = await subscriptionIdOf(ORG_I);
+      await admin.query(
+        "UPDATE subscription SET status='canceled', canceled_at=COALESCE(canceled_at, now()) WHERE id=$1",
+        [canceledId],
+      );
+      const before = await subscriptionFootprint(canceledId);
+      await expect(route.adminResumeSubscription(operator, canceledId)).rejects.toMatchObject({
+        code: "SUBSCRIPTION_NOT_PAUSED",
+        statusCode: 409,
+      });
+      await expect(route.adminPauseSubscription(operator, canceledId, null)).rejects.toMatchObject({
+        code: "SUBSCRIPTION_CANCELED",
+        statusCode: 409,
+      });
+      await expect(route.adminCancelSubscription(operator, canceledId)).rejects.toMatchObject({
+        code: "SUBSCRIPTION_CANCELED",
+        statusCode: 409,
+      });
+      // status, canceled_at, updated_at, the history and every audit row are exactly as they were
+      expect(await subscriptionFootprint(canceledId)).toEqual(before);
+
+      // ORG_M is paused (its org was suspended): pausing it again would re-stamp paused_at, so it is refused too
+      const pausedId = await subscriptionIdOf(ORG_M);
+      const pausedBefore = await subscriptionFootprint(pausedId);
+      expect(pausedBefore.subscription).toMatchObject({ status: "paused" });
+      await expect(route.adminPauseSubscription(operator, pausedId, null)).rejects.toMatchObject({
+        code: "SUBSCRIPTION_ALREADY_PAUSED",
+        statusCode: 409,
+      });
+      expect(await subscriptionFootprint(pausedId)).toEqual(pausedBefore);
+
+      // ORG_J's subscription runs (active): there is nothing to resume
+      const activeId = await subscriptionIdOf(ORG_J);
+      const activeBefore = await subscriptionFootprint(activeId);
+      expect(activeBefore.subscription).toMatchObject({ status: "active" });
+      await expect(route.adminResumeSubscription(operator, activeId)).rejects.toMatchObject({
+        code: "SUBSCRIPTION_NOT_PAUSED",
+        statusCode: 409,
+      });
+      expect(await subscriptionFootprint(activeId)).toEqual(activeBefore);
+    });
+
+    it("MEDIUM: the REAL platform carrier can take the row lock the admin transitions read under (FOR UPDATE needs UPDATE on a column; it holds six)", async () => {
+      const [sub] = await q<{ id: string }>(
+        "SELECT id FROM subscription WHERE organization_id=$1",
+        [ORG_I],
+      );
+      await asCarrier(async (carrier) => {
+        await carrier.query("BEGIN");
+        try {
+          const locked = await carrier.query("SELECT id FROM subscription WHERE id=$1 FOR UPDATE", [
+            sub?.id,
+          ]);
+          expect(locked.rows).toEqual([{ id: sub?.id }]);
+        } finally {
+          await carrier.query("ROLLBACK");
+        }
+      });
+    });
+
+    it("MEDIUM: two operators canceling one subscription at once: exactly one wins and the other is a 409, because the row is locked, not just checked", async () => {
+      const realAudit = buildPlatformAuditPort((tx, row) => auditPlatformEvent(tx as never, row));
+      // The audit write happens INSIDE the transaction, after the status was read: holding it open makes the two transactions overlap,
+      // so without the lock both read `active` and both cancel (two history rows, two events).
+      const slowAudit = {
+        record: async (...args: Parameters<typeof realAudit.record>) => {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          return realAudit.record(...args);
+        },
+      };
+      const route = buildDrizzleM35RouteService(app.db, {
+        platformRunner,
+        outbox,
+        audit: slowAudit,
+      });
+      const [sub] = await q<{ id: string }>(
+        "SELECT id FROM subscription WHERE organization_id=$1",
+        [ORG_I],
+      );
+      const subscriptionId = sub?.id ?? "";
+      await admin.query("UPDATE subscription SET status='active', canceled_at=NULL WHERE id=$1", [
+        subscriptionId,
+      ]);
+      const cancelRows = () =>
+        q<{ id: string }>(
+          `SELECT id FROM subscription_state_history
+            WHERE subscription_id=$1 AND reason_code='platform_ops_cancel_immediate'`,
+          [subscriptionId],
+        );
+      const rowsBefore = (await cancelRows()).length;
+
+      const outcomes = await Promise.allSettled([
+        route.adminCancelSubscription(operator, subscriptionId),
+        route.adminCancelSubscription(operator, subscriptionId),
+      ]);
+
+      expect(outcomes.filter((o) => o.status === "fulfilled")).toHaveLength(1);
+      const refused = outcomes.filter((o): o is PromiseRejectedResult => o.status === "rejected");
+      expect(refused).toHaveLength(1);
+      expect(refused[0]?.reason).toMatchObject({ code: "SUBSCRIPTION_CANCELED", statusCode: 409 });
+      expect((await cancelRows()).length - rowsBefore).toBe(1);
+    });
+
     it("SETTLEMENT (HIGH): a settlement statement FINALIZES after its grace, and its money is never carried twice, in a draft or a final", async () => {
       // ORG_L (canceled Nov 20): November is final, a $2,000 835 dated Nov 12 posted late and rode a December settlement DRAFT.
       expect(await statementOf(ORG_L, "2026-12")).toMatchObject({
