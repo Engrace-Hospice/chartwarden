@@ -104,6 +104,7 @@ export function EditWordingModal({
     if (err || !next) {
       if (status === 412) {
         setConflictAt(run.version);
+        setReloadFailed(false);
         setError(RUN_MOVED);
         await reloadTheirs();
         return;

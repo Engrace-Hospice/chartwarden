@@ -540,6 +540,7 @@ export async function runMailingGenerateJob(
       code,
       error: error instanceof Error ? error.name : "unknown",
       finalAttempt: opts.finalAttempt,
+      ...(documentId !== null ? { documentId } : {}),
     });
     if (terminal || opts.finalAttempt) await failRun(deps, organizationId, runId, version, code);
     // A terminal failure (nothing to render, no cipher) is recorded on the run and is not worth a retry; anything else is retried by BullMQ.
