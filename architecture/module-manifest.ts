@@ -945,6 +945,8 @@ export const MODULES: ModuleDef[] = [
       "claimmd_response_event",
       "claimmd_response_resolution",
       "claimmd_response_resolution_history",
+      "claimmd_ack_application",
+      "claimmd_ack_delivery",
       "claimmd_submission_evidence",
       "claimmd_submission_receipt_observation",
       "clearinghouse_interchange_number",

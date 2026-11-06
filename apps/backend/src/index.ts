@@ -1048,6 +1048,10 @@ import { createClaimMdIdentityStore } from "./modules/23-billing-medicare/claimm
 import { createClaimMdIdentityResolver, createClaimMdIdentityWorker } from "./modules/23-billing-medicare/claimmd-identity/service";
 import { CLAIMMD_IDENTITY_JOB_ID, startClaimMdIdentityWorker, type IdentityWorkerSummary } from "./modules/23-billing-medicare/claimmd-identity/worker";
 import { readClaimMdCommercialSubmissionFacts } from "./modules/41-billing-commercial/services/claimmd-submission-reader";
+import { claimMdAckMode } from "./modules/23-billing-medicare/claimmd-ack/config";
+import { createClaimMdAckSource, CLAIMMD_ACK_JOB_ID } from "./modules/23-billing-medicare/claimmd-ack/store";
+import { createClaimMdAckDispatcher } from "./modules/23-billing-medicare/claimmd-ack/service";
+import { startClaimMdAckWorker } from "./modules/23-billing-medicare/claimmd-ack/worker";
 import {
   bindPlatformClearinghouse,
   describeClearinghouseBinding,
@@ -4287,6 +4291,37 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   const m23OutboxPublisher = bindCallerModule(txOutboxPublisher, "m23");
   const m24OutboxPublisher = bindCallerModule(txOutboxPublisher, "m24");
   const m41OutboxPublisher = bindCallerModule(txOutboxPublisher, "m41");
+  const claimMdAckExecutionMode = claimMdAckMode(process.env);
+  let claimMdAckDispatcher: ReturnType<typeof createClaimMdAckDispatcher> | undefined;
+  if (claimMdAckExecutionMode !== "off" && role !== "api") {
+    if (clearinghouseBinding.vendor !== "claimmd" || !dbHandle || !platformDbHandle || !claimMdSubmissionEvidence)
+      throw new Error("Claim.MD acknowledgment dispatcher requires Claim.MD and tenant/platform database clients");
+    const accountReference = process.env.CLAIMMD_ACCOUNT_REFERENCE?.trim();
+    const usage = process.env.CLAIMMD_ACCOUNT_USAGE;
+    if (!accountReference || !/^[A-Za-z0-9._:-]{1,128}$/.test(accountReference) || (usage !== "test" && usage !== "production"))
+      throw new Error("Claim.MD acknowledgment account reference or usage is invalid");
+    const inboxKeys = claimMdInboxKeyRingFromEnv(process.env);
+    if (!inboxKeys) throw new Error("Claim.MD acknowledgment inbox key ring is unavailable or invalid");
+    registerPlatformJob(CLAIMMD_ACK_JOB_ID);
+    await withPlatformContext(platformDbHandle.db, { jobId: CLAIMMD_ACK_JOB_ID,
+      reason: "Claim.MD acknowledgment dispatcher schema and stream preflight", crossTenant: true }, m34PlatformBypassAuditor, async (tx) => {
+      await tx.select({ id: schema.claimmdAckApplications.id }).from(schema.claimmdAckApplications).limit(0);
+      await tx.select({ eventId: schema.claimmdAckDeliveries.eventId }).from(schema.claimmdAckDeliveries).limit(0);
+      const [stream] = await tx.select({ id: schema.claimmdResponseStreams.id }).from(schema.claimmdResponseStreams)
+        .where(and(eq(schema.claimmdResponseStreams.accountReference, accountReference), eq(schema.claimmdResponseStreams.usage, usage),
+          eq(schema.claimmdResponseStreams.streamType, "claim_responses"))).limit(1);
+      if (!stream) throw new Error("Claim.MD acknowledgment response stream is not bootstrapped");
+    });
+    const tenantKeys = getTenantKeyProvider();
+    claimMdAckDispatcher = createClaimMdAckDispatcher({ db: dbHandle.db,
+      source: createClaimMdAckSource({ platformDb: platformDbHandle.db, auditBypass: m34PlatformBypassAuditor,
+        cipher: createClaimMdInboxCipher(inboxKeys), accountReference, usage, mode: claimMdAckExecutionMode }),
+      mode: claimMdAckExecutionMode,
+      evidenceCipher: createClaimMdEvidenceCipher({
+        dekForOrg: (organizationId) => tenantKeys.dekForOrg(organizationId),
+        dekForOrgVersion: (organizationId, version) => tenantKeys.dekForOrgVersion(organizationId, version),
+      }), commercialOutbox: m41OutboxPublisher as unknown as CommercialOutboxPort });
+  }
   // Whether the M41 drain is scheduled. In the split deployment the API process (PROCESS_ROLE=api) never registers the repeatable jobs
   // (TASK-040A: an API replica must not re-register crons), so a per-process flag would stay false there and refuse every submit
   // forever. Readiness therefore reflects SHARED state: this process' own registration (worker / all roles) OR both repeatable
@@ -7664,6 +7699,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       log: (event) => app.log.info(event, "Claim.MD identity resolution tick") });
     app.addHook("onClose", async () => stop());
     app.log.info({ enabled: true, batchSize: 25, concurrency: 1 }, "Claim.MD identity resolver worker started");
+  }
+  if (claimMdAckDispatcher) {
+    const stop = startClaimMdAckWorker({ dispatcher: claimMdAckDispatcher,
+      log: (summary) => app.log.info({ mode: claimMdAckExecutionMode, ...summary }, "Claim.MD acknowledgment dispatch tick") });
+    app.addHook("onClose", async () => stop());
+    app.log.info({ mode: claimMdAckExecutionMode, batchSize: 25 }, "Claim.MD acknowledgment dispatcher started");
   }
 
   // ── worker-runner section (the M4-T11 BullMQ worker-construction precedent) ──────────────────────────

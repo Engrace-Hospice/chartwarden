@@ -53,4 +53,6 @@ export * from "./claimmd-response-inbox";
 export * from "./clearinghouse-interchange-number";
 export * from "./billing-edi-profile";
 export * from "./claimmd-response-resolution";
+export * from "./claimmd-ack-application";
+export * from "./claimmd-ack-delivery";
 export * from "./claimmd-submission-evidence";

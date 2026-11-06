@@ -1,0 +1,7 @@
+# BIL-1.4 handoff — account-scoped ERA capture and M25 routing
+
+BIL-1.3 consumes only Claim.MD `/services/response/` claim status messages. It neither downloads `/services/eralist/`, `/services/era835/` or `/services/eradata/` nor parses 835, posts payment, creates remittance ledger entries, infers denial from rejection, or changes M25 state. Payment-like free text remains informational in the encrypted response source.
+
+BIL-1.4 should reuse the same central-account principles: test/production separation, durable cursor advancement only after complete encrypted capture, immutable raw-file provenance, bounded account-wide delivery, verified tenant/provider/claim/line routing, ambiguous-match quarantine, and idempotent M25 posting. An ERA may cover multiple claims and provider identities; it must be split by verified claim identity rather than assigned by the polling tenant. No auto-post when charge/claim matching is ambiguous. Reversals, recoupments, partial payments, CAS/CARC/RARC, payer ICN and unmatched lines require M25-specific tests.
+
+Do not treat an `A` response or paid-like message text as an 835. Keep the BIL-1.3 application ledger independent of M25's financial ledger. Use synthetic data and a private app-role PostgreSQL cluster. BIL-1.2.2B and BIL-1.3 controlled activation blockers do not prevent inactive BIL-1.4 source development, but they prevent live shared-account financial routing.

@@ -1940,6 +1940,9 @@ async function runTransportAckPull(
   transport: M23TransportDeps,
   kind: "ack_999" | "ack_277ca",
 ): Promise<void> {
+  // Claim.MD /services/response/ is an account-wide normalized API feed, not literal 999/277CA.
+  // BIL-1.1 captures it centrally; only the separately gated BIL-1.3 dispatcher may interpret it.
+  if (transport.binding.vendor === "claimmd") return;
   const now = deps.now ?? (() => new Date());
   const failures: string[] = [];
   for (const { organizationId } of await activeOrgsOf(deps).listActiveOrgs()) {
