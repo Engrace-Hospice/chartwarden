@@ -52,11 +52,15 @@ export type M16RegisteredAbacPredicate = (typeof M16_ABAC_PREDICATES)[number];
 /**
  * §4.8 — the roles that carry organization-scoped bereavement oversight ("typically Clinical Supervisor,
  * DON, Bereavement Program Coordinator, Compliance Officer").
+ *
+ * The coordinator's role KEY is `bereavement_coordinator` — the spelling migration 1234 grants to and
+ * `packages/idg` names. The spec prose says "bereavement_program_coordinator"; no role carries that key, so
+ * binding it here made the coordinator invisible to oversight (ADR-0110 D8). M39's access-scope keeps a mirror.
  */
 export const BEREAVEMENT_OVERSIGHT_ROLES = [
   "clinical_supervisor",
   "director_of_nursing",
-  "bereavement_program_coordinator",
+  "bereavement_coordinator",
   "compliance_officer",
 ] as const;
 

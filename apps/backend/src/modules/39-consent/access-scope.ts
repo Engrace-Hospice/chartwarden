@@ -152,7 +152,7 @@ const ORG_ADMIN_ROLES = ["org_admin"] as const;
 const BEREAVEMENT_OVERSIGHT_ROLES = [
   "clinical_supervisor",
   "director_of_nursing",
-  "bereavement_program_coordinator",
+  "bereavement_coordinator",
   "compliance_officer",
 ] as const;
 
@@ -265,7 +265,7 @@ const DISCIPLINE_ROLES: Readonly<Record<ConsentDisciplineScope, readonly string[
   delegated_access: [...CLINICAL_DISCIPLINES, "bereavement_counselor"],
   post_mortem: [
     "bereavement_counselor",
-    "bereavement_program_coordinator",
+    "bereavement_coordinator",
     "msw",
     "clinical_supervisor",
   ],
