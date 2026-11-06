@@ -1,3 +1,4 @@
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/04-audit/routes/audit-typebox.ts — M4-T06 complete TypeBox route
 // schemas for the audit query surface (M4 spec §4.3). Named `audit-typebox` (not `*schema*`) so
@@ -9,24 +10,9 @@ import { ValidationError } from "@chartwarden/types";
 // the M1/M2/M3 routes use — and so query-string scalars are coerced (`limit=50` → 50) before the
 // shape check. `uuid` / `date-time` formats are registered so they actually validate.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 
 // --- format registration (TypeBox Value does not validate `format` until registered) ----------
-const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set(
-    "date",
-    (v) => typeof v === "string" && DATE_RE.test(v) && !Number.isNaN(Date.parse(v)),
-  );
-}
 
 // --- shared shapes (§4.3) ---------------------------------------------------------------------
 
@@ -72,8 +58,7 @@ export const AuditEventsQuerySchema = Type.Object({
   severity: Type.Optional(Type.String()),
   from: Type.Optional(Type.String({ format: "date-time" })),
   to: Type.Optional(Type.String({ format: "date-time" })),
-  cursor: Type.Optional(Type.String()),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 export const AuditEventsResponseSchema = Cursor(AuditEventSchema);
@@ -91,8 +76,7 @@ export const PatientAccessParamsSchema = Type.Object({
 export const PatientAccessQuerySchema = Type.Object({
   from: Type.Optional(Type.String({ format: "date-time" })),
   to: Type.Optional(Type.String({ format: "date-time" })),
-  cursor: Type.Optional(Type.String()),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 export const PatientAccessEntrySchema = Type.Object({
@@ -124,8 +108,7 @@ export const AccountingQuerySchema = Type.Object({
   scope: Type.Optional(AccountingScopeSchema),
   from: Type.Optional(Type.String({ format: "date" })),
   to: Type.Optional(Type.String({ format: "date" })),
-  cursor: Type.Optional(Type.String()),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 export const DisclosureEntrySchema = Type.Object({
@@ -182,8 +165,7 @@ export const LegalHoldSchema = Type.Object({
 
 export const LegalHoldListQuerySchema = Type.Object({
   status: Type.Optional(Type.Union([Type.Literal("active"), Type.Literal("released")])),
-  cursor: Type.Optional(Type.String()),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 export const LegalHoldListResponseSchema = Cursor(LegalHoldSchema);
@@ -246,8 +228,7 @@ export const DestructionCertificateListQuerySchema = Type.Object({
       Type.Literal("partial_refused"),
     ]),
   ),
-  cursor: Type.Optional(Type.String()),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 export const DestructionCertificateListResponseSchema = Cursor(DestructionCertificateSchema);

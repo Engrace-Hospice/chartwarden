@@ -3,7 +3,7 @@
 // same version back. Change the text => bump NOTICE_VERSION, so every earlier acknowledgement goes stale.
 export const NOTICE_VERSION = "2026-10-13.1";
 
-export const NOTICE_TEXT =
+const NOTICE_TEXT =
   "Turning on global search makes the whole message history of this organisation discoverable by content, not only new " +
   "messages: every message that a member may already read, past and future, becomes findable by a word inside it. Search " +
   "never shows a message the searcher cannot read, but a person with search access can more quickly find content in the " +

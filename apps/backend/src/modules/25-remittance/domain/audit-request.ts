@@ -8,7 +8,6 @@
 import { isRealDay } from "./recorded-deadline";
 
 export const AUDIT_AUTHORITY_KINDS = ["rac", "upic", "smrc", "other"] as const;
-export type AuditAuthorityKind = (typeof AUDIT_AUTHORITY_KINDS)[number];
 
 export type AuditState =
   | "received"
@@ -17,15 +16,6 @@ export type AuditState =
   | "responded"
   | "withdrawn"
   | "closed";
-
-export const AUDIT_STATES: readonly AuditState[] = [
-  "received",
-  "in_assembly",
-  "in_review",
-  "responded",
-  "withdrawn",
-  "closed",
-];
 
 export const AUDIT_TRANSITIONS: Readonly<Record<AuditState, readonly AuditState[]>> = {
   received: ["in_assembly", "withdrawn"],

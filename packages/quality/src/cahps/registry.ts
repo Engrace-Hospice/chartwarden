@@ -25,27 +25,6 @@ export type CahpsAdapterFactory = (config: Record<string, unknown>) => CahpsVend
 export type CahpsAdapterResolutionMap = Readonly<Record<CahpsVendorAdapterId, CahpsAdapterFactory>>;
 
 /**
- * Instantiate the adapter for one binding by looking its `vendorAdapterId` up in the injected resolution
- * map and calling the factory with the decrypted config. Throws `CAHPS_VENDOR_UNKNOWN` if the id has no
- * registered factory (an impossible state if the map is total, but fails closed rather than `undefined`).
- */
-export function instantiateAdapter(
-  vendorAdapterId: CahpsVendorAdapterId,
-  config: Record<string, unknown>,
-  resolutionMap: CahpsAdapterResolutionMap,
-): CahpsVendorAdapter {
-  const factory = resolutionMap[vendorAdapterId];
-  if (factory === undefined) {
-    throw new ChartWardenError(
-      "CAHPS_VENDOR_UNKNOWN",
-      `no CAHPS adapter factory registered for vendor '${vendorAdapterId}'`,
-      500,
-    );
-  }
-  return factory(config);
-}
-
-/**
  * A per-org registry of live CAHPS adapter instances (§4.5). One process-local map; entries are
  * registered at org boot / vendor rotation and resolved per request. Pure in-memory — no DB, no I/O.
  */

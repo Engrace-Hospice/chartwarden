@@ -1,8 +1,6 @@
 import {
   type AuditContext,
   audit,
-  decodeCursor,
-  encodeCursor,
   isMessagingOnlyCriteria,
   resolveLimit,
 } from "@chartwarden/audit";
@@ -26,6 +24,13 @@ import {
 // route's own pre-check is approximate.
 import { requirePermission, requireStepUp } from "@chartwarden/auth";
 import { type DbClient, schema } from "@chartwarden/db";
+import {
+  type PreHandler,
+  actorOf,
+  decodeCursor,
+  encodeCursor,
+  isKeysetCursor,
+} from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError, UnauthorizedError } from "@chartwarden/types";
 import { and, desc, eq, sql } from "drizzle-orm";
@@ -39,9 +44,6 @@ import {
   parse,
 } from "./audit-typebox";
 
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-
 /** The injection surface for the destruction-certificates routes. */
 export interface DestructionCertificatesRouteDeps {
   readonly db: DbClient;
@@ -49,16 +51,6 @@ export interface DestructionCertificatesRouteDeps {
 
 const CERT = schema.destructionCertificates;
 const HOLD = schema.legalHolds;
-
-function actorOf(request: FastifyRequest): {
-  organizationId: string;
-  userId: string;
-  roles: readonly string[];
-} {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
-}
 
 function auditContextFor(request: FastifyRequest): AuditContext {
   const ctx = request.context;
@@ -147,11 +139,9 @@ export function registerDestructionCertificatesRoutes(
         const limit = resolveLimit(q.limit);
         const where = [eq(CERT.organizationId, organizationId)];
         if (q.status) where.push(eq(CERT.status, q.status));
-        const cur = q.cursor ? decodeCursor(q.cursor) : null;
+        const cur = decodeCursor(organizationId, q.cursor, isKeysetCursor);
         if (cur) {
-          where.push(
-            sql`(${CERT.createdAt}, ${CERT.id}) < (${cur.createdAt}::timestamptz, ${cur.id})`,
-          );
+          where.push(sql`(${CERT.createdAt}, ${CERT.id}) < (${cur.a}::timestamptz, ${cur.id})`);
         }
         const rows = await tx
           .select()
@@ -164,7 +154,7 @@ export function registerDestructionCertificatesRoutes(
         const last = page[page.length - 1];
         const nextCursor =
           hasMore && last
-            ? encodeCursor({ createdAt: last.createdAt.toISOString(), id: last.id })
+            ? encodeCursor(organizationId, { a: last.createdAt.toISOString(), id: last.id })
             : null;
         return { items: page.map(toCertificateView), nextCursor };
       });

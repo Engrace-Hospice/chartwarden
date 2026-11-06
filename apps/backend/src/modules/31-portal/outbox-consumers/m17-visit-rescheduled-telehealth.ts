@@ -32,7 +32,7 @@ const TV = schema.telehealthVisits;
 /** Mirrors the identical sentinel in the sibling `.cancelled` consumer — no actor column to stamp here. */
 const CONSUMER_USER_ID = "";
 
-export const M31_VISIT_RESCHEDULED_TELEHEALTH_CONSUMER = {
+const M31_VISIT_RESCHEDULED_TELEHEALTH_CONSUMER = {
   eventName: "m17.visit.rescheduled",
   consumerName: "m31.m17-visit-rescheduled-telehealth",
 } as const;

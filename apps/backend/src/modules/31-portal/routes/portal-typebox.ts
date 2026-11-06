@@ -49,15 +49,8 @@ const Uuid = Type.String({ format: "uuid" });
 const Iso = Type.String({ format: "date-time" });
 const LayStr = Type.String();
 
-// ── shared params ──────────────────────────────────────────────────────────────────────────────────────
-export const PatientIdParams = Type.Object({ patientId: Uuid });
-export const DocumentIdParams = Type.Object({ documentId: Uuid });
-export const UploadIdParams = Type.Object({ uploadId: Uuid });
 export const VisitIdParams = Type.Object({ visitId: Uuid });
-export const AccountIdParams = Type.Object({ id: Uuid });
-export const InvitationIdParams = Type.Object({ id: Uuid });
 export const EngagementIdParams = Type.Object({ engagementId: Uuid });
-export const PreferenceIdParams = Type.Object({ id: Uuid });
 
 // ── §4.2 session ────────────────────────────────────────────────────────────────────────────────────────
 export const SelectPatientRequest = Type.Object({ patientId: Uuid });
@@ -345,7 +338,7 @@ export const PortalInvitationListResponse = Type.Object({
 export const AccountSuspendRequest = Type.Object({
   reason: Type.String({ minLength: 3, maxLength: 500 }),
 });
-export const PortalAccountSummary = Type.Object({
+const PortalAccountSummary = Type.Object({
   portalAccountId: Uuid,
   relationship: LayStr,
   status: LayStr,
@@ -397,7 +390,7 @@ const SignatureStatus = Type.Union([
   Type.Literal("uploaded_pending_review"),
 ]);
 /** What a portal user may see of a request: never the signer's typed name, relationship or reason. */
-export const PortalSignatureRequestView = Type.Object({
+const PortalSignatureRequestView = Type.Object({
   id: Uuid,
   docKind: SignatureDocKind,
   status: SignatureStatus,

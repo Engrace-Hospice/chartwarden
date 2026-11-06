@@ -18,15 +18,15 @@ import { ExportCryptoError, type ExportKeyWrap, sealArtefact, sha256Hex } from "
 import { EXPORT_PATIENT_SUBJECT_CHANNEL_KINDS } from "./export-ports";
 
 export const EXPORT_PAGE_SIZE = 500;
-export const EXPORT_FAIL_DECRYPT = "EXPORT_DECRYPT_FAILED";
-export const EXPORT_FAIL_KEY = "EXPORT_KEY_UNAVAILABLE";
-export const EXPORT_FAIL_PART2 = "EXPORT_PART2_UNKNOWN";
-export const EXPORT_FAIL_REQUESTER = "EXPORT_REQUESTER_INELIGIBLE";
-export const EXPORT_FAIL_STORE = "EXPORT_STORE_FAILED";
-export const EXPORT_FAIL_BUILD = "EXPORT_BUILD_FAILED";
+const EXPORT_FAIL_DECRYPT = "EXPORT_DECRYPT_FAILED";
+const EXPORT_FAIL_KEY = "EXPORT_KEY_UNAVAILABLE";
+const EXPORT_FAIL_PART2 = "EXPORT_PART2_UNKNOWN";
+const EXPORT_FAIL_REQUESTER = "EXPORT_REQUESTER_INELIGIBLE";
+const EXPORT_FAIL_STORE = "EXPORT_STORE_FAILED";
+const EXPORT_FAIL_BUILD = "EXPORT_BUILD_FAILED";
 /** A LOWER bound of the JSON bytes per message beyond its body (three uuids, a timestamp, the keys): the running cap never rejects what the final check would accept. */
-export const EXPORT_MESSAGE_OVERHEAD_BYTES = 256;
-export const EXPORT_OBJECT_PREFIX = "messaging-export";
+const EXPORT_MESSAGE_OVERHEAD_BYTES = 256;
+const EXPORT_OBJECT_PREFIX = "messaging-export";
 
 export interface ExportJobRow {
   readonly id: string;

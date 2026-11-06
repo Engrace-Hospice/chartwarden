@@ -211,15 +211,15 @@ export function errorMessage(error: unknown, fallback: string): string {
   } | null;
   if (body?.blockers?.length) return body.blockers.map((b) => b.message ?? b.code).join("; ");
   // §7.7 — these well-known refusals get a friendly, actionable message BEFORE the generic
-  // detail/message/title fallbacks below: a stale-write 412 carries `error.message` too (e.g.
+  // detail/message/title fallbacks below: a stale write carries `error.message` too (e.g.
   // "version 4 is stale"), and checking the generic fields first would leak that raw text instead
   // of telling the caller what to do.
-  if (body?.status === 409) return "Another open revision already exists. Reload to continue it.";
   // The server's stale-write refusal arrives in the platform envelope
-  // (`412 { error: { code: "STALE_VERSION" } }`), which carries no top-level `status`; without reading
-  // the code the branch below never fired and the IDG member got the generic fallback.
-  if (body?.status === 412 || (body?.code ?? body?.error?.code) === "STALE_VERSION")
+  // (`409 { error: { code: "STALE_VERSION" } }`), which carries no top-level `status`, so the code is
+  // read — and read before the generic 409 below, which shares the status.
+  if ((body?.code ?? body?.error?.code) === "STALE_VERSION")
     return "This record changed while you were working. Reload before saving again.";
+  if (body?.status === 409) return "Another open revision already exists. Reload to continue it.";
   if (body?.status === 422) return "The Care Plan is not ready for this action.";
   if (body?.status === 403) return "You do not have access to this action for this patient.";
   if (body?.detail) return body.detail;
@@ -379,9 +379,9 @@ export type WriteResult<T> =
 /**
  * Turn a failure into copy a clinician can act on.
  *
- * 412 and 428 are the two that matter here and they mean opposite things: 412 STALE_VERSION is "someone
- * else changed this while you had it open", which on a plan reviewed by a whole IDG is ordinary rather
- * than exceptional; 428 PRECONDITION_REQUIRED means this client failed to send the version it read,
+ * 409 STALE_VERSION and 428 are the two that matter here and they mean opposite things: STALE_VERSION is
+ * "someone else changed this while you had it open", which on a plan reviewed by a whole IDG is ordinary
+ * rather than exceptional; 428 IF_MATCH_REQUIRED means this client failed to send the version it read,
  * which is a bug in the caller and should read like one rather than like a server problem.
  */
 function failure<T>(status: number | undefined, body: unknown): WriteResult<T> {
@@ -390,8 +390,12 @@ function failure<T>(status: number | undefined, body: unknown): WriteResult<T> {
     body && typeof body === "object" && "message" in body && typeof body.message === "string"
       ? body.message
       : null;
+  const errorCode =
+    body && typeof body === "object" && "error" in body
+      ? (body as { error?: { code?: unknown } }).error?.code
+      : undefined;
   const message =
-    code === 412
+    errorCode === "STALE_VERSION"
       ? "Someone else changed this care plan while it was open. Reload to see their change, then try again."
       : code === 428
         ? (detail ?? "This edit did not carry the version it was based on and was refused.")
@@ -429,7 +433,7 @@ function idempotencyKey(): string {
  * header parameters — so the generated client types them and a PATCH that forgot `If-Match` does not
  * compile. That is the difference between this and the four routes F-028 found gating authorization on
  * a header nothing declared: these are declared, required, and non-authorization by construction
- * (a forged `If-Match` earns a 412, never access).
+ * (a forged `If-Match` earns a 409 STALE_VERSION, never access).
  */
 const patchHeaders = (rowVersion: number): { "If-Match": string; "Idempotency-Key": string } => ({
   "If-Match": String(rowVersion),

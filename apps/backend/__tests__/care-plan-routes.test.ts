@@ -5,7 +5,7 @@
 // buildServer() mounts the host (incl. the platform `applyIdempotency` middleware), registerCarePlanRoutes()
 // mounts the §4.1 inventory over the in-memory care-plan backend. The REAL Authorization Contract gates
 // every route on the §4.5 keys; a header-auth shim populates request.context. Covers: RBAC gating
-// (2xx with key, 403 without), the §7.7 two-writer optimistic-concurrency race (412 on the stale write),
+// (2xx with key, 403 without), the §7.7 two-writer optimistic-concurrency race (409 STALE_VERSION on the stale write),
 // and §4.1.1 PATCH header enforcement (400 missing Idempotency-Key, 428 missing If-Match, replay, 409 body mismatch).
 import {
   createInMemoryEffectivePermissionStore,
@@ -209,7 +209,7 @@ describe("M7-T05 — care-plan routes (§4.1, §4.5 gating)", () => {
   });
 });
 
-describe("M7-T05 — §7.7 optimistic concurrency (two-writer race → 412)", () => {
+describe("M7-T05 — §7.7 optimistic concurrency (two-writer race → 409)", () => {
   async function seedGoal(app: ReturnType<typeof makeServer>["app"]) {
     const problem = await app.inject({
       method: "POST",
@@ -227,7 +227,7 @@ describe("M7-T05 — §7.7 optimistic concurrency (two-writer race → 412)", ()
     return goal.json().id as string;
   }
 
-  it("RN A wins; RN B's stale If-Match is refused with 412; B reloads and succeeds", async () => {
+  it("RN A wins; RN B's stale If-Match is refused with 409; B reloads and succeeds", async () => {
     const { app } = makeServer();
     const goalId = await seedGoal(app);
 
@@ -241,14 +241,14 @@ describe("M7-T05 — §7.7 optimistic concurrency (two-writer race → 412)", ()
     expect(a.statusCode).toBe(200);
     expect(a.json().version).toBe(2);
 
-    // RN B patches with the stale version it read (If-Match: 1) → 412 STALE_VERSION, no overwrite.
+    // RN B patches with the stale version it read (If-Match: 1) → 409 STALE_VERSION, no overwrite.
     const bStale = await app.inject({
       method: "PATCH",
       url: `/api/v1/care-plans/${PLAN}/goals/${goalId}`,
       headers: { ...RN, "if-match": "1", "idempotency-key": "k-b1" },
       payload: { revisedText: "Comfort with family" },
     });
-    expect(bStale.statusCode).toBe(412);
+    expect(bStale.statusCode).toBe(409);
     expect(bStale.json().error.code).toBe("STALE_VERSION");
 
     // RN B reloads (v=2) and succeeds → v=3. No data silently overwritten.
@@ -297,7 +297,7 @@ describe("M7-T05 — §4.1.1 (M07-F09) Idempotency-Key + If-Match enforcement", 
       payload: { description: "Dyspnea on exertion" },
     });
     expect(res.statusCode).toBe(428);
-    expect(res.json().error.code).toBe("PRECONDITION_REQUIRED");
+    expect(res.json().error.code).toBe("IF_MATCH_REQUIRED");
   });
 
   it("replays the cached response on retry with the same key + body (no re-execute)", async () => {
@@ -313,7 +313,7 @@ describe("M7-T05 — §4.1.1 (M07-F09) Idempotency-Key + If-Match enforcement", 
     expect(first.json().version).toBe(2);
 
     // Same key + same body: the M1 idempotency middleware returns the cached response (version stays 2,
-    // not 412 — the handler did NOT re-run the stale If-Match check against the now-advanced row).
+    // not 409 — the handler did NOT re-run the stale If-Match check against the now-advanced row).
     const replay = await app.inject({
       method: "PATCH",
       url: `/api/v1/care-plans/${PLAN}/problems/${problemId}`,

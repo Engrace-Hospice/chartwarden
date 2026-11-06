@@ -16,10 +16,6 @@
 /** The two M22-rendered export formats (CSV takes no M22 hop — see `csv-stream.ts`). */
 export type ExportRenderFormat = "pdf" | "xlsx";
 
-/** The render-request event M22 consumes (the SAME wire the scheduled runner uses, §4.10 / D7). M22 replies
- *  `m22.document.rendered` (the downstream half lives in `scheduled/delivery.ts`). */
-export const M33_EXPORT_RENDER_REQUESTED = "m33.scheduled_report.render_requested" as const;
-
 /** The `aggregate_type` an ad-hoc export's render-request names, so a future back-ref consumer acts only on an
  *  export reply (never a scheduled-run reply, which carries `report_schedule_run`) on the shared dispatcher. */
 export const M33_EXPORT_AGGREGATE_TYPE = "report_export" as const;

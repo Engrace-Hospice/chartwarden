@@ -1,11 +1,11 @@
 // apps/backend/src/modules/06-admission/nomnc/deadlines.ts — milestone 10a: the typed-deadline insert and the
 // linked-document check, split out of service.ts. Both run inside the caller's org-context transaction.
 import { type DbClient, organizationTimezone } from "@chartwarden/db";
+import { mapUniqueViolation } from "@chartwarden/shared/route-kit";
 import { DegradedError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import type { AdmissionEvidenceDocumentValidator } from "../admission-evidence-service";
 import { ResourceNotFoundError } from "../routes/service";
-import { mapUniqueViolation } from "../unique-violation";
 import {
   type DeadlineKind,
   NomncRuleError,

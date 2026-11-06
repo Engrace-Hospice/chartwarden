@@ -14,7 +14,7 @@ export const IRC_CAP_OVERRIDE_MAX_DAYS = 2;
 /** §2.5 — the cap-override reason floor (chars). */
 export const IRC_CAP_OVERRIDE_REASON_MIN = 100;
 /** §2.5 — the resumption look-back: a re-admit within this window does NOT reset the consecutive count. */
-export const IRC_RESUMPTION_LOOKBACK_DAYS = 30;
+const IRC_RESUMPTION_LOOKBACK_DAYS = 30;
 
 /** The §4.4 `m37.irc_episode.*` outbox events this enforcer emits. */
 export type IrcOutboxEvent =

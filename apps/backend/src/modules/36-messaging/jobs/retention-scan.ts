@@ -24,8 +24,8 @@ import {
 /** Candidates reported per class per weekly scan. */
 export const RETENTION_SCAN_BATCH_LIMIT = 5000;
 /** Overlay rows inserted per statement, and statements per hold per scan (the rest resumes next run). */
-export const MATERIALISE_BATCH_SIZE = 5000;
-export const MATERIALISE_MAX_BATCHES_PER_HOLD = 20;
+const MATERIALISE_BATCH_SIZE = 5000;
+const MATERIALISE_MAX_BATCHES_PER_HOLD = 20;
 
 /** Years a message is retained, by channel retention class. care_related/bereavement follow ADR-0004 (7y). */
 // ponytail: `operational` (announcements) is provisional until ADR-0086 is accepted.

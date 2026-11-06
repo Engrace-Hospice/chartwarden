@@ -17,7 +17,7 @@ import { createInMemoryPresenceStore } from "./presence-store";
 import { type ValkeyEvalClient, createValkeyPresenceStore } from "./valkey-presence-store";
 
 /** Heartbeat (~every 25 s) + typing (at most every 3 s) + polling (~every 6 s) stay far below this per user. */
-export const PRESENCE_ROUTE_RATE_LIMIT: RouteRateLimit = {
+const PRESENCE_ROUTE_RATE_LIMIT: RouteRateLimit = {
   perUser: 120,
   perOrg: 6_000,
   windowMs: 60_000,
@@ -32,7 +32,7 @@ export interface PresenceBindingInput {
 }
 
 /** Flag cache window: a tenant flag flip or kill switch takes effect on a replica within this long. */
-export const PRESENCE_FLAG_CACHE_MS = 5_000;
+const PRESENCE_FLAG_CACHE_MS = 5_000;
 
 /** Per-org TTL cache over an async flag read. Only successes are cached; a throw propagates and is retried next call. */
 export function cacheFlagRead(

@@ -108,7 +108,7 @@ export const LifecycleApprovalKind = Lit(
 );
 
 /** `ai_routing_mode` — what a TENANT may choose (§5.3). Narrower than `ai_routing_preference`. */
-export const RoutingMode = Lit("default", "prefer_local", "local_only");
+const RoutingMode = Lit("default", "prefer_local", "local_only");
 
 /** `ai_routing_preference` — M2's `TenantConfiguration` value the `default` mode inherits. */
 export const RoutingPreference = Lit("prefer_cloud", "prefer_local", "cloud_only", "local_only");
@@ -145,7 +145,7 @@ export const KillSwitchReason = Lit(
 export const KillSwitchHumanActorKind = Lit("ai_safety_owner", "incident_commander");
 
 /** R7/R8's scope selector — resolved through `killSwitchScopeOf` (./actor.ts), never to a supplied org. */
-export const KillSwitchScope = Lit("platform", "tenant");
+const KillSwitchScope = Lit("platform", "tenant");
 
 /** `ai_hallucination_severity` — `critical` is D16's SEV-1 trigger. */
 export const HallucinationSeverity = Lit("critical", "high", "medium", "low");
@@ -289,7 +289,7 @@ export const DeactivateKillSwitchBody = Type.Object({
  * why the opt-in is refused. The refusal that matters — "this BAA does not resolve" — comes from the
  * evidence resolver and names the specific gate.
  */
-export const OptInAcknowledgmentsBody = Type.Object({
+const OptInAcknowledgmentsBody = Type.Object({
   baaReference: ProseOrNull(200),
   zdrContractReference: ProseOrNull(200),
   clinicalReviewerMembershipId: UuidOrNull,

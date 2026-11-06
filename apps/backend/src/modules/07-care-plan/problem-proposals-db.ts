@@ -7,7 +7,7 @@
 // `status = 'active'`, `kind` CHOSEN BY THE CLINICIAN (never derived from the document's role label),
 // `added_by_membership_id` = the accepting clinician — marks the proposal `accepted` with the link, and emits
 // `m7.problem.added`. DISMISS marks it `dismissed`; nothing is charted. Only a `pending` proposal can be
-// decided (409 otherwise); `ifVersion` is the §7.7 optimistic-concurrency token (412 on skew).
+// decided (409 otherwise); `ifVersion` is the §7.7 optimistic-concurrency token (409 STALE_VERSION on skew).
 //
 // §7.6 Part 2: a `sud_related` proposal is invisible to a caller without SUD disclosure — it is omitted from
 // the list (`redacted: true`) and accept/dismiss answer the non-leaking 404, exactly like a SUD problem.

@@ -28,7 +28,7 @@ import { inStoredQuietWindow } from "./quiet-window";
 import type { TcpProbe } from "./tcp-probe";
 
 /** The listener ticks every 30s (LISTENER_RECONCILE_INTERVAL_MS); three missed ticks make the heartbeat stale. */
-export const LISTENER_HEARTBEAT_INTERVAL_MS = 30_000;
+const LISTENER_HEARTBEAT_INTERVAL_MS = 30_000;
 export const HEARTBEAT_STALE_MS = 3 * LISTENER_HEARTBEAT_INTERVAL_MS;
 /** Multiple of the feed's threshold a never-heartbeated feed is given after activation. */
 const NEVER_STARTED_GRACE_FACTOR = 2;

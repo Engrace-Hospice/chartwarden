@@ -71,22 +71,3 @@ export const M26_ALERT_PAYLOADS = {
 } as const;
 
 export type M26AlertKind = keyof typeof M26_ALERT_PAYLOADS;
-export const M26_ALERT_KINDS = Object.keys(M26_ALERT_PAYLOADS) as M26AlertKind[];
-
-/** The DB alert-band → the M36 alert kind for a scope, or null for the safe band (no alert). */
-export function alertKindForBand(band: string): M26AlertKind | null {
-  switch (band) {
-    case "watch_90":
-      return "m26.cap.agency_watch_90"; // patient vs agency disambiguated by the caller's scope
-    case "warn_95":
-      return "m26.cap.agency_warn_95";
-    case "breach_100":
-      return "m26.cap.agency_breach_100";
-    case "inpatient_watch_18":
-      return "m26.cap.inpatient_watch_18";
-    case "inpatient_breach_20":
-      return "m26.cap.inpatient_breach";
-    default:
-      return null;
-  }
-}

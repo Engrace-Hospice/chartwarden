@@ -1,6 +1,7 @@
 // apps/backend/src/modules/05-patient/routes/lifecycle-typebox.ts — TypeBox request schemas for the
 // GAP-018 / GAP-019 / GAP-012 routes (`lifecycle-routes.ts`). Named `*-typebox` (not `*schema*`) for the
 // same table-ownership heuristic reason as `patient-typebox.ts`.
+import { pageLimit } from "@chartwarden/shared/route-kit";
 import { Type } from "@sinclair/typebox";
 
 const NullableText = (max: number) => Type.Union([Type.String({ maxLength: max }), Type.Null()]);
@@ -116,7 +117,7 @@ export const MatchQueueQuerySchema = Type.Object({
       Type.Literal("cancelled"),
     ]),
   ),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  limit: pageLimit(),
 });
 
 export const MatchMergeBodySchema = Type.Object(
@@ -158,7 +159,7 @@ export const AmendmentInboxQuerySchema = Type.Object({
       Type.Literal("withdrawn"),
     ]),
   ),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  limit: pageLimit(),
 });
 
 export const StatementBodySchema = Type.Object(

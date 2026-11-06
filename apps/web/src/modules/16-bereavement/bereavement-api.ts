@@ -56,17 +56,6 @@ export type PlanDetail = Ok<operations["getApiV1BereavementPlansByPlanId"]>;
 /** The §2.6 outreach rollup both dashboards and the closure record carry (COUNTS, never a rate). */
 export type OutreachStats = PlanDetail["stats"];
 
-/**
- * D16 — the external-source provenance an HL7 ADT plan carries.
- *
- * NOTE (TASK-022 drift): the generated shape does NOT match the old hand-written interface field-for-field.
- * It is `sourceProposalId` / `sourceMessageId` / `sourceFacilityMdmId` / `sourceFacilityName` /
- * `ackReceivedAt` / `cosignStatus` / `cosignedAt?` / `medicalDirectorMembershipId?` — there is no
- * `sourceFacility`, `sourceSystem`, `ackAt`, or `cosignedByUserId`, and no index signature. Any screen
- * reading the old field names will now fail to compile; see the final report.
- */
-export type ExternalSourceMetadata = NonNullable<PlanDetail["externalSource"]>;
-
 /** Route 10 — the §3.3.7 closure record (§7.15 survey reconstruction). */
 export type ClosureView = Ok<operations["getApiV1BereavementPlansByPlanIdClosure"]>;
 

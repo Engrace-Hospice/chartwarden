@@ -70,7 +70,7 @@ const ItemSummarySchema = Type.Object({
   still_open: Type.Optional(Type.Boolean()),
 });
 
-export const HandoffItemSchema = Type.Object({
+const HandoffItemSchema = Type.Object({
   id: Type.String({ format: "uuid" }),
   patient_id: nullable(Type.String({ format: "uuid" })),
   patient_display_name: nullable(Type.String()),
@@ -92,7 +92,7 @@ const ItemCountsSchema = Type.Object({
   cancelled: Type.Integer(),
 });
 
-export const HandoffSchema = Type.Object({
+const HandoffSchema = Type.Object({
   id: Type.String({ format: "uuid" }),
   from_user_id: Type.String({ format: "uuid" }),
   from_display_name: nullable(Type.String()),

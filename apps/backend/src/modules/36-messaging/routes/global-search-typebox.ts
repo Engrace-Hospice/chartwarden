@@ -12,7 +12,7 @@ export const GlobalSearchQuerySchema = Type.Object({
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 50 })),
 });
 
-export const GlobalSearchHitSchema = Type.Intersect([
+const GlobalSearchHitSchema = Type.Intersect([
   ResolvedMessageSchema,
   Type.Object({ archived: Type.Boolean() }),
 ]);

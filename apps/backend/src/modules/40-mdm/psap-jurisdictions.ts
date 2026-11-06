@@ -306,7 +306,7 @@ export const PsapJurisdictionBodySchema = Type.Object({
   verifyEveryDays: Type.Optional(Type.Integer({ minimum: 30, maximum: 730 })),
 });
 export const PsapJurisdictionPatchSchema = Type.Partial(PsapJurisdictionBodySchema);
-export const PsapJurisdictionIdParams = Type.Object({ id: Type.String({ format: "uuid" }) });
+const PsapJurisdictionIdParams = Type.Object({ id: Type.String({ format: "uuid" }) });
 export const PsapJurisdictionListQuery = Type.Object({
   includeInactive: Type.Optional(Type.Boolean()),
 });

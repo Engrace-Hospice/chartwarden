@@ -35,7 +35,7 @@ export const PlatformDsarListQuerySchema = Type.Object({
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
 });
 
-export const OnboardingTaskIdParamsSchema = Type.Object({
+const OnboardingTaskIdParamsSchema = Type.Object({
   orgSlug: Type.String({ minLength: 1, maxLength: 128 }),
   taskId: Type.String({ format: "uuid" }),
 });

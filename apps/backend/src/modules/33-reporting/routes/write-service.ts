@@ -218,7 +218,7 @@ export class PdfRowLimitExceededError extends ChartWardenError {
 }
 
 /** The minimum legal gap (ms) between two consecutive schedule fires (§2.3). */
-export const MIN_SCHEDULE_GAP_MS = 5 * 60_000;
+const MIN_SCHEDULE_GAP_MS = 5 * 60_000;
 /** The Puppeteer-render practical row ceiling for a `pdf` schedule (§2.3). */
 export const PDF_MAX_ROW_LIMIT = 5000;
 

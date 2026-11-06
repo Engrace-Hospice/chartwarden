@@ -92,7 +92,7 @@ export function createDrizzleMdmEraseStore(db: DbClient): MdmEraseStore {
  * faithful total removed (0 when the org never created any). The per-class counts the destruction
  * certificate records are computed by the pure `eraseTenantMdm`.
  */
-export function createMdmEraser(store: MdmEraseStore): DataEraser {
+function createMdmEraser(store: MdmEraseStore): DataEraser {
   return {
     async erase(scope, subjectId) {
       // The data class is org-scoped: both `scope.orgId` and the offboarding `subjectId` name the

@@ -73,7 +73,7 @@ export const DOCLENS_VISION_VERIFY_RESPONSE_SCHEMA: Record<string, unknown> = {
 };
 
 /** F-237 — the SUD categories the model may report (M22 `SudIndicatorCategory`). */
-export const DOCLENS_SUD_CATEGORIES = [
+const DOCLENS_SUD_CATEGORIES = [
   "medication",
   "diagnosis",
   "social_history",

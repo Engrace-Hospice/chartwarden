@@ -24,7 +24,7 @@ const SUD_SECURITY: FhirCoding = {
 
 /** Project one lab value to a child Observation. `subjectRef` is the shared `Patient/{id}` reference;
  *  `effectiveDateTime` is the observation's `attachedAt`. */
-export function projectChildObservation(
+function projectChildObservation(
   observationId: string,
   index: number,
   value: LabObservationValueRow,

@@ -892,7 +892,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
     expect(Number(count.rows[0].n)).toBe(1);
   });
 
-  it("§7.7 optimistic concurrency — a stale ifVersion patch is 412, a fresh one bumps the version", async () => {
+  it("§7.7 optimistic concurrency — a stale ifVersion patch is 409 STALE_VERSION, a fresh one bumps the version", async () => {
     const boot = (await svc.bootstrapCarePlan(ORG_A, randomUUID(), randomUUID())) as Boot;
     const prob = (await svc.addProblem(ORG_A, boot.id, {
       description: "Cachexia",
@@ -901,7 +901,7 @@ describe.skipIf(!DB_URL)("M7 care-plan write lifecycle — LIVE Postgres (M7L-T0
     })) as Element;
     await expect(
       svc.patchProblem(ORG_A, boot.id, prob.id, prob.version + 99, { description: "x" }),
-    ).rejects.toMatchObject({ statusCode: 412 });
+    ).rejects.toMatchObject({ statusCode: 409, code: "STALE_VERSION" });
     const patched = (await svc.patchProblem(ORG_A, boot.id, prob.id, prob.version, {
       description: "Cancer cachexia",
     })) as Element;

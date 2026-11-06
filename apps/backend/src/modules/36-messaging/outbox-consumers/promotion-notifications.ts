@@ -18,12 +18,12 @@ import { M36_PROMOTION_EVENTS } from "../promotions/promotion-events";
 import { PROMOTION_REQUESTER_DEEP_LINK } from "./promotion-outcomes";
 
 export const M36_PROMOTION_NOTIFICATION_CONSUMER = "m36.chart-promotion-notifications" as const;
-export const M36_PROMOTION_NOTIFICATION_EVENTS = [M36_PROMOTION_EVENTS.requested] as const;
+const M36_PROMOTION_NOTIFICATION_EVENTS = [M36_PROMOTION_EVENTS.requested] as const;
 
 /** Alert types that are alert-rule keys only (not outbox catalog events); seeded in PLATFORM_DEFAULT_ALERT_RULES. */
-export const PROMOTION_REVIEW_REQUESTED_ALERT = "m36.promotion.review_requested" as const;
-export const PROMOTION_IDG_REVIEW_REQUESTED_ALERT = "m36.promotion.idg_review_requested" as const;
-export const PROMOTION_NO_REVIEWER_ALERT = "m36.promotion.no_reviewer" as const;
+const PROMOTION_REVIEW_REQUESTED_ALERT = "m36.promotion.review_requested" as const;
+const PROMOTION_IDG_REVIEW_REQUESTED_ALERT = "m36.promotion.idg_review_requested" as const;
+const PROMOTION_NO_REVIEWER_ALERT = "m36.promotion.no_reviewer" as const;
 
 export const PROMOTION_NOTIFICATION_TEXT = {
   reviewRequested:

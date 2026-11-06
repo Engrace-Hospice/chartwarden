@@ -72,8 +72,6 @@ type ComfortKitTemplatePage = Ok<operations["getApiV1SuppliesComfortkittemplates
 /** Row 17 — a comfort-kit template with its lines (the D3 floor row included when asked for). Also the
  *  shape returned by create/supersede. */
 export type ComfortKitTemplateView = ComfortKitTemplatePage["data"][number];
-/** One line of a §2.3 comfort-kit template. */
-export type TemplateMedicationView = ComfortKitTemplateView["medications"][number];
 
 type DispatchListPage = Ok<operations["getApiV1SuppliesComfortkitdispatches"]>;
 /** Rows 21 / 22 — one comfort-kit dispatch on the list. No free text (see the request note). */
@@ -93,8 +91,6 @@ export type ReturnListItem = ReturnListPage["data"][number];
  *  by `createReturn`, `assignRetriever` and `declareUnreturnable` (NOT `reconcileReturn` — see
  *  {@link ReconcileReturnResult}). */
 export type ReturnDetail = Ok<operations["getApiV1SuppliesComfortkitreturnsByReturnId"]>;
-/** One reconciled line. The three D8 quantities are TRIGGER-computed — read here, never sent back. */
-export type ReturnedLineView = ReturnDetail["lines"][number];
 
 /** Row 27's own response — deliberately NOT {@link ReturnDetail}: the reconcile route returns only the id,
  *  the pinned `state: "reconciled"`, the D8 discrepancy verdict, the per-medication accounting (as
@@ -117,17 +113,8 @@ export type PerpetualLogView = Ok<
   operations["getApiV1SuppliesComfortkitdispatchesByDispatchIdPerpetuallog"]
 >;
 export type PerpetualLogLineView = PerpetualLogView["lines"][number];
-/** §8.1 — one APPEND-ONLY entry of the DEA 21 CFR §1304 perpetual log. `balanceAfterQuantity` is the
- *  balance AS RECORDED, not one derived at read time: a recomputed balance silently absorbs a missing
- *  entry, which is the exact discrepancy the log exists to expose. */
-export type PerpetualLogEntry = PerpetualLogLineView["entries"][number];
 
 // ── request-side shapes (schema-derived) ───────────────────────────────────────────────────────────────
-
-/** D7 / §4.2.1 — the delivery-address snapshot frozen onto the request. */
-export type DeliveryAddressInput = ReqBody<
-  operations["postApiV1SuppliesSupplyrequests"]
->["deliveryAddress"];
 
 /** One dispatched line on the way IN (§4.2). `lotNumber` / `expirationDate` are optional HERE on purpose:
  *  §3.1.9's CHECK requires them on a controlled line, and the DOMAIN raises the typed refusal

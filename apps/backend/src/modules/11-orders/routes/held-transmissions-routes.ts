@@ -1,3 +1,4 @@
+import { requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/11-orders/routes/held-transmissions-routes.ts — the held-order worklist (F-201, #248).
 //
 //   GET /api/v1/orders/held-transmissions
@@ -20,15 +21,13 @@
 // org-wide scope roles (DON, medical director, compliance officer, administrator, org_admin, ...) see the whole org.
 // `view_held` alone is not chart access: a caseload-bound caller holds it but sees only their caseload, and before
 // this the queue listed rows whose order and patient reads then 404'd for that same caller.
-import { requirePermission } from "@chartwarden/auth";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { StuckTransmissionRecovery } from "../stuck-transmission-recovery";
 import { HeldTransmissionsQuerySchema } from "./held-transmissions-typebox";
 import { type OrderRouteDeps, defaultCaseloadPatientIds, readScopeOf } from "./orders-routes";
 import { parse } from "./orders-typebox";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const VIEW_HELD = requirePermission("orders.transmission.view_held") as PreHandler;
 

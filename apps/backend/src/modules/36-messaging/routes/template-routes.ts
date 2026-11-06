@@ -32,7 +32,7 @@ import {
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
-export const TEMPLATE_MANAGE_KEY = "messaging.template.manage";
+const TEMPLATE_MANAGE_KEY = "messaging.template.manage";
 const SEND = requirePermission("messaging.send") as PreHandler;
 const MANAGE = requirePermission(TEMPLATE_MANAGE_KEY) as PreHandler;
 

@@ -191,7 +191,7 @@ const MeterCatalogDto = Type.Object({
   overageUnitPriceCents: Type.Integer(),
   billingAggregation: Type.String(),
 });
-export const PlanCatalogResponseDto = Type.Object({
+const PlanCatalogResponseDto = Type.Object({
   slug: Type.String(),
   name: Type.String(),
   description: strNull(),
@@ -246,7 +246,7 @@ export const SetupIntentResponseDto = Type.Object({
   status: Type.Union([Type.Literal("pending"), Type.Literal("ready")]),
 });
 
-export const InvoiceListItemDto = Type.Object({
+const InvoiceListItemDto = Type.Object({
   id: uuid(),
   invoiceNumber: strNull(),
   status: InvoiceStatusLit,
@@ -258,7 +258,7 @@ export const InvoiceListItemDto = Type.Object({
   dueAt: isoNull(),
   paidAt: isoNull(),
 });
-export const InvoiceLineDto = Type.Object({
+const InvoiceLineDto = Type.Object({
   id: uuid(),
   kind: Type.String(),
   description: Type.String(),
@@ -300,7 +300,7 @@ export const UsageCurrentResponseDto = Type.Object({
   periodEnd: Type.String({ format: "date-time" }),
   meters: Type.Array(UsageMeterDto),
 });
-export const UsagePeriodDto = Type.Object({
+const UsagePeriodDto = Type.Object({
   periodStart: Type.String({ format: "date-time" }),
   periodEnd: Type.String({ format: "date-time" }),
   totalQuantity: Type.Integer(),
@@ -427,7 +427,7 @@ export const CurrentRevenueResponseDto = Type.Object({
   activeSubscriptions: Type.Integer(),
   asOf: Type.String({ format: "date-time" }),
 });
-export const WebhookReceiptDto = Type.Object({
+const WebhookReceiptDto = Type.Object({
   stripeEventId: Type.String(),
   eventType: Type.String(),
   receivedAt: Type.String({ format: "date-time" }),

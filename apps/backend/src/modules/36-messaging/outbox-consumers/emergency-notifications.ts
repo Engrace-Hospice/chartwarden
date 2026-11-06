@@ -10,7 +10,7 @@ import type {
 } from "../../../bootstrap/outbox-dispatcher";
 import { emergencyAlarm } from "../emergency/emergency-alert";
 
-export const M36_EMERGENCY_NOTIFICATION_CONSUMER = "m36.emergency-notifications" as const;
+const M36_EMERGENCY_NOTIFICATION_CONSUMER = "m36.emergency-notifications" as const;
 
 function requireId(payload: Record<string, unknown>, key: string): string {
   const value = payload[key];

@@ -1,3 +1,5 @@
+import { type DbClient, schema } from "@chartwarden/db";
+import { transitionOrder } from "@chartwarden/orders";
 // apps/backend/src/modules/11-orders/outbox-consumers/m21-supply-cancelled.ts — M11's live binding for
 // `m21.supply_request.cancelled` (F-166, #248).
 //
@@ -35,8 +37,7 @@
 // originates (`admission_discharged`, `level_of_care_change`, `standing_order_discontinued`), and none of
 // them honestly describes "the downstream fulfillment was cancelled out from under this order by someone
 // at M21."
-import { type DbClient, schema } from "@chartwarden/db";
-import { transitionOrder } from "@chartwarden/orders";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { OrderStatus } from "@chartwarden/types";
 import { and, eq } from "drizzle-orm";
@@ -44,9 +45,6 @@ import type { OrderWriteOutboxPort } from "../orders-route-service-db";
 
 const OR = schema.orderRecords;
 const OD = schema.orderDiscontinuations;
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 /** The statuses `cascadeDiscontinue` accepts (the §2.2 graph) — read-side narrowing only; the machine is
  *  still run and is the real authority, so a future graph change cannot silently drift from this filter. */

@@ -36,7 +36,7 @@ export interface QualityEraseOptions {
  * Raised when the §3.7 co-sign gate refuses the erase — an `org_offboarding` certificate that touches
  * compliance-class survey evidence MUST carry a `compliance_officer` approver.
  */
-export class QualityEraseRefused extends Error {
+class QualityEraseRefused extends Error {
   constructor(public readonly code: string) {
     super(`quality erase refused: ${code}`);
     this.name = "QualityEraseRefused";

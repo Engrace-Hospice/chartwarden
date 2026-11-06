@@ -152,11 +152,6 @@ export interface ApproveForSubmitArgs {
   /** The validation run whose zero-unresolved-blocking-failures gate authorizes approval (§2.3). */
   readonly validationId?: string;
 }
-/**
- * Submit takes NO identity from the client: the attester is the authenticated actor and the approver is the
- * one stored server-side at `approveForSubmit` (GAP-081). Legacy body fields are ignored at the route.
- */
-export type SubmitArgs = Record<string, never>;
 export interface SubmitPastDeadlineArgs {
   readonly reason: string;
 }

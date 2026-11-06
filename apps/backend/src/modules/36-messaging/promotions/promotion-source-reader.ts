@@ -39,7 +39,7 @@ const REVIEWER_PERMISSIONS: Readonly<Record<ChartPromotionTargetModule, readonly
 const isTargetModule = (m: string): m is ChartPromotionTargetModule =>
   (CHART_PROMOTION_TARGET_MODULES as readonly string[]).includes(m);
 
-export function toPending(row: PromotionRow): ChartPromotionPending {
+function toPending(row: PromotionRow): ChartPromotionPending {
   return {
     requestId: row.id,
     patientId: row.patientId,

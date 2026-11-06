@@ -15,7 +15,7 @@ import { sql } from "drizzle-orm";
 import { alarmTick, emergencyAlarm, emergencyEscalation } from "./emergency-alert";
 
 /** Bounds one org's work per tick; the next tick takes the rest (ponytail: raise if a tenant ever has >2000 open alarms at once). */
-export const EMERGENCY_SWEEP_LIMIT = 2000;
+const EMERGENCY_SWEEP_LIMIT = 2000;
 
 export interface EmergencySweepSummary {
   readonly alarms: number;

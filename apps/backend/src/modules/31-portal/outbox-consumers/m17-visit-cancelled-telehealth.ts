@@ -42,7 +42,7 @@ const TV = schema.telehealthVisits;
  *  (`M18_SYSTEM_USER_ID`) for a table with no actor/membership column this consumer needs to stamp. */
 const CONSUMER_USER_ID = "";
 
-export const M31_VISIT_CANCELLED_TELEHEALTH_CONSUMER = {
+const M31_VISIT_CANCELLED_TELEHEALTH_CONSUMER = {
   eventName: "m17.visit.cancelled",
   consumerName: "m31.m17-visit-cancelled-telehealth",
 } as const;

@@ -510,16 +510,6 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     },
   );
 
-  it("the explicit drain-window flag passes an id-only legacy event through marked legacyUntyped", () => {
-    const { payload } = normalizeDocumentRequest({
-      eventType: "m6.cti.signed",
-      organizationId: ORG,
-      payload: { ctiId: ORDER, patientId: PAT },
-      legacyUntypedFallback: true,
-    });
-    expect(payload.content).toMatchObject({ ctiId: ORDER, legacyUntyped: true });
-  });
-
   // GAP-033 Wave 2 - M11 / M12 used to ship `renderPayload: {patientId, kind, signedAt}`: an OBJECT, so the old
   // "is it an object" test would have passed it to a form with nothing to draw. The producer's schemaVersion stamp is
   // what makes it typed.
@@ -542,17 +532,6 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
         payload: { ...idOnly, renderPayload: { schemaVersion: 2, patientId: PAT } },
       });
       expect(payload.templateKey).toBe(formTemplate);
-      expect(payload.patientId).toBe(PAT);
-    });
-
-    it("the drain-window flag keeps the legacy object's fields, marked legacyUntyped", () => {
-      const { payload } = normalizeDocumentRequest({
-        eventType,
-        organizationId: ORG,
-        payload: idOnly,
-        legacyUntypedFallback: true,
-      });
-      expect(payload.content).toMatchObject({ patientId: PAT, kind: "lab", legacyUntyped: true });
       expect(payload.patientId).toBe(PAT);
     });
   });
