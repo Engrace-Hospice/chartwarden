@@ -4,7 +4,7 @@
 import { ChartWardenError } from "@chartwarden/types";
 import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PlatformActor, StepTemplate, TenantActor, TenantRef } from "../onboarding/model";
-import { createOnboardingWizard } from "../onboarding/wizard-service";
+import { type OnboardingWizardDeps, createOnboardingWizard } from "../onboarding/wizard-service";
 import {
   type MemoryWizardState,
   createMemoryOrgProfile,
@@ -54,6 +54,7 @@ const TEMPLATES: StepTemplate[] = [
 
 let state: MemoryWizardState;
 let advance: Mock<(tenant: { tenantAccountId: string; organizationId: string }) => Promise<void>>;
+let bindOfficerRole: Mock<NonNullable<OnboardingWizardDeps["bindComplianceOfficerRole"]>>;
 const taskId = (key: string): string =>
   (state.tasks.find((t) => t.templateKey === key) as { id: string }).id;
 const statusOf = (key: string): string =>
@@ -65,6 +66,7 @@ function wizard(at: Date = NOW) {
     runner: createMemoryWizardRunner(state),
     orgProfile: createMemoryOrgProfile(state),
     advance,
+    bindComplianceOfficerRole: bindOfficerRole,
     now: () => at,
   });
 }
@@ -97,6 +99,15 @@ function settle(...keys: string[]): void {
 
 beforeEach(() => {
   advance = vi.fn(async () => undefined);
+  // The real binder commits a `compliance_officer` grant on the tenant pool; this one gives the memory member the same role.
+  bindOfficerRole = vi.fn(async ({ organizationId, membershipId }) => {
+    const member = state.members.get(membershipId);
+    if (!member || member.organizationId !== organizationId) throw new Error("no such member");
+    state.members.set(membershipId, {
+      ...member,
+      roleKeys: [...member.roleKeys, "compliance_officer"],
+    });
+  });
   const ref: TenantRef = {
     tenantAccountId: TENANT,
     organizationId: ORG,
@@ -456,8 +467,14 @@ describe("compliance officer and org profile", () => {
       expect(err.code).toBe("COMPLIANCE_OFFICER_LACKS_ROLE");
       expect(err.statusCode).toBe(422);
     }
+    // With no role binder wired, the platform route is as strict as the tenant's.
+    const unbound = createOnboardingWizard({
+      runner: createMemoryWizardRunner(state),
+      orgProfile: createMemoryOrgProfile(state),
+      now: () => NOW,
+    });
     expect(
-      await code(wizard().setComplianceOfficerPlatform("acme", OPS, "admin-m", OPS_REASON)),
+      await code(unbound.setComplianceOfficerPlatform("acme", OPS, "admin-m", OPS_REASON)),
     ).toBe("COMPLIANCE_OFFICER_LACKS_ROLE");
     expect(tenant().complianceOfficerMembershipId).toBeNull();
   });
@@ -489,9 +506,85 @@ describe("compliance officer and org profile", () => {
         organizationId: ORG,
         operator: { userId: "ops-u", membershipId: "ops-m" },
         reason: OPS_REASON,
-        detail: { previousOfficerMembershipId: "old-officer-m", newOfficerMembershipId: "co-m" },
+        detail: {
+          previousOfficerMembershipId: "old-officer-m",
+          newOfficerMembershipId: "co-m",
+          roleBoundByOperator: "false",
+        },
       },
     ]);
+  });
+
+  describe("a platform assignment binds the compliance_officer role during onboarding", () => {
+    // The tenant's org_admin cannot grant it (anti-escalation: the role carries keys org_admin deliberately lacks), so the
+    // platform route, which is step-up, reasoned and audited, is the one place the role is bound.
+    it("binds the role to an active member who lacks it, then designates them, and the audit entry says so", async () => {
+      const result = await wizard().setComplianceOfficerPlatform(
+        "acme",
+        OPS,
+        "admin-m",
+        OPS_REASON,
+      );
+
+      expect(result).toEqual({ complianceOfficerMembershipId: "admin-m" });
+      expect(bindOfficerRole).toHaveBeenCalledTimes(1);
+      expect(bindOfficerRole).toHaveBeenCalledWith({
+        organizationId: ORG,
+        tenantAccountId: TENANT,
+        membershipId: "admin-m",
+        operator: OPS,
+        reason: OPS_REASON,
+      });
+      expect(tenant().complianceOfficerMembershipId).toBe("admin-m");
+      expect(state.platformAudit[0]?.detail).toMatchObject({
+        newOfficerMembershipId: "admin-m",
+        roleBoundByOperator: "true",
+      });
+    });
+
+    it("does not bind when the member already holds the role", async () => {
+      await wizard().setComplianceOfficerPlatform("acme", OPS, "co-m", OPS_REASON);
+      expect(bindOfficerRole).not.toHaveBeenCalled();
+    });
+
+    it("never binds for the tenant's own route: its org_admin still needs the role to exist", async () => {
+      expect(await code(wizard().setComplianceOfficer(ADMIN, ORG, "admin-m"))).toBe(
+        "COMPLIANCE_OFFICER_LACKS_ROLE",
+      );
+      expect(bindOfficerRole).not.toHaveBeenCalled();
+    });
+
+    it("binds nothing for a stranger or an inactive member, and nothing once the tenant is live or before onboarding", async () => {
+      state.members.set(...memoryMember(ORG, "gone-m", "gone-u", ["org_admin"], false));
+      state.members.set(...memoryMember("other-org", "foreign-m", "foreign-u", ["org_admin"]));
+      for (const membership of ["gone-m", "foreign-m", "ghost-m"]) {
+        expect(
+          await code(wizard().setComplianceOfficerPlatform("acme", OPS, membership, OPS_REASON)),
+        ).toBe("COMPLIANCE_OFFICER_NOT_A_MEMBER");
+      }
+      for (const [status, expected] of [
+        ["active", "COMPLIANCE_OFFICER_LACKS_ROLE"],
+        ["provisioning", "COMPLIANCE_OFFICER_LOCKED"],
+        ["suspended", "COMPLIANCE_OFFICER_LOCKED"],
+      ] as const) {
+        state.tenants = [{ ...tenant(), status }];
+        expect(
+          await code(wizard().setComplianceOfficerPlatform("acme", OPS, "admin-m", OPS_REASON)),
+        ).toBe(expected);
+      }
+      expect(bindOfficerRole).not.toHaveBeenCalled();
+      expect(tenant().complianceOfficerMembershipId).toBeNull();
+    });
+
+    it("a failed bind fails the assignment with its own error and designates nobody", async () => {
+      bindOfficerRole.mockRejectedValueOnce(
+        new ChartWardenError("COMPLIANCE_OFFICER_ROLE_UNAVAILABLE", "no such role", 422),
+      );
+      expect(
+        await code(wizard().setComplianceOfficerPlatform("acme", OPS, "admin-m", OPS_REASON)),
+      ).toBe("COMPLIANCE_OFFICER_ROLE_UNAVAILABLE");
+      expect(tenant().complianceOfficerMembershipId).toBeNull();
+    });
   });
 
   it("every platform write runs attributed to its operator", async () => {

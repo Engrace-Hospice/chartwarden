@@ -24,6 +24,7 @@ import { registerPlatformJob } from "@chartwarden/tenancy";
 import { ChartWardenError } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createComplianceOfficerRoleBinder } from "../src/bootstrap/bind-compliance-officer-role";
 import { buildDrizzleOrgProfilePort } from "../src/bootstrap/org-profile";
 import {
   buildOrgAdminCountReader,
@@ -41,7 +42,10 @@ import type {
   PlatformActor,
   TenantActor,
 } from "../src/modules/34-saas-tenant-platform/onboarding/model";
-import { createOnboardingWizard } from "../src/modules/34-saas-tenant-platform/onboarding/wizard-service";
+import {
+  type OnboardingWizardDeps,
+  createOnboardingWizard,
+} from "../src/modules/34-saas-tenant-platform/onboarding/wizard-service";
 import { createDrizzleWizardRunner } from "../src/modules/34-saas-tenant-platform/onboarding/wizard-store-drizzle";
 import {
   type DrizzleTenantPlatformDeps,
@@ -292,8 +296,9 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       },
       platformJobId: JOB_ID,
     });
-  const wizard = (withAdvance = true) =>
+  const wizard = (withAdvance = true, extra: Partial<OnboardingWizardDeps> = {}) =>
     createOnboardingWizard({
+      ...extra,
       runner: createDrizzleWizardRunner({
         db: app.db,
         platformDb: platform.db,
@@ -1643,6 +1648,183 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
       } finally {
         await login.end();
       }
+    });
+  });
+
+  describe("smoke-test gaps: designating a new tenant's compliance officer", () => {
+    const ORG_O = "cccccccc-cccc-4ccc-8ccc-cccccccccc01";
+    const T_O = "cccccccc-cccc-4ccc-8ccc-cccccccccc02";
+    const ORG_NR = "cccccccc-cccc-4ccc-8ccc-cccccccccc03"; // an organization that has no compliance_officer role row
+    const T_NR = "cccccccc-cccc-4ccc-8ccc-cccccccccc04";
+    const REASON = "customer named its administrator as the compliance officer";
+    let adminO: TenantActor;
+    let secondAdminO: TenantActor;
+    let adminNr: TenantActor;
+    const bound: Array<[string, string]> = [];
+    const withBinder = () =>
+      wizard(false, {
+        bindComplianceOfficerRole: createComplianceOfficerRoleBinder(app.db, (org, user) =>
+          bound.push([org, user]),
+        ),
+      });
+    const grants = async (membershipId: string) =>
+      (
+        await admin.query(
+          `SELECT r.key, mr.granted_by, mr.expires_at, mr.organization_id FROM membership_role mr
+             JOIN role r ON r.id = mr.role_id WHERE mr.membership_id = $1 AND r.key = 'compliance_officer'`,
+          [membershipId],
+        )
+      ).rows;
+    const officerOf = async (tenant: string) =>
+      (
+        await admin.query(
+          "SELECT compliance_officer_membership_id AS m FROM tenant_account WHERE id=$1",
+          [tenant],
+        )
+      ).rows[0].m as string | null;
+
+    beforeAll(async () => {
+      for (const [org, tenant, slug] of [
+        [ORG_O, T_O, "wiz-o"],
+        [ORG_NR, T_NR, "wiz-nr"],
+      ] as const) {
+        await admin.query(
+          "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
+          [org, slug],
+        );
+        await admin.query(
+          "INSERT INTO tenant_account (id, organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,'onboarding',$3,'b@x.test','p@x.test')",
+          [tenant, org, slug],
+        );
+      }
+      // The org's role rows exist (provisioning materializes them); nobody holds compliance_officer yet.
+      await person(ORG_O, "seed-officer-o", ["compliance_officer"]);
+      await admin.query("DELETE FROM membership_role WHERE membership_id = $1", [
+        memberships["seed-officer-o"],
+      ]);
+      adminO = await person(ORG_O, "admin-o", ["org_admin"]);
+      secondAdminO = await person(ORG_O, "admin-o2", ["org_admin"]);
+      adminNr = await person(ORG_NR, "admin-nr", ["org_admin"]);
+    }, 60_000);
+
+    it("the tenant's own route stays strict: its org_admin cannot designate a member who lacks the role", async () => {
+      const err = await refusal(
+        withBinder().setComplianceOfficer(adminO, ORG_O, adminO.membershipId),
+      );
+      expect(err.code).toBe("COMPLIANCE_OFFICER_LACKS_ROLE");
+      expect(await grants(adminO.membershipId)).toEqual([]);
+      expect(await officerOf(T_O)).toBeNull();
+    });
+
+    it("the platform route binds the role on the tenant's RLS scope, designates the member, and audits operator, organisation and reason", async () => {
+      bound.length = 0;
+      const out = await withBinder().setComplianceOfficerPlatform(
+        "wiz-o",
+        OPS,
+        adminO.membershipId,
+        REASON,
+      );
+      expect(out).toEqual({ complianceOfficerMembershipId: adminO.membershipId });
+
+      expect(await officerOf(T_O)).toBe(adminO.membershipId);
+      expect(await grants(adminO.membershipId)).toEqual([
+        {
+          key: "compliance_officer",
+          granted_by: OPS_USER,
+          expires_at: null,
+          organization_id: ORG_O,
+        },
+      ]);
+      expect(bound).toEqual([[ORG_O, adminO.userId]]);
+
+      const role = await admin.query(
+        `SELECT actor_user_id, organization_id, after FROM audit_event
+          WHERE event_type='m3.role.assigned' AND resource_id=$1 ORDER BY created_at DESC LIMIT 1`,
+        [adminO.membershipId],
+      );
+      expect(role.rows[0]).toMatchObject({
+        actor_user_id: OPS_USER,
+        organization_id: ORG_O,
+        after: {
+          roleKey: "compliance_officer",
+          assignedBy: "platform_ops",
+          operatorUserId: OPS_USER,
+          operatorMembershipId: OPS_MEMBERSHIP,
+          tenantAccountId: T_O,
+          reason: REASON,
+        },
+      });
+      const assigned = await admin.query(
+        `SELECT context FROM audit_event WHERE event_type='m34.onboarding.compliance_officer_assigned' AND resource_id=$1`,
+        [T_O],
+      );
+      expect(assigned.rows[0].context).toMatchObject({
+        operatorUserId: OPS_USER,
+        organizationId: ORG_O,
+        reason: REASON,
+        roleBoundByOperator: "true",
+      });
+    });
+
+    it("a repeat assignment binds nothing new", async () => {
+      bound.length = 0;
+      await withBinder().setComplianceOfficerPlatform("wiz-o", OPS, adminO.membershipId, REASON);
+      expect(bound).toEqual([]);
+      expect(await grants(adminO.membershipId)).toHaveLength(1);
+    });
+
+    it("binds only while the tenant is onboarding: once it is live the platform route needs the role already", async () => {
+      await admin.query("UPDATE tenant_account SET status='active' WHERE id=$1", [T_O]);
+      try {
+        const err = await refusal(
+          withBinder().setComplianceOfficerPlatform(
+            "wiz-o",
+            OPS,
+            secondAdminO.membershipId,
+            REASON,
+          ),
+        );
+        expect(err.code).toBe("COMPLIANCE_OFFICER_LACKS_ROLE");
+        expect(await grants(secondAdminO.membershipId)).toEqual([]);
+      } finally {
+        await admin.query("UPDATE tenant_account SET status='onboarding' WHERE id=$1", [T_O]);
+      }
+    });
+
+    it("never reaches across tenants: another organization's member is refused and keeps no grant", async () => {
+      const err = await refusal(
+        withBinder().setComplianceOfficerPlatform("wiz-o", OPS, strangerB.membershipId, REASON),
+      );
+      expect(err.code).toBe("COMPLIANCE_OFFICER_NOT_A_MEMBER");
+      // The binder itself, as the NOBYPASSRLS tenant role, refuses a membership of another org too.
+      const bind = createComplianceOfficerRoleBinder(app.db);
+      await expect(
+        bind({
+          organizationId: ORG_O,
+          tenantAccountId: T_O,
+          membershipId: strangerB.membershipId,
+          operator: { userId: OPS_USER, membershipId: OPS_MEMBERSHIP },
+          reason: REASON,
+        }),
+      ).rejects.toMatchObject({ code: "COMPLIANCE_OFFICER_NOT_A_MEMBER" });
+      expect(await grants(strangerB.membershipId)).toEqual([]);
+    });
+
+    it("an organization with no compliance_officer role is refused with a typed 422 and nothing is bound", async () => {
+      const err = await refusal(
+        withBinder().setComplianceOfficerPlatform("wiz-nr", OPS, adminNr.membershipId, REASON),
+      );
+      expect(err.code).toBe("COMPLIANCE_OFFICER_ROLE_UNAVAILABLE");
+      expect(err.statusCode).toBe(422);
+      expect(await officerOf(T_NR)).toBeNull();
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM membership_role WHERE organization_id=$1",
+            [ORG_NR],
+          )
+        ).rows[0].n,
+      ).toBe(1); // admin-nr's own org_admin grant only
     });
   });
 });

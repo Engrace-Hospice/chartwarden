@@ -105,6 +105,7 @@ import {
 } from "./bootstrap/ack-queue-metrics";
 import { startAckQueueWatchdog } from "./bootstrap/ack-queue-watchdog";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
+import { createComplianceOfficerRoleBinder } from "./bootstrap/bind-compliance-officer-role";
 import {
   bindPlatformStaffToOrg,
   reconcilePlatformStaff,
@@ -5917,6 +5918,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 activation: m34PlatformBackend.activateApprovedTenant,
               }),
               orgProfile: buildDrizzleOrgProfilePort(dbHandle.db),
+              // The PLATFORM compliance-officer assignment binds the role to the chosen member (the tenant's org_admin cannot:
+              // anti-escalation). Tenant pool under the tenant's RLS, audited; the member's cached permissions are dropped.
+              bindComplianceOfficerRole: createComplianceOfficerRoleBinder(
+                dbHandle.db,
+                (organizationId, userId) => liveRbacHandle?.invalidateActor(organizationId, userId),
+              ),
               advance: async ({ tenantAccountId, organizationId }) => {
                 await m34OnboardingAdvance({ tenantAccountId, orgId: organizationId });
               },
