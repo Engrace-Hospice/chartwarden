@@ -13,7 +13,8 @@ export function registerM35Seams(deps: { readonly db?: DbClient } = {}): void {
   if (deps.db) {
     // ADR-0108 D8 — the real pseudonymized active-patient counter over `patient_active_period`.
     registerSeam("PatientCounterProvider", createDrizzlePatientCounterProvider(deps.db));
-    // Slice 2 — the subscription's billing service mode, for the module that must enforce a rule on it (slice 3: outside => none).
+    // Slice 2 — the subscription's billing service mode, as a read seam. No module consumes it yet: outside => none is applied by M35
+    // itself (setModeNoneForOutsideBilling), not enforced by a reader.
     const { db } = deps;
     registerSeam("BillingServiceModeReader", {
       billingServiceModeForOrg: (organizationId) => readBillingServiceMode(db, organizationId),

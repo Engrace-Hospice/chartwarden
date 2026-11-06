@@ -154,7 +154,7 @@ export interface ContractService {
   /** A platform operator's read of a tenant's contract and statements; it writes a structured read-audit row naming the operator. */
   platformView(actor: M35WriteActor, orgSlug: string): Promise<PlatformPricingView>;
   tenantView(organizationId: string, userId: string): Promise<TenantPricingView>;
-  /** The tenant's billing service mode in force today (null without a live contract), on the tenant pool. The `BillingServiceModeReader` seam body. */
+  /** The tenant's billing service mode in force today (null without a live contract), on the tenant pool. The `BillingServiceModeReader` seam body (the seam has no consumer yet). */
   billingServiceModeForOrg(organizationId: string): Promise<BillingServiceMode | null>;
 }
 
@@ -295,7 +295,7 @@ async function loadContract(
 /**
  * The billing service mode in force TODAY of the org's live contracted subscription (newest live contract), or null when it has none.
  * Reads on the TENANT pool under `withOrgContext` (the contract tables are SELECT-only to the app role); no cache; a failed read throws
- * and the caller decides (slice 3 fails closed: an unread mode must never read as `none`). Refuses when it is called inside ANOTHER
+ * and the caller decides (a caller that must not guess fails closed: an unread mode must never read as `none`). Refuses when it is called inside ANOTHER
  * organisation's request. This is the body of the `BillingServiceModeReader` seam.
  */
 export async function readBillingServiceMode(

@@ -750,7 +750,8 @@ export const REQUIRED_SEAMS = [
     phi: false,
     denyStub: claimsBillingEntitlementReaderDenyStub,
   },
-  // Slice 2 (tenant pricing) — the subscription's billing service mode (owner M35). One enum value per org → phi:false.
+  // Slice 2 (tenant pricing) — the subscription's billing service mode (owner M35; no consumer yet: outside => none is applied by M35,
+  // not read here). One enum value per org → phi:false.
   {
     key: "BillingServiceModeReader",
     ownerModule: 35,

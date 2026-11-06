@@ -721,9 +721,10 @@ export interface ClaimsBillingEntitlementReader {
 
 /**
  * Slice 2 (tenant pricing) — the billing service mode of an organisation's subscription (owner M35). `null` = the org has
- * no contracted (census_banded) subscription. A small read so another module can enforce a rule that depends on it
- * (slice 3: a tenant that bills outside ChartWarden must be on `none`). Reads the database every call (no cache); throws
- * when the read fails, and a caller that must not guess fails closed.
+ * no contracted (census_banded) subscription. A small read for a module that needs the mode. NO module consumes it today:
+ * "a tenant that bills outside ChartWarden is on `none`" is not enforced by a reader but APPLIED by M35 itself
+ * (`setModeNoneForOutsideBilling`, called by the M34 wizard's clearinghouse sync and by the hourly statement sweep). Reads the
+ * database every call (no cache); throws when the read fails, and a caller that must not guess fails closed.
  */
 export interface BillingServiceModeReader {
   billingServiceModeForOrg(organizationId: OrgId): Promise<BillingServiceMode | null>;
