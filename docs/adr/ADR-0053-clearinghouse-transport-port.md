@@ -340,3 +340,64 @@ in-flight one; it never decides, closes or withdraws.
 
 **Retention.** A settled receipt's cipher is cleared 90 days after processing; the digest, ids and outcome stay. Provider
 TINs (which can be SSNs) and vendor free text exist only inside that cipher.
+
+## Amendment 2026-11-06 — the clearinghouse is a per-tenant choice (supersedes D3's single platform vendor)
+
+**Decision (product owner, 2026-11-05).** Each tenant chooses how its claims leave ChartWarden: `stedi`, `claimmd`, or
+`outside` ("bills outside ChartWarden"), with its own setup and its own encrypted vendor credential. Platform operators set it
+during onboarding (platform routes: `platform_ops`, step-up, a recorded reason, an audit row naming operator and tenant, accepted
+only while the tenant is provisioning or onboarding) and the tenant admin sets it on its own (tenant routes: the same
+`billing.mac_credential.read` / `.admin` keys as the EDI profile, a fresh step-up, no AI actor, `Idempotency-Key`). D3's "one
+platform credential" no longer holds for the tenants that choose; D1, D2 and D4-D10 stand.
+
+**Data.** `tenant_clearinghouse_config` (M23, migration 1350), one row per organization: vendor, mode (`test` / `production`),
+status `draft` -> `verified` -> `active`, the vendor credential sealed with the M23 MAC-secret envelope under its own labels
+(AAD binds organization, vendor and mode; the KEK is the existing `M24_CREDENTIAL_ENCRYPTION_KEY`), how it was verified, the last
+test outcome. RLS ENABLE + FORCE for the app role (SELECT, INSERT, column-level UPDATE, no DELETE: switching to `outside` is an
+UPDATE); platform operators write through the tenant's own scope (the app pool under the target org), so there is no platform
+grant. The audit trigger scrubs the sealed secret. `outside` carries no mode and no secret and is stored `active`.
+
+**Rules (service.ts).** A vendor or mode change restarts at `draft` and needs its own credential; a credential rotation alone keeps
+the status (rotating a key must not take a live tenant offline) and clears the last test. Once a PRODUCTION submission is
+reserved or sent, vendor and mode are locked (409 `CLEARINGHOUSE_VENDOR_LOCKED`): the old vendor still owes that org its
+acknowledgments and a switch would stop pulling them; an operator migration is the only way out (not built). Changes are
+version-checked (`If-Match`, 428 / 412).
+
+**Verification.** Claim.MD has a safe no-PHI probe: `uploadlist` for a day before any account could have uploads answers an
+empty list for a valid key and error 21 for a bad one (observed 2026-11-04/05, contract doc), so `verify` runs it
+(`probeClaimMdAccountKey`). Stedi has NO safe no-PHI probe in the repo or the audit record (the one observed call, the mock
+eligibility check, is a test-mode call and would be a real, possibly billable transaction on a production key), so Stedi `verify` is an attestation with a required
+evidence note (8-500 characters, screened for SSN and MBI shapes). A failed Claim.MD test is a 200 carrying the outcome and
+leaves the config at `draft`. `activate` takes `verified` to `active`; an `active` config is what allows claims work.
+
+**Resolution.** `ClearinghouseBinding.forOrg(organizationId)` (this package) returns that organization's binding; the backend
+resolver (`tenant-clearinghouse/resolver.ts`) re-reads the org's row on every call and rebuilds the transport only when its
+`version` moved, over the tenant's own credential and mode, with one Claim.MD request budget per org (each tenant has its own
+account). The top-level binding is deliberately UNBOUND, so a consumer that forgot to resolve per org fails closed. A row that is
+`outside`, `draft` or `verified`, or no row, resolves unbound: nothing is sent, and the legacy launch-gateway ports are NEVER
+the fallback in this mode (D10's "no silent fallback" now holds per organization). M23's submit, retry, NOE/NOTR and ack paths,
+the M25 remittance pull and M41's submission, ack and eligibility paths all resolve per org; an unbound org fails or is skipped
+on its own and never fails the others in a tick. The context's `usage` comes from the org's own mode.
+
+**The platform env binding.** `CLEARINGHOUSE_VENDOR` (and its credential) stays, but now serves ONLY the organizations named in
+`CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS` (comma-separated organization uuids) and only while they have no row: the demo tenant keeps
+working with no data migration and no secret copied into the database. The list is explicit and documented in `.env.example`;
+production env validation refuses a malformed list or naming organizations with no vendor bound. A deployment that relied on the
+platform binding for every tenant must name them there or they stop sending until they choose their own.
+
+**What stays platform-level.** The X12 generation gateway and `CLEARINGHOUSE_PAYER_ID`. The Claim.MD webhook intake stays
+platform-account only and OFF (its HMAC key is the platform account key): a tenant's own Claim.MD account does not deliver
+enrollment or appeal reports through it, and per-tenant webhook URLs are not built.
+
+**Wizard.** Step 7 `clearinghouse_selected` is now an `either` step settled by `context.clearinghouseSettled` (`outside`, or a
+vendor in `active` status), so choosing and activating a vendor settles it at once through the advance pass (migration 1351,
+`contract`: the previous release's evaluator throws on the unknown field). Under `outside` steps 8 (`mac_configured`) and 9
+(`payer_enrollment`) stay gating and become "skip with a reason" for platform ops (the existing skip route already allows any
+non-go-live step with a rationale); nothing is auto-skipped.
+
+**The gate.** ADR-0108 is repurposed: new claims work follows this choice, not an add-on (see its 2026-11-06 amendment).
+M35's pricing reads the same choice through the `TenantClearinghouseReader` seam (owner M23) to apply "`outside` means no billing
+percentage"; this ADR implements no pricing.
+
+**Not decided here.** Whether an `outside` tenant's NOE/NOTR (open under ADR-0108, 5-day deadlines) should still be transmitted
+through a platform-held account, and how an operator migrates a tenant between vendors once production submissions exist.
