@@ -41,14 +41,19 @@ vi.mock("@chartwarden/billing", async (importOriginal) => {
         if (fakes.failNextCreateWithControlNumber) {
           fakes.failNextCreateWithControlNumber = false;
           throw Object.assign(new Error("duplicate key"), {
-            cause: { code: "23505", constraint: "noe_control_number_uq" },
+            cause: Object.assign(new Error("pg"), {
+              code: "23505",
+              constraint: "noe_control_number_uq",
+            }),
           });
         }
         if (fakes.failNextCreateWithUnique) {
           fakes.failNextCreateWithUnique = false;
           // A concurrent request inserted its correction first; the index refuses this one.
           table.set("raced", { ...values, id: "raced", state: "draft", version: 0 });
-          throw Object.assign(new Error("duplicate key"), { cause: { code: "23505" } });
+          throw Object.assign(new Error("duplicate key"), {
+            cause: Object.assign(new Error("pg"), { code: "23505" }),
+          });
         }
         const row = { state: "draft", version: 0, createdAt: new Date(), ...values };
         table.set(String(values.id), row);

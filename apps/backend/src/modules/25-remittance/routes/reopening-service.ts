@@ -7,6 +7,7 @@
 // so the two records never disagree. There are no outbox events yet (nothing consumes them); the reopening_case
 // write-audit trigger and the reopening_case_event history are the trail. A filed reopening is frozen by trigger.
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError, isUniqueViolation } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
@@ -21,8 +22,7 @@ import {
   checkReopeningFiling,
 } from "../domain";
 import type { M25ReadActor, M25WriteActor } from "./actor";
-import { VersionConflictError } from "./concurrency";
-import { isUniqueViolation, resolveDenialRoute } from "./denial-route-service";
+import { resolveDenialRoute } from "./denial-route-service";
 import { providerEntityScopeCondition } from "./scope";
 import { recordFilingAttempt } from "./submission-service";
 
@@ -175,7 +175,7 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
       .set({ state: to, version: sql`${RC.version} + 1`, ...fields })
       .where(and(eq(RC.id, cur.id), eq(RC.version, ifMatch), eq(RC.state, cur.state)))
       .returning({ id: RC.id, version: RC.version });
-    if (!updated[0]) throw new VersionConflictError(cur.version);
+    if (!updated[0]) throw new StaleVersionError();
     await tx.insert(EV).values({
       organizationId: actor.organizationId,
       reopeningCaseId: cur.id,
@@ -313,7 +313,7 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
             .where(and(eq(ADR.id, adr.id), eq(ADR.version, adr.version)))
             .returning({ id: ADR.id });
           // Someone changed the ADR after it was read (for example filed it): nothing is half-recorded.
-          if (!moved[0]) throw new VersionConflictError(adr.version);
+          if (!moved[0]) throw new StaleVersionError();
           await tx.insert(ADR_EV).values({
             organizationId: actor.organizationId,
             adrCaseId: adr.id,
@@ -388,7 +388,7 @@ export function buildDrizzleReopeningService(db: DbClient): ReopeningService {
           .set({ dueAt: due, version: sql`${RC.version} + 1` })
           .where(and(eq(RC.id, id), eq(RC.version, ifMatch), eq(RC.state, cur.state)))
           .returning({ id: RC.id, version: RC.version });
-        if (!updated[0]) throw new VersionConflictError(cur.version);
+        if (!updated[0]) throw new StaleVersionError();
         await tx.insert(EV).values({
           organizationId: actor.organizationId,
           reopeningCaseId: id,

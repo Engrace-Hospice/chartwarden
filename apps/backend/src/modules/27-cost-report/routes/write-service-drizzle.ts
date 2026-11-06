@@ -45,7 +45,6 @@ import type { DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, ConflictError, NotFoundError } from "@chartwarden/types";
 import { Value } from "@sinclair/typebox/value";
-import type { M27WriteActor } from "./actor";
 import type {
   BadDebtRecordView,
   ComplianceWindowView,
@@ -70,6 +69,7 @@ import type {
   CreateValidationRuleArgs,
   DeadlineExtensionArgs,
   ImportJobAcceptedView,
+  M27WriteActor,
   M27WriteRouteService,
   ManualTrialBalanceArgs,
   ManualWageDataArgs,

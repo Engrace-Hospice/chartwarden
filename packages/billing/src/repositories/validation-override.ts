@@ -81,7 +81,7 @@ export class ValidationOverrideRepository {
     const size = pageSizeOf(limit);
     const where = and(
       eq(O.organizationId, organizationId),
-      keysetBefore(O.appliedAt, O.id, cursor ? decodeCursor(cursor) : undefined),
+      keysetBefore(O.appliedAt, O.id, decodeCursor(organizationId, cursor)),
     );
     const rows = await this.db
       .select()
@@ -89,7 +89,7 @@ export class ValidationOverrideRepository {
       .where(where)
       .orderBy(desc(O.appliedAt), desc(O.id))
       .limit(size + 1);
-    return buildCursorPage(rows, size, (r) => ({
+    return buildCursorPage(organizationId, rows, size, (r) => ({
       createdAt: r.appliedAt.toISOString(),
       id: r.id,
     }));

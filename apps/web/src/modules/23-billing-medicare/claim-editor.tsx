@@ -16,7 +16,7 @@ import {
 // outcome) and the Replace/Void builder (#10 — TOB 817/818, reason at the server's real floor + `ifVersion`).
 // Reads GET /api/v1/billing/claims/:id (+ /lines, /state-history); writes go through POST :submit / :replace /
 // :void with an If-Match header (the claim version) for §2.5 optimistic concurrency. The server is the only
-// authz point (ADR-0030): a 503 (seams unbound) degrades the surface; a 412 (If-Match) / 422 (validation) on a
+// authz point (ADR-0030): a 503 (seams unbound) degrades the surface; a 409 (stale If-Match) / 422 (validation) on a
 // write surfaces inline (role="alert"), never a toast; a STEP_UP_REQUIRED denial routes to the real /step-up
 // screen with a returnTo, and the in-progress ceremony/reason survives that round trip via a process-memory
 // draft cache (write-workflow.ts — never browser storage, since the reason can carry PHI) (TASK-021). Lantern:
@@ -152,7 +152,7 @@ export function ClaimEditor(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [linesDegraded, setLinesDegraded] = useState(false);
 
-  // Active §10 ceremony + the inline write outcome (412/422/503 surface here, never a toast). The initial
+  // Active §10 ceremony + the inline write outcome (409/422/503 surface here, never a toast). The initial
   // ceremony resolves, in order: a resumed draft (a step-up round trip back to this exact page) > a
   // `?ceremony=` deep link (from the workbench's Replace/Void links) > none. The reason resumes only from
   // the draft — a fresh deep link never pre-fills it.
@@ -251,7 +251,7 @@ export function ClaimEditor(): JSX.Element {
           return;
         }
         setBusy(false);
-        if (response?.status === 412)
+        if (response?.status === 409)
           setActionError("This claim changed since you opened it — close and reopen to retry.");
         else if (response?.status === 422)
           setActionError("Validation failed — resolve the claim's open findings first.");

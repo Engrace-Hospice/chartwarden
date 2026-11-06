@@ -22,6 +22,7 @@ import {
   VENDOR_SESSION_CLASSES,
   isPortalSessionClass,
 } from "@chartwarden/auth";
+import { writeActorOf as m27WriteActorOf } from "@chartwarden/shared/route-kit";
 import {
   type ResolvedActor,
   STEP_UP_POLICY,
@@ -35,7 +36,6 @@ import {
   VENDOR_SESSION_CLASSES as M19_VENDOR_CLASSES,
 } from "../src/modules/19-oncall/abac-predicates";
 import { writeActorOf as m23WriteActorOf } from "../src/modules/23-billing-medicare/routes/actor";
-import { writeActorOf as m27WriteActorOf } from "../src/modules/27-cost-report/routes/actor";
 import { PORTAL_SESSION_CLASSES as M31_PORTAL_CLASSES } from "../src/modules/31-portal/abac-predicates";
 import { writeActorOf as m37WriteActorOf } from "../src/modules/37-ipu/routes/actor";
 

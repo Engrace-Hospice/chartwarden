@@ -5,12 +5,11 @@
 // that it was NOT. It gates `billing.clearinghouse.resolve_attempt` + `provider_entity_billing_scope` over the
 // body's provider entity + the §D14 step-up + the §D13 AI-block + `Idempotency-Key`. The org and the acting user
 // are server-side; the decision and who made it are audited by the attempt table's trigger.
+import { parse, rejectAiActor, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import type { ClearinghouseAttemptResolutionService } from "../services/clearinghouse-attempt-resolution-service";
-import { rejectAiActor, writeActorOf } from "./actor";
-import { parse } from "./billing-typebox";
+import { writeActorOf } from "./actor";
 import { ResolveStaleAttemptBodySchema } from "./clearinghouse-attempt-typebox";
-import { requireIdempotencyKey } from "./concurrency";
 import { P, PROVIDER_SCOPE, STEP_UP, targetProviderFromBody } from "./guards";
 
 export interface ClearinghouseAttemptRouteDeps {

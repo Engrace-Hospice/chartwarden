@@ -490,7 +490,7 @@ describe("M25 audit response packet - resilience", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add item" }));
     refusal = {
       status: 409,
-      body: { error: { code: "VERSION_CONFLICT", message: "modified by another writer" } },
+      body: { error: { code: "STALE_VERSION", message: "modified by another writer" } },
     };
     fireEvent.click(screen.getByRole("button", { name: "Save checklist" }));
     expect(await screen.findByText(/It was reloaded and your edit was not saved/)).toBeTruthy();
@@ -506,7 +506,7 @@ describe("M25 audit response packet - resilience", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add item" }));
     // Another person saves a different checklist; this person's next reload sees it.
     audit = base({ version: 9 }, { items: [{ label: "Theirs", state: "ready" }] });
-    refusal = { status: 409, body: { error: { code: "VERSION_CONFLICT", message: "moved" } } };
+    refusal = { status: 409, body: { error: { code: "STALE_VERSION", message: "moved" } } };
     fireEvent.click(screen.getByRole("button", { name: "Save checklist" }));
     expect(await screen.findByText(/checklist changed on the server/)).toBeTruthy();
     expect(screen.getByLabelText("Mine")).toBeTruthy();

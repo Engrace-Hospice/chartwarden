@@ -13,6 +13,7 @@
 import type {
   ArAgingDto,
   ClaimState,
+  CursorPage,
   EligibilityOutcome,
   LevelOfCare,
   MetricsBucket,
@@ -27,7 +28,6 @@ import {
 } from "../services/rhc-carry-over-stored";
 import type { RhcCarryOverView } from "../services/rhc-carry-over-view";
 import type { M23ReadActor } from "./actor";
-import type { CursorPage } from "./concurrency";
 
 type Json = Readonly<Record<string, unknown>>;
 

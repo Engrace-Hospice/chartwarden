@@ -7,16 +7,21 @@
 // repo, and is redacted from audit value-capture. Reads gate `billing.mac_credential.read`; the upsert gates
 // `billing.mac_credential.admin` + the §D14 step-up assertion (privileged config). Both compose the §4.7
 // `provider_entity_billing_scope` predicate over the ProviderEntity + the §D13 AI-block on the mutation +
-// `Idempotency-Key`. An update carries the §2.5 `If-Match` version (412 on stale); a first insert omits it.
+// `Idempotency-Key`. An update carries the §2.5 `If-Match` version (409 STALE_VERSION on stale); a first insert omits it.
+import {
+  actorOf,
+  ifMatchVersionOf,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, rejectAiActor, writeActorOf } from "./actor";
+import { writeActorOf } from "./actor";
 import {
   MacCredentialListQuerySchema,
   ProviderEntityParamsSchema,
   UpsertMacCredentialBodySchema,
-  parse,
 } from "./billing-typebox";
-import { parseIfMatch, requireIdempotencyKey } from "./concurrency";
 import {
   P,
   PROVIDER_SCOPE,
@@ -42,10 +47,10 @@ const NO_AI = rejectAiActor();
 const IDEMPOTENT = requireIdempotencyKey();
 
 /** Read the optional `If-Match` version (present only on an update of an existing credential, §2.5). */
-function optionalIfMatch(request: Parameters<typeof parseIfMatch>[0]): number | undefined {
+function optionalIfMatch(request: Parameters<typeof ifMatchVersionOf>[0]): number | undefined {
   const raw = request.headers["if-match"];
   const value = Array.isArray(raw) ? raw[0] : raw;
-  return typeof value === "string" && value.length > 0 ? parseIfMatch(request) : undefined;
+  return typeof value === "string" && value.length > 0 ? ifMatchVersionOf(request) : undefined;
 }
 
 /** Register the §4.1 MAC-credential routes (#34–#35). */

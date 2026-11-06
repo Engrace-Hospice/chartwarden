@@ -6,8 +6,6 @@
 import {
   type BillableEncounterSnapshot,
   type BuildVisitLinesInput,
-  POS_BY_QCODE,
-  POS_LABEL_ALIASES,
   type PerDiemClassSegmentResult,
   type VisitChargeVersion,
   type VisitLinesResult,
@@ -21,28 +19,6 @@ import {
 import { ChartWardenError } from "@chartwarden/types";
 
 type NewClaimLineInput = repositories.NewClaimLineInput;
-
-/**
- * `POS_BY_QCODE` inverted (F-125, #251) — the single authoritative CMS Q-code table lives in `@chartwarden/billing`'s
- * `place_of_service_consistency` rule; deriving from it rather than carrying a second, independently-authored
- * mapping is what makes it impossible for this function and that rule to disagree about which Q-code a given place
- * resolves to again (they used to, on three of nine places).
- */
-const QCODE_BY_POS: Readonly<Record<string, string>> = Object.fromEntries(
-  Object.entries(POS_BY_QCODE).map(([qcode, pos]) => [pos, qcode]),
-);
-
-/**
- * Map the resolved place of service to its CMS hospice Q-code. An unrecognized or absent place resolves to Q5009 —
- * CMS's own "place N.O.S." catch-all — never a specific site: the prior version defaulted to Q5006 ("inpatient
- * hospice facility") under a doc comment that called it "unspecified", which asserted a real, specific place of
- * care for a patient whose location was never actually assessed (F-125).
- */
-export function qCodeForPlaceOfService(pos: string | null): NewClaimLineInput["qCode"] {
-  const label = (pos ?? "").toLowerCase();
-  const canonical = POS_LABEL_ALIASES[label] ?? label;
-  return (QCODE_BY_POS[canonical] ?? "Q5009") as NewClaimLineInput["qCode"];
-}
 
 /** The units / unit rate / charge of one per-diem segment's line (CHC in 15-minute units, the rest in days). */
 export function perDiemLineAmounts(segment: PerDiemClassSegmentResult): {

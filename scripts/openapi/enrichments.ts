@@ -1258,6 +1258,7 @@ import {
 import {
   // response DTOs (service views)
   CapAccrualLinePageResponse as M26AccrualLinePageResponse,
+  AccrualLinesQuery as M26AccrualLinesQuery,
   // request bodies
   AcknowledgeEventRequest as M26AcknowledgeEventRequest,
   AmendConstantRequest as M26AmendConstantRequest,
@@ -9659,6 +9660,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/cap/accruals/patient/:periodId/:patientId/lines": {
     summary:
       "Per-patient accrual source lines — cursor-paginated (source kind/id, amount cents, service span; §4.1)",
+    query: M26AccrualLinesQuery,
     response: M26AccrualLinePageResponse,
   },
   "GET /api/v1/cap/accruals/inpatient/:periodId": {

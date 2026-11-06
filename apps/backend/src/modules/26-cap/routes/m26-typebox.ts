@@ -1,5 +1,3 @@
-import { contracts } from "@chartwarden/cap-management";
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/26-cap/routes/m26-typebox.ts — the M26 route request/response TypeBox schemas.
 //
 // These serve TWO consumers, and until now only the first one used them:
@@ -20,25 +18,11 @@ import { ValidationError } from "@chartwarden/types";
 //
 // Mass assignment was never reachable (write-service-drizzle.ts allowlists columns explicitly), so the
 // impact was business-logic corruption and unhandled `pg` errors rather than takeover.
+import { contracts } from "@chartwarden/cap-management";
+import { Uuid, pageQuery, parse } from "@chartwarden/shared/route-kit";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
 
-/**
- * Validate `raw` against `schema` (Convert-then-Check), throwing M1's VALIDATION_FAILED envelope on
- * the first error (the M23/M27/M30/M33 `parse(...)` precedent). Convert first so a query/param string
- * coerces to its declared type; Check then refuses anything the schema does not admit.
- */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}
+export { parse };
 
 /**
  * Params validation as a PREHANDLER, placed FIRST in the chain.
@@ -62,21 +46,7 @@ export const validateParams =
     parse(schema, request.params);
   };
 
-/**
- * A uuid by PATTERN, not by `format: "uuid"`.
- *
- * `format` in TypeBox resolves through a global `FormatRegistry`, and the only thing that populates
- * `uuid` in this repo is `packages/supplies/src/kinds/formats.ts` — an M21 module. So every
- * `Type.String({ format: "uuid" })` in the codebase (including `@chartwarden/billing`'s shared `Uuid` and
- * the M26 contracts) validates ONLY because M21 happens to have been imported first; TypeBox treats an
- * unregistered format as a FAILURE ("Unknown format 'uuid'"), so in any context that does not load
- * M21 these checks reject valid uuids. A params guard must not depend on which sibling module was
- * imported, so it carries the pattern itself. (The wider `format`-registry coupling is a real platform
- * hazard and is left flagged rather than silently changed across every module here.)
- */
-const UuidString = Type.String({
-  pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
-});
+const UuidString = Uuid();
 
 export const PeriodIdParams = Type.Object({ periodId: UuidString });
 export const EventIdParams = Type.Object({ eventId: UuidString });
@@ -134,7 +104,6 @@ export const ProjectionSnapshotDto = contracts.ProjectionSnapshotDto;
 export const InpatientProjectionDto = contracts.InpatientProjectionDto;
 export const SettlementDto = contracts.SettlementDto;
 
-import type { CursorPage as ServiceCursorPage } from "./concurrency";
 // ── §4.2 RESPONSE DTOs (F0 enrichment) ─────────────────────────────────────────────────────────────
 // The handlers do not return the `contracts.*` DTOs above; they return the READ/WRITE-service VIEW
 // interfaces (`PeriodView`, `ProjectionView`, `SettlementView`, …) verbatim. Those views published NO
@@ -144,6 +113,7 @@ import type { CursorPage as ServiceCursorPage } from "./concurrency";
 // Money crosses as integer cents; scope/status/band/methodology are open `string` in the view, so they are
 // published as `Type.String()` (the view does not narrow them to a closed set here).
 import type {
+  CursorPage,
   AccrualLineView as ServiceAccrualLineView,
   DashboardView as ServiceDashboardView,
   InpatientAccrualView as ServiceInpatientAccrualView,
@@ -329,7 +299,7 @@ type _PatientAccrual = Conforms<Static<typeof CapPatientAccrualViewDto>, Service
 type _AccrualLine = Conforms<Static<typeof CapAccrualLineViewDto>, ServiceAccrualLineView>;
 type _AccrualPage = Conforms<
   Static<typeof CapAccrualLinePageResponse>,
-  ServiceCursorPage<ServiceAccrualLineView>
+  CursorPage<ServiceAccrualLineView>
 >;
 type _InpatientAccrual = Conforms<
   Static<typeof CapInpatientAccrualViewDto>,
@@ -344,3 +314,6 @@ type _PlatformConstant = Conforms<
   ServicePlatformConstantView
 >;
 type _Dashboard = Conforms<Static<typeof CapDashboardViewDto>, ServiceDashboardView>;
+
+/** GET accrual lines — the §4.12 cursor page query (capped at 100; the service defaults to 50). */
+export const AccrualLinesQuery = Type.Object(pageQuery({ max: 100 }));

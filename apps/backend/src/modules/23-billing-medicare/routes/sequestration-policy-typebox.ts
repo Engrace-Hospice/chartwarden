@@ -3,8 +3,8 @@
 // `billing-typebox.ts`. `percentage` is a decimal STRING on the wire (D11, never a float); the plausibility band and the
 // effective window are validated by `validateSequestrationPolicyEntry` (@chartwarden/billing) so the error names every problem.
 // Org / actor / membership binding is server-side — no body field carries an org id or the entering membership.
+import "@chartwarden/shared/route-kit";
 import { type Static, Type } from "@sinclair/typebox";
-import { parse } from "./billing-typebox";
 
 const uuid = () => Type.String({ format: "uuid" });
 const isoDate = () => Type.String({ format: "date" });
@@ -66,5 +66,3 @@ export const SequestrationPolicyNullableResponseSchema = Type.Union([
   SequestrationPolicyViewSchema,
   Type.Null(),
 ]);
-
-export { parse };

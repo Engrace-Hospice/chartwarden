@@ -3,3 +3,4 @@
 export * from "./admission-codes";
 export * from "./discharge-codes";
 export * from "./x12-segments";
+export * from "./stay-end";

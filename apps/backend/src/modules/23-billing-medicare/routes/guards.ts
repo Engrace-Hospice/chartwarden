@@ -19,8 +19,9 @@
 // `inOrg` (M3) and `caseload_or_scope` (M5) are RE-USED base predicates owned + registered by their modules.
 import { requireAbac, requireAnyAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
 import { canonicalRuleKey } from "@chartwarden/billing";
+import { ROUTE_FORMATS } from "@chartwarden/shared/route-kit";
+import type { PreHandler } from "@chartwarden/shared/route-kit";
 import { ForbiddenError } from "@chartwarden/types";
-import type { PreHandler } from "./actor";
 
 /** A structural request shape carrying the ABAC target sources (params/query/body); GuardRequest is assignable. */
 type TargetRequest = {
@@ -43,10 +44,9 @@ export const targetNoeId = (request: TargetRequest): TargetMap => paramId(reques
 export const targetNotrId = (request: TargetRequest): TargetMap => paramId(request, "notrId");
 export const targetTransferNoticeId = (request: TargetRequest): TargetMap =>
   paramId(request, "transferNoticeId");
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** A non-uuid id fails closed (an empty target resolves to no entity => deny), never a 500 on a uuid cast. */
 const uuidOrEmpty = (value: unknown): string =>
-  typeof value === "string" && UUID_RE.test(value) ? value : "";
+  typeof value === "string" && ROUTE_FORMATS.uuid?.(value) ? value : "";
 
 export const targetDdeWorkItemId = (request: TargetRequest): TargetMap => ({
   ddeWorkItemId: uuidOrEmpty((request.params as { id?: string } | undefined)?.id),

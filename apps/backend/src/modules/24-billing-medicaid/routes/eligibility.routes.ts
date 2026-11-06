@@ -2,9 +2,9 @@
 // eligibility surface (routes 22–23). The force-refresh route composes the §4.8
 // `provider_entity_medicaid_billing_scope` ABAC over the body PE, the §8.6 AI reject + §F08 Idempotency-Key.
 // The 270/271 adapter + the M5 MedicaidIdUnlockReader are deferred — the write service degrades (§4.4/§8.7).
+import { rejectAiActor, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, rejectAiActor, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
+import { m24ActorOf } from "./actor";
 import { ABAC_BODY_PE, P } from "./guards";
 import { EligibilityListQuery, RefreshEligibilityBody, parse, parseQuery } from "./m24-typebox";
 import type { M24ReadService } from "./read-service";
@@ -15,7 +15,7 @@ export interface EligibilityRouteDeps {
   readonly writeService: M24WriteService;
 }
 
-const AI = rejectAiActor();
+const AI = rejectAiActor("AI principals cannot create or modify Medicaid billing records (D12)");
 const IDEMPOTENT = requireIdempotencyKey();
 
 export function registerEligibilityRoutes(app: FastifyInstance, deps: EligibilityRouteDeps): void {
@@ -34,9 +34,7 @@ export function registerEligibilityRoutes(app: FastifyInstance, deps: Eligibilit
     },
     async (request, reply) => {
       const body = parse(RefreshEligibilityBody, request.body);
-      return reply
-        .code(202)
-        .send(await writeService.refreshEligibility(writeActorOf(request), body));
+      return reply.code(202).send(await writeService.refreshEligibility(m24ActorOf(request), body));
     },
   );
 
@@ -50,7 +48,7 @@ export function registerEligibilityRoutes(app: FastifyInstance, deps: Eligibilit
     async (request, reply) =>
       reply.send(
         await readService.listEligibilityChecks(
-          actorOf(request),
+          m24ActorOf(request),
           parseQuery(EligibilityListQuery, request.query),
         ),
       ),

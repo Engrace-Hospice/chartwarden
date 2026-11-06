@@ -8,17 +8,21 @@
 // ABAC; the trigger gates `billing.validation.run` + claim-caseload; the override gates
 // `billing.validation.override` + the §4.7 `override_role_eligible` predicate + the §D14 step-up assertion +
 // the §D13 AI-block. Mutations carry `Idempotency-Key` (§4.1). Org/actor binding is ALWAYS server-side.
+import {
+  actorOf,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, rejectAiActor, writeActorOf } from "./actor";
+import { writeActorOf } from "./actor";
 import {
   ClaimIdParamsSchema,
   OverrideParamsSchema,
   OverrideValidationResultBodySchema,
   ValidationOverrideListQuerySchema,
   ValidationRunParamsSchema,
-  parse,
 } from "./billing-typebox";
-import { requireIdempotencyKey } from "./concurrency";
 import {
   CLAIM_CASELOAD,
   OVERRIDE_ELIGIBLE,

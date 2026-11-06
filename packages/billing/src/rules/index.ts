@@ -55,7 +55,12 @@ import { noeTimeliness5d } from "./noe-timeliness";
 import { patientEligibilityPartAActive } from "./patient-eligibility-part-a";
 import { perDiemClassCodingCorrect } from "./per-diem-class-coding";
 import { physicianCredentialsActive } from "./physician-credentials";
-import { POS_BY_QCODE, POS_LABEL_ALIASES, placeOfServiceConsistency } from "./place-of-service";
+import {
+  POS_BY_QCODE,
+  POS_LABEL_ALIASES,
+  placeOfServiceConsistency,
+  qCodeForPlaceOfService,
+} from "./place-of-service";
 import { rhcCarryOverHetsFresh } from "./rhc-carry-over-hets";
 import { siaCalculationCorrect } from "./sia-calculation";
 import { tobAndDatesConsistency } from "./tob-dates-consistency";
@@ -100,6 +105,7 @@ export {
   CMS_HOSPICE_MODIFIER_VALUE_SET,
   POS_BY_QCODE,
   POS_LABEL_ALIASES,
+  qCodeForPlaceOfService,
 };
 
 /**

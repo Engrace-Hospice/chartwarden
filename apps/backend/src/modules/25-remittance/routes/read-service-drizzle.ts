@@ -5,6 +5,7 @@
 // lookup (the composition root binds the real TerminologyProvider; absent ⇒ category 'unmapped' floor).
 import { type DbClient, schema } from "@chartwarden/db";
 import { RegulatoryDecimal } from "@chartwarden/shared/money";
+import { decodeCursor, encodeCursor } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { type SQL, and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
 import {
@@ -15,11 +16,11 @@ import {
   deriveTierDeadline,
 } from "../domain";
 import type { M25ReadActor } from "./actor";
-import { type CursorPage, decodeCursor, encodeCursor } from "./concurrency";
 import { type PayerBatchDeps, resolvePayerKinds } from "./denial-payer";
 import type {
   AppealDetail,
   AppealSummary,
+  CursorPage,
   DenialMetricsView,
   DenialWorklistFilters,
   DenialWorklistItem,
@@ -84,7 +85,7 @@ export function buildDrizzleM25ReadService(
 
   return {
     async listAdvices(actor, filters, cursor, limit) {
-      const c = decodeCursor(cursor);
+      const c = decodeCursor(actor.organizationId, cursor, isCreatedAtKeyset);
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
           peScope(RA.providerEntityId, actor, filters.providerEntityId),
@@ -105,6 +106,7 @@ export function buildDrizzleM25ReadService(
           .orderBy(desc(RA.receivedAt), desc(RA.id))
           .limit(limit + 1);
         return page(
+          actor.organizationId,
           rows,
           limit,
           (r) => ({ createdAt: iso(r.receivedAt), id: r.id }),
@@ -125,7 +127,7 @@ export function buildDrizzleM25ReadService(
     },
 
     async listLines(actor, filters, cursor, limit) {
-      const c = decodeCursor(cursor);
+      const c = decodeCursor(actor.organizationId, cursor, isCreatedAtKeyset);
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
           lineScope(actor),
@@ -149,6 +151,7 @@ export function buildDrizzleM25ReadService(
           .orderBy(desc(RL.receivedAt), desc(RL.id))
           .limit(limit + 1);
         return page(
+          actor.organizationId,
           rows,
           limit,
           (r) => ({ createdAt: iso(r.receivedAt), id: r.id }),
@@ -169,7 +172,7 @@ export function buildDrizzleM25ReadService(
     },
 
     async listUnmatched(actor, providerEntityId, cursor, limit) {
-      const c = decodeCursor(cursor);
+      const c = decodeCursor(actor.organizationId, cursor, isCreatedAtKeyset);
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
           eq(RL.matchState, "unmatched"),
@@ -191,6 +194,7 @@ export function buildDrizzleM25ReadService(
           .orderBy(desc(RL.receivedAt), desc(RL.id))
           .limit(limit + 1);
         return page(
+          actor.organizationId,
           rows,
           limit,
           (r) => ({ createdAt: iso(r.receivedAt), id: r.id }),
@@ -200,7 +204,7 @@ export function buildDrizzleM25ReadService(
     },
 
     async denialWorklist(actor, filters, cursor, limit) {
-      const c = decodeCursor(cursor);
+      const c = decodeCursor(actor.organizationId, cursor, isCreatedAtKeyset);
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
           peScope(DC.providerEntityId, actor, filters.providerEntityId),
@@ -231,6 +235,7 @@ export function buildDrizzleM25ReadService(
           .limit(limit + 1);
         const payers = await payerKindsOf(tx, actor.organizationId, rows);
         return page(
+          actor.organizationId,
           rows,
           limit,
           (r) => ({ createdAt: iso(r.dc.openedAt), id: r.dc.id }),
@@ -255,7 +260,7 @@ export function buildDrizzleM25ReadService(
     },
 
     async listAppeals(actor, filters, cursor, limit) {
-      const c = decodeCursor(cursor);
+      const c = decodeCursor(actor.organizationId, cursor, isCreatedAtKeyset);
       return withOrgContext(db, actor, async (tx) => {
         const conds = [
           filters.state
@@ -279,6 +284,7 @@ export function buildDrizzleM25ReadService(
           .orderBy(desc(AC.createdAt), desc(AC.id))
           .limit(limit + 1);
         return page(
+          actor.organizationId,
           rows,
           limit,
           (r) => ({ createdAt: iso(r.createdAt), id: r.id }),
@@ -473,8 +479,19 @@ export function buildDrizzleM25ReadService(
   }
 }
 
-/** Keyset page helper: take `limit+1` rows, derive `nextCursor` from the last kept row. */
+interface CreatedAtKeyset {
+  readonly createdAt: string;
+  readonly id: string;
+}
+
+function isCreatedAtKeyset(value: unknown): value is CreatedAtKeyset {
+  const v = value as Partial<CreatedAtKeyset> | null;
+  return typeof v?.createdAt === "string" && typeof v.id === "string";
+}
+
+/** Keyset page helper: take `limit+1` rows, derive the signed `nextCursor` from the last kept row. */
 function page<TRow, TOut>(
+  organizationId: string,
   rows: TRow[],
   limit: number,
   keyOf: (r: TRow) => { createdAt: string; id: string },
@@ -485,6 +502,6 @@ function page<TRow, TOut>(
   const last = kept[kept.length - 1];
   return {
     items: kept.map(project),
-    nextCursor: hasMore && last ? encodeCursor(keyOf(last)) : null,
+    nextCursor: hasMore && last ? encodeCursor(organizationId, keyOf(last)) : null,
   };
 }

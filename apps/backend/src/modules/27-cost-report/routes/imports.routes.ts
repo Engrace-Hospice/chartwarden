@@ -6,14 +6,12 @@
 // rows are parsed at the edge). Lists gate `cost_report.read`; triggers + manual uploads compose
 // `cost_report_editor_for_provider` (§4.7) over the `:id`. The Xero/Gusto payloads are envelope-encrypted at
 // rest by the worker (financial PII, not PHI). Mutations carry `Idempotency-Key` (§4.1). Org/actor server-side.
+import { actorOf, parse, requireIdempotencyKey, writeActorOf } from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { requireIdempotencyKey } from "./concurrency";
 import {
   CostReportIdParamsSchema,
   ManualTrialBalanceBodySchema,
   ManualWageDataBodySchema,
-  parse,
 } from "./cost-report-typebox";
 import { EDITOR_FOR_PROVIDER, P } from "./guards";
 import type { M27ReadRouteService } from "./read-service";

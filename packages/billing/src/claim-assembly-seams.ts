@@ -1,9 +1,6 @@
-// apps/backend/src/modules/23-billing-medicare/services/claim-assembly-types.ts
-//
-// The injected reader-port SHAPES of the claim assembly (M5/M6/M7/M8/M18/M26/M38/M40 + platform reference data).
-// Split out of `claim-assembly.ts` so `claim-assembly-facts.ts` (which reads through them) and the assembly
-// itself can both depend on the types without importing each other. `claim-assembly.ts` re-exports every name,
-// so existing importers are unchanged.
+// @chartwarden/billing · claim-assembly-seams — the injected reader-port SHAPES of the claim assembly
+// (M5/M6/M7/M8/M18/M26/M38/M40 + platform reference data). Payer-neutral: the Medicare (M23) assembly and the
+// commercial (M41) lane read claim facts through the same ports, so one bound adapter serves both.
 import type {
   BillableEncounterSnapshot,
   BillingRuleRegistry,
@@ -22,9 +19,10 @@ import type {
   PerDiemRateTable,
   SignedEncounterSnapshot,
   TerminologyResolution,
+  ValueCodeAreas,
   VisitChargeVersion,
-} from "@chartwarden/billing";
-import type { ValueCodeAreas, repositories } from "@chartwarden/billing";
+  repositories,
+} from "./index";
 
 type BillingDb = repositories.BillingDb;
 
