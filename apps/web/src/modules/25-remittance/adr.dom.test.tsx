@@ -1,7 +1,7 @@
-import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 // apps/web/src/modules/25-remittance — milestone 2a ADR screen. Asserts on RECORDED FETCH CALLS (method, path,
 // If-Match, body) like the other M25 write tests, so a control wired to a handler that never fires still fails.
 // The server derives the due date and owns every refusal: the panel shows its message verbatim.
+import { ApiClientProvider, ToastProvider, createApiClient } from "@chartwarden/ui";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -144,7 +144,7 @@ describe("M25 ADR worklist", () => {
   it("shows a server refusal verbatim", async () => {
     refusal = {
       status: 409,
-      body: { error: { code: "VERSION_CONFLICT", message: "the resource was modified elsewhere" } },
+      body: { error: { code: "STALE_VERSION", message: "the resource was modified elsewhere" } },
     };
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Open ADR from CGS" }));

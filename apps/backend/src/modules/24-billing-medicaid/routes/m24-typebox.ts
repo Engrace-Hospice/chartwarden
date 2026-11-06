@@ -1,4 +1,3 @@
-import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/24-billing-medicaid/routes/m24-typebox.ts — M24 (§4.2) request/response schemas.
 //
 // TypeBox request bodies, list queries, and response DTOs for the §4.1 Billing — Medicaid routes (claims,
@@ -15,20 +14,10 @@ import { ValidationError } from "@chartwarden/types";
 // side (request.context) — no body or query carries an org id or an acting membership id. A Recipient ID is
 // never returned (only the masked last-4 fact; D12 / §3.6) and credential secrets are write-only (the read
 // DTO carries presence flags only).
+import { pageLimit, pageQuery } from "@chartwarden/shared/route-kit";
+import { ValidationError } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("date")) {
-  FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
-}
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -302,8 +291,7 @@ export const ClaimListQuery = Type.Object(
     serviceState: Type.Optional(StateCode),
     patientId: Type.Optional(uuid()),
     providerEntityId: Type.Optional(uuid()),
-    cursor: Type.Optional(Type.String()),
-    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+    ...pageQuery(),
   },
   { additionalProperties: false },
 );
@@ -339,7 +327,7 @@ export const EligibilityListQuery = Type.Object(
 
 /** GET /api/v1/medicaid-validation-worklist — caps the failing-result scan (the response says if it hit). */
 export const ValidationWorklistQuery = Type.Object(
-  { limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 2000 })) },
+  { limit: pageLimit({ max: 2000 }) },
   { additionalProperties: false },
 );
 

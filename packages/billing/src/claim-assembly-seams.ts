@@ -1,35 +1,30 @@
-// apps/backend/src/modules/23-billing-medicare/services/claim-assembly-types.ts
-//
-// The injected reader-port SHAPES of the claim assembly (M5/M6/M7/M8/M18/M26/M38/M40 + platform reference data).
-// Split out of `claim-assembly.ts` so `claim-assembly-facts.ts` (which reads through them) and the assembly
-// itself can both depend on the types without importing each other. `claim-assembly.ts` re-exports every name,
-// so existing importers are unchanged.
+// @chartwarden/billing · claim-assembly-seams — the injected reader-port SHAPES of the claim assembly
+// (M5/M6/M7/M8/M18/M26/M38/M40 + platform reference data). Payer-neutral: the Medicare (M23) assembly and the
+// commercial (M41) lane read claim facts through the same ports, so one bound adapter serves both.
+import type { ValueCodeAreas } from "./cbsa";
+import type { IsoDate, LevelOfCare } from "./contracts";
+import type { Cents } from "./domain/money";
+import type { PerDiemRateTable } from "./per-diem-class/calculator";
+import type { BillingDb, ClaimRecord } from "./repositories";
+import type { BillingRuleRegistry } from "./rules/_registry";
 import type {
   BillableEncounterSnapshot,
-  BillingRuleRegistry,
-  CapProjectionProvider,
-  Cents,
   CertificationSnapshot,
   ElectionAddendumSnapshot,
   ElectionPeriodSnapshot,
   EvvBracketSnapshot,
   FaceToFaceSnapshot,
   Icd10Pointer,
-  IsoDate,
-  LevelOfCare,
   LevelOfCarePeriodSnapshot,
   MdmResolution,
-  PerDiemRateTable,
   SignedEncounterSnapshot,
   TerminologyResolution,
-  VisitChargeVersion,
-} from "@chartwarden/billing";
-import type { ValueCodeAreas, repositories } from "@chartwarden/billing";
-
-type BillingDb = repositories.BillingDb;
+} from "./rules/types";
+import type { CapProjectionProvider } from "./seams";
+import type { VisitChargeVersion } from "./visit-charges";
 
 /** The MAC jurisdiction alphabet (the frozen `m23_mac_jurisdiction` enum), derived — never re-listed. */
-type MacJurisdiction = repositories.ClaimRecord["macJurisdiction"];
+type MacJurisdiction = ClaimRecord["macJurisdiction"];
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 // Injected ports — the SHAPE of seam injection. Each return value reuses a `@chartwarden/billing` aggregate

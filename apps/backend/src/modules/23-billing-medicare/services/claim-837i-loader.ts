@@ -19,6 +19,7 @@
 // Bound by `renderClaimForTransport` (./claim-837i-submit.ts), which the submit/retry workers call when a clearinghouse
 // vendor is configured.
 import {
+  type AdmissionContextReader,
   type ClaimDocument837iDetail,
   type ClaimGap,
   buildClaimDocument837iDetail,
@@ -34,7 +35,6 @@ import {
   mapClaimTo837iInput,
   render837i,
 } from "./claim-837i-mapper";
-import type { AdmissionContextReader } from "./claim-assembly-types";
 import { SensitiveValue } from "./sensitive-value";
 
 /** The disclosure purpose recorded on the MBI-unlock audit event. */

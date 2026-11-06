@@ -8,10 +8,8 @@ import {
   COMMERCIAL_ELIGIBILITY_STALENESS_POLICY_VALUES,
   COMMERCIAL_ENROLLMENT_STATUS_VALUES,
   MAX_ELIGIBILITY_MAX_AGE_DAYS,
-  ValidationError,
 } from "@chartwarden/types";
-import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
+import { Type } from "@sinclair/typebox";
 
 // Lowercase only: the scope predicates compare the raw string, so one canonical spelling keeps ABAC and the idempotency replay check exact.
 const UUID_PATTERN = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
@@ -23,19 +21,6 @@ const Uuid = Type.String({ pattern: UUID_PATTERN });
 const Day = Type.String({ pattern: DAY_PATTERN });
 const lit = <T extends readonly string[]>(values: T) =>
   Type.Unsafe<T[number]>(Type.Union(values.map((v) => Type.Literal(v))));
-
-/** Validate and coerce like every other module's `parse`: a miss is the standard 422 envelope, never an ajv 400. */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}
 
 export const IdParamsSchema = Type.Object({ id: Uuid }, { additionalProperties: false });
 

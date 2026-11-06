@@ -1,12 +1,12 @@
-import { NotFoundError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/appeals.routes.ts — M25 (§4.1 routes 18-19, 21-26) the
 // appeal tracker: list, detail (+ events), attach-document, the step-up + within-deadline submit, the MAC
 // ack, the decide (typed outcome), withdraw, and the terminal close. Reads gate on `appeal.read`; submit
 // composes `appeal_within_deadline` (the hard T-0 block, §4.7) PLUS the §D15 step-up. PATCH/POST mutations
 // are optimistic-concurrency (If-Match → 409 on stale; the closed row is also DB-frozen).
+import { ifMatchVersionOf, parse, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
+import { NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { clampLimit, ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { P, STEP_UP, WITHIN_DEADLINE } from "./guards";
 import {
   AppealAttachRequestSchema,
@@ -14,7 +14,7 @@ import {
   AppealSubmitLateGoodCauseRequestSchema,
   AppealSubmitRequestSchema,
   AppealWithdrawRequestSchema,
-  parse,
+  clampLimit,
 } from "./m25-typebox";
 import type { M25ReadService } from "./read-service";
 import type { AppealSubmitInput, M25WriteService } from "./write-service";
@@ -109,7 +109,7 @@ export function registerAppealRoutes(app: FastifyInstance, deps: AppealRouteDeps
           actor,
           idOf(request),
           body.documentId,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -133,7 +133,7 @@ export function registerAppealRoutes(app: FastifyInstance, deps: AppealRouteDeps
               : {}),
             ...reconsiderationOf(body),
           },
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -161,7 +161,7 @@ export function registerAppealRoutes(app: FastifyInstance, deps: AppealRouteDeps
             goodCauseJustification: body.goodCauseJustification,
             ...reconsiderationOf(body),
           },
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -173,7 +173,7 @@ export function registerAppealRoutes(app: FastifyInstance, deps: AppealRouteDeps
     async (request, reply) => {
       const actor = writeActorOf(request);
       return reply.send(
-        await writeService.ackAppeal(actor, idOf(request), ifMatchVersion(request)),
+        await writeService.ackAppeal(actor, idOf(request), ifMatchVersionOf(request)),
       );
     },
   );
@@ -195,7 +195,7 @@ export function registerAppealRoutes(app: FastifyInstance, deps: AppealRouteDeps
             macReferenceNumbers: body.macReferenceNumbers,
             reason: body.reason,
           },
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -212,7 +212,7 @@ export function registerAppealRoutes(app: FastifyInstance, deps: AppealRouteDeps
           actor,
           idOf(request),
           { reason: body.reason },
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -224,7 +224,7 @@ export function registerAppealRoutes(app: FastifyInstance, deps: AppealRouteDeps
     async (request, reply) => {
       const actor = writeActorOf(request);
       return reply.send(
-        await writeService.closeAppeal(actor, idOf(request), ifMatchVersion(request)),
+        await writeService.closeAppeal(actor, idOf(request), ifMatchVersionOf(request)),
       );
     },
   );

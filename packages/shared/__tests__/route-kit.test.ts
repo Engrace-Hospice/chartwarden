@@ -17,6 +17,7 @@ import {
   membershipIdOf,
   optionalIfMatchVersionOf,
   pageQuery,
+  parse,
   rejectAiActor,
   rejectOffsetPagination,
   requireIdempotencyKey,
@@ -191,6 +192,16 @@ describe("route-kit schemas and formats", () => {
     expect(Value.Check(Type.String({ format: "uri" }), "not a uri")).toBe(false);
     expect(Value.Check(Type.String({ format: "email" }), "a@b.example")).toBe(true);
     expect(Value.Check(Type.String({ format: "email" }), "a@b")).toBe(false);
+  });
+});
+
+describe("route-kit parse", () => {
+  it("converts declared scalars and reports a failure as 422 VALIDATION_FAILED", () => {
+    const q = Type.Object({ limit: Type.Integer({ minimum: 1 }) });
+    expect(parse(q, { limit: "25" })).toEqual({ limit: 25 });
+    expect(() => parse(q, { limit: "0" })).toThrow(
+      expect.objectContaining({ code: "VALIDATION_FAILED", statusCode: 422 }),
+    );
   });
 });
 

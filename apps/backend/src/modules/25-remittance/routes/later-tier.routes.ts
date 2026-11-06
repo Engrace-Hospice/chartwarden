@@ -3,15 +3,14 @@
 // request routes reuse `registerDeadlineRoutes`). Reads gate on `appeal.read`, writes on `appeal.tier_record`. Every
 // change is If-Match (409 when stale) and every mutation requires an Idempotency-Key. Org, actor and provider-entity
 // scope are server-derived (actor.ts). Nothing here computes a CMS date: a recorded deadline is the user's own.
+import { ifMatchVersionOf, parse, requireIdempotencyKey } from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 import type { FastifyInstance } from "fastify";
 import { DISPOSITION_KINDS } from "../domain";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, requireIdempotencyKey } from "./concurrency";
 import { P } from "./guards";
 import type { DeadlineSubject, LaterTierService } from "./later-tier-service";
-import { parse } from "./m25-typebox";
 
 export interface LaterTierRouteDeps {
   readonly laterTierService: LaterTierService;
@@ -171,7 +170,7 @@ export function registerLaterTierRoutes(app: FastifyInstance, deps: LaterTierRou
           writeActorOf(request),
           uuidParam(request, "id", "appeal case"),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -221,7 +220,7 @@ export function registerLaterTierRoutes(app: FastifyInstance, deps: LaterTierRou
           subjectOf(request),
           deadlineId(request),
           body,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },
@@ -237,7 +236,7 @@ export function registerLaterTierRoutes(app: FastifyInstance, deps: LaterTierRou
           subjectOf(request),
           deadlineId(request),
           body.satisfiedOn,
-          ifMatchVersion(request),
+          ifMatchVersionOf(request),
         ),
       );
     },

@@ -7,6 +7,12 @@
 //
 // Mutating routes require an Idempotency-Key (the key is also the check row's uniqueness key), reject AI actors, and are scoped to the
 // provider entity (and, for a check, the patient). The body never carries a member id: it is resolved from M5's coverage server side.
+import {
+  actorOf,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import type { CommercialAdminService } from "../eligibility/admin-service";
 import type { EligibilityService } from "../eligibility/service";
@@ -16,10 +22,7 @@ import {
   PATIENT_SCOPE,
   PROVIDER_SCOPE,
   READ,
-  REJECT_AI_ACTOR,
-  REQUIRE_IDEMPOTENCY_KEY,
   WRITE,
-  actorOf,
   idempotencyKeyOf,
 } from "./guards";
 import {
@@ -32,7 +35,6 @@ import {
   LatestEligibilityResponseSchema,
   LatestQuerySchema,
   PatientPlanQuerySchema,
-  parse,
 } from "./typebox";
 
 export interface EligibilityRouteDeps {
@@ -58,8 +60,8 @@ export function registerCommercialEligibilityRoutes(
         WRITE,
         PROVIDER_SCOPE("commercial_billing.write", "body"),
         PATIENT_SCOPE("commercial_billing.write", "body"),
-        REJECT_AI_ACTOR,
-        REQUIRE_IDEMPOTENCY_KEY,
+        rejectAiActor(),
+        requireIdempotencyKey(),
       ],
       schema: { response: { 200: EligibilityCheckResponseSchema } },
     },
@@ -134,7 +136,7 @@ export function registerCommercialEligibilityRoutes(
     "/api/v1/billing/commercial/payer-plans/:id/eligibility-policy",
     {
       // Relaxing the policy weakens a billing control, so it takes the enrollment-admin permission and a fresh step-up.
-      preHandler: [MANAGE_ENROLLMENT, ENROLLMENT_STEP_UP, REJECT_AI_ACTOR, REQUIRE_IDEMPOTENCY_KEY],
+      preHandler: [MANAGE_ENROLLMENT, ENROLLMENT_STEP_UP, rejectAiActor(), requireIdempotencyKey()],
       schema: { response: { 200: EligibilityPolicyResponseSchema } },
     },
     async (request) => {

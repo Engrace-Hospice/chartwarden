@@ -9,13 +9,17 @@
 // `provider_entity_billing_scope` over the item's provider entity (a denied object is a 404), every mutation the
 // §D13 AI-block + `Idempotency-Key`. Reads are read-audited with a `resourceIdParam`. Org / actor / membership are
 // server-side. Notes never reach a log or an event.
+import {
+  actorOf,
+  parse,
+  rejectAiActor,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import { ForbiddenError, NotFoundError } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { billingScopeReach } from "../abac-predicates";
 import type { DdeQueueService } from "../services/dde-queue-service";
-import { actorOf, rejectAiActor, writeActorOf } from "./actor";
-import { parse } from "./billing-typebox";
-import { requireIdempotencyKey } from "./concurrency";
+import { writeActorOf } from "./actor";
 import {
   AssignDdeItemBodySchema,
   CreateDdeItemBodySchema,

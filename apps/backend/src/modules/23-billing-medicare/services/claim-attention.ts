@@ -16,9 +16,13 @@
 //        - `manual`               (partial_paid / denied)       — no replacement route from this state: adjust
 //                                   the claim with the MAC directly (the manual step is stated in the UI).
 //      Replaced / voided / rejected claims are superseded and never flagged.
-import type { ClaimDischargeFact, TypeOfBill } from "@chartwarden/billing";
+import {
+  type ClaimDischargeFact,
+  type TypeOfBill,
+  rederivedTypeOfBill,
+  resolveClaimDischarge,
+} from "@chartwarden/billing";
 import { deriveDischargeClaimCodes } from "@chartwarden/billing";
-import { rederivedTypeOfBill, resolveClaimDischarge } from "./claim-discharge";
 
 /**
  * M6's batched stay-end facts (`claimStayEndFactsForOrg`), duplicated locally — the composition root binds the

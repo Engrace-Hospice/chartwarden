@@ -39,15 +39,13 @@
 // the DECLARED consumer, it does not add a new producer-side trigger inside `assembleClaim`.
 import { type DbClient, schema } from "@chartwarden/db";
 import { medicaidClaimMachine } from "@chartwarden/medicaid-adapters";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, inArray } from "drizzle-orm";
 import type {
   DispatchableOutboxEvent,
   OutboxConsumerBinding,
 } from "../../../bootstrap/outbox-dispatcher";
-
-/** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
-const CONSUMER_USER_ID = "";
 
 const M24_MEDICARE_PRIMARY_ACK_EVENT = "m23.claim.acknowledged" as const;
 const M24_MEDICARE_PRIMARY_ACK_CONSUMER_NAME = "m24.m23-claim-acknowledged" as const;

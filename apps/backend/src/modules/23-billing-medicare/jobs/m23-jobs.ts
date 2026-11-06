@@ -1,3 +1,20 @@
+import { createHash, randomUUID } from "node:crypto";
+import {
+  type ClaimDocument837i,
+  type ClaimState,
+  type ClaimTransitionEvent,
+  DDE_WATCHDOG_LOOKAHEAD_DAYS,
+  type EligibilityOutcome,
+  type NoticeState,
+  canTransition as canClaimTransition,
+  deriveControlNumber,
+  medicareReceiptDay,
+  noeMachine,
+  notrMachine,
+  parseControlNumber,
+  reduce as reduceClaim,
+  repositories,
+} from "@chartwarden/billing";
 // apps/backend/src/modules/23-billing-medicare/jobs/m23-jobs.ts — M23 LIVE BullMQ wiring for the §4.8 jobs.
 //
 // The thin, infra-touching adapter that turns the @chartwarden/billing PURE domain (the claim/noe/notr lifecycle
@@ -30,23 +47,7 @@
 // The actor id a §4.8 worker's `withOrgContext` carries is the empty-string system sentinel (M4 NULLIFs it).
 //
 // AI-BLOCK (D13): no `@chartwarden/ai-platform` import anywhere here; a background job has no acting user.
-import { createHash, randomUUID } from "node:crypto";
-import {
-  type ClaimDocument837i,
-  type ClaimState,
-  type ClaimTransitionEvent,
-  DDE_WATCHDOG_LOOKAHEAD_DAYS,
-  type EligibilityOutcome,
-  type NoticeState,
-  canTransition as canClaimTransition,
-  deriveControlNumber,
-  medicareReceiptDay,
-  noeMachine,
-  notrMachine,
-  parseControlNumber,
-  reduce as reduceClaim,
-  repositories,
-} from "@chartwarden/billing";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   CH,
@@ -543,9 +544,6 @@ export interface M23WorkerDeps {
   /** Structured logger for failures that must not abort the cron (ids only, never PHI). */
   readonly logger?: { error(fields: Record<string, unknown>, message: string): void };
 }
-
-/** The empty-string system sentinel `withOrgContext` carries — the M4 trigger NULLIFs it (no acting user). */
-const M23_WORKER_SYSTEM_USER_ID = "";
 
 // ── the bound port bundles (bind what we can; lazy throw-on-call for the genuinely-missing infra) ───────────
 
@@ -1905,7 +1903,7 @@ async function applyAcks(
     try {
       await withOrgContext(
         deps.db,
-        { organizationId: ack.organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+        { organizationId: ack.organizationId, userId: CONSUMER_USER_ID },
         (txAny) => routeAck(txAny as unknown as BillingDb, deps, submissionId, ack),
       );
     } catch (err) {
@@ -1939,7 +1937,7 @@ async function runTransportAckPull(
       for (const t of page) {
         const submission = await withOrgContext(
           deps.db,
-          { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+          { organizationId, userId: CONSUMER_USER_ID },
           (txAny) =>
             new ClaimSubmissionRepository(txAny as unknown as BillingDb).findLatestAttempt(
               t.providerEntityId,
@@ -2136,7 +2134,7 @@ async function queueDdeWorkIsolated(
   try {
     return await withOrgContext(
       deps.db,
-      { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+      { organizationId, userId: CONSUMER_USER_ID },
       async (txAny) => queueDdeWork(deps, txAny as unknown as BillingDb, organizationId, kind, now),
     );
   } catch (err) {
@@ -2184,67 +2182,63 @@ export async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
 
   const ddeFailures: { organizationId: string; failures: readonly unknown[] }[] = [];
   for (const { organizationId } of orgs) {
-    await withOrgContext(
-      deps.db,
-      { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
-      async (txAny) => {
-        const tx = txAny as unknown as BillingDb;
-        const noes = new NoeRepository(tx);
-        const outbox = outboxOf(deps);
-        const candidates = await noes.listWindowWatchCandidates(organizationId, asOf);
-        for (const noe of candidates) {
-          const days = daysToTarget(noe.windowTargetAt, now);
-          if (days < 0) {
-            await noticeWindowOf(deps).recordBreach({
-              tx,
-              kind: "noe",
-              noticeId: noe.id,
-              expectedVersion: noe.version,
-              breachedAt: now,
-            });
-            await outbox.publish(tx, {
-              eventName: "m23.noe.window_breached",
-              organizationId,
-              aggregateKind: "noe",
-              aggregateId: noe.id,
-              payload: {
-                noeId: noe.id,
-                admissionId: noe.admissionId,
-                breachedAt: now.toISOString(),
-              },
-            });
-            await alertsOf(deps).dispatch({
-              alertCode: "m23.noe.window_breached",
-              severity: "critical",
-              organizationId,
-              payload: { noeId: noe.id, admissionId: noe.admissionId },
-            });
-          } else if (days <= 2) {
-            await outbox.publish(tx, {
-              eventName: "m23.noe.window_warning",
-              organizationId,
-              aggregateKind: "noe",
-              aggregateId: noe.id,
-              payload: {
-                noeId: noe.id,
-                admissionId: noe.admissionId,
-                daysIntoWindow: NOTICE_WINDOW_DAYS - days,
-              },
-            });
-            await alertsOf(deps).dispatch({
-              alertCode: "m23.noe.window_warning",
-              severity: "warn",
-              organizationId,
-              payload: {
-                noeId: noe.id,
-                admissionId: noe.admissionId,
-                daysIntoWindow: NOTICE_WINDOW_DAYS - days,
-              },
-            });
-          }
+    await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (txAny) => {
+      const tx = txAny as unknown as BillingDb;
+      const noes = new NoeRepository(tx);
+      const outbox = outboxOf(deps);
+      const candidates = await noes.listWindowWatchCandidates(organizationId, asOf);
+      for (const noe of candidates) {
+        const days = daysToTarget(noe.windowTargetAt, now);
+        if (days < 0) {
+          await noticeWindowOf(deps).recordBreach({
+            tx,
+            kind: "noe",
+            noticeId: noe.id,
+            expectedVersion: noe.version,
+            breachedAt: now,
+          });
+          await outbox.publish(tx, {
+            eventName: "m23.noe.window_breached",
+            organizationId,
+            aggregateKind: "noe",
+            aggregateId: noe.id,
+            payload: {
+              noeId: noe.id,
+              admissionId: noe.admissionId,
+              breachedAt: now.toISOString(),
+            },
+          });
+          await alertsOf(deps).dispatch({
+            alertCode: "m23.noe.window_breached",
+            severity: "critical",
+            organizationId,
+            payload: { noeId: noe.id, admissionId: noe.admissionId },
+          });
+        } else if (days <= 2) {
+          await outbox.publish(tx, {
+            eventName: "m23.noe.window_warning",
+            organizationId,
+            aggregateKind: "noe",
+            aggregateId: noe.id,
+            payload: {
+              noeId: noe.id,
+              admissionId: noe.admissionId,
+              daysIntoWindow: NOTICE_WINDOW_DAYS - days,
+            },
+          });
+          await alertsOf(deps).dispatch({
+            alertCode: "m23.noe.window_warning",
+            severity: "warn",
+            organizationId,
+            payload: {
+              noeId: noe.id,
+              admissionId: noe.admissionId,
+              daysIntoWindow: NOTICE_WINDOW_DAYS - days,
+            },
+          });
         }
-      },
-    );
+      }
+    });
     // ADR-0052: after (and apart from) the warnings / breach stamps above, so a failure here cannot undo them.
     ddeFailures.push({
       organizationId,
@@ -2262,67 +2256,63 @@ export async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
 
   const ddeFailures: { organizationId: string; failures: readonly unknown[] }[] = [];
   for (const { organizationId } of orgs) {
-    await withOrgContext(
-      deps.db,
-      { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
-      async (txAny) => {
-        const tx = txAny as unknown as BillingDb;
-        const notrs = new NotrRepository(tx);
-        const outbox = outboxOf(deps);
-        const candidates = await notrs.listWindowWatchCandidates(organizationId, asOf);
-        for (const notr of candidates) {
-          const days = daysToTarget(notr.windowTargetAt, now);
-          if (days < 0) {
-            await noticeWindowOf(deps).recordBreach({
-              tx,
-              kind: "notr",
-              noticeId: notr.id,
-              expectedVersion: notr.version,
-              breachedAt: now,
-            });
-            await outbox.publish(tx, {
-              eventName: "m23.notr.window_breached",
-              organizationId,
-              aggregateKind: "notr",
-              aggregateId: notr.id,
-              payload: {
-                notrId: notr.id,
-                admissionId: notr.admissionId,
-                breachedAt: now.toISOString(),
-              },
-            });
-            await alertsOf(deps).dispatch({
-              alertCode: "m23.notr.window_breached",
-              severity: "critical",
-              organizationId,
-              payload: { notrId: notr.id },
-            });
-          } else if (days <= 2) {
-            await outbox.publish(tx, {
-              eventName: "m23.notr.window_warning",
-              organizationId,
-              aggregateKind: "notr",
-              aggregateId: notr.id,
-              payload: {
-                notrId: notr.id,
-                admissionId: notr.admissionId,
-                daysIntoWindow: NOTICE_WINDOW_DAYS - days,
-              },
-            });
-            await alertsOf(deps).dispatch({
-              alertCode: "m23.notr.window_warning",
-              severity: "warn",
-              organizationId,
-              payload: {
-                notrId: notr.id,
-                admissionId: notr.admissionId,
-                daysIntoWindow: NOTICE_WINDOW_DAYS - days,
-              },
-            });
-          }
+    await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (txAny) => {
+      const tx = txAny as unknown as BillingDb;
+      const notrs = new NotrRepository(tx);
+      const outbox = outboxOf(deps);
+      const candidates = await notrs.listWindowWatchCandidates(organizationId, asOf);
+      for (const notr of candidates) {
+        const days = daysToTarget(notr.windowTargetAt, now);
+        if (days < 0) {
+          await noticeWindowOf(deps).recordBreach({
+            tx,
+            kind: "notr",
+            noticeId: notr.id,
+            expectedVersion: notr.version,
+            breachedAt: now,
+          });
+          await outbox.publish(tx, {
+            eventName: "m23.notr.window_breached",
+            organizationId,
+            aggregateKind: "notr",
+            aggregateId: notr.id,
+            payload: {
+              notrId: notr.id,
+              admissionId: notr.admissionId,
+              breachedAt: now.toISOString(),
+            },
+          });
+          await alertsOf(deps).dispatch({
+            alertCode: "m23.notr.window_breached",
+            severity: "critical",
+            organizationId,
+            payload: { notrId: notr.id },
+          });
+        } else if (days <= 2) {
+          await outbox.publish(tx, {
+            eventName: "m23.notr.window_warning",
+            organizationId,
+            aggregateKind: "notr",
+            aggregateId: notr.id,
+            payload: {
+              notrId: notr.id,
+              admissionId: notr.admissionId,
+              daysIntoWindow: NOTICE_WINDOW_DAYS - days,
+            },
+          });
+          await alertsOf(deps).dispatch({
+            alertCode: "m23.notr.window_warning",
+            severity: "warn",
+            organizationId,
+            payload: {
+              notrId: notr.id,
+              admissionId: notr.admissionId,
+              daysIntoWindow: NOTICE_WINDOW_DAYS - days,
+            },
+          });
         }
-      },
-    );
+      }
+    });
     // ADR-0052: after (and apart from) the warnings / breach stamps above, so a failure here cannot undo them.
     ddeFailures.push({
       organizationId,
@@ -2342,39 +2332,35 @@ export async function runEligibilityStaleWatch(deps: M23WorkerDeps): Promise<voi
   const orgs = await activeOrgsOf(deps).listActiveOrgs();
 
   for (const { organizationId } of orgs) {
-    await withOrgContext(
-      deps.db,
-      { organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
-      async (txAny) => {
-        const tx = txAny as unknown as BillingDb;
-        const checks = new EligibilityCheckRepository(tx);
-        const outbox = outboxOf(deps);
-        const stale = await checks.listStaleForOrg(organizationId, now);
-        for (const check of stale) {
-          // The table is append-only: an older stale row is superseded by a fresher check, and a patient
-          // whose LATEST check is current is not expired — only the latest row decides (and it is unique
-          // per patient, so no further de-duplication is needed).
-          const latest = await checks.findLatestForPatient(organizationId, check.patientId);
-          if (latest && latest.id !== check.id) continue;
-          await outbox.publish(tx, {
-            eventName: "m23.eligibility.expired",
-            organizationId,
-            aggregateKind: "patient",
-            aggregateId: check.patientId,
-            payload: {
-              patientId: check.patientId,
-              lastCheckedAt: check.checkedAt.toISOString(),
-            },
-          });
-          await alertsOf(deps).dispatch({
-            alertCode: "m23.eligibility.expired",
-            severity: "warn",
-            organizationId,
-            payload: { patientId: check.patientId },
-          });
-        }
-      },
-    );
+    await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (txAny) => {
+      const tx = txAny as unknown as BillingDb;
+      const checks = new EligibilityCheckRepository(tx);
+      const outbox = outboxOf(deps);
+      const stale = await checks.listStaleForOrg(organizationId, now);
+      for (const check of stale) {
+        // The table is append-only: an older stale row is superseded by a fresher check, and a patient
+        // whose LATEST check is current is not expired — only the latest row decides (and it is unique
+        // per patient, so no further de-duplication is needed).
+        const latest = await checks.findLatestForPatient(organizationId, check.patientId);
+        if (latest && latest.id !== check.id) continue;
+        await outbox.publish(tx, {
+          eventName: "m23.eligibility.expired",
+          organizationId,
+          aggregateKind: "patient",
+          aggregateId: check.patientId,
+          payload: {
+            patientId: check.patientId,
+            lastCheckedAt: check.checkedAt.toISOString(),
+          },
+        });
+        await alertsOf(deps).dispatch({
+          alertCode: "m23.eligibility.expired",
+          severity: "warn",
+          organizationId,
+          payload: { patientId: check.patientId },
+        });
+      }
+    });
   }
 }
 
@@ -2516,7 +2502,7 @@ export function registerM23Workers(deps: M23WorkerDeps): Worker[] {
           deps.db,
           {
             organizationId: data.organizationId,
-            userId: M23_WORKER_SYSTEM_USER_ID,
+            userId: CONSUMER_USER_ID,
           },
           (tx) => run(tx as unknown as BillingDb, deps, data),
         );
@@ -2588,7 +2574,7 @@ export function registerM23DomainWorkers(deps: M23WorkerDeps): Worker[] {
         if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
         await withOrgContext(
           deps.db,
-          { organizationId: data.organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+          { organizationId: data.organizationId, userId: CONSUMER_USER_ID },
           (tx) => run(tx as unknown as BillingDb, deps, data),
         );
       },
@@ -2714,7 +2700,7 @@ export function registerM23LaunchWorkers(
           deps.db,
           {
             organizationId: data.organizationId,
-            userId: M23_WORKER_SYSTEM_USER_ID,
+            userId: CONSUMER_USER_ID,
           },
           (tx) => run(tx as unknown as BillingDb, deps, data),
         );

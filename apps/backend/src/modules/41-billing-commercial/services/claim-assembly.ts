@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 // apps/backend/src/modules/41-billing-commercial/services/claim-assembly.ts — assemble a hospice 837I claim for a COMMERCIAL
 // primary payer from the shared claim facts (issue #722, ADR-0100 D6/D7).
 //
@@ -11,11 +10,14 @@ import { randomUUID } from "node:crypto";
 // and ALL THREE effective periods are intersected with the claim window (the database bounds none of them by the others).
 // A claim whose plan does not cover the window is still saved as a DRAFT carrying the failing hard-block rules, exactly like
 // M23; a claim with no plan at all for the payer is refused because there is nothing to snapshot.
+import { randomUUID } from "node:crypto";
 import {
   buildClaimSnapshot,
   claimAdmissionCodes,
+  claimDischargeCodes,
   claimPhysicianNpis,
   deriveTypeOfBill,
+  qCodeForPlaceOfService,
 } from "@chartwarden/billing";
 import { schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
@@ -29,8 +31,6 @@ import {
   type PatientCoverage,
 } from "@chartwarden/types";
 import { and, eq, gte, isNull, lte, ne, or, sql } from "drizzle-orm";
-import { qCodeForPlaceOfService } from "../../23-billing-medicare/services/claim-assembly-lines";
-import { claimDischargeCodes } from "../../23-billing-medicare/services/claim-discharge";
 import {
   type LevelOfCarePeriodFact,
   expectedPaymentCents,

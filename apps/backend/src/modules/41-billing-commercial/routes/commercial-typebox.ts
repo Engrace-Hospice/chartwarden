@@ -2,6 +2,7 @@
 // Named `*-typebox` (NOT `*schema*`) so the table-ownership import heuristic never mistakes a TypeBox import for a Drizzle one.
 // Org / actor / membership binding is ALWAYS server-side (request.context): no body or query carries an org id or an acting
 // membership id. Responses carry ids, dates, codes, money and rule messages only - never a member id, MBI or authorization number.
+import { pageQuery } from "@chartwarden/shared/route-kit";
 import {
   COMMERCIAL_AUTHORIZATION_STATUS_VALUES,
   COMMERCIAL_CLAIM_STATE_VALUES,
@@ -13,7 +14,6 @@ import {
 } from "@chartwarden/types";
 import { Type } from "@sinclair/typebox";
 
-// FormatRegistry entries (uuid, date) are registered by the shared M23 `parse` helper module imported by the routes.
 const uuid = () => Type.String({ format: "uuid" });
 const isoDate = () => Type.String({ format: "date" });
 const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
@@ -74,8 +74,7 @@ export const ClaimListQuerySchema = Type.Object(
     state: Type.Optional(lit(COMMERCIAL_CLAIM_STATE_VALUES)),
     payerKind: Type.Optional(lit(COMMERCIAL_PAYER_KIND_FILTER_VALUES)),
     patientId: Type.Optional(uuid()),
-    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
-    cursor: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+    ...pageQuery({ max: 100 }),
   },
   { additionalProperties: false },
 );

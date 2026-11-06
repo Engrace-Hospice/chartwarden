@@ -21,6 +21,7 @@
 //   - A sign-off stores a fingerprint of what was signed off (claims, checklist, documents, deadlines, attestation);
 //     filing recomputes it and refuses a packet that moved (AUDIT_SIGNOFF_STALE).
 import { type DbClient, schema } from "@chartwarden/db";
+import { StaleVersionError } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   ChartWardenError,
@@ -49,7 +50,6 @@ import {
   UNBOUND_APPEAL_SOURCES,
   describeEnclosures,
 } from "./appeal-packet-sources";
-import { VersionConflictError } from "./concurrency";
 import { earliestOpenDueAt } from "./recorded-deadline-view";
 import { type ClaimFactsPort, m23ClaimFactsPort } from "./remittance-ports";
 import { providerEntityScopeCondition } from "./scope";
@@ -279,7 +279,7 @@ export function buildAuditResponseOps(
       .set({ ...set, version: cur.version + 1, updatedAt: new Date() })
       .where(and(eq(AR.id, cur.id), eq(AR.version, ifMatch)))
       .returning({ id: AR.id, version: AR.version });
-    if (!updated[0]) throw new VersionConflictError(cur.version);
+    if (!updated[0]) throw new StaleVersionError();
     return updated[0];
   }
 

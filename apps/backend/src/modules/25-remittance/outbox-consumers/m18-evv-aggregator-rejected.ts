@@ -40,6 +40,7 @@
 // (the seed INSERT and the outbox publish(es) run in separate transactions because `DenialSeedStore
 // .seedDenial`'s pre-existing signature takes no `tx`).
 import type { DbClient } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { runWithRequestContext, withOrgContext } from "@chartwarden/tenancy";
 import { getSeam } from "../../../bootstrap/index";
 import {
@@ -89,10 +90,6 @@ function payloadOf(payload: unknown): { submissionId: string; visitId: string } 
   }
   return { submissionId, visitId };
 }
-
-/** The dispatcher's own system-attribution convention (F-102) for a consumer-driven read/write with no
- *  human actor. */
-const CONSUMER_USER_ID = "";
 
 /**
  * Default `resolveProviderEntityForVisit` — a lazily-resolved `getSeam("VisitReader")` read (see file

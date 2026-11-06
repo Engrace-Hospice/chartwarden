@@ -39,7 +39,7 @@ import {
   runTrialBalancePull,
   runValidationRun,
 } from "../src/modules/27-cost-report/index";
-import type { M27WriteActor } from "../src/modules/27-cost-report/routes/actor";
+import type { M27WriteActor } from "../src/modules/27-cost-report/routes/write-service";
 import { LIVE_DROP_ROLES } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;

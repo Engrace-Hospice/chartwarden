@@ -1,23 +1,10 @@
-import { MAX_APPEAL_ENCLOSURES, ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/25-remittance/routes/m25-typebox.ts — M25 (§4.2) request-body TypeBox schemas.
 // The route plugins validate POST/PATCH bodies against these; the §2.5 If-Match version + the
-// Idempotency-Key are headers (handled in concurrency.ts), not body fields. Free-text reason/narrative
+// Idempotency-Key are headers (handled by @chartwarden/shared/route-kit), not body fields. Free-text reason/narrative
 // fields carry the §4.1 min-length floors (audit-denylisted at the DB layer — never in the audit value).
+import { pageQuery } from "@chartwarden/shared/route-kit";
+import { MAX_APPEAL_ENCLOSURES } from "@chartwarden/types";
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { Value } from "@sinclair/typebox/value";
-
-/** Validate + coerce a request body against a TypeBox schema; throw 400 VALIDATION_FAILED on mismatch. */
-export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
-  const converted = Value.Convert(schema, raw ?? {});
-  if (!Value.Check(schema, converted)) {
-    const first = [...Value.Errors(schema, converted)][0];
-    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
-    throw new ValidationError("request validation failed", [
-      { field, code: "INVALID", message: first?.message ?? "invalid request" },
-    ]);
-  }
-  return converted as Static<T>;
-}
 
 /**
  * POST /internal/remittance/advices (route #32, WX-PR-012, system-principal only) — receive a raw 835
@@ -308,11 +295,18 @@ export const RemittanceLineSummarySchema = Type.Object({
 });
 export const RemittanceLineSummaryPageSchema = pageOf(RemittanceLineSummarySchema);
 
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 100;
+
 /** The §4.12 cursor-page query every M25 list read accepts. */
-export const M25ListQuerySchema = Type.Object({
-  cursor: Type.Optional(Type.String({ minLength: 1 })),
-  pageSize: Type.Optional(Type.Integer({ minimum: 1, maximum: 200, default: 50 })),
-});
+export const M25ListQuerySchema = Type.Object(pageQuery({ max: MAX_PAGE_SIZE }));
+
+/** The lenient `?limit=` the list routes read raw: missing or non-numeric is the default page, out of range is clamped. */
+export function clampLimit(raw: unknown): number {
+  const n = typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : Number.NaN;
+  if (!Number.isFinite(n)) return DEFAULT_PAGE_SIZE;
+  return Math.min(MAX_PAGE_SIZE, Math.max(1, Math.floor(n)));
+}
 
 // ── §4.1 RESPONSE DTOs (F0 enrichment, part 2) ───────────────────────────────────────────────────
 //

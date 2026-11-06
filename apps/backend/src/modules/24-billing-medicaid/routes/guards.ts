@@ -6,7 +6,11 @@
 // composes on submit / replace / void / arrangement activate-terminate / override / credential upsert (the
 // operation key is the permission key so M3 resolves the per-op freshness policy).
 import { requireAbac, requirePermission, requireStepUp } from "@chartwarden/auth";
-import type { PreHandler } from "./actor";
+import {
+  type HeaderCarrier,
+  type PreHandler,
+  ifMatchVersionOf,
+} from "@chartwarden/shared/route-kit";
 
 type TargetRequest = {
   readonly params?: unknown;
@@ -69,3 +73,10 @@ export const ABAC_BODY_PE = (key: string, predicate: string): PreHandler =>
 /** §D12 step-up gate — `requireStepUp(operationKey)` over the M3 `step_up_recent` predicate. */
 export const STEP_UP = (operationKey: string): PreHandler =>
   requireStepUp(operationKey) as PreHandler;
+
+/**
+ * M24's If-Match is optional: absent skips the version check (`null`); present, it is parsed by the kit
+ * (malformed → 400) and a stale version is 409 STALE_VERSION in the write service.
+ */
+export const optionalIfMatch = (request: HeaderCarrier): number | null =>
+  request.headers["if-match"] === undefined ? null : ifMatchVersionOf(request);
