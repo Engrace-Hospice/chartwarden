@@ -55,6 +55,29 @@ const TEST_PROBLEM: Record<Exclude<TestOutcome, "ok">, string> = {
   unreachable: "The vendor could not be reached. Nothing was verified; try the test again shortly.",
 };
 
+const CHOICE_FIELDS = ["vendor", "mode", "secret"] as const;
+
+/** What the server said about each choice input, merged under what the form itself found. */
+function withServerErrors(
+  local: ChoiceErrors,
+  server: Readonly<Record<string, string>>,
+): ChoiceErrors {
+  const merged: ChoiceErrors = { ...local };
+  for (const field of CHOICE_FIELDS) {
+    const said = server[field];
+    if (merged[field] === undefined && said !== undefined) merged[field] = said;
+  }
+  return merged;
+}
+
+/** A refusal that is about an input (not the reason itself): the prompt gets out of the way so the error is read beside that input. */
+const isAboutAnInput = (failure: {
+  kind: string;
+  fieldErrors: Readonly<Record<string, string>>;
+}): boolean =>
+  failure.kind === "validation" &&
+  Object.keys(failure.fieldErrors).some((field) => field !== "reason");
+
 function SummaryCard({ view }: { view: ClearinghouseView }): JSX.Element | null {
   if (view.vendor === null || view.source !== "tenant") return null;
   const baa = view.baa;
@@ -163,6 +186,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
 
   function continueChoice(): void {
     if (!current) return;
+    write.clear(); // an earlier refusal of an input has been read; this attempt starts clean
     const found = validateChoice(current, form, secret);
     setErrors(found);
     if (Object.keys(found).length === 0) setDialog("choose");
@@ -202,6 +226,8 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
       setEditing(false);
       setSecret("");
       await settled();
+    } else if (isAboutAnInput(outcome.failure)) {
+      setDialog(null); // the form stays open with what was typed; the error is under its input
     } else if (outcome.failure.kind === "conflict") {
       // Someone changed it since it was read: the form closes (its pin is stale), the record is read again, and the operator opens the
       // form anew on what it says now and enters the credential again.
@@ -223,7 +249,10 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
         body: { ...evidence, reason },
       }),
     );
-    if (!outcome.ok) return;
+    if (!outcome.ok) {
+      if (isAboutAnInput(outcome.failure)) setDialog(null); // the attestation form stays open, the error under its note
+      return;
+    }
     const test = outcome.data.test?.outcome as TestOutcome | undefined;
     setTestProblem(test && test !== "ok" ? TEST_PROBLEM[test] : null);
     setAttesting(false);
@@ -362,7 +391,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
             view={current}
             form={form}
             secret={secret}
-            errors={errors}
+            errors={withServerErrors(errors, write.failure?.fieldErrors ?? {})}
             onChange={(next) => {
               setForm(next);
               setErrors({});
@@ -377,7 +406,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
           />
         </>
       ) : null}
-      {write.failure && dialog === null && !attesting ? (
+      {write.failure && dialog === null ? (
         <FailureNotice failure={write.failure} orgSlug={orgSlug} />
       ) : null}
 
@@ -395,7 +424,7 @@ export function ClearinghousePanel({ ctx }: { ctx: PanelContext }): JSX.Element 
             rows={3}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            error={noteError ?? undefined}
+            error={noteError ?? write.failure?.fieldErrors.evidenceNote ?? undefined}
           />
           <label className="inline-flex min-h-11 items-center gap-2">
             <input

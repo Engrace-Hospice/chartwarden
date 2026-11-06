@@ -255,6 +255,63 @@ describe("ClearinghousePanel: choosing", () => {
   });
 });
 
+describe("ClearinghousePanel: the server's field errors land on their inputs", () => {
+  it("shows a refused vendor credential under the credential box, with the form still open and what was typed kept", async () => {
+    mount(NOTHING, {
+      PUT: {
+        [CH]: () =>
+          refused(422, "CLEARINGHOUSE_SECRET_INVALID", "invalid", [
+            {
+              field: "secret",
+              code: "X",
+              message: "That does not look like a Claim.MD account key.",
+            },
+          ]),
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Choose clearinghouse" }));
+    fireEvent.change(secretBox(), { target: { value: TYPED_VALUE } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("Customer sent us their Claim.MD account key", "Save");
+
+    expect(await screen.findByText(/does not look like a Claim\.MD account key/)).toBeTruthy();
+    // the prompt is out of the way, so the error is read beside the box it is about
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Choose the clearinghouse" })).toBeTruthy();
+  });
+
+  it("shows a PHI refusal of the Stedi evidence note under the note field", async () => {
+    const stedi: ClearinghouseView = { ...CLAIMMD, vendor: "stedi", verifiableBy: "attestation" };
+    mount(stedi, {
+      POST: {
+        [VERIFY]: () =>
+          refused(422, "EVIDENCE_LOOKS_LIKE_PHI", "looks like phi", [
+            {
+              field: "evidenceNote",
+              code: "EVIDENCE_LOOKS_LIKE_PHI",
+              message: "That text looks like it contains a patient identifier.",
+            },
+          ]),
+      },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Verify the connection" }));
+    fireEvent.change(screen.getByLabelText(/^What was checked, and by whom/), {
+      target: {
+        value: "Sent a 270 test transaction for the sandbox member and read the 271 reply",
+      },
+    });
+    fireEvent.click(screen.getByLabelText("This note names no patient information"));
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    confirm("Tenant asked us to complete setup, ticket CHG-8002", "Attest");
+
+    const field = screen.getByLabelText(/^What was checked, and by whom/);
+    expect(await screen.findByText(/looks like it contains a patient identifier/)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // what the operator typed is still there to fix
+    expect((field as HTMLTextAreaElement).value).toMatch(/270 test transaction/);
+  });
+});
+
 describe("ClearinghousePanel: coming back from Re-verify keeps the pin", () => {
   it("resumes a CHANGE pinned to the version the operator first read (3), so a change made meanwhile is a 412, not one they never saw", async () => {
     mount(CLAIMMD, { PUT: { [CH]: () => refused(403, "STEP_UP_REQUIRED") } });
