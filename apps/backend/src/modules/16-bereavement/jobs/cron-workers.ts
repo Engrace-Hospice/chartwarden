@@ -50,6 +50,7 @@ import type { MailingGenerateEnqueuePort } from "../mailings/enqueue-port";
 import { requestDischargeSummary } from "../render-payloads/index";
 import { settleOutstandingForClosure } from "../routes/closure-settlement";
 import { runEffects } from "../routes/effects-runner";
+import { withdrawLapsedGroupEnrollments } from "../routes/group-service-drizzle";
 import type { AlertPort, WriteOutboxPort } from "../routes/write-service";
 import {
   M16_ANNIVERSARY_LOOKAHEAD_DAYS,
@@ -353,6 +354,12 @@ export async function runClose13MonthsCron(deps: M16WorkerDeps): Promise<{ close
       );
       if (won) closed += 1;
     }
+    // ADR-0109 D10 (PR 3) — the nightly support-group pass, after the closures it may depend on: a family that left the program (an opt-out, a
+    // closed plan) leaves its groups. Set-based and idempotent.
+    await inRowTx(deps, organizationId, "group-withdraw", organizationId, async (tx) => {
+      const n = await withdrawLapsedGroupEnrollments(tx, now);
+      if (n > 0) log("m16.close-13mo: lapsed group enrollments withdrawn", { organizationId, n });
+    });
   }
   return { closed };
 }

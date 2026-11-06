@@ -259,6 +259,25 @@ import {
   VersionListQuerySchema as M15VersionListQuerySchema,
   VolunteerStatusQuerySchema as M15VolunteerStatusQuerySchema,
 } from "../../apps/backend/src/modules/15-discipline-care-plans/routes/m15-typebox";
+// ADR-0109 D10 (PR 3) — the M16 support groups (routes 53-66).
+import {
+  AddGroupSessionBody as M16AddGroupSessionBody,
+  AttendanceResultResponseSchema as M16AttendanceResultResponse,
+  CloseGroupBody as M16CloseGroupBody,
+  CreateGroupBody as M16CreateGroupBody,
+  EnrollContactBody as M16EnrollContactBody,
+  GroupDetailResponseSchema as M16GroupDetailResponse,
+  GroupEnrollmentListResponseSchema as M16GroupEnrollmentListResponse,
+  GroupEnrollmentResponseSchema as M16GroupEnrollmentResponse,
+  GroupListQuerySchema as M16GroupListQuerySchema,
+  GroupPageResponseSchema as M16GroupPageResponse,
+  GroupRosterResponseSchema as M16GroupRosterResponse,
+  GroupSessionListResponseSchema as M16GroupSessionListResponse,
+  GroupSessionResponseSchema as M16GroupSessionResponse,
+  RecordAttendanceBody as M16RecordAttendanceBody,
+  UpdateGroupBody as M16UpdateGroupBody,
+  WithdrawEnrollmentBody as M16WithdrawEnrollmentBody,
+} from "../../apps/backend/src/modules/16-bereavement/routes/group-typebox";
 // M16 Bereavement — the §4.2 request bodies + list queries the §4.1 route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M16-T07
 // web screens call the surface these type.
@@ -7953,6 +7972,83 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "The contact's touchpoints and program activities (mailings, sessions), newest first, cursor-paginated; program activities satisfy no cadence item; a bereavement volunteer sees no touchpoint outcome (ADR-0109 D10, #52)",
     query: M16ContactTimelineQuerySchema,
     response: M16ContactTimelinePageResponse,
+  },
+
+  // ── group.routes.ts (ADR-0109 D10, PR 3) ──
+  "GET /api/v1/bereavement/groups": {
+    summary:
+      "Support groups, newest first (`?status=`), cursor-paginated, each with its enrolled count and next session; bereavement oversight or bereavement-capable staff; names no family (ADR-0109 D10, #53)",
+    query: M16GroupListQuerySchema,
+    response: M16GroupPageResponse,
+  },
+  "POST /api/v1/bereavement/groups": {
+    summary:
+      "Create a DRAFT support group (recurring with its schedule, or drop-in), in person or virtual, facilitated by bereavement-capable staff or a bereavement volunteer; oversight only; `Idempotency-Key` required (ADR-0109 D10, #54)",
+    body: M16CreateGroupBody,
+    response: M16GroupDetailResponse,
+  },
+  "GET /api/v1/bereavement/groups/:groupId": {
+    summary: "One support group with its meeting link (ADR-0109 D10, #55)",
+    response: M16GroupDetailResponse,
+  },
+  "PATCH /api/v1/bereavement/groups/:groupId": {
+    summary:
+      "Edit a draft or open group (a recurring group's schedule only while a draft); oversight or the group's staff facilitator; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #56)",
+    body: M16UpdateGroupBody,
+    response: M16GroupDetailResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/open": {
+    summary:
+      "Open a draft group: a recurring group's sessions are materialized (group-local wall time, kept across DST); a volunteer facilitator must pass the 418.78 gates now (422 `GROUP_FACILITATOR_INELIGIBLE`); `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #57)",
+    response: M16GroupDetailResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/close": {
+    summary:
+      "Complete or cancel a group: live enrollments are withdrawn (`group_ended`) and future sessions cancelled; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #58)",
+    body: M16CloseGroupBody,
+    response: M16GroupDetailResponse,
+  },
+  "GET /api/v1/bereavement/groups/:groupId/sessions": {
+    summary: "A group's sessions by start, with attendee counts (ADR-0109 D10, #59)",
+    response: M16GroupSessionListResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/sessions": {
+    summary:
+      "Add one session (a drop-in meeting, or an extra meeting of a recurring group); `Idempotency-Key` required (ADR-0109 D10, #60)",
+    body: M16AddGroupSessionBody,
+    response: M16GroupSessionResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/sessions/:sessionId/cancel": {
+    summary:
+      "Cancel a scheduled session; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #61)",
+    response: M16GroupSessionResponse,
+  },
+  "GET /api/v1/bereavement/groups/:groupId/roster": {
+    summary:
+      "The roster of live program families (an opted-out or closed-plan contact drops off); oversight, the staff facilitator, or a volunteer facilitator passing the 418.78 gates, who gets the reduced projection (display name, enrollment status, attended) (ADR-0109 D10, #62)",
+    response: M16GroupRosterResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/enrollments": {
+    summary:
+      "Enroll a program family member (active plan and contact, no full / pause opt-out) into an open group under capacity; the contact's counselor or oversight; idempotent for a contact already enrolled; `Idempotency-Key` required (ADR-0109 D10, #63)",
+    body: M16EnrollContactBody,
+    response: M16GroupEnrollmentResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/enrollments/:contactId/withdraw": {
+    summary:
+      "Withdraw a contact's live enrollment (requested by the family, or removed by staff); `Idempotency-Key` required (ADR-0109 D10, #64)",
+    body: M16WithdrawEnrollmentBody,
+    response: M16GroupEnrollmentResponse,
+  },
+  "POST /api/v1/bereavement/groups/:groupId/sessions/:sessionId/attendance": {
+    summary:
+      "Record who attended a session that has started (idempotent per contact): each new attendee gets a contact-log activity row (`support_group_session`, outcome `attended`) that satisfies no cadence item; emits `m16.bereavement.support_group_attendance_recorded`; `Idempotency-Key` required (ADR-0109 D10, #65)",
+    body: M16RecordAttendanceBody,
+    response: M16AttendanceResultResponse,
+  },
+  "GET /api/v1/bereavement/contacts/:contactId/support-groups": {
+    summary: "One contact's support-group enrollments, live and past (ADR-0109 D10, #66)",
+    response: M16GroupEnrollmentListResponse,
   },
 
   // ── contacts.routes.ts ──

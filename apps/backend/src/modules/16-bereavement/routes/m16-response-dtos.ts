@@ -10,6 +10,25 @@
 import type { Static } from "@sinclair/typebox";
 import type { CursorPage } from "./concurrency";
 import type { PreDeathDraftView as SvcPreDeathDraftView } from "./draft-service";
+import type {
+  AttendanceResultView as SvcAttendanceResultView,
+  GroupDetailView as SvcGroupDetailView,
+  GroupEnrollmentView as SvcGroupEnrollmentView,
+  GroupRosterView as SvcGroupRosterView,
+  GroupSessionView as SvcGroupSessionView,
+  GroupView as SvcGroupView,
+} from "./group-service";
+import type {
+  AttendanceResultResponseSchema,
+  GroupDetailResponseSchema,
+  GroupEnrollmentListResponseSchema,
+  GroupEnrollmentResponseSchema,
+  GroupPageResponseSchema,
+  GroupRosterResponseSchema,
+  GroupSessionListResponseSchema,
+  GroupSessionResponseSchema,
+  GroupViewResponseSchema,
+} from "./group-typebox";
 import type { PhysicianLetterView as SvcPhysicianLetterView } from "./letter-service";
 import type {
   BereavedContactRowViewResponseSchema,
@@ -167,3 +186,23 @@ type _ContactTimeline = Conforms<
   Static<typeof ContactTimelinePageResponseSchema>,
   SvcContactTimelinePage
 >;
+
+// ADR-0109 D10 (PR 3) — support groups (routes 53-66).
+type _Group = Conforms<Static<typeof GroupViewResponseSchema>, SvcGroupView>;
+type _GroupDetail = Conforms<Static<typeof GroupDetailResponseSchema>, SvcGroupDetailView>;
+type _GroupPage = Conforms<Static<typeof GroupPageResponseSchema>, CursorPage<SvcGroupView>>;
+type _GroupSession = Conforms<Static<typeof GroupSessionResponseSchema>, SvcGroupSessionView>;
+type _GroupSessions = Conforms<
+  Static<typeof GroupSessionListResponseSchema>,
+  SvcGroupSessionView[]
+>;
+type _GroupRoster = Conforms<Static<typeof GroupRosterResponseSchema>, SvcGroupRosterView>;
+type _GroupEnrollment = Conforms<
+  Static<typeof GroupEnrollmentResponseSchema>,
+  SvcGroupEnrollmentView
+>;
+type _GroupEnrollments = Conforms<
+  Static<typeof GroupEnrollmentListResponseSchema>,
+  SvcGroupEnrollmentView[]
+>;
+type _Attendance = Conforms<Static<typeof AttendanceResultResponseSchema>, SvcAttendanceResultView>;

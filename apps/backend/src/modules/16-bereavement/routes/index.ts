@@ -35,6 +35,23 @@ export type {
 } from "./draft-service";
 export { type M16LetterDeps, buildDrizzleM16LetterService } from "./letter-service-drizzle";
 export { type M16MailingDeps, buildDrizzleM16MailingService } from "./mailing-service-drizzle";
+export {
+  type M16GroupDeps,
+  buildDrizzleM16GroupService,
+  withdrawLapsedGroupEnrollments,
+} from "./group-service-drizzle";
+export type {
+  AttendanceResultView,
+  CreateGroupInput,
+  GroupDetailView,
+  GroupEnrollmentView,
+  GroupRosterEntry,
+  GroupRosterView,
+  GroupSessionView,
+  GroupView,
+  M16GroupService,
+  UpdateGroupInput,
+} from "./group-service";
 export type {
   ListMailingItemsInput,
   ListMailingRunsInput,
@@ -88,6 +105,7 @@ export {
 } from "./effects-runner";
 
 import type { M16DraftService } from "./draft-service";
+import type { M16GroupService } from "./group-service";
 import type { M16LetterService } from "./letter-service";
 import type { M16MailingService } from "./mailing-service";
 import type { M16ReadService } from "./read-service";
@@ -103,4 +121,6 @@ export interface M16RouteServices {
   readonly letterService: M16LetterService;
   /** ADR-0109 D10 — the mailing program: configs, runs, the batch download and confirm-mailed (bereavement oversight only). */
   readonly mailingService: M16MailingService;
+  /** ADR-0109 D10 (PR 3) — support groups: groups, sessions, enrollment, roster and attendance. */
+  readonly groupService: M16GroupService;
 }

@@ -4351,8 +4351,8 @@ export const M15_CONTRIBUTED_PERMISSIONS = {
 export type M15ContributedPermissionKey = keyof typeof M15_CONTRIBUTED_PERMISSIONS;
 
 /**
- * M16-T06 — the thirty-six §4.7 Bereavement permission keys Module 16 registers into M3's catalog (twenty-nine from the
- * original spec, the two ADR-0109 D5 pre-death-draft keys, the two D6 physician-letter keys and the three D10 mailing keys).
+ * M16-T06 — the §4.7 Bereavement permission keys Module 16 registers into M3's catalog (twenty-nine from the
+ * original spec, the two ADR-0109 D5 pre-death-draft keys, the two D6 physician-letter keys, the three D10 mailing keys and the PR 3 program keys).
  *
  * `abac` names the DEFAULT predicate the M3 catalog records for the key; the §4.1 route table is what
  * actually binds a guard, and it may bind a different (or no) predicate per route. Four of the five §4.8
@@ -4595,9 +4595,37 @@ export const M16_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "org_scope_bereavement_oversight",
   },
+  // ADR-0109 D10 (PR 3) — support groups. `read` lists groups and sessions (no roster) to bereavement-capable staff and oversight; `manage`
+  // creates (oversight) and edits / opens / closes a group and its sessions (oversight or the group's STAFF facilitator); `enroll` signs a
+  // family up (the contact's own counselor or oversight: the window); `run` reads the roster and records attendance (oversight, the staff
+  // facilitator, or a VOLUNTEER facilitator who passes the 418.78 gates). Migration 1390 mirrors them into the permission catalog.
+  "bereavement.group.read": {
+    resource: "bereavement_support_group",
+    action: "read",
+    category: "clinical",
+    abac: "discipline_can_provide_bereavement",
+  },
+  "bereavement.group.manage": {
+    resource: "bereavement_support_group",
+    action: "manage",
+    category: "clinical",
+    abac: "bereavement_group_scope",
+  },
+  "bereavement.group.enroll": {
+    resource: "bereavement_support_group",
+    action: "enroll",
+    category: "clinical",
+    abac: "bereavement_window",
+  },
+  "bereavement.group.run": {
+    resource: "bereavement_support_group",
+    action: "run",
+    category: "clinical",
+    abac: "bereavement_group_scope",
+  },
 } satisfies Record<string, PermissionDef>;
 
-/** Union of the M16 contributed permission keys (thirty-six). */
+/** Union of the M16 contributed permission keys. */
 export type M16ContributedPermissionKey = keyof typeof M16_CONTRIBUTED_PERMISSIONS;
 
 /**

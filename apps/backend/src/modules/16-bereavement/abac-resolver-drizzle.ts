@@ -18,7 +18,7 @@
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { MembershipId } from "@chartwarden/types";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   type BereavedContactAbacFacts,
   type BereavementAbacResolver,
@@ -160,6 +160,41 @@ export function buildDrizzleBereavementAbacResolver(
         return userId === null ? null : await disciplineFor(userId);
       } catch {
         return null; // §8.7 — an unreadable grant set denies
+      }
+    },
+
+    // ADR-0109 D10 (PR 3) — `bereavement_group_scope`: the group's facilitators, by group id or through one of its sessions.
+    async loadGroupFacilitation(orgId, ref) {
+      const GROUP = schema.bereavementSupportGroup;
+      const SESSION = schema.bereavementSupportGroupSession;
+      try {
+        return await withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
+          const cols = {
+            organizationId: GROUP.organizationId,
+            groupId: GROUP.id,
+            facilitatorKind: GROUP.facilitatorKind,
+            facilitatorUserId: GROUP.facilitatorUserId,
+            coFacilitatorUserId: GROUP.coFacilitatorUserId,
+          };
+          const [row] =
+            ref.sessionId !== undefined
+              ? await tx
+                  .select(cols)
+                  .from(SESSION)
+                  .innerJoin(GROUP, eq(GROUP.id, SESSION.groupId))
+                  .where(
+                    ref.groupId === undefined
+                      ? eq(SESSION.id, ref.sessionId)
+                      : and(eq(SESSION.id, ref.sessionId), eq(SESSION.groupId, ref.groupId)),
+                  )
+                  .limit(1)
+              : ref.groupId !== undefined
+                ? await tx.select(cols).from(GROUP).where(eq(GROUP.id, ref.groupId)).limit(1)
+                : [];
+          return row ? { ...row, coFacilitatorUserId: row.coFacilitatorUserId ?? null } : null;
+        });
+      } catch {
+        return null;
       }
     },
   };

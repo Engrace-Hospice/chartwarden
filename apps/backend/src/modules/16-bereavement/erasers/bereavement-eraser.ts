@@ -59,6 +59,8 @@ export interface BereavementEraseCounts {
   readonly physicianLetters: number;
   /** `bereavement_mailing_item` rows deleted (ADR-0109 D10: the only mailing table that names a plan and a contact; a RESTRICT FK on the contact). */
   readonly mailingItems: number;
+  /** `bereavement_support_group_attendance` + `_enrollment` rows deleted (ADR-0109 D10, PR 3: they name a plan and a contact; RESTRICT FKs). */
+  readonly groupParticipation: number;
   /** `bereaved_contact` rows deleted. */
   readonly contacts: number;
   /** `bereavement_plan` roots tombstoned (rows PRESERVED for FK integrity — not part of the tally). */
@@ -124,6 +126,7 @@ export async function eraseBereavementRecord(
     counts.assessmentDrafts +
     counts.physicianLetters +
     counts.mailingItems +
+    counts.groupParticipation +
     counts.contacts;
   return { erased, shredded, counts };
 }
@@ -138,6 +141,7 @@ const ZERO: BereavementEraseCounts = {
   assessmentDrafts: 0,
   physicianLetters: 0,
   mailingItems: 0,
+  groupParticipation: 0,
   contacts: 0,
   plansTombstoned: 0,
   closuresShredded: 0,
@@ -192,6 +196,8 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
   const DRAFT = schema.bereavementRiskAssessmentDraft;
   const LETTER = schema.bereavementPhysicianLetter;
   const MAILING_ITEM = schema.bereavementMailingItem;
+  const GROUP_ATTENDANCE = schema.bereavementSupportGroupAttendance;
+  const GROUP_ENROLLMENT = schema.bereavementSupportGroupEnrollment;
   const CLOSURE = schema.bereavementPlanClosure;
 
   /** The decedent's plan-root ids — every child table is keyed on `plan_id`, not on the patient. */
@@ -341,6 +347,20 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
             .where(inArray(MAILING_ITEM.planId, planIds))
             .returning({ id: MAILING_ITEM.id }),
         );
+        // ADR-0109 D10 (PR 3) — group attendance and enrollment rows name a plan and a contact (RESTRICT): ids only, deleted before the contacts.
+        // The group and its sessions are org-level programming and survive.
+        const groupAttendance = await del(() =>
+          tx
+            .delete(GROUP_ATTENDANCE)
+            .where(inArray(GROUP_ATTENDANCE.planId, planIds))
+            .returning({ id: GROUP_ATTENDANCE.id }),
+        );
+        const groupEnrollments = await del(() =>
+          tx
+            .delete(GROUP_ENROLLMENT)
+            .where(inArray(GROUP_ENROLLMENT.planId, planIds))
+            .returning({ id: GROUP_ENROLLMENT.id }),
+        );
         const contacts = await del(() =>
           tx.delete(CONTACT).where(inArray(CONTACT.planId, planIds)).returning({ id: CONTACT.id }),
         );
@@ -382,6 +402,7 @@ export function createDrizzleBereavementEraseStore(db: DbClient): BereavementEra
           assessmentDrafts,
           physicianLetters,
           mailingItems,
+          groupParticipation: groupAttendance + groupEnrollments,
           contacts,
           plansTombstoned: tombstoned.length,
           closuresShredded: closures.length,

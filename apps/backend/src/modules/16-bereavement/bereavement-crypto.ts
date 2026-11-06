@@ -22,14 +22,17 @@ export interface BereavementKeyProvider {
   ): Promise<{ readonly version: string; readonly key: Buffer }>;
 }
 
-/** The six sealed columns. */
+/** The sealed columns. */
 export type BereavementCipherColumn =
   | "bereaved_contact.email"
   | "bereaved_contact.phone"
   | "bereaved_contact.mailing_address"
   | "bereaved_contact.care_goals"
   | "bereavement_physician_letter.personal_note"
-  | "bereavement_contact_log.contact_notes";
+  | "bereavement_contact_log.contact_notes"
+  // ADR-0109 D10 (PR 3) — a virtual support group's / memorial service's meeting link.
+  | "bereavement_support_group.join_url"
+  | "bereavement_memorial_service.join_url";
 
 export interface BereavementCipher {
   encrypt(

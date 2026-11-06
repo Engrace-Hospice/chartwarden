@@ -48,3 +48,4 @@ export * from "./bereavement-assessment-tasks"; // bereavement_assessment_task (
 export * from "./bereavement-risk-assessment-drafts"; // bereavement_risk_assessment_draft (ADR-0109 D5, migration 1343)
 export * from "./bereavement-physician-letters"; // bereavement_physician_letter (ADR-0109 D6, migration 1345)
 export * from "./bereavement-mailings"; // bereavement_mailing_config / _run / _item (ADR-0109 D10, migration 1374)
+export * from "./bereavement-support-groups"; // bereavement_support_group / _session / _enrollment / _attendance (ADR-0109 D10, migration 1390)

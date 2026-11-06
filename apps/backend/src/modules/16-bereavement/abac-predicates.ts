@@ -22,6 +22,10 @@
 //        death. The caller's discipline is an MSW, chaplain or bereavement counselor AND they sit on the patient's care
 //        team (M5 `CareTeamProvider`, through the injected probe), or they hold bereavement oversight. A volunteer and
 //        every portal session are denied; an absent probe, an unresolvable admission or a failed read denies (fail CLOSED).
+//   bereavement_group_scope            — ADR-0109 D10 (PR 3): who may manage or run a SUPPORT GROUP. Target `{ groupId? | sessionId?, mode }`.
+//        Oversight always. The group's STAFF facilitator (or co-facilitator) both modes. A VOLUNTEER facilitator `run` only (roster + attendance),
+//        and only while M15's 418.78 gates pass. Creating a group (no group yet) is oversight only. A portal session, an unresolvable group, an
+//        absent resolver arm or a gate outage DENIES (fail CLOSED).
 //   portal_self_service                — §4.8 "reused" for the same reason: the caller is the bereaved
 //        contact themselves, on an M31 portal session whose `portalAccountId` matches the target contact's.
 //        A STAFF session never satisfies it, whatever its roles, and a portal session that names no account
@@ -50,6 +54,7 @@ export const M16_ABAC_PREDICATES = [
   "org_scope_bereavement_oversight",
   "portal_self_service",
   "bereavement_pre_death_assessor",
+  "bereavement_group_scope",
 ] as const;
 
 export type M16RegisteredAbacPredicate = (typeof M16_ABAC_PREDICATES)[number];
@@ -150,6 +155,16 @@ export interface BereavedContactAbacFacts {
   readonly portalAccountId: string | null;
 }
 
+/** ADR-0109 D10 (PR 3) — who facilitates a support group (`bereavement_group_scope` decides over this). */
+export interface BereavementGroupFacilitationFacts {
+  readonly organizationId: string;
+  readonly groupId: string;
+  readonly facilitatorKind: "staff" | "volunteer";
+  /** Membership ids. */
+  readonly facilitatorUserId: string;
+  readonly coFacilitatorUserId: string | null;
+}
+
 /** The read surface M16's ABAC predicates resolve against (Drizzle in prod; in-memory in tests). */
 export interface BereavementAbacResolver {
   /** Plan facts for a `bereavement_plan` id, or null when absent / cross-tenant (fail-closed). */
@@ -166,6 +181,14 @@ export interface BereavementAbacResolver {
    * {@link DISCIPLINE_FOR_ROLE_KEY} for why this is derived from M3 role grants.
    */
   disciplineOf(orgId: string, subjectId: string): Promise<string | null>;
+  /**
+   * ADR-0109 D10 (PR 3) — the facilitation facts of a support group, addressed by the group or by one of its sessions; null when absent /
+   * cross-tenant. Optional: a resolver without it makes `bereavement_group_scope` deny everyone but oversight (fail CLOSED).
+   */
+  loadGroupFacilitation?(
+    orgId: string,
+    ref: { readonly groupId?: string; readonly sessionId?: string },
+  ): Promise<BereavementGroupFacilitationFacts | null>;
 }
 
 /**
@@ -302,6 +325,38 @@ export function decideBereavementWindow(
   );
 }
 
+/** ADR-0109 D10 (PR 3) — what a group-scoped route asks for: `manage` (edit, open, close, sessions) or `run` (roster, attendance). */
+export type BereavementGroupScopeMode = "manage" | "run";
+
+/**
+ * `bereavement_group_scope` over already-resolved facts (pure; unit-tested). `facts` null = no group named (creating one) or an unresolvable one:
+ * only oversight passes. A volunteer (by discipline, or as this group's volunteer facilitator) may only `run`, and only while the 418.78 gates pass.
+ */
+export function decideGroupScope(
+  facts: BereavementGroupFacilitationFacts | null,
+  actor: {
+    readonly organizationId: string;
+    readonly membershipId: string | null;
+    readonly hasOversight: boolean;
+    readonly isVolunteer: boolean;
+    readonly volunteerGatesPass: boolean;
+  },
+  mode: BereavementGroupScopeMode,
+): boolean {
+  if (actor.hasOversight) return true;
+  if (facts === null || actor.membershipId === null) return false;
+  if (facts.organizationId !== actor.organizationId) return false; // defense in depth behind RLS
+  const isFacilitator =
+    facts.facilitatorUserId === actor.membershipId ||
+    facts.coFacilitatorUserId === actor.membershipId;
+  if (!isFacilitator) return false;
+  const actsAsVolunteer =
+    actor.isVolunteer ||
+    (facts.facilitatorKind === "volunteer" && facts.facilitatorUserId === actor.membershipId);
+  if (!actsAsVolunteer) return true;
+  return mode === "run" && actor.volunteerGatesPass;
+}
+
 /**
  * Build M16's four §4.8 predicate resolvers over injected deps (pure factory — unit-tested against a fresh
  * registry; the boot path registers them via {@link registerBereavementAbacPredicates}).
@@ -388,6 +443,55 @@ export function buildBereavementAbacPredicates(
       } catch {
         return false; // an M5 / M6 outage denies; it never assumes a seat on the team
       }
+    },
+
+    bereavement_group_scope: async (context, target) => {
+      if (PORTAL_SESSION_CLASSES.includes(sessionClassOf(context) as never)) return false;
+      const mode: BereavementGroupScopeMode = target.mode === "run" ? "run" : "manage";
+      const hasOversight = hasBereavementOversight(context);
+      if (hasOversight) return true;
+      const groupId = targetStr(target, "groupId");
+      const sessionId = targetStr(target, "sessionId");
+      const load = resolver.loadGroupFacilitation;
+      if ((groupId === null && sessionId === null) || load === undefined) return false;
+      const membershipId = membershipIdOf(context);
+      let facts: BereavementGroupFacilitationFacts | null;
+      try {
+        facts = await load.call(resolver, context.organizationId, {
+          ...(groupId === null ? {} : { groupId }),
+          ...(sessionId === null ? {} : { sessionId }),
+        });
+      } catch {
+        return false; // an unreadable group denies
+      }
+      const isVolunteer = disciplineForRoleKeys(context.roles) === BEREAVEMENT_VOLUNTEER_DISCIPLINE;
+      const mayBeVolunteer =
+        isVolunteer ||
+        (facts !== null &&
+          facts.facilitatorKind === "volunteer" &&
+          facts.facilitatorUserId === membershipId);
+      let volunteerGatesPass = false;
+      if (mayBeVolunteer && mode === "run" && membershipId !== null) {
+        try {
+          volunteerGatesPass = await volunteerGatesSatisfied({
+            organizationId: context.organizationId,
+            volunteerMembershipId: membershipId,
+          });
+        } catch {
+          volunteerGatesPass = false; // §8.7 — an M15 outage denies the volunteer
+        }
+      }
+      return decideGroupScope(
+        facts,
+        {
+          organizationId: context.organizationId,
+          membershipId,
+          hasOversight,
+          isVolunteer,
+          volunteerGatesPass,
+        },
+        mode,
+      );
     },
 
     portal_self_service: async (context, target) => {

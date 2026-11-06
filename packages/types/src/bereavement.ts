@@ -245,6 +245,35 @@ export const BEREAVEMENT_MAILING_EXCLUSION_REASONS = [
 export type BereavementMailingExclusionReason =
   (typeof BEREAVEMENT_MAILING_EXCLUSION_REASONS)[number];
 
+// ── ADR-0109 D10 (PR 3) — support groups (mirrors the `bereavement_support_group*` text + CHECK value sets, migration 1390) ─────────────
+
+export type BereavementGroupFormat = "recurring" | "drop_in";
+/** In person or virtual (a support group or a memorial service). */
+export type BereavementProgramModality = "in_person" | "virtual";
+export type BereavementGroupFacilitatorKind = "staff" | "volunteer";
+export type BereavementGroupStatus = "draft" | "open" | "completed" | "cancelled";
+export type BereavementGroupSessionStatus = "scheduled" | "held" | "cancelled";
+export type BereavementGroupEnrollmentStatus = "enrolled" | "withdrawn";
+export const BEREAVEMENT_GROUP_WITHDRAWN_REASONS = [
+  "requested",
+  "staff_removed",
+  "opted_out",
+  "plan_closed",
+  "group_ended",
+] as const;
+export type BereavementGroupWithdrawnReason = (typeof BEREAVEMENT_GROUP_WITHDRAWN_REASONS)[number];
+
+/** A recurring group's schedule, in the group's IANA timezone: `count` sessions every `intervalWeeks` weeks from `firstDate` at `startTime`. */
+export interface BereavementGroupRecurrence {
+  /** `YYYY-MM-DD`, group-local. */
+  readonly firstDate: string;
+  /** `HH:MM`, group-local wall time (kept across DST changes). */
+  readonly startTime: string;
+  readonly durationMinutes: number;
+  readonly intervalWeeks: number;
+  readonly count: number;
+}
+
 // ── §3.3 owned tables + D11 audit denylists ───────────────────────────────────────────────────────────
 
 /** M16's owned tables (the manifest `ownedTables` set). */
@@ -264,6 +293,10 @@ export type M16TableName =
   | "bereavement_mailing_config"
   | "bereavement_mailing_run"
   | "bereavement_mailing_item"
+  | "bereavement_support_group"
+  | "bereavement_support_group_session"
+  | "bereavement_support_group_enrollment"
+  | "bereavement_support_group_attendance"
   | "tenant_bereavement_external_source_gate_override";
 
 /**
@@ -302,6 +335,11 @@ export const M16_AUDIT_DENYLIST: { readonly [K in M16TableName]: readonly string
   bereavement_mailing_config: ["content_jsonb"],
   bereavement_mailing_run: ["content_jsonb"],
   bereavement_mailing_item: [],
+  // ADR-0109 D10 (PR 3) — a group's description is agency prose; the join link is ciphertext (kept, as every `*_cipher`, for change detection).
+  bereavement_support_group: ["description"],
+  bereavement_support_group_session: [],
+  bereavement_support_group_enrollment: [],
+  bereavement_support_group_attendance: [],
   tenant_bereavement_external_source_gate_override: ["additional_rationale"],
 } as const;
 
@@ -354,6 +392,7 @@ export const M16_EVENT_NAMES = [
   "m16.bereavement.outreach_artifact_requested",
   "m16.bereavement.document_requested",
   "m16.bereavement.mailing_run_mailed",
+  "m16.bereavement.support_group_attendance_recorded",
   "m16.bereavement.risk_score_computed",
   "m16.bereavement.anniversary_due_in_14_days",
 ] as const;

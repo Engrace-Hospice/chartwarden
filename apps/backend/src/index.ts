@@ -807,6 +807,7 @@ import {
   M16_PLATFORM_JOB_ID,
   buildDrizzleBereavementAbacResolver,
   buildDrizzleM16DraftService,
+  buildDrizzleM16GroupService,
   buildDrizzleM16LetterService,
   buildDrizzleM16MailingService,
   buildDrizzleM16ReadService,
@@ -6603,6 +6604,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               getTenantKeyProvider().dekForOrgVersion(orgId, version),
           });
           const m16ReadService = buildDrizzleM16ReadService(dbHandle.db, { cipher: m16Cipher });
+          // ADR-0109 D10 (PR 3) — the discipline read the support-group service validates facilitators with (the ABAC resolver's own).
+          const m16DisciplineResolver = buildDrizzleBereavementAbacResolver(dbHandle.db, {
+            roleGrants: createDbEffectivePermissionStore(dbHandle.db),
+          });
           const m16AlertPort = createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter);
           const m16WriteService = buildDrizzleM16WriteService(dbHandle.db, m16ReadService, {
             outbox: m16OutboxPublisher,
@@ -6635,6 +6640,22 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               outbox: m16OutboxPublisher,
               enqueue: m16MailingEnqueue.port,
               log: (message, context) => app.log.warn(context, message),
+            }),
+            // ADR-0109 D10 (PR 3) — support groups. The facilitator's discipline resolves through the same M3 role-grant read the ABAC resolver
+            // uses; a VOLUNTEER facilitator's 418.78 gates through M15's `VolunteerComplianceProvider` (fail closed on throw); the meeting link is
+            // sealed with the shared tenant-DEK envelope. Attendance emits `support_group_attendance_recorded` on its own transaction.
+            groupService: buildDrizzleM16GroupService(dbHandle.db, {
+              outbox: m16OutboxPublisher,
+              cipher: m16Cipher,
+              disciplineOf: (organizationId, membershipId) =>
+                m16DisciplineResolver.disciplineOf(organizationId, membershipId),
+              volunteerGatesSatisfied: async ({ organizationId, volunteerMembershipId }) => {
+                const status = await getSeam("VolunteerComplianceProvider").effectiveStatusFor(
+                  organizationId as never,
+                  volunteerMembershipId as never,
+                );
+                return status.isActive === true;
+              },
             }),
           });
           // M21 (Supplies, DME & Comfort Kits) — mount the §4.1 route plugins over the Drizzle READ +
