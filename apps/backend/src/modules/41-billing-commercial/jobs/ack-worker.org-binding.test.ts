@@ -30,11 +30,12 @@ vi.mock("@chartwarden/tenancy", async () => {
   };
 });
 
+import { ChartWardenError } from "@chartwarden/types";
 import type { ClearinghouseContext } from "@chartwarden/x12-837-client";
 import type { AckBinding, AckWorkerDeps } from "./ack-apply";
 import { heldQuarantineReport } from "./ack-held-replay";
 import { runAckPull } from "./ack-worker";
-import { M41_UNBOUND_WITH_WORK_ALERT } from "./unbound-alert";
+import { M41_UNBOUND_WITH_WORK_ALERT, __resetUnboundAlertMemoryForTest } from "./unbound-alert";
 
 const PE = "00000000-0000-4000-8000-0000000000e1";
 const bindingOf = (vendor: string | null, reached: ClearinghouseContext[]): AckBinding => ({
@@ -88,6 +89,7 @@ function depsFor(bound: Record<string, string>) {
 
 describe("runAckPull with a clearinghouse per organization", () => {
   beforeEach(() => {
+    __resetUnboundAlertMemoryForTest();
     rowsByTable.clear();
     // One in-doubt submission waiting for an answer, for whichever organization is asked.
     rowsByTable.set("commercial_submission", [{ providerEntityId: PE, payerId: "CH-PAYER-1" }]);
@@ -116,6 +118,67 @@ describe("runAckPull with a clearinghouse per organization", () => {
       organizationId: "org-2",
       payload: { waiting: 1 },
     });
+  });
+
+  // Re-review M4: an org whose credential cannot be opened (or whose config read failed) is reported per org, never a failed tick.
+  it.each([
+    [
+      "a stored credential that cannot be opened",
+      () => new ChartWardenError("CLEARINGHOUSE_CREDENTIAL_UNREADABLE", "unreadable", 503),
+      "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+    ],
+    ["a config read that failed", () => new Error("connection reset"), "CLEARINGHOUSE_UNAVAILABLE"],
+  ])(
+    "REPORTS an org whose binding cannot be resolved (%s) and still pulls the other: no failed tick",
+    async (_label, fail, code) => {
+      const { deps, reached } = depsFor({ "org-2": "claimmd" });
+      const alerts: { alertCode: string; organizationId: string; payload: unknown }[] = [];
+      const logs: unknown[] = [];
+      const broken: AckWorkerDeps = {
+        ...deps,
+        binding: {
+          ...deps.binding,
+          forOrg: async (organizationId) => {
+            if (organizationId === "org-1") throw fail();
+            return (deps.binding.forOrg as NonNullable<typeof deps.binding.forOrg>)(organizationId);
+          },
+        },
+        alerts: { dispatch: async (a: never) => void alerts.push(a) },
+        log: (e) => void logs.push(e),
+      };
+
+      await expect(runAckPull(broken)).resolves.toMatchObject({ failures: [] });
+
+      expect(reached["org-2"]).toHaveLength(1); // the other org was pulled
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]).toMatchObject({
+        alertCode: M41_UNBOUND_WITH_WORK_ALERT,
+        organizationId: "org-1",
+        payload: { waiting: 1, code },
+      });
+      if (!(fail() instanceof ChartWardenError)) {
+        expect(logs).toContainEqual({ event: "clearinghouse.resolve_failed", errorClass: "Error" });
+      }
+    },
+  );
+
+  it("labels a failed org with its error CODE", async () => {
+    const { deps } = depsFor({ "org-2": "claimmd" });
+    const broken: AckWorkerDeps = {
+      ...deps,
+      binding: {
+        ...deps.binding,
+        forOrg: async (organizationId) => {
+          if (organizationId === "org-1") {
+            throw new ChartWardenError("CLEARINGHOUSE_SOMETHING_NEW", "another typed refusal", 503);
+          }
+          return (deps.binding.forOrg as NonNullable<typeof deps.binding.forOrg>)(organizationId);
+        },
+      },
+    };
+    await expect(runAckPull(broken)).rejects.toThrow(
+      /^commercial acknowledgment pull failed: org org-1: CLEARINGHOUSE_SOMETHING_NEW$/,
+    );
   });
 
   it("is quiet for an organization with none while nothing waits for an answer", async () => {

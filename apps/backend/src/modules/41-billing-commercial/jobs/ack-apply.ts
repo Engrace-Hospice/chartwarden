@@ -331,7 +331,7 @@ export async function applyAckEvent(
   scope: Scope,
   raw: unknown,
 ): Promise<ApplyOutcome> {
-  const deps = await withOrgBinding(rawDeps, scope.organizationId);
+  const deps = await withOrgBinding(rawDeps, scope.organizationId, rawDeps.log);
   const checked = validateAckEvent(raw);
   if (!checked.ok) {
     const eventId = checked.eventId ?? derivedEventId(raw);

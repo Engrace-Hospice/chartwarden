@@ -38,6 +38,11 @@ export async function reportUnboundWithWork(
     readonly organizationId: string;
     readonly queue: string;
     readonly waiting: number;
+    /**
+     * Why the org has no live clearinghouse when it is not simply unbound: the code of the typed refusal (its credential cannot be
+     * opened, its config could not be read). A code only, never a message.
+     */
+    readonly code?: string;
     readonly now?: () => number;
   },
 ): Promise<void> {
@@ -45,13 +50,17 @@ export async function reportUnboundWithWork(
   const key = `${input.organizationId}:${input.queue}`;
   if (at - (lastAlertAt.get(key) ?? Number.NEGATIVE_INFINITY) < ALERT_QUIET_MS) return;
   lastAlertAt.set(key, at);
-  deps.log?.({ event: "clearinghouse.unbound_with_work", code: "CH_NOT_WIRED" });
+  deps.log?.({ event: "clearinghouse.unbound_with_work", code: input.code ?? "CH_NOT_WIRED" });
   try {
     await deps.alerts?.dispatch({
       alertCode: M41_UNBOUND_WITH_WORK_ALERT,
       severity: "warn",
       organizationId: input.organizationId,
-      payload: { queue: input.queue, waiting: input.waiting },
+      payload: {
+        queue: input.queue,
+        waiting: input.waiting,
+        ...(input.code ? { code: input.code } : {}),
+      },
     });
   } catch (err) {
     // an alert router that is down must not turn one tenant's setup into a failed tick for all of them

@@ -27,7 +27,7 @@ import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, asc, eq, lte, sql } from "drizzle-orm";
 import { claimsBillingAllowsWork } from "../../../bootstrap/claims-billing-gate";
 import type { CommercialContextPort } from "../eligibility/service";
-import { withOrgBinding } from "../services/org-binding";
+import { failureLabel, isPerOrgResolveFailure, withOrgBinding } from "../services/org-binding";
 import type { Render837iArgs, Render837iResult } from "../services/render-837i";
 import { evaluateGateForClaim } from "../services/submission-service";
 import type { CommercialActor, CommercialOutboxPort, CommercialTx } from "../services/types";
@@ -522,7 +522,7 @@ export async function drainOrg(
       await sendOne(deps, leased.sub);
       sent += 1;
     } catch (err) {
-      failures.push(`submission ${id}: ${err instanceof Error ? err.name : "failed"}`);
+      failures.push(`submission ${id}: ${failureLabel(err)}`);
     }
   }
   return { sent, failures };
@@ -547,7 +547,24 @@ export async function runSubmissionDrain(deps: SubmissionWorkerDeps): Promise<Dr
   for (const { organizationId } of await deps.activeOrgs.listActiveOrgs()) {
     try {
       // Resolved once per org: the rest of this org's tick uses ITS clearinghouse; another org's tick is never affected by it.
-      const orgDeps = await withOrgBinding(deps, organizationId);
+      let orgDeps: SubmissionWorkerDeps;
+      try {
+        orgDeps = await withOrgBinding(deps, organizationId, deps.log);
+      } catch (err) {
+        if (!isPerOrgResolveFailure(err)) throw err;
+        // Its credential cannot be opened, or its config could not be read: that tenant's problem, reported like an unbound org
+        // (with the code) and the tick carries on. Failing the shared tick would retry it into the DLQ for every tenant.
+        const waiting = await dueCount(deps, organizationId);
+        if (waiting > 0) {
+          await reportUnboundWithWork(deps, {
+            organizationId,
+            queue: M41_CRON_QUEUES.submissionDrain,
+            waiting,
+            code: err.code,
+          });
+        }
+        continue;
+      }
       if (orgDeps.binding.vendor === null) {
         // Unbound: nothing may be sent, and nothing is skipped silently: an org with rows waiting is REPORTED (one alert per window,
         // and a log line) and the tick carries on. It is that tenant's setup, not a fault of this shared job: failing the tick would
@@ -566,7 +583,7 @@ export async function runSubmissionDrain(deps: SubmissionWorkerDeps): Promise<Dr
       sent += res.sent;
       failures.push(...res.failures);
     } catch (err) {
-      failures.push(`org ${organizationId}: ${err instanceof Error ? err.name : "failed"}`);
+      failures.push(`org ${organizationId}: ${failureLabel(err)}`);
     }
   }
   if (failures.length > 0) {
