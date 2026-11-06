@@ -127,3 +127,19 @@ ADR-0109 additions to existing screens:
   tri-state factors, an optional PG-13 total, the midpoint's delayed-grief prompt (a yes makes the PG-13 total required) and
   a `from pre-death draft` provenance mark on the score that consumed the draft.
 
+
+## Physician Letter Review and Discharge Summary Link
+
+ADR-0109 D6 / D9 additions to existing screens (no new screen):
+
+- **Intake queue** gains a `Physician condolence letters awaiting review` section below the plan table. Gate:
+  `bereavement.letter.read` plus bereavement oversight; a reader without it (403) sees nothing at all, not an empty state. One row
+  per pending letter, oldest due first: the plan, an **age badge** (`Opened today`, `N days old`, with `· overdue` once past death
+  + 2 days), the due date and the attending the care team resolved (`None resolved` otherwise). `Approve` opens a dialog with an
+  optional personal note (at most 1000 characters, counted) and, when no attending is resolved, a required **Internal clinician**
+  picker (the organization's active members, or a user-id field when the reviewer may not list members; the server still refuses
+  anyone who is not an active member). `Decline` needs a reason of at least 20 characters. Both send the version read as
+  `If-Match`, show the server's refusal verbatim and reload the queue.
+- **Closeout view** gains a `Print discharge summary` link in the closure record once Module 22 has rendered the internal
+  discharge summary. The closure route sends the document id to oversight readers only, so anyone else (and everyone before the
+  render) reads `The internal discharge summary is not available yet` and gets no link.
