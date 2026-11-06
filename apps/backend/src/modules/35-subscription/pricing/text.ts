@@ -1,6 +1,8 @@
 // apps/backend/src/modules/35-subscription/pricing/text.ts — the free text an operator types onto a pricing write (a reason).
 // Control characters are stripped (NUL is refused: Postgres text cannot hold it), the result is trimmed and bounded, and text that
-// looks like a patient identifier (an SSN or MBI) is refused without echoing it: a reason names a decision, never a patient.
+// looks like a patient identifier (an SSN or MBI) is refused without echoing it: a reason names a decision, never a patient. The same
+// screen covers every operator-typed field of a pricing write: the reason, the order-form reference, and a plan's name and description
+// (a plan name lands in the M34 onboarding evidence note, and a description is shown on the offered-plans list).
 import { ChartWardenError } from "@chartwarden/types";
 
 export const REASON_MIN = 8;
@@ -59,6 +61,17 @@ export function normalizeOptionalRef(field: string, raw: unknown, max: number): 
   if (text.length > max) throw fail("REF_INVALID", `${field} must be at most ${max} characters`);
   if (looksLikePatientIdentifier(text)) {
     throw fail("REF_LOOKS_LIKE_PHI", `${field} looks like it contains a patient identifier`);
+  }
+  return text;
+}
+
+/** A required operator-typed label (a plan name): cleaned, 1 to `max` characters, never a patient identifier. */
+export function normalizeRequiredText(field: string, raw: unknown, max: number): string {
+  const text = normalizeOptionalRef(field, raw, max);
+  if (text === null) {
+    throw new ChartWardenError("TEXT_REQUIRED", `${field} is required`, 422, [
+      { field, code: "TEXT_REQUIRED", message: `${field} is required` },
+    ]);
   }
   return text;
 }
