@@ -18,29 +18,49 @@ const SH = schema.subscriptionStateHistory;
 
 type Sub = typeof schema.subscriptionRow.$inferSelect;
 
-/** Paused intervals and the cancel instant of a subscription, from its transition ledger (and its own canceled_at). */
-async function lifetimeOf(
-  tx: WriteTx,
-  sub: Sub,
-): Promise<{
+export interface Transition {
+  readonly from: Sub["status"] | null;
+  readonly to: Sub["status"];
+  readonly at: Date;
+}
+
+export interface Lifetime {
   readonly endedAt: Date | null;
   readonly pauses: { readonly from: Date; readonly to: Date | null }[];
-}> {
-  const transitions = await tx
-    .select({ from: SH.fromStatus, to: SH.toStatus, at: SH.transitionedAt })
-    .from(SH)
-    .where(eq(SH.subscriptionId, sub.id))
-    .orderBy(asc(SH.transitionedAt), asc(SH.id));
+}
+
+/**
+ * Paused intervals and the cancel instant of a subscription, from its transition ledger and its own row. PURE.
+ *
+ * A pause opens on a transition into `paused` and closes on the next transition out of it. A pause that is still open although the
+ * subscription is NOT paused any more (it was resumed by a path that wrote no history row) is closed at the row's `updated_at`, the
+ * instant of that last write, rather than staying open forever: an open pause bills nothing, so a stale one would stop the bill for good.
+ */
+export function lifetimeFromTransitions(
+  transitions: readonly Transition[],
+  sub: Pick<Sub, "status" | "canceledAt" | "updatedAt">,
+): Lifetime {
   const pauses: { from: Date; to: Date | null }[] = [];
   for (const t of transitions) {
     const open = pauses[pauses.length - 1];
     if (t.to === "paused" && t.from !== "paused") pauses.push({ from: t.at, to: null });
     else if (t.from === "paused" && t.to !== "paused" && open && open.to === null) open.to = t.at;
   }
+  const last = pauses[pauses.length - 1];
+  if (last && last.to === null && sub.status !== "paused") last.to = sub.updatedAt;
   const canceledTransition = transitions.filter((t) => t.to === "canceled").pop();
   const endedAt =
     sub.status === "canceled" ? (sub.canceledAt ?? canceledTransition?.at ?? sub.updatedAt) : null;
   return { endedAt, pauses };
+}
+
+async function lifetimeOf(tx: WriteTx, sub: Sub): Promise<Lifetime> {
+  const transitions = await tx
+    .select({ from: SH.fromStatus, to: SH.toStatus, at: SH.transitionedAt })
+    .from(SH)
+    .where(eq(SH.subscriptionId, sub.id))
+    .orderBy(asc(SH.transitionedAt), asc(SH.id));
+  return lifetimeFromTransitions(transitions, sub);
 }
 
 function requirePricing(plan: typeof schema.plan.$inferSelect) {
