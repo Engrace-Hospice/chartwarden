@@ -1585,6 +1585,7 @@ describe("choosing outside ChartWarden: the billing steps follow (D5)", () => {
     return createOnboardingWizard({
       runner: createMemoryWizardRunner(state),
       orgProfile: createMemoryOrgProfile(state),
+      activateOrganization,
       advance,
       clearinghouseChoice: async () => choice,
       warn: (message) => warnings.push(message),
