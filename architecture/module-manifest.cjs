@@ -1263,6 +1263,7 @@ exports.MODULES = [
         "subscription_contract_mode", // slice 2 tenant pricing: the billing service mode history (tenant read-only; append-only)
         "subscription_state_history",
         "subscription_statement", // slice 2 tenant pricing: the monthly statement (tenant read-only; platform-runner writes)
+        "subscription_statement_review", // slice 2 tenant pricing: a month the run could not bill, once per subscription-month (platform-only)
         "usage_event",
         "usage_period_aggregate",
         "user_active_period",

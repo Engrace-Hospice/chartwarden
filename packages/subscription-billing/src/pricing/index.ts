@@ -50,6 +50,12 @@ export interface StatementInputs {
   readonly mode: BillingServiceMode;
   /** The plan's implementation fee on the first statement of a contract, else 0. */
   readonly oneTimeFeeCents: number;
+  /**
+   * The census the ADC was averaged from. When given, the BAND is chosen on the exact mean (`dailySum >= threshold x days`, integers),
+   * not on the rounded `adcHundredths`: rounding to hundredths can lift a mean just under a threshold onto it. `adcHundredths` is
+   * then only what is shown. Absent: the band follows `adcHundredths` (a price preview, where the operator types an ADC).
+   */
+  readonly census?: { readonly dailySum: number; readonly days: number };
   /** Absent = the whole month. */
   readonly proration?: Proration;
   /** Billing fee on net collections that posted after their own month closed (already computed per source month); default 0. */
@@ -96,6 +102,28 @@ export function selectCensusBand(bands: readonly CensusBand[], adcHundredths: nu
   let chosen = ascending[0];
   for (const band of ascending) {
     if (band.minAdc * HUNDREDTHS <= adcHundredths) chosen = band;
+  }
+  return chosen as CensusBand;
+}
+
+/**
+ * The band for an EXACT census: the highest band whose threshold the mean reaches, decided in integers (`dailySum >= minAdc x days`, so
+ * no rounding can move a mean across a threshold). No observed day is an ADC of 0. Throws when no band starts at 0.
+ */
+export function selectCensusBandExact(
+  bands: readonly CensusBand[],
+  dailySum: number,
+  days: number,
+): CensusBand {
+  assertCount("dailySum", dailySum);
+  assertCount("days", days);
+  const ascending = [...bands].sort((a, b) => a.minAdc - b.minAdc);
+  if (ascending[0]?.minAdc !== 0) {
+    throw new RangeError("a plan needs a census band that starts at 0 patients");
+  }
+  let chosen = ascending[0];
+  for (const band of ascending) {
+    if (days > 0 && band.minAdc * days <= dailySum) chosen = band;
   }
   return chosen as CensusBand;
 }
@@ -169,7 +197,9 @@ export function computeStatementAmounts(
   const priorPeriodFeeCents = inputs.priorPeriodFeeCents ?? 0;
   assertCount("priorPeriodFeeCents", priorPeriodFeeCents);
   const { daysLive, daysInPeriod } = inputs.proration ?? { daysLive: 1, daysInPeriod: 1 };
-  const band = selectCensusBand(plan.bands, inputs.adcHundredths);
+  const band = inputs.census
+    ? selectCensusBandExact(plan.bands, inputs.census.dailySum, inputs.census.days)
+    : selectCensusBand(plan.bands, inputs.adcHundredths);
   const perUserSubtotalCents = inputs.staffCount * plan.perUserPriceCents;
   if (!Number.isSafeInteger(perUserSubtotalCents)) {
     throw new RangeError(

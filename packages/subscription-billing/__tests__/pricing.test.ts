@@ -13,6 +13,7 @@ import {
   lateCollectionsCents,
   prorateCents,
   selectCensusBand,
+  selectCensusBandExact,
   validatePlanPricing,
 } from "../src/pricing";
 
@@ -84,6 +85,63 @@ describe("selectCensusBand", () => {
 
   it("refuses a plan without a band that starts at 0 (a zero census would have no price)", () => {
     expect(() => selectCensusBand([{ minAdc: 5, monthlyFeeCents: 1 }], 0)).toThrow(/band/i);
+  });
+});
+
+describe("selectCensusBandExact: the band is chosen on the exact mean, never on the rounded ADC", () => {
+  it("a mean of 16.996 (16,996 patient-days over 1,000 days) is BELOW 17 and bills the 10 band, though it rounds to 17.00", () => {
+    // the rounded figure the statement shows would put it on the 17 band; the exact rule does not
+    expect(averageDailyCensusHundredths([...Array(1_000).fill(16)]).adcHundredths).toBe(1_600);
+    const days = 1_000;
+    const dailySum = 16_996;
+    expect(Math.round((dailySum * 100) / days)).toBe(1_700); // rounded ADC: 17.00
+    expect(selectCensusBand(BANDS, 1_700).minAdc).toBe(17); // the old, rounded selection
+    expect(selectCensusBandExact(BANDS, dailySum, days).minAdc).toBe(10); // the exact one
+  });
+
+  it("an exact mean ON a threshold is in the band (sum = threshold x days), one patient-day short is below", () => {
+    expect(selectCensusBandExact(BANDS, 17 * 30, 30).minAdc).toBe(17);
+    expect(selectCensusBandExact(BANDS, 17 * 30 - 1, 30).minAdc).toBe(10);
+    expect(selectCensusBandExact(BANDS, 30 * 31, 31).minAdc).toBe(30);
+    expect(selectCensusBandExact(BANDS, 30 * 31 - 1, 31).minAdc).toBe(26);
+    expect(selectCensusBandExact(BANDS, 0, 30).minAdc).toBe(0);
+  });
+
+  it("no observed day is the lowest band, and a plan without a 0 band is refused", () => {
+    expect(selectCensusBandExact(BANDS, 0, 0).minAdc).toBe(0);
+    expect(() => selectCensusBandExact([{ minAdc: 5, monthlyFeeCents: 1 }], 0, 0)).toThrow(/band/i);
+  });
+
+  it("computeStatementAmounts uses it when it is given the census, and the rounded ADC only when it is not", () => {
+    const base = {
+      staffCount: 0,
+      netCollectionsCents: 0,
+      mode: "none" as const,
+      oneTimeFeeCents: 0,
+    };
+    const withCensus = computeStatementAmounts(PLAN, {
+      ...base,
+      adcHundredths: 1_700,
+      census: { dailySum: 16_996, days: 1_000 },
+    });
+    expect(withCensus).toMatchObject({ bandMinAdc: 10, bandFeeCents: 200_000 });
+    const rounded = computeStatementAmounts(PLAN, { ...base, adcHundredths: 1_700 });
+    expect(rounded).toMatchObject({ bandMinAdc: 17, bandFeeCents: 300_000 });
+  });
+
+  it("agrees with the rounded selection on every whole census of a real 28 to 31 day month", () => {
+    // within a month the nearest mean below a whole number is 1/31 away, far more than the half hundredth rounding moves it
+    for (const days of [28, 29, 30, 31]) {
+      for (let sum = 0; sum <= 40 * days; sum++) {
+        const rounded = averageDailyCensusHundredths([
+          ...Array(days - 1).fill(0),
+          sum,
+        ]).adcHundredths;
+        expect(selectCensusBandExact(BANDS, sum, days).minAdc, `${sum}/${days}`).toBe(
+          selectCensusBand(BANDS, rounded).minAdc,
+        );
+      }
+    }
   });
 });
 

@@ -81,11 +81,16 @@ export function planMonths(facts: ContractFacts, at: Date): MonthWork[] {
   const final = new Set(
     facts.statements.filter((s) => s.status === "final").map((s) => s.periodYearMonth),
   );
+  // A past month with a stored statement that is still a DRAFT stays on the list even with no live day (a settlement statement that
+  // carried late money): it must reach its grace and FINALIZE, or it stays an orphan draft and its money is carried again.
+  const draft = new Set(
+    facts.statements.filter((s) => s.status === "draft").map((s) => s.periodYearMonth),
+  );
   const work: MonthWork[] = [];
   for (const period of monthsFromThrough(facts.liveFrom, at)) {
     if (final.has(period.key)) continue;
     const daysLive = daysLiveInMonth(period, facts.windows);
-    if (daysLive === 0 && period.key !== current.key) continue;
+    if (daysLive === 0 && period.key !== current.key && !draft.has(period.key)) continue;
     // The mode in force on the first day this month bills: a change recorded mid-month waits for the 1st of the next.
     const anchor = period.start > facts.liveFrom ? period.start : facts.liveFrom;
     const mode = modeInForceOn(facts.modeHistory, isoDate(anchor));
@@ -121,7 +126,11 @@ export function priorPeriodLinesFor(
     a.periodYearMonth.localeCompare(b.periodYearMonth),
   )) {
     if (source.periodYearMonth >= target.key || source.billingBps === 0) continue;
-    const carried = finals
+    // Already carried = lines on EVERY earlier statement, draft or final: an earlier open statement holds the money, so a later draft
+    // must not hold it too (the lines ride the EARLIEST open statement). A statement never counts its own lines, so a draft that
+    // recomputes the same line on every sweep still gets it.
+    const carried = statements
+      .filter((s) => s.periodYearMonth < target.key)
       .flatMap((s) => s.priorPeriodLines)
       .filter((l) => l.sourceYearMonth === source.periodYearMonth);
     const carriedNet = carried.reduce((sum, l) => sum + l.netCollectionsCents, 0);
@@ -182,6 +191,8 @@ function amountsOf(input: BuildInput, meters: MonthMeters) {
   const amounts = computeStatementAmounts(facts.pricing, {
     staffCount: meters.staff.count,
     adcHundredths: adc.adcHundredths,
+    // the band is chosen on the EXACT mean (sum of the daily counts against threshold x days), not on the rounded ADC shown
+    census: { dailySum: meters.daily.reduce((a, b) => a + b, 0), days: meters.daily.length },
     netCollectionsCents: meters.collections.netCents,
     mode: work.mode,
     oneTimeFeeCents: input.isFirstStatement && !work.settlement ? facts.implementationFeeCents : 0,

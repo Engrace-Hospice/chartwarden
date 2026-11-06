@@ -1,4 +1,6 @@
--- compat: expand
+-- compat: contract
+-- DECLARED contract, not expand: the last statement DEACTIVATES the live starter / professional / enterprise plans (it retires the flat
+-- tiers), so the previous release, which still offers them to a new tenant, no longer finds an offered flat plan on the new schema.
 -- Slice 2 (tenant pricing) - the contracted plan model on `plan`, its census bands, and the retirement of the flat tiers.
 --
 -- Monthly platform fee = the GREATER of (active staff x per_user_price_cents) and the flat fee of the census band the average
@@ -122,6 +124,18 @@ BEGIN
 END $$;--> statement-breakpoint
 CREATE TRIGGER "plan_census_guard" BEFORE INSERT OR UPDATE ON "plan"
   FOR EACH ROW EXECUTE FUNCTION plan_census_guard();--> statement-breakpoint
+
+-- A published census_banded version is never deleted: subscriptions and statements point at the price it froze. (A draft may be
+-- deleted by an administrator; a flat plan is not covered.)
+CREATE OR REPLACE FUNCTION plan_census_delete_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD.tier = 'census_banded' AND OLD.published_at IS NOT NULL THEN
+    RAISE EXCEPTION 'plan %: a published version cannot be deleted', OLD.slug USING ERRCODE = '23514';
+  END IF;
+  RETURN OLD;
+END $$;--> statement-breakpoint
+CREATE TRIGGER "plan_census_delete_guard" BEFORE DELETE ON "plan"
+  FOR EACH ROW EXECUTE FUNCTION plan_census_delete_guard();--> statement-breakpoint
 
 -- Bands of a published plan are frozen with it.
 -- A band never moves between plans: re-pointing a band of a draft at a published plan (or the reverse) would rewrite a published

@@ -1032,9 +1032,12 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
           reason: "order form signed by the customer's administrator",
         },
       });
-      expect(
-        String((wizardCalls.attests[0]?.input as { evidenceNote: string }).evidenceNote),
-      ).toContain("OF-2026-0042");
+      // the wizard's evidence note is TENANT-READABLE: it names the plan and the term, never the order-form reference
+      const note = String((wizardCalls.attests[0]?.input as { evidenceNote: string }).evidenceNote);
+      expect(note).toContain(planV2Slug);
+      expect(note).toContain("Billing service: billing_software");
+      expect(note).not.toContain("OF-2026-0042");
+      expect(note).not.toMatch(/order form/i);
     });
 
     it("the contract's row audit never copies who signed, why, or the order form into the tenant-readable audit trail", async () => {
@@ -1370,40 +1373,116 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       ).toEqual({ count: 0, basis: "identity_filtered" });
     });
 
-    it("an auditor who ALSO holds a staff role is staff (counted); a tenant's look-alike external_auditor role hides nobody", async () => {
-      const win = NOV;
+    it("the auditor exclusion is decided when the sign-in is OBSERVED: a dual-role member is staff, and changing a member's roles afterwards (in the month or its grace) cannot move them on or off the bill", async () => {
       const count = () =>
-        platformRunner((tx) => countActiveStaffForMonth(tx, keyProvider, ORG_E, win));
+        platformRunner((tx) => countActiveStaffForMonth(tx, keyProvider, ORG_E, NOV));
       expect(await count()).toEqual({ count: 0, basis: "identity_filtered" });
 
-      // the system auditor alone: excluded
+      // a) the system auditor alone: excluded (the ledger row is flagged non-staff when the sign-in is observed)
       const auditorUser = await seedUser("e-auditor");
       const auditorM = await seedMembership(ORG_E, auditorUser);
       await grantOrgRole(ORG_E, auditorM, "external_auditor", "external_auditor", true);
       await signIn(ORG_E, auditorUser, "2026-11-04T09:00:00Z");
       expect(await count()).toEqual({ count: 0, basis: "identity_filtered" });
 
-      // the DUAL-ROLE case: the same membership also holds a staff role -> it is staff
-      await grantOrgRole(ORG_E, auditorM, "registered_nurse", "clinical_staff");
+      // b) the DUAL-ROLE case: one membership holding BOTH the auditor role and a staff role is staff -> counted
+      const dualUser = await seedUser("e-dual");
+      const dualM = await seedMembership(ORG_E, dualUser);
+      await grantOrgRole(ORG_E, dualM, "external_auditor", "external_auditor", true);
+      await grantOrgRole(ORG_E, dualM, "registered_nurse", "clinical_staff");
+      await signIn(ORG_E, dualUser, "2026-11-04T09:00:00Z");
       expect(await count()).toEqual({ count: 1, basis: "identity_filtered" });
 
-      // the FAKE-KEY case: a tenant admin creates its own `external_auditor`-keyed role (never system_default) and attaches it
-      // to a nurse to shrink the bill. Another org, because a key is unique per org.
-      await admin.query("DELETE FROM membership_role WHERE membership_id=$1", [auditorM]);
-      await admin.query("DELETE FROM role WHERE organization_id=$1 AND key='external_auditor'", [
-        ORG_E,
-      ]);
-      const fakeUser = await seedUser("e-fake");
-      const fakeM = await seedMembership(ORG_E, fakeUser);
-      await grantOrgRole(ORG_E, fakeM, "external_auditor", "external_auditor", false);
-      await signIn(ORG_E, fakeUser, "2026-11-04T09:00:00Z");
-      // auditorM now holds no grant at all (still signed in, still live): counted too
+      // c) the SWAP: a nurse signs in and works, then (after the month, in its grace window) a tenant admin swaps the member to
+      // auditor-only. The old meter judged today's grants and dropped them from the bill; the sign-in was observed as staff, so the
+      // month stays staff.
+      const swapUser = await seedUser("e-swap");
+      const swapM = await seedMembership(ORG_E, swapUser);
+      await grantOrgRole(ORG_E, swapM, "registered_nurse", "clinical_staff");
+      await signIn(ORG_E, swapUser, "2026-11-05T09:00:00Z");
       expect(await count()).toEqual({ count: 2, basis: "identity_filtered" });
+      await admin.query("DELETE FROM membership_role WHERE membership_id=$1", [swapM]);
+      await grantOrgRole(ORG_E, swapM, "external_auditor", "external_auditor", true);
+      expect(await count()).toEqual({ count: 2, basis: "identity_filtered" }); // still counted
+
+      // d) the reverse: an auditor-only member promoted to staff afterwards is still excluded for the month they were observed as auditor
+      const promotedUser = await seedUser("e-promoted");
+      const promotedM = await seedMembership(ORG_E, promotedUser);
+      await grantOrgRole(ORG_E, promotedM, "external_auditor", "external_auditor", true);
+      await signIn(ORG_E, promotedUser, "2026-11-06T09:00:00Z");
+      await grantOrgRole(ORG_E, promotedM, "registered_nurse", "clinical_staff");
+      expect(await count()).toEqual({ count: 2, basis: "identity_filtered" });
+
+      // e) the flag only ever ANDs: auditor-only at the first sign-in, a staff role from then on -> the second sign-in makes the month staff
+      const stickyUser = await seedUser("e-sticky");
+      const stickyM = await seedMembership(ORG_E, stickyUser);
+      await grantOrgRole(ORG_E, stickyM, "external_auditor", "external_auditor", true);
+      await signIn(ORG_E, stickyUser, "2026-11-07T09:00:00Z");
+      expect(await count()).toEqual({ count: 2, basis: "identity_filtered" });
+      await grantOrgRole(ORG_E, stickyM, "registered_nurse", "clinical_staff");
+      await signIn(ORG_E, stickyUser, "2026-11-08T09:00:00Z");
+      expect(await count()).toEqual({ count: 3, basis: "identity_filtered" });
+      // ... and a later non-staff sign-in does not set it back
+      await admin.query("DELETE FROM membership_role WHERE membership_id=$1", [stickyM]);
+      await grantOrgRole(ORG_E, stickyM, "external_auditor", "external_auditor", true);
+      await signIn(ORG_E, stickyUser, "2026-11-09T09:00:00Z");
+      expect(await count()).toEqual({ count: 3, basis: "identity_filtered" });
+
       await admin.query("DELETE FROM membership_role WHERE organization_id=$1", [ORG_E]);
       await admin.query(
         "DELETE FROM role WHERE organization_id=$1 AND key IN ('external_auditor','registered_nurse')",
         [ORG_E],
       );
+    });
+
+    it("the FAKE-KEY case: a look-alike external_auditor role (a legacy row, never system_default) hides nobody, and the database refuses to create one", async () => {
+      // the database backstop (migration 1345): any writer, even a superuser, is refused a non-system role under the key
+      const insertRole = (systemDefault: boolean, category: string) =>
+        admin.query(
+          `INSERT INTO role (organization_id,key,name,category,enabled,system_default)
+           VALUES ($1,'external_auditor','x',$2::role_category,true,$3)`,
+          [ORG_F, category, systemDefault],
+        );
+      await expect(insertRole(false, "external_auditor")).rejects.toThrow(/system auditor role/);
+      await expect(insertRole(false, "clinical_staff")).rejects.toThrow(/system auditor role/);
+      await expect(insertRole(true, "clinical_staff")).rejects.toThrow(/system auditor role/);
+      await expect(
+        admin.query(
+          `INSERT INTO role (organization_id,key,name,category,enabled,system_default)
+           VALUES (NULL,'external_auditor','x','external_auditor'::role_category,true,true)`,
+        ),
+      ).rejects.toThrow(/system auditor role/); // a platform template under the key is not the org's system row either
+      // the legacy row (written before the guard; simulated with triggers off for this one transaction) is staff
+      await admin.query("BEGIN");
+      await admin.query("SET LOCAL session_replication_role = replica");
+      const [row] = (
+        await admin.query(
+          `INSERT INTO role (organization_id,key,name,category,enabled,system_default)
+           VALUES ($1,'external_auditor','look-alike','external_auditor'::role_category,true,false) RETURNING id`,
+          [ORG_F],
+        )
+      ).rows as { id: string }[];
+      await admin.query("COMMIT");
+      expect(row?.id).toBeDefined();
+      const fakeUser = await seedUser("f-fake");
+      const fakeM = await seedMembership(ORG_F, fakeUser);
+      await admin.query(
+        "INSERT INTO membership_role (organization_id,membership_id,role_id) VALUES ($1,$2,$3)",
+        [ORG_F, fakeM, row?.id],
+      );
+      await signIn(ORG_F, fakeUser, "2026-11-04T09:00:00Z");
+      expect(
+        await platformRunner((tx) => countActiveStaffForMonth(tx, keyProvider, ORG_F, NOV)),
+      ).toEqual({ count: 1, basis: "identity_filtered" });
+      // the SYSTEM row (what the auditor grant makes) is accepted by the guard
+      await admin.query("DELETE FROM membership_role WHERE organization_id=$1", [ORG_F]);
+      await admin.query("DELETE FROM role WHERE organization_id=$1 AND key='external_auditor'", [
+        ORG_F,
+      ]);
+      await expect(insertRole(true, "external_auditor")).resolves.toBeDefined();
+      await admin.query("DELETE FROM role WHERE organization_id=$1 AND key='external_auditor'", [
+        ORG_F,
+      ]);
     });
 
     it("net collections: posted remittances by payment date, every payer kind, never another org's, pending counted not dropped", async () => {
@@ -2506,6 +2585,372 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
         staff_count_basis: "ledger_unfiltered",
         needs_review: true,
       });
+    });
+  });
+
+  // ── 8. round 2: the gaps a re-review found ──────────────────────────────────────────────────────────
+  describe("round 2: tenant-side gaps, delete guards, column grants and settlement months", () => {
+    const deps = (when: string, log?: (m: string, d: Record<string, unknown>) => void) => ({
+      platformRunner,
+      keyProvider,
+      netCollections: buildNetCollectionsReader(app.db),
+      goLive: { goLiveAt: readTenantGoLive },
+      now: at(when),
+      ...(log ? { log } : {}),
+    });
+    const statementOf = async (org: string, month: string) =>
+      (
+        await q<Record<string, string>>(
+          "SELECT * FROM subscription_statement WHERE organization_id=$1 AND period_year_month=$2",
+          [org, month],
+        )
+      )[0];
+    const outcomesOf = (out: Awaited<ReturnType<typeof runStatementsForOrg>>) =>
+      out.map((o) => [
+        o.outcome,
+        o.outcome === "written" ? o.statement.periodYearMonth : o.periodYearMonth,
+      ]);
+    const tenantActor = async (org: string, tag: string) => ({
+      organizationId: org,
+      userId: await seedUser(tag),
+      roles: ["org_admin"],
+      membershipId: OPERATOR_MEMBERSHIP,
+      stepUpRecent: true,
+    });
+
+    it("HIGH: a tenant cannot RESUME a contracted subscription (the pause would close with no history row and stop the bill), nor start another beside it", async () => {
+      const route = buildDrizzleM35RouteService(app.db, { platformRunner, outbox });
+      // ORG_M's contracted subscription is paused (its org was suspended): the tenant tries to resume it itself
+      const actor = await tenantActor(ORG_M, "tenant-m-admin");
+      await expect(route.resumeSubscription(actor)).rejects.toMatchObject({
+        code: "PLAN_ASSIGNED_BY_OPERATIONS",
+        statusCode: 403,
+      });
+      expect(await q("SELECT status FROM subscription WHERE organization_id=$1", [ORG_M])).toEqual([
+        { status: "paused" },
+      ]); // untouched
+      // and it cannot start a different subscription while the contracted one is paused (not "active", but not gone)
+      await admin.query(
+        `INSERT INTO plan (slug,name,tier,cadence,base_price_cents,is_active,trial_period_days)
+         VALUES ('open-flat','Open flat','starter','monthly',100,true,0)`,
+      );
+      await expect(
+        route.createSubscription(actor, { planSlug: "open-flat" }),
+      ).rejects.toMatchObject({
+        code: "PLAN_ASSIGNED_BY_OPERATIONS",
+      });
+      await admin.query("DELETE FROM plan WHERE slug='open-flat'");
+    });
+
+    it("HIGH: a pause left OPEN by a resume that wrote no history row closes at the subscription's last write instead of billing nothing forever", async () => {
+      // ORG_K (go-live Nov 20, a Nov draft of 11 days): paused Nov 22 10:00, then back to active by a path that wrote no history,
+      // last written Nov 25 10:00. The fully paused days are the 23rd and the 24th.
+      await admin.query(
+        `INSERT INTO subscription_state_history (subscription_id, organization_id, from_status, to_status, transitioned_at, reason_code)
+         SELECT id, organization_id, 'active', 'paused', '2026-11-22T10:00:00Z', 'org_suspended_by_platform_admin'
+           FROM subscription WHERE organization_id=$1`,
+        [ORG_K],
+      );
+      await admin.query(
+        "UPDATE subscription SET updated_at='2026-11-25T10:00:00Z' WHERE organization_id=$1",
+        [ORG_K],
+      );
+      await runStatementsForOrg(deps("2026-11-26T12:00:00Z"), ORG_K);
+      expect(await statementOf(ORG_K, "2026-11")).toMatchObject({
+        days_live: 9, // Nov 20..30 is 11 days, less the 23rd and the 24th
+        platform_fee_cents: "30000", // 100,000 x 9 / 30
+      });
+    });
+
+    it("MEDIUM: a platform operator's pause, resume and cancel name the operator in the PLATFORM audit row and NOT in the tenant-readable history or its audit copy", async () => {
+      const audit = buildPlatformAuditPort((tx, row) => auditPlatformEvent(tx as never, row));
+      // The legacy admin pause / resume / cancel UPDATE `subscription`, which the provisioned platform carrier is deliberately NOT
+      // granted (slice 2 gives it INSERT only), so this behaviour is proven on a superuser runner: what is under test is WHAT the
+      // action writes (no operator in the tenant-readable rows, the operator in the platform row), not the carrier's grants.
+      const superDb = createDbClient({ connectionString: DB_URL as string });
+      const superRunner: PlatformRunner = (fn) =>
+        superDb.db.transaction((tx) => fn(tx as unknown as DbClient));
+      const route = buildDrizzleM35RouteService(app.db, {
+        platformRunner: superRunner,
+        outbox,
+        audit,
+      });
+      const [sub] = await q<{ id: string }>(
+        "SELECT id FROM subscription WHERE organization_id=$1",
+        [ORG_I],
+      );
+      await route.adminPauseSubscription(operator, sub?.id ?? "", null);
+      await route.adminResumeSubscription(operator, sub?.id ?? "");
+      await route.adminCancelSubscription(operator, sub?.id ?? "");
+      const history = await q<{ reason_code: string; actor_membership_id: string | null }>(
+        `SELECT reason_code, actor_membership_id FROM subscription_state_history
+          WHERE subscription_id=$1 AND reason_code LIKE 'platform_ops_%' ORDER BY transitioned_at`,
+        [sub?.id],
+      );
+      expect(history.map((h) => h.reason_code)).toEqual([
+        "platform_ops_pause",
+        "platform_ops_resume",
+        "platform_ops_cancel_immediate",
+      ]);
+      expect(history.every((h) => h.actor_membership_id === null)).toBe(true);
+      // the tenant-readable audit trail of those rows carries no operator membership either
+      const copies = await q("SELECT before, after FROM audit_event WHERE organization_id=$1", [
+        ORG_I,
+      ]);
+      expect(JSON.stringify(copies)).not.toContain(OPERATOR_MEMBERSHIP);
+      // the platform-scoped rows name the operator and the tenant
+      const platformRows = await q<{
+        event_type: string;
+        organization_id: string | null;
+        context: Record<string, string>;
+      }>(
+        `SELECT event_type, organization_id, context FROM audit_event
+          WHERE event_type IN ('m35.subscription.platform_paused','m35.subscription.platform_resumed','m35.subscription.platform_canceled')
+            AND resource_id=$1 ORDER BY created_at`,
+        [sub?.id],
+      );
+      expect(platformRows.map((r) => r.event_type)).toEqual([
+        "m35.subscription.platform_paused",
+        "m35.subscription.platform_resumed",
+        "m35.subscription.platform_canceled",
+      ]);
+      for (const row of platformRows) {
+        expect(row.organization_id).toBeNull();
+        expect(row.context).toMatchObject({
+          organizationId: ORG_I,
+          operatorUserId: OPERATOR_USER,
+          operatorMembershipId: OPERATOR_MEMBERSHIP,
+        });
+      }
+      await superDb.close();
+    });
+
+    it("SETTLEMENT (HIGH): a settlement statement FINALIZES after its grace, and its money is never carried twice, in a draft or a final", async () => {
+      // ORG_L (canceled Nov 20): November is final, a $2,000 835 dated Nov 12 posted late and rode a December settlement DRAFT.
+      expect(await statementOf(ORG_L, "2026-12")).toMatchObject({
+        status: "draft",
+        prior_period_fee_cents: "2000",
+      });
+      // more late money for November, inside December's grace: the SAME draft grows to a $2,300.00 base ($23.00 at 1%, 2,300 cents)
+      await remittance(ORG_L, { dollars: "300.00", productionDate: "2026-11-15T00:00:00Z" });
+      await runStatementsForOrg(deps("2026-12-20T00:00:00Z"), ORG_L);
+      expect(await statementOf(ORG_L, "2026-12")).toMatchObject({
+        status: "draft",
+        prior_period_fee_cents: "2300",
+        total_cents: "2300",
+      });
+      // January begins while December is still a draft: January must NOT carry the same money a second time
+      const jan3 = await runStatementsForOrg(deps("2027-01-03T00:00:00Z"), ORG_L);
+      expect(outcomesOf(jan3)).toEqual([
+        ["unchanged", "2026-12"],
+        ["skipped", "2027-01"],
+      ]);
+      expect(await statementOf(ORG_L, "2027-01")).toBeUndefined();
+      // after December's grace the settlement statement FINALIZES (it used to stay an orphan draft for ever) and freezes
+      const jan7 = await runStatementsForOrg(deps("2027-01-07T00:00:00Z"), ORG_L);
+      expect(outcomesOf(jan7)).toEqual([
+        ["written", "2026-12"],
+        ["skipped", "2027-01"],
+      ]);
+      expect(await statementOf(ORG_L, "2026-12")).toMatchObject({
+        status: "final",
+        days_live: 0,
+        prior_period_fee_cents: "2300",
+        total_cents: "2300",
+      });
+      await asCarrier(async (carrier) => {
+        await expect(
+          carrier.query(
+            "UPDATE subscription_statement SET total_cents=1 WHERE organization_id=$1 AND period_year_month='2026-12'",
+            [ORG_L],
+          ),
+        ).rejects.toThrow(/final statement cannot change/);
+      });
+      // a rerun after it is final carries nothing again (the final line holds all $2,300) and writes no January statement
+      const again = await runStatementsForOrg(deps("2027-01-08T00:00:00Z"), ORG_L);
+      expect(outcomesOf(again)).toEqual([["skipped", "2027-01"]]);
+      expect(await statementOf(ORG_L, "2027-01")).toBeUndefined();
+      // a LATER $100 posts: January's settlement carries only that, and December's $2,300 stays carried once
+      await remittance(ORG_L, { dollars: "100.00", productionDate: "2026-11-16T00:00:00Z" });
+      await runStatementsForOrg(deps("2027-01-09T00:00:00Z"), ORG_L);
+      expect(await statementOf(ORG_L, "2027-01")).toMatchObject({
+        status: "draft",
+        days_live: 0,
+        prior_period_fee_cents: "100",
+      });
+      expect((await statementOf(ORG_L, "2026-12"))?.prior_period_fee_cents).toBe("2300");
+      const carriedTotal = await q<{ total: string }>(
+        `SELECT COALESCE(SUM((l->>'netCollectionsCents')::bigint), 0)::text AS total
+           FROM subscription_statement s, jsonb_array_elements(s.prior_period_lines) l
+          WHERE s.organization_id=$1 AND l->>'sourceYearMonth'='2026-11'`,
+        [ORG_L],
+      );
+      // $2,300 + $100 = $2,400 of November's late money carried across the two statements, once each
+      expect(carriedTotal[0]?.total).toBe("240000");
+    });
+
+    it("MEDIUM: a closed month with no census day is flagged ONCE per subscription-month (a platform-only row and one log line naming the organisation), not logged every hour", async () => {
+      // ORG_G went live Nov 20 and its December census was never swept: at Jan 8 December is closed with no census day
+      const logged: Array<Record<string, unknown>> = [];
+      const log = (_message: string, detail: Record<string, unknown>) => {
+        logged.push(detail);
+      };
+      for (const hour of ["08", "09", "10"]) {
+        await runStatementsForOrg(deps(`2027-01-08T${hour}:00:00Z`, log), ORG_G);
+      }
+      const flags = await q<{
+        period_year_month: string;
+        reason: string;
+        subject_organization_id: string;
+      }>(
+        "SELECT period_year_month, reason, subject_organization_id FROM subscription_statement_review WHERE subject_organization_id=$1",
+        [ORG_G],
+      );
+      expect(flags).toEqual([
+        { period_year_month: "2026-12", reason: "no_census", subject_organization_id: ORG_G },
+      ]);
+      // exactly one log line over three hourly runs, and it names the organisation (not just the month)
+      const flagged = logged.filter((d) => d.periodYearMonth === "2026-12");
+      expect(flagged).toHaveLength(1);
+      expect(flagged[0]).toMatchObject({ organizationId: ORG_G });
+      // the table is platform-only: a tenant connection cannot read or write it
+      const tenantClient = new Client({
+        connectionString: await appRoleConnectionString(admin, DB_URL as string),
+      });
+      await tenantClient.connect();
+      try {
+        await tenant(tenantClient, ORG_G, async () => {
+          await expect(
+            tenantClient.query("SELECT 1 FROM subscription_statement_review"),
+          ).rejects.toMatchObject({
+            code: "42501",
+          });
+        });
+      } finally {
+        await tenantClient.end();
+      }
+    });
+
+    it("LOW: the tenant role reads a contract's identity and start by COLUMN: never who signed it, why, or the order form (SELECT * is refused too)", async () => {
+      const tenantClient = new Client({
+        connectionString: await appRoleConnectionString(admin, DB_URL as string),
+      });
+      await tenantClient.connect();
+      try {
+        await tenant(tenantClient, ORG_A, async () => {
+          const rows = (
+            await tenantClient.query(
+              "SELECT id, organization_id, subscription_id, plan_id, contract_start_on, created_at FROM subscription_contract",
+            )
+          ).rows;
+          expect(rows).toHaveLength(1);
+          expect(rows[0]?.organization_id).toBe(ORG_A);
+        });
+        for (const select of [
+          "signed_by_membership_id",
+          "signed_reason",
+          "order_form_ref",
+          "*",
+          "id, signed_reason",
+        ]) {
+          await tenant(tenantClient, ORG_A, async () => {
+            await expect(
+              tenantClient.query(`SELECT ${select} FROM subscription_contract`),
+              select,
+            ).rejects.toMatchObject({ code: "42501" });
+          });
+        }
+        // RLS still scopes the readable columns: another tenant's contract is not visible
+        await tenant(tenantClient, ORG_B, async () => {
+          const rows = (
+            await tenantClient.query("SELECT organization_id FROM subscription_contract")
+          ).rows;
+          expect(rows.every((r) => r.organization_id === ORG_B)).toBe(true);
+        });
+      } finally {
+        await tenantClient.end();
+      }
+      // the views that read it as the tenant keep working, and still carry no operator
+      const view = await contracts.tenantView(ORG_A, "tenant-a-user");
+      expect(view.contract).toMatchObject({ plan: { slug: planV2Slug } });
+      expect(view.contract).not.toHaveProperty("signedReason");
+    });
+
+    it("LOW: a FINAL statement and a PUBLISHED plan are never deleted, even by a superuser; a draft statement and a draft plan can be", async () => {
+      await expect(
+        admin.query(
+          "DELETE FROM subscription_statement WHERE organization_id=$1 AND period_year_month='2026-11'",
+          [ORG_A],
+        ),
+      ).rejects.toThrow(/final statement cannot be deleted/);
+      await expect(admin.query("DELETE FROM plan WHERE id=$1", [planV1])).rejects.toThrow(
+        /published version cannot be deleted/,
+      );
+      await expect(admin.query("DELETE FROM plan WHERE id=$1", [planV2Id])).rejects.toThrow(
+        /published version cannot be deleted/,
+      );
+      // a draft goes (its bands first: a draft's bands are editable)
+      const draft = await plans.create(
+        operator,
+        plan({ familySlug: "delete-me" }),
+        "a draft that is deleted",
+      );
+      await admin.query("DELETE FROM plan_census_band WHERE plan_id=$1", [draft.id]);
+      await expect(admin.query("DELETE FROM plan WHERE id=$1", [draft.id])).resolves.toBeDefined();
+      // and the rows are all still there
+      expect(await statementOf(ORG_A, "2026-11")).toMatchObject({ status: "final" });
+      expect((await plans.get(planV2Id)).status).toBe("published");
+    });
+
+    it("LOW: a retired plan's meters cannot be added or changed through the legacy editor", async () => {
+      const route = buildDrizzleM35RouteService(app.db, { platformRunner, outbox });
+      await admin.query(
+        `INSERT INTO plan (slug,name,tier,cadence,base_price_cents,is_active,deprecated_at,trial_period_days)
+         VALUES ('retired-meters','Retired','starter','monthly',100,false,now(),0)`,
+      );
+      const [retired] = await q<{ id: string }>("SELECT id FROM plan WHERE slug='retired-meters'");
+      await admin.query(
+        `INSERT INTO plan_meter (plan_id,event_type,inclusive_quantity,overage_unit_price_cents,billing_aggregation)
+         VALUES ($1,'active_user',5,100,'max')`,
+        [retired?.id],
+      );
+      const [meter] = await q<{ id: string }>("SELECT id FROM plan_meter WHERE plan_id=$1", [
+        retired?.id,
+      ]);
+      await expect(
+        route.adminAddMeter(operator, retired?.id ?? "", {
+          eventType: "active_patient",
+          inclusiveQuantity: 1,
+          overageUnitPriceCents: 1,
+          billingAggregation: "max",
+        } as never),
+      ).rejects.toMatchObject({ code: "CONFLICT" });
+      await expect(
+        route.adminUpdateMeter(operator, retired?.id ?? "", meter?.id ?? "", {
+          inclusiveQuantity: 999,
+        } as never),
+      ).rejects.toMatchObject({ code: "CONFLICT" });
+      expect(await q("SELECT inclusive_quantity FROM plan_meter WHERE id=$1", [meter?.id])).toEqual(
+        [{ inclusive_quantity: "5" }],
+      );
+      // a contracted plan's meters (none should exist) cannot be changed here either
+      await admin.query(
+        `INSERT INTO plan_meter (plan_id,event_type,inclusive_quantity,overage_unit_price_cents,billing_aggregation)
+         VALUES ($1,'active_user',5,100,'max')`,
+        [planV2Id],
+      );
+      const [contractedMeter] = await q<{ id: string }>(
+        "SELECT id FROM plan_meter WHERE plan_id=$1",
+        [planV2Id],
+      );
+      await expect(
+        route.adminUpdateMeter(operator, planV2Id, contractedMeter?.id ?? "", {
+          inclusiveQuantity: 1,
+        } as never),
+      ).rejects.toMatchObject({ code: "PLAN_ASSIGNED_BY_OPERATIONS" });
+      await admin.query("DELETE FROM plan_meter WHERE plan_id=$1", [planV2Id]);
+      await admin.query("DELETE FROM plan_meter WHERE plan_id=$1", [retired?.id]);
+      await admin.query("DELETE FROM plan WHERE id=$1", [retired?.id]);
     });
   });
 

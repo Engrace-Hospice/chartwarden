@@ -330,6 +330,10 @@ const NON_ORG_SCOPED = new Set<string>([
   // carrier / chartwarden_admin; migration 1341). Its tenant-scoped siblings (`subscription_contract`, `patient_census_daily`,
   // `subscription_statement`, migration 1342) carry organization_id with app.org_id RLS, SELECT-only to the app role.
   "plan_census_band",
+  // Slice 2 — `subscription_statement_review` (migration 1342): a subscription-month the statement run could not bill, recorded once. PLATFORM-ONLY
+  // (the claimmd_webhook_event shape): RLS enabled + FORCEd with no policy and no chartwarden_app grant; its tenant column is
+  // `subject_organization_id`, so it is not an org-scoped row.
+  "subscription_statement_review",
   // M29 External Interfaces (§3.3 / §3.5): the two NPPES cache tables carry NO organization_id BY DESIGN —
   // the CMS NPPES registry is the same public provider directory for every tenant. `nppes_provider` (keyed
   // by the 10-char NPI) and `nppes_sync_run` are read-all `USING (true)` TO chartwarden_app, written only via

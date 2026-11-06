@@ -222,16 +222,38 @@ function contractViewOf(
   };
 }
 
+/** Who signed, why, and the order form: the columns the tenant role cannot read. Platform transactions only. */
+interface Signature {
+  readonly signedByMembershipId: string;
+  readonly signedReason: string;
+  readonly orderFormRef: string | null;
+}
+
+async function loadSignature(tx: WriteTx, contractId: string): Promise<Signature> {
+  const [row] = await tx
+    .select({
+      signedByMembershipId: SC.signedByMembershipId,
+      signedReason: SC.signedReason,
+      orderFormRef: SC.orderFormRef,
+    })
+    .from(SC)
+    .where(eq(SC.id, contractId))
+    .limit(1);
+  if (!row) throw new ChartWardenError("PERSIST_FAILED", "the contract has no signature row", 500);
+  return row;
+}
+
 const platformViewOf = (
   record: ContractRecord,
   bands: readonly Band[],
   history: readonly ModeHistoryRow[],
   today: string,
+  signature: Signature,
 ): PlatformContractView => ({
   ...contractViewOf(record, bands, history, today),
-  signedByMembershipId: record.contract.signedByMembershipId,
-  signedReason: record.contract.signedReason,
-  orderFormRef: record.contract.orderFormRef,
+  signedByMembershipId: signature.signedByMembershipId,
+  signedReason: signature.signedReason,
+  orderFormRef: signature.orderFormRef,
 });
 
 interface LoadedContract {
@@ -315,7 +337,11 @@ async function resumeIfSigned(
       409,
     );
   }
-  return { view: platformViewOf(found.record, found.bands, found.history, today), resumed: true };
+  const signature = await loadSignature(tx, found.record.contract.id);
+  return {
+    view: platformViewOf(found.record, found.bands, found.history, today, signature),
+    resumed: true,
+  };
 }
 
 interface SignContext {
@@ -429,6 +455,7 @@ async function signContract(tx: WriteTx, ctx: SignContext): Promise<SignedContra
     await loadBands(tx, ctx.plan.id),
     history,
     utcDateOf(ctx.at),
+    contract, // the row just inserted on the carrier carries its signature columns
   );
   return { view, resumed: false };
 }
@@ -572,8 +599,9 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
         const current = modeInForceOn(found.history, today);
         const pending = pendingModeAfter(found.history, today);
         // A request for the mode that will be in force anyway is a no-op; anything else is a new dated row (it supersedes a pending one).
+        const signature = await loadSignature(tx, record.contract.id);
         if (mode === (pending?.billingServiceMode ?? current)) {
-          return platformViewOf(record, found.bands, found.history, today);
+          return platformViewOf(record, found.bands, found.history, today, signature);
         }
         const { row, effectiveOn } = await insertModeChange(tx, tenant, record, mode, at);
         await audit.record(tx, {
@@ -593,7 +621,7 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
             createdAt: row.createdAt,
           },
         ];
-        return platformViewOf(record, found.bands, history, today);
+        return platformViewOf(record, found.bands, history, today, signature);
       });
     },
 
@@ -624,7 +652,13 @@ export function buildContractService(deps: ContractServiceDeps): ContractService
           .orderBy(desc(SS.periodYearMonth))
           .limit(STATEMENTS_ON_PLATFORM_VIEW);
         return {
-          contract: platformViewOf(found.record, found.bands, found.history, utcDateOf(at)),
+          contract: platformViewOf(
+            found.record,
+            found.bands,
+            found.history,
+            utcDateOf(at),
+            await loadSignature(tx, found.record.contract.id),
+          ),
           statements: rows.map((r) => toStatementView(r, found.record.plan.currencyCode)),
         };
       });
@@ -668,10 +702,11 @@ async function settlePlanContract(
 ): Promise<PlanContractSettlement> {
   if (stepStatus === "done" || stepStatus === "skipped") return { status: "already_settled" };
   if (tenantStatus !== "onboarding") return { status: "pending", reason: "tenant_not_onboarding" };
+  // The wizard's evidence note is TENANT-READABLE (the onboarding view), so it carries the plan and the term but never the order-form
+  // reference: that, like who signed and why, is for the platform alone.
   const evidenceNote = [
     `Plan ${view.plan.slug} (${view.plan.name}) contracted for ${view.contractTermMonths} months from ${view.contractStartOn}.`,
     `Billing service: ${view.billingServiceMode}.`,
-    `Order form: ${view.orderFormRef ?? "not recorded"}.`,
   ].join(" ");
   try {
     // The evidence reference is the plan version, never the subscription id: a uuid can happen to look like an SSN to the wizard's PHI

@@ -168,6 +168,27 @@ CREATE INDEX IF NOT EXISTS "subscription_statement_org_period_ix" ON "subscripti
 CREATE INDEX IF NOT EXISTS "subscription_statement_plan_ix" ON "subscription_statement" ("plan_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "subscription_statement_unposted_ix" ON "subscription_statement" ("period_end") WHERE "status" = 'final' AND "stripe_posted_at" IS NULL;--> statement-breakpoint
 
+-- A month the statement run could not bill, recorded ONCE per subscription-month so an operator sees it without an hourly log line: a live
+-- subscription whose month closed with no census day observed (the sweep never read it). PLATFORM-ONLY, like claimmd_webhook_event: RLS
+-- enabled and FORCEd with NO policy and NO chartwarden_app grant, so a tenant connection reads nothing; the BYPASSRLS platform login
+-- reads and inserts it through the audited runner. `subject_organization_id` (not organization_id): this is not a tenant-scoped row.
+CREATE TABLE IF NOT EXISTS "subscription_statement_review" (
+	"id" uuid DEFAULT gen_random_uuid() NOT NULL,
+	"subject_organization_id" uuid NOT NULL,
+	"subscription_id" uuid NOT NULL,
+	"period_year_month" text NOT NULL,
+	"reason" text NOT NULL,
+	"detected_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "subscription_statement_review_pkey" PRIMARY KEY ("id"),
+	CONSTRAINT "subscription_statement_review_subscription_id_fk" FOREIGN KEY ("subscription_id") REFERENCES "public"."subscription"("id") ON DELETE restrict,
+	CONSTRAINT "subscription_statement_review_once_uq" UNIQUE ("subscription_id", "period_year_month", "reason"),
+	CONSTRAINT "subscription_statement_review_period_ck" CHECK ("period_year_month" ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'),
+	CONSTRAINT "subscription_statement_review_reason_ck" CHECK ("reason" IN ('no_census'))
+);--> statement-breakpoint
+ALTER TABLE "subscription_statement_review" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "subscription_statement_review" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
+GRANT ALL ON "subscription_statement_review" TO chartwarden_admin;--> statement-breakpoint
+
 -- RLS: a tenant reads its own rows and writes none.
 ALTER TABLE "subscription_contract" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "subscription_contract" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
@@ -175,7 +196,9 @@ DROP POLICY IF EXISTS "subscription_contract_org_read" ON "subscription_contract
 CREATE POLICY "subscription_contract_org_read" ON "subscription_contract"
   FOR SELECT TO chartwarden_app
   USING (organization_id = nullif(current_setting('app.org_id', true), '')::uuid);--> statement-breakpoint
-GRANT SELECT ON "subscription_contract" TO chartwarden_app;--> statement-breakpoint
+-- COLUMN-level read: the tenant sees its contract's identity and start, never WHO signed it, WHY, or the order form (the same facts
+-- the tenant view hides and the audit row scrubs). A `SELECT *` as the app role is refused; the platform carrier reads every column.
+GRANT SELECT ("id", "organization_id", "subscription_id", "plan_id", "contract_start_on", "created_at") ON "subscription_contract" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "subscription_contract" TO chartwarden_admin;--> statement-breakpoint
 
 ALTER TABLE "subscription_contract_mode" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
@@ -247,9 +270,15 @@ END $$;--> statement-breakpoint
 CREATE TRIGGER "subscription_contract_mode_guard" BEFORE INSERT OR UPDATE OR DELETE ON "subscription_contract_mode"
   FOR EACH ROW EXECUTE FUNCTION subscription_contract_mode_guard();--> statement-breakpoint
 
--- A final statement is frozen: only the Stripe push columns (and updated_at) may be written after it closes.
+-- A final statement is frozen: only the Stripe push columns (and updated_at) may be written after it closes, and it is never deleted.
 CREATE OR REPLACE FUNCTION subscription_statement_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.status = 'final' THEN
+      RAISE EXCEPTION 'subscription_statement: a final statement cannot be deleted' USING ERRCODE = '23514';
+    END IF;
+    RETURN OLD;
+  END IF;
   IF OLD.status = 'final'
      AND (to_jsonb(NEW) - 'stripe_usage_record_id' - 'stripe_posted_at' - 'updated_at')
          IS DISTINCT FROM (to_jsonb(OLD) - 'stripe_usage_record_id' - 'stripe_posted_at' - 'updated_at') THEN
@@ -257,7 +286,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;--> statement-breakpoint
-CREATE TRIGGER "subscription_statement_guard" BEFORE UPDATE ON "subscription_statement"
+CREATE TRIGGER "subscription_statement_guard" BEFORE UPDATE OR DELETE ON "subscription_statement"
   FOR EACH ROW EXECUTE FUNCTION subscription_statement_guard();--> statement-breakpoint
 
 -- The contract's row audit is a SCRUBBING variant (the audit_phi_write_<table> shape, 1250): audit_event is tenant-readable

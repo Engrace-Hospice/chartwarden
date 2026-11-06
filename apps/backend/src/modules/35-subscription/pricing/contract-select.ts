@@ -28,8 +28,30 @@ export const POST_END_SETTLEMENT_MONTHS = 12;
 
 export type ContractScope = "live" | "statements" | "latest";
 
+/**
+ * The contract columns EVERY reader may see: the tenant role holds a COLUMN-level SELECT on exactly these (migration 1342), never on who
+ * signed, why, or the order form. The signature facts are read separately, on a platform transaction (`contract-service.ts`).
+ */
+const CONTRACT_COLUMNS = {
+  id: SC.id,
+  organizationId: SC.organizationId,
+  subscriptionId: SC.subscriptionId,
+  planId: SC.planId,
+  contractStartOn: SC.contractStartOn,
+  createdAt: SC.createdAt,
+} as const;
+
+export interface ContractCore {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly subscriptionId: string;
+  readonly planId: string;
+  readonly contractStartOn: string;
+  readonly createdAt: Date;
+}
+
 export interface ContractRecord {
-  readonly contract: typeof SC.$inferSelect;
+  readonly contract: ContractCore;
   readonly sub: typeof SUB.$inferSelect;
   readonly plan: typeof PL.$inferSelect;
 }
@@ -57,7 +79,7 @@ export async function selectContracts(
     organizationId ? eq(SC.organizationId, organizationId) : undefined,
   ].filter((f): f is SQL => f !== undefined);
   const rows = await tx
-    .select({ contract: SC, sub: SUB, plan: PL })
+    .select({ contract: CONTRACT_COLUMNS, sub: SUB, plan: PL })
     .from(SC)
     .innerJoin(SUB, eq(SUB.id, SC.subscriptionId))
     .innerJoin(PL, eq(PL.id, SC.planId))

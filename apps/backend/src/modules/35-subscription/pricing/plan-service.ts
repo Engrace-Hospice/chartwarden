@@ -18,7 +18,12 @@ import {
   type PricingIssue,
   validatePlanPricing,
 } from "@chartwarden/subscription-billing";
-import { ConflictError, NotFoundError, ValidationError } from "@chartwarden/types";
+import {
+  ChartWardenError,
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from "@chartwarden/types";
 import { and, asc, desc, eq, isNotNull } from "drizzle-orm";
 import type { M35WriteActor } from "../routes/actor";
 import type { PlatformRunner, WriteTx } from "../routes/service-drizzle";
@@ -146,6 +151,10 @@ export function toPricingPlanView(p: PlanRow, bands: readonly CensusBand[]): Pri
     updatedAt: p.updatedAt.toISOString(),
   };
 }
+
+/** A write that returned no row: a typed 500 (never a bare Error, which the error envelope would not recognise). */
+const persistFailed = (what: string): ChartWardenError =>
+  new ChartWardenError("PERSIST_FAILED", what, 500);
 
 const failIssues = (issues: readonly PricingIssue[]): never => {
   throw new ValidationError(
@@ -305,7 +314,7 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
             minimumMonthlyCents: input.minimumMonthlyCents,
           })
           .returning();
-        if (!plan) throw new Error("plan insert returned no row");
+        if (!plan) throw persistFailed("plan insert returned no row");
         await replaceBands(tx, plan.id, input.bands);
         const view = toPricingPlanView(plan, input.bands);
         await record(tx, actor, "m35.plan.draft_created", view, reason);
@@ -337,7 +346,7 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
           })
           .where(eq(PL.id, planId))
           .returning();
-        if (!plan) throw new Error("plan update returned no row");
+        if (!plan) throw persistFailed("plan update returned no row");
         await replaceBands(tx, planId, input.bands);
         const view = toPricingPlanView(plan, input.bands);
         await record(tx, actor, "m35.plan.draft_updated", view, reason);
@@ -366,7 +375,7 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
           .set({ publishedAt: at, isActive: true, validFrom: at, updatedAt: at })
           .where(eq(PL.id, planId))
           .returning();
-        if (!plan) throw new Error("plan publish returned no row");
+        if (!plan) throw persistFailed("plan publish returned no row");
         const view = toPricingPlanView(plan, bands);
         await record(tx, actor, "m35.plan.published", view, reason);
         return view;
@@ -420,7 +429,7 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
             minimumMonthlyCents: source.minimumMonthlyCents,
           })
           .returning();
-        if (!plan) throw new Error("plan insert returned no row");
+        if (!plan) throw persistFailed("plan insert returned no row");
         await replaceBands(tx, plan.id, bands);
         const view = toPricingPlanView(plan, bands);
         await record(tx, actor, "m35.plan.version_created", view, reason);
@@ -444,7 +453,7 @@ export function buildPricingPlanService(deps: PricingPlanServiceDeps): PricingPl
           .set({ isActive: false, deprecatedAt: at, validTo: at, updatedAt: at })
           .where(eq(PL.id, planId))
           .returning();
-        if (!archived) throw new Error("plan archive returned no row");
+        if (!archived) throw persistFailed("plan archive returned no row");
         const view = toPricingPlanView(archived, await loadBands(tx, planId));
         await record(tx, actor, "m35.plan.archived", view, reason);
         return view;

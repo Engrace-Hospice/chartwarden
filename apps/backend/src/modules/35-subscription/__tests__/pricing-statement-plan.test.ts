@@ -8,6 +8,7 @@ import {
   modeInForceOn,
   pendingModeAfter,
 } from "../pricing/contract-mode";
+import { type Transition, lifetimeFromTransitions } from "../pricing/statement-inputs";
 import {
   calendarMonthOf,
   daysLiveInMonth,
@@ -291,6 +292,40 @@ describe("planMonths: which months still need a statement", () => {
     ).toThrow(/billing service mode/);
   });
 
+  it("a past month with NO live day but a stored DRAFT (a settlement statement) stays planned and FINALIZES after its grace; without a stored draft it is skipped", () => {
+    const ended = live("2026-11-01T00:00:00Z", "2026-11-20T14:00:00Z");
+    const settlementDraft = stored({ periodYearMonth: "2026-12", status: "draft" });
+    const f = facts({
+      liveFrom: d("2026-11-01T00:00:00Z"),
+      windows: ended,
+      statements: [stored({ periodYearMonth: "2026-11" }), settlementDraft],
+    });
+    // Jan 3: December is inside its grace, still a draft; January is the current month (a new settlement candidate)
+    expect(
+      planMonths(f, d("2027-01-03T00:00:00Z")).map((w) => [w.period.key, w.settlement, w.finalize]),
+    ).toEqual([
+      ["2026-12", true, false],
+      ["2027-01", true, false],
+    ]);
+    // Jan 7: December's grace has passed, so it finalizes
+    expect(
+      planMonths(f, d("2027-01-07T00:00:00Z")).find((w) => w.period.key === "2026-12"),
+    ).toMatchObject({
+      settlement: true,
+      daysLive: 0,
+      finalize: true,
+    });
+    // the same history with no stored December: no December work at all
+    const bare = facts({
+      liveFrom: d("2026-11-01T00:00:00Z"),
+      windows: ended,
+      statements: [stored({ periodYearMonth: "2026-11" })],
+    });
+    expect(planMonths(bare, d("2027-01-07T00:00:00Z")).map((w) => w.period.key)).toEqual([
+      "2027-01",
+    ]);
+  });
+
   it("a go-live in the future plans nothing", () => {
     expect(
       planMonths(facts({ liveFrom: d("2027-01-10T00:00:00Z") }), d("2026-11-05T00:00:00Z")),
@@ -360,6 +395,31 @@ describe("priorPeriodLinesFor: late money is carried, never lost, never re-bille
         },
       ],
     });
+    expect(priorPeriodLinesFor(DEC, [november, decemberDraft], net(5_650_050, 4))).toHaveLength(1);
+  });
+
+  it("an EARLIER DRAFT's lines count as carried for a later draft: the lines ride the earliest open statement, never two at once", () => {
+    const line = {
+      sourceYearMonth: "2026-11",
+      netCollectionsCents: 4_000_000,
+      remittanceCount: 1,
+      billingServiceMode: "billing_software" as const,
+      billingBps: 100,
+      feeCents: 40_000,
+    };
+    const decemberDraft = stored({
+      periodYearMonth: "2026-12",
+      status: "draft",
+      priorPeriodLines: [line],
+    });
+    const jan = calendarMonthOf(d("2027-01-10T00:00:00Z"));
+    // January sees December's draft line as carried: no duplicate on the later draft
+    expect(priorPeriodLinesFor(jan, [november, decemberDraft], net(5_650_050, 4))).toEqual([]);
+    // the same money a further $100 later is carried alone, on the later draft
+    expect(priorPeriodLinesFor(jan, [november, decemberDraft], net(5_660_050, 5))).toMatchObject([
+      { netCollectionsCents: 10_000 },
+    ]);
+    // while December itself, which never counts its own lines, still gets the whole line
     expect(priorPeriodLinesFor(DEC, [november, decemberDraft], net(5_650_050, 4))).toHaveLength(1);
   });
 
@@ -540,5 +600,80 @@ describe("buildStatementValues: the figures of a statement", () => {
     expect(figuresOf(relabelled)).toBe(figuresOf(a));
     expect(figuresOf({ ...a, staffCount: a.staffCount + 1 })).not.toBe(figuresOf(a));
     expect(figuresOf({ ...a, totalCents: a.totalCents + 1 })).not.toBe(figuresOf(a));
+  });
+});
+
+describe("lifetimeFromTransitions: the pauses and the end of a subscription", () => {
+  const at = (iso: string): Date => new Date(iso);
+  const t = (from: Transition["from"], to: Transition["to"], iso: string): Transition => ({
+    from,
+    to,
+    at: at(iso),
+  });
+  const sub = (
+    status: Parameters<typeof lifetimeFromTransitions>[1]["status"],
+    updated: string,
+    canceled: string | null = null,
+  ) => ({
+    status,
+    canceledAt: canceled ? at(canceled) : null,
+    updatedAt: at(updated),
+  });
+
+  it("a pause opens on a transition into paused and closes on the next one out of it", () => {
+    const life = lifetimeFromTransitions(
+      [
+        t(null, "active", "2026-10-20T00:00:00Z"),
+        t("active", "paused", "2026-11-10T09:00:00Z"),
+        t("paused", "active", "2026-11-15T09:00:00Z"),
+      ],
+      sub("active", "2026-11-15T09:00:00Z"),
+    );
+    expect(life).toEqual({
+      endedAt: null,
+      pauses: [{ from: at("2026-11-10T09:00:00Z"), to: at("2026-11-15T09:00:00Z") }],
+    });
+  });
+
+  it("an open pause stays open while the subscription IS paused", () => {
+    const life = lifetimeFromTransitions(
+      [t("active", "paused", "2026-11-15T09:00:00Z")],
+      sub("paused", "2026-11-15T09:00:00Z"),
+    );
+    expect(life.pauses).toEqual([{ from: at("2026-11-15T09:00:00Z"), to: null }]);
+  });
+
+  it("an open pause on a subscription that is NOT paused (resumed by a path that wrote no history) closes at the row's updated_at, not never", () => {
+    const life = lifetimeFromTransitions(
+      [t("active", "paused", "2026-11-15T09:00:00Z")],
+      sub("active", "2026-11-20T10:00:00Z"),
+    );
+    expect(life.pauses).toEqual([
+      { from: at("2026-11-15T09:00:00Z"), to: at("2026-11-20T10:00:00Z") },
+    ]);
+    // and it prices: Nov 16..19 are the fully paused days (the 15th and the 20th were partly used)
+    const windows = liveWindowsOf({
+      liveFrom: d("2026-11-01T00:00:00Z"),
+      endedAt: life.endedAt,
+      pauses: life.pauses,
+    });
+    expect(daysLiveInMonth(NOV, windows)).toBe(30 - 4);
+  });
+
+  it("the end is canceled_at, else the cancel transition, else the last write; none while the subscription runs", () => {
+    expect(
+      lifetimeFromTransitions([], sub("canceled", "2026-11-25T00:00:00Z", "2026-11-20T14:00:00Z"))
+        .endedAt,
+    ).toEqual(at("2026-11-20T14:00:00Z"));
+    expect(
+      lifetimeFromTransitions(
+        [t("active", "canceled", "2026-11-19T00:00:00Z")],
+        sub("canceled", "2026-11-25T00:00:00Z"),
+      ).endedAt,
+    ).toEqual(at("2026-11-19T00:00:00Z"));
+    expect(lifetimeFromTransitions([], sub("canceled", "2026-11-25T00:00:00Z")).endedAt).toEqual(
+      at("2026-11-25T00:00:00Z"),
+    );
+    expect(lifetimeFromTransitions([], sub("active", "2026-11-25T00:00:00Z")).endedAt).toBeNull();
   });
 });

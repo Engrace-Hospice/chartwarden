@@ -131,6 +131,7 @@ const PLATFORM_READ_TABLES = [
   "subscription_contract_mode",
   "patient_census_daily",
   "subscription_statement",
+  "subscription_statement_review",
   // WX-PR-025 — M33 §2.4 nightly MV refresh source tables (see MV_REFRESH_MATERIALIZED_VIEWS below):
   // the refresh's re-executed defining query needs a real SELECT grant on each MV's source table,
   // independent of (in addition to) the owner-role BYPASSRLS that lets it see every tenant's rows.
@@ -235,6 +236,7 @@ const PLATFORM_PROVISION_INSERT_TABLES = [
   "subscription_state_history",
   "subscription_contract",
   "subscription_contract_mode",
+  "subscription_statement_review",
 ] as const;
 
 const PLATFORM_PROVISION_UPDATE_TABLES = [
@@ -402,7 +404,7 @@ async function main(): Promise<void> {
         'GRANT SELECT ("membership_id", "role_id", "organization_id", "expires_at") ON "membership_role" TO chartwarden_platform;',
       );
       await run(
-        'GRANT SELECT ("id", "key", "enabled", "organization_id", "category", "system_default") ON "role" TO chartwarden_platform;',
+        'GRANT SELECT ("id", "key", "enabled", "organization_id") ON "role" TO chartwarden_platform;',
       );
       await run(
         'GRANT SELECT ("organization_id", "provider_entity_id", "usage", "control_number", "status") ON "clearinghouse_submission_attempt" TO chartwarden_platform;',
