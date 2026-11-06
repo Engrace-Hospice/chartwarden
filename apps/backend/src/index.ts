@@ -1593,6 +1593,7 @@ import {
   wireM34Tenancy,
 } from "./modules/34-saas-tenant-platform/index";
 import { canInviteFirstAdmin } from "./modules/34-saas-tenant-platform/invitation-token";
+import { buildPricingOnboardingPort } from "./modules/34-saas-tenant-platform/onboarding/pricing-port";
 // M35 (Subscription Billing) boot surface — the §4.11 outbox catalog, the §4.8 ABAC predicates, and the
 // §4.1–4.3 route mount over the single Drizzle route service. The write path emits `m35.*` events through
 // the bound transactional-outbox publisher; the platform-ops cross-tenant reads/writes run through the
@@ -1601,15 +1602,18 @@ import { canInviteFirstAdmin } from "./modules/34-saas-tenant-platform/invitatio
 // bound as deny-stubs in T05 and are still dormant (GAP-208): nothing registers a live impl and no
 // in-repo consumer resolves them via `getSeam`.
 import {
+  type PlatformAuditEntry as M35PlatformAuditEntry,
   M35_JOBS_PLATFORM_JOB_ID,
   M35_OUTBOX_EVENTS,
   type PlatformRunner,
+  buildContractService,
   buildDrizzleAddonService,
   buildDrizzleM35RouteService,
   buildM35OrgLifecycleConsumer,
   buildM35PatientActivePeriodConsumer,
   buildM35SessionCreatedConsumer,
   buildM35WebhookIngest,
+  buildPricingPlanService,
   createDrizzlePseudonymKeyProvider,
   loadM35StripeConfig,
   mountM35Routes,
@@ -6313,6 +6317,43 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               outbox: m35OutboxPublisher,
               ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
             }),
+            // Slice 2 (tenant pricing) - the plan editor, onboarding step 2 (the contract; settles `plan_contract` through the
+            // M34 wizard, bound here as a port because M35 has no edge to M34) and the tenant's own pricing read. Writes run on the
+            // platform runner only; each is audited with the operator's reason (the platform audit writer, M4).
+            pricing: (() => {
+              const m35PricingAudit = {
+                record: (tx: unknown, entry: M35PlatformAuditEntry) =>
+                  auditPlatformEvent(tx as Parameters<typeof auditPlatformEvent>[0], {
+                    eventType: entry.eventType,
+                    resourceKind: entry.resourceKind,
+                    resourceId: entry.resourceId,
+                    outcome: "success",
+                    severity: "warn",
+                    correlationId: `m35-pricing:${entry.eventType}:${entry.resourceId}:${randomUUID()}`,
+                    context: {
+                      ...(entry.organizationId ? { organizationId: entry.organizationId } : {}),
+                      operatorUserId: entry.operator.userId,
+                      operatorMembershipId: entry.operator.membershipId,
+                      reason: entry.reason,
+                      ...entry.detail,
+                    },
+                  }),
+              };
+              return {
+                plans: buildPricingPlanService({
+                  ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
+                  audit: m35PricingAudit,
+                }),
+                contracts: buildContractService({
+                  db: dbHandle.db,
+                  ...(m35PlatformRunner ? { platformRunner: m35PlatformRunner } : {}),
+                  outbox: m35OutboxPublisher,
+                  audit: m35PricingAudit,
+                  onboarding: buildPricingOnboardingPort({ wizard: m34Onboarding.wizard }),
+                  log: (message, detail) => app.log.warn(detail, message),
+                }),
+              };
+            })(),
           });
           // M37 (Inpatient Unit / IPU Management) — mount the §4.1 core route spine over the Drizzle route
           // service. Each mutation opens its own withOrgContext (RLS scopes every statement to app.org_id),
@@ -8168,6 +8209,19 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 },
                 keyProvider: pseudonymKeyProvider,
               },
+              // Slice 2 - the daily census (same sweep, same reader) and the monthly statement sweep. The M25 net-collections seam is
+              // resolved lazily, like the census reader. Stripe push stays unbound (StatementStripePort).
+              pricing: {
+                census: {
+                  activePatientCount: (orgId: string) =>
+                    getSeam("PatientCensusReader").activePatientCount(orgId),
+                },
+                keyProvider: pseudonymKeyProvider,
+                netCollections: {
+                  netCollectionsForPeriod: (orgId, period) =>
+                    getSeam("NetCollectionsReader").netCollectionsForPeriod(orgId, period),
+                },
+              },
             }
           : {}),
       });
@@ -8177,6 +8231,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
         webhookHandler: m35Stripe.cipher !== undefined,
         refundExecutor: m35Stripe.client !== undefined,
         patientCensus: pseudonymKeyRing !== null && pseudonymKeyRing !== undefined,
+        pricingStatement: pseudonymKeyRing !== null && pseudonymKeyRing !== undefined,
       })
         .then((queues) => {
           app.addHook("onClose", () => Promise.all(queues.map((q) => q.close())));

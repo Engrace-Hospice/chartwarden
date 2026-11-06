@@ -173,6 +173,22 @@ export const PLATFORM_ONBOARDING_DATA_KEYS = [
 ] as const;
 const PLATFORM_ONBOARDING_DATA_ROLES: readonly PlatformOpsRoleKey[] = ["platform_ops"];
 
+/**
+ * Slice 2 (tenant pricing, migration 1343). `subscription.onboard_platform` (sign a tenant onto a plan at onboarding step 2, change its
+ * billing service mode) binds to `platform_ops` ALONE: its route gates on `tenant_lifecycle_platform_ops`, which admits that exact role,
+ * so a grant to admin/owner would be a control that exists on paper only. `subscription.pricing_read_platform` (offered plans, the price
+ * preview, a tenant's contract and statements) is read-only behind `platform_billing_scope`, so the operator who prices a tenant and the
+ * three billing roles hold it.
+ */
+export const M35_PLATFORM_OPS_ONBOARDING_KEYS = ["subscription.onboard_platform"] as const;
+export const M35_PRICING_READ_KEY = "subscription.pricing_read_platform" as const;
+const PRICING_READ_ROLES: readonly PlatformOpsRoleKey[] = [
+  "platform_ops",
+  "platform_billing_admin",
+  "platform_admin",
+  "platform_owner",
+];
+
 /** Build a platform-ops role's default grant: `billing_admin.*` per the §4.7 binding rule, plus user lifecycle. */
 function platformOpsGrantsFor(role: PlatformOpsRoleKey): readonly string[] {
   const keys: string[] = [];
@@ -182,6 +198,8 @@ function platformOpsGrantsFor(role: PlatformOpsRoleKey): readonly string[] {
   if (PLATFORM_USER_LIFECYCLE_ROLES.includes(role))
     keys.push(PLATFORM_USER_LIFECYCLE_KEY, PLATFORM_PASSWORD_RESET_KEY);
   if (role === "platform_ops") keys.push(...M34_PLATFORM_OPS_ONBOARDING_KEYS);
+  if (role === "platform_ops") keys.push(...M35_PLATFORM_OPS_ONBOARDING_KEYS);
+  if (PRICING_READ_ROLES.includes(role)) keys.push(M35_PRICING_READ_KEY);
   if (PLATFORM_ONBOARDING_DATA_ROLES.includes(role)) keys.push(...PLATFORM_ONBOARDING_DATA_KEYS);
   return keys;
 }
