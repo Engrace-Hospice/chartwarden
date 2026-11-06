@@ -135,9 +135,9 @@ export interface SessionAuthenticateDeps {
     }): Promise<{ satisfied: boolean; requirement: string; reason?: string }>;
   };
   /**
-   * A new tenant's first admin signs in while the organization is still `created` (go-live not yet approved). For such an
-   * org-bound session ONLY the onboarding / go-live / account / identity routes may be called (onboarding-org-gate.ts); every
-   * clinical and PHI route answers 403 ORGANIZATION_ONBOARDING. A read that throws fails the request (closed). Absent in unit
+   * A new tenant's first admin signs in while the organization is still `created` (go-live not yet approved). For an org-bound
+   * session on any organization that is not `active` ONLY the exact METHOD + route-template pairs of onboarding-org-gate.ts may be
+   * called; every other route answers 403 ORGANIZATION_ONBOARDING. A read that throws fails the request (closed). Absent in unit
    * tests that do not exercise it: no gate.
    */
   organizationStage?: OrganizationStageReader;
@@ -283,8 +283,12 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     }
     if (
       deps.organizationStage &&
-      (await deps.organizationStage.isPreActivation(actor.organizationId)) &&
-      !preActivationMayCall(request.url)
+      (await deps.organizationStage.isConfined(actor.organizationId)) &&
+      !preActivationMayCall({
+        method: request.method,
+        routeTemplate: request.routeOptions?.url,
+        rawUrl: request.url,
+      })
     ) {
       throw organizationOnboardingRefusal();
     }
