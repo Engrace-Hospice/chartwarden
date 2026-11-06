@@ -43,8 +43,10 @@ import {
   createHttpDoseSpotConnectionProbe,
   createLayeredTenantConfigResolver,
 } from "@chartwarden/dosespot";
+import { createMdmEntityProvider } from "@chartwarden/mdm";
 import { __resetModule34SeamsForTest } from "@chartwarden/saas-tenant-platform";
 import { registerPlatformJob, withOrgContext } from "@chartwarden/tenancy";
+import { Value } from "@sinclair/typebox/value";
 import { sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -66,9 +68,16 @@ import {
   createDoseSpotClinicService,
   createDrizzleRosterStore,
   createDrizzleTenantConfigSource,
+  createPractitionerProfileSource,
   createPrescriberEnrollmentService,
   createTransmissionGate,
 } from "../src/modules/12-dosespot/index";
+import { isValidNpi } from "../src/modules/12-dosespot/tenant-config/practitioner-profile";
+import { EnrollPrescriberVendorBodySchema } from "../src/modules/12-dosespot/tenant-config/typebox";
+import {
+  createDrizzleM29PublishedSeamStore,
+  createNppesProviderReader,
+} from "../src/modules/29-external-interfaces/seams/index";
 import {
   type OnboardingOperator,
   buildDrizzleOnboardingDataService,
@@ -79,6 +88,7 @@ import {
   validateModule34Seams,
 } from "../src/modules/34-saas-tenant-platform/index";
 import { voidPendingGoLiveForDataChange } from "../src/modules/34-saas-tenant-platform/onboarding/go-live-void";
+import { createDbMdmStore } from "../src/modules/40-mdm/index";
 import {
   appRoleConnectionString,
   appRoleUrl,
@@ -106,7 +116,6 @@ const CLINIC_KEY = "clinic-key-plaintext-LIVE-7f3a91c2";
 const SUB_KEY = "sub-key-plaintext-LIVE-5b8e0d14";
 const ROTATED_KEY = "clinic-key-plaintext-ROTATED-2c9d4e68";
 const REASON = "Customer asked support to register their DoseSpot clinic, ticket CHG-8841";
-const NPI = "1234567893";
 const BASE = {
   environment: "sandbox",
   clinicId: "clinic-live-1",
@@ -239,6 +248,87 @@ describe.skipIf(!DB_URL)(
         await client.end();
       }
     };
+
+    // ── practitioner records: the roster-linked M40 physician (NPPES-sourced) and NPPES's own row ──────────────────────────
+    interface SeededPhysician {
+      readonly id: string;
+      readonly npi: string | null;
+      readonly firstName: string;
+      readonly lastName: string;
+    }
+    const physicianOfMember = new Map<string, SeededPhysician>();
+    let physicianSeq = 0;
+    /** A synthetic NPI that passes the check digit (never a real provider's: the 9-digit base is a fixed invented prefix). */
+    const syntheticNpi = (n: number): string => {
+      const base = `19${String(n).padStart(7, "0")}`;
+      const digit = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].find((d) => isValidNpi(`${base}${d}`));
+      return `${base}${digit}`;
+    };
+    const INVENTED_NAMES: ReadonlyArray<readonly [string, string]> = [
+      ["Tamsin", "Wexford"],
+      ["Orrin", "Delacroix-Voss"],
+      ["Priya", "Nandakumar"],
+      ["Basil", "Quillfeather"],
+      ["Marisol", "Thorne"],
+      ["Ignatius", "Pemberton"],
+      ["Odalys", "Brightwater"],
+      ["Ferris", "Caldecott"],
+    ];
+    /**
+     * An M40 canonical physician record with a fresh synthetic NPI and invented name. `nppes` says what NPPES's public directory
+     * holds for the NPI: its matching row (default), no row, or a row that contradicts the record.
+     */
+    async function seedPhysician(
+      opts: {
+        npi?: string | null;
+        status?: string;
+        nppes?: "match" | "none" | "other_surname" | "organization" | "deactivated";
+      } = {},
+    ): Promise<SeededPhysician> {
+      const n = ++physicianSeq;
+      const [firstName, lastName] = INVENTED_NAMES[n % INVENTED_NAMES.length] as readonly [
+        string,
+        string,
+      ];
+      const npi = opts.npi === undefined ? syntheticNpi(n) : opts.npi;
+      const id = `77000000-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
+      await admin.query(
+        "INSERT INTO external_physician (id, npi, first_name, last_name, status) VALUES ($1,$2,$3,$4,$5::mdm_entity_status)",
+        [id, npi, firstName, lastName, opts.status ?? "active"],
+      );
+      const nppes = opts.nppes ?? "match";
+      if (npi !== null && nppes !== "none") {
+        await admin.query(
+          "INSERT INTO nppes_provider (npi, enumeration_type, status, basic) VALUES ($1,$2::nppes_enumeration_type,$3::nppes_provider_status,$4::jsonb)",
+          [
+            npi,
+            nppes === "organization" ? "NPI-2" : "NPI-1",
+            nppes === "deactivated" ? "deactivated" : "active",
+            JSON.stringify({
+              firstName: firstName.toUpperCase(),
+              lastName: (nppes === "other_surname" ? "NOTTHESAMEPERSON" : lastName)
+                .replace(/[^A-Za-z]/g, "")
+                .toUpperCase(),
+            }),
+          ],
+        );
+      }
+      return { id, npi, firstName, lastName };
+    }
+    /** Put `membershipId` on `org`'s roster, linked to a fresh practitioner record (what the roster `enroll` route does). */
+    async function rosterWithPhysician(
+      org: string,
+      membershipId: string,
+      physician?: SeededPhysician,
+    ): Promise<SeededPhysician> {
+      const linked = physician ?? (await seedPhysician());
+      await admin.query(
+        "INSERT INTO dosespot_prescriber (organization_id, membership_id, external_physician_mdm_id, enrolled_at) VALUES ($1,$2,$3,now())",
+        [org, membershipId, linked.id],
+      );
+      physicianOfMember.set(membershipId, linked);
+      return linked;
+    }
 
     let service: ReturnType<typeof createDoseSpotClinicService>;
     let route: ReturnType<typeof buildDrizzleDoseSpotClinicRouteService>;
@@ -458,6 +548,12 @@ describe.skipIf(!DB_URL)(
             fn(createDrizzleRosterStore(tx as unknown as DbClient), tx as unknown as DbClient),
           ),
         client,
+        // WHO the prescriber is: the REAL M40 provider (the NPPES-sourced physician record the roster links the member to) and the REAL
+        // M29 NPPES reader (the public directory), both over the tenant pool as in production.
+        profiles: createPractitionerProfileSource({
+          directory: createMdmEntityProvider(createDbMdmStore(tdb)),
+          nppes: createNppesProviderReader(createDrizzleM29PublishedSeamStore(tdb)),
+        }),
         outbox,
         audit: buildClinicAuditPort(),
         afterWrite,
@@ -882,6 +978,7 @@ describe.skipIf(!DB_URL)(
     // ── a prescriber's vendor enrolment ──────────────────────────────────────────────────────────────
     describe("a prescriber's vendor enrolment", () => {
       const M1 = "99000000-0000-4000-8000-0000000000a1";
+      let physician1: SeededPhysician;
       beforeAll(async () => {
         await admin.query(
           `INSERT INTO "user" (id,email) VALUES ('99000000-0000-4000-8000-0000000000a9','rx2@ds.test') ON CONFLICT DO NOTHING`,
@@ -890,11 +987,12 @@ describe.skipIf(!DB_URL)(
           "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,'99000000-0000-4000-8000-0000000000a9',$2,'active') ON CONFLICT DO NOTHING",
           [M1, ORG_A],
         );
+        physician1 = await rosterWithPhysician(ORG_A, M1); // on the roster, linked to an NPPES-sourced practitioner record
       });
-      const body = { npi: NPI, firstName: "Ada", lastName: "Lovelace" };
+      const clinicianCalls = () => fetchLog.filter((c) => c.url.endsWith("/api/clinicians")).length;
 
       it("is refused until the registration is verified or active (409 DOSESPOT_NOT_READY), and nothing is created", async () => {
-        expect(await errorCode(enrollment.enroll(tenantActor(ORG_C), M1, body))).toBe(
+        expect(await errorCode(enrollment.enroll(tenantActor(ORG_C), M1))).toBe(
           "DOSESPOT_NOT_READY",
         );
         expect(
@@ -905,13 +1003,30 @@ describe.skipIf(!DB_URL)(
         ).toHaveLength(0);
       });
 
-      it("creates the roster row, calls the vendor with NO transaction open, records the vendor id and publishes it", async () => {
+      it("a typed NPI, first name or last name is rejected by the request schema: identity is never taken from the caller", () => {
+        expect(Value.Check(EnrollPrescriberVendorBodySchema, {})).toBe(true);
+        for (const typed of [
+          { npi: "1234567893" },
+          { firstName: "Tamsin" },
+          { lastName: "Wexford" },
+          { npi: "1234567893", firstName: "Tamsin", lastName: "Wexford" },
+        ]) {
+          expect(Value.Check(EnrollPrescriberVendorBodySchema, typed)).toBe(false);
+        }
+      });
+
+      it("calls the vendor with NO transaction open, with the PROFILE's NPI and name, records the vendor id and publishes it", async () => {
         enrollBehaviour = "ok";
-        const out = await enrollment.enroll(tenantActor(ORG_A), M1, body);
+        const out = await enrollment.enroll(tenantActor(ORG_A), M1);
         expect(out).toEqual({ membershipId: M1, enrolledWithDoseSpot: true });
         expect(vendorCallsInsideTx).toBe(0);
+        // the vendor was told the practitioner record's NPI and legal name (nothing in the call came from the caller)
+        const sent = fetchLog.filter((c) => c.url.endsWith("/api/clinicians")).at(-1)?.body ?? "";
+        expect(sent).toContain(physician1.npi as string);
+        expect(sent).toContain(physician1.firstName);
+        expect(sent).toContain(physician1.lastName);
         const row = (await q("SELECT * FROM dosespot_prescriber WHERE membership_id=$1", [M1]))[0];
-        expect(row).toMatchObject({ npi: NPI });
+        expect(row?.npi).toBe(physician1.npi); // the profile's NPI is the one recorded
         expect(row?.dosespot_prescriber_id).toMatch(/^70\d$/);
         expect(row?.vendor_enrollment_requested_at).not.toBeNull();
         const events = await eventsOf("m12.prescriber_enrolled", ORG_A);
@@ -921,7 +1036,8 @@ describe.skipIf(!DB_URL)(
         });
         const audit = (await auditRows(ORG_A, "m12.dosespot_clinic.prescriber_enrolled")).at(-1);
         expect(audit?.context.changedFields).toEqual(["dosespotPrescriberId", "npi"]);
-        expect(JSON.stringify(audit)).not.toContain(NPI);
+        expect(audit?.context.nppesVerified).toBe(true); // NPPES's row agreed with the record
+        expect(JSON.stringify(audit)).not.toContain(physician1.npi as string);
       });
 
       it("never reinstates a revoked prescriber, and refuses a membership that is not in this organization", async () => {
@@ -938,7 +1054,7 @@ describe.skipIf(!DB_URL)(
           [ORG_A, MR],
         );
         const calls = fetchLog.length;
-        expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), MR, body))).toBe(
+        expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), MR))).toBe(
           "DOSESPOT_PRESCRIBER_REVOKED",
         );
         expect(
@@ -955,9 +1071,7 @@ describe.skipIf(!DB_URL)(
           [FOREIGN, ORG_B],
         );
         const before = (await q("SELECT count(*)::int AS n FROM dosespot_prescriber"))[0]?.n;
-        expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), FOREIGN, body))).toBe(
-          "NOT_FOUND",
-        );
+        expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), FOREIGN))).toBe("NOT_FOUND");
         expect((await q("SELECT count(*)::int AS n FROM dosespot_prescriber"))[0]?.n).toBe(before);
         expect(fetchLog.slice(calls).filter((c) => c.url.endsWith("/api/clinicians"))).toHaveLength(
           0,
@@ -966,7 +1080,7 @@ describe.skipIf(!DB_URL)(
 
       it("is idempotent: a linked prescriber is not enrolled twice", async () => {
         const calls = fetchLog.length;
-        await enrollment.enroll(tenantActor(ORG_A), M1, body);
+        await enrollment.enroll(tenantActor(ORG_A), M1);
         expect(fetchLog.slice(calls).filter((c) => c.url.endsWith("/api/clinicians"))).toHaveLength(
           0,
         );
@@ -982,8 +1096,9 @@ describe.skipIf(!DB_URL)(
           "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,'99000000-0000-4000-8000-0000000000aa',$2,'active')",
           [M2, ORG_A],
         );
+        await rosterWithPhysician(ORG_A, M2);
         enrollBehaviour = "rejected";
-        const refused = await errorCode(enrollment.enroll(tenantActor(ORG_A), M2, body));
+        const refused = await errorCode(enrollment.enroll(tenantActor(ORG_A), M2));
         enrollBehaviour = "ok"; // reset before asserting, so a failure here cannot cascade into later cases
         expect(refused).toBe("DOSESPOT_ENROLLMENT_REJECTED");
         const row = (await q("SELECT * FROM dosespot_prescriber WHERE membership_id=$1", [M2]))[0];
@@ -993,9 +1108,9 @@ describe.skipIf(!DB_URL)(
         enrollBehaviour = "ok";
       });
 
-      // ── the claim, the release and the record, on the real row locks ──────────────────────────────
+      // ── who the prescriber is: derived from the roster-linked practitioner record, cross-checked against NPPES ──────────────
       let memberSeq = 0;
-      /** A fresh ACTIVE member of ORG_A (one active membership per user per org), optionally already on the roster. */
+      /** A fresh member of ORG_A (one active membership per user per org); `onRoster` links them to a fresh practitioner record. */
       const newMember = async (opts: { onRoster?: boolean; status?: string } = {}) => {
         const n = ++memberSeq;
         const suffix = n.toString(16).padStart(2, "0");
@@ -1009,14 +1124,120 @@ describe.skipIf(!DB_URL)(
           "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,$2,$3,$4)",
           [membershipId, userId, ORG_A, opts.status ?? "active"],
         );
-        if (opts.onRoster) {
-          await admin.query(
-            "INSERT INTO dosespot_prescriber (organization_id, membership_id, enrolled_at) VALUES ($1,$2,now())",
-            [ORG_A, membershipId],
-          );
-        }
+        if (opts.onRoster) await rosterWithPhysician(ORG_A, membershipId);
         return membershipId;
       };
+      /** `ORG_A`'s roster row for a fresh member, linked to `physician` (or to nothing). */
+      const memberOf = async (physician: SeededPhysician | null) => {
+        const member = await newMember();
+        if (physician) {
+          await rosterWithPhysician(ORG_A, member, physician);
+        } else {
+          await admin.query(
+            "INSERT INTO dosespot_prescriber (organization_id, membership_id, enrolled_at) VALUES ($1,$2,now())",
+            [ORG_A, member],
+          );
+        }
+        return member;
+      };
+      /** Enrolment refused with `code`: no vendor call, and the roster row neither claimed nor linked. */
+      const expectRefused = async (member: string, code: string) => {
+        const calls = clinicianCalls();
+        expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), member))).toBe(code);
+        expect(clinicianCalls()).toBe(calls);
+        const row = (
+          await q("SELECT * FROM dosespot_prescriber WHERE membership_id=$1", [member])
+        )[0];
+        expect(row?.vendor_enrollment_requested_at ?? null).toBeNull();
+        expect(row?.dosespot_prescriber_id ?? null).toBeNull();
+      };
+
+      it("a member who is not on the roster has no practitioner record to derive from: 409, and no roster row is created", async () => {
+        const member = await newMember();
+        const calls = clinicianCalls();
+        expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), member))).toBe(
+          "DOSESPOT_PRACTITIONER_NOT_LINKED",
+        );
+        expect(clinicianCalls()).toBe(calls);
+        expect(
+          await q("SELECT 1 FROM dosespot_prescriber WHERE membership_id=$1", [member]),
+        ).toHaveLength(0);
+      });
+
+      it("a roster row that links no physician record is refused the same way", async () => {
+        await expectRefused(await memberOf(null), "DOSESPOT_PRACTITIONER_NOT_LINKED");
+      });
+
+      it("a linked record with no NPI on file is refused (409), and one with an invalid NPI is refused (422)", async () => {
+        await expectRefused(
+          await memberOf(await seedPhysician({ npi: null })),
+          "DOSESPOT_PRACTITIONER_NPI_MISSING",
+        );
+        await expectRefused(
+          await memberOf(await seedPhysician({ npi: "1234567890", nppes: "none" })),
+          "DOSESPOT_NPI_INVALID",
+        );
+      });
+
+      it("a linked record that is not active (deactivated, provisional) is refused", async () => {
+        for (const status of ["deactivated", "provisional"]) {
+          await expectRefused(
+            await memberOf(await seedPhysician({ status })),
+            "DOSESPOT_PRACTITIONER_NOT_ACTIVE",
+          );
+        }
+      });
+
+      it("an NPI that NPPES contradicts is refused: another surname, an organization (NPI-2), a deactivated provider", async () => {
+        for (const nppes of ["other_surname", "organization", "deactivated"] as const) {
+          await expectRefused(
+            await memberOf(await seedPhysician({ nppes })),
+            "DOSESPOT_NPPES_MISMATCH",
+          );
+        }
+      });
+
+      it("NPPES with no row for the NPI: a sandbox registration proceeds FLAGGED, a production one is refused", async () => {
+        const unlisted = await seedPhysician({ nppes: "none" });
+        const production = await memberOf(await seedPhysician({ nppes: "none" }));
+        await admin.query(
+          "UPDATE dosespot_clinic_registration SET environment='production' WHERE organization_id=$1",
+          [ORG_A],
+        );
+        try {
+          await expectRefused(production, "DOSESPOT_NPPES_UNVERIFIED");
+        } finally {
+          await admin.query(
+            "UPDATE dosespot_clinic_registration SET environment='sandbox' WHERE organization_id=$1",
+            [ORG_A],
+          );
+        }
+        const member = await memberOf(unlisted);
+        expect(await enrollment.enroll(tenantActor(ORG_A), member)).toMatchObject({
+          enrolledWithDoseSpot: true,
+        });
+        const audit = (await auditRows(ORG_A, "m12.dosespot_clinic.prescriber_enrolled")).at(-1);
+        expect(audit?.context.nppesVerified).toBe(false); // linked, but NPPES had not confirmed the NPI
+      });
+
+      it("a roster re-link between deriving the profile and claiming the row is refused at the row lock (409 DOSESPOT_ROSTER_CHANGED)", async () => {
+        const member = await newMember({ onRoster: true });
+        const other = await seedPhysician();
+        const code = await errorCode(
+          inOrgA((store) => store.ensureRequested(ORG_A, member, new Date(), 5 * 60_000, other.id)),
+        );
+        expect(code).toBe("DOSESPOT_ROSTER_CHANGED"); // the profile belonged to `other`, the row now links someone else
+        expect(
+          (
+            await q(
+              "SELECT vendor_enrollment_requested_at AS at FROM dosespot_prescriber WHERE membership_id=$1",
+              [member],
+            )
+          )[0]?.at,
+        ).toBeNull();
+      });
+
+      // ── the claim, the release and the record, on the real row locks ──────────────────────────────
       /**
        * Open several pooled connections BEFORE a race: a cold pool makes the second request wait for a new connection while the first
        * runs to completion, which serialises the two and proves nothing about the row lock.
@@ -1026,7 +1247,6 @@ describe.skipIf(!DB_URL)(
           Array.from({ length: connections }, () => tdb.execute(sql`SELECT pg_sleep(0.1)`)),
         );
       };
-      const clinicianCalls = () => fetchLog.filter((c) => c.url.endsWith("/api/clinicians")).length;
       const inOrgA = <T>(fn: (store: ReturnType<typeof createDrizzleRosterStore>) => Promise<T>) =>
         withOrgContext(tdb, { organizationId: ORG_A, userId: TENANT_ADMIN }, (tx) =>
           fn(createDrizzleRosterStore(tx as unknown as DbClient)),
@@ -1036,9 +1256,7 @@ describe.skipIf(!DB_URL)(
         const calls = clinicianCalls();
         for (const status of ["suspended", "revoked"]) {
           const member = await newMember({ status });
-          expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), member, body))).toBe(
-            "NOT_FOUND",
-          );
+          expect(await errorCode(enrollment.enroll(tenantActor(ORG_A), member))).toBe("NOT_FOUND");
           expect(
             await q("SELECT 1 FROM dosespot_prescriber WHERE membership_id=$1", [member]),
           ).toHaveLength(0);
@@ -1054,8 +1272,8 @@ describe.skipIf(!DB_URL)(
         let outcomes: PromiseSettledResult<unknown>[];
         try {
           outcomes = await Promise.allSettled([
-            enrollment.enroll(tenantActor(ORG_A), member, body),
-            enrollment.enroll(tenantActor(ORG_A), member, body),
+            enrollment.enroll(tenantActor(ORG_A), member),
+            enrollment.enroll(tenantActor(ORG_A), member),
           ]);
         } finally {
           enrollDelayMs = 0;
@@ -1077,34 +1295,27 @@ describe.skipIf(!DB_URL)(
         ).toMatch(/^70\d$/);
       });
 
-      it("two concurrent FIRST enrolments (no roster row yet): the unique index makes the loser a 409, never a 500", async () => {
+      it("two concurrent enrolments of a member who is NOT on the roster are both refused (409): the roster is the only way in", async () => {
         const member = await newMember();
         const calls = clinicianCalls();
-        enrollDelayMs = 300;
         await warmPool();
-        let outcomes: PromiseSettledResult<unknown>[];
-        try {
-          outcomes = await Promise.allSettled([
-            enrollment.enroll(tenantActor(ORG_A), member, body),
-            enrollment.enroll(tenantActor(ORG_A), member, body),
-          ]);
-        } finally {
-          enrollDelayMs = 0;
+        const outcomes = await Promise.allSettled([
+          enrollment.enroll(tenantActor(ORG_A), member),
+          enrollment.enroll(tenantActor(ORG_A), member),
+        ]);
+        expect(outcomes.map((o) => o.status)).toEqual(["rejected", "rejected"]);
+        for (const o of outcomes as PromiseRejectedResult[]) {
+          expect((o.reason as { code?: string }).code).toBe("DOSESPOT_PRACTITIONER_NOT_LINKED");
         }
-        const refused = outcomes.filter((o) => o.status === "rejected") as PromiseRejectedResult[];
-        expect(outcomes.filter((o) => o.status === "fulfilled")).toHaveLength(1);
-        expect(refused).toHaveLength(1);
-        expect((refused[0]?.reason as { code?: string }).code).toBe(
-          "DOSESPOT_ENROLLMENT_IN_PROGRESS",
-        );
-        expect(clinicianCalls() - calls).toBe(1);
+        expect(clinicianCalls()).toBe(calls);
         expect(
           await q("SELECT 1 FROM dosespot_prescriber WHERE membership_id=$1", [member]),
-        ).toHaveLength(1);
+        ).toHaveLength(0);
       });
 
       it("the claim is released only by the attempt that made it: a vendor refusal never clears a newer claim", async () => {
         const member = await newMember({ onRoster: true });
+        const linkedTo = physicianOfMember.get(member)?.id as string;
         const marker = async () =>
           (
             await q(
@@ -1114,7 +1325,9 @@ describe.skipIf(!DB_URL)(
           )[0]?.at as Date | null;
         // at the store: a release naming a DIFFERENT claim leaves the marker; the claim's own release clears it
         const at = new Date(Date.now() - 1_000);
-        const claim = await inOrgA((store) => store.ensureRequested(ORG_A, member, at, 5 * 60_000));
+        const claim = await inOrgA((store) =>
+          store.ensureRequested(ORG_A, member, at, 5 * 60_000, linkedTo),
+        );
         expect(claim.inProgress).toBe(false);
         await inOrgA((store) => store.releaseRequest(ORG_A, member, new Date(at.getTime() + 5)));
         expect((await marker())?.getTime()).toBe(at.getTime());
@@ -1122,7 +1335,7 @@ describe.skipIf(!DB_URL)(
         expect(await marker()).toBeNull();
         // through the real flow: attempt 1 claims, another administrator re-stamps the marker (the first claim aged out), then
         // attempt 1's vendor call is REFUSED: its release is conditional on its own marker, so the newer claim stands
-        const plan = await enrollment.prepare(tenantActor(ORG_A), member, body);
+        const plan = await enrollment.prepare(tenantActor(ORG_A), member);
         expect(plan.claimedAt).not.toBeNull();
         const restamped = new Date(Date.now() + 60_000);
         await admin.query(
@@ -1139,7 +1352,7 @@ describe.skipIf(!DB_URL)(
       it("a prescriber revoked while the vendor call was in flight is never linked (409), and nothing is published", async () => {
         const member = await newMember({ onRoster: true });
         const published = (await eventsOf("m12.prescriber_enrolled", ORG_A)).length;
-        const plan = await enrollment.prepare(tenantActor(ORG_A), member, body);
+        const plan = await enrollment.prepare(tenantActor(ORG_A), member);
         await admin.query(
           "UPDATE dosespot_prescriber SET revoked_at=now() WHERE membership_id=$1",
           [member],
@@ -1229,7 +1442,14 @@ describe.skipIf(!DB_URL)(
         ).toBeGreaterThanOrEqual(1);
         const roster = await onboardingData.listDoseSpotPrescribers(operator(), "ds-a");
         const dump = JSON.stringify(roster);
-        expect(dump).not.toContain(NPI);
+        const rosterNpis = (
+          await q(
+            "SELECT npi FROM dosespot_prescriber WHERE organization_id=$1 AND npi IS NOT NULL",
+            [ORG_A],
+          )
+        ).map((r) => r.npi as string);
+        expect(rosterNpis.length).toBeGreaterThan(0); // there ARE NPIs on this roster, and none reaches the operator's list
+        for (const npi of rosterNpis) expect(dump).not.toContain(npi);
         expect(roster.items.length).toBeGreaterThan(0);
       });
 
@@ -1280,15 +1500,13 @@ describe.skipIf(!DB_URL)(
           "INSERT INTO membership (id, user_id, organization_id, status) VALUES ($1,'99000000-0000-4000-8000-0000000000b9',$2,'active')",
           [M3, ORG_B],
         );
-        const out = await onboardingData.enrollDoseSpotPrescriber(
-          operator(),
-          "ds-b",
-          M3,
-          { npi: NPI, firstName: "Grace", lastName: "Hopper" },
-          REASON,
-        );
+        const physician = await rosterWithPhysician(ORG_B, M3); // the operator names no NPI: it comes from the linked record
+        const out = await onboardingData.enrollDoseSpotPrescriber(operator(), "ds-b", M3, REASON);
         expect(out).toEqual({ membershipId: M3, enrolledWithDoseSpot: true });
         expect(vendorCallsInsideTx).toBe(0);
+        expect(
+          (await q("SELECT npi FROM dosespot_prescriber WHERE membership_id=$1", [M3]))[0]?.npi,
+        ).toBe(physician.npi);
         expect(
           (
             await q(
@@ -1357,13 +1575,7 @@ describe.skipIf(!DB_URL)(
         fetchLog.length = 0;
         expect(
           await errorCode(
-            onboardingData.enrollDoseSpotPrescriber(
-              operator(),
-              "ds-c",
-              REVOKED,
-              { npi: NPI, firstName: "Ada", lastName: "Lovelace" },
-              REASON,
-            ),
+            onboardingData.enrollDoseSpotPrescriber(operator(), "ds-c", REVOKED, REASON),
           ),
         ).toBe("TENANT_NOT_ONBOARDING");
         expect(await errorCode(onboardingData.verifyDoseSpot(operator(), "ds-c", REASON))).toBe(
@@ -1415,13 +1627,7 @@ describe.skipIf(!DB_URL)(
         const calls = fetchLog.length;
         expect(
           await errorCode(
-            onboardingData.enrollDoseSpotPrescriber(
-              operator(),
-              "ds-b",
-              ROSTERED_IN_A,
-              { npi: NPI, firstName: "Ada", lastName: "Lovelace" },
-              REASON,
-            ),
+            onboardingData.enrollDoseSpotPrescriber(operator(), "ds-b", ROSTERED_IN_A, REASON),
           ),
         ).toBe("NOT_FOUND");
         expect((await q("SELECT count(*)::int AS n FROM dosespot_prescriber"))[0]?.n).toBe(
