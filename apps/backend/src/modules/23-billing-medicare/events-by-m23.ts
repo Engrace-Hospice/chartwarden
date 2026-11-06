@@ -547,16 +547,19 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   // Published by the record-external-filing route in the record's own transaction (ids and dates only). M23's own consumer turns it
   // into the M36 alert to the tenant (billing manager, compliance officer, org admin) and a platform-ops notice: the watchdog
   // cannot stamp a breach for a notice that left its scan, and nobody else would ever hear of a late filing it was not told of.
+  // The same event also announces the opposite disagreement: an ON-TIME date recorded over a breach the watchdog had ALREADY stamped
+  // (the stamp is never cleared by a tenant's record). It is told apart by `breachObservedAt`, the date the watchdog stamped.
   {
     eventName: "m23.noe.filed_externally_late",
     moduleOwner: "m23",
     description:
-      "A tenant that bills outside ChartWarden recorded that it filed its NOE after the 5-day CMS window (filedOn is after windowTargetAt).",
+      "A tenant that bills outside ChartWarden recorded that it filed its NOE after the 5-day CMS window (filedOn is after windowTargetAt), or recorded an in-window filedOn over a breach the deadline watchdog had already stamped (breachObservedAt is the stamped date; the stamp is kept).",
     payloadSchema: Type.Object({
       noeId: id,
       admissionId: id,
       filedOn: isoDay,
       windowTargetAt: isoDay,
+      breachObservedAt: Type.Optional(isoDay),
     }),
     declaredConsumers: ["m23"],
     seamConsumers: ["m36"],
@@ -566,12 +569,13 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m23.notr.filed_externally_late",
     moduleOwner: "m23",
     description:
-      "A tenant that bills outside ChartWarden recorded that it filed its NOTR after the CMS window (filedOn is after windowTargetAt).",
+      "A tenant that bills outside ChartWarden recorded that it filed its NOTR after the CMS window (filedOn is after windowTargetAt), or recorded an in-window filedOn over a breach the deadline watchdog had already stamped (breachObservedAt is the stamped date; the stamp is kept).",
     payloadSchema: Type.Object({
       notrId: id,
       admissionId: id,
       filedOn: isoDay,
       windowTargetAt: isoDay,
+      breachObservedAt: Type.Optional(isoDay),
     }),
     declaredConsumers: ["m23"],
     seamConsumers: ["m36"],

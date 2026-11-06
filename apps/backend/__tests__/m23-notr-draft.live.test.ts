@@ -760,28 +760,34 @@ describe.skipIf(!DB_URL)(
       ]);
     }, 60_000);
 
-    it("an on-time filing publishes nothing and clears a breach stamp the deadline watchdog set earlier; a late one keeps its stamp (round 2: L4, Q4)", async () => {
+    it("a breach stamp the deadline watchdog set is NEVER cleared by a tenant's record: an on-time date over it announces the contradiction with both dates; a late one keeps its stamp", async () => {
       const { service } = externalFilingService(true);
       const ended = addDays(todayIso(), -3); // due in +5: two days left
       const onTime = await seedNotr(ORG_A, { ended, status: "pending" });
-      await admin.query("UPDATE notr_record SET window_breached_at=CURRENT_DATE WHERE id=$1", [
+      const observed = todayIso();
+      await admin.query("UPDATE notr_record SET window_breached_at=$2 WHERE id=$1", [
         onTime,
+        observed,
       ]);
 
       await service.recordNotrExternalFiling(actorOf(ORG_A), onTime, { filedOn: todayIso() });
 
       expect(await notrRow(onTime)).toMatchObject({
         external_filing_status: "filed",
-        breached: null,
+        breached: observed,
       });
-      expect(
-        (
-          await admin.query(
-            "SELECT count(*)::int AS n FROM outbox_event WHERE event_type='m23.notr.filed_externally_late' AND payload->>'notrId'=$1",
-            [onTime],
-          )
-        ).rows[0].n,
-      ).toBe(0);
+      const { rows: events } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE event_type='m23.notr.filed_externally_late' AND payload->>'notrId'=$1",
+        [onTime],
+      );
+      expect(events).toHaveLength(1);
+      expect(events[0].payload).toEqual({
+        notrId: onTime,
+        admissionId: expect.any(String),
+        filedOn: todayIso(),
+        windowTargetAt: addDays(ended, 5),
+        breachObservedAt: observed,
+      });
 
       const lateEnded = addDays(todayIso(), -12); // due 7 days ago
       const late = await seedNotr(ORG_A, { ended: lateEnded, status: "pending" });

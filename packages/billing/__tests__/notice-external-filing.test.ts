@@ -20,7 +20,7 @@ describe("planExternalFilingRecord", () => {
     expect(planExternalFilingRecord({ ...base, state, filedOn: "2026-11-04" })).toEqual({
       kind: "record",
       stampBreach: false,
-      clearBreach: false,
+      contradictsBreach: false,
       late: false,
     });
   });
@@ -28,7 +28,7 @@ describe("planExternalFilingRecord", () => {
   it("records a notice nobody parked yet (status null), the first time the tenant tells us", () => {
     expect(
       planExternalFilingRecord({ ...base, externalFilingStatus: null, filedOn: "2026-11-04" }),
-    ).toEqual({ kind: "record", stampBreach: false, clearBreach: false, late: false });
+    ).toEqual({ kind: "record", stampBreach: false, contradictsBreach: false, late: false });
   });
 
   it.each(["submitted", "ack_pending", "ack_accepted", "ack_rejected", "cancelled"] as const)(
@@ -89,13 +89,13 @@ describe("planExternalFilingRecord", () => {
     expect(planExternalFilingRecord({ ...base, filedOn: "2026-11-07" })).toEqual({
       kind: "record",
       stampBreach: true,
-      clearBreach: false,
+      contradictsBreach: false,
       late: true,
     });
     expect(planExternalFilingRecord({ ...base, filedOn: "2026-11-06" })).toEqual({
       kind: "record",
       stampBreach: false,
-      clearBreach: false,
+      contradictsBreach: false,
       late: false,
     });
   });
@@ -103,17 +103,38 @@ describe("planExternalFilingRecord", () => {
   it("keeps a breach the watchdog already stamped when the filing really was late (still late: the event fires)", () => {
     expect(
       planExternalFilingRecord({ ...base, windowBreachedAt: "2026-11-07", filedOn: "2026-11-09" }),
-    ).toEqual({ kind: "record", stampBreach: false, clearBreach: false, late: true });
+    ).toEqual({ kind: "record", stampBreach: false, contradictsBreach: false, late: true });
   });
 
-  // The watchdog scans an unfiled notice every 30 minutes: past the due date it stamps a breach. A tenant that filed ON TIME but
-  // told ChartWarden afterwards must not be left with that stamp (it would read as a late NOE on every report).
-  it("clears a breach stamp the watchdog set before an ON-TIME filing was recorded", () => {
+  // The watchdog scans an unfiled notice every 30 minutes: past the due date it stamps a breach. A tenant that says it filed ON
+  // TIME but told ChartWarden afterwards cannot erase that stamp: it is what ChartWarden observed, the filing date is only the
+  // tenant's word. The record keeps the stamp and says so, so the caller can put both facts in front of compliance and ops.
+  it("keeps a breach stamp the watchdog set before an ON-TIME filing was recorded, and flags the contradiction", () => {
+    const stamped = { ...base, windowBreachedAt: "2026-11-07" };
+    expect(planExternalFilingRecord({ ...stamped, filedOn: "2026-11-05" })).toEqual({
+      kind: "record",
+      stampBreach: false,
+      contradictsBreach: true,
+      late: false,
+    });
+    expect(planExternalFilingRecord({ ...stamped, filedOn: "2026-11-06" })).toMatchObject({
+      stampBreach: false,
+      contradictsBreach: true,
+      late: false,
+    });
+  });
+
+  it("never offers to clear a breach stamp, whatever the filing date", () => {
+    for (const filedOn of ["2026-11-02", "2026-11-06", "2026-11-09"]) {
+      expect(
+        planExternalFilingRecord({ ...base, windowBreachedAt: "2026-11-07", filedOn }),
+      ).not.toHaveProperty("clearBreach");
+    }
+  });
+
+  it("does not call a late filing a contradiction (the stamp and the filing agree)", () => {
     expect(
-      planExternalFilingRecord({ ...base, windowBreachedAt: "2026-11-07", filedOn: "2026-11-05" }),
-    ).toEqual({ kind: "record", stampBreach: false, clearBreach: true, late: false });
-    expect(
-      planExternalFilingRecord({ ...base, windowBreachedAt: "2026-11-07", filedOn: "2026-11-06" }),
-    ).toMatchObject({ clearBreach: true, late: false });
+      planExternalFilingRecord({ ...base, windowBreachedAt: "2026-11-07", filedOn: "2026-11-09" }),
+    ).toMatchObject({ contradictsBreach: false, late: true });
   });
 });

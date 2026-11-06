@@ -1308,18 +1308,56 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     expect(await noeRow(untouched)).toMatchObject({ external_filing_status: null, version: 0 });
   }, 60_000);
 
-  it("an on-time filing publishes nothing and clears a breach stamp the deadline watchdog set earlier; a late one keeps its stamp (round 2: L4, Q4)", async () => {
+  it("a breach stamp the deadline watchdog set is NEVER cleared by a tenant's record: an on-time date over it announces the contradiction with both dates; a late one keeps its stamp", async () => {
     const { service } = externalFilingService(true);
     const effective = addDays(todayIso(), -3); // due in +5: two days left
     const onTime = await seedNoe(ORG_A, { effective, status: "pending" });
-    await admin.query("UPDATE noe_record SET window_breached_at=CURRENT_DATE WHERE id=$1", [
+    const observed = todayIso();
+    await admin.query("UPDATE noe_record SET window_breached_at=$2 WHERE id=$1", [
       onTime,
+      observed,
     ]);
 
     await service.recordNoeExternalFiling(actorOf(ORG_A), onTime, { filedOn: todayIso() });
 
-    expect(await noeRow(onTime)).toMatchObject({ external_filing_status: "filed", breached: null });
-    expect(await eventRows("m23.noe.filed_externally_late", "noeId", onTime)).toHaveLength(0);
+    // the stamp survives; the attested date is recorded beside it
+    expect(await noeRow(onTime)).toMatchObject({
+      external_filing_status: "filed",
+      filed_on: todayIso(),
+      breached: observed,
+    });
+    // ...and compliance and ops are told (real catalog-validating publisher, same transaction): the late-filing event, with the observed date
+    const events = await eventRows("m23.noe.filed_externally_late", "noeId", onTime);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.payload).toEqual({
+      noeId: onTime,
+      admissionId: expect.any(String),
+      filedOn: todayIso(),
+      windowTargetAt: addDays(effective, 5),
+      breachObservedAt: observed,
+    });
+    lateAlerts.length = 0;
+    lateOpsNotices.length = 0;
+    await dispatcher.tick();
+    expect(lateAlerts.filter((a) => (a.payload as { noeId?: string }).noeId === onTime)).toEqual([
+      expect.objectContaining({
+        alertCode: "m23.noe.filed_externally_late",
+        severity: "critical",
+        organizationId: ORG_A,
+        payload: expect.objectContaining({ breachObservedAt: observed, filedOn: todayIso() }),
+      }),
+    ]);
+    expect(
+      lateOpsNotices.filter((n) => (n.details as { noticeId?: string }).noticeId === onTime),
+    ).toEqual([expect.objectContaining({ kind: "m23.notice_filing_contradicts_breach" })]);
+    // a replay announces nothing more
+    await service.recordNoeExternalFiling(actorOf(ORG_A), onTime, { filedOn: todayIso() });
+    expect(await eventRows("m23.noe.filed_externally_late", "noeId", onTime)).toHaveLength(1);
+
+    // an on-time record with NO stamp publishes nothing
+    const clean = await seedNoe(ORG_A, { effective, status: "pending" });
+    await service.recordNoeExternalFiling(actorOf(ORG_A), clean, { filedOn: todayIso() });
+    expect(await eventRows("m23.noe.filed_externally_late", "noeId", clean)).toHaveLength(0);
 
     const lateEffective = addDays(todayIso(), -12); // due 7 days ago
     const late = await seedNoe(ORG_A, { effective: lateEffective, status: "pending" });
@@ -1327,7 +1365,9 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     await admin.query("UPDATE noe_record SET window_breached_at=$2 WHERE id=$1", [late, stamp]);
     await service.recordNoeExternalFiling(actorOf(ORG_A), late, { filedOn: todayIso() });
     expect(await noeRow(late)).toMatchObject({ external_filing_status: "filed", breached: stamp });
-    expect(await eventRows("m23.noe.filed_externally_late", "noeId", late)).toHaveLength(1);
+    const lateEvents = await eventRows("m23.noe.filed_externally_late", "noeId", late);
+    expect(lateEvents).toHaveLength(1);
+    expect(lateEvents[0]?.payload).not.toHaveProperty("breachObservedAt");
   }, 60_000);
 
   it("refuses an organization ChartWarden files for; a parked NOE goes the normal way once the org transmits again, and the marker clears", async () => {
