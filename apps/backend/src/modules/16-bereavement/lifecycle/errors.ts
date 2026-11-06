@@ -147,6 +147,14 @@ export const M16_ERROR_STATUS = {
   MEMORIAL_RSVP_CLOSED: 409,
   /** Accepting would put the yes answers (with their guests) over the service's capacity. */
   MEMORIAL_FULL: 409,
+  // ADR-0109 D10 (PR 3) — the grief library
+  LIBRARY_ITEM_NOT_FOUND: 404,
+  /** The named M22 document is not an active, org-level grief-library document (or a transcript is not a PDF). */
+  LIBRARY_DOCUMENT_INVALID: 422,
+  /** That document is already a library item. */
+  LIBRARY_DOCUMENT_TAKEN: 409,
+  /** No M22 org-document seam is bound: nothing can be checked or handed out. */
+  LIBRARY_UNAVAILABLE: 503,
   // Optimistic concurrency (§2.5)
   STALE_VERSION: 412,
   // Structural — an event dispatched from a state that does not accept it (§2.2–§2.4 graphs).

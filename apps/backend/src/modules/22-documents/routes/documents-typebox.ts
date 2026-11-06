@@ -90,6 +90,7 @@ const DOCUMENT_AGGREGATE_TYPE = [
   "spiritual_plan",
   "volunteer_plan",
   "bereavement_letter",
+  "bereavement_library_item",
   "visit_confirmation",
   "evv_verification",
   "patient_amendment_statement_of_disagreement",

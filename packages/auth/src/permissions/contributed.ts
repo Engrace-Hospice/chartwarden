@@ -4638,6 +4638,20 @@ export const M16_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "bereavement_window",
   },
+  // ADR-0109 D10 (PR 3) — the grief library: oversight curates what the bereaved portal shows (`read` lists and previews, `manage` registers an
+  // uploaded M22 document, edits it, publishes / archives it). Families never hold these: they read published items through the portal. Migration 1393.
+  "bereavement.library.read": {
+    resource: "bereavement_library_item",
+    action: "read",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
+  "bereavement.library.manage": {
+    resource: "bereavement_library_item",
+    action: "manage",
+    category: "clinical",
+    abac: "org_scope_bereavement_oversight",
+  },
 } satisfies Record<string, PermissionDef>;
 
 /** Union of the M16 contributed permission keys. */

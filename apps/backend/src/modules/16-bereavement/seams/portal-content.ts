@@ -1,18 +1,23 @@
 // apps/backend/src/modules/16-bereavement/seams/portal-content.ts — ADR-0109 D10 (PR 3): the `BereavementPortalContentProvider` M16 publishes for M31.
 //
 // What a bereaved family sees in the portal beyond its plan scope: its OWN memorial invitations (contacts whose `portal_account_id` is the session's
-// account) and its own RSVP. M31's route gates the bereavement window (`bereaved_portal_window_open`) and the `portal.bereavement.*` key; M16 decides
+// account) and its own RSVP, and the agency's PUBLISHED grief library (a file URL minted through M22's portal door, which admits the library type only
+// and records the account and session on `document_access_log`). M31's route gates the bereavement window (`bereaved_portal_window_open`) and the `portal.bereavement.*` key; M16 decides
 // which rows are the account's. Only PUBLISHED services are shown. A virtual service's link is revealed once the family said yes. Every read and write
 // runs under `withOrgContext` with the portal user (RLS on `app.org_id`; the audit trigger records the actor).
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type {
+  BereavementLibraryCategory,
+  BereavementLibraryKind,
   BereavementMemorialInvitationStatus,
   BereavementPortalContentProvider,
   BereavementPortalMemorialInvitation,
   IsoInstant,
+  OrgDocumentAccessProvider,
 } from "@chartwarden/types";
 import { and, asc, eq } from "drizzle-orm";
+import { getSeam } from "../../../bootstrap/index";
 import type { BereavementCipher } from "../bereavement-crypto";
 import { applyMemorialRsvp, rsvpWindowOpen } from "../memorials/rsvp-drizzle";
 import type { WriteOutboxPort } from "../routes/write-service";
@@ -25,6 +30,8 @@ export interface BereavementPortalContentDeps {
   readonly outbox: WriteOutboxPort;
   /** Opens a virtual service's link. Unbound => no link is shown. */
   readonly cipher?: BereavementCipher;
+  /** M22's org-level document seam (the portal library mint); defaults to the registry's `OrgDocumentAccessProvider`. */
+  readonly orgDocuments?: () => OrgDocumentAccessProvider;
   readonly now?: () => Date;
 }
 
@@ -36,6 +43,8 @@ export function createBereavementPortalContentProvider(
   const SVC = schema.bereavementMemorialService;
   const CONTACT = schema.bereavedContact;
   const now = deps.now ?? (() => new Date());
+  const ITEM = schema.bereavementLibraryItem;
+  const orgDocuments = deps.orgDocuments ?? (() => getSeam("OrgDocumentAccessProvider"));
 
   async function toPortal(
     inv: InvitationRow,
@@ -109,6 +118,54 @@ export function createBereavementPortalContentProvider(
         });
         return toPortal(invitation, service, at);
       });
+    },
+
+    async libraryForPortal({ organizationId, userId }) {
+      return withOrgContext(db, { organizationId, userId }, async (scoped) => {
+        const rows = await (scoped as DbClient)
+          .select()
+          .from(ITEM)
+          .where(eq(ITEM.status, "published"))
+          .orderBy(asc(ITEM.sortOrder), asc(ITEM.title), asc(ITEM.id))
+          .limit(200);
+        return rows.map((r) => ({
+          itemId: r.id,
+          title: r.title,
+          summary: r.summary ?? null,
+          category: r.category as BereavementLibraryCategory,
+          kind: r.kind as BereavementLibraryKind,
+          hasTranscript: r.transcriptDocumentId !== null,
+        }));
+      });
+    },
+
+    async mintLibraryUrlForPortal({
+      organizationId,
+      userId,
+      portalAccountId,
+      portalSessionId,
+      itemId,
+      part,
+    }) {
+      const item = await withOrgContext(db, { organizationId, userId }, async (scoped) => {
+        const [row] = await (scoped as DbClient)
+          .select()
+          .from(ITEM)
+          .where(and(eq(ITEM.id, itemId), eq(ITEM.status, "published")))
+          .limit(1);
+        return row ?? null;
+      });
+      const documentId =
+        item === null ? null : part === "transcript" ? item.transcriptDocumentId : item.documentId;
+      if (documentId === null) return null;
+      // M22's portal door admits the library type ONLY, and writes the family's ledger row before the URL leaves.
+      const minted = await orgDocuments().mintPortalLibraryUrl({
+        organizationId: organizationId as never,
+        documentId: documentId as never,
+        portalAccountId,
+        portalSessionId,
+      });
+      return "denied" in minted ? null : { url: minted.url, expiresAt: minted.expiresAt };
     },
   };
 }

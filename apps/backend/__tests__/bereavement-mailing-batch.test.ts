@@ -167,6 +167,9 @@ describe("OrgDocumentAccessProvider", () => {
     status: "active",
     activeVersionId: VERSION,
     objectKey: "tenant/intake/run-1/batch.pdf",
+    // a rendered batch is stored as octet-stream; the staff door still serves it as a PDF
+    mimeType: "application/octet-stream",
+    byteSize: 2048,
   };
 
   const USER = "00000000-0000-4000-8000-0000000000f1";
@@ -174,6 +177,7 @@ describe("OrgDocumentAccessProvider", () => {
 
   function build(facts: OrgDocumentFacts | null, logFails = false) {
     const logged: unknown[] = [];
+    const portalLogged: unknown[] = [];
     const presigned: unknown[] = [];
     const provider = createOrgDocumentAccessProvider({
       port: {
@@ -196,8 +200,14 @@ describe("OrgDocumentAccessProvider", () => {
           logged.push(entry);
         },
       },
+      portalAccessLog: {
+        appendPortalDownload: async (entry) => {
+          if (logFails) throw new Error("portal ledger down");
+          portalLogged.push(entry);
+        },
+      },
     });
-    return { provider, logged, presigned };
+    return { provider, logged, portalLogged, presigned };
   }
   type Ctx = { organizationId: string; userId: string; systemActor?: boolean } | null;
   const ask = (
@@ -293,5 +303,75 @@ describe("OrgDocumentAccessProvider", () => {
 
   it("releases no URL when the access ledger cannot be written", async () => {
     await expect(ask(build(FACTS, true).provider)).rejects.toThrow("ledger down");
+  });
+
+  // ADR-0109 D10 (PR 3) — the grief library: org-level, patient-facing, reachable by staff (preview) and by the family's portal session.
+  const LIBRARY: OrgDocumentFacts = {
+    ...FACTS,
+    aggregateType: "bereavement_library_item",
+    mimeType: "video/mp4",
+    byteSize: 40_000_000,
+  };
+  const portalMint = (provider: ReturnType<typeof build>["provider"]) =>
+    provider.mintPortalLibraryUrl({
+      organizationId: ORG as never,
+      documentId: DOC_ID as never,
+      portalAccountId: "acct-1",
+      portalSessionId: "sess-1",
+    });
+
+  it("the staff door hands out a library item with its verified MIME type", async () => {
+    const { provider, presigned } = build(LIBRARY);
+    expect(await ask(provider, { allowed: ["bereavement_library_item"] })).toMatchObject({
+      documentVersionId: VERSION,
+    });
+    expect(presigned).toEqual([
+      expect.objectContaining({
+        responseOverrides: { contentDisposition: "attachment", contentType: "video/mp4" },
+      }),
+    ]);
+  });
+
+  it("describes a library document without handing it out (nothing logged, no URL)", async () => {
+    const { provider, logged, presigned } = build(LIBRARY);
+    expect(
+      await provider.describeOrgDocument({
+        organizationId: ORG as never,
+        documentId: DOC_ID as never,
+        allowedAggregateTypes: ["bereavement_library_item"],
+      }),
+    ).toEqual({ mimeType: "video/mp4", byteSize: 40_000_000 });
+    expect(logged).toEqual([]);
+    expect(presigned).toEqual([]);
+  });
+
+  it("the portal door serves a library item only, writing the family's ledger row (account + session, no patient) first", async () => {
+    const { provider, portalLogged } = build(LIBRARY);
+    expect(await portalMint(provider)).toMatchObject({ url: "https://objects.example.test/signed" });
+    expect(portalLogged).toEqual([
+      expect.objectContaining({
+        documentId: DOC_ID,
+        patientId: null,
+        portalAccountId: "acct-1",
+        portalSessionId: "sess-1",
+      }),
+    ]);
+  });
+
+  it("the portal door never serves the mailing batch, an internal letter or a patient's library-typed document", async () => {
+    for (const facts of [
+      FACTS,
+      { ...FACTS, aggregateType: "bereavement_physician_letter" },
+      { ...LIBRARY, patientId: "00000000-0000-4000-8000-0000000000e1" },
+    ]) {
+      const { provider, portalLogged, presigned } = build(facts);
+      expect(await portalMint(provider)).toMatchObject({ denied: true });
+      expect(portalLogged).toEqual([]);
+      expect(presigned).toEqual([]);
+    }
+  });
+
+  it("the portal door releases no URL when its ledger cannot be written", async () => {
+    await expect(portalMint(build(LIBRARY, true).provider)).rejects.toThrow("portal ledger down");
   });
 });

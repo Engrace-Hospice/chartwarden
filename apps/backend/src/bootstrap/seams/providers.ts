@@ -433,6 +433,12 @@ export const orgDocumentAccessProviderDenyStub: OrgDocumentAccessProvider = {
   mintOrgDownloadUrl() {
     throw new NotImplementedError("OrgDocumentAccessProvider");
   },
+  describeOrgDocument() {
+    throw new NotImplementedError("OrgDocumentAccessProvider");
+  },
+  mintPortalLibraryUrl() {
+    throw new NotImplementedError("OrgDocumentAccessProvider");
+  },
 };
 
 export const sessionContextResolverDenyStub: SessionContextResolver = {
@@ -1496,6 +1502,12 @@ export const bereavementPortalContentProviderDenyStub: BereavementPortalContentP
     throw new NotImplementedError("BereavementPortalContentProvider");
   },
   recordPortalRsvp() {
+    throw new NotImplementedError("BereavementPortalContentProvider");
+  },
+  libraryForPortal() {
+    throw new NotImplementedError("BereavementPortalContentProvider");
+  },
+  mintLibraryUrlForPortal() {
     throw new NotImplementedError("BereavementPortalContentProvider");
   },
 };

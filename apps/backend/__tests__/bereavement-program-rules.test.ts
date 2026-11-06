@@ -1,5 +1,10 @@
-// ADR-0109 D10 (PR 3) — the pure support-group rules: the recurring schedule across DST, its validation, the `bereavement_group_scope`
+// ADR-0109 D10 (PR 3) — the pure program rules (support groups, memorials, the grief library): the recurring schedule across DST, its validation, the `bereavement_group_scope`
 // decision (volunteers run only, behind the 418.78 gates; fail closed) and the program-family rule groups and memorials share.
+import {
+  INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES,
+  ORG_LIBRARY_DOCUMENT_AGGREGATE_TYPES,
+  SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES,
+} from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import {
   type BereavementGroupFacilitationFacts,
@@ -12,6 +17,12 @@ import {
 } from "../src/modules/16-bereavement/groups/recurrence";
 import { rsvpWindowOpen } from "../src/modules/16-bereavement/memorials/rsvp-drizzle";
 import { isProgramFamily } from "../src/modules/16-bereavement/program/program-contacts";
+import { libraryKindOf } from "../src/modules/16-bereavement/routes/library-service-drizzle";
+import {
+  MAX_DOCUMENT_UPLOAD_BYTES,
+  MAX_LIBRARY_VIDEO_BYTES,
+  hasMp4FtypBox,
+} from "../src/modules/22-documents/routes/verified-upload";
 
 const ORG = "00000000-0000-4000-8000-000000000001";
 const STAFF = "00000000-0000-4000-8000-0000000000a1";
@@ -209,8 +220,33 @@ describe("memorial RSVP window (staff phone vs the family's portal)", () => {
 
   it("a draft, held or cancelled service takes no answers", () => {
     for (const status of ["draft", "held", "cancelled"]) {
-      expect(rsvpWindowOpen(svc({ status }), "staff_phone", at("2026-11-20T12:00:00Z"))).toBe(false);
+      expect(rsvpWindowOpen(svc({ status }), "staff_phone", at("2026-11-20T12:00:00Z"))).toBe(
+        false,
+      );
     }
     expect(rsvpWindowOpen(svc({ rsvpBy: null }), "portal", at("2026-12-09T12:00:00Z"))).toBe(true);
+  });
+});
+
+describe("grief library: the video policy and the item kind", () => {
+  const ftypHead = Uint8Array.from([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d]);
+
+  it("an mp4 starts with an ftyp box at offset 4; a renamed PDF or a short read does not", () => {
+    expect(hasMp4FtypBox(ftypHead)).toBe(true);
+    expect(hasMp4FtypBox(new TextEncoder().encode("%PDF-1.7\n%..."))).toBe(false);
+    expect(hasMp4FtypBox(ftypHead.slice(0, 7))).toBe(false);
+  });
+
+  it("the item kind follows the verified MIME type", () => {
+    expect(libraryKindOf("application/pdf")).toBe("pdf");
+    expect(libraryKindOf("video/mp4")).toBe("video");
+    expect(libraryKindOf("image/png")).toBe("other");
+  });
+
+  it("video/mp4 is the library's alone, with the larger cap", () => {
+    expect(MAX_LIBRARY_VIDEO_BYTES).toBeGreaterThan(MAX_DOCUMENT_UPLOAD_BYTES);
+    expect(ORG_LIBRARY_DOCUMENT_AGGREGATE_TYPES.has("bereavement_library_item")).toBe(true);
+    expect(SEAM_ONLY_DOCUMENT_AGGREGATE_TYPES.has("bereavement_library_item")).toBe(false);
+    expect(INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES.has("bereavement_library_item")).toBe(false);
   });
 });

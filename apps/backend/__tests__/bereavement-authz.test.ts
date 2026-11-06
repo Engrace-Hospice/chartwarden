@@ -125,7 +125,7 @@ const resolverFor = (
 
 describe("M16-T06 §4.7 — the permission keys registered into M3", () => {
   it("registers exactly the §4.7 catalog, single-owner across the platform mirror", () => {
-    expect(M16_PERMISSION_KEY_LIST).toHaveLength(42);
+    expect(M16_PERMISSION_KEY_LIST).toHaveLength(44);
     const mirror = allPermissionMirrorRows().map((r) => r.key);
     for (const key of M16_PERMISSION_KEY_LIST) {
       expect(mirror.filter((k) => k === key)).toHaveLength(1);
@@ -226,7 +226,9 @@ describe("M16-T06 §4.7 — the permission keys registered into M3", () => {
     expect(M16_CONTRIBUTED_PERMISSIONS["bereavement.memorial.manage"].abac).toBe(
       "org_scope_bereavement_oversight",
     );
-    expect(M16_CONTRIBUTED_PERMISSIONS["bereavement.memorial.rsvp"].abac).toBe("bereavement_window");
+    expect(M16_CONTRIBUTED_PERMISSIONS["bereavement.memorial.rsvp"].abac).toBe(
+      "bereavement_window",
+    );
     for (const key of ["bereavement.memorial.manage", "bereavement.memorial.rsvp"] as const) {
       const def = M16_CONTRIBUTED_PERMISSIONS[key];
       expect(sql).toContain(
@@ -239,6 +241,22 @@ describe("M16-T06 §4.7 — the permission keys registered into M3", () => {
     );
     expect(SESSION_CLASS_PERMISSIONS.bereaved_portal).toContain("portal.bereavement.rsvp_own");
     expect(SESSION_CLASS_PERMISSIONS.caregiver_portal).not.toContain("portal.bereavement.rsvp_own");
+  });
+
+  // ADR-0109 D10 (PR 3) — the grief library is curated by oversight; families read published items through the portal, never with these keys.
+  it("the two library keys are oversight-only and mirrored by migration 1393", () => {
+    const sql = readFileSync(
+      new URL("../../../packages/db/migrations/1393_m16_grief_library.sql", import.meta.url),
+      "utf8",
+    );
+    for (const key of ["bereavement.library.read", "bereavement.library.manage"] as const) {
+      const def = M16_CONTRIBUTED_PERMISSIONS[key];
+      expect(def.abac).toBe("org_scope_bereavement_oversight");
+      expect(sql).toContain(
+        `('${key}', '${def.resource}', '${def.action}', '${def.category}', '${def.abac}', '')`,
+      );
+      expect(SESSION_CLASS_PERMISSIONS.bereaved_portal).not.toContain(key);
+    }
   });
 
   it("the two portal-self keys are the ONLY §4.1 rows a bereaved family session may hold", () => {

@@ -808,10 +808,10 @@ import {
   buildDrizzleBereavementAbacResolver,
   buildDrizzleM16DraftService,
   buildDrizzleM16GroupService,
-  buildDrizzleM16MemorialService,
-  createBereavementPortalContentProvider,
   buildDrizzleM16LetterService,
+  buildDrizzleM16LibraryService,
   buildDrizzleM16MailingService,
+  buildDrizzleM16MemorialService,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
   buildM16BereavementIntakeConsumer,
@@ -826,6 +826,7 @@ import {
   buildM16PatientOptOutChangedConsumer,
   buildM16WorkerDeps,
   createBereavementCipher,
+  createBereavementPortalContentProvider,
   createDrizzleBereavementEraseStore,
   createDrizzleBereavementSeamStore,
   createM16AlertPort,
@@ -6681,6 +6682,9 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
               outbox: m16OutboxPublisher,
               cipher: m16Cipher,
             }),
+            // ADR-0109 D10 (PR 3) — the grief library: M16 metadata over M22 documents, checked and served through M22's
+            // `OrgDocumentAccessProvider` (resolved per call; families reach published items through the M31 portal routes).
+            libraryService: buildDrizzleM16LibraryService(dbHandle.db),
           });
           // M21 (Supplies, DME & Comfort Kits) — mount the §4.1 route plugins over the Drizzle READ +
           // WRITE services. Every read opens its own withOrgContext (RLS scopes each statement to

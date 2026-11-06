@@ -1,18 +1,45 @@
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type { DocumentAggregateType, DocumentRetentionClass } from "@chartwarden/types";
+import {
+  type DocumentAggregateType,
+  type DocumentRetentionClass,
+  ORG_LIBRARY_DOCUMENT_AGGREGATE_TYPES,
+} from "@chartwarden/types";
 import { ChartWardenError, DegradedError, ForbiddenError, NotFoundError } from "@chartwarden/types";
 import { and, eq, sql } from "drizzle-orm";
 import { assertNotInternalOnlyForWrite, isInternalOnlyAggregateType } from "../internal-documents";
 import { deriveTenantBucket } from "../lifecycle/storage";
-import type { ObjectStorePort } from "../seams/store";
+import type { ObjectReaderPort, ObjectStorePort } from "../seams/store";
 import type { DocumentProvenanceMetadata } from "./service";
 
 const UPLOAD_TTL_MS = 15 * 60 * 1000;
 export const MAX_DOCUMENT_UPLOAD_BYTES = 25 * 1024 * 1024;
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/tiff", DOCX_MIME]);
+/**
+ * ADR-0109 D10 (PR 3) — the grief-library VIDEO policy: `video/mp4` is accepted ONLY for an org-level library document
+ * (`ORG_LIBRARY_DOCUMENT_AGGREGATE_TYPES`), ONLY on this presigned path (the server-upload route never buffers a video; its MIME list has no mp4),
+ * up to {@link MAX_LIBRARY_VIDEO_BYTES} with the declared size signed into the presigned PUT, and `complete` reads the first bytes back and refuses
+ * anything without an ISO-BMFF `ftyp` box. No transcoding (deferred): what the agency uploads is what families stream.
+ */
+export const VIDEO_MP4_MIME = "video/mp4";
+export const MAX_LIBRARY_VIDEO_BYTES = 500 * 1024 * 1024;
+const FTYP_PROBE_BYTES = 12;
+
+const isLibraryType = (aggregateType: string): boolean =>
+  ORG_LIBRARY_DOCUMENT_AGGREGATE_TYPES.has(aggregateType as DocumentAggregateType);
+
+/** Pure: does this head of a file carry an ISO-BMFF `ftyp` box at offset 4 (every mp4 starts with one)? */
+export function hasMp4FtypBox(head: Uint8Array): boolean {
+  return (
+    head.byteLength >= 8 &&
+    head[4] === 0x66 /* f */ &&
+    head[5] === 0x74 /* t */ &&
+    head[6] === 0x79 /* y */ &&
+    head[7] === 0x70 /* p */
+  );
+}
 
 export interface ReferralAccessReader {
   canAccessReferral(input: {
@@ -73,17 +100,26 @@ function validateInput(input: InitiateVerifiedUploadInput): void {
       422,
     );
   }
-  if (!MIME_TYPES.has(input.mimeType)) {
+  const isVideo = input.mimeType === VIDEO_MP4_MIME && isLibraryType(input.aggregateType);
+  if (!MIME_TYPES.has(input.mimeType) && !isVideo) {
     throw new ChartWardenError("UNSUPPORTED_MEDIA_TYPE", "unsupported document MIME type", 415);
   }
+  // A grief-library document is agency content: never filed on a patient's chart.
   if (
-    !Number.isSafeInteger(input.byteSize) ||
-    input.byteSize < 1 ||
-    input.byteSize > MAX_DOCUMENT_UPLOAD_BYTES
+    isLibraryType(input.aggregateType) &&
+    (input.patientId !== null || input.admissionId !== null)
   ) {
     throw new ChartWardenError(
+      "VALIDATION_FAILED",
+      "a grief-library document is org-level: it names no patient or admission",
+      422,
+    );
+  }
+  const maxBytes = isVideo ? MAX_LIBRARY_VIDEO_BYTES : MAX_DOCUMENT_UPLOAD_BYTES;
+  if (!Number.isSafeInteger(input.byteSize) || input.byteSize < 1 || input.byteSize > maxBytes) {
+    throw new ChartWardenError(
       "UPLOAD_SIZE_INVALID",
-      `document byteSize must be between 1 and ${MAX_DOCUMENT_UPLOAD_BYTES}`,
+      `document byteSize must be between 1 and ${maxBytes}`,
       422,
     );
   }
@@ -102,10 +138,28 @@ function assertStore(objects: ObjectStorePort | null): ObjectStorePort {
   return objects;
 }
 
+/** The mp4 head probe. No reader bound => false (fail closed: an unverifiable video is refused). */
+async function mp4HeadOk(
+  reader: ObjectReaderPort | null,
+  organizationId: string,
+  objectKey: string,
+): Promise<boolean> {
+  if (reader === null) return false;
+  const head = await reader.getObject({
+    bucket: deriveTenantBucket(organizationId),
+    objectKey,
+    maxBytes: FTYP_PROBE_BYTES,
+    firstBytes: FTYP_PROBE_BYTES,
+  });
+  return head !== null && hasMp4FtypBox(head);
+}
+
 /** Two-step upload: presigned checksum-enforced PUT, then authoritative HEAD verification and DB commit. */
 export function createVerifiedUploadService(deps: {
   readonly db: DbClient;
   readonly objects: ObjectStorePort | null;
+  /** Reads an upload's first bytes back (the mp4 `ftyp` check). Unbound => a video upload cannot complete (fail closed). */
+  readonly reader?: ObjectReaderPort | null;
   readonly referralReader?: ReferralAccessReader;
   readonly now?: () => Date;
   readonly randomId?: () => string;
@@ -220,6 +274,8 @@ export function createVerifiedUploadService(deps: {
           mimeType: input.mimeType,
           sha256Hex: input.sha256Hex,
           ttlSeconds: UPLOAD_TTL_MS / 1000,
+          // a video's declared size is signed: the store refuses a body of any other length
+          ...(input.mimeType === VIDEO_MP4_MIME ? { contentLength: input.byteSize } : {}),
         });
         return {
           uploadId,
@@ -283,7 +339,12 @@ export function createVerifiedUploadService(deps: {
         object.byteSize === Number(upload.expectedByteSize) &&
         object.mimeType === upload.mimeType &&
         object.sha256Hex === upload.expectedSha256Hex;
-      if (!integrityMatches) {
+      // ADR-0109 D10 (PR 3) — a video must really be an mp4: read its head back and look for the `ftyp` box.
+      const videoLooksWrong =
+        integrityMatches && upload.mimeType === VIDEO_MP4_MIME
+          ? !(await mp4HeadOk(deps.reader ?? null, organizationId, upload.objectKey))
+          : false;
+      if (!integrityMatches || videoLooksWrong) {
         await inOrg(organizationId, userId, async (tx) => {
           await tx.update(U).set({ status: "aborted", updatedAt: now() }).where(eq(U.id, uploadId));
         });
@@ -294,7 +355,9 @@ export function createVerifiedUploadService(deps: {
         });
         throw new ChartWardenError(
           "UPLOAD_INTEGRITY_MISMATCH",
-          "uploaded object does not match the declared checksum, size, and MIME type",
+          videoLooksWrong
+            ? "uploaded object is not an MP4 video"
+            : "uploaded object does not match the declared checksum, size, and MIME type",
           422,
         );
       }

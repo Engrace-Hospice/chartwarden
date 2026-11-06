@@ -31,6 +31,15 @@ import type {
 } from "./group-typebox";
 import type { PhysicianLetterView as SvcPhysicianLetterView } from "./letter-service";
 import type {
+  LibraryItemUrlView as SvcLibraryItemUrlView,
+  LibraryItemView as SvcLibraryItemView,
+} from "./library-service";
+import type {
+  LibraryItemListResponseSchema,
+  LibraryItemResponseSchema,
+  LibraryItemUrlResponseSchema,
+} from "./library-typebox";
+import type {
   BereavedContactRowViewResponseSchema,
   BereavementAssessmentTaskListResponseSchema,
   BereavementClosureViewResponseSchema,
@@ -240,3 +249,8 @@ type _ContactInvitations = Conforms<
   Static<typeof ContactMemorialInvitationListResponseSchema>,
   SvcContactMemorialInvitationView[]
 >;
+
+// ADR-0109 D10 (PR 3) — the grief library (routes 77-81).
+type _LibraryItem = Conforms<Static<typeof LibraryItemResponseSchema>, SvcLibraryItemView>;
+type _LibraryItems = Conforms<Static<typeof LibraryItemListResponseSchema>, SvcLibraryItemView[]>;
+type _LibraryUrl = Conforms<Static<typeof LibraryItemUrlResponseSchema>, SvcLibraryItemUrlView>;

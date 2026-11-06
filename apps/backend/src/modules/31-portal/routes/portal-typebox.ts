@@ -342,6 +342,26 @@ export const PortalMemorialInvitationResponse = Type.Object({
 export const PortalMemorialInvitationListResponse = Type.Object({
   items: Type.Array(PortalMemorialInvitationResponse),
 });
+export const PortalLibraryItemParams = Type.Object({ itemId: Uuid });
+export const PortalLibraryUrlQuery = Type.Object({
+  part: Type.Optional(Type.Union([Type.Literal("document"), Type.Literal("transcript")])),
+});
+export const PortalLibraryListResponse = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      itemId: Type.String(),
+      title: Type.String(),
+      summary: Type.Union([Type.String(), Type.Null()]),
+      category: Type.String(),
+      kind: Type.Union([Type.Literal("pdf"), Type.Literal("video"), Type.Literal("other")]),
+      hasTranscript: Type.Boolean(),
+    }),
+  ),
+});
+export const PortalLibraryUrlResponse = Type.Object({
+  url: Type.String(),
+  expiresAt: Type.String(),
+});
 
 export const PortalInvitationAcceptRequest = Type.Object({
   token: Type.String({ minLength: 40, maxLength: 200 }),

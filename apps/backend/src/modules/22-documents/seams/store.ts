@@ -112,6 +112,8 @@ export interface ObjectReaderPort {
     readonly objectKey: string;
     /** Refuses (throws) an object larger than this, so a hostile or runaway object cannot exhaust memory. */
     readonly maxBytes: number;
+    /** ADR-0109 D10 (PR 3) — read only the first N bytes (an HTTP Range request): a magic-byte check on a large upload (an mp4's `ftyp` box). */
+    readonly firstBytes?: number;
     readonly signal?: AbortSignal;
   }): Promise<Uint8Array | null>;
 }

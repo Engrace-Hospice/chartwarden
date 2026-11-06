@@ -701,6 +701,7 @@ exports.MODULES = [
       "bereavement_support_group_attendance",
       "bereavement_memorial_service",
       "bereavement_memorial_invitation",
+      "bereavement_library_item",
       "tenant_bereavement_external_source_gate_override",
     ],
   },

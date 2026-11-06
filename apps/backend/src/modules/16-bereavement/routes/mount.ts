@@ -11,6 +11,7 @@ import { registerBereavedContactRoutes } from "./contacts.routes";
 import { registerBereavementDashboardRoutes } from "./dashboard.routes";
 import { registerBereavementGroupRoutes } from "./group.routes";
 import type { M16RouteServices } from "./index";
+import { registerBereavementLibraryRoutes } from "./library.routes";
 import { registerBereavementMailingRoutes } from "./mailing.routes";
 import { registerBereavementMemorialRoutes } from "./memorial.routes";
 import { registerBereavementOutreachRoutes } from "./outreach.routes";
@@ -32,6 +33,7 @@ export { registerBereavementDashboardRoutes, type DashboardRouteDeps } from "./d
 export { registerBereavementMailingRoutes, type MailingRouteDeps } from "./mailing.routes";
 export { registerBereavementGroupRoutes, type GroupRouteDeps } from "./group.routes";
 export { registerBereavementMemorialRoutes, type MemorialRouteDeps } from "./memorial.routes";
+export { registerBereavementLibraryRoutes, type LibraryRouteDeps } from "./library.routes";
 
 /** Mount every M16 §4.1 route plugin over the Drizzle-backed (or in-memory) read + write services. */
 export function mountM16Routes(app: FastifyInstance, services: M16RouteServices): void {
@@ -46,4 +48,5 @@ export function mountM16Routes(app: FastifyInstance, services: M16RouteServices)
   registerBereavementMailingRoutes(app, { mailingService });
   registerBereavementGroupRoutes(app, { groupService });
   registerBereavementMemorialRoutes(app, { memorialService: services.memorialService });
+  registerBereavementLibraryRoutes(app, { libraryService: services.libraryService });
 }

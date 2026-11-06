@@ -291,6 +291,21 @@ export type BereavementMemorialRsvpSource = "staff_phone" | "portal";
 /** A family's answer to a memorial invitation. */
 export type BereavementMemorialRsvpResponse = "yes" | "no" | "maybe";
 
+// ── ADR-0109 D10 (PR 3) — the grief library (mirrors `bereavement_library_item`'s text + CHECK value sets, migration 1393) ─────────────
+
+export const BEREAVEMENT_LIBRARY_CATEGORIES = [
+  "understanding_grief",
+  "coping",
+  "children_and_teens",
+  "holidays_and_anniversaries",
+  "practical_matters",
+  "other",
+] as const;
+export type BereavementLibraryCategory = (typeof BEREAVEMENT_LIBRARY_CATEGORIES)[number];
+/** Derived from the document's MIME type: `application/pdf` -> pdf, `video/mp4` -> video, anything else M22 accepts -> other. */
+export type BereavementLibraryKind = "pdf" | "video" | "other";
+export type BereavementLibraryStatus = "draft" | "published" | "archived";
+
 // ── §3.3 owned tables + D11 audit denylists ───────────────────────────────────────────────────────────
 
 /** M16's owned tables (the manifest `ownedTables` set). */
@@ -316,6 +331,7 @@ export type M16TableName =
   | "bereavement_support_group_attendance"
   | "bereavement_memorial_service"
   | "bereavement_memorial_invitation"
+  | "bereavement_library_item"
   | "tenant_bereavement_external_source_gate_override";
 
 /**
@@ -362,6 +378,8 @@ export const M16_AUDIT_DENYLIST: { readonly [K in M16TableName]: readonly string
   // ADR-0109 D10 (PR 3) — a memorial's description is agency prose.
   bereavement_memorial_service: ["description"],
   bereavement_memorial_invitation: [],
+  // ADR-0109 D10 (PR 3) — a library item's summary is agency prose.
+  bereavement_library_item: ["summary"],
   tenant_bereavement_external_source_gate_override: ["additional_rationale"],
 } as const;
 
@@ -1128,10 +1146,21 @@ export interface BereavementPortalMemorialInvitation {
   readonly rsvpOpen: boolean;
 }
 
+/** ADR-0109 D10 (PR 3) — one PUBLISHED grief-library item as the portal lists it (agency content: no person named). */
+export interface BereavementPortalLibraryItem {
+  readonly itemId: string;
+  readonly title: string;
+  readonly summary: string | null;
+  readonly category: BereavementLibraryCategory;
+  readonly kind: BereavementLibraryKind;
+  readonly hasTranscript: boolean;
+}
+
 /**
- * ADR-0109 D10 (PR 3) — what M16 shows a bereaved family in the M31 portal beyond the plan scope: their memorial invitations and RSVP. Every call
- * names the portal ACCOUNT; M16 resolves which contacts are its own (`bereaved_contact.portal_account_id`), so an invitation of another family is
- * "not found". The library arm is added with the grief library.
+ * ADR-0109 D10 (PR 3) — what M16 shows a bereaved family in the M31 portal beyond the plan scope: their memorial invitations and RSVP, and the
+ * agency's published grief library. Every memorial call names the portal ACCOUNT; M16 resolves which contacts are its own
+ * (`bereaved_contact.portal_account_id`), so another family's invitation is "not found". A library URL is minted through M22's portal door, which
+ * records the account and session on `document_access_log` before the URL is returned.
  */
 export interface BereavementPortalContentProvider {
   memorialInvitationsForPortalAccount(args: {
@@ -1148,6 +1177,20 @@ export interface BereavementPortalContentProvider {
     readonly response: BereavementMemorialRsvpResponse;
     readonly guests: number;
   }): Promise<BereavementPortalMemorialInvitation>;
+  /** The PUBLISHED grief library, portal order. */
+  libraryForPortal(args: {
+    readonly organizationId: string;
+    readonly userId: string;
+  }): Promise<readonly BereavementPortalLibraryItem[]>;
+  /** A short-lived URL for a published item's file (or its transcript); null = no such published item / no transcript. */
+  mintLibraryUrlForPortal(args: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly portalAccountId: string;
+    readonly portalSessionId: string;
+    readonly itemId: string;
+    readonly part: "document" | "transcript";
+  }): Promise<{ readonly url: string; readonly expiresAt: IsoInstant } | null>;
 }
 
 /** §4.6 / D13 — the M30 HQRP + M33 rollups. Counts, never rates: a zero denominator must stay visible so

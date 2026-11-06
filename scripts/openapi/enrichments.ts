@@ -278,6 +278,17 @@ import {
   UpdateGroupBody as M16UpdateGroupBody,
   WithdrawEnrollmentBody as M16WithdrawEnrollmentBody,
 } from "../../apps/backend/src/modules/16-bereavement/routes/group-typebox";
+// ADR-0109 D10 (PR 3) — the M16 grief library (routes 77-81).
+import {
+  CreateLibraryItemBody as M16CreateLibraryItemBody,
+  LibraryItemListResponseSchema as M16LibraryItemListResponse,
+  LibraryItemResponseSchema as M16LibraryItemResponse,
+  LibraryItemUrlResponseSchema as M16LibraryItemUrlResponse,
+  LibraryListQuerySchema as M16LibraryListQuerySchema,
+  LibraryUrlQuerySchema as M16LibraryUrlQuerySchema,
+  SetLibraryStatusBody as M16SetLibraryStatusBody,
+  UpdateLibraryItemBody as M16UpdateLibraryItemBody,
+} from "../../apps/backend/src/modules/16-bereavement/routes/library-typebox";
 // M16 Bereavement — the §4.2 request bodies + list queries the §4.1 route handlers `parse(...)` /
 // `parseQuery(...)`. Same exported schemas, so the contract cannot drift from the validator; the M16-T07
 // web screens call the surface these type.
@@ -2456,6 +2467,9 @@ import {
   PortalInvitationIssueRequest as M31PortalInvitationIssueRequest,
   PortalInvitationIssueResponse as M31PortalInvitationIssueResponse,
   PortalInvitationListResponse as M31PortalInvitationListResponse,
+  PortalLibraryListResponse as M31PortalLibraryListResponse,
+  PortalLibraryUrlQuery as M31PortalLibraryUrlQuery,
+  PortalLibraryUrlResponse as M31PortalLibraryUrlResponse,
   PortalMemorialInvitationListResponse as M31PortalMemorialInvitationListResponse,
   PortalMemorialInvitationResponse as M31PortalMemorialInvitationResponse,
   PortalMemorialRsvpRequest as M31PortalMemorialRsvpRequest,
@@ -4389,6 +4403,17 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
       "The family's own RSVP (yes with a guest count, no, maybe); 404 for another family's invitation, 409 `MEMORIAL_RSVP_CLOSED` after the RSVP-by date or once the service started, 409 `MEMORIAL_FULL` over capacity; `Idempotency-Key` required (M16, ADR-0109 D10)",
     body: M31PortalMemorialRsvpRequest,
     response: M31PortalMemorialInvitationResponse,
+  },
+  "GET /api/v1/portal/bereavement/library": {
+    summary:
+      "The agency's PUBLISHED grief library (title, summary, category, kind), window-gated (M16, ADR-0109 D10)",
+    response: M31PortalLibraryListResponse,
+  },
+  "GET /api/v1/portal/bereavement/library/:itemId/url": {
+    summary:
+      "A short-lived URL for one published library file (`?part=transcript` for its transcript); M22's portal door serves the library type only and records the account and session first; never cached (M16, ADR-0109 D10)",
+    query: M31PortalLibraryUrlQuery,
+    response: M31PortalLibraryUrlResponse,
   },
   "POST /api/v1/portal/bereavement/mailing-preference": {
     summary:
@@ -8133,6 +8158,38 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/bereavement/contacts/:contactId/memorial-invitations": {
     summary: "One contact's memorial invitations, newest service first (ADR-0109 D10, #76)",
     response: M16ContactMemorialInvitationListResponse,
+  },
+
+  // ── library.routes.ts (ADR-0109 D10, PR 3) ──
+  "GET /api/v1/bereavement/library": {
+    summary:
+      "Every grief-library item (`?status=`), portal order; bereavement oversight only; agency content, no person named (ADR-0109 D10, #77)",
+    query: M16LibraryListQuerySchema,
+    response: M16LibraryItemListResponse,
+  },
+  "POST /api/v1/bereavement/library": {
+    summary:
+      "Register an uploaded M22 `bereavement_library_item` document (active, org-level; checked through the M22 seam) as a DRAFT item; its kind and MIME type come from the document; a transcript must be a PDF; 409 when the file is already listed; `Idempotency-Key` required (ADR-0109 D10, #78)",
+    body: M16CreateLibraryItemBody,
+    response: M16LibraryItemResponse,
+  },
+  "PATCH /api/v1/bereavement/library/:itemId": {
+    summary:
+      "Edit an item's title, summary, category, transcript and order; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #79)",
+    body: M16UpdateLibraryItemBody,
+    response: M16LibraryItemResponse,
+  },
+  "POST /api/v1/bereavement/library/:itemId/status": {
+    summary:
+      "Publish an item to the bereaved portal, archive it, or return it to draft; `If-Match` and `Idempotency-Key` required (ADR-0109 D10, #80)",
+    body: M16SetLibraryStatusBody,
+    response: M16LibraryItemResponse,
+  },
+  "GET /api/v1/bereavement/library/:itemId/url": {
+    summary:
+      "A short-lived preview URL for the item's file (`?part=transcript` for its transcript), minted through M22's org-level seam, which records the access; never cached (ADR-0109 D10, #81)",
+    query: M16LibraryUrlQuerySchema,
+    response: M16LibraryItemUrlResponse,
   },
 
   // ── contacts.routes.ts ──
