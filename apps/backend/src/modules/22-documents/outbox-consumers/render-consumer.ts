@@ -103,6 +103,8 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   "m11.order.document_requested": {
     aggregateIdFields: ["orderId"],
     templateKeyField: "formTemplate",
+    // the one key both M11 emit sites (orders-route-service-db.ts, routes/service.ts) name: a payload-named key is never trusted further
+    allowedTemplateKeys: ["order_record"],
     contentField: "renderPayload",
     // GAP-033 Wave 2: `order_record` is a compiled form drawn from the producer's typed payload.
     requiresRenderPayload: true,
@@ -111,6 +113,8 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   "m12.medication_order.document_requested": {
     aggregateIdFields: ["orderId"],
     templateKeyField: "formTemplate",
+    // the one key the M12 emit site (dosespot-route-service-db.ts) names
+    allowedTemplateKeys: ["medication_order"],
     contentField: "renderPayload",
     requiresRenderPayload: true,
   },
