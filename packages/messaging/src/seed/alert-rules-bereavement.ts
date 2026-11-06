@@ -1,4 +1,4 @@
-// @chartwarden/messaging — platform-default alert rules for the M16 bereavement program (ADR-0110 D7).
+// @chartwarden/messaging — platform-default alert rules for the M16 bereavement program (ADR-0109 D7).
 //
 // Each event type is raised by M16 through its `AlertPort` adapter (`16-bereavement/alert-port.ts`), which
 // routes only the kinds seeded here; a kind with no rule there never reaches `AlertEmitter.emit`. The

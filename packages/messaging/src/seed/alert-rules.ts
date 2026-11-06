@@ -1794,7 +1794,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
-  // ADR-0110 D7 — the M16 bereavement program's oversight alerts (death intake, physician letter, overdue assessment).
+  // ADR-0109 D7 — the M16 bereavement program's oversight alerts (death intake, physician letter, overdue assessment).
   ...BEREAVEMENT_ALERT_RULES,
 ];
 

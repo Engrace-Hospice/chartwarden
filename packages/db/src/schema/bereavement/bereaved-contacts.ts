@@ -65,7 +65,7 @@ export const bereavedContact = pgTable(
     emailCipher: text("email_cipher"),
     phoneCipher: text("phone_cipher"),
     mailingAddressCipher: text("mailing_address_cipher"),
-    // ADR-0110 (migration 1341) — the contact's 1-3 care goals, sealed like the channels above; the eraser nulls it.
+    // ADR-0109 (migration 1341) — the contact's 1-3 care goals, sealed like the channels above; the eraser nulls it.
     careGoalsCipher: text("care_goals_cipher"),
 
     portalAccountId: uuid("portal_account_id"), // logical FK → M31 portal_account

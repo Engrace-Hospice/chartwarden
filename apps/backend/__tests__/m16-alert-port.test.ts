@@ -1,4 +1,4 @@
-// ADR-0110 D7 — the M16 `AlertPort` adapter over the M36 `AlertEmitter` seam.
+// ADR-0109 D7 — the M16 `AlertPort` adapter over the M36 `AlertEmitter` seam.
 //
 // What this holds: a routed M16 alert kind reaches M36 with the right event type, a floor severity and a
 // stable, PHI-free correlation id; a kind with NO seeded platform rule never calls the emitter (the M36

@@ -1,4 +1,4 @@
-// @chartwarden/bereavement — ADR-0110 D3: the assessment checkpoints.
+// @chartwarden/bereavement — ADR-0109 D3: the assessment checkpoints.
 //
 // Two risk-assessment checkpoints ride the cadence — an initial assessment on day 28 and a midpoint
 // reassessment on day 180 — but they are TASKS, not outreach rows. An outreach row for a checkpoint would count

@@ -1,6 +1,6 @@
 // @chartwarden/bereavement — D4 death-date-anchored cadence floor + the tenant-tighten validator (M16-T01).
 //
-// The platform floor (ADR-0110 D2: the Medicare-aligned timeline for EVERY risk tier) is a MINIMUM: a tenant
+// The platform floor (ADR-0109 D2: the Medicare-aligned timeline for EVERY risk tier) is a MINIMUM: a tenant
 // may add contacts, shift a floor contact EARLIER, and convert a floor contact to a higher-touch modality. It
 // may never drop a floor contact, push one past its floor offset, or downgrade its modality. This module is the single source of truth for both halves —
 // the floor table the schedule generator materializes from, and the validator that proves a tenant policy
@@ -15,14 +15,14 @@ import { isPermittedModalitySubstitution } from "../outreach-kinds";
 import { OUTREACH_DUE_AT_CEILING_DAYS } from "../policy";
 
 /** The stable identity of a floor contact, used to match a tenant row back to the item it tightens and
- *  persisted on `bereavement_outreach.cadence_mark` (ADR-0110 D4). */
+ *  persisted on `bereavement_outreach.cadence_mark` (ADR-0109 D4). */
 export type BereavementCadenceMark =
   | "immediate_screen"
   | "condolence_letter"
   | "week_1"
   | "week_2"
   | "initial_outreach"
-  /** DEPRECATED alias (pre-ADR-0110 d30 call). Sits in no floor; kept so old rows and consumers still resolve it. */
+  /** DEPRECATED alias (pre-ADR-0109 d30 call). Sits in no floor; kept so old rows and consumers still resolve it. */
   | "one_month"
   | "two_month"
   | "three_month"
@@ -44,7 +44,7 @@ export interface BereavementCadenceItem {
 }
 
 /**
- * ADR-0110 D2 — the universal Medicare-aligned timeline: EVERY tier gets these eight contacts, so a family
+ * ADR-0109 D2 — the universal Medicare-aligned timeline: EVERY tier gets these eight contacts, so a family
  * scored low by the rubric still receives the whole timeline. Days count from the UTC-midnight death date.
  *
  *   • `nine_month` keeps its legacy anniversary mark `nine_month_high_risk_only` (the enum value is not
@@ -75,19 +75,19 @@ const LOW_TIER_ITEMS: readonly BereavementCadenceItem[] = [
   { mark: "closeout_letter", offsetDays: 390, kind: "sympathy_letter", anniversaryMark: null },
 ];
 
-/** ADR-0110 D2 — moderate ADDS a week-2 call. */
+/** ADR-0109 D2 — moderate ADDS a week-2 call. */
 const MODERATE_TIER_ADDITIONS: readonly BereavementCadenceItem[] = [
   { mark: "week_2", offsetDays: 14, kind: "phone_call", anniversaryMark: null },
 ];
 
-/** ADR-0110 D2 — high ADDS a week-1 and a 2-month contact on top of the moderate set. */
+/** ADR-0109 D2 — high ADDS a week-1 and a 2-month contact on top of the moderate set. */
 const HIGH_TIER_ADDITIONS: readonly BereavementCadenceItem[] = [
   { mark: "week_1", offsetDays: 7, kind: "phone_call", anniversaryMark: null },
   { mark: "two_month", offsetDays: 60, kind: "phone_call", anniversaryMark: null },
 ];
 
 /**
- * ADR-0110 D2 — complicated ADDS an immediate screen and converts the week-1 contact to an in-person visit.
+ * ADR-0109 D2 — complicated ADDS an immediate screen and converts the week-1 contact to an in-person visit.
  *
  * "Immediate" is encoded as a 2-day floor rather than day 0 deliberately: a tenant may only shift a floor
  * contact EARLIER, so a day-0 floor would leave no room to tighten, and a same-day screen is not
@@ -113,7 +113,7 @@ const HIGH_TIER_ITEMS = mergeByMark(MODERATE_TIER_ITEMS, HIGH_TIER_ADDITIONS);
 const COMPLICATED_TIER_ITEMS = mergeByMark(HIGH_TIER_ITEMS, COMPLICATED_TIER_ADDITIONS);
 
 /**
- * ADR-0110 D2 — the platform-floor cadence per risk tier, CUMULATIVE: each tier is the tier below it plus its
+ * ADR-0109 D2 — the platform-floor cadence per risk tier, CUMULATIVE: each tier is the tier below it plus its
  * own additions, so a survivor's program can never lose a contact by being scored at a higher risk. Counts:
  * low 8, moderate 9, high 11, complicated 12.
  *
@@ -130,7 +130,7 @@ export const BEREAVEMENT_CADENCE_FLOOR: {
   complicated: COMPLICATED_TIER_ITEMS,
 } as const;
 
-// ── ADR-0110 D4: classifying rows written before `cadence_mark` existed ─────────────────────────────
+// ── ADR-0109 D4: classifying rows written before `cadence_mark` existed ─────────────────────────────
 
 const MS_PER_DAY = 86_400_000;
 
@@ -142,7 +142,7 @@ export interface LegacyOutreachFacts {
   readonly dueAt: string;
 }
 
-/** A milestone row's mark follows its anniversary mark exactly (the pre-ADR-0110 floor wrote one per row). */
+/** A milestone row's mark follows its anniversary mark exactly (the pre-ADR-0109 floor wrote one per row). */
 const MARK_FOR_ANNIVERSARY_MARK: Readonly<
   Record<BereavementAnniversaryMark, BereavementCadenceMark>
 > = {
@@ -161,7 +161,7 @@ const LETTER_KINDS: ReadonlySet<BereavementOutreachKind> = new Set([
 ]);
 
 /** Marks with no anniversary mark, by exact due offset and letter-ness. Day 7 appears twice on purpose: the
- *  pre-ADR-0110 condolence letter was due on day 7, which is also week 1's day (a call, not a letter). */
+ *  pre-ADR-0109 condolence letter was due on day 7, which is also week 1's day (a call, not a letter). */
 const MARK_BY_OFFSET: ReadonlyArray<{
   readonly offsetDays: number;
   readonly letter: boolean;
@@ -179,7 +179,7 @@ const MARK_BY_OFFSET: ReadonlyArray<{
 ];
 
 /**
- * ADR-0110 D4 — the cadence mark a row with a NULL `cadence_mark` was generated for, or `null` when it matches
+ * ADR-0109 D4 — the cadence mark a row with a NULL `cadence_mark` was generated for, or `null` when it matches
  * no floor contact (an ad-hoc touchpoint). The tier-change top-up counts these marks as already present so it
  * never adds a floor contact a family already has.
  *

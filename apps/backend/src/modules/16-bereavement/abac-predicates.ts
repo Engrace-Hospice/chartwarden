@@ -55,7 +55,7 @@ export type M16RegisteredAbacPredicate = (typeof M16_ABAC_PREDICATES)[number];
  *
  * The coordinator's role KEY is `bereavement_coordinator` — the spelling migration 1234 grants to and
  * `packages/idg` names. The spec prose says "bereavement_program_coordinator"; no role carries that key, so
- * binding it here made the coordinator invisible to oversight (ADR-0110 D8). M39's access-scope keeps a mirror.
+ * binding it here made the coordinator invisible to oversight (ADR-0109 D8). M39's access-scope keeps a mirror.
  */
 export const BEREAVEMENT_OVERSIGHT_ROLES = [
   "clinical_supervisor",

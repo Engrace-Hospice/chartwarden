@@ -766,7 +766,7 @@ describe("D4 outreach schedule generation", () => {
       "anniversary_call",
       "closeout_letter",
     ]);
-    // day 2 from a 2026-03-01 death (ADR-0110 D2: the condolence letter moved from day 7 to day 2).
+    // day 2 from a 2026-03-01 death (ADR-0109 D2: the condolence letter moved from day 7 to day 2).
     expect(rows[0]?.dueAt).toBe("2026-03-03T00:00:00.000Z");
     // The late grace is 7 days past due, and the denormalized anchor is the death instant itself.
     expect(rows[0]?.lateGraceUntil).toBe("2026-03-10T00:00:00.000Z");
@@ -870,7 +870,7 @@ describe("D4 outreach schedule generation", () => {
   });
 
   it("anniversary marks are derived from the tier's own cadence, not hard-coded", () => {
-    // ADR-0110 D2: the same four milestone reminders for EVERY tier (no `one_month` — the day-28
+    // ADR-0109 D2: the same four milestone reminders for EVERY tier (no `one_month` — the day-28
     // initial outreach is not an anniversary milestone; `nine_month_high_risk_only` is the legacy name).
     for (const tier of ["low", "moderate", "high", "complicated"] as const) {
       expect(anniversaryMarksForTier(tier)).toEqual([

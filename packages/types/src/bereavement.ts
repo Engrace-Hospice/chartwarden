@@ -138,7 +138,7 @@ export type BereavementPlanClosureReason =
   | "family_legal_action"
   | "other_early";
 
-/** D9 per-contact opt-out granularity (mirrors `bereavement_opt_out_kind`). `no_mailings` (ADR-0110)
+/** D9 per-contact opt-out granularity (mirrors `bereavement_opt_out_kind`). `no_mailings` (ADR-0109)
  *  stops mailings only: the contact stays active and calls continue. */
 export type BereavementOptOutKind =
   | "full"
@@ -631,7 +631,7 @@ export interface BereavementCloseEarlyPendingCosignAlert {
   readonly reason: string;
 }
 
-/** ADR-0110 D7 — a death opened a bereavement plan (`eligible`); oversight assigns a counselor. Ids and the
+/** ADR-0109 D7 — a death opened a bereavement plan (`eligible`); oversight assigns a counselor. Ids and the
  *  death date only: no name, no cause. */
 export interface BereavementDeathIntakeAlert {
   readonly kind: "death_intake";
@@ -639,13 +639,13 @@ export interface BereavementDeathIntakeAlert {
   readonly deathDate: LocalDate;
 }
 
-/** ADR-0110 D6/D7 — the condolence letter to the attending clinician is waiting for a human review. */
+/** ADR-0109 D6/D7 — the condolence letter to the attending clinician is waiting for a human review. */
 export interface BereavementPhysicianLetterPendingReviewAlert {
   readonly kind: "physician_letter_pending_review";
   readonly planId: BereavementPlanId;
 }
 
-/** ADR-0110 D3/D7 — an assessment checkpoint passed its late grace uncompleted (the task is now `missed`). */
+/** ADR-0109 D3/D7 — an assessment checkpoint passed its late grace uncompleted (the task is now `missed`). */
 export interface BereavementRiskAssessmentOverdueAlert {
   readonly kind: "risk_assessment_overdue";
   readonly planId: BereavementPlanId;
@@ -655,7 +655,7 @@ export interface BereavementRiskAssessmentOverdueAlert {
   readonly dueAt: IsoInstant;
 }
 
-/** The §4.10 discriminated union of every typed alert M16 emits to M36 (+ the ADR-0110 D7 kinds). */
+/** The §4.10 discriminated union of every typed alert M16 emits to M36 (+ the ADR-0109 D7 kinds). */
 export type BereavementAlertPayload =
   | BereavementAnniversaryDueAlert
   | BereavementOutreachMissedAlert

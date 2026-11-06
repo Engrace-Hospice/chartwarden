@@ -6562,7 +6562,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           const m16AlertPort = createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter);
           const m16WriteService = buildDrizzleM16WriteService(dbHandle.db, m16ReadService, {
             outbox: m16OutboxPublisher,
-            // ADR-0110 D7 — M16 alerts ride the M36 AlertEmitter seam (routed kinds only; see alert-port.ts).
+            // ADR-0109 D7 — M16 alerts ride the M36 AlertEmitter seam (routed kinds only; see alert-port.ts).
             alerts: m16AlertPort,
             // GAP-129 — the tenant-DEK envelope (M34 key ring, resolved lazily like every other cipher below) for
             // a contact's email / phone / mailing address and a counselor's notes.
@@ -9842,7 +9842,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     // months, no outreach was ever marked `missed` (so M30's missed/overdue counts were permanently 0) and no
     // anniversary reminder was ever alerted. Three time-driven queues now produce them (`m16-close-13mo`,
     // `m16-miss-deadline`, `m16-anniversary-lookahead`); each writes its row change + the m16.* outbox event
-    // through the real catalog-validating tx publisher in ONE per-row org tx. `alerts` is the ADR-0110 D7
+    // through the real catalog-validating tx publisher in ONE per-row org tx. `alerts` is the ADR-0109 D7
     // adapter over the M36 AlertEmitter seam (routed kinds only; an unrouted kind is a no-op).
     const m16ActiveOrgs = buildActiveOrgEnumerator({
       platformDb: platformDbHandle?.db,
@@ -11738,7 +11738,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
           buildM16BereavementIntakeConsumer({
             db: dbHandle.db,
             outbox: m16OutboxPublisher,
-            // ADR-0110 D7 — `death_intake`: the oversight roles are told an `eligible` plan awaits a counselor.
+            // ADR-0109 D7 — `death_intake`: the oversight roles are told an `eligible` plan awaits a counselor.
             alerts: createM16AlertPort(() => getSeam("AlertEmitter") as AlertEmitter),
             resolveAdmission: async (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),

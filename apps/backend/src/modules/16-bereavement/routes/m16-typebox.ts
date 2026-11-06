@@ -177,7 +177,7 @@ export const EarlyCloseReason = Type.Union([
   Type.Literal("other_early"),
 ]);
 
-/** `bereavement_opt_out_kind` (§3.2 / §4.2). The enum also holds `no_mailings` (migration 1340, ADR-0110 D10),
+/** `bereavement_opt_out_kind` (§3.2 / §4.2). The enum also holds `no_mailings` (migration 1340, ADR-0109 D10),
  *  deliberately NOT accepted here yet: until the mailing-preference semantics land the opt-out machine would
  *  treat any kind as a full opt-out and close the contact, which is the opposite of "stop mailings, keep calls". */
 export const OptOutKind = Type.Union([

@@ -2735,7 +2735,7 @@ export const bereavementPlanClosureReason = pgEnum("bereavement_plan_closure_rea
 
 /** `bereavement_opt_out_kind` — D9 per-contact opt-out granularity. Only `full` closes the contact;
  *  `channel_specific` restricts modalities, `pause_temporarily` suspends without closing, and
- *  `no_mailings` (migration 1340, ADR-0110) stops mailings while calls and visits continue. */
+ *  `no_mailings` (migration 1340, ADR-0109) stops mailings while calls and visits continue. */
 export const bereavementOptOutKind = pgEnum("bereavement_opt_out_kind", [
   "full",
   "channel_specific",
