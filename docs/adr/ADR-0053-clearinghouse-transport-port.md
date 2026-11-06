@@ -343,61 +343,78 @@ TINs (which can be SSNs) and vendor free text exist only inside that cipher.
 
 ## Amendment 2026-11-06 — the clearinghouse is a per-tenant choice (supersedes D3's single platform vendor)
 
-**Decision (product owner, 2026-11-05).** Each tenant chooses how its claims leave ChartWarden: `stedi`, `claimmd`, or
-`outside` ("bills outside ChartWarden"), with its own setup and its own encrypted vendor credential. Platform operators set it
-during onboarding (platform routes: `platform_ops`, step-up, a recorded reason, an audit row naming operator and tenant, accepted
-only while the tenant is provisioning or onboarding) and the tenant admin sets it on its own (tenant routes: the same
-`billing.mac_credential.read` / `.admin` keys as the EDI profile, a fresh step-up, no AI actor, `Idempotency-Key`). D3's "one
-platform credential" no longer holds for the tenants that choose; D1, D2 and D4-D10 stand.
+**Decision (product owner, 2026-11-05; owner decisions D1-D6 of 2026-11-06, final).** Each tenant chooses how its claims leave
+ChartWarden: `stedi`, `claimmd`, or `outside` ("bills outside ChartWarden"), with its own setup and its own encrypted vendor
+credential. Platform operators set it during onboarding (platform routes: `platform_ops`, step-up, a recorded reason, an audit row
+naming operator and tenant, accepted only while the tenant is provisioning or onboarding) and the tenant admin sets it on its own
+(tenant routes: the org-level `billing.clearinghouse.read` / `.admin` keys, a fresh step-up, no AI actor, `Idempotency-Key`, `If-Match`).
+D3's "one platform credential" no longer holds for the tenants that choose; D1, D2 and D4-D10 stand.
+
+**Who may choose (D3 of the owner decisions).** The tenant routes do NOT reuse the provider-entity-scoped `billing.mac_credential.*` keys: choosing the
+clearinghouse re-routes every provider entity's claims (PHI) to another vendor, so a billing manager scoped to one entity must not hold it. `billing.clearinghouse.read`
+and `.admin` are org-level and bound to the org-wide admin roles only (`org_admin`, `administrator`, through the full-catalog template and a
+migration for existing role rows); no other template grants them.
 
 **Data.** `tenant_clearinghouse_config` (M23, migration 1350), one row per organization: vendor, mode (`test` / `production`),
-status `draft` -> `verified` -> `active`, the vendor credential sealed with the M23 MAC-secret envelope under its own labels
-(AAD binds organization, vendor and mode; the KEK is the existing `M24_CREDENTIAL_ENCRYPTION_KEY`), how it was verified, the last
-test outcome. RLS ENABLE + FORCE for the app role (SELECT, INSERT, column-level UPDATE, no DELETE: switching to `outside` is an
-UPDATE); platform operators write through the tenant's own scope (the app pool under the target org), so there is no platform
-grant. The audit trigger scrubs the sealed secret. `outside` carries no mode and no secret and is stored `active`.
+status `draft` -> `verified` -> `active`, the vendor credential sealed with the M23 MAC-secret envelope under its own labels (AAD binds
+organization, vendor and mode; the KEK is the existing `M24_CREDENTIAL_ENCRYPTION_KEY`), how it was verified, the last test outcome, and
+the tenant-held vendor BAA. RLS ENABLE + FORCE for the app role (SELECT, INSERT, column-level UPDATE, no DELETE: switching to `outside`
+is an UPDATE); platform operators write through the tenant's own scope (the app pool under the target org), so there is no platform
+grant. The audit trigger scrubs the sealed secret and records `secret_changed` (the scrubbed before and after are identical, so a swapped credential would
+otherwise be invisible); the tenant routes also write a field-level audit row naming the changed fields (never values), like the platform lane.
+`outside` carries no mode, no secret and no BAA and is stored `active`.
 
-**Rules (service.ts).** A vendor or mode change restarts at `draft` and needs its own credential; a credential rotation alone keeps
-the status (rotating a key must not take a live tenant offline) and clears the last test. Once a PRODUCTION submission is
-reserved or sent, vendor and mode are locked (409 `CLEARINGHOUSE_VENDOR_LOCKED`): the old vendor still owes that org its
-acknowledgments and a switch would stop pulling them; an operator migration is the only way out (not built). Changes are
-version-checked (`If-Match`, 428 / 412).
+**Rules (service.ts).** Any change starts at `draft` for the new credential (owner decision D6): a vendor or mode change, a first choice, and
+a credential rotation alike. Rotating the key of a `verified` or `active` config drops it to `draft` and clears the connection test and the
+activation: the new key has not been tried, and claims work HOLDS (a worker hold, not a failure) until it is re-verified and re-activated. A change of
+VENDOR also voids the vendor BAA (a new agreement); a same-vendor change keeps it. Once a PRODUCTION submission is reserved or sent, vendor and mode are
+locked (409 `CLEARINGHOUSE_VENDOR_LOCKED`): the old vendor still owes that org its acknowledgments. A switch away from a vendor (or to `outside`) is also refused
+while the org has claims or M41 commercial submissions queued (409 `CLEARINGHOUSE_WORK_WAITING`, with the counts). Changes are version-checked (`If-Match`, 428 / 412). In
+production the tenant route refuses `mode: "test"` (422 `CLEARINGHOUSE_TEST_MODE_NOT_ALLOWED`): only the platform-ops lane may set it, with its recorded reason.
 
-**Verification.** Claim.MD has a safe no-PHI probe: `uploadlist` for a day before any account could have uploads answers an
-empty list for a valid key and error 21 for a bad one (observed 2026-11-04/05, contract doc), so `verify` runs it
-(`probeClaimMdAccountKey`). Stedi has NO safe no-PHI probe in the repo or the audit record (the one observed call, the mock
-eligibility check, is a test-mode call and would be a real, possibly billable transaction on a production key), so Stedi `verify` is an attestation with a required
-evidence note (8-500 characters, screened for SSN and MBI shapes). A failed Claim.MD test is a 200 carrying the outcome and
-leaves the config at `draft`. `activate` takes `verified` to `active`; an `active` config is what allows claims work.
+**The vendor BAA (owner decision D2).** A tenant-held Stedi or Claim.MD account needs BOTH before it can go `active`: (a) the tenant records its vendor BAA
+(`POST /api/v1/tenant/clearinghouse/baa`: held by the tenant, the effective date, a screened document reference, never patient information), and (b) a
+platform operator verifies that record (`POST /api/v1/platform/tenants/:orgSlug/clearinghouse/baa/verify`: `platform_ops`, the separate
+`tenant_clearinghouse.verify_baa_platform` key, fresh step-up, a human actor, `Idempotency-Key`, a reason; the audit row names operator, organization and
+reason; NOT limited to an onboarding tenant, because a live tenant that changes vendor needs it too). Activation refuses with 409 `CLEARINGHOUSE_BAA_NOT_VERIFIED` until then,
+and the table CHECK holds the same rule. Re-recording a changed BAA voids its verification and takes a live config back to `verified`. The BAA status is in both GET views.
 
-**Resolution.** `ClearinghouseBinding.forOrg(organizationId)` (this package) returns that organization's binding; the backend
-resolver (`tenant-clearinghouse/resolver.ts`) re-reads the org's row on every call and rebuilds the transport only when its
-`version` moved, over the tenant's own credential and mode, with one Claim.MD request budget per org (each tenant has its own
-account). The top-level binding is deliberately UNBOUND, so a consumer that forgot to resolve per org fails closed. A row that is
-`outside`, `draft` or `verified`, or no row, resolves unbound: nothing is sent, and the legacy launch-gateway ports are NEVER
-the fallback in this mode (D10's "no silent fallback" now holds per organization). M23's submit, retry, NOE/NOTR and ack paths,
-the M25 remittance pull and M41's submission, ack and eligibility paths all resolve per org; an unbound org fails or is skipped
-on its own and never fails the others in a tick. The context's `usage` comes from the org's own mode.
+**Verification.** Claim.MD has a safe no-PHI probe: `uploadlist` for a day before any account could have uploads answers an empty list for
+a valid key and error 21 for a bad one (observed 2026-11-04/05, contract doc), so `verify` runs it (`probeClaimMdAccountKey`). Stedi has NO safe
+no-PHI probe in the repo or the audit record, so Stedi `verify` is an attestation with a required evidence note (8-500 characters, screened for SSN and MBI shapes) AND the
+confirmation that the note names no patient information. The vendor probe never runs inside a transaction: `verify` reads and decrypts first (read-only, no row lock), probes with nothing open, then locks and
+compare-and-sets on the version it read (409 `CLEARINGHOUSE_CHANGED_DURING_VERIFY` when the config moved meanwhile), in the platform lane too. `verify` is rate limited (6/min/user, fail-open). A failed Claim.MD
+test is a 200 carrying the outcome and leaves the config at `draft`. `activate` takes `verified` to `active` (with a verified BAA); an `active` config is what allows claims work.
+*Known limits:* the Stedi probe-free attestation cannot tell a test key from a production key (a key-type versus mode check is not built); the Claim.MD probe is not counted in that account's request budget.
+
+**Resolution.** `ClearinghouseBinding.forOrg(organizationId)` (this package) returns that organization's binding; the backend resolver
+(`tenant-clearinghouse/resolver.ts`) re-reads the org's row on every call and rebuilds the transport only when its `version` moved, over the tenant's own credential and mode, with one Claim.MD
+request budget per org. Each tenant transport is BOUND to its organization: a call whose context names another organization is refused (`CH_INVALID_REQUEST`) before the vendor.
+A credential the resolver cannot open is a typed 503 `CLEARINGHOUSE_CREDENTIAL_UNREADABLE`, never a 500. The top-level binding is deliberately UNBOUND, so a consumer that forgot to resolve per org fails
+closed. A row that is `outside`, `draft` or `verified`, or no row, resolves unbound with its reason (`outside`, `not_active`, `not_chosen`): nothing is sent, and the legacy launch-gateway ports are NEVER the fallback.
+A claim job for an org that is not live is HELD (moved back to delayed, no attempt spent, one alert per org per window) instead of failing into the DLQ, in every claims-billing enforcement mode. M23's submit, retry,
+NOE/NOTR and ack paths, the M25 remittance pull and M41's submission, ack and eligibility paths all resolve per org; an unbound org is reported (one alert) or skipped on its own and never fails the others in a tick, including the
+shared M41 crons. The credential-rejection hold (#714) hangs on the org's cached transport, so a rejected key holds that org's calls and a re-entered key starts clean.
 
 **The platform env binding.** `CLEARINGHOUSE_VENDOR` (and its credential) stays, but now serves ONLY the organizations named in
-`CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS` (comma-separated organization uuids) and only while they have no row: the demo tenant keeps
-working with no data migration and no secret copied into the database. The list is explicit and documented in `.env.example`;
-production env validation refuses a malformed list or naming organizations with no vendor bound. A deployment that relied on the
-platform binding for every tenant must name them there or they stop sending until they choose their own.
+`CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS` (comma-separated organization uuids, no blank entries) and only while they have no row: the demo tenant keeps working with no data migration and no secret copied into
+the database. Production env validation refuses a malformed list or naming organizations with no vendor bound. A deployment that relied on the platform binding for every tenant must name
+them there or they stop sending until they choose their own.
 
-**What stays platform-level.** The X12 generation gateway and `CLEARINGHOUSE_PAYER_ID`. The Claim.MD webhook intake stays
-platform-account only and OFF (its HMAC key is the platform account key): a tenant's own Claim.MD account does not deliver
-enrollment or appeal reports through it, and per-tenant webhook URLs are not built.
+**What stays platform-level.** The X12 generation gateway and `CLEARINGHOUSE_PAYER_ID`. The Claim.MD webhook intake stays platform-account only and OFF (its HMAC key is the platform account
+key): a tenant's own Claim.MD account does not deliver enrollment or appeal reports through it, and per-tenant webhook URLs are not built.
 
-**Wizard.** Step 7 `clearinghouse_selected` is now an `either` step settled by `context.clearinghouseSettled` (`outside`, or a
-vendor in `active` status), so choosing and activating a vendor settles it at once through the advance pass (migration 1351,
-`contract`: the previous release's evaluator throws on the unknown field). Under `outside` steps 8 (`mac_configured`) and 9
-(`payer_enrollment`) stay gating and become "skip with a reason" for platform ops (the existing skip route already allows any
-non-go-live step with a rationale); nothing is auto-skipped.
+**Wizard (owner decision D5).** Step 7 `clearinghouse_selected` is an `either` step settled by `context.clearinghouseSettled` (`outside`, or a vendor in `active` status), so choosing and activating a vendor settles it at once
+through the advance pass (migration 1351, `contract`: the previous release's evaluator throws on the unknown field). Choosing `outside` auto-skips steps 8 `mac_configured` and 9 `payer_enrollment` with the system
+reason "bills outside ChartWarden", through the wizard service's own skip path (so the audit and the strict sequence hold: a skip an earlier open step still locks waits for the next wizard change); switching back to a vendor reopens exactly the steps the
+system skipped, through the wizard's reopen path (a pending go-live attestation blocks a reopen, which is logged).
 
-**The gate.** ADR-0108 is repurposed: new claims work follows this choice, not an add-on (see its 2026-11-06 amendment).
-M35's pricing reads the same choice through the `TenantClearinghouseReader` seam (owner M23) to apply "`outside` means no billing
-percentage"; this ADR implements no pricing.
+**The gate (owner decision D1).** ADR-0108 is repurposed: new claims work follows this choice, not an add-on (see its 2026-11-06 amendment), and a suspended, paused or canceled ChartWarden subscription still blocks NEW claims and eligibility work regardless of the clearinghouse.
+M35's pricing reads the same choice through the `TenantClearinghouseReader` seam (owner M23) to apply "`outside` means no billing percentage"; this ADR implements no pricing.
 
-**Not decided here.** Whether an `outside` tenant's NOE/NOTR (open under ADR-0108, 5-day deadlines) should still be transmitted
-through a platform-held account, and how an operator migrates a tenant between vendors once production submissions exist.
+**`outside` and the notices (owner decision D4, supersedes the earlier "not decided here").** A tenant that bills outside ChartWarden files its NOE and NOTR itself. ChartWarden still tracks the 5-day deadline, shows "file with your biller", and lets the tenant record the date it was filed;
+it transmits nothing: the notice is not enqueued or attempted, it is parked as filed-externally-pending, and a tenant route records the externally-filed date (billing permission, step-up, audited). The deadline watch keeps counting for such notices
+until the date is recorded. An org that has chosen nothing yet (still onboarding), or whose config is a draft, has its notice jobs HELD, not failed, with one alert.
+
+**Not built (deferred, stated).** KEK rotation and a key-id byte in the envelope (a rotation is a re-encrypt of every row); per-tenant Claim.MD webhooks; operator tooling to migrate a tenant between vendors once production submissions exist
+(the lock stands until then); a Stedi key-type versus mode check; a Claim.MD probe counted in the account's request budget.

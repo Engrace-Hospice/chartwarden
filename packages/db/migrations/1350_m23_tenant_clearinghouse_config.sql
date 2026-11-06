@@ -9,7 +9,12 @@
 --             evidence) -> active (in use: claims and eligibility work is allowed). Any change to vendor, mode or secret
 --             puts the row back to `draft` (the service does it; the CHECKs below make a half-state impossible).
 --   secret_*  the vendor credential, AES-256-GCM sealed under the per-tenant key (the M23 MAC-credential envelope, its own
---             labels). Write-only: no read path returns it, and the audit trigger records only that it changed.
+--             labels). Write-only: no read path returns it, and the audit trigger records only THAT it changed
+--             (`secret_changed` in the audit context: the scrubbed before/after cannot show a swap).
+--   baa_*     the tenant-held vendor BAA. A tenant that brings its own Stedi / Claim.MD account holds its own BAA with that
+--             vendor: the TENANT records it (effective date + a screened document reference, never patient data), and a platform
+--             operator VERIFIES the record (`baa_verified_*`) before the config may go `active` (the CHECK below). A change of
+--             vendor voids both the record and the verification; a same-vendor key rotation keeps them.
 --   verification_*  how `verified` was reached: `connection_test` (a no-PHI vendor call) or `attested` (the operator's own
 --             evidence note; used where the vendor has no safe probe). The evidence is a short note, never patient data.
 --
@@ -36,6 +41,12 @@ CREATE TABLE IF NOT EXISTS "tenant_clearinghouse_config" (
   "last_test_outcome" text,
   "activated_at" timestamptz,
   "activated_by_membership_id" uuid,
+  "baa_effective_date" date,
+  "baa_document_ref" text,
+  "baa_recorded_at" timestamptz,
+  "baa_recorded_by_membership_id" uuid,
+  "baa_verified_at" timestamptz,
+  "baa_verified_by_membership_id" uuid,
   "set_by_membership_id" uuid NOT NULL,
   "version" integer NOT NULL DEFAULT 1,
   "created_at" timestamptz NOT NULL DEFAULT now(),
@@ -48,7 +59,7 @@ CREATE TABLE IF NOT EXISTS "tenant_clearinghouse_config" (
   -- outside: no mode, no secret, nothing to verify, always active. A transmitting vendor always has a mode.
   CONSTRAINT "tenant_clearinghouse_config_outside_ck" CHECK (
     ("vendor" = 'outside' AND "mode" IS NULL AND "secret_cipher" IS NULL AND "status" = 'active'
-       AND "verification_kind" IS NULL AND "verified_at" IS NULL)
+       AND "verification_kind" IS NULL AND "verified_at" IS NULL AND "baa_recorded_at" IS NULL)
     OR ("vendor" <> 'outside' AND "mode" IS NOT NULL)
   ),
   CONSTRAINT "tenant_clearinghouse_config_secret_ck" CHECK (("secret_cipher" IS NULL) = ("secret_dek_version" IS NULL)),
@@ -63,6 +74,22 @@ CREATE TABLE IF NOT EXISTS "tenant_clearinghouse_config" (
     OR ("status" = 'active' AND "secret_cipher" IS NOT NULL AND "verification_kind" IS NOT NULL AND "verified_at" IS NOT NULL
           AND "verified_by_membership_id" IS NOT NULL AND "activated_at" IS NOT NULL AND "activated_by_membership_id" IS NOT NULL)
   ),
+  -- The BAA record is all-or-nothing, its verification needs the record, and a live (`active`) transmitting config has a
+  -- VERIFIED BAA: a tenant-held vendor account never carries claims on an unverified BAA.
+  CONSTRAINT "tenant_clearinghouse_config_baa_record_ck" CHECK (
+    ("baa_recorded_at" IS NULL AND "baa_effective_date" IS NULL AND "baa_document_ref" IS NULL
+       AND "baa_recorded_by_membership_id" IS NULL)
+    OR ("baa_recorded_at" IS NOT NULL AND "baa_effective_date" IS NOT NULL AND "baa_document_ref" IS NOT NULL
+       AND "baa_recorded_by_membership_id" IS NOT NULL)
+  ),
+  CONSTRAINT "tenant_clearinghouse_config_baa_ref_ck" CHECK (
+    "baa_document_ref" IS NULL OR char_length(btrim("baa_document_ref")) BETWEEN 3 AND 200),
+  CONSTRAINT "tenant_clearinghouse_config_baa_verified_ck" CHECK (
+    ("baa_verified_at" IS NULL AND "baa_verified_by_membership_id" IS NULL)
+    OR ("baa_verified_at" IS NOT NULL AND "baa_verified_by_membership_id" IS NOT NULL AND "baa_recorded_at" IS NOT NULL)
+  ),
+  CONSTRAINT "tenant_clearinghouse_config_active_baa_ck" CHECK (
+    "vendor" = 'outside' OR "status" <> 'active' OR "baa_verified_at" IS NOT NULL),
   CONSTRAINT "tenant_clearinghouse_config_verification_kind_ck" CHECK (
     "verification_kind" IS NULL OR "verification_kind" IN ('connection_test', 'attested')),
   CONSTRAINT "tenant_clearinghouse_config_evidence_ck" CHECK (
@@ -81,19 +108,25 @@ GRANT SELECT, INSERT ON "tenant_clearinghouse_config" TO chartwarden_app;--> sta
 -- UPDATE is column-level: the organization and the row id can never be rewritten.
 GRANT UPDATE ("vendor", "mode", "status", "secret_cipher", "secret_dek_version", "verification_kind", "verification_evidence",
   "verified_at", "verified_by_membership_id", "last_test_at", "last_test_outcome", "activated_at", "activated_by_membership_id",
-  "set_by_membership_id", "version", "updated_at") ON "tenant_clearinghouse_config" TO chartwarden_app;--> statement-breakpoint
+  "baa_effective_date", "baa_document_ref", "baa_recorded_at", "baa_recorded_by_membership_id", "baa_verified_at",
+  "baa_verified_by_membership_id", "set_by_membership_id", "version", "updated_at") ON "tenant_clearinghouse_config" TO chartwarden_app;--> statement-breakpoint
 GRANT ALL ON "tenant_clearinghouse_config" TO chartwarden_admin;--> statement-breakpoint
 
 -- M04 write-audit: the config decides which vendor receives the tenant's claims (PHI), so every change is compliance-retained.
--- The sealed secret is never copied into the audit row (audit_scrub replaces it with the change marker).
+-- The sealed secret is never copied into the audit row (audit_scrub replaces it with the change marker), and the marker is the
+-- same on both sides, so a swapped credential would be invisible: the context therefore carries `secret_changed`.
 CREATE OR REPLACE FUNCTION audit_phi_write_tenant_clearinghouse_config() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
-DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY['secret_cipher']::text[];
+DECLARE v_before jsonb; v_after jsonb; v_cols text[] := ARRAY['secret_cipher']::text[]; v_secret_changed boolean;
 BEGIN
   v_before := CASE WHEN TG_OP IN ('UPDATE','DELETE') THEN audit_scrub(to_jsonb(OLD), v_cols) ELSE NULL END;
   v_after := CASE WHEN TG_OP IN ('INSERT','UPDATE') THEN audit_scrub(to_jsonb(NEW), v_cols) ELSE NULL END;
+  v_secret_changed := CASE TG_OP
+    WHEN 'INSERT' THEN NEW.secret_cipher IS NOT NULL
+    WHEN 'UPDATE' THEN OLD.secret_cipher IS DISTINCT FROM NEW.secret_cipher
+    ELSE OLD.secret_cipher IS NOT NULL END;
   INSERT INTO audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind, resource_id, correlation_id, outcome, severity, before, after, context, retention_class)
-  VALUES (COALESCE(NEW.organization_id, OLD.organization_id), NULLIF(current_setting('app.user_id', true), '')::uuid, 'system', 'tenant_clearinghouse_config.' || lower(TG_OP), 'tenant_clearinghouse_config', COALESCE(NEW.id, OLD.id), COALESCE(NULLIF(current_setting('app.correlation_id', true), ''), 'system'), 'success', 'warn', v_before, v_after, '{}'::jsonb, 'compliance');
+  VALUES (COALESCE(NEW.organization_id, OLD.organization_id), NULLIF(current_setting('app.user_id', true), '')::uuid, 'system', 'tenant_clearinghouse_config.' || lower(TG_OP), 'tenant_clearinghouse_config', COALESCE(NEW.id, OLD.id), COALESCE(NULLIF(current_setting('app.correlation_id', true), ''), 'system'), 'success', 'warn', v_before, v_after, jsonb_build_object('secret_changed', v_secret_changed), 'compliance');
   RETURN COALESCE(NEW, OLD);
 END $$;--> statement-breakpoint
 ALTER FUNCTION audit_phi_write_tenant_clearinghouse_config() OWNER TO chartwarden_audit_writer;--> statement-breakpoint

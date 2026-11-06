@@ -5,7 +5,7 @@
 //
 // `secret_cipher` is write-only: no service view ever returns it (a `hasSecret` flag is derived). The membership ids are
 // logical FKs (a platform operator's membership lives in the platform org). Only `organization_id` has a real FK.
-import { integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { date, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { organizations } from "../organizations";
 
 export const tenantClearinghouseConfig = pgTable(
@@ -28,6 +28,13 @@ export const tenantClearinghouseConfig = pgTable(
     lastTestOutcome: text("last_test_outcome"),
     activatedAt: timestamp("activated_at", { withTimezone: true }),
     activatedByMembershipId: uuid("activated_by_membership_id"),
+    // The tenant-held vendor BAA: the tenant records it, a platform operator verifies it, and only then may the config go active.
+    baaEffectiveDate: date("baa_effective_date"),
+    baaDocumentRef: text("baa_document_ref"),
+    baaRecordedAt: timestamp("baa_recorded_at", { withTimezone: true }),
+    baaRecordedByMembershipId: uuid("baa_recorded_by_membership_id"),
+    baaVerifiedAt: timestamp("baa_verified_at", { withTimezone: true }),
+    baaVerifiedByMembershipId: uuid("baa_verified_by_membership_id"),
     setByMembershipId: uuid("set_by_membership_id").notNull(),
     version: integer("version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

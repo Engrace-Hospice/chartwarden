@@ -113,6 +113,8 @@ export interface M23RouteServices {
   readonly ediProfileService?: EdiProfileRouteService;
   /** ADR-0053 amendment 2026-11-06 — the tenant's own clearinghouse choice (absent ⇒ /tenant/clearinghouse is not mounted). */
   readonly tenantClearinghouseService?: TenantClearinghouseRouteService;
+  /** Per-user cap on the tenant clearinghouse `verify` (a vendor call per request); fail-open. Absent = unlimited. */
+  readonly tenantClearinghouseVerifyRateLimit?: (request: never, reply: never) => Promise<void>;
   /** The Medicare transfer notice (8xC / 8xD) service (absent ⇒ /billing/transfer-notices is not mounted). */
   readonly transferNoticeService?: TransferNoticeService;
   /** ADR-0052 — the DDE work-queue service (absent ⇒ /billing/dde-items is not mounted). */

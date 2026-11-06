@@ -360,6 +360,7 @@ import {
   AFTERHOURS_TRIAGE_LINES_ROUTE_RATE_LIMIT,
   AI_ROUTE_RATE_LIMIT,
   ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
+  CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
   DEATH_BOARD_ROUTE_RATE_LIMIT,
   EMERGENCY_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
@@ -377,6 +378,7 @@ import {
   startRealtimeServer,
 } from "./bootstrap/realtime";
 import { buildCriticalLabDeps, buildCriticalLabEscalate } from "./critical-lab-wiring";
+import { buildClearinghouseAuditPort } from "./m23-clearinghouse-audit";
 import { buildM36ExportBinding } from "./m36-export-binding";
 import { buildM41OverrideAuditPort } from "./m41-override-audit";
 import { revokeAuditorMagicLinksForEngagement } from "./modules/02-identity/auditor-magic-link-store";
@@ -1174,6 +1176,7 @@ import { buildOrgRouteKeyReader } from "./modules/23-billing-medicare/tenant-cle
 import { buildClearinghouseSecretCipherFromEnv } from "./modules/23-billing-medicare/tenant-clearinghouse/secret-cipher";
 import { createTenantClearinghouseService } from "./modules/23-billing-medicare/tenant-clearinghouse/service";
 import { buildDrizzleTenantClearinghouseRouteService } from "./modules/23-billing-medicare/tenant-clearinghouse/tenant-service";
+import { countQueuedClaims } from "./modules/23-billing-medicare/tenant-clearinghouse/waiting-work";
 import { isVoidM23Claim } from "./modules/23-billing-medicare/void-claim";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
 // (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
@@ -1889,6 +1892,7 @@ import {
   buildEnrollmentReportService,
   buildM41EnrollmentReportConsumer,
   buildM41RemittanceConsumer,
+  countQueuedCommercialSubmissions,
   registerCommercialAckQuarantineRoutes,
   registerCommercialBillingRoutes,
   registerM41AbacPredicates,
@@ -5981,6 +5985,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             db: dbHandle.db,
             advance: async ({ tenantAccountId, organizationId }) => {
               await m34OnboardingAdvance({ tenantAccountId, orgId: organizationId });
+              await onboardingWizardHolder.current?.syncClearinghouseSteps(organizationId);
             },
           });
           const tenantClearinghouseService = createTenantClearinghouseService({
@@ -5988,11 +5993,20 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // Claim.MD has a safe no-PHI probe (uploadlist); Stedi has none, so its `verify` is an attestation with evidence.
             probes: { claimmd: (secret) => probeClaimMdAccountKey(secret) },
             platformFallback: clearinghouseFallback.lookup,
+            // Security M4: the tenant lane may not choose test mode on a production deployment (platform ops may, with a reason).
+            isProduction: process.env.NODE_ENV === "production",
+            // A switch of clearinghouse is refused while claims or commercial submissions are still queued on the old one.
+            waitingWork: async (organizationId) => ({
+              claims: await countQueuedClaims(dbHandle.db, organizationId),
+              commercialSubmissions: await countQueuedCommercialSubmissions(
+                dbHandle.db,
+                organizationId,
+              ),
+            }),
           });
           const m34PlatformBackend = buildDrizzlePlatformService({
             advanceOnboarding: async ({ tenantAccountId, organizationId }) => {
               await m34OnboardingAdvance({ tenantAccountId, orgId: organizationId });
-              await onboardingWizardHolder.current?.syncClearinghouseSteps(organizationId);
             },
             warn: (message, context) => app.log.warn(context, message),
             platformDb: platformDbHandle?.db ?? dbHandle.db,
@@ -6133,6 +6147,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // through the same M2 / M23 logic the tenant's own admin screens call; the EIN and the MAC secret are
             // sealed by the same ciphers and never returned.
             onboardingData: {
+              clearinghouseVerifyRateLimit: createRouteRateLimit({
+                store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                limit: CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
+                keyPrefix: "m34-clearinghouse-verify",
+              }),
               service: buildDrizzleOnboardingDataService({
                 db: dbHandle.db,
                 // After a write commits the advance sweep settles the step the data satisfies (best effort).
@@ -6488,9 +6507,15 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 // Migration 1269 — the tenant-entered EDI profile (`/billing/edi-profiles`): the 837I submitter + receiver parties.
                 ediProfileService: buildDrizzleEdiProfileService(dbHandle.db),
                 // ADR-0053 amendment 2026-11-06 — the tenant's own clearinghouse choice (`/tenant/clearinghouse`).
+                tenantClearinghouseVerifyRateLimit: createRouteRateLimit({
+                  store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                  limit: CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
+                  keyPrefix: "m23-clearinghouse-verify",
+                }),
                 tenantClearinghouseService: buildDrizzleTenantClearinghouseRouteService({
                   db: dbHandle.db,
                   service: tenantClearinghouseService,
+                  audit: buildClearinghouseAuditPort(),
                   onChanged: settleOnboardingForOrg,
                   logError: (cause, context) =>
                     app.log.error(

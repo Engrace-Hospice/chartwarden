@@ -9,6 +9,7 @@ import type {
   OnboardingClearinghousePort,
   OnboardingClearinghouseResult,
   OnboardingWriteScope,
+  VerifyPlan,
 } from "../../../bootstrap/onboarding-clearinghouse-port";
 import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
 import { parse } from "../routes/billing-typebox";
@@ -16,14 +17,17 @@ import { createDrizzleConfigStore } from "./config-store";
 import type {
   ClearinghouseActor,
   ClearinghouseConfigView,
+  VerifyPlan as ServiceVerifyPlan,
   TenantClearinghouseService,
 } from "./service";
 import { PutClearinghouseBodySchema, VerifyClearinghouseBodySchema } from "./typebox";
 
+// The platform-ops lane: the one lane that may set test mode on a production deployment (the route records a reason).
 const actorFor = (scope: OnboardingWriteScope): ClearinghouseActor => ({
   organizationId: scope.organizationId,
   userId: scope.operatorUserId,
   membershipId: scope.operatorMembershipId,
+  lane: "platform",
 });
 
 export function buildTenantClearinghouseOnboardingPort(deps: {
@@ -66,22 +70,36 @@ export function buildTenantClearinghouseOnboardingPort(deps: {
     async put(tx, scope, body, expectedVersion) {
       await assertTxScopedToOrg(tx, scope.organizationId);
       const input = parse(PutClearinghouseBodySchema, body);
-      const { created, view } = await service.put(
+      const { created, view, changedFields } = await service.put(
         createDrizzleConfigStore(tx),
         actorFor(scope),
         input,
         expectedVersion,
       );
-      return withId(tx, scope, view, { created, changedFields: Object.keys(input) });
+      // The names of what the put actually CHANGED (never a value): a put that rotated only the credential says `secret`.
+      return withId(tx, scope, view, { created, changedFields });
     },
 
-    async verify(tx, scope, body) {
-      await assertTxScopedToOrg(tx, scope.organizationId);
+    async prepareVerify(scope, body) {
       const input = parse(VerifyClearinghouseBodySchema, body);
-      const { view, test } = await service.verify(
+      return withOrgContext<DbClient, ServiceVerifyPlan>(
+        db,
+        { organizationId: scope.organizationId, userId: scope.operatorUserId },
+        (tx) => service.prepareVerify(createDrizzleConfigStore(tx), actorFor(scope), input),
+      );
+    },
+
+    async runProbe(plan: VerifyPlan) {
+      return service.runProbe(plan as ServiceVerifyPlan);
+    },
+
+    async completeVerify(tx, scope, plan, outcome) {
+      await assertTxScopedToOrg(tx, scope.organizationId);
+      const { view, test } = await service.completeVerify(
         createDrizzleConfigStore(tx),
         actorFor(scope),
-        input,
+        plan as ServiceVerifyPlan,
+        outcome as Parameters<TenantClearinghouseService["completeVerify"]>[3],
       );
       return withId(tx, scope, view, {
         test,
@@ -96,6 +114,14 @@ export function buildTenantClearinghouseOnboardingPort(deps: {
       await assertTxScopedToOrg(tx, scope.organizationId);
       const view = await service.activate(createDrizzleConfigStore(tx), actorFor(scope));
       return withId(tx, scope, view);
+    },
+
+    async verifyBaa(tx, scope) {
+      await assertTxScopedToOrg(tx, scope.organizationId);
+      const view = await service.verifyBaa(createDrizzleConfigStore(tx), actorFor(scope));
+      return withId(tx, scope, view, {
+        detail: { baaVerified: view.baa?.verified !== null && view.baa?.verified !== undefined },
+      });
     },
   };
 }

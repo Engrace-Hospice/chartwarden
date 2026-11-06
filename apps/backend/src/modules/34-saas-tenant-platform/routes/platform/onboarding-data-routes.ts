@@ -36,6 +36,8 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 
 export interface OnboardingDataRouteDeps {
   readonly service: OnboardingDataService;
+  /** Per-user cap on the clearinghouse `verify` (a vendor call per request); fail-open. Absent = unlimited. */
+  readonly clearinghouseVerifyRateLimit?: PreHandler;
 }
 
 const READ_KEY = "tenant_onboarding_data.read_platform";
@@ -44,6 +46,8 @@ const PLATFORM_OPS = "tenant_lifecycle_platform_ops";
 /** ADR-0053 amendment 2026-11-06: the tenant's clearinghouse choice has its own pair of keys (platform_ops only). */
 const CLEARINGHOUSE_READ_KEY = "tenant_clearinghouse.read_platform";
 const CLEARINGHOUSE_WRITE_KEY = "tenant_clearinghouse.write_platform";
+/** Owner decision D2: verifying the BAA a tenant recorded for its own vendor account is its own key (a separable duty). */
+const CLEARINGHOUSE_VERIFY_BAA_KEY = "tenant_clearinghouse.verify_baa_platform";
 const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 
 const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
@@ -79,6 +83,14 @@ const CLEARINGHOUSE_WRITE: readonly PreHandler[] = [
   P(CLEARINGHOUSE_WRITE_KEY),
   OPS(CLEARINGHOUSE_WRITE_KEY),
   requireStepUp(CLEARINGHOUSE_WRITE_KEY) as PreHandler,
+  rejectAiActor(),
+  requireIdempotencyKey,
+];
+
+const CLEARINGHOUSE_VERIFY_BAA: readonly PreHandler[] = [
+  P(CLEARINGHOUSE_VERIFY_BAA_KEY),
+  OPS(CLEARINGHOUSE_VERIFY_BAA_KEY),
+  requireStepUp(CLEARINGHOUSE_VERIFY_BAA_KEY) as PreHandler,
   rejectAiActor(),
   requireIdempotencyKey,
 ];
@@ -155,6 +167,9 @@ export function registerOnboardingDataRoutes(
   deps: OnboardingDataRouteDeps,
 ): void {
   const { service } = deps;
+  const CLEARINGHOUSE_VERIFY: readonly PreHandler[] = deps.clearinghouseVerifyRateLimit
+    ? [...CLEARINGHOUSE_WRITE, deps.clearinghouseVerifyRateLimit]
+    : CLEARINGHOUSE_WRITE;
   const slugOf = (request: FastifyRequest): string =>
     parse(OrgSlugParamsSchema, request.params).orgSlug;
   const idParamsOf = (request: FastifyRequest) =>
@@ -302,7 +317,7 @@ export function registerOnboardingDataRoutes(
 
   app.post(
     "/api/v1/platform/tenants/:orgSlug/clearinghouse/verify",
-    { preHandler: [...CLEARINGHOUSE_WRITE] },
+    { preHandler: [...CLEARINGHOUSE_VERIFY] },
     async (request) => {
       const op = operatorOf(request);
       const { reason, fields } = splitReason(
@@ -319,6 +334,18 @@ export function registerOnboardingDataRoutes(
       const op = operatorOf(request);
       const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
       return service.activateClearinghouse(op, slugOf(request), reason);
+    },
+  );
+
+  // POST baa/verify — the operator verifies the vendor BAA the tenant recorded for its own account. Not gated on the tenant's
+  // onboarding status (a live tenant that changed vendor needs it too); the audit row names the operator, the org and the reason.
+  app.post(
+    "/api/v1/platform/tenants/:orgSlug/clearinghouse/baa/verify",
+    { preHandler: [...CLEARINGHOUSE_VERIFY_BAA] },
+    async (request) => {
+      const op = operatorOf(request);
+      const { reason } = splitReason(parse(OnboardingReasonSchema, request.body));
+      return service.verifyClearinghouseBaa(op, slugOf(request), reason);
     },
   );
 }

@@ -3,41 +3,61 @@
 // org-scoped transaction, so the tenant's own routes and a platform operator's onboarding writes run the SAME code under
 // the tenant's own RLS, and a rule is tested without a database.
 //
-//   put       choose stedi | claimmd | outside, its mode and its credential. A vendor or mode change (or a first choice)
-//             starts at `draft` and needs the new credential; a credential rotation alone keeps the status (rotating a key
-//             must not take a live tenant offline) and clears the last test. `outside` is stored `active`: nothing to verify.
-//             Once a PRODUCTION submission exists for the org, vendor and mode are locked (409): its acknowledgments are
-//             still owed by the old vendor, and a switch would stop pulling them.
-//   verify    draft -> verified. Where the vendor has a safe no-PHI probe (Claim.MD `uploadlist`) the probe runs; where it
-//             has none (Stedi) the caller attests with an evidence note. Recorded as `connection_test` / `attested`.
-//   activate  verified -> active: claims and eligibility work is allowed (the claims-billing gate reads this).
+//   put        choose stedi | claimmd | outside, its mode and its credential. ANY change (a vendor or mode change, a first
+//              choice, or a credential rotation) starts the config at `draft` for the new key (owner decision D6): what the old
+//              key earned (the connection test, the activation) is cleared, and claims work holds until it is re-verified and
+//              re-activated. A change of VENDOR also voids the vendor BAA (a new agreement); a same-vendor change keeps it.
+//              `outside` is stored `active`: nothing to verify. Once a PRODUCTION submission exists for the org, vendor and mode
+//              are locked (409), and a switch away from a vendor is refused while claims or submissions are queued.
+//   recordBaa  the TENANT records its own vendor BAA (effective date, a screened document reference; owner decision D2).
+//   verifyBaa  a platform OPERATOR verifies that record; activation refuses (409 CLEARINGHOUSE_BAA_NOT_VERIFIED) until then.
+//   verify     draft -> verified, in three steps that never hold a transaction across the vendor call: `prepareVerify` reads and
+//              decrypts (read-only, no lock), `runProbe` calls the vendor with no transaction open, `completeVerify` locks the
+//              row and compare-and-sets on the version it read (409 when the config moved meanwhile). Where the vendor has a
+//              safe no-PHI probe (Claim.MD `uploadlist`) the probe runs; where it has none (Stedi) the caller attests with an
+//              evidence note and the confirmation that it names no patient. Recorded as `connection_test` / `attested`.
+//   activate   verified -> active, only with a verified BAA: claims and eligibility work is allowed (the gate reads this).
 //
 // The credential is write-only: no view carries it (a `hasSecret` flag is derived). Nothing here logs or audits a value; the
 // row's M4 write-audit trigger records that the secret changed, never what it was.
-import { looksLikeMbi } from "@chartwarden/billing";
 import {
   ChartWardenError,
   type TenantClearinghouseMode,
   type TenantClearinghouseStatus,
   type TenantClearinghouseVendor,
   type TransmittingClearinghouseVendor,
-  ValidationError,
 } from "@chartwarden/types";
 import type { ConnectionProbeOutcome } from "@chartwarden/x12-837-client";
+import {
+  BAA_CLEARED,
+  BAA_VERIFICATION_CLEARED,
+  type BaaView,
+  type RecordBaaInput,
+  baaViewOf,
+  normalizeBaaInput,
+  sameBaa,
+} from "./baa";
 import type { ConfigPatch, ConfigRow, ConfigStore } from "./config-store";
 import { isUniqueViolation } from "./config-store";
+import { invalid, screenedText } from "./screening";
 import type { ClearinghouseSecretCipher } from "./secret-cipher";
+
+export type { RecordBaaInput } from "./baa";
 
 export const EVIDENCE_MIN = 8;
 export const EVIDENCE_MAX = 500;
 const SECRET_SHAPE = /^[\x21-\x7e]{8,512}$/; // printable ASCII, no whitespace (Claim.MD keys hold # and *)
-const SSN_SHAPE = /(?<!\d)\d{3}[\s.-]?\d{2}[\s.-]?\d{4}(?!\d)/u;
 
 /** Who acts: server-assembled from the session (a tenant admin, or the platform operator acting for the tenant). */
 export interface ClearinghouseActor {
   readonly organizationId: string;
   readonly userId: string;
   readonly membershipId: string;
+  /**
+   * `platform` only for the platform-ops lane (it records a reason and is the only lane that may set test mode in production).
+   * Absent = the tenant's own lane: the safe default for anything that did not say.
+   */
+  readonly lane?: "platform";
 }
 
 export interface PutClearinghouseInput {
@@ -62,6 +82,18 @@ export type ClearinghouseProbes = Readonly<
   Partial<Record<TransmittingClearinghouseVendor, ConnectionProbe>>
 >;
 
+/** Work an org still has waiting on its current vendor. A switch is refused while any of it is queued. */
+export interface WaitingWork {
+  readonly claims: number;
+  readonly commercialSubmissions: number;
+}
+
+export interface VerifyClearinghouseInput {
+  readonly evidenceNote?: string;
+  /** Required with an attestation: the person confirms the evidence note names no patient information. */
+  readonly confirmNoPatientInformation?: boolean;
+}
+
 export interface ClearinghouseConfigView {
   readonly vendor: TenantClearinghouseVendor | PlatformFallback["vendor"] | null;
   readonly mode: TenantClearinghouseMode | null;
@@ -79,6 +111,9 @@ export interface ClearinghouseConfigView {
     readonly outcome: "ok" | "credential_rejected" | "unreachable";
     readonly at: string;
   } | null;
+  /** True for a tenant-held vendor account: it needs a recorded and operator-verified BAA before it may go active. */
+  readonly baaRequired: boolean;
+  readonly baa: BaaView | null;
   readonly activatedAt: string | null;
   readonly version: number | null;
   readonly updatedAt: string | null;
@@ -90,6 +125,29 @@ export interface TenantClearinghouseServiceDeps {
   readonly now?: () => Date;
   /** The env binding that serves this org when it has no row, or null (the org is not named in the fallback list). */
   readonly platformFallback?: (organizationId: string) => PlatformFallback | null;
+  /** NODE_ENV is production: the tenant lane may not choose test mode (only platform ops may, with a recorded reason). */
+  readonly isProduction?: boolean;
+  /** Queued work the org still has on its vendor (M23 claims, M41 submissions); absent = nothing is checked. */
+  readonly waitingWork?: (organizationId: string) => Promise<WaitingWork>;
+}
+
+/** What `prepareVerify` read: everything `completeVerify` needs, so no store call is open while the vendor is called. */
+export interface VerifyPlan {
+  /** The row version the plan was read at; `completeVerify` compare-and-sets on it. */
+  readonly version: number;
+  readonly vendor: TransmittingClearinghouseVendor;
+  readonly mode: TenantClearinghouseMode;
+  /** Attestation (the vendor has no safe probe): the normalised evidence note. Null when a probe runs. */
+  readonly evidence: string | null;
+  /** Probe: the unsealed credential. Held in memory for the one call; never logged, audited or returned. */
+  readonly secret: string | null;
+}
+
+export interface PutResult {
+  readonly created: boolean;
+  readonly view: ClearinghouseConfigView;
+  /** Names of the fields the put changed (never values), for the field-level audit row. */
+  readonly changedFields: readonly string[];
 }
 
 export interface TenantClearinghouseService {
@@ -99,11 +157,28 @@ export interface TenantClearinghouseService {
     actor: ClearinghouseActor,
     input: PutClearinghouseInput,
     expectedVersion: number | undefined,
-  ): Promise<{ readonly created: boolean; readonly view: ClearinghouseConfigView }>;
-  verify(
+  ): Promise<PutResult>;
+  recordBaa(
     store: ConfigStore,
     actor: ClearinghouseActor,
-    input: { readonly evidenceNote?: string },
+    input: RecordBaaInput,
+  ): Promise<{ readonly view: ClearinghouseConfigView; readonly changedFields: readonly string[] }>;
+  /** The platform operator verifies the tenant's recorded BAA. */
+  verifyBaa(store: ConfigStore, actor: ClearinghouseActor): Promise<ClearinghouseConfigView>;
+  /** Step 1: read-only, no lock. */
+  prepareVerify(
+    store: ConfigStore,
+    actor: ClearinghouseActor,
+    input: VerifyClearinghouseInput,
+  ): Promise<VerifyPlan>;
+  /** Step 2: the vendor call (no store, no transaction). Null when the plan is an attestation. */
+  runProbe(plan: VerifyPlan): Promise<ConnectionProbeOutcome | null>;
+  /** Step 3: lock, compare-and-set on the plan's version, record. */
+  completeVerify(
+    store: ConfigStore,
+    actor: ClearinghouseActor,
+    plan: VerifyPlan,
+    outcome: ConnectionProbeOutcome | null,
   ): Promise<{
     readonly view: ClearinghouseConfigView;
     readonly test: { readonly outcome: ConnectionProbeOutcome } | null;
@@ -111,8 +186,27 @@ export interface TenantClearinghouseService {
   activate(store: ConfigStore, actor: ClearinghouseActor): Promise<ClearinghouseConfigView>;
 }
 
-const invalid = (field: string, code: string, message: string): ValidationError =>
-  new ValidationError("request validation failed", [{ field, code, message }]);
+/** Opens one transaction and hands the callback a store bound to it (each call is its own transaction). */
+export type ConfigTx = <T>(fn: (store: ConfigStore) => Promise<T>) => Promise<T>;
+
+/**
+ * The verify flow across its two transactions: read and decrypt, probe with NO transaction open, then lock and write. A
+ * probe is a network call to the vendor: it must never run while a row lock or a pooled connection is held.
+ */
+export async function verifyConnection(
+  service: TenantClearinghouseService,
+  tx: ConfigTx,
+  actor: ClearinghouseActor,
+  input: VerifyClearinghouseInput,
+): Promise<{
+  readonly view: ClearinghouseConfigView;
+  readonly test: { readonly outcome: ConnectionProbeOutcome } | null;
+}> {
+  const plan = await tx((store) => service.prepareVerify(store, actor, input));
+  const outcome = await service.runProbe(plan);
+  return tx((store) => service.completeVerify(store, actor, plan, outcome));
+}
+
 const conflict = (code: string, message: string): ChartWardenError =>
   new ChartWardenError(code, message, 409);
 const versionConflict = (message: string): ChartWardenError =>
@@ -123,54 +217,42 @@ const isTransmitting = (vendor: string): vendor is TransmittingClearinghouseVend
 
 /** Evidence the operator typed: whitespace folded, control characters dropped, length-bounded, never a patient identifier. */
 export function normalizeEvidence(raw: unknown): string {
-  const text =
-    typeof raw === "string"
-      ? raw
-          .replace(/\s+/gu, " ")
-          .replace(/\p{C}+/gu, "")
-          .trim()
-      : "";
-  if (text.length < EVIDENCE_MIN || text.length > EVIDENCE_MAX) {
-    throw invalid(
-      "evidenceNote",
-      "CLEARINGHOUSE_EVIDENCE_REQUIRED",
-      `evidenceNote must be ${EVIDENCE_MIN}-${EVIDENCE_MAX} characters: say what was checked and by whom`,
-    );
-  }
-  if (SSN_SHAPE.test(text) || looksLikeMbi(text)) {
-    throw invalid(
-      "evidenceNote",
-      "EVIDENCE_LOOKS_LIKE_PHI",
+  return screenedText(raw, {
+    field: "evidenceNote",
+    min: EVIDENCE_MIN,
+    max: EVIDENCE_MAX,
+    lengthCode: "CLEARINGHOUSE_EVIDENCE_REQUIRED",
+    lengthMessage: `evidenceNote must be ${EVIDENCE_MIN}-${EVIDENCE_MAX} characters: say what was checked and by whom`,
+    phiMessage:
       "evidenceNote looks like it contains a patient identifier; describe what was checked without naming a patient",
-    );
-  }
-  return text;
-}
-
-function validatePut(input: PutClearinghouseInput): void {
-  if (input.vendor === "outside") {
-    if (input.mode !== undefined || input.secret !== undefined) {
-      throw invalid(
-        "vendor",
-        "CLEARINGHOUSE_OUTSIDE_TAKES_NO_SETTINGS",
-        "billing outside ChartWarden takes no mode and no credential",
-      );
-    }
-    return;
-  }
-  if (input.mode === undefined) {
-    throw invalid("mode", "CLEARINGHOUSE_MODE_REQUIRED", "mode (test or production) is required");
-  }
-  if (input.secret !== undefined && !SECRET_SHAPE.test(input.secret)) {
-    throw invalid(
-      "secret",
-      "CLEARINGHOUSE_SECRET_INVALID",
-      "the credential must be 8-512 printable characters with no spaces",
-    );
-  }
+  });
 }
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
+const dayOf = (d: Date): string => d.toISOString().slice(0, 10);
+
+/** What a put changed, by field name. */
+function changedFieldsOf(existing: ConfigRow | null, input: PutClearinghouseInput): string[] {
+  const changed: string[] = [];
+  if (!existing || existing.vendor !== input.vendor) changed.push("vendor");
+  const mode = input.vendor === "outside" ? null : (input.mode ?? null);
+  if ((existing?.mode ?? null) !== mode) changed.push("mode");
+  if (input.secret !== undefined) changed.push("secret");
+  return changed;
+}
+
+/** Everything a credential the vendor has not been shown yet has NOT earned: back to draft, verification and activation gone. */
+const BACK_TO_DRAFT = {
+  status: "draft",
+  verificationKind: null,
+  verificationEvidence: null,
+  verifiedAt: null,
+  verifiedByMembershipId: null,
+  lastTestAt: null,
+  lastTestOutcome: null,
+  activatedAt: null,
+  activatedByMembershipId: null,
+} as const satisfies ConfigPatch;
 
 export function createTenantClearinghouseService(
   deps: TenantClearinghouseServiceDeps,
@@ -194,6 +276,8 @@ export function createTenantClearinghouseService(
         verifiableBy: null,
         verification: null,
         lastTest: null,
+        baaRequired: false,
+        baa: null,
         activatedAt: null,
         version: null,
         updatedAt: null,
@@ -221,6 +305,8 @@ export function createTenantClearinghouseService(
               at: row.lastTestAt.toISOString(),
             }
           : null,
+      baaRequired: isTransmitting(row.vendor),
+      baa: baaViewOf(row),
       activatedAt: iso(row.activatedAt),
       version: row.version,
       updatedAt: row.updatedAt.toISOString(),
@@ -238,29 +324,52 @@ export function createTenantClearinghouseService(
     return deps.cipher;
   };
 
+  function validatePut(actor: ClearinghouseActor, input: PutClearinghouseInput): void {
+    if (input.vendor === "outside") {
+      if (input.mode !== undefined || input.secret !== undefined) {
+        throw invalid(
+          "vendor",
+          "CLEARINGHOUSE_OUTSIDE_TAKES_NO_SETTINGS",
+          "billing outside ChartWarden takes no mode and no credential",
+        );
+      }
+      return;
+    }
+    if (input.mode === undefined) {
+      throw invalid("mode", "CLEARINGHOUSE_MODE_REQUIRED", "mode (test or production) is required");
+    }
+    if (deps.isProduction && actor.lane !== "platform" && input.mode === "test") {
+      throw invalid(
+        "mode",
+        "CLEARINGHOUSE_TEST_MODE_NOT_ALLOWED",
+        "test mode is not available on a production deployment; choose production, or ask platform support",
+      );
+    }
+    if (input.secret !== undefined && !SECRET_SHAPE.test(input.secret)) {
+      throw invalid(
+        "secret",
+        "CLEARINGHOUSE_SECRET_INVALID",
+        "the credential must be 8-512 printable characters with no spaces",
+      );
+    }
+  }
+
   /** The patch that puts a row on `input`: a draft for a transmitting vendor, active for `outside`. */
   async function patchFor(
     actor: ClearinghouseActor,
     existing: ConfigRow | null,
     input: PutClearinghouseInput,
   ): Promise<ConfigPatch> {
-    const at = now();
-    const base = { vendor: input.vendor, setByMembershipId: actor.membershipId, updatedAt: at };
+    const base = { vendor: input.vendor, setByMembershipId: actor.membershipId, updatedAt: now() };
     if (input.vendor === "outside") {
       return {
         ...base,
+        ...BACK_TO_DRAFT,
+        ...BAA_CLEARED,
         mode: null,
         status: "active",
         secretCipher: null,
         secretDekVersion: null,
-        verificationKind: null,
-        verificationEvidence: null,
-        verifiedAt: null,
-        verifiedByMembershipId: null,
-        lastTestAt: null,
-        lastTestOutcome: null,
-        activatedAt: null,
-        activatedByMembershipId: null,
       };
     }
     const mode = input.mode as TenantClearinghouseMode;
@@ -270,32 +379,14 @@ export function createTenantClearinghouseService(
           mode,
         })
       : null;
-    const sameTarget = existing?.vendor === input.vendor && existing.mode === mode;
-    if (sameTarget && sealed) {
-      // A credential rotation: the status stays (the tenant is not taken offline), the last test no longer describes it.
-      return {
-        ...base,
-        mode,
-        secretCipher: sealed.cipher,
-        secretDekVersion: sealed.dekVersion,
-        lastTestAt: null,
-        lastTestOutcome: null,
-      };
-    }
     return {
       ...base,
+      ...BACK_TO_DRAFT,
+      // the vendor BAA survives anything but a change of vendor
+      ...(existing?.vendor === input.vendor ? {} : BAA_CLEARED),
       mode,
-      status: "draft",
       secretCipher: sealed?.cipher ?? null,
       secretDekVersion: sealed?.dekVersion ?? null,
-      verificationKind: null,
-      verificationEvidence: null,
-      verifiedAt: null,
-      verifiedByMembershipId: null,
-      lastTestAt: null,
-      lastTestOutcome: null,
-      activatedAt: null,
-      activatedByMembershipId: null,
     };
   }
 
@@ -320,84 +411,189 @@ export function createTenantClearinghouseService(
     return row;
   }
 
+  /** A transmitting config only: `outside` has no vendor account, so no BAA to record or verify. */
+  function requireVendorAccount(row: ConfigRow): void {
+    if (isTransmitting(row.vendor)) return;
+    throw new ChartWardenError(
+      "CLEARINGHOUSE_BAA_NOT_APPLICABLE",
+      "billing outside ChartWarden has no vendor account, so there is no vendor BAA to record",
+      422,
+    );
+  }
+
+  /** The first choice: no row yet, so no If-Match, and the credential is required. */
+  async function createFirst(
+    store: ConfigStore,
+    actor: ClearinghouseActor,
+    input: PutClearinghouseInput,
+    expectedVersion: number | undefined,
+  ): Promise<PutResult> {
+    const { organizationId } = actor;
+    if (expectedVersion !== undefined) {
+      throw versionConflict(
+        "no clearinghouse config exists for this organization; omit If-Match to create it",
+      );
+    }
+    if (input.vendor !== "outside" && input.secret === undefined) {
+      throw invalid(
+        "secret",
+        "CLEARINGHOUSE_SECRET_REQUIRED",
+        "the vendor credential is required with a first choice",
+      );
+    }
+    const patch = await patchFor(actor, null, input);
+    try {
+      const row = await store.insert({
+        organizationId,
+        vendor: input.vendor,
+        setByMembershipId: actor.membershipId,
+        ...patch,
+        version: 1,
+      });
+      return {
+        created: true,
+        view: viewOf(row, organizationId),
+        changedFields: changedFieldsOf(null, input),
+      };
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      throw versionConflict(
+        "a clearinghouse config was created concurrently; read it and send its version in If-Match",
+      );
+    }
+  }
+
+  /** The locks on a switch: production submissions in flight, and claims or submissions still queued on the old vendor. */
+  async function assertSwitchAllowed(
+    store: ConfigStore,
+    existing: ConfigRow,
+    organizationId: string,
+  ): Promise<void> {
+    if (existing.vendor === "outside") return; // nothing was ever sent through a vendor
+    if (await store.hasProductionAttempts(organizationId)) {
+      throw conflict(
+        "CLEARINGHOUSE_VENDOR_LOCKED",
+        "this organization has production submissions in flight; its vendor and mode cannot change until an operator migrates them",
+      );
+    }
+    const waiting = await deps.waitingWork?.(organizationId);
+    if (waiting && waiting.claims + waiting.commercialSubmissions > 0) {
+      throw new ChartWardenError(
+        "CLEARINGHOUSE_WORK_WAITING",
+        "claims or submissions are still queued on the current clearinghouse; let them finish before changing it",
+        409,
+        [
+          { field: "claims", code: "COUNT", message: String(waiting.claims) },
+          {
+            field: "commercialSubmissions",
+            code: "COUNT",
+            message: String(waiting.commercialSubmissions),
+          },
+        ],
+      );
+    }
+  }
+
+  async function changeExisting(
+    store: ConfigStore,
+    actor: ClearinghouseActor,
+    existing: ConfigRow,
+    input: PutClearinghouseInput,
+    expectedVersion: number | undefined,
+  ): Promise<PutResult> {
+    const { organizationId } = actor;
+    if (expectedVersion === undefined) {
+      throw new ChartWardenError(
+        "IF_MATCH_REQUIRED",
+        "an If-Match header is required on this route",
+        428,
+      );
+    }
+    if (expectedVersion !== existing.version) {
+      throw versionConflict("the clearinghouse config changed since it was read");
+    }
+    const target = input.vendor === "outside" ? null : (input.mode ?? null);
+    const retargeted = existing.vendor !== input.vendor || existing.mode !== target;
+    if (!retargeted && input.secret === undefined) {
+      return { created: false, view: viewOf(existing, organizationId), changedFields: [] }; // nothing changes
+    }
+    if (retargeted) await assertSwitchAllowed(store, existing, organizationId);
+    if (retargeted && input.vendor !== "outside" && input.secret === undefined) {
+      throw invalid(
+        "secret",
+        "CLEARINGHOUSE_SECRET_REQUIRED",
+        "a new vendor or mode needs its own credential",
+      );
+    }
+    const row = await save(store, existing, await patchFor(actor, existing, input));
+    return {
+      created: false,
+      view: viewOf(row, organizationId),
+      changedFields: changedFieldsOf(existing, input),
+    };
+  }
+
   return {
     async view(store, organizationId) {
       return viewOf(await store.find(organizationId), organizationId);
     },
 
     async put(store, actor, input, expectedVersion) {
-      validatePut(input);
-      const { organizationId } = actor;
-      const existing = await store.findForUpdate(organizationId);
-      if (!existing) {
-        if (expectedVersion !== undefined) {
-          throw versionConflict(
-            "no clearinghouse config exists for this organization; omit If-Match to create it",
-          );
-        }
-        if (input.vendor !== "outside" && input.secret === undefined) {
-          throw invalid(
-            "secret",
-            "CLEARINGHOUSE_SECRET_REQUIRED",
-            "the vendor credential is required with a first choice",
-          );
-        }
-        const patch = await patchFor(actor, null, input);
-        try {
-          const row = await store.insert({
-            organizationId,
-            vendor: input.vendor,
-            setByMembershipId: actor.membershipId,
-            ...patch,
-            version: 1,
-          });
-          return { created: true, view: viewOf(row, organizationId) };
-        } catch (err) {
-          if (!isUniqueViolation(err)) throw err;
-          throw versionConflict(
-            "a clearinghouse config was created concurrently; read it and send its version in If-Match",
-          );
-        }
-      }
-      if (expectedVersion === undefined) {
-        throw new ChartWardenError(
-          "IF_MATCH_REQUIRED",
-          "an If-Match header is required on this route",
-          428,
-        );
-      }
-      if (expectedVersion !== existing.version) {
-        throw versionConflict("the clearinghouse config changed since it was read");
-      }
-      const target = input.vendor === "outside" ? null : (input.mode ?? null);
-      const retargeted = existing.vendor !== input.vendor || existing.mode !== target;
-      if (!retargeted && input.secret === undefined) {
-        return { created: false, view: viewOf(existing, organizationId) }; // nothing changes
-      }
-      if (
-        retargeted &&
-        existing.vendor !== "outside" &&
-        (await store.hasProductionAttempts(organizationId))
-      ) {
-        throw conflict(
-          "CLEARINGHOUSE_VENDOR_LOCKED",
-          "this organization has production submissions in flight; its vendor and mode cannot change until an operator migrates them",
-        );
-      }
-      if (retargeted && input.vendor !== "outside" && input.secret === undefined) {
-        throw invalid(
-          "secret",
-          "CLEARINGHOUSE_SECRET_REQUIRED",
-          "a new vendor or mode needs its own credential",
-        );
-      }
-      const row = await save(store, existing, await patchFor(actor, existing, input));
-      return { created: false, view: viewOf(row, organizationId) };
+      validatePut(actor, input);
+      const existing = await store.findForUpdate(actor.organizationId);
+      return existing
+        ? changeExisting(store, actor, existing, input, expectedVersion)
+        : createFirst(store, actor, input, expectedVersion);
     },
 
-    async verify(store, actor, input) {
+    async recordBaa(store, actor, input) {
+      const record = normalizeBaaInput(input, dayOf(now()));
+      const row = await lockedRow(store, actor.organizationId);
+      requireVendorAccount(row);
+      if (sameBaa(row, record)) {
+        return { view: viewOf(row, actor.organizationId), changedFields: [] };
+      }
+      const saved = await save(store, row, {
+        baaEffectiveDate: record.effectiveDate,
+        baaDocumentRef: record.documentRef,
+        baaRecordedAt: now(),
+        baaRecordedByMembershipId: actor.membershipId,
+        // a changed record has not been looked at: the operator verifies it again
+        ...BAA_VERIFICATION_CLEARED,
+        // a live config cannot rest on an unverified BAA: it waits at `verified` until the operator re-verifies
+        ...(row.status === "active"
+          ? { status: "verified", activatedAt: null, activatedByMembershipId: null }
+          : {}),
+      });
+      return { view: viewOf(saved, actor.organizationId), changedFields: ["baa"] };
+    },
+
+    async verifyBaa(store, actor) {
+      const row = await lockedRow(store, actor.organizationId);
+      requireVendorAccount(row);
+      if (!row.baaRecordedAt) {
+        throw conflict(
+          "CLEARINGHOUSE_BAA_NOT_RECORDED",
+          "the tenant has not recorded its vendor BAA yet",
+        );
+      }
+      if (row.baaVerifiedAt) return viewOf(row, actor.organizationId); // idempotent
+      const saved = await save(store, row, {
+        baaVerifiedAt: now(),
+        baaVerifiedByMembershipId: actor.membershipId,
+      });
+      return viewOf(saved, actor.organizationId);
+    },
+
+    async prepareVerify(store, actor, input) {
       const { organizationId } = actor;
-      const row = await lockedRow(store, organizationId);
+      const row = await store.find(organizationId);
+      if (!row) {
+        throw conflict(
+          "CLEARINGHOUSE_NOT_CONFIGURED",
+          "no clearinghouse has been chosen for this organization yet",
+        );
+      }
       if (!isTransmitting(row.vendor)) {
         throw new ChartWardenError(
           "CLEARINGHOUSE_OUTSIDE_NOT_VERIFIABLE",
@@ -413,23 +609,24 @@ export function createTenantClearinghouseService(
       }
       const vendor = row.vendor;
       const mode = row.mode;
-      const at = now();
-      const keepStatus = row.status === "active" ? "active" : "verified";
-      const probe = deps.probes[vendor];
-      if (!probe) {
+      if (!deps.probes[vendor]) {
+        if (input.confirmNoPatientInformation !== true) {
+          throw invalid(
+            "confirmNoPatientInformation",
+            "CLEARINGHOUSE_NO_PHI_CONFIRMATION_REQUIRED",
+            "confirm that the evidence note names no patient information",
+          );
+        }
         const evidence = normalizeEvidence(input.evidenceNote);
-        const saved = await save(store, row, {
-          status: keepStatus,
-          verificationKind: "attested",
-          verificationEvidence: evidence,
-          verifiedAt: at,
-          verifiedByMembershipId: actor.membershipId,
-        });
-        return { view: viewOf(saved, organizationId), test: null };
+        return { version: row.version, vendor, mode, evidence, secret: null };
       }
-      let secret: string;
       try {
-        secret = await requireCipher().decrypt(organizationId, { vendor, mode }, row.secretCipher);
+        const secret = await requireCipher().decrypt(
+          organizationId,
+          { vendor, mode },
+          row.secretCipher,
+        );
+        return { version: row.version, vendor, mode, evidence: null, secret };
       } catch (err) {
         if (err instanceof ChartWardenError) throw err;
         throw conflict(
@@ -437,7 +634,40 @@ export function createTenantClearinghouseService(
           "the stored credential could not be opened; enter it again",
         );
       }
-      const outcome = await probe(secret, mode);
+    },
+
+    async runProbe(plan) {
+      if (plan.secret === null) return null;
+      const probe = deps.probes[plan.vendor];
+      if (!probe) return null;
+      try {
+        return await probe(plan.secret, plan.mode);
+      } catch {
+        return "unreachable"; // a probe that throws is a vendor we could not reach, not a failed request
+      }
+    },
+
+    async completeVerify(store, actor, plan, outcome) {
+      const { organizationId } = actor;
+      const row = await store.findForUpdate(organizationId);
+      if (!row || row.version !== plan.version) {
+        throw conflict(
+          "CLEARINGHOUSE_CHANGED_DURING_VERIFY",
+          "the clearinghouse config changed while it was being verified; verify it again",
+        );
+      }
+      const at = now();
+      const keepStatus = row.status === "active" ? "active" : "verified";
+      if (outcome === null) {
+        const saved = await save(store, row, {
+          status: keepStatus,
+          verificationKind: "attested",
+          verificationEvidence: plan.evidence,
+          verifiedAt: at,
+          verifiedByMembershipId: actor.membershipId,
+        });
+        return { view: viewOf(saved, organizationId), test: null };
+      }
       const tested = { lastTestAt: at, lastTestOutcome: outcome };
       if (outcome !== "ok") {
         const saved = await save(store, row, tested);
@@ -462,6 +692,12 @@ export function createTenantClearinghouseService(
         throw conflict(
           "CLEARINGHOUSE_NOT_VERIFIED",
           "verify the clearinghouse connection before activating it",
+        );
+      }
+      if (!row.baaVerifiedAt) {
+        throw conflict(
+          "CLEARINGHOUSE_BAA_NOT_VERIFIED",
+          "record the vendor BAA and have a platform operator verify it before activating the clearinghouse",
         );
       }
       const saved = await save(store, row, {

@@ -36,6 +36,8 @@ export const ONBOARDING_DATA_AUDIT_EVENTS = {
   clearinghouseSet: "m34.tenant_onboarding.clearinghouse_set",
   clearinghouseVerified: "m34.tenant_onboarding.clearinghouse_verified",
   clearinghouseActivated: "m34.tenant_onboarding.clearinghouse_activated",
+  /** A platform operator verified the BAA the tenant recorded for its own vendor account (a live tenant too: not status-gated). */
+  clearinghouseBaaVerified: "m34.tenant_onboarding.clearinghouse_baa_verified",
   dataRead: "m34.tenant_onboarding.data_read",
   /** The tenant is not provisioning/onboarding: the write was refused before it ran. */
   writeRefused: "m34.tenant_onboarding.write_refused",
