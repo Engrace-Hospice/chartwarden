@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 // every table touched here except the M1 spine reads (`organization` for the slug, `membership` for the officer check),
 // which the table-ownership gate sanctions.
 import { auditPlatformEvent } from "@chartwarden/audit";
+import { PLATFORM_GRANTABLE_ROLE_KEYS } from "@chartwarden/auth";
 import { type DbClient, schema } from "@chartwarden/db";
 import { BaaRegisterRepository, OnboardingRepository } from "@chartwarden/saas-tenant-platform";
 import {
@@ -266,6 +267,15 @@ export function createDrizzleWizardStore(tx: DbClient, activation?: WizardActiva
         active: member.status === "active",
         roleKeys: held.map((r) => r.key),
       };
+    },
+    async isPlatformStaff(userId) {
+      const holders = await tx.execute<{ user_id: string }>(
+        sql`SELECT user_id FROM m34_platform_role_holders(ARRAY[${sql.join(
+          PLATFORM_GRANTABLE_ROLE_KEYS.map((key) => sql`${key}`),
+          sql`, `,
+        )}]::text[]) WHERE user_id = ${userId}::uuid`,
+      );
+      return holders.rows.length > 0;
     },
     async activate(input) {
       if (!activation) throw new Error("a tenant-scoped wizard store cannot activate a tenant");

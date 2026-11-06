@@ -95,6 +95,11 @@ export interface WizardStore {
   /** The membership as it is now (user, liveness, roles), or null when it is not a membership of the organisation. */
   loadMember(organizationId: string, membershipId: string): Promise<WizardMember | null>;
   /**
+   * Whether the user holds a live platform role (platform_ops, platform_admin, ...) in their home organisation: ChartWarden staff.
+   * Answered by M34's SECURITY DEFINER holder reader on either pool; a tenant role cannot see another organisation's grants.
+   */
+  isPlatformStaff(userId: string): Promise<boolean>;
+  /**
    * onboarding -> active through the lifecycle machine, inside this same transaction (platform stores only: a tenant
    * store refuses). Publishes `m34.tenant.onboarding_completed`.
    */

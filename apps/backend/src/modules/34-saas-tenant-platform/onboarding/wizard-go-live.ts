@@ -19,8 +19,17 @@ import {
   type PlatformActor,
   type TenantActor,
   type TenantRef,
+  type WizardMember,
 } from "./model";
-import { type Loaded, conflict, load, refuse, view } from "./wizard-core";
+import {
+  type Loaded,
+  conflict,
+  isPlatformStaffMember,
+  load,
+  platformStaffRefusal,
+  refuse,
+  view,
+} from "./wizard-core";
 import type { TaskPatch } from "./wizard-store";
 import type { OnboardingWizardDeps } from "./wizard-types";
 import type { WizardView } from "./wizard-view";
@@ -50,6 +59,23 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
   const viewOf = (ctx: Loaded): Promise<WizardView> => view(ctx, now);
 
   /**
+   * The member may be the officer only when they are the customer's own staff: not ChartWarden platform staff (audience-bound
+   * in this tenant or a platform role holder at home) and not the platform operator making the assignment.
+   */
+  async function assertMayBeOfficer(
+    ctx: Loaded,
+    member: WizardMember,
+    operator: PlatformActor | undefined,
+  ): Promise<void> {
+    if (
+      (operator !== undefined && member.userId === operator.userId) ||
+      (await isPlatformStaffMember(ctx.store, member))
+    ) {
+      throw platformStaffRefusal("be the compliance officer");
+    }
+  }
+
+  /**
    * Platform route only: gives an active member the `compliance_officer` role when they lack it, while the tenant is
    * onboarding. Every other case returns false and leaves the decision to `assignOfficer` (which refuses a stranger, an
    * inactive member, a locked tenant, or a member without the role). The bind commits first, on its own transaction, so a
@@ -65,7 +91,10 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
       return false;
     }
     const member = await ctx.store.loadMember(ctx.tenant.organizationId, membershipId);
-    if (!member?.active || member.roleKeys.includes(COMPLIANCE_OFFICER_ROLE)) return false;
+    if (!member?.active) return false;
+    // Before any grant: platform staff (or the operator themselves) never receive the role.
+    await assertMayBeOfficer(ctx, member, actor);
+    if (member.roleKeys.includes(COMPLIANCE_OFFICER_ROLE)) return false;
     await deps.bindComplianceOfficerRole({
       organizationId: ctx.tenant.organizationId,
       tenantAccountId: ctx.tenant.tenantAccountId,
@@ -84,6 +113,7 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
   async function assignOfficer(
     ctx: Loaded,
     membershipId: string,
+    operator?: PlatformActor,
   ): Promise<{ complianceOfficerMembershipId: string; superseded: GoLiveAttestation | null }> {
     if (!OFFICER_CHANGEABLE_STATUSES.includes(ctx.tenant.status)) {
       throw refuse(
@@ -100,6 +130,7 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
         422,
       );
     }
+    await assertMayBeOfficer(ctx, member, operator);
     if (!member.roleKeys.includes(COMPLIANCE_OFFICER_ROLE)) {
       throw refuse(
         "COMPLIANCE_OFFICER_LACKS_ROLE",
@@ -128,6 +159,9 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
         "only the tenant's compliance officer may attest go-live readiness",
         403,
       );
+    }
+    if (await isPlatformStaffMember(ctx.store, { userId: actor.userId, roleKeys: actor.roles })) {
+      throw platformStaffRefusal("attest go-live readiness");
     }
     const attestationNote = normalizeOptionalNote(note);
     const attestations = await ctx.store.listGoLive(ctx.tenant);
@@ -184,13 +218,15 @@ export function createGoLiveOperations(deps: OnboardingWizardDeps, now: () => Da
     });
     // The attestation is the officer's statement: it only counts while that officer is still active, still holds the
     // role and is still the assigned officer. Judged against the membership as it is at this instant.
+    const attester = await ctx.store.loadMember(
+      ctx.tenant.organizationId,
+      pending.attestedByMembershipId,
+    );
     assertAttesterStillValid({
       pending,
-      attester: await ctx.store.loadMember(
-        ctx.tenant.organizationId,
-        pending.attestedByMembershipId,
-      ),
+      attester,
       assignedOfficer: ctx.tenant.complianceOfficerMembershipId,
+      attesterIsPlatformStaff: attester ? await isPlatformStaffMember(ctx.store, attester) : false,
     });
     const latestBaa = await ctx.store.latestBaa(ctx.tenant.tenantAccountId);
     const guards = evaluateGoLiveGuards({

@@ -1836,6 +1836,175 @@ describe.skipIf(!DB_URL)("M34 onboarding wizard v2, LIVE Postgres on the real ro
     });
   });
 
+  describe("review fix H2: ChartWarden platform staff are never the compliance officer or the go-live attester", () => {
+    const ORG_S = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeee01";
+    const T_S = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeee02";
+    const ORG_HOME = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeee03"; // the operators' home organization
+    const REASON = "customer named its administrator as the compliance officer";
+    let adminS: TenantActor;
+    let audienceBound: TenantActor; // an operator bound to platform_alert_audience in the tenant, holding compliance_officer
+    let homeHolder: TenantActor; // a plain tenant membership whose USER holds platform_ops at home
+    let opsOwn: TenantActor; // the acting operator's own membership in the tenant
+    const grants = async (membershipId: string) =>
+      (
+        await admin.query(
+          `SELECT r.key FROM membership_role mr JOIN role r ON r.id = mr.role_id
+            WHERE mr.membership_id = $1 AND r.key = 'compliance_officer'`,
+          [membershipId],
+        )
+      ).rows;
+    const withBinder = () =>
+      wizard(false, { bindComplianceOfficerRole: createComplianceOfficerRoleBinder(app.db) });
+    const platformRole = async (key: string): Promise<string> =>
+      (
+        await admin.query(
+          `INSERT INTO role (organization_id, key, name, category, scope_level)
+           VALUES (NULL, $1, $1, 'platform_staff', 'organization')
+           ON CONFLICT (key) WHERE organization_id IS NULL DO UPDATE SET name = excluded.name RETURNING id`,
+          [key],
+        )
+      ).rows[0].id as string;
+
+    beforeAll(async () => {
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'h2-tenant','h2-tenant','h2-tenant'), ($2,'h2-home','h2-home','h2-home')",
+        [ORG_S, ORG_HOME],
+      );
+      await admin.query(
+        "INSERT INTO tenant_account (id, organization_id, status, legal_business_name, billing_contact_email, breach_notification_email) VALUES ($1,$2,'onboarding','h2-tenant','b@x.test','p@x.test')",
+        [T_S, ORG_S],
+      );
+      adminS = await person(ORG_S, "admin-s", ["org_admin"]);
+      await person(ORG_S, "seed-officer-s", ["compliance_officer"]); // materializes the org's role rows
+      await admin.query("DELETE FROM membership_role WHERE membership_id = $1", [
+        memberships["seed-officer-s"],
+      ]);
+      audienceBound = await person(ORG_S, "colleague-s", ["compliance_officer"]);
+      homeHolder = await person(ORG_S, "home-holder-s", ["org_admin"]);
+      // The operators: platform_ops at home (platform-owned role row), audience-bound in the tenant.
+      const platformOps = await platformRole("platform_ops");
+      const audience = await platformRole("platform_alert_audience");
+      await admin.query(
+        "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
+        [ORG_S, audienceBound.membershipId, audience],
+      );
+      for (const user of [audienceBound.userId, homeHolder.userId, OPS_USER]) {
+        const home = (
+          await admin.query(
+            `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+            [user, ORG_HOME],
+          )
+        ).rows[0].id as string;
+        await admin.query(
+          "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
+          [ORG_HOME, home, platformOps],
+        );
+      }
+      // The acting operator also has a plain membership in the tenant (every operator does).
+      const own = (
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+          [OPS_USER, ORG_S],
+        )
+      ).rows[0].id as string;
+      opsOwn = { kind: "tenant", userId: OPS_USER, membershipId: own, roles: [] };
+    }, 60_000);
+
+    it("the platform route refuses the operator's own membership, an audience-bound colleague and a home-org platform role holder, and binds nothing", async () => {
+      for (const member of [opsOwn, audienceBound, homeHolder]) {
+        const err = await refusal(
+          withBinder().setComplianceOfficerPlatform("h2-tenant", OPS, member.membershipId, REASON),
+        );
+        expect(err.code, member.membershipId).toBe("COMPLIANCE_OFFICER_PLATFORM_STAFF");
+        expect(err.statusCode).toBe(422);
+        expect(await grants(member.membershipId), member.membershipId).toEqual(
+          member === audienceBound ? [{ key: "compliance_officer" }] : [],
+        );
+      }
+      const officer = await admin.query(
+        "SELECT compliance_officer_membership_id AS m FROM tenant_account WHERE id=$1",
+        [T_S],
+      );
+      expect(officer.rows[0].m).toBeNull();
+    });
+
+    it("the real binder refuses the same members on its own, as the tenant role", async () => {
+      const bind = createComplianceOfficerRoleBinder(app.db);
+      for (const member of [opsOwn, homeHolder]) {
+        await expect(
+          bind({
+            organizationId: ORG_S,
+            tenantAccountId: T_S,
+            membershipId: member.membershipId,
+            operator: { userId: OPS_USER, membershipId: OPS_MEMBERSHIP },
+            reason: REASON,
+          }),
+        ).rejects.toMatchObject({ code: "COMPLIANCE_OFFICER_PLATFORM_STAFF", statusCode: 422 });
+        expect(await grants(member.membershipId)).toEqual([]);
+      }
+    });
+
+    it("the tenant route refuses platform staff even when they already hold the role, on the tenant role's own holder read", async () => {
+      const err = await refusal(
+        wizard(false).setComplianceOfficer(adminS, ORG_S, audienceBound.membershipId),
+      );
+      expect(err.code).toBe("COMPLIANCE_OFFICER_PLATFORM_STAFF");
+    });
+
+    it("a platform operator who already holds the role and is the assigned officer cannot attest go-live", async () => {
+      await admin.query(
+        `INSERT INTO onboarding_task (organization_id, tenant_account_id, template_key, status)
+         SELECT $1, $2, key, CASE WHEN key = 'go_live_checklist_complete' THEN 'pending' ELSE 'done' END::onboarding_task_status
+           FROM onboarding_task_template WHERE retired_at IS NULL`,
+        [ORG_S, T_S],
+      );
+      await admin.query(
+        `INSERT INTO platform_tenant_baa_record (organization_id, tenant_account_id, addendum_version, baa_status, executed_on, effective_on, expires_on)
+         VALUES ($1,$2,'v1','executed','2026-10-01','2026-10-01', (now() + interval '2 years')::date)`,
+        [ORG_S, T_S],
+      );
+      await admin.query(
+        "UPDATE tenant_account SET compliance_officer_membership_id=$2 WHERE id=$1",
+        [T_S, audienceBound.membershipId],
+      );
+      const err = await refusal(wizard(false).attestGoLive(audienceBound, ORG_S, "ready"));
+      expect(err.code).toBe("COMPLIANCE_OFFICER_PLATFORM_STAFF");
+      expect(
+        (
+          await admin.query("SELECT 1 FROM tenant_go_live_attestation WHERE tenant_account_id=$1", [
+            T_S,
+          ])
+        ).rowCount,
+      ).toBe(0);
+    });
+
+    it("an attestation whose attester is now platform staff is stale at approval, read on the platform pool", async () => {
+      const ordinary = await person(ORG_S, "ordinary-officer-s", ["compliance_officer"]);
+      await admin.query(
+        "UPDATE tenant_account SET compliance_officer_membership_id=$2 WHERE id=$1",
+        [T_S, ordinary.membershipId],
+      );
+      await wizard(false).attestGoLive(ordinary, ORG_S, "ready");
+      const platformOps = await platformRole("platform_ops");
+      const home = (
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+          [ordinary.userId, ORG_HOME],
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
+        [ORG_HOME, home, platformOps],
+      );
+      const err = await refusal(
+        wizard(false).approveGoLive("h2-tenant", OPS, "reviewed the evidence and the BAA"),
+      );
+      expect(err.code).toBe("GO_LIVE_ATTESTATION_STALE");
+      expect(err.details?.map((d) => d.code)).toEqual(["attester_platform_staff"]);
+      expect(await tenantStatus(T_S)).toBe("onboarding");
+    });
+  });
+
   describe("smoke-test gaps: a new tenant's first admin during onboarding (organization still `created`)", () => {
     const ORG_G = "dddddddd-dddd-4ddd-8ddd-dddddddddd01";
     const T_G = "dddddddd-dddd-4ddd-8ddd-dddddddddd02";

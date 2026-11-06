@@ -33,6 +33,8 @@ export interface MemoryWizardState {
   platformTransactions: { reason: string; actorUserId: string | null }[];
   /** The explicit platform audit entries a platform store recorded. */
   platformAudit: PlatformAuditEntry[];
+  /** Users holding a live platform role in their home organisation (what `m34_platform_role_holders` reports). */
+  platformStaffUserIds: Set<string>;
 }
 
 export function createMemoryWizardState(seed: Partial<MemoryWizardState> = {}): MemoryWizardState {
@@ -47,6 +49,7 @@ export function createMemoryWizardState(seed: Partial<MemoryWizardState> = {}): 
     profiles: new Map(),
     platformTransactions: [],
     platformAudit: [],
+    platformStaffUserIds: new Set(),
     ...seed,
   };
 }
@@ -207,6 +210,9 @@ export function createMemoryWizardStore(
       if (!member || member.organizationId !== organizationId) return null;
       const { organizationId: _org, ...visible } = member;
       return visible;
+    },
+    async isPlatformStaff(userId) {
+      return state.platformStaffUserIds.has(userId);
     },
     async activate(input) {
       if (!allowActivate) throw new Error("a tenant store cannot activate a tenant");

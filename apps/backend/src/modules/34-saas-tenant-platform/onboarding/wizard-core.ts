@@ -1,5 +1,6 @@
 // apps/backend/src/modules/34-saas-tenant-platform/onboarding/wizard-core.ts - what every wizard operation shares: the typed
 // refusal, who may act on a step, the loaded tenant (templates, tasks, store) and the read model.
+import { PLATFORM_ALERT_AUDIENCE_ROLE_KEY } from "@chartwarden/auth";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import {
   ONBOARDING_STATUS,
@@ -101,3 +102,26 @@ export async function view(ctx: Loaded, now: () => Date): Promise<WizardView> {
     today: now(),
   });
 }
+
+/**
+ * Whether the member is ChartWarden staff: bound to the platform alert-audience role in this organisation, or holding a live
+ * platform role at home. Every platform_ops operator has an active membership in every tenant (bootstrap/bind-platform-staff.ts),
+ * so "is a member" cannot mean "belongs to the customer". Staff are never the compliance officer or the go-live attester: the
+ * officer's attestation and the platform approval are the two parties, and one operator could otherwise be both hats.
+ */
+export async function isPlatformStaffMember(
+  store: WizardStore,
+  member: { readonly userId: string; readonly roleKeys: readonly string[] },
+): Promise<boolean> {
+  return (
+    member.roleKeys.includes(PLATFORM_ALERT_AUDIENCE_ROLE_KEY) ||
+    (await store.isPlatformStaff(member.userId))
+  );
+}
+
+export const platformStaffRefusal = (what: string): ChartWardenError =>
+  refuse(
+    "COMPLIANCE_OFFICER_PLATFORM_STAFF",
+    `ChartWarden platform staff cannot ${what}: the compliance officer must be a member of the customer's own staff`,
+    422,
+  );

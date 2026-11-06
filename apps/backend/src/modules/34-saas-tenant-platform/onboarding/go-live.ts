@@ -203,12 +203,15 @@ export function assertCanApprove(input: {
 /**
  * The attestation is a statement by a specific officer; it only counts while that officer still stands behind it. Judged
  * at approval time, against the membership as it is NOW: still active in the organisation, still holding the
- * compliance_officer role, and still the officer the tenant has assigned (no officer assigned = the attester stands alone).
+ * compliance_officer role, not ChartWarden platform staff, and still the officer the tenant has assigned (no officer assigned
+ * = the attester stands alone).
  */
 export function assertAttesterStillValid(input: {
   readonly pending: GoLiveAttestation;
   readonly attester: WizardMember | null;
   readonly assignedOfficer: string | null;
+  /** The attester is ChartWarden platform staff NOW (wizard-core.ts `isPlatformStaffMember`). */
+  readonly attesterIsPlatformStaff: boolean;
 }): void {
   const stale = (detail: string, message: string): ChartWardenError =>
     new ChartWardenError(
@@ -228,6 +231,12 @@ export function assertAttesterStillValid(input: {
     throw stale(
       "attester_not_compliance_officer",
       "the attester no longer holds the compliance_officer role",
+    );
+  }
+  if (input.attesterIsPlatformStaff) {
+    throw stale(
+      "attester_platform_staff",
+      "the attester is ChartWarden platform staff, who cannot be the compliance officer",
     );
   }
   if (
