@@ -454,6 +454,7 @@ const REGISTRAR_FILES = [
   "alarm-ingest-routes.ts", // WP 6.10 alarm ingest (flag off): staff list/create/rotate/disable are org-bound (another org's staff lists nothing and disables/rotates a random-id 404). The INBOUND route has NO session by design: its credential is a per-source HMAC whose key id names the org, so a secret from org A presented under org B's key id (or the reverse) is the same 401 as any wrong signature and no row of either org is touched - m36-alarm-ingest.live "tenancy"
   "alarm-ingest-typebox.ts", // schemas only
   "uuid-params.ts", // preHandler helper, no routes
+  "actor.ts", // route actor helper, no routes
   "webhook-routes.ts",
 ];
 
