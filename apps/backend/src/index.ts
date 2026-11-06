@@ -1047,6 +1047,7 @@ import { claimMdIdentityResolutionEnabled, claimMdInboxKeyRingFromEnv } from "./
 import { createClaimMdIdentityStore } from "./modules/23-billing-medicare/claimmd-identity/store";
 import { createClaimMdIdentityResolver, createClaimMdIdentityWorker } from "./modules/23-billing-medicare/claimmd-identity/service";
 import { CLAIMMD_IDENTITY_JOB_ID, startClaimMdIdentityWorker, type IdentityWorkerSummary } from "./modules/23-billing-medicare/claimmd-identity/worker";
+import { readClaimMdCommercialSubmissionFacts } from "./modules/41-billing-commercial/services/claimmd-submission-reader";
 import {
   bindPlatformClearinghouse,
   describeClearinghouseBinding,
@@ -3951,8 +3952,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     const tenantKeys = getTenantKeyProvider();
     const inboxCipher = createClaimMdInboxCipher(inboxKeyRing);
     registerPlatformJob(CLAIMMD_IDENTITY_JOB_ID);
-    const claimMdCandidates = createClaimMdCandidateProvider({ platformDb: platformDbHandle.db,
-      auditBypass: m34PlatformBypassAuditor, cipher: createClaimMdEvidenceCipher({
+    const claimMdCandidates = createClaimMdCandidateProvider({
+      readSnapshot: (fn) => withPlatformContext(platformDbHandle.db, { jobId: CLAIMMD_IDENTITY_JOB_ID,
+        reason: "Claim.MD identity candidate lookup: immutable account-scoped evidence", crossTenant: true },
+        m34PlatformBypassAuditor, fn, { isolation: "repeatable read" }),
+      siteReader: buildFoundationSiteReader(), commercialSubmissionReader: readClaimMdCommercialSubmissionFacts,
+      cipher: createClaimMdEvidenceCipher({
         dekForOrg: (organizationId) => tenantKeys.dekForOrg(organizationId),
         dekForOrgVersion: (organizationId, version) => tenantKeys.dekForOrgVersion(organizationId, version),
       }), accountReference, usage });

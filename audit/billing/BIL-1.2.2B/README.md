@@ -2,22 +2,27 @@
 
 ## Summary and verdict
 
-**Implementation: partial, disabled by default. BIL-1.3 development: CONDITIONAL GO. Controlled-test resolver activation: NO. Production activation: NO.** This slice adds a database-backed M23/M41 candidate provider, uses only immutable BIL-1.2.2A evidence, correlates explicit Claim.MD fields without namespace coercion, fences resolution writes by lease token/version, provides bounded retries and internal audited requeue, and composes a resolver worker behind the existing explicit flag. It does not dispatch acknowledgments, mutate billing claims, process ERA, post money, or activate Claim.MD production traffic.
+**Implementation: source complete for BIL-1.2.2B, disabled by default. BIL-1.3 development: CONDITIONAL GO. Controlled-test resolver activation: NO. Production activation: NO.** This slice adds a database-backed M23/M41 candidate provider, uses only immutable BIL-1.2.2A evidence, correlates explicit Claim.MD fields without namespace coercion, fences resolution writes by lease token/version, provides bounded retries and internal audited requeue, and composes a resolver worker behind the existing explicit flag. It does not dispatch acknowledgments, mutate billing claims, process ERA, post money, or activate Claim.MD production traffic.
 
 ## Implemented
 
 - Candidate query adapter: [`candidate-provider.ts`](../../../apps/backend/src/modules/23-billing-medicare/claimmd-identity/candidate-provider.ts).
+- BIL-1.2.2B hardening routes M1 provider/location ownership through `bootstrap/foundation-site-reader.ts` and M41 submission facts through `41-billing-commercial/services/claimmd-submission-reader.ts`. M23 queries only its own evidence, receipt, Medicare submission, and attempt tables. All owner readers share one audited repeatable-read transaction; TIN decryption follows after that transaction closes.
 - Existing matcher strengthened for exact receipt namespaces, conflicting identifiers, historical NPI/TIN/payer/PCN checks, file-only refusal, and bounded-search ambiguity: `claimmd-identity/resolve.ts`.
 - Existing resolver store now decrypts the captured BIL-1.1 page, persists evidence references/location, filters account/environment, enforces lease-token writes and bounded retry, and has a constrained audited requeue method: `claimmd-identity/store.ts`.
 - Explicit worker composition and scheduler in `apps/backend/src/index.ts`; the worker only runs when `CLAIMMD_IDENTITY_RESOLUTION_ENABLED=true` and all configuration/schema prerequisites pass.
 - Upload-list reconciliation preserves `inboundid` as its source field and returns it as a receipt observation; absent/oversized IDs now remain unresolved.
 - Migration 1353 grants the existing non-login `claimmd_capture` role specific read access to evidence, source associations and location/provider ownership, adds resolution location columns and a receipt lookup index, and expands the allowed resolution reason codes. It introduces no new inbox or evidence tables. It is marked `compat: contract` because the repository migration checker treats replacing the reason-code constraint as contracting; deployment must follow that gate's rollback behavior.
 
+## Migration ordering and rollback
+
+Keep `CLAIMMD_IDENTITY_RESOLUTION_ENABLED` unset/false while deploying migrations 1350–1353 and the new code. Migration 1353 replaces a CHECK constraint to add reason codes; `arch:migration-compat` correctly accepts its conservative `compat: contract` declaration. If a deploy fails after 1353 applies, `deploy.sh` classifies the schema change as unsafe for automatic rollback, stops with exit 75, and requires an operator decision under `deploy/production/README.md`. No production migration was run for this report.
+
 ## Scope limits
 
 M23 NOE/NOTR/transfer notice Claim.MD sends remain fail-closed because their callers do not provide immutable evidence metadata. M24 state-direct work is unchanged; there is no evidence path that would make it a Claim.MD candidate. BIL-1.1 capture remains a separate inactive foundation; this worker consumes already captured events and does not advance its cursor or implement a new network poller.
 
-The prompt-required `audit/billing/BIL-0/` and `audit/billing/BIL-1.1/` documents are absent in this checkout. BIL-1.2, BIL-1.2.1 and BIL-1.2.2A docs exist and were reviewed. This documentation gap does not change adapter authority but limits end-to-end historical certification.
+The earlier BIL-0 and BIL-1.1 reports are under `docs/billing/`, as requested for those phases; their `audit/billing/` counterparts are absent. BIL-1.2, BIL-1.2.1 and BIL-1.2.2A reports are under `audit/billing/`. Their location does not establish runtime certification.
 
 ## Runtime guarantees and limitations
 

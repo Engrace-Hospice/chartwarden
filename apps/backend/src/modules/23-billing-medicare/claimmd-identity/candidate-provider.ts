@@ -1,18 +1,19 @@
 import { type DbClient, schema } from "@chartwarden/db";
-import { type PlatformBypassAuditor, withPlatformContext } from "@chartwarden/tenancy";
 import { and, eq, exists, inArray, or } from "drizzle-orm";
+import type { FoundationSiteReader } from "../../../bootstrap/foundation-site-reader";
 import type { ClaimMdIdentityEvent, SubmissionCandidate } from "./resolve";
-import { CLAIMMD_IDENTITY_JOB_ID } from "./worker";
 
 const E = schema.claimmdSubmissionEvidence;
 const O = schema.claimmdSubmissionReceiptObservations;
 const M23 = schema.claimSubmission;
-const M41 = schema.commercialSubmissions;
 const A = schema.clearinghouseSubmissionAttempts;
-const PE = schema.providerEntities;
-const L = schema.locations;
 const MAX_CANDIDATES = 100;
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
+type CommercialSubmissionFact = {
+  readonly id: string; readonly organizationId: string; readonly providerEntityId: string;
+  readonly locationId: string | null; readonly claimId: string; readonly controlNumber: string;
+  readonly payerId: string; readonly vendor: string;
+};
 type EvidenceCipher = {
   open(input: { evidenceId: string; organizationId: string; providerEntityId: string; attemptKey: string; sealed: string }): Promise<string>;
 };
@@ -91,11 +92,12 @@ export function isVerifiedReceiptObservation(field: string, namespace: string): 
 /**
  * Account-wide privileged query over immutable send evidence. Every lookup is restricted by the configured
  * Claim.MD account/environment and at least one exact external identifier or PCN; no mutable provider identity
- * participates in matching. `withPlatformContext` is supplied by the resolver repository's audited execution.
+ * participates in matching. The composition root supplies an allowlisted, audited repeatable-read snapshot.
  */
 export function createClaimMdCandidateProvider(input: {
-  readonly platformDb: DbClient;
-  readonly auditBypass: PlatformBypassAuditor<Tx>;
+  readonly readSnapshot: <T>(fn: (tx: Tx) => Promise<T>) => Promise<T>;
+  readonly siteReader: Pick<FoundationSiteReader, "providerEntityOwners" | "locationOwners">;
+  readonly commercialSubmissionReader: (tx: DbClient, ids: readonly string[]) => Promise<readonly CommercialSubmissionFact[]>;
   readonly cipher: EvidenceCipher;
   readonly accountReference: string;
   readonly usage: "test" | "production";
@@ -108,8 +110,7 @@ export function createClaimMdCandidateProvider(input: {
         return { candidates: [], complete: true };
       const hints = externalPredicates(event);
       if (!event.pcn && !hints.length) return { candidates: [], complete: true };
-      const captured = await withPlatformContext(input.platformDb, { jobId: CLAIMMD_IDENTITY_JOB_ID,
-        reason: "Claim.MD identity candidate lookup: immutable account-scoped evidence", crossTenant: true }, input.auditBypass, async (tx) => {
+      const captured = await input.readSnapshot(async (tx) => {
         const matchesReceipt = hints.length ? tx.select({ one: O.id }).from(O).where(and(
           eq(O.evidenceId, E.id), eq(O.accountReference, input.accountReference), eq(O.usage, input.usage),
           or(...hints.map(({ field, value }) => and(eq(O.sourceField, field), eq(O.externalValue, value)))),
@@ -125,19 +126,12 @@ export function createClaimMdCandidateProvider(input: {
           billingTinCiphertext: E.billingTinCiphertext, payerId: E.payerId, claimType: E.claimType, pcn: E.pcn,
           serviceFrom: E.serviceFrom, serviceTo: E.serviceTo, payloadSha256: E.payloadSha256,
           isa13: E.isa13, gs06: E.gs06, st02: E.st02,
-          providerOrgId: PE.organizationId, m23Id: M23.id, m23OrgId: M23.organizationId, m23ProviderId: M23.providerEntityId,
+          m23Id: M23.id, m23OrgId: M23.organizationId, m23ProviderId: M23.providerEntityId,
           m23ClaimId: M23.claimId, m23Kind: M23.kind, m23Control: M23.claimControlNumber, m23AttemptIndex: M23.attemptIndex,
-          m41Id: M41.id, m41OrgId: M41.organizationId, m41ProviderId: M41.providerEntityId,
-          m41LocationId: M41.locationId, m41ClaimId: M41.claimId, m41Control: M41.controlNumber,
-          m41Payer: M41.clearinghousePayerId, m41Transport: M41.clearinghouseKey,
           attemptId: A.id, attemptOrgId: A.organizationId, attemptProviderId: A.providerEntityId, attemptUsage: A.usage,
           attemptControl: A.controlNumber, attemptKind: A.kind, attemptStatus: A.status,
-          locationProviderId: L.providerEntityId,
         }).from(E)
-          .leftJoin(PE, eq(PE.id, E.providerEntityId))
-          .leftJoin(L, eq(L.id, E.locationId))
           .leftJoin(M23, and(eq(M23.id, E.submissionId), eq(E.billingModule, "M23")))
-          .leftJoin(M41, and(eq(M41.id, E.submissionId), eq(E.billingModule, "M41")))
           .leftJoin(A, and(eq(A.organizationId, E.organizationId), eq(A.providerEntityId, E.providerEntityId),
             eq(A.usage, E.usage), eq(A.controlNumber, E.pcn), inArray(A.status, ["reserved", "sent"])))
           .where(and(eq(E.vendor, "claimmd"), eq(E.accountReference, input.accountReference), eq(E.usage, input.usage),
@@ -145,7 +139,9 @@ export function createClaimMdCandidateProvider(input: {
           .orderBy(E.createdAt).limit(cap + 1);
         const complete = rows.length <= cap;
         const selected = rows.slice(0, cap);
-        if (!selected.length) return { selected, complete, byEvidence: new Map<string, { field: string; namespace: string; value: string }[]>() };
+        if (!selected.length) return { selected, complete, byEvidence: new Map<string, { field: string; namespace: string; value: string }[]>(),
+          providerOwners: new Map<string, string>(), locationOwners: new Map<string, string>(),
+          commercialFacts: new Map<string, CommercialSubmissionFact>() };
         const observations = await tx.select({ evidenceId: O.evidenceId, field: O.sourceField,
           namespace: O.identifierNamespace, value: O.externalValue }).from(O)
           .where(and(inArray(O.evidenceId, selected.map((row) => row.id)), eq(O.accountReference, input.accountReference),
@@ -158,12 +154,23 @@ export function createClaimMdCandidateProvider(input: {
           values.push({ field: observation.field, namespace: observation.namespace, value: observation.value });
           byEvidence.set(observation.evidenceId, values);
         }
-        return { selected, complete, byEvidence };
+        // All owner readers use this same audited repeatable-read transaction. Batch IDs stay bounded by cap.
+        const siteTx = tx as unknown as DbClient;
+        const providerOwners = new Map((await input.siteReader.providerEntityOwners(siteTx, selected.map((row) => row.providerEntityId)))
+          .map((row) => [row.id, row.organizationId]));
+        const locationOwners = new Map((await input.siteReader.locationOwners(siteTx,
+          selected.flatMap((row) => row.locationId === null ? [] : [row.locationId])))
+          .map((row) => [row.id, row.providerEntityId]));
+        const commercialIds = selected.filter((row) => row.billingModule === "M41").map((row) => row.submissionId);
+        const commercialFacts = new Map((commercialIds.length === 0 ? [] : await input.commercialSubmissionReader(siteTx, commercialIds))
+          .map((row) => [row.id, row]));
+        return { selected, complete, byEvidence, providerOwners, locationOwners, commercialFacts };
       });
       if (!captured.complete) return { candidates: [], complete: false };
       const candidates: SubmissionCandidate[] = [];
       for (const row of captured.selected) {
-          if (row.providerOrgId !== row.organizationId) continue;
+          if (captured.providerOwners.get(row.providerEntityId) !== row.organizationId) continue;
+          const commercial = captured.commercialFacts.get(row.submissionId);
           const attemptValid = row.billingModule === "M23"
             ? isVerifiedM23SubmissionEvidence({ organizationId: row.organizationId, providerEntityId: row.providerEntityId,
               claimId: row.claimId, submissionId: row.submissionId, attemptKey: row.attemptKey, pcn: row.pcn,
@@ -173,12 +180,13 @@ export function createClaimMdCandidateProvider(input: {
                 controlNumber: row.attemptControl, kind: row.attemptKind, status: row.attemptStatus } })
             : isVerifiedM41SubmissionEvidence({ organizationId: row.organizationId, providerEntityId: row.providerEntityId,
               locationId: row.locationId, claimId: row.claimId, submissionId: row.submissionId, attemptKey: row.attemptKey,
-              pcn: row.pcn, payerId: row.payerId, source: { id: row.m41Id, organizationId: row.m41OrgId,
-                providerEntityId: row.m41ProviderId, locationId: row.m41LocationId, claimId: row.m41ClaimId,
-                controlNumber: row.m41Control, payerId: row.m41Payer, vendor: row.m41Transport },
+              pcn: row.pcn, payerId: row.payerId, source: { id: commercial?.id ?? null, organizationId: commercial?.organizationId ?? null,
+                providerEntityId: commercial?.providerEntityId ?? null, locationId: commercial?.locationId ?? null,
+                claimId: commercial?.claimId ?? null, controlNumber: commercial?.controlNumber ?? null,
+                payerId: commercial?.payerId ?? null, vendor: commercial?.vendor ?? null },
               transportAttempt: { organizationId: row.attemptOrgId, providerEntityId: row.attemptProviderId, usage: row.attemptUsage,
                 controlNumber: row.attemptControl, kind: row.attemptKind, status: row.attemptStatus } });
-          if (!attemptValid || !row.attemptId || (row.locationId !== null && row.locationProviderId !== row.providerEntityId) ||
+          if (!attemptValid || !row.attemptId || (row.locationId !== null && captured.locationOwners.get(row.locationId) !== row.providerEntityId) ||
             !/^[0-9a-f]{64}$/.test(row.payloadSha256)) continue;
           let tinAtSend: string;
           try { tinAtSend = await input.cipher.open({ evidenceId: row.id, organizationId: row.organizationId,

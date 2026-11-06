@@ -277,4 +277,16 @@ describe("withPlatformContext (M1-T06 §3.14)", () => {
     );
     expect(captured?.severity).toBe("critical");
   });
+
+  it("sets a repeatable-read snapshot before the audit write and uses the same transaction for reads", async () => {
+    const { db, executed, tx } = fakeDb();
+    const order: string[] = [];
+    registerPlatformJob("claimmd-identity-test");
+    await withPlatformContext(db, { jobId: "claimmd-identity-test", reason: "synthetic candidate read", crossTenant: true },
+      async (auditTx) => { expect(auditTx).toBe(tx); order.push("audit"); },
+      async (readTx) => { expect(readTx).toBe(tx); order.push("read"); },
+      { isolation: "repeatable read" });
+    expect(render(executed[0]!).sql).toBe("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+    expect(order).toEqual(["audit", "read"]);
+  });
 });

@@ -2,12 +2,11 @@
 
 ## Block controlled-test resolver activation
 
-1. **P1 — architecture gate failure.** `bun run arch:tables` flags direct M1/M41 table references and a platform-context PHI heuristic in `claimmd-identity/candidate-provider.ts`. Refactor cross-owner reads through owner-exported readers and require this gate to pass before merge.
-2. **P1 — PostgreSQL behavior unverified.** Apply migrations 1350–1353 only to a private disposable cluster. Verify role grants, FORCE RLS, platform audit events, cross-tenant isolation, lease token fencing, history append-only behavior, duplicate requeue protection, and source joins as real roles.
-3. **P1 — inbox encryption/runtime configuration absent from current deploy evidence.** Configure the secret-manager `CLAIMMD_RESPONSE_INBOX_KEYRING` with current and historical keys, confirm M34 tenant DEK service can open synthetic tenant evidence, and verify the prebootstrapped `claim_responses` stream matches account reference/environment.
-4. **P1 — BIL-1.1 capture runtime remains inactive.** The resolver consumes captured inbox records but does not create them or advance cursor. Before end-to-end controlled processing, register/configure the BIL-1.1 capture service and validate its full-page durable capture separately, or provide an isolated synthetic captured page.
-5. **P1 — account-wide platform privilege deployment not runtime inspected.** Verify `DATABASE_PLATFORM_URL` login inherits only required integration reads/writes and audit insert; candidate source column grants must work without using a superuser.
-6. **P1 — missing review docs in requested corpus.** `audit/billing/BIL-0/` and `audit/billing/BIL-1.1/` were absent in the checkout, so their original detailed findings were not available for comparison.
+1. **P1 — PostgreSQL behavior unverified.** Apply migrations 1350–1353 only to a private disposable cluster. Verify role grants, FORCE RLS, platform audit events, cross-tenant isolation, lease token fencing, history append-only behavior, duplicate requeue protection, and source reads as real roles.
+2. **P1 — inbox encryption/runtime configuration absent from current deploy evidence.** Configure the secret-manager `CLAIMMD_RESPONSE_INBOX_KEYRING` with current and historical keys, confirm M34 tenant DEK service can open synthetic tenant evidence, and verify the prebootstrapped `claim_responses` stream matches account reference/environment.
+3. **P1 — BIL-1.1 capture runtime remains inactive.** The resolver consumes captured inbox records but does not create them or advance cursor. Before end-to-end controlled processing, register/configure the BIL-1.1 capture service and validate its full-page durable capture separately, or provide an isolated synthetic captured page.
+4. **P1 — account-wide platform privilege deployment not runtime inspected.** Verify `DATABASE_PLATFORM_URL` login inherits only required integration reads/writes and audit insert; candidate source column grants must work without using a superuser.
+The previous architecture blocker was removed after `bun run arch:tables` passed. BIL-0 and BIL-1.1 reports are present under their requested `docs/billing/` location, so the old `audit/billing/` path absence is not a release blocker. These source and documentation findings do not certify a live database role or authorize activation.
 
 ## Block production rollout
 
