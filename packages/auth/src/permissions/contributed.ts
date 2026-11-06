@@ -1819,6 +1819,22 @@ export const M12_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
+  // The tenant's own DoseSpot clinic registration (tenant onboarding slice 4, ADR-0110). ORG-LEVEL on purpose, unlike the
+  // roster key above: the registration decides where EVERY prescription of the organization goes (the clinic key, the
+  // environment, activation), so a roster admin must not hold it. Granted to the org-wide admin roles only (`org_admin`,
+  // `administrator`; migration 1383 + the full-catalog template). Writes need a fresh step-up.
+  "prescribing.clinic.read": {
+    resource: "dosespot_clinic",
+    action: "read",
+    category: "compliance",
+    abac: "none",
+  },
+  "prescribing.clinic.admin": {
+    resource: "dosespot_clinic",
+    action: "admin",
+    category: "compliance",
+    abac: "none",
+  },
   // Refill-inbox / controlled-substance policy admin (org-scoped, step-up, tighten-only).
   "prescribing.admin.policy": {
     resource: "prescribing_policy",
@@ -3035,6 +3051,21 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
   "tenant_notice_filing.withdraw_platform": {
     resource: "tenant_notice_filing",
     action: "withdraw_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  // --- the tenant's DoseSpot clinic registration (tenant onboarding slice 4, ADR-0110): environment, clinic, sealed key ---
+  // platform-ops only, step-up, reason-recorded, accepted only while the tenant is provisioning / onboarding (a deactivation
+  // is the one write a live tenant also needs, so it is not status-gated).
+  "tenant_dosespot.read_platform": {
+    resource: "tenant_dosespot",
+    action: "read_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant_dosespot.write_platform": {
+    resource: "tenant_dosespot",
+    action: "write_platform",
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },

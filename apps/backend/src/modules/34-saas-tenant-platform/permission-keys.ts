@@ -398,9 +398,24 @@ export const M34_CONTRIBUTED_PERMISSIONS = {
     category: "platform",
     abac: "tenant_lifecycle_platform_ops",
   },
+  // --- the tenant's DoseSpot clinic registration (tenant onboarding slice 4, ADR-0110): environment, clinic, sealed key ---
+  // platform-ops only, step-up, reason-recorded, accepted only while the tenant is provisioning / onboarding (a deactivation is
+  // the one write a live tenant also needs, so it is not status-gated).
+  "tenant_dosespot.read_platform": {
+    resource: "tenant_dosespot",
+    action: "read_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
+  "tenant_dosespot.write_platform": {
+    resource: "tenant_dosespot",
+    action: "write_platform",
+    category: "platform",
+    abac: "tenant_lifecycle_platform_ops",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
-/** Union of the M34 contributed permission keys (forty-seven). */
+/** Union of the M34 contributed permission keys (forty-nine). */
 export type M34ContributedPermissionKey = keyof typeof M34_CONTRIBUTED_PERMISSIONS;
 
 /**
