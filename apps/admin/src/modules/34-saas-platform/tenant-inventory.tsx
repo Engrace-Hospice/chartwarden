@@ -23,6 +23,12 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { lifecycleTone, statusLabel } from "./saas-status";
+import {
+  AttentionStrip,
+  type OnboardingProgressView,
+  ProgressCell,
+  tenantNextAction,
+} from "./tenant-progress";
 import { TenantProvisionDrawer } from "./tenant-provision";
 
 // §5.2 eleven-state tenant lifecycle (the UI owns its copy of the wire enum for the filter options).
@@ -52,6 +58,7 @@ interface TenantSummary {
   planLabel: string;
   createdAt: string;
   updatedAt: string;
+  onboardingProgress: OnboardingProgressView | null;
 }
 
 interface TenantPage {
@@ -66,6 +73,7 @@ const PROVISIONING_POLL_MS = 5000;
 export function TenantInventory(): JSX.Element {
   const client = useApiClient();
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const selectedSlug = params.get("tenant");
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
@@ -186,6 +194,15 @@ export function TenantInventory(): JSX.Element {
           </Button>
         </form>
 
+        {status === "" ? (
+          <AttentionStrip
+            tenants={items}
+            onReview={(slug) =>
+              navigate(`/tenants/${encodeURIComponent(slug)}/onboarding/go_live_checklist_complete`)
+            }
+          />
+        ) : null}
+
         <TenantTable
           items={items}
           loading={loading}
@@ -247,8 +264,8 @@ function TenantTable({
         <thead>
           <tr>
             <th scope="col">Tenant</th>
-            <th scope="col">Plan</th>
             <th scope="col">Status</th>
+            <th scope="col">Onboarding</th>
             <th scope="col">Created</th>
           </tr>
         </thead>
@@ -268,12 +285,14 @@ function TenantTable({
                   <span className="wx-row-title">{tenant.legalBusinessName}</span>
                   <span className="wx-row-sub wx-data-md">{tenant.orgSlug}</span>
                 </td>
-                <td>{tenant.planLabel}</td>
                 <td>
                   <StatusPill
                     label={statusLabel(tenant.status)}
                     tone={lifecycleTone(tenant.status)}
                   />
+                </td>
+                <td>
+                  <ProgressCell tenant={tenant} />
                 </td>
                 <td className="wx-nums">{new Date(tenant.createdAt).toLocaleDateString()}</td>
               </tr>
@@ -294,6 +313,7 @@ function TenantDrawer({
 }): JSX.Element {
   const navigate = useNavigate();
   const drawer = useDrawerA11y<HTMLElement>(onClose);
+  const next = tenantNextAction(tenant);
   return (
     <aside className="wx-admission-drawer" aria-label="Tenant" {...drawer}>
       <header className="wx-drawer-head">
@@ -315,8 +335,6 @@ function TenantDrawer({
             <StatusPill label={statusLabel(tenant.status)} tone={lifecycleTone(tenant.status)} />
           </div>
           <dl className="wx-kv">
-            <dt>Plan</dt>
-            <dd>{tenant.planLabel}</dd>
             <dt>Tenant id</dt>
             <dd className="wx-data-md">{tenant.id}</dd>
             <dt>Organization id</dt>
@@ -327,11 +345,24 @@ function TenantDrawer({
             <dd className="wx-nums">{new Date(tenant.updatedAt).toLocaleString()}</dd>
           </dl>
           <div className="wx-drawer-actions">
+            {next ? (
+              <Button
+                onClick={() =>
+                  navigate(
+                    `/tenants/${encodeURIComponent(tenant.orgSlug)}/onboarding${
+                      next.stepKey ? `/${encodeURIComponent(next.stepKey)}` : ""
+                    }`,
+                  )
+                }
+              >
+                {next.label}
+              </Button>
+            ) : null}
             <Button
-              tone="secondary"
+              tone={next ? "secondary" : "primary"}
               onClick={() => navigate(`/tenants/${encodeURIComponent(tenant.orgSlug)}`)}
             >
-              Open tenant overview
+              Open tenant
             </Button>
           </div>
         </section>

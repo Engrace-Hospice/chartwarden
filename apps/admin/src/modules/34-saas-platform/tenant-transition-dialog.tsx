@@ -1,5 +1,5 @@
 // apps/admin/src/modules/34-saas-platform — the lifecycle "Transition status" dialog (spec §5.1
-// `/tenants/:orgSlug/status` + `/offboard`): onboarding → active, active ⇄ suspended / at_risk, and the offboarding
+// `/tenants/:orgSlug/status` + `/offboard`): active ⇄ suspended / at_risk, and the offboarding
 // chain offboarding_initiated → final_export_pending → retained → destruction_pending (which is what makes the shred
 // ceremony reachable). Backed by POST .../status and POST .../offboard; the server runs the §2.2 machine and its
 // guards (canonical tasks + BAA for activation; retention elapsed and no legal hold for destruction), so a refusal
@@ -21,7 +21,8 @@ const MIN_REASON = 8;
 
 /** Targets the platform status route can reach from a status (the machine's source of truth is server-side). */
 const TARGETS: Readonly<Record<string, readonly string[]>> = {
-  onboarding: ["active"],
+  // Going live is NOT a status change an operator applies: the compliance officer attests in the tenant app and a different operator
+  // approves in the onboarding wizard. The status route answers 409 GO_LIVE_TWO_PARTY_REQUIRED for onboarding -> active.
   active: ["suspended", "at_risk", "offboarding_initiated"],
   suspended: ["active", "offboarding_initiated"],
   at_risk: ["active", "suspended", "offboarding_initiated"],
@@ -32,7 +33,6 @@ const TARGETS: Readonly<Record<string, readonly string[]>> = {
 
 /** The button wording for a transition whose generic "Apply" would hide how consequential it is. */
 const COMMIT_LABEL: Readonly<Record<string, string>> = {
-  active_from_onboarding: "Activate tenant",
   offboarding_initiated: "Begin offboarding",
   final_export_pending: "Start final export",
   retained: "Mark export complete",
@@ -56,6 +56,8 @@ export interface TenantTransitionDialogProps {
   fromStatus: string;
   onDone: () => void;
   onClose: () => void;
+  /** Where an onboarding tenant is sent for go-live (the wizard). */
+  onOpenOnboarding?: () => void;
 }
 
 function serverMessage(err: unknown): string | null {
@@ -70,6 +72,7 @@ export function TenantTransitionDialog({
   fromStatus,
   onDone,
   onClose,
+  onOpenOnboarding,
 }: TenantTransitionDialogProps): JSX.Element | null {
   const client = useApiClient();
   const targets = transitionTargets(fromStatus);
@@ -90,10 +93,7 @@ export function TenantTransitionDialog({
 
   const chosen = targets.includes(target) ? target : (targets[0] ?? "");
   const offboarding = chosen === "offboarding_initiated";
-  const commitLabel =
-    COMMIT_LABEL[
-      fromStatus === "onboarding" && chosen === "active" ? "active_from_onboarding" : chosen
-    ] ?? "Apply";
+  const commitLabel = COMMIT_LABEL[chosen] ?? "Apply";
 
   async function submit(): Promise<void> {
     if (busy) return;
@@ -136,10 +136,22 @@ export function TenantTransitionDialog({
         </p>
         {targets.length === 0 ? (
           <>
-            <p style={{ margin: 0 }}>No status changes are available from this state.</p>
-            <Button tone="secondary" onClick={onClose}>
-              Close
-            </Button>
+            {fromStatus === "onboarding" ? (
+              <p style={{ margin: 0 }}>
+                A tenant goes live through the onboarding wizard: its compliance officer attests
+                readiness, then a different operator approves.
+              </p>
+            ) : (
+              <p style={{ margin: 0 }}>No status changes are available from this state.</p>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+              {fromStatus === "onboarding" && onOpenOnboarding ? (
+                <Button onClick={onOpenOnboarding}>Open onboarding</Button>
+              ) : null}
+              <Button tone="secondary" onClick={onClose}>
+                Close
+              </Button>
+            </div>
           </>
         ) : (
           <>

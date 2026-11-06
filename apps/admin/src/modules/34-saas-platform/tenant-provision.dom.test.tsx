@@ -121,6 +121,11 @@ describe("TenantProvisionDrawer", () => {
     expect(posts()).toEqual([]);
   });
 
+  it("does not ask for a plan: it is signed at onboarding step 2", () => {
+    mount(() => json(202, {}));
+    expect(screen.queryByLabelText("Plan")).toBeNull();
+  });
+
   it("posts the trimmed fields and reports the request as accepted", async () => {
     const { posts, onAccepted } = mount(() => json(202, { accepted: true }));
     fillAll();
@@ -136,7 +141,7 @@ describe("TenantProvisionDrawer", () => {
           breachNotificationContactEmail: "privacy@cedar.example",
           firstAdminEmail: "ada@cedar.example",
           firstAdminFullName: "Ada Admin",
-          planLabel: "standard",
+          // No plan label: the plan is a census-banded contract signed at onboarding step 2, not a tier picked here.
           // Suggested from the legal name; the operator never touched the field.
           slug: "cedar-ridge-hospice",
         },

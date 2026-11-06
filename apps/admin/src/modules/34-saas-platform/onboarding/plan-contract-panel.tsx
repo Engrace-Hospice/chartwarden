@@ -29,7 +29,7 @@ interface Plan {
   version: number;
   currencyCode: string;
 }
-interface Contract {
+export interface PlatformContract {
   plan: Plan;
   billingServiceMode: Mode;
   pendingBillingServiceMode: { billingServiceMode: Mode; effectiveOn: string } | null;
@@ -76,7 +76,7 @@ export function formatCents(cents: number, currency: string): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
 }
 
-function ContractSummary({ contract }: { contract: Contract }): JSX.Element {
+export function ContractSummary({ contract }: { contract: PlatformContract }): JSX.Element {
   const money = (cents: number): string => formatCents(cents, contract.plan.currencyCode);
   return (
     <dl className="wx-kv">
@@ -169,13 +169,13 @@ function PlanContractBody({ ctx }: { ctx: PanelContext }): JSX.Element {
         response?: { status: number };
       }>,
   );
-  const subscription = useLoad<{ contract: Contract | null }>(
+  const subscription = useLoad<{ contract: PlatformContract | null }>(
     `subscription:${orgSlug}`,
     () =>
       client.GET("/api/v1/platform/tenants/{orgSlug}/subscription", {
         params: { path: { orgSlug } },
       }) as Promise<{
-        data?: { contract: Contract | null };
+        data?: { contract: PlatformContract | null };
         error?: unknown;
         response?: { status: number };
       }>,

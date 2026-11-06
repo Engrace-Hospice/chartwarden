@@ -28,9 +28,10 @@ const SECTIONS: readonly { label: string; screens: readonly Placement[] }[] = [
     screens: [
       { id: "saas.tenants", icon: "building" },
       { id: "saas.signups", icon: "user-plus" },
-      { id: "saas.onboarding-templates", icon: "clipboard-list" },
       { id: "saas.feature-flags", icon: "zap" },
       { id: "saas.support-sessions", icon: "message-square" },
+      // The wizard's own steps are fixed by the platform; this is the editor for tenant-added extras, so it sits last.
+      { id: "saas.onboarding-templates", icon: "clipboard-list" },
     ],
   },
   {

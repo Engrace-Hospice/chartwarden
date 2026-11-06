@@ -5,7 +5,6 @@ import {
   Glyph,
   InlineAlert,
   ReverifyLink,
-  SelectField,
   TextField,
   focusFirstInvalid,
   isStepUpRequired,
@@ -27,13 +26,6 @@ import {
   useSuggestedSlug,
 } from "./slug-field";
 
-type PlanLabel = "starter" | "standard" | "enterprise";
-
-const PLAN_OPTIONS: readonly { value: PlanLabel; label: string }[] = [
-  { value: "starter", label: "Starter" },
-  { value: "standard", label: "Standard" },
-  { value: "enterprise", label: "Enterprise" },
-];
 const NAME_MIN = 2;
 const NAME_MAX = 300;
 const ADMIN_NAME_MAX = 200;
@@ -49,7 +41,6 @@ interface Draft {
   adminEmail: string;
   adminName: string;
   slug: string;
-  plan: PlanLabel;
 }
 
 function takeDraft(): Draft | null {
@@ -134,7 +125,6 @@ export function TenantProvisionDrawer({
   const { slug, setSlug, following } = useSuggestedSlug(legalName, draft ? draft.slug : null);
   // Followed suggestion: checked once, when the operator leaves the legal name; a typed slug: after a short pause.
   const { status: slugStatus, checkSuggestion } = useSlugAvailability(slug, following);
-  const [plan, setPlan] = useState<PlanLabel>(draft?.plan ?? "standard");
   const [slugRefusal, setSlugRefusal] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Provisioning is queued, not instant, so the tenant is not in the list yet; locking the form after acceptance stops
@@ -176,7 +166,6 @@ export function TenantProvisionDrawer({
           breachNotificationContactEmail: breachEmail.trim(),
           firstAdminEmail: adminEmail.trim(),
           firstAdminFullName: adminName.trim(),
-          planLabel: plan,
           ...(slug.trim() === "" ? {} : { slug: slug.trim() }),
         },
       }));
@@ -252,12 +241,6 @@ export function TenantProvisionDrawer({
               setSlugRefusal(null);
             }}
           />
-          <SelectField
-            label="Plan"
-            value={plan}
-            options={PLAN_OPTIONS}
-            onChange={(e) => setPlan(e.target.value as PlanLabel)}
-          />
         </section>
         <section className="wx-drawer-card">
           <TextField
@@ -316,7 +299,6 @@ export function TenantProvisionDrawer({
                     adminEmail,
                     adminName,
                     slug,
-                    plan,
                   })
                 }
               />

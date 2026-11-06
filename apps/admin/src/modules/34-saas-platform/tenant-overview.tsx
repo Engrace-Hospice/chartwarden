@@ -4,6 +4,7 @@ import {
   Glyph,
   InlineAlert,
   LoadingSpinner,
+  REASON_RULES,
   StatusPill,
   TextField,
   useApiClient,
@@ -19,8 +20,12 @@ import {
 // The redesign frame: a page head (identity + lifecycle pill + shred) over the five flat cards.
 import { useCallback, useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { InvitationCard } from "./invitation-card";
+import { ContractSummary, type PlatformContract } from "./onboarding/plan-contract-panel";
+import { RecordSaveDialog } from "./onboarding/record-save-dialog";
+import { useLoad } from "./onboarding/use-load";
+import { useOpsWrite } from "./onboarding/use-ops-write";
 import { ProvisioningCard } from "./provisioning-card";
 import { BAA_TONE, cap, lifecycleTone, statusLabel } from "./saas-status";
 import { TenantTransitionDialog } from "./tenant-transition-dialog";
@@ -47,17 +52,17 @@ interface TenantOverview {
     dekLastRotatedAt: string | null;
     destroyedAt: string | null;
   } | null;
+  /** Where the tenant is in the wizard (gating steps only); the older `onboarding` counts are the fallback. */
+  onboardingProgress: {
+    doneCount: number;
+    totalCount: number;
+    currentStepKey: string | null;
+    goLiveState: string;
+  } | null;
   onboarding: { totalTasks: number; doneTasks: number; currentStep: string | null };
   baa: { status: string; expiresOn: string | null } | null;
   activeGrants: number;
   activeSessions: number;
-}
-
-// The screen reads :orgSlug from the route; until the Register phase wires routing, fall back to the
-// last path segment so the live-wired component renders against the real path it is mounted at.
-function orgSlugFromPath(): string {
-  const segs = window.location.pathname.split("/").filter(Boolean);
-  return segs[segs.length - 1] ?? "";
 }
 
 /** The route requires `destructionCertificateId` as `format: "uuid"`; "" is rejected with a 400. */
@@ -68,13 +73,15 @@ const MIN_REASON = 8;
 export function TenantOverview(): JSX.Element {
   const client = useApiClient();
   const toast = useToast();
-  const [orgSlug] = useState(orgSlugFromPath);
+  const { orgSlug = "" } = useParams<{ orgSlug: string }>();
   const [tenant, setTenant] = useState<TenantOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const navigate = useNavigate();
   const [shredOpen, setShredOpen] = useState(false);
+  const [rotateOpen, setRotateOpen] = useState(false);
+  const rotateWrite = useOpsWrite();
   const [transitionOpen, setTransitionOpen] = useState(false);
   // The ceremony used to send `destructionCertificateId: ""` and a canned reason, then ignore the
   // result — so the shred failed validation every time and the console reported success anyway
@@ -120,24 +127,21 @@ export function TenantOverview(): JSX.Element {
     void load();
   }, [load]);
 
-  const rotateDek = useCallback(async () => {
-    const { error: err } = await client.POST("/api/v1/platform/tenants/{orgSlug}/dek-rotate", {
-      params: { path: { orgSlug } },
-      // TODO(M34 web, #29): still a canned reason — this should collect the operator's own
-      // justification, so the audit trail records why THIS rotation happened rather than a constant.
-      // Unlike the shred, this payload is valid (it clears the contract's minLength of 8) and the
-      // rotation does succeed, so it is left for the follow-up rather than fixed half-way here.
-      body: { reason: "Manual DEK rotation via platform console" },
-    });
-    if (err) {
-      // Previously `if (!err) void load()` — a refused rotation did nothing at all and said nothing,
-      // the same silent-failure shape as the shred (#29).
-      toast.show(errorMessage(err, "The DEK rotation was refused."), { tone: "error" });
-      return;
-    }
-    toast.show("DEK rotation enqueued.", { tone: "success" });
-    void load();
-  }, [client, orgSlug, load, toast]);
+  const rotateDek = useCallback(
+    async (reason: string) => {
+      const outcome = await rotateWrite.run(reason, () =>
+        client.POST("/api/v1/platform/tenants/{orgSlug}/dek-rotate", {
+          params: { path: { orgSlug } },
+          body: { reason },
+        }),
+      );
+      if (!outcome.ok) return; // the dialog stays open and says why
+      setRotateOpen(false);
+      toast.show("DEK rotation enqueued.", { tone: "success" });
+      void load();
+    },
+    [client, orgSlug, load, toast, rotateWrite],
+  );
 
   const confirmShred = useCallback(async () => {
     const cert = certId.trim();
@@ -212,7 +216,7 @@ export function TenantOverview(): JSX.Element {
           <div>
             <h1>{tenant.legalBusinessName}</h1>
             <p>
-              <span className="wx-data-md">{tenant.orgSlug}</span> · {tenant.planLabel}
+              <span className="wx-data-md">{tenant.orgSlug}</span>
             </p>
           </div>
           <div className="wx-list-toolbar-end">
@@ -233,9 +237,22 @@ export function TenantOverview(): JSX.Element {
           <LifecycleCard tenant={tenant} onTransition={() => setTransitionOpen(true)} />
           <OnboardingCard
             tenant={tenant}
-            onOpen={() => navigate(`/tenants/${encodeURIComponent(tenant.orgSlug)}/onboarding`)}
+            onOpen={(stepKey) =>
+              navigate(
+                `/tenants/${encodeURIComponent(tenant.orgSlug)}/onboarding${
+                  stepKey ? `/${encodeURIComponent(stepKey)}` : ""
+                }`,
+              )
+            }
           />
-          <KeyRingCard tenant={tenant} onRotate={() => void rotateDek()} />
+          <ContractCard orgSlug={orgSlug} />
+          <KeyRingCard
+            tenant={tenant}
+            onRotate={() => {
+              rotateWrite.clear();
+              setRotateOpen(true);
+            }}
+          />
           <SupportCard tenant={tenant} />
           <ExportsCard />
           <InvitationCard orgSlug={orgSlug} tenantAccountId={tenant.id} />
@@ -248,11 +265,26 @@ export function TenantOverview(): JSX.Element {
         tenantName={tenant.legalBusinessName}
         fromStatus={tenant.status}
         onClose={() => setTransitionOpen(false)}
+        onOpenOnboarding={() =>
+          navigate(`/tenants/${encodeURIComponent(tenant.orgSlug)}/onboarding`)
+        }
         onDone={() => {
           setTransitionOpen(false);
           toast.show("Tenant status updated.", { tone: "success" });
           void load(true);
         }}
+      />
+
+      <RecordSaveDialog
+        open={rotateOpen}
+        title="Rotate the data encryption key"
+        description={`A new key version is created for ${tenant.legalBusinessName}. Existing data is re-wrapped in the background.`}
+        rule={REASON_RULES.decision}
+        confirmLabel="Rotate"
+        write={rotateWrite}
+        orgSlug={orgSlug}
+        onConfirm={(reason) => void rotateDek(reason)}
+        onCancel={() => setRotateOpen(false)}
       />
 
       {/* §5.2 Card 1 / §6 D10 — the shred is irreversible: confirm-by-typing the legal business name. */}
@@ -385,39 +417,127 @@ function LifecycleCard({
   );
 }
 
-// ── Card 2 — Onboarding: eleven-step progress + Open onboarding CTA ───────────────────────────────────
+// ── Card 2 — Onboarding: where the tenant is in the wizard, and the one next thing to do ───────────────────────
+const stepLabel = (key: string): string => {
+  const words = key.replace(/_/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
 function OnboardingCard({
   tenant,
   onOpen,
-}: { tenant: TenantOverview; onOpen: () => void }): JSX.Element {
-  const { totalTasks, doneTasks, currentStep } = tenant.onboarding;
-  const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+}: { tenant: TenantOverview; onOpen: (stepKey?: string) => void }): JSX.Element {
+  const progress = tenant.onboardingProgress;
+  const done = progress?.doneCount ?? tenant.onboarding.doneTasks;
+  const total = progress?.totalCount ?? tenant.onboarding.totalTasks;
+  const next = progress?.currentStepKey ?? tenant.onboarding.currentStep;
+  const awaitingApproval = progress?.goLiveState === "awaiting_approval";
+  const inWizard = tenant.status === "onboarding" || tenant.status === "provisioning";
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   return (
     <Card
       title="Onboarding"
       cta={
-        <Button tone="secondary" size="sm" onClick={onOpen}>
-          Open onboarding
-        </Button>
+        inWizard ? (
+          awaitingApproval ? (
+            <Button size="sm" onClick={() => onOpen("go_live_checklist_complete")}>
+              Review go-live
+            </Button>
+          ) : (
+            <Button tone="secondary" size="sm" onClick={() => onOpen()}>
+              Continue onboarding
+            </Button>
+          )
+        ) : undefined
       }
     >
-      <span className="wx-nums text-sm">
-        {doneTasks} / {totalTasks} steps complete
-      </span>
-      <progress
-        value={pct}
-        max={100}
-        aria-label={`${pct}% complete`}
-        className="h-2 w-full appearance-none overflow-hidden rounded-full [&::-moz-progress-bar]:bg-[var(--color-primary)] [&::-webkit-progress-bar]:bg-[var(--color-surface-container)] [&::-webkit-progress-value]:bg-[var(--color-primary)]"
-      />
-      <span className="wx-row-sub">
-        {currentStep
-          ? `Current step: ${currentStep}`
-          : totalTasks === 0
-            ? "Not started"
-            : "All steps complete"}
-      </span>
+      {inWizard ? (
+        <>
+          <span className="wx-nums text-sm">
+            {done} of {total} steps done
+          </span>
+          <progress
+            value={pct}
+            max={100}
+            aria-label={`${pct}% complete`}
+            className="h-2 w-full appearance-none overflow-hidden rounded-full [&::-moz-progress-bar]:bg-[var(--color-primary)] [&::-webkit-progress-bar]:bg-[var(--color-surface-container)] [&::-webkit-progress-value]:bg-[var(--color-primary)]"
+          />
+          {awaitingApproval ? (
+            <InlineAlert tone="warning">
+              Waiting for your approval: the compliance officer has attested go-live readiness.
+            </InlineAlert>
+          ) : (
+            <span className="wx-row-sub">
+              {next
+                ? `Next: ${stepLabel(next)}`
+                : total === 0
+                  ? "Not started"
+                  : "All steps are done"}
+            </span>
+          )}
+        </>
+      ) : (
+        <span className="text-sm">
+          {tenant.status === "active"
+            ? "Onboarding is complete."
+            : "Onboarding is closed for this tenant."}
+        </span>
+      )}
     </Card>
+  );
+}
+
+// ── Contract and billing: read on request (each read of a tenant's pricing is audited), not on every visit ─────────
+function ContractCard({ orgSlug }: { orgSlug: string }): JSX.Element {
+  const [shown, setShown] = useState(false);
+  return (
+    <Card
+      title="Contract and billing"
+      cta={
+        shown ? undefined : (
+          <Button tone="secondary" size="sm" onClick={() => setShown(true)}>
+            Show contract and billing
+          </Button>
+        )
+      }
+    >
+      {shown ? (
+        <ContractBody orgSlug={orgSlug} />
+      ) : (
+        <span className="wx-row-sub">Reading the contract is recorded in the audit trail.</span>
+      )}
+    </Card>
+  );
+}
+
+function ContractBody({ orgSlug }: { orgSlug: string }): JSX.Element {
+  const client = useApiClient();
+  const sub = useLoad<{ contract: PlatformContract | null }>(
+    `hub-contract:${orgSlug}`,
+    () =>
+      client.GET("/api/v1/platform/tenants/{orgSlug}/subscription", {
+        params: { path: { orgSlug } },
+      }) as Promise<{
+        data?: { contract: PlatformContract | null };
+        error?: unknown;
+        response?: { status: number };
+      }>,
+  );
+  if (sub.failure) {
+    return (
+      <>
+        <InlineAlert tone="error">Could not load the contract.</InlineAlert>
+        <Button tone="secondary" size="sm" onClick={() => void sub.reload()}>
+          Try again
+        </Button>
+      </>
+    );
+  }
+  if (!sub.data) return <LoadingSpinner label="Loading the contract…" />;
+  return sub.data.contract ? (
+    <ContractSummary contract={sub.data.contract} />
+  ) : (
+    <span className="text-sm">No contract is signed yet. It is signed at onboarding step 2.</span>
   );
 }
 
