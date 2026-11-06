@@ -56,9 +56,29 @@ import {
   toWizardStepView,
 } from "./wizard-view";
 
+/**
+ * Binds the `compliance_officer` role to one ACTIVE member of a tenant. The production binder commits the grant on the TENANT
+ * pool under the tenant's own RLS scope (never on the platform pool, which holds no write on role grants) and writes an audit
+ * event naming the operator, the organisation and the reason in the same transaction. It throws a typed refusal when the
+ * organisation has no such role or the member is not active.
+ */
+export type ComplianceOfficerRoleBinder = (input: {
+  readonly organizationId: string;
+  readonly tenantAccountId: string;
+  readonly membershipId: string;
+  readonly operator: PlatformActor;
+  readonly reason: string;
+}) => Promise<void>;
+
 export interface OnboardingWizardDeps {
   readonly runner: WizardRunner;
   readonly orgProfile: OrgProfilePort;
+  /**
+   * The PLATFORM assignment route binds the role when the chosen member lacks it, so a new tenant's compliance officer can be
+   * designated at all: the tenant's org_admin cannot grant it (anti-escalation; the role carries keys org_admin deliberately
+   * lacks, ADR-0055 D9). Unbound, the platform route still requires the member to hold the role already.
+   */
+  readonly bindComplianceOfficerRole?: ComplianceOfficerRoleBinder;
   /** Runs the advance sweep for one tenant after a change (best effort; a failure never fails the change). */
   readonly advance?: (tenant: { tenantAccountId: string; organizationId: string }) => Promise<void>;
   readonly warn?: (message: string, context: Record<string, string>) => void;
@@ -165,6 +185,13 @@ const OFFICER_REASON_MAX = 500;
  * 1328's UPDATE policy enforces the same pair.
  */
 const OFFICER_CHANGEABLE_STATUSES: readonly string[] = [ONBOARDING_STATUS, "active"];
+
+/**
+ * The only tenant state in which the platform route may BIND the role: the first designation, while the tenant is onboarding.
+ * (`provisioning` would qualify by name, but an officer cannot be assigned before onboarding, so binding there would leave a
+ * stray grant.) Once the tenant is live, the platform route needs the member to hold the role already.
+ */
+const OFFICER_ROLE_BINDABLE_STATUS = ONBOARDING_STATUS;
 
 const refuse = (code: string, message: string, status: number): ChartWardenError =>
   new ChartWardenError(code, message, status);
@@ -484,6 +511,33 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
     });
     if (!updated) throw conflict();
     return updated;
+  }
+
+  /**
+   * Platform route only: gives an active member the `compliance_officer` role when they lack it, while the tenant is
+   * onboarding. Every other case returns false and leaves the decision to `assignOfficer` (which refuses a stranger, an
+   * inactive member, a locked tenant, or a member without the role). The bind commits first, on its own transaction, so a
+   * later failure leaves at most a grant to the member the operator chose, which the audit trail records.
+   */
+  async function ensureOfficerRole(
+    ctx: Loaded,
+    actor: PlatformActor,
+    membershipId: string,
+    reason: string,
+  ): Promise<boolean> {
+    if (!deps.bindComplianceOfficerRole || ctx.tenant.status !== OFFICER_ROLE_BINDABLE_STATUS) {
+      return false;
+    }
+    const member = await ctx.store.loadMember(ctx.tenant.organizationId, membershipId);
+    if (!member?.active || member.roleKeys.includes(COMPLIANCE_OFFICER_ROLE)) return false;
+    await deps.bindComplianceOfficerRole({
+      organizationId: ctx.tenant.organizationId,
+      tenantAccountId: ctx.tenant.tenantAccountId,
+      membershipId,
+      operator: actor,
+      reason,
+    });
+    return true;
   }
 
   /**
@@ -838,6 +892,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
         orgSlug,
         async (ctx) => {
           const previous = ctx.tenant.complianceOfficerMembershipId;
+          const roleBound = await ensureOfficerRole(ctx, actor, membershipId, reason);
           const assigned = await assignOfficer(ctx, membershipId);
           if (assigned.superseded) {
             await revokePending(
@@ -857,6 +912,7 @@ export function createOnboardingWizard(deps: OnboardingWizardDeps): OnboardingWi
             detail: {
               previousOfficerMembershipId: previous,
               newOfficerMembershipId: membershipId,
+              roleBoundByOperator: roleBound ? "true" : "false",
             },
           });
           return {
