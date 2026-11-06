@@ -42,6 +42,8 @@ import { type DbClient, createDbClient, schema } from "@chartwarden/db";
 import {
   createEnvTenantConfigResolver,
   createHttpDoseSpotClient,
+  createHttpDoseSpotConnectionProbe,
+  createLayeredTenantConfigResolver,
   unverifiedEndpoints,
 } from "@chartwarden/dosespot";
 import { createUnboundIqiesAdapter } from "@chartwarden/iqies-client";
@@ -363,6 +365,7 @@ import {
   ANALYTICS_RESPONSE_ROUTE_RATE_LIMIT,
   CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
   DEATH_BOARD_ROUTE_RATE_LIMIT,
+  DOSESPOT_VERIFY_ROUTE_RATE_LIMIT,
   EMERGENCY_ROUTE_RATE_LIMIT,
   M14_PACKET_BUILD_ROUTE_RATE_LIMIT,
   MEDICAL_REVIEW_REPORT_ROUTE_RATE_LIMIT,
@@ -379,6 +382,7 @@ import {
   startRealtimeServer,
 } from "./bootstrap/realtime";
 import { buildCriticalLabDeps, buildCriticalLabEscalate } from "./critical-lab-wiring";
+import { buildClinicAuditPort } from "./m12-dosespot-clinic-audit";
 import { buildClearinghouseAuditPort } from "./m23-clearinghouse-audit";
 import { buildM36ExportBinding } from "./m36-export-binding";
 import { buildM41OverrideAuditPort } from "./m41-override-audit";
@@ -708,8 +712,13 @@ import {
 } from "./modules/11-orders/index";
 import { RESULTS_UNREVIEWED_ALERT_TYPE } from "./modules/11-orders/order-result-review";
 import {
+  type ClinicAlertPort,
   M12_OUTBOX_EVENTS,
   M12_PLATFORM_JOB_ID,
+  buildClinicSecretCipher,
+  buildDoseSpotClinicOnboardingPort,
+  buildDoseSpotSettledReader,
+  buildDrizzleDoseSpotClinicRouteService,
   buildM12AdmissionActivatedMedHxConsumer,
   buildM12DischargeCascadeConsumer,
   buildM12DocumentBackrefConsumer,
@@ -724,14 +733,20 @@ import {
   buildM12ReconciliationDiscontinueConsumer,
   buildM12VerbalExpiredConsumer,
   createBreakerEdgeRecorder,
+  createDoseSpotClinicService,
   createDrizzleAdmissionIdForElectionPeriodPort,
   createDrizzleDoseSpotSeamStore,
   createDrizzleMedHxFetchEnqueuePort,
   createDrizzleMedicationOrderEraseStore,
   createDrizzlePatientSyncEnqueuePort,
+  createDrizzleRosterStore,
+  createDrizzleTenantConfigSource,
   createEnvWebhookSecretResolver,
+  createPrescriberEnrollmentService,
+  createTransmissionGate,
   createWebhookBodyCipher,
   describeM12AdapterPosture,
+  describeM12EnvFallbackWarning,
   getDoseSpotPhysicianDirectory,
   idgMedicationHistoryForOrg,
   medicationOrderPatientAndDrugForOrg,
@@ -744,6 +759,7 @@ import {
   registerDoseSpotSyncQueueWorker,
   registerDoseSpotWebhookRoute,
   registerM12CronWorkers,
+  registerTenantDoseSpotRoutes,
   scheduleDoseSpotSyncQueueDrain,
   scheduleM12Jobs,
   wireM12Tenancy,
@@ -2973,6 +2989,9 @@ function buildM34OnboardingFacts(db: DbClient) {
       const choice = await getSeam("TenantClearinghouseReader").choiceForOrg(orgId);
       return choice.vendor !== null && choice.status === "active";
     },
+    // Wizard step 10: the org's DoseSpot clinic registration is `active` (tenant onboarding slice 4). M12 owns the table; this
+    // reader opens the org's own `withOrgContext` and reads only the status.
+    dosespotSettled: buildDoseSpotSettledReader(db),
   };
 }
 
@@ -3692,7 +3711,24 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
   // an unconfigured tenant gets a non-retryable DegradedError from every call, is never queued for transmission,
   // and keeps activating orders locally. The breaker's open/close edges are collected here and published as
   // `m12.dosespot_degraded` / `_recovered` by the next M12 cron tick.
-  const m12TenantConfig = createEnvTenantConfigResolver();
+  // Tenant onboarding slice 4 (ADR-0110): the per-tenant source of truth is the `dosespot_clinic_registration` row (sealed under the
+  // tenant key ring, read per call so a deactivation or rotation takes effect on the very next call), layered IN FRONT of the env
+  // map: a tenant WITH a row is served by the row alone, a tenant with none keeps its env entry (the demo tenant).
+  const m12EnvConfig = createEnvTenantConfigResolver();
+  const m12ClinicCipher = buildClinicSecretCipher({
+    dekForOrg: (orgId) => getTenantKeyProvider().dekForOrg(orgId),
+    dekForOrgVersion: (orgId, version) => getTenantKeyProvider().dekForOrgVersion(orgId, version),
+  });
+  const m12TenantConfig = dbHandle
+    ? createLayeredTenantConfigResolver({
+        source: createDrizzleTenantConfigSource({
+          db: dbHandle.db,
+          cipher: m12ClinicCipher,
+          platformEnv: process.env,
+        }),
+        fallback: m12EnvConfig,
+      })
+    : m12EnvConfig;
   const m12BreakerEdges = createBreakerEdgeRecorder();
   const m12DoseSpotClient = createHttpDoseSpotClient({
     resolver: m12TenantConfig,
@@ -5550,8 +5586,11 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             recovery: buildM11StuckRecovery(dbHandle.db, m11OutboxPublisher),
           });
           mountDoseSpotRoutes(app, dbHandle.db, m12OutboxPublisher, {
-            transmissionEnabledFor: (organizationId) =>
-              m12TenantConfig.isConfiguredFor(organizationId),
+            // Queue for e-prescribing only when the org's DoseSpot is live AND the signing prescriber is linked to DoseSpot.
+            transmissionGate: createTransmissionGate({
+              envFallbackFor: async (organizationId) =>
+                m12EnvConfig.configuredOrganizationIds().includes(organizationId.toLowerCase()),
+            }),
             resolvePhysicianDirectory: getDoseSpotPhysicianDirectory,
           }); // M12 — reads + the write lifecycle over Drizzle+RLS, m12.* transactional outbox
           // F-230 (#248) — the public `POST /webhooks/dosespot` (HMAC + replay window + dedup + DEK-encrypted receipt;
@@ -6124,6 +6163,48 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             }),
           };
           onboardingWizardHolder.current = m34Onboarding.wizard;
+          // Tenant onboarding slice 4 (ADR-0110): the DoseSpot clinic registration. ONE service serves the tenant's own routes and the
+          // platform operator's onboarding lane (the same rules under the tenant's own RLS). The credential is sealed under the
+          // tenant key ring; the connection test mints one token (no PHI) through the adapter's own probe; a prescriber's vendor
+          // enrolment goes through the live adapter (never inside a transaction). The go-live void runs in every change's transaction.
+          const m12ClinicService = createDoseSpotClinicService({
+            cipher: m12ClinicCipher,
+            probe: createHttpDoseSpotConnectionProbe(),
+            env: process.env,
+            envFallbackFor: (organizationId) =>
+              m12EnvConfig.configuredOrganizationIds().includes(organizationId.toLowerCase()),
+          });
+          const m12ClinicAfterWrite = async (
+            tx: DbClient,
+            scope: { organizationId: string; userId: string; membershipId: string | null },
+          ): Promise<void> => {
+            await voidPendingGoLiveForDataChange(tx, {
+              organizationId: scope.organizationId,
+              revokedByUserId: scope.userId,
+              revokedByMembershipId: scope.membershipId,
+            });
+          };
+          // The M36 alert to the tenant's administrators when its registration stops being live. The seam resolves lazily.
+          const m12ClinicAlerts: ClinicAlertPort = {
+            dispatch: async ({ alertCode, severity, organizationId, payload }) => {
+              await (getSeam("AlertEmitter") as AlertEmitter).emit(organizationId, {
+                eventType: alertCode,
+                payload,
+                severity,
+                correlationId: cronAlertCorrelationId("m12-clinic", alertCode, payload),
+              });
+            },
+          };
+          const m12PrescriberEnrollment = createPrescriberEnrollmentService({
+            inTx: (organizationId, userId, fn) =>
+              withOrgContext(dbHandle.db, { organizationId, userId }, (tx) =>
+                fn(createDrizzleRosterStore(tx as unknown as DbClient), tx as unknown as DbClient),
+              ),
+            client: m12DoseSpotClient,
+            outbox: m12OutboxPublisher,
+            audit: buildClinicAuditPort(),
+            afterWrite: m12ClinicAfterWrite,
+          });
           mountTenantPlatformRoutes(app, dbHandle.db, {
             tenantBaseDomain,
             // Each slug probe is an audited platform read: 30/min/user, 300/min/org, fail-open (an availability control).
@@ -6162,6 +6243,13 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
             // through the same M2 / M23 logic the tenant's own admin screens call; the EIN and the MAC secret are
             // sealed by the same ciphers and never returned.
             onboardingData: {
+              // The DoseSpot connection test is a vendor call too: counted per TARGET tenant, like the clearinghouse's.
+              dosespotVerifyRateLimit: createRouteRateLimit({
+                store: rateLimitStore ?? createInMemoryRateLimitStore(),
+                limit: DOSESPOT_VERIFY_ROUTE_RATE_LIMIT,
+                keyPrefix: "m34-dosespot-verify",
+                scopeOf: targetTenantScopeOf,
+              }),
               clearinghouseVerifyRateLimit: createRouteRateLimit({
                 store: rateLimitStore ?? createInMemoryRateLimitStore(),
                 limit: CLEARINGHOUSE_VERIFY_ROUTE_RATE_LIMIT,
@@ -6191,6 +6279,14 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 clearinghouse: buildTenantClearinghouseOnboardingPort({
                   db: dbHandle.db,
                   service: tenantClearinghouseService,
+                }),
+                // Tenant onboarding slice 4: an operator registers the tenant's DoseSpot clinic through M12's own service.
+                dosespot: buildDoseSpotClinicOnboardingPort({
+                  db: dbHandle.db,
+                  service: m12ClinicService,
+                  outbox: m12OutboxPublisher,
+                  enrollment: m12PrescriberEnrollment,
+                  alerts: m12ClinicAlerts,
                 }),
                 // An operator withdraws a tenant's "filed outside ChartWarden" NOE / NOTR record (M23's own rule, on the caller's tx).
                 notices: buildExternalNoticeOnboardingPort(),
@@ -6247,6 +6343,27 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                   }
                 : {}),
             },
+          });
+          // Tenant onboarding slice 4: the tenant's own DoseSpot registration (`/tenant/dosespot`) and a prescriber's vendor
+          // enrolment. Choosing and activating settles wizard step 10 at once, post-commit and best effort.
+          registerTenantDoseSpotRoutes(app, {
+            clinicService: buildDrizzleDoseSpotClinicRouteService({
+              db: dbHandle.db,
+              service: m12ClinicService,
+              audit: buildClinicAuditPort(),
+              outbox: m12OutboxPublisher,
+              afterWrite: m12ClinicAfterWrite,
+              alerts: m12ClinicAlerts,
+              onChanged: settleOnboardingForOrg,
+              logError: (err, context) =>
+                app.log.error({ err, ...context }, "tenant DoseSpot: a post-commit step failed"),
+            }),
+            enrollmentService: m12PrescriberEnrollment,
+            verifyRateLimit: createRouteRateLimit({
+              store: rateLimitStore ?? createInMemoryRateLimitStore(),
+              limit: DOSESPOT_VERIFY_ROUTE_RATE_LIMIT,
+              keyPrefix: "m12-dosespot-verify",
+            }),
           });
           // M33 (Phase 2C) — mount the Reporting READ + WRITE + EXPORT/DRILLDOWN surfaces over the DRIZZLE
           // route services. Reads run under withReportSession (replica-over-primary, RLS-scoped, read-only,
@@ -11853,6 +11970,10 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       },
       describeM12AdapterPosture(m12TenantConfig.configuredOrganizationIds()),
     );
+    // Slice 4: name each org the env fallback serves (an org with no registration row of its own).
+    const m12EnvServed = describeM12EnvFallbackWarning(m12EnvConfig.configuredOrganizationIds());
+    if (m12EnvServed)
+      app.log.warn({ organizations: m12EnvConfig.configuredOrganizationIds() }, m12EnvServed);
     // M19 §4.5 path 1 / §4.8 — the `on_call_roster_sync_queue` drain (`m19.shift-sync.debounced`) +
     // catch-up-seed workers (m19 `handlers-unbound` group, #248; F-155's own finding, now built).
     // `reconcileOnCallRoster`/`decideRosterSyncTrigger` (`roster/shift-sync.ts`) were complete and unit-

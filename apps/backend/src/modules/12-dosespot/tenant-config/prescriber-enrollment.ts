@@ -58,12 +58,34 @@ export interface EnrollInput {
   readonly lastName: string;
 }
 
+/** What step 1 read and validated: everything the vendor call and the record need, so no store call is open while DoseSpot is called. */
+export interface EnrollPlan {
+  readonly organizationId: string;
+  readonly membershipId: string;
+  readonly input: EnrollInput;
+  /** The prescriber is already linked to DoseSpot: there is nothing to call or record. */
+  readonly alreadyLinked: boolean;
+}
+
 export interface PrescriberEnrollmentService {
+  /** The whole flow for the tenant's own route: prepare, call, record (each its own transaction or none). */
   enroll(
     actor: EnrollActor,
     membershipId: string,
     input: EnrollInput,
   ): Promise<{ readonly membershipId: string; readonly enrolledWithDoseSpot: true }>;
+  /** Step 1 (own transaction, committed): validate, check the registration is ready, ensure the roster row and the request marker. */
+  prepare(actor: EnrollActor, membershipId: string, input: EnrollInput): Promise<EnrollPlan>;
+  /** Step 2 (NO transaction): the vendor call. Returns the vendor's id, or null when the prescriber was already linked. */
+  callVendor(plan: EnrollPlan): Promise<string | null>;
+  /** Step 3 (the caller's transaction): record the vendor id, publish, audit, void a pending go-live. */
+  complete(
+    store: RosterStore,
+    tx: DbClient,
+    actor: EnrollActor,
+    plan: EnrollPlan,
+    vendorId: string,
+  ): Promise<{ readonly rosterId: string }>;
 }
 
 export interface PrescriberEnrollmentDeps {
@@ -132,67 +154,95 @@ export function createPrescriberEnrollmentService(
   deps: PrescriberEnrollmentDeps,
 ): PrescriberEnrollmentService {
   const now = deps.now ?? (() => new Date());
-  return {
-    async enroll(actor, membershipId, rawInput) {
-      const input = validate(rawInput);
-      const { organizationId } = actor;
-      const ready = await deps.inTx(organizationId, actor.userId, async (store) => {
-        const status = await store.configStatus(organizationId);
-        if (status !== "verified" && status !== "active") {
-          throw new ChartWardenError(
-            "DOSESPOT_NOT_READY",
-            "register and test the DoseSpot connection before enrolling prescribers",
-            409,
-          );
-        }
-        const row = await store.ensureRequested(organizationId, membershipId, now());
-        return row.dosespotPrescriberId !== null && row.revokedAt === null;
-      });
-      if (ready) return { membershipId, enrolledWithDoseSpot: true };
 
-      let vendorId: string;
-      try {
-        const out = await deps.client.enrollPrescriber(organizationId, {
-          membershipId,
-          firstName: input.firstName,
-          lastName: input.lastName,
-          npi: input.npi,
-          epcsRequested: false,
-        });
-        vendorId = out.dosespotPrescriberId;
-      } catch (err) {
-        return vendorError(err);
+  async function prepare(
+    actor: EnrollActor,
+    membershipId: string,
+    rawInput: EnrollInput,
+  ): Promise<EnrollPlan> {
+    const input = validate(rawInput);
+    const { organizationId } = actor;
+    const alreadyLinked = await deps.inTx(organizationId, actor.userId, async (store) => {
+      const status = await store.configStatus(organizationId);
+      if (status !== "verified" && status !== "active") {
+        throw new ChartWardenError(
+          "DOSESPOT_NOT_READY",
+          "register and test the DoseSpot connection before enrolling prescribers",
+          409,
+        );
       }
+      const row = await store.ensureRequested(organizationId, membershipId, now());
+      return row.dosespotPrescriberId !== null && row.revokedAt === null;
+    });
+    return { organizationId, membershipId, input, alreadyLinked };
+  }
 
-      await deps.inTx(organizationId, actor.userId, async (store, tx) => {
-        const row = await store.recordVendorId(organizationId, membershipId, {
-          dosespotPrescriberId: vendorId,
-          npi: input.npi,
-          at: now(),
-        });
-        await deps.outbox.publish(tx, {
-          eventName: "m12.prescriber_enrolled",
-          organizationId,
-          aggregateKind: "dosespot_prescriber",
-          aggregateId: membershipId,
-          payload: { membershipId, dosespotPrescriberId: vendorId },
-        });
-        await deps.audit.record(tx, {
-          organizationId,
-          actorUserId: actor.userId,
-          actorMembershipId: actor.membershipId,
-          eventType: CLINIC_AUDIT_EVENTS.prescriberEnrolled,
-          resourceKind: "dosespot_prescriber",
-          resourceId: row.id,
-          changedFields: ["dosespotPrescriberId", "npi"],
-          ...(actor.request ? { request: actor.request } : {}),
-        });
-        await deps.afterWrite?.(tx, {
-          organizationId,
-          userId: actor.userId,
-          membershipId: actor.membershipId,
-        });
+  async function callVendor(plan: EnrollPlan): Promise<string | null> {
+    if (plan.alreadyLinked) return null;
+    try {
+      const out = await deps.client.enrollPrescriber(plan.organizationId, {
+        membershipId: plan.membershipId,
+        firstName: plan.input.firstName,
+        lastName: plan.input.lastName,
+        npi: plan.input.npi,
+        epcsRequested: false,
       });
+      return out.dosespotPrescriberId;
+    } catch (err) {
+      return vendorError(err);
+    }
+  }
+
+  async function complete(
+    store: RosterStore,
+    tx: DbClient,
+    actor: EnrollActor,
+    plan: EnrollPlan,
+    vendorId: string,
+  ): Promise<{ readonly rosterId: string }> {
+    const { organizationId, membershipId } = plan;
+    const row = await store.recordVendorId(organizationId, membershipId, {
+      dosespotPrescriberId: vendorId,
+      npi: plan.input.npi,
+      at: now(),
+    });
+    await deps.outbox.publish(tx, {
+      eventName: "m12.prescriber_enrolled",
+      organizationId,
+      aggregateKind: "dosespot_prescriber",
+      aggregateId: membershipId,
+      payload: { membershipId, dosespotPrescriberId: vendorId },
+    });
+    await deps.audit.record(tx, {
+      organizationId,
+      actorUserId: actor.userId,
+      actorMembershipId: actor.membershipId,
+      eventType: CLINIC_AUDIT_EVENTS.prescriberEnrolled,
+      resourceKind: "dosespot_prescriber",
+      resourceId: row.id,
+      changedFields: ["dosespotPrescriberId", "npi"],
+      ...(actor.request ? { request: actor.request } : {}),
+    });
+    await deps.afterWrite?.(tx, {
+      organizationId,
+      userId: actor.userId,
+      membershipId: actor.membershipId,
+    });
+    return { rosterId: row.id };
+  }
+
+  return {
+    prepare,
+    callVendor,
+    complete,
+    async enroll(actor, membershipId, input) {
+      const plan = await prepare(actor, membershipId, input);
+      const vendorId = await callVendor(plan);
+      if (vendorId !== null) {
+        await deps.inTx(plan.organizationId, actor.userId, (store, tx) =>
+          complete(store, tx, actor, plan, vendorId),
+        );
+      }
       return { membershipId, enrolledWithDoseSpot: true };
     },
   };

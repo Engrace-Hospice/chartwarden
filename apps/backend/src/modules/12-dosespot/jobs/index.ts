@@ -44,6 +44,7 @@ export {
   M12_QUEUE_CATALOG,
   M12_SPEC_QUEUE_NAMES,
   describeM12AdapterPosture,
+  describeM12EnvFallbackWarning,
   describeM12DeferredQueues,
 } from "./queue-catalog";
 // GAP-037 — the seven §4.8 crons (transmission, recovery drain, status sweep, refill SLA, IAL2, EPCS expiry,

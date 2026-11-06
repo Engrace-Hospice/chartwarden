@@ -129,13 +129,28 @@ export const M12_DEFERRED_QUEUES: readonly M12DeferredQueue[] = M12_QUEUE_CATALO
   (q): q is M12DeferredQueue => q.status === "deferred",
 );
 
-/** The boot-time line: honest about the adapter being unbound until credentials are configured. */
+/**
+ * The boot-time line: honest about the adapter being unbound until credentials are configured. `configuredOrganizationIds` names
+ * only the orgs known WITHOUT a lookup (the `DOSESPOT_TENANT_CONFIGS` fallback): a tenant's own registration
+ * (`dosespot_clinic_registration`, slice 4) is read from the database on demand and is not countable here.
+ */
 export function describeM12AdapterPosture(configuredOrganizationIds: readonly string[]): string {
   const built = M12_QUEUE_CATALOG.filter((q) => q.status === "built").length;
   if (configuredOrganizationIds.length === 0) {
-    return `M12 §4.8: ${built} of ${M12_QUEUE_CATALOG.length} queues built; the DoseSpot adapter is UNBOUND until per-tenant credentials are configured (DOSESPOT_TENANT_CONFIGS) — nothing is queued for transmission and orders keep activating locally; vendor endpoints/field names are unverified until a sandbox run`;
+    return `M12 §4.8: ${built} of ${M12_QUEUE_CATALOG.length} queues built; the DoseSpot adapter is UNBOUND until per-tenant credentials are configured (a tenant registers its clinic, stored in dosespot_clinic_registration and read per call; DOSESPOT_TENANT_CONFIGS is only a fallback) — a tenant with no live registration queues nothing for transmission and its orders keep activating locally; vendor endpoints/field names are unverified until a sandbox run`;
   }
-  return `M12 §4.8: ${built} of ${M12_QUEUE_CATALOG.length} queues built; DoseSpot adapter bound for ${configuredOrganizationIds.length} tenant(s); vendor endpoints/field names are unverified until a sandbox run (see docs/history/m12-dosespot-adapter.md)`;
+  return `M12 §4.8: ${built} of ${M12_QUEUE_CATALOG.length} queues built; DoseSpot adapter bound for ${configuredOrganizationIds.length} tenant(s) through the env fallback (other tenants through their own registration); vendor endpoints/field names are unverified until a sandbox run (see docs/history/m12-dosespot-adapter.md)`;
+}
+
+/**
+ * The boot WARNING naming each org an env entry serves: an org with no registration of its own keeps that entry as a fallback
+ * (the demo tenant); the day it registers, its row takes over and the env entry stops serving it. Null when there are none.
+ */
+export function describeM12EnvFallbackWarning(
+  envServedOrganizationIds: readonly string[],
+): string | null {
+  if (envServedOrganizationIds.length === 0) return null;
+  return `M12 DoseSpot: ${envServedOrganizationIds.length} organization(s) are served by the DOSESPOT_TENANT_CONFIGS fallback because each has no registration of its own: ${envServedOrganizationIds.join(", ")}. Register them (PUT /api/v1/tenant/dosespot) and remove their env entries.`;
 }
 
 /** Back-compat for the first pass's boot line (kept so an unexpected deferral is still reported). */

@@ -33,6 +33,7 @@ import type {
   OnboardingCredentialPort,
   OnboardingWriteScope,
 } from "../../../../bootstrap/onboarding-credential-port";
+import type { OnboardingDoseSpotPort } from "../../../../bootstrap/onboarding-dosespot-port";
 import type {
   OnboardingNoticeKind,
   OnboardingNoticePort,
@@ -55,6 +56,7 @@ import {
   type OnboardingOperator,
   recordOnboardingAudit,
 } from "./onboarding-data-audit";
+import { buildDoseSpotLane } from "./onboarding-dosespot-lane";
 import { ONBOARDING_WRITABLE_STATUSES, lockTenantOnboardingShared } from "./tenant-onboarding-lock";
 
 export type { OnboardingOperator } from "./onboarding-data-audit";
@@ -147,6 +149,32 @@ export interface OnboardingDataService {
     fields: OnboardingFields & { providerEntityId: string },
     reason: string,
   ): Promise<unknown>;
+  // ── tenant onboarding slice 4 (ADR-0110): the tenant's DoseSpot clinic registration (the credential is write-only) ──
+  /** The tenant's DoseSpot registration, masked (`hasSecret`, never the credential). One audited read. */
+  getDoseSpot(op: OnboardingOperator, orgSlug: string): Promise<unknown>;
+  putDoseSpot(
+    op: OnboardingOperator,
+    orgSlug: string,
+    fields: OnboardingFields,
+    reason: string,
+    expectedVersion: number | undefined,
+  ): Promise<{ readonly created: boolean; readonly view: unknown }>;
+  verifyDoseSpot(
+    op: OnboardingOperator,
+    orgSlug: string,
+    reason: string,
+  ): Promise<{ readonly config: unknown; readonly test: unknown }>;
+  activateDoseSpot(op: OnboardingOperator, orgSlug: string, reason: string): Promise<unknown>;
+  /** NOT gated on the tenant's onboarding status: a live tenant needs it too. */
+  deactivateDoseSpot(op: OnboardingOperator, orgSlug: string, reason: string): Promise<unknown>;
+  listDoseSpotPrescribers(op: OnboardingOperator, orgSlug: string): Promise<{ items: unknown[] }>;
+  enrollDoseSpotPrescriber(
+    op: OnboardingOperator,
+    orgSlug: string,
+    membershipId: string,
+    fields: OnboardingFields,
+    reason: string,
+  ): Promise<unknown>;
 }
 
 /** The organization behind a tenant slug, or null. A slug lookup spans tenants, so it needs the platform credential. */
@@ -174,6 +202,8 @@ export interface OnboardingDataDeps {
   readonly warn?: (message: string, context: Record<string, unknown>) => void;
   /** M23's clearinghouse adapter (ADR-0053 amendment 2026-11-06); unbound -> the clearinghouse routes answer 503. */
   readonly clearinghouse?: OnboardingClearinghousePort;
+  /** M12's DoseSpot adapter (tenant onboarding slice 4); unbound -> the DoseSpot routes answer 503. */
+  readonly dosespot?: OnboardingDoseSpotPort;
   /** M23's notice adapter (an operator withdraws a tenant's external-filing record); unbound -> that route answers 503. */
   readonly notices?: OnboardingNoticePort;
   /**
@@ -723,5 +753,16 @@ export function buildDrizzleOnboardingDataService(deps: OnboardingDataDeps): Onb
     listMedicaidCredentials: (op, orgSlug) => listCredentials(op, orgSlug, MEDICAID_LANE),
     upsertMedicaidCredential: (op, orgSlug, fields, reason) =>
       upsertCredential(op, orgSlug, MEDICAID_LANE, fields, reason),
+
+    // Tenant onboarding slice 4: the DoseSpot lane (its own file; it reuses write / read / settle above).
+    ...buildDoseSpotLane({
+      port: () => deps.dosespot,
+      targetOf,
+      scopeOf,
+      write,
+      read,
+      settle: settleStepAfter,
+      ...(deps.logError ? { logError: deps.logError } : {}),
+    }),
   };
 }

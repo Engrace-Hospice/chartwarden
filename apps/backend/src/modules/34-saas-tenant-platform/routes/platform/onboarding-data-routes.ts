@@ -32,7 +32,7 @@ import {
 } from "./onboarding-data-typebox";
 import { OrgSlugParamsSchema, parse } from "./platform-typebox";
 
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 export interface OnboardingDataRouteDeps {
   readonly service: OnboardingDataService;
@@ -52,11 +52,11 @@ const CLEARINGHOUSE_VERIFY_BAA_KEY = "tenant_clearinghouse.verify_baa_platform";
 const NOTICE_WITHDRAW_KEY = "tenant_notice_filing.withdraw_platform";
 const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
 
-const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
-const OPS = (key: string): PreHandler => requireAbac(key, PLATFORM_OPS) as PreHandler;
+export const P = (key: string): PreHandler => requirePermission(key) as PreHandler;
+export const OPS = (key: string): PreHandler => requireAbac(key, PLATFORM_OPS) as PreHandler;
 
 /** `Idempotency-Key` presence (the 24h replay caching is the M1 global middleware; the other modules carry the same guard). */
-const requireIdempotencyKey: PreHandler = async (request) => {
+export const requireIdempotencyKey: PreHandler = async (request) => {
   const raw = request.headers["idempotency-key"];
   const value = Array.isArray(raw) ? raw[0] : raw;
   if (typeof value !== "string" || value.length < 1 || value.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
@@ -106,7 +106,7 @@ const NOTICE_WITHDRAW: readonly PreHandler[] = [
 ];
 
 /** The operator, from the server-assembled session (never the body); 401 when the session has no membership. */
-function operatorOf(request: FastifyRequest): OnboardingOperator {
+export function operatorOf(request: FastifyRequest): OnboardingOperator {
   const ctx = request.context;
   const membershipId = ctx?.attributes?.membershipId;
   if (!ctx?.organizationId || !ctx.userId || typeof membershipId !== "string") {
@@ -133,7 +133,7 @@ function operatorOf(request: FastifyRequest): OnboardingOperator {
  * characters a padded reason is made of, so the NORMALISED length is what is enforced: a reason of "abcd    " is a 422,
  * not an audit row, and what reaches the tenant-visible audit trail has no control or format characters in it.
  */
-function splitReason<B extends { reason: string }>(
+export function splitReason<B extends { reason: string }>(
   body: B,
 ): { reason: string; fields: Omit<B, "reason"> } {
   const { reason, ...fields } = body;
@@ -151,7 +151,7 @@ function splitReason<B extends { reason: string }>(
 }
 
 /** The optional `If-Match` version of an existing MAC credential: absent on a first create, an integer on an update. */
-function optionalIfMatch(request: FastifyRequest): number | undefined {
+export function optionalIfMatch(request: FastifyRequest): number | undefined {
   const raw = request.headers["if-match"];
   const value = Array.isArray(raw) ? raw[0] : raw;
   if (typeof value !== "string" || value.length === 0) return undefined;

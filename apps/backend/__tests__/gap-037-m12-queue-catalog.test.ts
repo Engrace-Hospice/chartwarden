@@ -8,6 +8,7 @@ import {
   M12_QUEUE_CATALOG,
   M12_SPEC_QUEUE_NAMES,
   describeM12AdapterPosture,
+  describeM12EnvFallbackWarning,
 } from "../src/modules/12-dosespot/jobs/queue-catalog";
 import {
   M12_CRON_QUEUES,
@@ -54,5 +55,18 @@ describe("M12 §4.8 queue catalog", () => {
     expect(describeM12AdapterPosture([])).toMatch(/orders keep activating locally/);
     expect(describeM12AdapterPosture(["org-1"])).toMatch(/bound for 1 tenant/);
     expect(describeM12AdapterPosture(["org-1"])).toMatch(/unverified until a sandbox run/);
+  });
+
+  it("slice 4: says per-tenant registrations are read from the database, and the env map is only a fallback", () => {
+    expect(describeM12AdapterPosture([])).toMatch(/dosespot_clinic_registration/);
+    expect(describeM12AdapterPosture(["org-1"])).toMatch(/env fallback/);
+  });
+
+  it("slice 4: warns, naming each org, that an env entry serves an org with no registration of its own", () => {
+    expect(describeM12EnvFallbackWarning([])).toBeNull();
+    const warning = describeM12EnvFallbackWarning(["org-1", "org-2"]);
+    expect(warning).toMatch(/org-1, org-2/);
+    expect(warning).toMatch(/DOSESPOT_TENANT_CONFIGS/);
+    expect(warning).toMatch(/no registration of its own/);
   });
 });

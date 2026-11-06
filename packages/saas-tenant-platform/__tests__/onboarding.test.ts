@@ -67,7 +67,7 @@ const CANONICAL_TEMPLATES: readonly Template[] = [
   attestation("clearinghouse_selected", 7),
   t("mac_configured", 8, "either", "context.macFeedConfigured == true"),
   attestation("payer_enrollment", 9),
-  t("dosespot_kickoff_initiated", 10, "either", "context.dosespotKickoffRecorded == true"),
+  t("dosespot_kickoff_initiated", 10, "either", "context.dosespotSettled == true"),
   t("first_admin_invited", 11, "auto", "context.orgAdminAcceptedMembershipCount > 0"),
   t("compliance_officer_assigned", 12, "either", "context.complianceOfficerAssigned == true"),
   attestation("sample_data_loaded", 13, true),
@@ -89,6 +89,7 @@ function metContext(overrides: Partial<OnboardingContext> = {}): OnboardingConte
     macFeedConfigured: true,
     clearinghouseSettled: true,
     dosespotKickoffRecorded: true,
+    dosespotSettled: true,
     xeroConnected: true,
     gustoConnected: true,
     primaryLocationExists: true,
@@ -226,6 +227,8 @@ describe("§2.3 precondition-DSL: canonical expressions met vs blocked", () => {
     const cases: ReadonlyArray<[string, keyof OnboardingContext]> = [
       ["context.macFeedConfigured == true", "macFeedConfigured"],
       ["context.dosespotKickoffRecorded == true", "dosespotKickoffRecorded"],
+      // Tenant onboarding slice 4 (ADR-0110): the e-prescribing step settles on an ACTIVE DoseSpot registration alone.
+      ["context.dosespotSettled == true", "dosespotSettled"],
       ["context.primaryLocationExists == true", "primaryLocationExists"],
       ["context.complianceOfficerAssigned == true", "complianceOfficerAssigned"],
     ];

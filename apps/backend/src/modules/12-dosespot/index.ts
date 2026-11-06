@@ -205,6 +205,7 @@ export {
   createDrizzlePatientSyncSnapshotResolver,
   createUnboundDosespotPatientIdResolver,
   describeM12AdapterPosture,
+  describeM12EnvFallbackWarning,
   describeM12DeferredQueues,
   registerM12CronWorkers,
   scheduleM12Jobs,
@@ -268,3 +269,45 @@ export {
 } from "./webhooks/ingest";
 export { DOSESPOT_WEBHOOK_PATH, registerDoseSpotWebhookRoute } from "./webhooks/webhook-route";
 export { enqueueTransmissionIfBound } from "./transmission-enqueue";
+
+// Tenant onboarding slice 4 (ADR-0110): the per-tenant DoseSpot clinic registration, its sealed credential, the layered config
+// source, the prescriber's vendor enrolment and the sign-time transmission gate.
+export {
+  type TransmissionGate,
+  createTransmissionGate,
+  decideTransmission,
+} from "./transmission-gate";
+export {
+  CLINIC_AUDIT_EVENTS,
+  type ClinicAuditEntry,
+  type ClinicAuditPort,
+} from "./tenant-config/audit-port";
+export {
+  type ClinicSecretBundle,
+  type ClinicSecretCipher,
+  buildClinicSecretCipher,
+} from "./tenant-config/secret-cipher";
+export { createDrizzleTenantConfigSource } from "./tenant-config/source";
+export { createDrizzleConfigStore } from "./tenant-config/config-store";
+export {
+  type ClinicActor,
+  type ClinicConfigView,
+  type DoseSpotClinicService,
+  createDoseSpotClinicService,
+} from "./tenant-config/service";
+export type { ClinicAlertPort } from "./tenant-config/effects";
+export {
+  type DoseSpotClinicRouteService,
+  buildDrizzleDoseSpotClinicRouteService,
+} from "./tenant-config/tenant-service";
+export {
+  type PrescriberEnrollmentService,
+  createPrescriberEnrollmentService,
+} from "./tenant-config/prescriber-enrollment";
+export { createDrizzleRosterStore } from "./tenant-config/roster-store";
+export {
+  type TenantDoseSpotRouteDeps,
+  registerTenantDoseSpotRoutes,
+} from "./tenant-config/routes";
+export { buildDoseSpotClinicOnboardingPort } from "./tenant-config/onboarding-port";
+export { buildDoseSpotSettledReader } from "./tenant-config/settled-reader";
