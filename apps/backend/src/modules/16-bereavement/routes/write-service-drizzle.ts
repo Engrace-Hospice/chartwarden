@@ -91,7 +91,7 @@ import {
   transitionBereavementPlan,
   verifySourceEncounter,
 } from "../lifecycle/index";
-import { requestDischargeSummary } from "../render-payloads/index";
+import { outreachLetterRequestOf, requestDischargeSummary } from "../render-payloads/index";
 import { scoreBereavementRisk } from "../risk/index";
 import { planCaregiverSeeds } from "../roster-seed";
 import { getBereavementEncounterReader, getVolunteerComplianceProvider } from "../seams/index";
@@ -144,10 +144,6 @@ import type {
 } from "./write-service";
 
 const NOOP_OUTBOX: WriteOutboxPort = { async publish() {} };
-
-/** GAP-130 / D14 — M22's published bereavement-letter template key (`22-documents/seams/renderer.ts`). One
- *  template for every per-outreach artifact; the outreach kind rides the content blob, not the key. */
-const BEREAVEMENT_LETTER_TEMPLATE_KEY = "bereavement_letter";
 
 const iso = (d: Date | string): string =>
   d instanceof Date ? d.toISOString() : new Date(d).toISOString();
@@ -2298,13 +2294,16 @@ export function buildDrizzleM16WriteService(
                     patientId: plan.patientId,
                     contactId: outreach.bereavedContactId,
                     outreachId: outreach.id,
-                    templateKey: BEREAVEMENT_LETTER_TEMPLATE_KEY,
-                    payloadJsonb: {
-                      outreachKind: outreach.kind,
-                      anniversaryMark: outreach.anniversaryMark ?? null,
-                      deathDate: localDate(plan.deathDate),
-                      dueAt: outreach.dueAt.toISOString(),
-                    },
+                    // ADR-0109 D2 — the closeout_letter floor item renders under its own template; every other letter under the generic one.
+                    ...outreachLetterRequestOf(
+                      {
+                        kind: outreach.kind,
+                        cadenceMark: outreach.cadenceMark ?? null,
+                        anniversaryMark: outreach.anniversaryMark ?? null,
+                        dueAt: outreach.dueAt,
+                      },
+                      { deathDate: localDate(plan.deathDate) },
+                    ),
                   },
                 }
               : {},

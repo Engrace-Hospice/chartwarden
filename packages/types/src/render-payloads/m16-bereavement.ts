@@ -16,6 +16,8 @@ export const BEREAVEMENT_PHYSICIAN_CONDOLENCE_TEMPLATE_KEY =
   "bereavement_physician_condolence_letter" as const;
 export const BEREAVEMENT_DISCHARGE_SUMMARY_TEMPLATE_KEY =
   "bereavement_discharge_summary_internal" as const;
+/** The day-390 `closeout_letter` floor item's own template (family-facing; not the generic `bereavement_letter`). */
+export const BEREAVEMENT_CLOSEOUT_LETTER_TEMPLATE_KEY = "bereavement_closeout_letter" as const;
 
 const text = Type.String({ minLength: 1 });
 const nullableInstant = Type.Union([text, Type.Null()]);
@@ -35,6 +37,28 @@ export const assertBereavementPhysicianLetterRenderPayload = (
   assertRenderPayload(
     BEREAVEMENT_PHYSICIAN_CONDOLENCE_TEMPLATE_KEY,
     BereavementPhysicianLetterRenderPayload,
+    p,
+  );
+
+/**
+ * The closeout letter that ends the 13-month program (the `closeout_letter` cadence mark, day 390). It names no one: the closing wording
+ * is compliance's to supply (as for the ABN), so the payload carries only the facts the letter is dated from.
+ */
+export const BereavementCloseoutLetterRenderPayload = Type.Object({
+  cadenceMark: Type.Literal("closeout_letter"),
+  outreachKind: text,
+  deathDate: text,
+  dueAt: text,
+});
+export type BereavementCloseoutLetterRenderPayload = Static<
+  typeof BereavementCloseoutLetterRenderPayload
+>;
+export const assertBereavementCloseoutLetterRenderPayload = (
+  p: unknown,
+): BereavementCloseoutLetterRenderPayload =>
+  assertRenderPayload(
+    BEREAVEMENT_CLOSEOUT_LETTER_TEMPLATE_KEY,
+    BereavementCloseoutLetterRenderPayload,
     p,
   );
 
