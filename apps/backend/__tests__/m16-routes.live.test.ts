@@ -48,7 +48,10 @@ import { buildServer, registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { registerBereavementAbacPredicates } from "../src/modules/16-bereavement/abac-predicates";
 import { buildDrizzleBereavementAbacResolver } from "../src/modules/16-bereavement/abac-resolver-drizzle";
-import { createBereavementCipher } from "../src/modules/16-bereavement/bereavement-crypto";
+import {
+  type BereavementCipher,
+  createBereavementCipher,
+} from "../src/modules/16-bereavement/bereavement-crypto";
 import { createDrizzleBereavementEraseStore } from "../src/modules/16-bereavement/erasers/bereavement-eraser";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/events-by-m16";
 import { M16_PERMISSION_KEY_LIST } from "../src/modules/16-bereavement/permission-keys";
@@ -59,6 +62,7 @@ import {
   buildDrizzleM16WriteService,
 } from "../src/modules/16-bereavement/routes/index";
 import { mountM16Routes } from "../src/modules/16-bereavement/routes/mount";
+import { physicianLetterNoteForOrg } from "../src/modules/16-bereavement/seams/physician-letter-note-for-org";
 import { createBereavementOutreachConsentProbe } from "../src/modules/39-consent/bereavement-outreach-consent-probe";
 import { createDbConsentEvaluator } from "../src/modules/39-consent/index";
 import { LIVE_DROP_ROLES, appRoleConnectionString } from "./_live-app-role";
@@ -99,6 +103,8 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let app: FastifyInstance;
+  /** The tenant-DEK envelope the services seal with (the same one the seam below opens the letter note with). */
+  let cipher: BereavementCipher;
   const actors: Record<string, Actor> = {};
   const pe: Record<string, string> = {};
   let planId = "";
@@ -302,14 +308,19 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     );
 
     const key = randomBytes(32);
-    const cipher = createBereavementCipher({
+    cipher = createBereavementCipher({
       dekForOrg: async () => ({ version: "v1", key }),
       dekForOrgVersion: async () => ({ version: "v1", key }),
     });
     // One envelope for both services, as the composition root binds it: the write service seals the care goals, the read
     // service opens them for a reader the D10 scope permits.
     const readService = buildDrizzleM16ReadService(handle.db, { cipher });
-    app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+    // `db` makes the M4 read-audit emit its event per successful PHI read (without it the coverage gate runs but nothing is written).
+    app = buildServer({
+      authenticate: headerAuth,
+      db: handle.db as never,
+      security: { rateLimitEnabled: false },
+    });
     mountM16Routes(app, {
       readService,
       draftService: buildDrizzleM16DraftService(handle.db, {
@@ -997,6 +1008,36 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     expect(await events("m16.bereavement.plan_resumed")).toBe(1);
   });
 
+  it("regenerate-schedule for a NAMED contact refuses one that is no longer in the program (409), instead of handing it a schedule", async () => {
+    const plan = await seedPlan(ORG_A, actors.don?.membership);
+    const gone = (
+      await admin.query(
+        `INSERT INTO bereaved_contact (organization_id, provider_entity_id, plan_id, display_name, relationship_code, status, confirmed_at)
+         VALUES ($1,$2,$3,'Opted Out Contact','spouse','opted_out', now()) RETURNING id`,
+        [ORG_A, pe[ORG_A], plan],
+      )
+    ).rows[0].id as string;
+    const version = (await admin.query("SELECT version FROM bereavement_plan WHERE id=$1", [plan]))
+      .rows[0].version as number;
+    const refused = await call(
+      "POST",
+      `/api/v1/bereavement/plans/${plan}/regenerate-schedule`,
+      "don",
+      { contactId: gone },
+      { "if-match": `"${version}"` },
+    );
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error?.code ?? refused.json().code).toBe("CONTACT_NOT_ENGAGEABLE");
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM bereavement_outreach WHERE bereaved_contact_id=$1",
+          [gone],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+  });
+
   it("regenerate-schedule and recompute-risk append; the score ledger grows", async () => {
     const regen = await call(
       "POST",
@@ -1336,6 +1377,35 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     expect(await status("bereavement_outreach", b.pastDue)).toBe("cancelled");
     expect(await status("bereavement_assessment_task", b.pastDueTask)).toBe("cancelled");
     expect(await status("bereavement_assessment_task", b.futureTask)).toBe("scheduled");
+
+    // an AGENCY-side pause (operational) removes no obligation: the past-due row and every checkpoint are KEPT through the pause and
+    // the resume, so the miss cron marks what is overdue once the plan is active again
+    const c = await seedOld();
+    const planVersionOf = async (plan: string) =>
+      (await admin.query("SELECT version FROM bereavement_plan WHERE id=$1", [plan])).rows[0]
+        .version as number;
+    const operational = await call(
+      "POST",
+      `/api/v1/bereavement/plans/${c.plan}/pause`,
+      "don",
+      { pauseKind: "operational", reason: "The bereavement team is short-staffed this month" },
+      { "if-match": `"${await planVersionOf(c.plan)}"` },
+    );
+    expect(operational.statusCode).toBe(200);
+    expect(await status("bereavement_outreach", c.pastDue)).toBe("scheduled");
+    expect(await status("bereavement_assessment_task", c.pastDueTask)).toBe("scheduled");
+    expect(await status("bereavement_assessment_task", c.futureTask)).toBe("scheduled");
+    const operationalResume = await call(
+      "POST",
+      `/api/v1/bereavement/plans/${c.plan}/resume`,
+      "don",
+      {},
+      { "if-match": `"${await planVersionOf(c.plan)}"` },
+    );
+    expect(operationalResume.statusCode).toBe(200);
+    expect(await status("bereavement_outreach", c.pastDue)).toBe("scheduled");
+    expect(await status("bereavement_assessment_task", c.pastDueTask)).toBe("scheduled");
+    expect(await status("bereavement_assessment_task", c.futureTask)).toBe("scheduled");
   });
 
   it("pre-death draft: the care-team counselor records it (If-Match 0, SUD forced unknown); a stale write 412s; others 404; a plan locks it (ADR-0109 D5)", async () => {
@@ -1370,6 +1440,17 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     expect(empty.statusCode).toBe(200);
     expect(empty.json()).toMatchObject({ exists: false, version: 0, locked: false });
     expect(await rowOf()).toBeUndefined();
+    // The read is ACCOUNTED: the M4 read-audit event names the admission (the route's resource id), not an empty id the audit insert
+    // would have refused on the uuid cast.
+    expect(
+      (
+        await admin.query(
+          `SELECT count(*)::int AS n FROM audit_event
+            WHERE organization_id=$1 AND event_type='bereavement_risk_assessment_draft.viewed' AND resource_id=$2`,
+          [ORG_A, draftAdmission.admissionId],
+        )
+      ).rows[0].n,
+    ).toBeGreaterThanOrEqual(1);
 
     // If-Match is required, and a first write names version 0.
     expect((await call("PUT", url, "counselor", { factors })).statusCode).toBe(428);
@@ -1402,10 +1483,33 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
       (await call("PUT", url, "counselor", { factors }, { "if-match": '"1"' })).statusCode,
     ).toBe(200);
 
+    // An UNCLEARED writer neither sets nor erases the Part 2 slot: a value a cleared colleague stored survives a blind rewrite
+    // (the counselor reads `unknown` for it, so a read-modify-write would otherwise wipe it).
+    await admin.query(
+      `UPDATE bereavement_risk_assessment_draft
+          SET factors_jsonb = jsonb_set(factors_jsonb, '{activeSubstanceUse}', 'true'::jsonb)
+        WHERE admission_id=$1`,
+      [draftAdmission.admissionId],
+    );
+    const rewritten = await call(
+      "PUT",
+      url,
+      "counselor",
+      { factors: { ...factors, active_substance_use: "unknown", financial_strain: true } },
+      { "if-match": '"2"' },
+    );
+    expect(rewritten.statusCode).toBe(200);
+    expect(rewritten.json().version).toBe(3);
+    expect(rewritten.json().factors.active_substance_use).toBe("unknown"); // still hidden from the uncleared writer
+    expect((await rowOf())?.factors_jsonb).toMatchObject({
+      activeSubstanceUse: true, // ...but preserved in the stored vector
+      financialStrain: true, // the writer's own slots are the writer's to change
+    });
+
     // Not on the care team (counselor2), a volunteer and an unknown admission are all invisible: 404.
     for (const as of ["counselor2", "volunteer"]) {
       expect((await call("GET", url, as)).statusCode).toBe(404);
-      expect((await call("PUT", url, as, { factors }, { "if-match": '"2"' })).statusCode).toBe(404);
+      expect((await call("PUT", url, as, { factors }, { "if-match": '"3"' })).statusCode).toBe(404);
     }
     expect(
       (await call("GET", `/api/v1/bereavement/pre-death-assessments/${randomUUID()}`, "don"))
@@ -1421,7 +1525,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
         [ORG_A, draftAdmission.patientId, draftAdmission.admissionId, pe[ORG_A]],
       )
     ).rows[0].id as string;
-    const locked = await call("PUT", url, "counselor", { factors }, { "if-match": '"2"' });
+    const locked = await call("PUT", url, "counselor", { factors }, { "if-match": '"3"' });
     expect(locked.statusCode).toBe(409);
     expect(JSON.stringify(locked.json())).toContain("DRAFT_LOCKED");
     expect((await call("GET", url, "counselor")).json().locked).toBe(true);
@@ -1663,6 +1767,48 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     ).toBe(404);
   });
 
+  it("no_mailings re-modalizes by the contact's own allowed kinds: a family that excluded the phone is never handed a call (ADR-0109 D10)", async () => {
+    const plan = await seedPlan(ORG_A, actors.don?.membership);
+    const contact = (
+      await admin.query(
+        `INSERT INTO bereaved_contact (organization_id, provider_entity_id, plan_id, display_name, relationship_code, status,
+           confirmed_at, outreach_preferences_jsonb)
+         VALUES ($1,$2,$3,'No Phone Family','spouse','active', now(),
+           '{"allowed_kinds":["sympathy_letter","in_person_visit"]}'::jsonb) RETURNING id`,
+        [ORG_A, pe[ORG_A], plan],
+      )
+    ).rows[0].id as string;
+    const seedRow = async (kind: string, dueDays: number): Promise<string> =>
+      (
+        await admin.query(
+          `INSERT INTO bereavement_outreach (organization_id, provider_entity_id, plan_id, bereaved_contact_id, kind, status,
+             death_anchor_at, due_at, late_grace_until)
+           SELECT $1,$2,p.id,$4,$5::bereavement_outreach_kind,'scheduled', p.death_date::timestamptz,
+                  p.death_date::timestamptz + make_interval(days => $6),
+                  p.death_date::timestamptz + make_interval(days => $6 + 7)
+             FROM bereavement_plan p WHERE p.id=$3 RETURNING id`,
+          [ORG_A, pe[ORG_A], plan, contact, kind, dueDays],
+        )
+      ).rows[0].id as string;
+    const letter = await seedRow("sympathy_letter", 30);
+    const invitation = await seedRow("group_support_invitation", 60);
+    const visit = await seedRow("in_person_visit", 90);
+    const kindOf = async (id: string) =>
+      (await admin.query("SELECT kind FROM bereavement_outreach WHERE id=$1", [id])).rows[0]
+        .kind as string;
+
+    const stopped = await call("POST", `/api/v1/bereavement/contacts/${contact}/opt-out`, "don", {
+      optOutKind: "no_mailings",
+      sourceKind: "counselor_recorded",
+      reason: "Asked us to stop the cards and letters",
+    });
+    expect(stopped.statusCode).toBe(200);
+    // the mailed rows resolve to the closest kind the family still allows (the visit), never to the phone they excluded
+    expect(await kindOf(letter)).toBe("in_person_visit");
+    expect(await kindOf(invitation)).toBe("in_person_visit");
+    expect(await kindOf(visit)).toBe("in_person_visit"); // not mailed: untouched
+  });
+
   it("care goals: sealed with the tenant DEK, opened for the counselor and oversight, absent for the volunteer, If-Match guarded (ADR-0109)", async () => {
     const pat = contacts.Pat as string;
     const url = `/api/v1/bereavement/contacts/${pat}/care-plan`;
@@ -1794,6 +1940,16 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
       attendingUserId: null,
       version: 0,
     });
+    // the plan's letter read is accounted against the plan (the route's resource id)
+    expect(
+      (
+        await admin.query(
+          `SELECT count(*)::int AS n FROM audit_event
+            WHERE organization_id=$1 AND event_type='bereavement_plan.viewed' AND resource_id=$2`,
+          [ORG_A, reviewable.plan],
+        )
+      ).rows[0].n,
+    ).toBeGreaterThanOrEqual(1);
     expect(
       (await call("GET", `/api/v1/bereavement/plans/${reviewable.plan}/physician-letter`, "donB"))
         .statusCode,
@@ -1867,7 +2023,24 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
       aggregateId: reviewable.letter,
       templateKey: "bereavement_physician_condolence_letter",
     });
-    expect((emitted.payloadJsonb as Record<string, unknown>).personalNote).toBe(note);
+    // The reviewer's note is NOT on the outbox (a plaintext copy the eraser cannot reach): the request carries the death date only,
+    // the note lives sealed on the letter, and M22 pulls it at render time through the org-explicit seam.
+    expect(emitted.payloadJsonb).toEqual({ deathDate: expect.any(String) });
+    expect(JSON.stringify(emitted)).not.toContain("walking this family");
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM outbox_event WHERE payload::text LIKE '%walking this family%'",
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    expect(await physicianLetterNoteForOrg(handle.db, cipher, ORG_A, reviewable.letter)).toBe(note);
+    // another tenant, a still-pending letter and an unknown id yield no note
+    expect(await physicianLetterNoteForOrg(handle.db, cipher, ORG_B, reviewable.letter)).toBeNull();
+    expect(
+      await physicianLetterNoteForOrg(handle.db, cipher, ORG_A, (await seedLetter(null)).letter),
+    ).toBeNull();
+    expect(await physicianLetterNoteForOrg(handle.db, cipher, ORG_A, randomUUID())).toBeNull();
 
     // a second decision on a decided letter is refused; a stale token is 412
     expect((await act(reviewable.letter, "approve", "don", {}, 1)).statusCode).toBe(409);
@@ -1884,6 +2057,22 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     ).toBe(409);
     expect((await act(reviewable.letter, "approve", "don", {}, 0)).statusCode).toBe(412);
     expect(await events("m16.bereavement.document_requested")).toBe(1);
+
+    // the attending the care team resolved at intake has since left the organization: approval re-checks ACTIVE membership every time
+    const leaver = (
+      await admin.query(`INSERT INTO "user" (email) VALUES ('leaver@gap136-m16.test') RETURNING id`)
+    ).rows[0].id as string;
+    await admin.query(
+      "INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'suspended')",
+      [leaver, ORG_A],
+    );
+    const stale = await seedLetter(leaver);
+    const staleApproval = await act(stale.letter, "approve", "don", {}, 0);
+    expect(staleApproval.statusCode).toBe(422);
+    expect(staleApproval.json().error?.code ?? staleApproval.json().code).toBe(
+      "PHYSICIAN_LETTER_ATTENDING_INVALID",
+    );
+    expect((await row(stale.letter)).status).toBe("pending_review");
 
     // the care team resolved the attending at intake: approval needs no pick and no note
     const resolved = await seedLetter(actors.counselor?.user as string);
@@ -1920,6 +2109,25 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     expect((await row(declinable.letter)).decline_reason_redacted).toBe(
       "The attending left the practice in March.",
     );
+    // the audit trail records the decline but scrubs the prose: no audit row of this letter carries the reason
+    const declineAudit = (
+      await admin.query(
+        `SELECT before, after FROM audit_event
+          WHERE resource_kind='bereavement_physician_letter' AND resource_id=$1 AND event_type LIKE '%.update'`,
+        [declinable.letter],
+      )
+    ).rows as Array<{
+      before: Record<string, unknown> | null;
+      after: Record<string, unknown> | null;
+    }>;
+    expect(declineAudit.length).toBeGreaterThanOrEqual(1);
+    expect(JSON.stringify(declineAudit)).not.toContain("left the practice");
+    expect(declineAudit.some((a) => a.after?.status === "declined")).toBe(true);
+    expect(
+      declineAudit.every(
+        (a) => a.after?.decline_reason_redacted !== "The attending left the practice in March.",
+      ),
+    ).toBe(true);
     expect(
       (
         await act(
@@ -2042,6 +2250,19 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
       closedByUserId: actors.counselor?.membership,
     });
     expect(await events("m16.bereavement.plan_closed_early")).toBe(1);
+    // The cosign is a closure writer: it settles everything the plan still held `scheduled` (due -> missed, future -> cancelled), so
+    // nothing is stranded on the closed plan for M30 to count, and the summary built next reads the settled state.
+    expect(
+      Number(
+        (
+          await admin.query(
+            `SELECT (SELECT count(*) FROM bereavement_outreach WHERE plan_id=$1 AND status='scheduled')
+                  + (SELECT count(*) FROM bereavement_assessment_task WHERE plan_id=$1 AND status='scheduled') AS n`,
+            [planId],
+          )
+        ).rows[0].n,
+      ),
+    ).toBe(0);
 
     // ADR-0109 D9 — the cosign is a closure writer: it requests the internal discharge summary against ITS closure, on the same
     // transaction, and the closure route shows the rendered document to oversight only once M22's back-ref has stamped it.
@@ -2066,6 +2287,7 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
       payloadJsonb: { closureReason: "geographic_relocation", closeKind: "manual" },
     });
     expect(cosigned.json().dischargeSummaryDocumentId).toBeNull();
+    expect(JSON.stringify(summaryRequests[0]?.payload)).not.toContain('"status":"scheduled"');
 
     const closure = await call("GET", `/api/v1/bereavement/plans/${planId}/closure`, "don");
     expect(closure.statusCode).toBe(200);
@@ -2082,5 +2304,167 @@ describe.skipIf(!DB_URL)("GAP-136 M16 bereavement routes — LIVE Postgres", () 
     expect((await call("GET", `/api/v1/bereavement/plans/${planId}`, "counselor")).statusCode).toBe(
       404,
     );
+  });
+
+  // ── destruction (migration 1348) ─────────────────────────────────────────────────────────────────
+  it("the bereavement eraser runs as the DESTRUCTION role over a closed plan; the app role still cannot delete or touch the immutable ledger (1348)", async () => {
+    const decedent = (
+      await admin.query("SELECT patient_id FROM bereavement_plan WHERE id=$1", [planId])
+    ).rows[0].patient_id as string;
+    const count = async (table: string): Promise<number> =>
+      Number(
+        (await admin.query(`SELECT count(*) AS n FROM ${table} WHERE plan_id=$1`, [planId])).rows[0]
+          .n,
+      );
+    // the early-closed plan holds every kind of row the eraser touches, including a closure whose narrative a CHECK forbids nulling
+    for (const table of [
+      "bereaved_contact",
+      "bereavement_outreach",
+      "bereavement_risk_score",
+      "bereavement_assessment_task",
+    ]) {
+      expect(await count(table), table).toBeGreaterThan(0);
+    }
+    const closureNarrative = async (): Promise<string | null> =>
+      (
+        await admin.query(
+          "SELECT reason_narrative_redacted AS n FROM bereavement_plan_closure WHERE plan_id=$1",
+          [planId],
+        )
+      ).rows[0].n as string | null;
+    expect((await closureNarrative())?.length).toBeGreaterThanOrEqual(40);
+
+    const destroyerUrl = new URL(DB_URL as string);
+    destroyerUrl.username = "m16_destroyer";
+    destroyerUrl.password = "m16_destroyer_pw";
+    await admin.query("DROP ROLE IF EXISTS m16_destroyer");
+    await admin.query(
+      "CREATE ROLE m16_destroyer LOGIN PASSWORD 'm16_destroyer_pw' IN ROLE chartwarden_destruction",
+    );
+    const destroyer = createDbClient({ connectionString: destroyerUrl.toString() });
+    try {
+      // the app role has no DELETE and no UPDATE on the score ledger: the eraser bound to it fails loudly and removes nothing
+      const patientB = (
+        await admin.query("SELECT patient_id FROM bereavement_plan WHERE id=$1", [planB])
+      ).rows[0].patient_id as string;
+      const appRoleErase = await createDrizzleBereavementEraseStore(handle.db)
+        .erasePatientRecords(ORG_B, patientB, new Date().toISOString())
+        .then(
+          () => null,
+          (err: unknown) => err as { message: string; cause?: { message?: string } },
+        );
+      expect(appRoleErase?.cause?.message ?? appRoleErase?.message).toMatch(/permission denied/);
+      await expect(
+        admin.query("UPDATE bereavement_risk_score SET rule_score = rule_score WHERE plan_id=$1", [
+          planId,
+        ]),
+      ).rejects.toThrow(/M16_RISK_SCORE_IMMUTABLE/); // a superuser is still refused too
+
+      const eraser = createDrizzleBereavementEraseStore(destroyer.db);
+      expect(await eraser.shredPhiColumns(ORG_A, decedent)).toBeGreaterThan(0);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM bereavement_risk_score WHERE plan_id=$1 AND risk_factors_jsonb <> '{}'::jsonb",
+            [planId],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+      expect(
+        (
+          await admin.query(
+            "SELECT count(*)::int AS n FROM bereaved_contact WHERE plan_id=$1 AND (email_cipher IS NOT NULL OR phone_cipher IS NOT NULL OR mailing_address_cipher IS NOT NULL OR care_goals_cipher IS NOT NULL)",
+            [planId],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+
+      const erased = await eraser.erasePatientRecords(ORG_A, decedent, new Date().toISOString());
+      expect(erased.contacts).toBeGreaterThan(0);
+      expect(erased.riskScores).toBeGreaterThan(0);
+      expect(erased.outreach).toBeGreaterThan(0);
+      for (const table of [
+        "bereaved_contact",
+        "bereavement_outreach",
+        "bereavement_risk_score",
+        "bereavement_assessment_task",
+        "bereavement_contact_log",
+        "bereavement_opt_out",
+        "bereavement_anniversary_reminder",
+      ]) {
+        expect(await count(table), table).toBe(0);
+      }
+      // the plan root and its closure SURVIVE (7.15), the closure narrative shredded to a placeholder the CHECK accepts
+      expect(await count("bereavement_plan_closure")).toBe(1);
+      expect((await closureNarrative()) ?? "").not.toContain("relocated");
+      expect((await closureNarrative())?.length).toBeGreaterThanOrEqual(40);
+      expect(
+        (await admin.query("SELECT count(*)::int AS n FROM bereavement_plan WHERE id=$1", [planId]))
+          .rows[0].n,
+      ).toBe(1);
+
+      // the destruction role is confined to the shred columns: it cannot rewrite a score or touch another tenant's rows
+      const c = new Client({ connectionString: destroyerUrl.toString() });
+      await c.connect();
+      try {
+        await c.query("BEGIN");
+        await c.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
+        await expect(c.query("UPDATE bereavement_risk_score SET rule_score = 0")).rejects.toThrow(
+          /permission denied/,
+        );
+        await c.query("ROLLBACK");
+        await c.query("BEGIN");
+        await c.query("SELECT set_config('app.org_id', $1, true)", [ORG_A]);
+        expect(
+          (
+            await c.query(
+              "SELECT count(*)::int AS n FROM bereavement_plan WHERE organization_id=$1",
+              [ORG_B],
+            )
+          ).rows[0].n,
+        ).toBe(0); // org B's plan is invisible under org A's destruction policy
+        await c.query("ROLLBACK");
+      } finally {
+        await c.end();
+      }
+    } finally {
+      await destroyer.close();
+      await admin.query("DROP ROLE IF EXISTS m16_destroyer");
+    }
+  });
+
+  it("a contact holds each cadence mark once among the non-cancelled rows: the database refuses a duplicate fill, a cancelled row frees the mark (1349)", async () => {
+    const plan = await seedPlan(ORG_A, actors.don?.membership);
+    const contact = (
+      await admin.query(
+        `INSERT INTO bereaved_contact (organization_id, provider_entity_id, plan_id, display_name, relationship_code, status, confirmed_at)
+         VALUES ($1,$2,$3,'Marked Contact','spouse','active', now()) RETURNING id`,
+        [ORG_A, pe[ORG_A], plan],
+      )
+    ).rows[0].id as string;
+    const insert = (mark: string | null, status = "scheduled") =>
+      admin.query(
+        `INSERT INTO bereavement_outreach (organization_id, provider_entity_id, plan_id, bereaved_contact_id, kind, status, cadence_mark,
+           death_anchor_at, due_at, late_grace_until, cancelled_at, cancellation_reason_redacted)
+         SELECT $1,$2,p.id,$4,'phone_call',$5::bereavement_outreach_status,$6, p.death_date::timestamptz,
+                p.death_date::timestamptz + interval '90 days', p.death_date::timestamptz + interval '97 days',
+                CASE WHEN $5 = 'cancelled' THEN now() END, CASE WHEN $5 = 'cancelled' THEN 'regenerated' END
+           FROM bereavement_plan p WHERE p.id=$3 RETURNING id`,
+        [ORG_A, pe[ORG_A], plan, contact, status, mark],
+      );
+    const first = (await insert("three_month")).rows[0].id as string;
+    await expect(insert("three_month")).rejects.toThrow(/berv_outreach_contact_mark_uniq/);
+    await expect(insert("three_month", "completed")).rejects.toThrow(
+      /berv_outreach_contact_mark_uniq/,
+    );
+    await insert("six_month"); // another mark is fine
+    await insert(null); // ad-hoc rows carry no mark and may repeat
+    await insert(null);
+    await admin.query(
+      "UPDATE bereavement_outreach SET status='cancelled', cancelled_at=now(), cancellation_reason_redacted='regenerated' WHERE id=$1",
+      [first],
+    );
+    await insert("three_month"); // the cancelled row freed the mark
+    await insert("three_month", "cancelled"); // and cancelled rows may repeat
   });
 });

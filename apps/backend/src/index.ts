@@ -3073,8 +3073,9 @@ export function wireModuleErasers(
   // tombstones the plan root for FK integrity. The `bereavement_plan_closure` row SURVIVES with its
   // narrative shredded — §7.15 survey reconstruction — and the org-scoped external-source gate override is
   // tenant config that is never touched, §8.5). The Drizzle store binds when a DB client is present;
-  // without one the slice's in-memory store stands.
-  registerBereavementErasers(deps.db ? { store: createDrizzleBereavementEraseStore(deps.db) } : {});
+  // without one the slice's in-memory store stands. Bound over `eraseDb` (migration 1348 grants the destruction
+  // role what the shred and delete passes run; the app role has no DELETE and may not touch the immutable score ledger).
+  registerBereavementErasers(eraseDb ? { store: createDrizzleBereavementEraseStore(eraseDb) } : {});
   registerIdgErasers(eraseDb ? { store: createDrizzleIdgEraseStore(eraseDb) } : {}); // M14 — `idg_record` (patient-scoped rows; meetings/minutes survive, minutes hash-redacted)
   // M22 — `documents`. With the MINIO_* env contract the erase destroys real object versions via
   // the SigV4 adapter (task-15); without it, object destruction refuses via DegradedError BEFORE
