@@ -61,7 +61,7 @@ case "$*" in
     exit "\${STUB_PROVISION_EXIT:-0}" ;;
   *"--force-recreate api worker web docling-worker"*) exit "\${STUB_UP_EXIT:-0}" ;;
   *"volume ls"*) [ -z "\${STUB_MINIO_VOLUME:-}" ] || echo "\$STUB_MINIO_VOLUME" ;;
-  *"--entrypoint sh object-store-provision"*) if [ -n "\${STUB_CUTOVER_RECORDED:-}" ]; then echo recorded; else echo absent; fi ;;
+  *"--entrypoint bun object-store-provision -e console.log"*) if [ -n "\${STUB_CUTOVER_RECORDED:-}" ]; then echo recorded; else echo absent; fi ;;
   *"run --rm --no-deps object-store-migrate"*) exit "\${STUB_COPY_EXIT:-0}" ;;
   *"ps -aq api worker"*) printf 'cid-api\\ncid-worker\\n' ;;
 esac
@@ -313,11 +313,7 @@ describe.skipIf(BUN === "")("deploy.sh rollback decision under injected failures
       const o = deploy({ legacyMinio: true, migrateExit: 1 });
       expect(o.code, o.out).toBe(1);
       expect(o.cutoverMarker).toBe(true);
-      expect(
-        o.calls.some((c) =>
-          c.includes("--entrypoint touch object-store-provision /config/cutover-done"),
-        ),
-      ).toBe(true);
+      expect(o.calls.some((c) => c.includes('writeFileSync("/config/cutover-done"'))).toBe(true);
       expect(oldRestarts(o), o.out).toBe(1);
     });
 

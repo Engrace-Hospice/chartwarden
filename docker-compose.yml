@@ -111,8 +111,9 @@ services:
       dockerfile: Dockerfile
     command:
       [
-        "sh",
-        "-c",
+        # Bun's built-in shell: the image is distroless, with no /bin/sh.
+        "bun",
+        "exec",
         # The bucket backfill is best-effort here (the object store may still be starting): the attachment upload path also
         # creates a missing tenant bucket on demand, so a miss only costs the first upload a bucket-create round trip.
         "bun run scripts/db/migrate.ts && bun run scripts/db/provision-runtime-roles.ts && (bun run scripts/backfill-tenant-buckets.ts || echo 'tenant bucket backfill skipped (will be created on first use)')",

@@ -491,10 +491,9 @@ for f in object-store/audit.json object-store/fluent-bit.yaml; do
 done
 # "Cutover done" is recorded twice: the marker file here, and cutover-done in the seaweedfs-config volume, which
 # travels with the data. Losing the marker alone must never re-mirror a stale MinIO over the live SeaweedFS.
+# The app image is distroless (no sh, no coreutils), so the one-shot runs a bun snippet.
 object_store_one_shot() {
-  entrypoint=$1
-  shift
-  docker compose --env-file .env.production -f compose.yml run --rm --no-deps --entrypoint "$entrypoint" object-store-provision "$@"
+  docker compose --env-file .env.production -f compose.yml run --rm --no-deps --entrypoint bun object-store-provision -e "$1"
 }
 legacy_minio=0
 if [ ! -f .object-store-cutover ]; then
@@ -504,7 +503,7 @@ if [ ! -f .object-store-cutover ]; then
     exit 1
   }
   if [ -n "$minio_volumes" ]; then
-    cutover_record=$(object_store_one_shot sh -c 'if [ -f /config/cutover-done ]; then echo recorded; else echo absent; fi' 2>/dev/null) || cutover_record=""
+    cutover_record=$(object_store_one_shot 'console.log(require("node:fs").existsSync("/config/cutover-done") ? "recorded" : "absent")' 2>/dev/null) || cutover_record=""
     case "$cutover_record" in
       recorded)
         echo "the SeaweedFS cutover is recorded in the seaweedfs-config volume; restoring the missing marker file" >&2
@@ -569,7 +568,7 @@ if [ "$legacy_minio" -eq 1 ]; then
     exit 1
   fi
   touch .object-store-cutover
-  object_store_one_shot touch /config/cutover-done \
+  object_store_one_shot 'require("node:fs").writeFileSync("/config/cutover-done", "")' \
     || echo "WARNING: could not record the cutover in the seaweedfs-config volume; keep $deploy_dir/.object-store-cutover" >&2
   docker compose --env-file .env.production -f compose.yml --profile legacy-minio stop minio \
     || echo "WARNING: the legacy MinIO did not stop; nothing uses it any more (stop it by hand)" >&2
