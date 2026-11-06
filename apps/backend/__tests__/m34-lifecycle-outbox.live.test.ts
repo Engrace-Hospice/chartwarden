@@ -44,6 +44,8 @@ const ORG_A = "11111111-1111-4111-8111-1111f2050201";
 const ORG_B = "11111111-1111-4111-8111-1111f2050202";
 const TENANT_ACCOUNT_A = "55555555-5555-4555-8555-5555f2050205";
 const TENANT_ACCOUNT_B = "55555555-5555-4555-8555-5555f2050206";
+const ORG_C = "11111111-1111-4111-8111-1111f2050203";
+const TENANT_ACCOUNT_C = "55555555-5555-4555-8555-5555f2050207";
 const ACTOR_MEMBERSHIP = "44444444-4444-4444-8444-4444f2050204";
 const SESSION_USER = "66666666-6666-4666-8666-6666f2050206";
 const PLATFORM_JOB_ID = "test-m34-lifecycle-outbox";
@@ -421,5 +423,58 @@ describe.skipIf(!DB_URL)("M34 lifecycle outbox — LIVE Postgres", () => {
         await writer.release();
       }
     });
+  });
+
+  // Two operator transitions racing on one tenant: the loser read a status that is no longer true. It must refuse, not
+  // overwrite the winner's status and write a ledger row with the wrong from-status.
+  it("a transition whose status read went stale while it waited is refused with 409 TENANT_STATUS_CHANGED", async () => {
+    await admin.query(
+      `INSERT INTO organization (id,slug,legal_name,display_name,status) VALUES ($1,'f103-c','Charlie Hospice LLC','Charlie Hospice','active')`,
+      [ORG_C],
+    );
+    await admin.query(
+      `INSERT INTO tenant_account (id,organization_id,status,legal_business_name,billing_contact_email,breach_notification_email)
+       VALUES ($1,$2,'active','Charlie Hospice LLC','billing@charlie.test','breach@charlie.test')`,
+      [TENANT_ACCOUNT_C, ORG_C],
+    );
+    const winner = new Client({ connectionString: DB_URL });
+    await winner.connect();
+    let open = true;
+    try {
+      await winner.query("BEGIN");
+      await winner.query("SELECT 1 FROM tenant_account WHERE id = $1 FOR UPDATE", [
+        TENANT_ACCOUNT_C,
+      ]);
+      const loser = service().transitionStatus("f103-c", ACTOR_MEMBERSHIP, {
+        toStatus: "suspended",
+        transitionReason: "operator suspends the tenant",
+      });
+      const settled = await Promise.race([
+        loser.then(
+          () => true,
+          () => true,
+        ),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 750)),
+      ]);
+      expect(settled, "the loser read 'active' and now waits on the row").toBe(false);
+      await winner.query("UPDATE tenant_account SET status = 'at_risk' WHERE id = $1", [
+        TENANT_ACCOUNT_C,
+      ]);
+      await winner.query("COMMIT");
+      open = false;
+      await expect(loser).rejects.toMatchObject({ code: "TENANT_STATUS_CHANGED", statusCode: 409 });
+    } finally {
+      if (open) await winner.query("ROLLBACK");
+      await winner.end();
+    }
+    const row = await admin.query("SELECT status FROM tenant_account WHERE id = $1", [
+      TENANT_ACCOUNT_C,
+    ]);
+    expect(row.rows[0].status).toBe("at_risk");
+    const ledger = await admin.query(
+      "SELECT count(*)::int AS n FROM tenant_account_status_event WHERE tenant_account_id = $1",
+      [TENANT_ACCOUNT_C],
+    );
+    expect(ledger.rows[0].n).toBe(0);
   });
 });
