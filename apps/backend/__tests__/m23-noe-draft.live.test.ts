@@ -1576,10 +1576,11 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
       const uploadMayFinish = new Promise<void>((resolve) => {
         finishUpload = resolve;
       });
+      const portal = workerDeps.macPortal as NonNullable<M23WorkerDeps["macPortal"]>;
       const slowDeps: M23WorkerDeps = {
         ...workerDeps,
         macPortal: {
-          ...workerDeps.macPortal,
+          ...portal,
           upload: async (input) => {
             reachedUpload();
             await uploadMayFinish;
@@ -1599,7 +1600,7 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
       );
       await atUpload; // the worker has read and checked the notice and is mid-upload
 
-      let outcome: string = "pending";
+      let outcome = "pending";
       const rival =
         concurrent === "record"
           ? outside.service.recordNoeExternalFiling(actorOf(ORG_A), id, { filedOn: todayIso() })
