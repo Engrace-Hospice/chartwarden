@@ -2452,6 +2452,23 @@ import {
   WithinQuery as M31WithinQuery,
 } from "../../apps/backend/src/modules/31-portal/routes/portal-typebox";
 
+// Slice 2 (tenant pricing) — the plan editor, the onboarding contract and the tenant's own pricing read (pricing-typebox.ts).
+import {
+  CreatePricingPlanBody as M35CreatePricingPlanBody,
+  CreateTenantContractBody as M35CreateTenantContractBody,
+  CreateTenantContractResponseDto as M35CreateTenantContractResponseDto,
+  PlatformContractDto as M35PlatformContractDto,
+  PlatformPricingDto as M35PlatformPricingDto,
+  PricePreviewBody as M35PricePreviewBody,
+  PricePreviewDto as M35PricePreviewDto,
+  PricingDefaultsDto as M35PricingDefaultsDto,
+  PricingPlanDto as M35PricingPlanDto,
+  PricingPlanListDto as M35PricingPlanListDto,
+  PricingReasonBody as M35PricingReasonBody,
+  ReplacePricingDraftBody as M35ReplacePricingDraftBody,
+  SetBillingServiceModeBody as M35SetBillingServiceModeBody,
+  TenantPricingDto as M35TenantPricingDto,
+} from "../../apps/backend/src/modules/35-subscription/pricing/pricing-typebox";
 // M35 Subscription Billing — the §4.4 request/response wire contracts the §4.1–4.3 handlers `parse(...)` /
 // return (subscription-typebox.ts). Reused verbatim so the published contract cannot drift from the
 // validator (the M30/M31 precedent).
@@ -3189,6 +3206,84 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   "POST /api/admin/subscriptions/:id/addons/:addonId/cancel": {
     response: M35SubscriptionAddonDto,
     summary: "Cancel an add-on",
+  },
+  // Slice 2 (tenant pricing) — the census_banded plan editor (platform billing roles).
+  "GET /api/admin/pricing/defaults": {
+    response: M35PricingDefaultsDto,
+    summary: "Default census band thresholds (a form's starting point, never a price)",
+  },
+  "GET /api/admin/pricing/plans": {
+    response: M35PricingPlanListDto,
+    summary: "List every census-banded plan version (drafts and archived included)",
+  },
+  "GET /api/admin/pricing/plans/:id": {
+    response: M35PricingPlanDto,
+    summary: "Read one census-banded plan version",
+  },
+  "POST /api/admin/pricing/plans": {
+    body: M35CreatePricingPlanBody,
+    response: M35PricingPlanDto,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+    summary: "Create a draft plan (version 1 of a new family)",
+  },
+  "PUT /api/admin/pricing/plans/:id": {
+    body: M35ReplacePricingDraftBody,
+    response: M35PricingPlanDto,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    summary: "Replace a draft plan's prices and bands",
+  },
+  "POST /api/admin/pricing/plans/:id/publish": {
+    body: M35PricingReasonBody,
+    response: M35PricingPlanDto,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    summary: "Publish a draft plan; its prices are frozen from then on",
+  },
+  "POST /api/admin/pricing/plans/:id/new-version": {
+    body: M35PricingReasonBody,
+    response: M35PricingPlanDto,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+    summary: "Copy a published or archived plan into a new draft version",
+  },
+  "POST /api/admin/pricing/plans/:id/archive": {
+    body: M35PricingReasonBody,
+    response: M35PricingPlanDto,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    summary: "Archive a published plan; subscriptions on it keep their price",
+  },
+  // Slice 2 — onboarding step 2 (platform operations).
+  "GET /api/v1/platform/pricing/plans": {
+    response: M35PricingPlanListDto,
+    summary: "The published, current plan versions an operator may sign",
+  },
+  "POST /api/v1/platform/pricing/preview": {
+    body: M35PricePreviewBody,
+    response: M35PricePreviewDto,
+    summary:
+      "Price a plan for entered staff, census, collections and billing service mode (no write)",
+  },
+  "GET /api/v1/platform/tenants/:orgSlug/subscription": {
+    response: M35PlatformPricingDto,
+    summary: "A tenant's signed contract and statements (platform)",
+  },
+  "POST /api/v1/platform/tenants/:orgSlug/subscription": {
+    body: M35CreateTenantContractBody,
+    response: M35CreateTenantContractResponseDto,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+    summary:
+      "Onboarding step 2: sign the tenant onto a plan version and settle the plan_contract step",
+  },
+  "PUT /api/v1/platform/tenants/:orgSlug/subscription/billing-service-mode": {
+    body: M35SetBillingServiceModeBody,
+    response: M35PlatformContractDto,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    summary: "Change a tenant's billing service mode (none, billing_software, managed_billing)",
+  },
+  "GET /api/v1/subscription/pricing": {
+    response: M35TenantPricingDto,
+    summary: "The tenant's own plan terms and latest statement (read-only)",
   },
   "POST /api/admin/subscriptions/:id/apply_promo": {
     body: M35ApplyPromoBody,
