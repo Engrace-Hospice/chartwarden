@@ -104,6 +104,10 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
     },
 
     async recordVendorId(organizationId, membershipId, input) {
+      const mdmMatches =
+        input.expectedPhysicianMdmId === null
+          ? isNull(P.externalPhysicianMdmId)
+          : eq(P.externalPhysicianMdmId, input.expectedPhysicianMdmId);
       const [row] = await tx
         .update(P)
         .set({
@@ -116,17 +120,22 @@ export function createDrizzleRosterStore(tx: DbClient): RosterStore {
             eq(P.organizationId, organizationId),
             eq(P.membershipId, membershipId),
             isNull(P.revokedAt), // revoked while the vendor call was in flight: never link a revoked prescriber
+            mdmMatches, // re-linked to another physician meanwhile: the NPI sent to the vendor is not this member's any more
           ),
         )
         .returning();
-      if (!row) {
-        throw new ChartWardenError(
-          "DOSESPOT_PRESCRIBER_REVOKED",
-          "this prescriber was revoked from the roster while the enrollment was in flight; nothing was linked",
-          409,
-        );
-      }
-      return toRow(row);
+      if (row) return toRow(row);
+      const [now] = await tx
+        .select({ revokedAt: P.revokedAt })
+        .from(P)
+        .where(and(eq(P.organizationId, organizationId), eq(P.membershipId, membershipId)))
+        .limit(1);
+      if (now && now.revokedAt === null) throw rosterChanged();
+      throw new ChartWardenError(
+        "DOSESPOT_PRESCRIBER_REVOKED",
+        "this prescriber was revoked from the roster while the enrollment was in flight; nothing was linked",
+        409,
+      );
     },
   };
 }

@@ -22,6 +22,7 @@ import {
   isConfigUnavailableError,
   isDegradedError,
   isNotEnabledError,
+  isUnconfirmedOutcomeError,
 } from "@chartwarden/dosespot";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
@@ -71,7 +72,13 @@ export interface RosterStore {
   recordVendorId(
     organizationId: string,
     membershipId: string,
-    input: { readonly dosespotPrescriberId: string; readonly npi: string; readonly at: Date },
+    input: {
+      readonly dosespotPrescriberId: string;
+      readonly npi: string;
+      readonly at: Date;
+      /** The physician record the NPI came from: the row must still link it (409 DOSESPOT_ROSTER_CHANGED otherwise). */
+      readonly expectedPhysicianMdmId: string | null;
+    },
   ): Promise<RosterRow>;
 }
 
@@ -102,6 +109,8 @@ export interface EnrollPlan {
   readonly membershipId: string;
   /** Who DoseSpot is told the clinician is (derived, never typed); null when the prescriber is already linked. */
   readonly profile: PractitionerProfile | null;
+  /** The physician record the profile was derived from: recording the vendor id is refused if the roster row no longer links it. */
+  readonly physicianMdmId: string | null;
   /** The marker THIS attempt stamped (null when the prescriber was already linked and nothing was claimed). */
   readonly claimedAt: Date | null;
   /** The prescriber is already linked to DoseSpot: there is nothing to call or record. */
@@ -144,16 +153,29 @@ export interface PrescriberEnrollmentDeps {
     scope: { organizationId: string; userId: string; membershipId: string | null },
   ) => Promise<void>;
   readonly now?: () => Date;
+  /** A structured warning (pino's `(fields, message)` shape); never given a secret, an NPI or a name. */
+  readonly warn?: (fields: Record<string, string>, message: string) => void;
 }
 
-/** Did the call definitely NOT create a clinician? A refusal (non-retryable), or a failure before anything was sent. */
+/**
+ * Did the call definitely NOT create a clinician? A refusal (non-retryable), or a failure before anything was sent. A 2xx that could not
+ * be read, or carried no clinician id, is NOT definitive: DoseSpot accepted the request, so the clinician may exist.
+ */
 function isDefinitive(err: unknown): boolean {
   if (isNotEnabledError(err) || isConfigUnavailableError(err)) return true;
+  if (isUnconfirmedOutcomeError(err)) return false;
   return isDegradedError(err) && !err.retryable;
 }
 
-/** A vendor failure as a typed error: retryable => 503, a refusal => 422. No vendor text beyond the PHI-free message. */
+/** A vendor failure as a typed error: retryable => 503, accepted-but-unconfirmed => 502, a refusal => 422. No vendor text beyond the PHI-free message. */
 function vendorError(err: unknown): never {
+  if (isUnconfirmedOutcomeError(err)) {
+    throw new ChartWardenError(
+      "DOSESPOT_ENROLLMENT_UNCONFIRMED",
+      "DoseSpot accepted the enrollment but did not confirm it; the request is held for a few minutes, so check DoseSpot before trying again",
+      502,
+    );
+  }
   if (isDegradedError(err)) {
     throw err.retryable
       ? new ChartWardenError("DOSESPOT_UNAVAILABLE", err.customerMessage, 503)
@@ -204,6 +226,7 @@ export function createPrescriberEnrollmentService(
         userId,
         membershipId,
         profile: null,
+        physicianMdmId: null,
         claimedAt: null,
         alreadyLinked: true,
       };
@@ -241,6 +264,7 @@ export function createPrescriberEnrollmentService(
       userId,
       membershipId,
       profile: claim.alreadyLinked ? null : profile,
+      physicianMdmId: claim.alreadyLinked ? null : physicianMdmId,
       claimedAt: claim.claimedAt,
       alreadyLinked: claim.alreadyLinked,
     };
@@ -268,7 +292,17 @@ export function createPrescriberEnrollmentService(
           .inTx(plan.organizationId, plan.userId, (store) =>
             store.releaseRequest(plan.organizationId, plan.membershipId, claimedAt),
           )
-          .catch(() => undefined);
+          .catch((releaseFault: unknown) => {
+            // the claim then simply ages out of its window; say so rather than swallow it (ids and the error class only)
+            deps.warn?.(
+              {
+                organizationId: plan.organizationId,
+                membershipId: plan.membershipId,
+                cause: releaseFault instanceof Error ? releaseFault.name : "unknown",
+              },
+              "DoseSpot enrolment claim could not be released after a definitive refusal; it will age out",
+            );
+          });
       }
       return vendorError(err);
     }
@@ -288,6 +322,7 @@ export function createPrescriberEnrollmentService(
       dosespotPrescriberId: vendorId,
       npi: profile.npi,
       at: now(),
+      expectedPhysicianMdmId: plan.physicianMdmId,
     });
     await deps.outbox.publish(tx, {
       eventName: "m12.prescriber_enrolled",

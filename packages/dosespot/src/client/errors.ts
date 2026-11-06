@@ -112,3 +112,25 @@ export class ConfigUnavailableError extends DegradedError {
 export function isConfigUnavailableError(value: unknown): value is ConfigUnavailableError {
   return value instanceof ConfigUnavailableError;
 }
+
+/**
+ * DoseSpot answered 2xx but the answer cannot be read, or does not carry the id the call exists to return. The request was ACCEPTED, so
+ * what it was asked to create (a clinician, a prescription) may well exist: unlike a refusal this is an AMBIGUOUS outcome, and a caller
+ * that holds a claim must keep it rather than release it for a retry that could create a duplicate. A non-retryable {@link DegradedError}
+ * (no in-call retry, the same planning as before for a worker), told apart by its class.
+ */
+export class UnconfirmedOutcomeError extends DegradedError {
+  constructor(
+    integration: "dosespot",
+    operation: DoseSpotOperation,
+    customerMessage: string,
+    correlationId: string,
+  ) {
+    super(integration, operation, false, customerMessage, correlationId);
+    this.name = "UnconfirmedOutcomeError";
+  }
+}
+
+export function isUnconfirmedOutcomeError(value: unknown): value is UnconfirmedOutcomeError {
+  return value instanceof UnconfirmedOutcomeError;
+}

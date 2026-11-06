@@ -43,6 +43,7 @@ import {
   type DoseSpotOperation,
   NotEnabledError,
   RetryableError,
+  UnconfirmedOutcomeError,
   isRetryableError,
 } from "./errors";
 import {
@@ -155,7 +156,9 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
   /**
    * The tenant's config for `purpose`, or a non-retryable denial. The resolver is awaited on EVERY call (a database-backed one
    * re-reads the row), so a deactivation or rotation takes effect on the very next call. A resolver that THROWS (a sealed
-   * credential that cannot be opened) propagates unchanged: that is a fault to retry loudly, never "not configured".
+   * credential that cannot be opened, a key ring or database fault) becomes a retryable {@link ConfigUnavailableError} with the
+   * original on `cause`: a fault, never "not configured". A WORKER holding queued orders does not meet it order by order: the
+   * transmit pass resolves the config once before claiming and skips the org, so only a caller without that preflight sees it here.
    */
   async function configOrDeny(
     op: DoseSpotOperation,
@@ -318,7 +321,13 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
       try {
         parsed = JSON.parse(res.text);
       } catch {
-        throw degraded(op, false, "DoseSpot returned an unreadable response.", correlationId);
+        // accepted (2xx) but unreadable: what was asked for may exist, so the outcome is AMBIGUOUS, not a refusal
+        throw new UnconfirmedOutcomeError(
+          "dosespot",
+          op,
+          "DoseSpot returned an unreadable response.",
+          correlationId,
+        );
       }
       const err = resultError(parsed);
       if (err !== null) {
@@ -460,9 +469,10 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
       );
       const id = identifierOf(out);
       if (id === undefined) {
-        throw degraded(
+        // accepted (2xx) with no id: the clinician may exist at DoseSpot, so the outcome is AMBIGUOUS, not a refusal
+        throw new UnconfirmedOutcomeError(
+          "dosespot",
           "enrollPrescriber",
-          false,
           "DoseSpot returned no clinician id.",
           newCorrelationId(),
         );

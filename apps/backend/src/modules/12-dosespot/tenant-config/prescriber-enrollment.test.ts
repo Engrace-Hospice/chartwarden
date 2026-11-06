@@ -8,6 +8,7 @@ import {
   DegradedError,
   type DoseSpotClient,
   NotEnabledError,
+  UnconfirmedOutcomeError,
 } from "@chartwarden/dosespot";
 import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
@@ -51,6 +52,8 @@ function build(
     /** Called while the profile is being derived, with the roster row in hand (to simulate a concurrent roster edit). */
     onProfile?: () => void;
     row?: Partial<RosterRow> | null;
+    /** The claim's release fails (the database is unavailable at that moment). */
+    releaseFails?: boolean;
     vendor?: (
       n: number,
     ) => Promise<{ dosespotPrescriberId: string; epcsEnrollmentStarted: boolean }>;
@@ -58,6 +61,7 @@ function build(
 ) {
   const log: string[] = [];
   const releasedWith: Date[] = [];
+  const warned: { fields: Record<string, string>; message: string }[] = [];
   let txDepth = 0;
   let calledInsideTx = false;
   let roster: RosterRow | null =
@@ -97,6 +101,7 @@ function build(
     },
     async releaseRequest(_org, _membershipId, claimedAt) {
       log.push("releaseRequest");
+      if (opts.releaseFails) throw new Error("connection terminated (secret-bound-value-9f2)");
       releasedWith.push(claimedAt);
       // only the claimant's OWN marker is cleared: a newer claim by someone else is left standing
       if (roster?.vendorEnrollmentRequestedAt?.getTime() === claimedAt.getTime()) {
@@ -105,6 +110,9 @@ function build(
     },
     async recordVendorId(_org, membershipId, input) {
       log.push("recordVendorId");
+      if (roster && roster.externalPhysicianMdmId !== input.expectedPhysicianMdmId) {
+        throw new ChartWardenError("DOSESPOT_ROSTER_CHANGED", "the roster changed", 409);
+      }
       if (roster?.revokedAt) {
         throw new ChartWardenError(
           "DOSESPOT_PRESCRIBER_REVOKED",
@@ -185,6 +193,7 @@ function build(
       voids.push(scope.organizationId);
     },
     now: () => clock.at,
+    warn: (fields, message) => warned.push({ fields, message }),
   });
   return {
     service,
@@ -194,6 +203,7 @@ function build(
     voids,
     calls: () => vendorCalls,
     releasedWith,
+    warned,
     setRoster: (r: RosterRow | null) => {
       roster = r;
     },
@@ -476,6 +486,73 @@ describe("prescriber vendor enrolment", () => {
       expect(h.log).toContain("releaseRequest");
       expect(h.roster()?.vendorEnrollmentRequestedAt).toBeNull();
     }
+  });
+
+  it("a 2xx DoseSpot accepted but the client could not read, or that carried no clinician id, is AMBIGUOUS: the claim is KEPT and the answer is 502", async () => {
+    for (const message of [
+      "DoseSpot returned an unreadable response.",
+      "DoseSpot returned no clinician id.",
+    ]) {
+      const h = build({
+        vendor: async () => {
+          throw new UnconfirmedOutcomeError("dosespot", "enrollPrescriber", message, "c7");
+        },
+      });
+      await expect(h.service.enroll(ACTOR, MEMBER)).rejects.toMatchObject({
+        statusCode: 502,
+        code: "DOSESPOT_ENROLLMENT_UNCONFIRMED",
+      });
+      expect(h.log).not.toContain("releaseRequest"); // the clinician may exist: a retry inside the window could create a second
+      expect(h.roster()?.vendorEnrollmentRequestedAt).not.toBeNull();
+      expect(h.roster()?.dosespotPrescriberId).toBeNull();
+      // and an immediate retry is held off by the kept claim
+      await expect(h.service.enroll(ACTOR, MEMBER)).rejects.toMatchObject({
+        code: "DOSESPOT_ENROLLMENT_IN_PROGRESS",
+      });
+      expect(h.calls()).toBe(1);
+    }
+  });
+
+  it("a claim that cannot be released after a definitive refusal is LOGGED (ids and the error class only), and the refusal still surfaces", async () => {
+    const h = build({
+      releaseFails: true,
+      vendor: async () => {
+        throw new DegradedError(
+          "dosespot",
+          "enrollPrescriber",
+          false,
+          "DoseSpot rejected the request (HTTP 422).",
+          "c8",
+        );
+      },
+    });
+    await expect(h.service.enroll(ACTOR, MEMBER)).rejects.toMatchObject({
+      code: "DOSESPOT_ENROLLMENT_REJECTED",
+    });
+    expect(h.warned).toHaveLength(1);
+    expect(h.warned[0]?.fields).toEqual({
+      organizationId: ORG,
+      membershipId: MEMBER,
+      cause: "Error",
+    });
+    expect(JSON.stringify(h.warned)).not.toContain("secret-bound-value");
+  });
+
+  it("recording the vendor id is refused (409) when the roster re-linked the member to another physician while the vendor call was in flight", async () => {
+    const h = build({
+      vendor: async () => {
+        h.setRoster({
+          ...(h.roster() as RosterRow),
+          externalPhysicianMdmId: "66666666-6666-4666-8666-666666666666",
+        });
+        return { dosespotPrescriberId: "703", epcsEnrollmentStarted: false };
+      },
+    });
+    await expect(h.service.enroll(ACTOR, MEMBER)).rejects.toMatchObject({
+      code: "DOSESPOT_ROSTER_CHANGED",
+    });
+    expect(h.roster()?.dosespotPrescriberId).toBeNull(); // the NPI sent was the OLD physician's: nothing is linked to it
+    expect(h.published).toEqual([]);
   });
 
   it("the release names the marker THIS attempt stamped, so it can never clear a newer claim", async () => {

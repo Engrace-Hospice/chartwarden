@@ -11,11 +11,13 @@ import {
   type DoseSpotTenantConfig,
   type DoseSpotTenantConfigResolver,
   NotEnabledError,
+  UnconfirmedOutcomeError,
   createEnvTenantConfigResolver,
   createHttpDoseSpotClient,
   createUnboundTenantConfigResolver,
   isConfigUnavailableError,
   isNotEnabledError,
+  isUnconfirmedOutcomeError,
   parseTenantConfig,
   phaseOfStatus,
   unverifiedEndpoints,
@@ -41,7 +43,10 @@ interface Recorded {
   headers: Record<string, string>;
   body: string | undefined;
 }
-type Responder = (req: Recorded, n: number) => { status: number; body?: unknown } | "network";
+type Responder = (
+  req: Recorded,
+  n: number,
+) => { status: number; body?: unknown; text?: string } | "network";
 
 function fakeTransport(routes: Record<string, Responder>) {
   const calls: Recorded[] = [];
@@ -64,7 +69,7 @@ function fakeTransport(routes: Record<string, Responder>) {
     if (out === "network") throw new Error("ECONNRESET");
     return {
       status: out.status,
-      text: async () => (out.body === undefined ? "" : JSON.stringify(out.body)),
+      text: async () => out.text ?? (out.body === undefined ? "" : JSON.stringify(out.body)),
     };
   };
   return { fetchImpl, calls };
@@ -390,6 +395,46 @@ describe("a database-backed resolver (slice 4)", () => {
     expect(err).toBeInstanceOf(DegradedError);
     expect(err.retryable).toBe(true);
     expect(posts).toBe(1);
+  });
+
+  it("a 2xx the client cannot read, or that carries no clinician id, is an UNCONFIRMED outcome (the clinician may exist), never a refusal", async () => {
+    const enrol = (clinicians: Responder) =>
+      clientOver(swappable(cfg(1)).r, {
+        "POST /connect/token": TOKEN_OK,
+        "POST /api/clinicians": clinicians,
+      })
+        .c.enrollPrescriber(ORG, {
+          membershipId: "m1",
+          firstName: "A",
+          lastName: "B",
+          npi: "1234567893",
+          epcsRequested: false,
+        })
+        .catch((e) => e);
+    const accepted: ReadonlyArray<readonly [string, Responder]> = [
+      ["an unreadable body", () => ({ status: 200, text: "<html>gateway splash</html>" })],
+      ["an empty body", () => ({ status: 200 })],
+      ["a body with no Id", () => ({ status: 200, body: { Result: { ResultCode: "OK" } } })],
+    ];
+    for (const [name, responder] of accepted) {
+      const err = await enrol(responder);
+      expect(isUnconfirmedOutcomeError(err), name).toBe(true);
+      expect(err).toBeInstanceOf(UnconfirmedOutcomeError);
+      expect(err).toBeInstanceOf(DegradedError);
+      expect(err.retryable, name).toBe(false); // no in-call retry: that could create a second clinician
+    }
+    // a REFUSAL (a 4xx, or an error the vendor reports) is definitive and is not this class
+    for (const refusal of [
+      () => ({ status: 422 }),
+      () => ({
+        status: 200,
+        body: { Result: { ResultCode: "ERROR", ResultDescription: "bad NPI" } },
+      }),
+    ] as Responder[]) {
+      const err = await enrol(refusal);
+      expect(err).toBeInstanceOf(DegradedError);
+      expect(isUnconfirmedOutcomeError(err)).toBe(false);
+    }
   });
 
   it("still retries the calls that carry an idempotency key (a 5xx on a status read is attempted three times)", async () => {

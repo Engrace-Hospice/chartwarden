@@ -8,10 +8,12 @@ export {
   DegradedError,
   NotEnabledError,
   RetryableError,
+  UnconfirmedOutcomeError,
   isConfigUnavailableError,
   isDegradedError,
   isNotEnabledError,
   isRetryableError,
+  isUnconfirmedOutcomeError,
   type DoseSpotOperation,
 } from "./errors";
 export {
