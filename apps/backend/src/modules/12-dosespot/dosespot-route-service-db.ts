@@ -107,6 +107,7 @@ import type {
 } from "./routes/service";
 import { MEDICATION_ORDER_LIST_LIMIT, RX_BENEFIT_UNKNOWN } from "./routes/service";
 import { enqueueTransmissionIfBound } from "./transmission-enqueue";
+import type { TransmissionGate } from "./transmission-gate";
 
 const MO = schema.medicationOrders;
 const MOT = schema.medicationOrderTransmissions;
@@ -303,11 +304,11 @@ export interface DoseSpotSafetyGateDeps {
   readonly resolveConsentEvaluator?: () => ConsentGatePort;
   readonly resolveAllergyReader?: () => PatientAllergyReader;
   /**
-   * GAP-037 — does this tenant have a bound DoseSpot adapter (complete per-tenant credentials)? When true, a
-   * signed order that CAN be e-prescribed (has an RxCUI + a structured sig) is queued for transmission
-   * instead of being activated locally. Absent / false ⇒ the F-058 behaviour is unchanged (`not_required`).
+   * GAP-037 / slice 4 — may this SIGNED order be queued for e-prescribing instead of activating locally? Answered inside the
+   * signing transaction: the org's DoseSpot is live AND the signing prescriber is linked to DoseSpot (`transmission-gate.ts`).
+   * Absent / false => the F-058 behaviour is unchanged (`not_required`).
    */
-  readonly transmissionEnabledFor?: (organizationId: string) => boolean | Promise<boolean>;
+  readonly transmissionGate?: TransmissionGate;
   /**
    * CW-CLIN-008 — the M40 directory `createDraft` checks the ordering physician against. Absent ⇒ no check (the
    * live suites run without the seam); the boot wiring passes the registered `MdmEntityProvider`.
@@ -459,7 +460,7 @@ export function createDbDoseSpotBackend(
     at: Date,
   ): Promise<void> {
     if (
-      (await gates.transmissionEnabledFor?.(organizationId)) &&
+      (await gates.transmissionGate?.(tx, organizationId, row.prescriberMembershipId)) &&
       (await enqueueTransmissionIfBound(tx, outbox, organizationId, row, at))
     ) {
       return;

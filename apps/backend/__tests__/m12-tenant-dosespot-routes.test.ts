@@ -20,6 +20,7 @@ import {
   DOSESPOT_VERIFY_ROUTE_RATE_LIMIT,
   createRouteRateLimit,
 } from "../src/bootstrap/plugins/route-rate-limit";
+import type { PrescriberEnrollmentService } from "../src/modules/12-dosespot/tenant-config/prescriber-enrollment";
 import { registerTenantDoseSpotRoutes } from "../src/modules/12-dosespot/tenant-config/routes";
 import type {
   ClinicConfigView,
@@ -117,8 +118,20 @@ function makeServer(opts: { verifyLimit?: number } = {}) {
   reg.register("step_up_recent", async (context) => context.attributes.stepUpRecent === true);
   registerAbacRegistry(reg);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+  const enrollmentService: PrescriberEnrollmentService = {
+    async enroll(actor, membershipId, input) {
+      calls.push({
+        method: "enroll",
+        organizationId: actor.organizationId,
+        membershipId,
+        body: input,
+      });
+      return { membershipId, enrolledWithDoseSpot: true };
+    },
+  };
   registerTenantDoseSpotRoutes(app, {
     clinicService: service,
+    enrollmentService,
     ...(opts.verifyLimit
       ? {
           verifyRateLimit: createRouteRateLimit({
@@ -298,6 +311,52 @@ describe("tenant DoseSpot routes", () => {
     expect((await verify(ADMIN)).statusCode).toBe(200);
     expect((await verify(ADMIN)).statusCode).toBe(429);
     expect(calls.filter((c) => c.method === "verify")).toHaveLength(2);
+    await app.close();
+  });
+});
+
+describe("prescriber DoseSpot enrolment route", () => {
+  const MEMBER = "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd";
+  const ENROLL = `/api/v1/admin/dosespot-prescribers/${MEMBER}/dosespot-enrollment`;
+  const ENROLL_BODY = { npi: "1234567893", firstName: "Ada", lastName: "Lovelace" };
+  const ROSTER_ADMIN = { "x-test-user": "roster_1", "x-test-step-up": "1" };
+
+  it("needs the roster key (the clinic admin key does not open it), a fresh step-up, no AI actor and an Idempotency-Key", async () => {
+    const { app, calls } = makeServer();
+    const send = (headers: Record<string, string>) =>
+      app.inject({ method: "POST", url: ENROLL, headers, payload: ENROLL_BODY });
+    expect((await send({ ...idem() })).statusCode).toBe(401);
+    expect((await send({ ...ADMIN, ...idem() })).statusCode).toBe(403); // clinic admin, not roster admin
+    expect((await send({ "x-test-user": "roster_1", ...idem() })).statusCode).toBe(403); // stale step-up
+    expect(
+      (await send({ ...ROSTER_ADMIN, "x-test-actor-kind": "ai_agent", ...idem() })).statusCode,
+    ).toBe(403);
+    expect((await send(ROSTER_ADMIN)).statusCode).toBe(400);
+    expect(calls).toEqual([]);
+    await app.close();
+  });
+
+  it("enrols with the session's org and membership, and refuses a bad NPI shape, an extra field or a non-uuid id before the service", async () => {
+    const { app, calls } = makeServer();
+    const post = (url: string, payload: object) =>
+      app.inject({ method: "POST", url, headers: { ...ROSTER_ADMIN, ...idem() }, payload });
+    const ok = await post(ENROLL, ENROLL_BODY);
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toEqual({ membershipId: MEMBER, enrolledWithDoseSpot: true });
+    expect(calls[0]).toMatchObject({
+      method: "enroll",
+      organizationId: ORG,
+      membershipId: MEMBER,
+      body: ENROLL_BODY,
+    });
+    expect((await post(ENROLL, { ...ENROLL_BODY, npi: "12345" })).statusCode).toBe(422);
+    expect((await post(ENROLL, { ...ENROLL_BODY, epcsRequested: true })).statusCode).toBe(422);
+    expect((await post(ENROLL, { ...ENROLL_BODY, organizationId: "x" })).statusCode).toBe(422);
+    expect(
+      (await post("/api/v1/admin/dosespot-prescribers/not-a-uuid/dosespot-enrollment", ENROLL_BODY))
+        .statusCode,
+    ).toBe(422);
+    expect(calls).toHaveLength(1);
     await app.close();
   });
 });

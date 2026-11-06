@@ -9,7 +9,8 @@
 import { requirePermission, requireStepUp } from "@chartwarden/auth";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { rejectAiActor } from "../../../bootstrap/reject-ai-actor";
-import { parse } from "../routes/dosespot-typebox";
+import { MembershipParamsSchema, parse } from "../routes/dosespot-typebox";
+import type { PrescriberEnrollmentService } from "./prescriber-enrollment";
 import {
   type PreHandler,
   clinicActorOf,
@@ -18,10 +19,12 @@ import {
   requireIdempotencyKey,
 } from "./route-guards";
 import type { DoseSpotClinicRouteService } from "./tenant-service";
-import { PutClinicBodySchema } from "./typebox";
+import { EnrollPrescriberVendorBodySchema, PutClinicBodySchema } from "./typebox";
 
 export interface TenantDoseSpotRouteDeps {
   readonly clinicService: DoseSpotClinicRouteService;
+  /** A prescriber's DoseSpot (vendor) enrolment; absent => that route is not mounted. */
+  readonly enrollmentService?: PrescriberEnrollmentService;
   /** Per-user cap on `verify` (a vendor call per request); fail-open like the other route limits. Absent = unlimited. */
   readonly verifyRateLimit?: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 }
@@ -29,6 +32,8 @@ export interface TenantDoseSpotRouteDeps {
 const READ = requirePermission("prescribing.clinic.read") as PreHandler;
 const ADMIN = requirePermission("prescribing.clinic.admin") as PreHandler;
 const ADMIN_STEPUP = requireStepUp("prescribing.clinic.admin") as PreHandler;
+const ROSTER = requirePermission("prescribing.admin.roster") as PreHandler;
+const ROSTER_STEPUP = requireStepUp("prescribing.admin.roster") as PreHandler;
 const NO_AI = rejectAiActor("AI principals cannot change the DoseSpot registration") as PreHandler;
 const IDEMPOTENT = requireIdempotencyKey();
 const WRITE: readonly PreHandler[] = [ADMIN, ADMIN_STEPUP, NO_AI, IDEMPOTENT];
@@ -80,4 +85,21 @@ export function registerTenantDoseSpotRoutes(
   app.post("/api/v1/tenant/dosespot/deactivate", { preHandler: [...WRITE] }, async (request) =>
     service.deactivate(clinicActorOf(request)),
   );
+
+  // POST dosespot-enrollment — register a roster prescriber with DoseSpot and record the vendor's id (the link `transmit-newrx`
+  // sends under). Needs the roster key (a prescriber, not the clinic, is being enrolled), a fresh step-up and an Idempotency-Key.
+  // 409 DOSESPOT_NOT_READY until the registration is verified or active. Never starts EPCS.
+  if (deps.enrollmentService) {
+    const enrollment = deps.enrollmentService;
+    app.post(
+      "/api/v1/admin/dosespot-prescribers/:membershipId/dosespot-enrollment",
+      { preHandler: [ROSTER, ROSTER_STEPUP, NO_AI, IDEMPOTENT] },
+      async (request) => {
+        const actor = clinicActorOf(request);
+        const { membershipId } = parse(MembershipParamsSchema, request.params);
+        const body = parse(EnrollPrescriberVendorBodySchema, request.body);
+        return enrollment.enroll(actor, membershipId, body);
+      },
+    );
+  }
 }
