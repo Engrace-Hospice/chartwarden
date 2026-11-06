@@ -11,6 +11,7 @@ import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { registerSeam } from "../../bootstrap/index";
+import { buildNetCollectionsReader } from "./net-collections-reader";
 
 const RL = schema.remittanceLine;
 
@@ -61,4 +62,6 @@ export function buildM25ClaimSettlementProvider(db: DbClient): ClaimSettlementPr
 export function registerM25PublishedSeams(db: DbClient | undefined): void {
   if (!db) return;
   registerSeam("ClaimSettlementProvider", buildM25ClaimSettlementProvider(db));
+  // Slice 2 (tenant pricing) — the net-collections meter the M35 billing-service percentage is charged on.
+  registerSeam("NetCollectionsReader", buildNetCollectionsReader(db));
 }
