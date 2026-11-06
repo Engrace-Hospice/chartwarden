@@ -37,6 +37,9 @@ ALTER TABLE "plan"
     CONSTRAINT "plan_minimum_monthly_ck" CHECK ("minimum_monthly_cents" IS NULL OR "minimum_monthly_cents" >= 0),
   ADD COLUMN "published_at" timestamp with time zone;--> statement-breakpoint
 
+-- The supersedes FK is ON DELETE RESTRICT, so a plan delete probes it: index it (test:fk-indexes:live).
+CREATE INDEX IF NOT EXISTS "plan_supersedes_plan_id_ix" ON "plan" ("supersedes_plan_id") WHERE "supersedes_plan_id" IS NOT NULL;--> statement-breakpoint
+
 -- One row per census band of a plan. A band is a THRESHOLD: it starts at min_adc patients and runs until the next band starts,
 -- so bands cannot overlap or leave a gap. PLATFORM-SHARED (no organization_id by design: the same offer for every tenant), the
 -- `plan` shape: read-all to the app role, written only by the platform carrier / chartwarden_admin.

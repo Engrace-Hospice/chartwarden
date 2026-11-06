@@ -57,6 +57,9 @@ export const plan = pgTable(
     slugUq: uniqueIndex("plan_slug_uq").on(t.slug),
     tierCadenceIx: index("plan_tier_cadence_ix").on(t.tier, t.cadence),
     activeIx: index("plan_active_ix").on(t.isActive).where(sql`is_active = true`),
+    supersedesIx: index("plan_supersedes_plan_id_ix")
+      .on(t.supersedesPlanId)
+      .where(sql`supersedes_plan_id IS NOT NULL`),
   }),
 );
 
