@@ -31,6 +31,7 @@ const step = (key: string, sequence: number, over: Partial<WizardStep> = {}): Wi
   completedAt: null,
   blockerReason: null,
   skipRationale: null,
+  systemSkipped: false,
   createdAt: "2026-11-01T00:00:00.000Z",
   templateKey: key,
   isCanonical: true,
@@ -104,11 +105,22 @@ describe("railItemsOf", () => {
     steps[3] = step("mac_configured", 4, {
       status: "skipped",
       skipRationale: "bills outside ChartWarden",
+      systemSkipped: true,
     });
     const rail = railItemsOf(view(steps));
     expect(rail[0]?.caption).toBe("Platform operator");
     expect(rail[3]?.caption).toBe("Skipped automatically: bills outside ChartWarden");
     expect(rail[5]?.caption).toBe("Compliance officer");
+  });
+
+  it("never takes a person's skip for the system's, whatever words they typed: only the server's flag decides", () => {
+    const steps = STEPS();
+    steps[3] = step("mac_configured", 4, {
+      status: "skipped",
+      skipRationale: "bills outside ChartWarden",
+      systemSkipped: false,
+    });
+    expect(railItemsOf(view(steps))[3]?.caption).toBe("Platform operator");
   });
 
   it("uses the step's own title as its label", () => {

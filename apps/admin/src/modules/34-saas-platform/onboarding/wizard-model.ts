@@ -37,9 +37,12 @@ export const OWNER_LABEL: Record<WizardOwner, string> = {
 const isSettled = (s: WizardStep): boolean => s.status === "done" || s.status === "skipped";
 const isGating = (s: WizardStep): boolean => s.isCanonical && !s.optional;
 
-/** True for a skip the system recorded because the tenant bills outside ChartWarden. */
+/**
+ * True for a skip the SYSTEM made because the tenant bills outside ChartWarden. The server says so (`systemSkipped`); the rationale text is
+ * never read for this: a person can type the same words.
+ */
 export const isSystemSkip = (step: WizardStep): boolean =>
-  step.status === "skipped" && step.skipRationale === OUTSIDE_SKIP_RATIONALE;
+  step.status === "skipped" && step.systemSkipped;
 
 function titleOf(view: WizardView, key: string): string {
   return view.steps.find((s) => s.key === key)?.title ?? key;

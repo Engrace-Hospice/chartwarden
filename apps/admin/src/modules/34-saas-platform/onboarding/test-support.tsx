@@ -34,6 +34,7 @@ export function wizardStep(
     completedAt: null,
     blockerReason: null,
     skipRationale: null,
+    systemSkipped: false,
     createdAt: "2026-11-01T00:00:00.000Z",
     templateKey: key,
     isCanonical: true,
