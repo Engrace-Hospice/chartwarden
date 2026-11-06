@@ -66,7 +66,9 @@ describe("per-organization transport resolution in M23", () => {
     const { deps } = perOrgDeps();
     expect(hasPerOrgTransport(deps)).toBe(true);
     expect(hasPerOrgTransport({})).toBe(false);
-    expect(hasPerOrgTransport({ transport: { ...deps.transport, binding: UNBOUND_BINDING } })).toBe(false);
+    expect(hasPerOrgTransport({ transport: { ...deps.transport, binding: UNBOUND_BINDING } })).toBe(
+      false,
+    );
   });
 
   it("resolves each org's own binding, with the shared contexts and stores", async () => {
@@ -91,7 +93,9 @@ describe("per-organization transport resolution in M23", () => {
       contexts: perOrgDeps().deps.transport.contexts,
     };
     expect(await transportForOrg({}, ORG_A)).toBeNull();
-    expect(await transportForOrg({ transport: { ...bound, binding: UNBOUND_BINDING } }, ORG_A)).toBeNull();
+    expect(
+      await transportForOrg({ transport: { ...bound, binding: UNBOUND_BINDING } }, ORG_A),
+    ).toBeNull();
     expect(await transportForOrg({ transport: bound }, ORG_A)).toBe(bound);
   });
 
@@ -104,8 +108,12 @@ describe("per-organization transport resolution in M23", () => {
     // org B's vendor saw nothing of org A's submission, and A's vendor holds it
     const scopeA = { organizationId: ORG_A, providerEntityId: PE, usage: "test" } as const;
     const scopeB = { ...scopeA, organizationId: ORG_B };
-    expect((await a.fetchAcknowledgments({ ...scopeA, payerId: "p", correlationId: "c" }, null)).ok).toBe(true);
-    expect((await b.fetchAcknowledgments({ ...scopeB, payerId: "p", correlationId: "c" }, null)).ok).toBe(true);
+    expect(
+      (await a.fetchAcknowledgments({ ...scopeA, payerId: "p", correlationId: "c" }, null)).ok,
+    ).toBe(true);
+    expect(
+      (await b.fetchAcknowledgments({ ...scopeB, payerId: "p", correlationId: "c" }, null)).ok,
+    ).toBe(true);
   });
 
   it("refuses an org with no live clearinghouse, and does not touch any org's vendor", async () => {

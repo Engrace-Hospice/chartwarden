@@ -18,7 +18,6 @@ import type { OnboardingDataService, OnboardingOperator } from "./onboarding-dat
 import {
   ONBOARDING_REASON_MAX,
   ONBOARDING_REASON_MIN,
-  OnboardingReasonSchema,
   OnboardingClearinghousePutRequest,
   OnboardingClearinghouseVerifyRequest,
   OnboardingLocationCreateRequest,
@@ -27,6 +26,7 @@ import {
   OnboardingMedicaidCredentialUpsertRequest,
   OnboardingProviderEntityCreateRequest,
   OnboardingProviderEntityPatchRequest,
+  OnboardingReasonSchema,
   OnboardingResourceParamsSchema,
   normalizeReason,
 } from "./onboarding-data-typebox";
@@ -285,7 +285,9 @@ export function registerOnboardingDataRoutes(
     { preHandler: [...CLEARINGHOUSE_WRITE] },
     async (request, reply) => {
       const op = operatorOf(request);
-      const { reason, fields } = splitReason(parse(OnboardingClearinghousePutRequest, request.body));
+      const { reason, fields } = splitReason(
+        parse(OnboardingClearinghousePutRequest, request.body),
+      );
       const { created, view } = await service.putClearinghouse(
         op,
         slugOf(request),

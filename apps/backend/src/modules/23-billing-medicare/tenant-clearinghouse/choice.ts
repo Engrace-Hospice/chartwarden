@@ -31,7 +31,12 @@ import { CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV } from "../../../bootstrap/env";
 
 export { CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const FALLBACK_VENDORS: ReadonlySet<string> = new Set(["stedi", "claimmd", "direct_mac", "in_memory"]);
+const FALLBACK_VENDORS: ReadonlySet<string> = new Set([
+  "stedi",
+  "claimmd",
+  "direct_mac",
+  "in_memory",
+]);
 
 /** The organizations named in `CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS` (comma-separated uuids). A malformed id refuses boot. */
 export function parseFallbackOrgIds(raw: string | undefined): ReadonlySet<string> {
@@ -41,7 +46,9 @@ export function parseFallbackOrgIds(raw: string | undefined): ReadonlySet<string
     .filter((s) => s.length > 0);
   for (const id of ids) {
     if (!UUID.test(id)) {
-      throw new Error(`${CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV} must be a comma-separated list of organization uuids`);
+      throw new Error(
+        `${CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV} must be a comma-separated list of organization uuids`,
+      );
     }
   }
   return new Set(ids.map((id) => id.toLowerCase()));
@@ -75,7 +82,10 @@ export function platformFallbackFromEnv(env: EnvMap): {
   readonly lookup: (organizationId: string) => PlatformFallback | null;
 } {
   const orgIds = parseFallbackOrgIds(env[CLEARINGHOUSE_ENV_FALLBACK_ORG_IDS_ENV]);
-  const vendor = parseClearinghouseVendor(env[CLEARINGHOUSE_VENDOR_ENV], env.NODE_ENV === "production");
+  const vendor = parseClearinghouseVendor(
+    env[CLEARINGHOUSE_VENDOR_ENV],
+    env.NODE_ENV === "production",
+  );
   return { orgIds, lookup: platformFallbackLookup(orgIds, vendor, clearinghouseUsageFromEnv(env)) };
 }
 
@@ -93,7 +103,12 @@ export function choiceOf(
     };
   }
   if (fallback) {
-    return { vendor: fallback.vendor, status: "active", mode: fallback.mode, source: "platform_env" };
+    return {
+      vendor: fallback.vendor,
+      status: "active",
+      mode: fallback.mode,
+      source: "platform_env",
+    };
   }
   return NO_CLEARINGHOUSE_CHOICE;
 }

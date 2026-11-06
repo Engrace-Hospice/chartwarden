@@ -14,13 +14,20 @@ const row = (over: Partial<ConfigRow>): ConfigRow =>
 
 describe("claims-billing decision from the clearinghouse choice", () => {
   it("allows an active transmitting vendor, from the tenant's own row", () => {
-    expect(decideClaimsBilling(choiceOf(row({ vendor: "stedi" }), null))).toEqual({ entitled: true });
-    expect(decideClaimsBilling(choiceOf(row({ vendor: "claimmd" }), null))).toEqual({ entitled: true });
+    expect(decideClaimsBilling(choiceOf(row({ vendor: "stedi" }), null))).toEqual({
+      entitled: true,
+    });
+    expect(decideClaimsBilling(choiceOf(row({ vendor: "claimmd" }), null))).toEqual({
+      entitled: true,
+    });
   });
 
   it("refuses `outside`", () => {
     const choice = choiceOf(row({ vendor: "outside", mode: null }), null);
-    expect(decideClaimsBilling(choice)).toEqual({ entitled: false, reason: "clearinghouse_outside" });
+    expect(decideClaimsBilling(choice)).toEqual({
+      entitled: false,
+      reason: "clearinghouse_outside",
+    });
   });
 
   it("refuses a vendor that is not yet active", () => {
@@ -43,7 +50,9 @@ describe("claims-billing decision from the clearinghouse choice", () => {
     const lookup = platformFallbackLookup(parseFallbackOrgIds(ORG.toUpperCase()), "stedi", "test");
     expect(decideClaimsBilling(choiceOf(null, lookup(ORG)))).toEqual({ entitled: true });
     expect(choiceOf(null, lookup(ORG))).toMatchObject({ vendor: "stedi", source: "platform_env" });
-    expect(decideClaimsBilling(choiceOf(null, lookup("22222222-2222-4222-8222-222222222222")))).toMatchObject({
+    expect(
+      decideClaimsBilling(choiceOf(null, lookup("22222222-2222-4222-8222-222222222222"))),
+    ).toMatchObject({
       entitled: false,
     });
   });
@@ -52,7 +61,10 @@ describe("claims-billing decision from the clearinghouse choice", () => {
     const lookup = platformFallbackLookup(parseFallbackOrgIds(ORG), "stedi", "test");
     const choice = choiceOf(row({ vendor: "outside", mode: null }), lookup(ORG));
     expect(choice.source).toBe("tenant");
-    expect(decideClaimsBilling(choice)).toMatchObject({ entitled: false, reason: "clearinghouse_outside" });
+    expect(decideClaimsBilling(choice)).toMatchObject({
+      entitled: false,
+      reason: "clearinghouse_outside",
+    });
   });
 
   it("refuses boot on a malformed id, or on named orgs with no env vendor", () => {

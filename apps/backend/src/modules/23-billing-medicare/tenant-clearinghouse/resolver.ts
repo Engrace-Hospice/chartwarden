@@ -56,12 +56,22 @@ export interface TenantClearinghouseRuntime {
 const C = schema.tenantClearinghouseConfig;
 
 /** One account's own counter: Claim.MD limits a request rate per ACCOUNT, and every tenant now has its own. */
-function scopedCounter(counter: ClaimMdRequestCounter, organizationId: string): ClaimMdRequestCounter {
-  return { increment: (key, windowMs) => counter.increment(`${key}:org:${organizationId}`, windowMs) };
+function scopedCounter(
+  counter: ClaimMdRequestCounter,
+  organizationId: string,
+): ClaimMdRequestCounter {
+  return {
+    increment: (key, windowMs) => counter.increment(`${key}:org:${organizationId}`, windowMs),
+  };
 }
 
-export function createTenantClearinghouseRuntime(deps: TenantBindingDeps): TenantClearinghouseRuntime {
-  const built = new Map<string, { readonly version: number; readonly binding: ClearinghouseBinding }>();
+export function createTenantClearinghouseRuntime(
+  deps: TenantBindingDeps,
+): TenantClearinghouseRuntime {
+  const built = new Map<
+    string,
+    { readonly version: number; readonly binding: ClearinghouseBinding }
+  >();
 
   const readRow = (organizationId: string): Promise<ConfigRow | null> =>
     deps.readRow?.(organizationId) ??
@@ -77,13 +87,22 @@ export function createTenantClearinghouseRuntime(deps: TenantBindingDeps): Tenan
   async function build(row: ConfigRow): Promise<ClearinghouseBinding> {
     const vendor = row.vendor;
     const mode = row.mode;
-    if ((vendor !== "stedi" && vendor !== "claimmd") || (mode !== "test" && mode !== "production")) {
+    if (
+      (vendor !== "stedi" && vendor !== "claimmd") ||
+      (mode !== "test" && mode !== "production")
+    ) {
       return UNBOUND_BINDING;
     }
     if (!deps.cipher || !row.secretCipher) {
-      throw new Error(`tenant clearinghouse for org ${row.organizationId} has no usable credential`);
+      throw new Error(
+        `tenant clearinghouse for org ${row.organizationId} has no usable credential`,
+      );
     }
-    const secret = await deps.cipher.decrypt(row.organizationId, { vendor, mode }, row.secretCipher);
+    const secret = await deps.cipher.decrypt(
+      row.organizationId,
+      { vendor, mode },
+      row.secretCipher,
+    );
     const onAnomaly = deps.onAnomaly ? { onAnomaly: deps.onAnomaly } : {};
     const transport =
       vendor === "stedi"
@@ -105,7 +124,9 @@ export function createTenantClearinghouseRuntime(deps: TenantBindingDeps): Tenan
     const row = await readRow(organizationId);
     if (!row) {
       built.delete(organizationId);
-      return deps.fallbackOrgIds.has(organizationId.toLowerCase()) ? deps.platformBinding : UNBOUND_BINDING;
+      return deps.fallbackOrgIds.has(organizationId.toLowerCase())
+        ? deps.platformBinding
+        : UNBOUND_BINDING;
     }
     if (row.status !== "active") {
       built.delete(organizationId);

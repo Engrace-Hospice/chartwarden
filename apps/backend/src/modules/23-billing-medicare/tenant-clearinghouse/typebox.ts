@@ -12,7 +12,10 @@ export const ClearinghouseVendorSchema = Type.Union([
   Type.Literal("claimmd"),
   Type.Literal("outside"),
 ]);
-export const ClearinghouseModeSchema = Type.Union([Type.Literal("test"), Type.Literal("production")]);
+export const ClearinghouseModeSchema = Type.Union([
+  Type.Literal("test"),
+  Type.Literal("production"),
+]);
 
 export const PutClearinghouseBodySchema = Type.Object(
   {
@@ -61,7 +64,11 @@ export const ClearinghouseConfigViewSchema = Type.Object({
   ),
   source: Type.Union([Type.Literal("tenant"), Type.Literal("platform_env"), Type.Literal("none")]),
   hasSecret: Type.Boolean(),
-  verifiableBy: Type.Union([Type.Literal("connection_test"), Type.Literal("attestation"), Type.Null()]),
+  verifiableBy: Type.Union([
+    Type.Literal("connection_test"),
+    Type.Literal("attestation"),
+    Type.Null(),
+  ]),
   verification: Type.Union([
     Type.Object({
       kind: Type.Union([Type.Literal("connection_test"), Type.Literal("attested")]),

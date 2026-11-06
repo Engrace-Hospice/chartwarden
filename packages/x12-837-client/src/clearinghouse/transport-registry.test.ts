@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { createInMemoryHarness } from "./in-memory-transport";
 import {
   CLEARINGHOUSE_VENDOR_ENV,
+  type ClearinghouseBinding,
   UNBOUND_BINDING,
   bindClearinghouseTransport,
   bindingForOrg,
   isPerOrgBinding,
   parseClearinghouseVendor,
-  type ClearinghouseBinding,
 } from "./transport-registry";
 import { CH } from "./types";
 
@@ -109,7 +109,8 @@ describe("bindingForOrg", () => {
     const claimmd: ClearinghouseBinding = { vendor: "claimmd", transport: inMemoryFactory() };
     const perOrg: ClearinghouseBinding = {
       ...UNBOUND_BINDING,
-      forOrg: async (orgId) => (orgId === "org-1" ? stedi : orgId === "org-2" ? claimmd : UNBOUND_BINDING),
+      forOrg: async (orgId) =>
+        orgId === "org-1" ? stedi : orgId === "org-2" ? claimmd : UNBOUND_BINDING,
     };
     expect(isPerOrgBinding(perOrg)).toBe(true);
     expect((await bindingForOrg(perOrg, "org-1")).vendor).toBe("stedi");
