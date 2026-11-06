@@ -2,9 +2,9 @@
   "totals": {
     "modules": 40,
     "covered": 40,
-    "routes": 1892,
-    "coveredRoutes": 1892,
-    "directRoutesReferenced": 1725
+    "routes": 1897,
+    "coveredRoutes": 1897,
+    "directRoutesReferenced": 1730
   },
   "modules": [
     {
@@ -296,14 +296,14 @@
     },
     {
       "module": "16-bereavement",
-      "routes": 34,
+      "routes": 38,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/bereavement-inject.test.ts",
         "apps/backend/__tests__/m16-routes.live.test.ts",
         "apps/backend/__tests__/m6-readmission.live.test.ts"
       ],
-      "directRoutesReferenced": 34
+      "directRoutesReferenced": 38
     },
     {
       "module": "17-scheduling",
@@ -505,7 +505,7 @@
     },
     {
       "module": "31-portal",
-      "routes": 67,
+      "routes": 68,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts",
@@ -515,7 +515,7 @@
         "apps/backend/__tests__/m31-signature-requests.live.test.ts",
         "apps/backend/__tests__/portal-inject.test.ts"
       ],
-      "directRoutesReferenced": 62
+      "directRoutesReferenced": 63
     },
     {
       "module": "32-ai-platform",
