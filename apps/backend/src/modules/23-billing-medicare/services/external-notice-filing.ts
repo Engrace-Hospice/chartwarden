@@ -8,12 +8,24 @@
 // changes (a parked notice stays draft / ready): the NOE / NOTR machines describe what ChartWarden did with it, and it did nothing.
 //
 // The mutation is one version-checked same-state patch through the notice repository, captured by the table's write-audit trigger
-// (the actor is the session user; the membership is on the row). No outbox event: nothing downstream consumes this fact yet, and an
-// event would need a catalog entry and a binding. The decision rules are pure (`planExternalFilingRecord` in @chartwarden/billing).
-import { type NoticeState, planExternalFilingRecord, repositories } from "@chartwarden/billing";
+// (the actor is the session user; the membership is on the row). A filing recorded AFTER the due date also publishes one catalogued
+// event in the same transaction (`m23.noe|notr.filed_externally_late`: ids and dates only), which M23's own outbox consumer turns
+// into the M36 alert to the tenant and the platform-ops notice. The decision rules are pure (`planExternalFilingRecord` in
+// @chartwarden/billing); the date they judge "today" against is the Eastern (CMS) calendar day.
+import {
+  type NoticeState,
+  medicareReceiptDay,
+  planExternalFilingRecord,
+  repositories,
+} from "@chartwarden/billing";
 import { withOrgContext } from "@chartwarden/tenancy";
 import { ChartWardenError, NotFoundError } from "@chartwarden/types";
-import { type BillingDb, type BillingWriteActor, assertNotAiActor } from "./claim-state-service";
+import {
+  type BillingDb,
+  type BillingWriteActor,
+  type WriteOutboxPort,
+  assertNotAiActor,
+} from "./claim-state-service";
 
 /** Whether the organization currently bills outside ChartWarden (bound at the composition root over `TenantClearinghouseReader`). */
 export type BillsOutsidePort = (organizationId: string) => Promise<boolean>;
@@ -100,16 +112,49 @@ export async function parkNotice<R extends ExternalFilingRow>(
     : patchExternalFiling(repo, notice, PARK_PATCH);
 }
 
-/** The refusal a submit gives for a notice the tenant already recorded as filed (a submit must never file it twice). */
-export const noticeFiledExternally = (kind: ExternalNoticeKind): ChartWardenError =>
+/**
+ * The refusal for a notice the tenant already recorded as filed: a submit must never file it twice, and a cancel must never hide
+ * a notice that is on file with Medicare (the correction for a wrong filing is Medicare's, outside ChartWarden).
+ */
+export const noticeFiledExternally = (
+  kind: ExternalNoticeKind,
+  action: "submitted" | "cancelled" = "submitted",
+): ChartWardenError =>
   new ChartWardenError(
     "NOTICE_FILED_EXTERNALLY",
-    `this ${kind.toUpperCase()} is recorded as filed outside ChartWarden and cannot be submitted`,
+    `this ${kind.toUpperCase()} is recorded as filed outside ChartWarden and cannot be ${action}`,
     409,
   );
 
+/** The reason a parked notice's leftover queued attempt is closed with (a stable code: no free text). */
+export const PARKED_ATTEMPT_REASON = "PARKED_FOR_EXTERNAL_FILING";
+
+/**
+ * Close the `queued` transmission attempt a notice may still hold from before its org switched to `outside` (the submit route
+ * appended it, the job never ran). Left open it would sit `queued` forever and read as a submission in flight. The attempt log is
+ * append-only, so it ends `failed_worker` with a stable reason. No queued attempt (or an already settled one) is left as is.
+ */
+export async function closeQueuedAttempt(
+  tx: BillingDb,
+  providerEntityId: string,
+  controlNumber: string,
+): Promise<void> {
+  const submissions = new repositories.ClaimSubmissionRepository(tx);
+  const latest = await submissions.findLatestAttempt(providerEntityId, controlNumber);
+  if (!latest || latest.outcome !== "queued") return;
+  await submissions.terminalize(latest.id, {
+    outcome: "failed_worker",
+    outcomeReason: PARKED_ATTEMPT_REASON,
+    generatedFileUri: null,
+    submittedAt: null,
+    workerCorrelationId: null,
+  });
+}
+
 export interface ExternalNoticeFilingPorts {
   readonly billsOutside?: BillsOutsidePort;
+  /** The catalog-validating publisher (callerModule m23): a LATE filing publishes its event here, in the record's transaction. */
+  readonly outbox?: WriteOutboxPort;
   readonly now?: () => Date;
 }
 
@@ -128,6 +173,7 @@ export interface ExternalNoticeFilingService {
 
 interface RecordableRow extends ExternalFilingRow {
   readonly organizationId: string;
+  readonly admissionId: string;
   readonly filedExternallyOn: string | null;
   readonly windowTargetAt: string;
   readonly windowBreachedAt: string | null;
@@ -138,17 +184,27 @@ interface KindOps<R extends RecordableRow> {
   repo(tx: BillingDb): ExternalFilingRepo<R>;
   /** The earliest a filing can carry: the NOE election effective date / the NOTR effective end date (the DDE-acceptance rule). */
   earliestDate(row: R): string;
+  /** The catalogued event a LATE filing publishes, and the payload key naming the notice. */
+  readonly lateEvent: "m23.noe.filed_externally_late" | "m23.notr.filed_externally_late";
+  readonly idKey: "noeId" | "notrId";
+  readonly aggregateKind: "noe_record" | "notr_record";
 }
 
 const NOE_OPS: KindOps<repositories.NoeRecord> = {
   find: (tx, id) => new repositories.NoeRepository(tx).findById(id),
   repo: (tx) => new repositories.NoeRepository(tx),
   earliestDate: (row) => row.electionEffectiveDate,
+  lateEvent: "m23.noe.filed_externally_late",
+  idKey: "noeId",
+  aggregateKind: "noe_record",
 };
 const NOTR_OPS: KindOps<repositories.NotrRecord> = {
   find: (tx, id) => new repositories.NotrRepository(tx).findById(id),
   repo: (tx) => new repositories.NotrRepository(tx),
   earliestDate: (row) => row.effectiveEndDate,
+  lateEvent: "m23.notr.filed_externally_late",
+  idKey: "notrId",
+  aggregateKind: "notr_record",
 };
 
 export function buildExternalNoticeFilingService(
@@ -189,7 +245,7 @@ export function buildExternalNoticeFilingService(
           windowTargetAt: notice.windowTargetAt,
           windowBreachedAt: notice.windowBreachedAt,
           filedOn,
-          today: at.toISOString().slice(0, 10),
+          today: medicareReceiptDay(at),
         });
         if (plan.kind === "refuse") {
           throw new ChartWardenError(
@@ -202,14 +258,32 @@ export function buildExternalNoticeFilingService(
           );
         }
         if (plan.kind === "replay") return notice;
-        return patchExternalFiling(ops.repo(tx), notice, {
+        const saved = await patchExternalFiling(ops.repo(tx), notice, {
           externalFilingStatus: "filed",
           filedExternallyOn: filedOn,
           filedExternallyRecordedAt: at,
           filedExternallyByMembershipId: actor.membershipId,
-          // The breach on record: the watchdog stops scanning a filed notice, so it would never stamp this one.
+          // The breach on record: the watchdog stops scanning a filed notice, so it would never stamp this one...
           ...(plan.stampBreach ? { windowBreachedAt: filedOn } : {}),
+          // ...and one it stamped BEFORE this on-time filing was recorded was wrong: clear it.
+          ...(plan.clearBreach ? { windowBreachedAt: null } : {}),
         });
+        if (plan.late && ports.outbox) {
+          // Ids and dates only (no patient, no free text). Same transaction: the fact and its announcement commit together.
+          await ports.outbox.publish(tx, {
+            eventName: ops.lateEvent,
+            organizationId: actor.organizationId,
+            aggregateKind: ops.aggregateKind,
+            aggregateId: saved.id,
+            payload: {
+              [ops.idKey]: saved.id,
+              admissionId: saved.admissionId,
+              filedOn,
+              windowTargetAt: saved.windowTargetAt,
+            },
+          });
+        }
+        return saved;
       },
     );
   }

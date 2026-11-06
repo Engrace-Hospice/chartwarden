@@ -5,7 +5,9 @@
 // ready: ChartWarden never submitted it and Medicare has not answered), the date is a real calendar day, not in the future and
 // not before the notice's earliest date (the NOE election effective date / the NOTR end date, the DDE-acceptance rule), a re-record
 // of the same date changes nothing, and a date past the due date stamps the breach on record (the watchdog never will: a notice
-// recorded as filed leaves its scan). It is the tenant's own statement of the filing date, not Medicare's answer.
+// recorded as filed leaves its scan), and an ON-TIME filing recorded after the watchdog already stamped a breach clears that stamp
+// (the watchdog scans an unfiled notice, so it cannot know the tenant filed). A late filing is flagged `late` so the caller can
+// announce it. It is the tenant's own statement of the filing date, not Medicare's answer.
 import type { IsoDate, NoticeState } from "../contracts";
 import { toEpochDay } from "../domain/dates";
 
@@ -23,7 +25,15 @@ export type ExternalFilingRefusalCode =
   | "FILED_ON_BEFORE_EFFECTIVE_DATE";
 
 export type ExternalFilingPlan =
-  | { readonly kind: "record"; readonly stampBreach: boolean }
+  | {
+      readonly kind: "record";
+      /** Filed after the due date and the watchdog stamped nothing yet: stamp the breach on record (the filing date). */
+      readonly stampBreach: boolean;
+      /** Filed ON TIME but the watchdog already stamped a breach before it was recorded: that stamp was wrong, clear it. */
+      readonly clearBreach: boolean;
+      /** Filed after the due date: the late-filing event fires (once: a replay never reaches here). */
+      readonly late: boolean;
+    }
   | { readonly kind: "replay" }
   | {
       readonly kind: "refuse";
@@ -85,8 +95,11 @@ export function planExternalFilingRecord(input: ExternalFilingRecordInput): Exte
       `the notice cannot have been filed before ${input.earliestDate}`,
     );
   }
+  const late = filedDay > toEpochDay(input.windowTargetAt);
   return {
     kind: "record",
-    stampBreach: input.windowBreachedAt === null && filedDay > toEpochDay(input.windowTargetAt),
+    stampBreach: input.windowBreachedAt === null && late,
+    clearBreach: input.windowBreachedAt !== null && !late,
+    late,
   };
 }

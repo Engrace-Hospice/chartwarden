@@ -20,13 +20,15 @@ describe("planExternalFilingRecord", () => {
     expect(planExternalFilingRecord({ ...base, state, filedOn: "2026-11-04" })).toEqual({
       kind: "record",
       stampBreach: false,
+      clearBreach: false,
+      late: false,
     });
   });
 
   it("records a notice nobody parked yet (status null), the first time the tenant tells us", () => {
     expect(
       planExternalFilingRecord({ ...base, externalFilingStatus: null, filedOn: "2026-11-04" }),
-    ).toEqual({ kind: "record", stampBreach: false });
+    ).toEqual({ kind: "record", stampBreach: false, clearBreach: false, late: false });
   });
 
   it.each(["submitted", "ack_pending", "ack_accepted", "ack_rejected", "cancelled"] as const)(
@@ -83,17 +85,35 @@ describe("planExternalFilingRecord", () => {
     });
   });
 
-  it("stamps a breach on record when the date is after the due date and none is stamped yet", () => {
+  it("stamps a breach on record when the date is after the due date and none is stamped yet, and says it was late", () => {
     expect(planExternalFilingRecord({ ...base, filedOn: "2026-11-07" })).toEqual({
       kind: "record",
       stampBreach: true,
+      clearBreach: false,
+      late: true,
     });
     expect(planExternalFilingRecord({ ...base, filedOn: "2026-11-06" })).toEqual({
       kind: "record",
       stampBreach: false,
+      clearBreach: false,
+      late: false,
     });
+  });
+
+  it("keeps a breach the watchdog already stamped when the filing really was late (still late: the event fires)", () => {
     expect(
       planExternalFilingRecord({ ...base, windowBreachedAt: "2026-11-07", filedOn: "2026-11-09" }),
-    ).toEqual({ kind: "record", stampBreach: false });
+    ).toEqual({ kind: "record", stampBreach: false, clearBreach: false, late: true });
+  });
+
+  // The watchdog scans an unfiled notice every 30 minutes: past the due date it stamps a breach. A tenant that filed ON TIME but
+  // told ChartWarden afterwards must not be left with that stamp (it would read as a late NOE on every report).
+  it("clears a breach stamp the watchdog set before an ON-TIME filing was recorded", () => {
+    expect(
+      planExternalFilingRecord({ ...base, windowBreachedAt: "2026-11-07", filedOn: "2026-11-05" }),
+    ).toEqual({ kind: "record", stampBreach: false, clearBreach: true, late: false });
+    expect(
+      planExternalFilingRecord({ ...base, windowBreachedAt: "2026-11-07", filedOn: "2026-11-06" }),
+    ).toMatchObject({ clearBreach: true, late: false });
   });
 });
