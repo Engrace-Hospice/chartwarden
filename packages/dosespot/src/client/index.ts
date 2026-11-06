@@ -59,11 +59,29 @@ export {
 export {
   DOSESPOT_TENANT_CONFIGS_ENV,
   createEnvTenantConfigResolver,
+  createLayeredTenantConfigResolver,
   createUnboundTenantConfigResolver,
   parseTenantConfig,
+  type DoseSpotConfigLookup,
+  type DoseSpotConfigPurpose,
   type DoseSpotTenantConfig,
   type DoseSpotTenantConfigResolver,
+  type DoseSpotTenantConfigSource,
 } from "./tenant-config";
+export {
+  DOSESPOT_PRODUCTION_ENABLED_ENV,
+  DOSESPOT_SANDBOX_DEFAULT_BASE_URL,
+  resolveDoseSpotEnvironment,
+  subscriptionKeyFallback,
+  type DoseSpotEnvironment,
+  type DoseSpotEnvironmentResolution,
+} from "./environments";
+export {
+  createHttpDoseSpotConnectionProbe,
+  type ConnectionProbeOutcome,
+  type DoseSpotConnectionProbe,
+  type HttpConnectionProbeDeps,
+} from "./probe";
 export { WIRE_FIELD_MAPPING_VERIFIED, phaseOfStatus, sigDirections } from "./mappers";
 export {
   createHttpDoseSpotClient,

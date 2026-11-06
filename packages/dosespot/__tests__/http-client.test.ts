@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   DegradedError,
   type DoseSpotFetch,
+  type DoseSpotTenantConfig,
   type DoseSpotTenantConfigResolver,
   createEnvTenantConfigResolver,
   createHttpDoseSpotClient,
@@ -104,7 +105,7 @@ function client(routes: Record<string, Responder>, extra: { sleeps?: number[] } 
 }
 
 describe("tenant configuration is fail-closed", () => {
-  it("is unbound without the env var, with malformed JSON, and for http:// or incomplete entries", () => {
+  it("is unbound without the env var, with malformed JSON, and for http:// or incomplete entries", async () => {
     expect(createEnvTenantConfigResolver({}).isConfigured()).toBe(false);
     expect(createEnvTenantConfigResolver({ DOSESPOT_TENANT_CONFIGS: "{nope" }).isConfigured()).toBe(
       false,
@@ -126,14 +127,14 @@ describe("tenant configuration is fail-closed", () => {
         clinicKey: "c",
       }),
     ).toBeNull();
-    expect(createUnboundTenantConfigResolver().configFor(ORG)).toBeNull();
+    expect(await createUnboundTenantConfigResolver().configFor(ORG)).toBeNull();
   });
 
-  it("knows exactly which tenants are configured and trims the base URL", () => {
+  it("knows exactly which tenants are configured and trims the base URL", async () => {
     const r = resolver();
-    expect(r.isConfiguredFor(ORG)).toBe(true);
-    expect(r.isConfiguredFor(OTHER_ORG)).toBe(false);
-    expect(r.configFor(ORG)?.baseUrl).toBe("https://my.staging.dosespot.com/webapi/v2");
+    expect(await r.isConfiguredFor(ORG)).toBe(true);
+    expect(await r.isConfiguredFor(OTHER_ORG)).toBe(false);
+    expect((await r.configFor(ORG))?.baseUrl).toBe("https://my.staging.dosespot.com/webapi/v2");
   });
 
   it("rejects every call for an unconfigured tenant without touching the network", async () => {
@@ -196,6 +197,134 @@ describe("token handling", () => {
     expect(err).toBeInstanceOf(DegradedError);
     expect(err.retryable).toBe(false);
     expect(err.customerMessage).toContain("clinic credentials");
+  });
+});
+
+describe("a database-backed resolver (slice 4)", () => {
+  const cfg = (
+    version: number,
+    over: Partial<DoseSpotTenantConfig> = {},
+  ): DoseSpotTenantConfig => ({
+    baseUrl: "https://my.staging.dosespot.com/webapi/v2",
+    subscriptionKey: "sub-key",
+    clinicId: "clinic-1",
+    clinicKey: `key-v${version}`,
+    serviceClinicianId: "900",
+    epcsCertified: false,
+    version,
+    ...over,
+  });
+
+  /** A resolver whose answer the test swaps, and which records the purpose each call asked for. */
+  function swappable(initial: DoseSpotTenantConfig | null) {
+    let current = initial;
+    const purposes: string[] = [];
+    const r: DoseSpotTenantConfigResolver = {
+      isConfigured: () => current !== null,
+      isConfiguredFor: async () => current !== null,
+      configFor: async (_org, purpose = "operate") => {
+        purposes.push(purpose);
+        return current;
+      },
+      configuredOrganizationIds: () => [],
+    };
+    return {
+      r,
+      set: (c: DoseSpotTenantConfig | null) => {
+        current = c;
+      },
+      purposes,
+    };
+  }
+
+  function clientOver(r: DoseSpotTenantConfigResolver, routes: Record<string, Responder>) {
+    const t = fakeTransport(routes);
+    const c = createHttpDoseSpotClient({
+      resolver: r,
+      fetch: t.fetchImpl,
+      now: () => new Date("2026-10-06T12:00:00.000Z"),
+      sleep: async () => undefined,
+      newCorrelationId: () => "00000000-0000-4000-8000-0000000000aa",
+    });
+    return { c, calls: t.calls };
+  }
+
+  const STATUS_OK: Responder = () => ({
+    status: 200,
+    body: { Items: [{ PrescriptionId: 77, Status: "eRxSent" }] },
+  });
+
+  it("awaits the resolver on every call, so a deactivation takes effect on the very next call", async () => {
+    const s = swappable(cfg(1));
+    const { c, calls } = clientOver(s.r, {
+      "POST /connect/token": TOKEN_OK,
+      "GET /api/patients/501/prescriptions": STATUS_OK,
+    });
+    await c.getPrescriptionStatus(ORG, "501", "77");
+    s.set(null);
+    const err = await c.getPrescriptionStatus(ORG, "501", "77").catch((e) => e);
+    expect(err).toBeInstanceOf(DegradedError);
+    expect(err.retryable).toBe(false);
+    expect(calls.filter((x) => x.url.includes("/api/"))).toHaveLength(1);
+  });
+
+  it("a rotated credential (a new config version) never reuses the old token", async () => {
+    const s = swappable(cfg(1));
+    let n = 0;
+    const { c, calls } = clientOver(s.r, {
+      "POST /connect/token": () => ({
+        status: 200,
+        body: { access_token: `tok-${++n}`, expires_in: 3600 },
+      }),
+      "GET /api/patients/501/prescriptions": STATUS_OK,
+    });
+    await c.getPrescriptionStatus(ORG, "501", "77");
+    await c.getPrescriptionStatus(ORG, "501", "77");
+    expect(calls.filter((x) => x.url.endsWith("/connect/token"))).toHaveLength(1);
+    s.set(cfg(2));
+    await c.getPrescriptionStatus(ORG, "501", "77");
+    const tokenCalls = calls.filter((x) => x.url.endsWith("/connect/token"));
+    expect(tokenCalls).toHaveLength(2);
+    expect(tokenCalls[1]?.headers.Authorization).toBe(
+      `Basic ${Buffer.from("clinic-1:key-v2").toString("base64")}`,
+    );
+    const api = calls.filter((x) => x.url.includes("/api/"));
+    expect(api[api.length - 1]?.headers.Authorization).toBe("Bearer tok-2");
+  });
+
+  it("enrols a prescriber under the 'setup' purpose (a verified config), every other call under 'operate'", async () => {
+    const s = swappable(cfg(1));
+    const { c } = clientOver(s.r, {
+      "POST /connect/token": TOKEN_OK,
+      "POST /api/clinicians": () => ({ status: 200, body: { Id: 700 } }),
+      "GET /api/patients/501/prescriptions": STATUS_OK,
+    });
+    await c.enrollPrescriber(ORG, {
+      membershipId: "m1",
+      firstName: "A",
+      lastName: "B",
+      npi: "1234567893",
+      epcsRequested: false,
+    });
+    await c.getPrescriptionStatus(ORG, "501", "77");
+    expect(s.purposes).toContain("setup");
+    expect(s.purposes.filter((p) => p === "operate").length).toBeGreaterThan(0);
+    expect(s.purposes[0]).toBe("setup");
+  });
+
+  it("lets an unreadable-credential error from the resolver propagate unchanged (never 'not configured')", async () => {
+    const boom = new Error("credential unreadable");
+    const r: DoseSpotTenantConfigResolver = {
+      isConfigured: () => true,
+      isConfiguredFor: async () => true,
+      configFor: async () => {
+        throw boom;
+      },
+      configuredOrganizationIds: () => [],
+    };
+    const { c, calls } = clientOver(r, {});
+    await expect(c.getPrescriptionStatus(ORG, "501", "77")).rejects.toBe(boom);
+    expect(calls).toHaveLength(0);
   });
 });
 

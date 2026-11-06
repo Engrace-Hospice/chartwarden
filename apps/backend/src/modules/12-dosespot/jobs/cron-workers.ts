@@ -86,7 +86,7 @@ export function buildM12CronRunners(
     (label: string, perOrg: (org: string) => Promise<unknown>, vendorBound: boolean) =>
     async () => {
       await runForEachActiveOrg(label, deps.activeOrgs, async (org) => {
-        if (vendorBound && !deps.config.isConfiguredFor(org)) return;
+        if (vendorBound && !(await deps.config.isConfiguredFor(org))) return;
         await perOrg(org);
       });
       if (deps.breakerEdges) {

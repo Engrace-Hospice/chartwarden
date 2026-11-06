@@ -307,7 +307,7 @@ export interface DoseSpotSafetyGateDeps {
    * signed order that CAN be e-prescribed (has an RxCUI + a structured sig) is queued for transmission
    * instead of being activated locally. Absent / false ⇒ the F-058 behaviour is unchanged (`not_required`).
    */
-  readonly transmissionEnabledFor?: (organizationId: string) => boolean;
+  readonly transmissionEnabledFor?: (organizationId: string) => boolean | Promise<boolean>;
   /**
    * CW-CLIN-008 — the M40 directory `createDraft` checks the ordering physician against. Absent ⇒ no check (the
    * live suites run without the seam); the boot wiring passes the registered `MdmEntityProvider`.
@@ -459,7 +459,7 @@ export function createDbDoseSpotBackend(
     at: Date,
   ): Promise<void> {
     if (
-      gates.transmissionEnabledFor?.(organizationId) &&
+      (await gates.transmissionEnabledFor?.(organizationId)) &&
       (await enqueueTransmissionIfBound(tx, outbox, organizationId, row, at))
     ) {
       return;

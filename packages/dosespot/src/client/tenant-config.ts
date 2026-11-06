@@ -7,6 +7,12 @@
 // adapter call for it rejects with a non-retryable `DegradedError` and no order is ever queued for
 // transmission (the route service asks `isConfiguredFor`). There is no default, shared or derived credential.
 // `baseUrl` must be https (a plaintext vendor URL would carry PHI and the clinic key in the clear).
+//
+// SLICE 4 (tenant onboarding): the per-tenant source of truth is now the `dosespot_clinic_registration` row, read through a
+// {@link DoseSpotTenantConfigSource} and layered IN FRONT of the env map ({@link createLayeredTenantConfigResolver}). A tenant
+// WITH a row is served by that row alone (a draft, registered, verified-but-not-active or deactivated row means "not live":
+// the env entry never serves it); a tenant with NO row falls through to the env entry exactly as before. Reads are async
+// because the row lives in the database and its credential is sealed.
 import type { DoseSpotCredentials } from "./contract";
 
 export const DOSESPOT_TENANT_CONFIGS_ENV = "DOSESPOT_TENANT_CONFIGS";
@@ -15,27 +21,81 @@ export const DOSESPOT_TENANT_CONFIGS_ENV = "DOSESPOT_TENANT_CONFIGS";
  * inputs: the `Subscription-Key` header value and the clinician the service token is minted for. */
 export interface DoseSpotTenantConfig extends Omit<DoseSpotCredentials, "webhookSecret"> {
   readonly subscriptionKey: string;
+  /**
+   * The config's generation (the registration row's `version`; an env entry has none). The token cache keys on it, so a
+   * rotated credential never reuses a token minted under the old key.
+   */
+  readonly version?: number;
   /** The DoseSpot clinician id service calls (patient sync, history, status polling) authenticate as. */
   readonly serviceClinicianId: string;
   /** Present only when the tenant also uses the webhook; the route resolves its secret separately. */
   readonly webhookSecret?: string;
 }
 
+/**
+ * Why a caller wants the config: `operate` (patient sync, transmission, status poll, ...) needs a LIVE (`active`) config;
+ * `setup` (a prescriber's vendor enrolment) is allowed from `verified` on, so a tenant can enrol its prescribers before it
+ * activates. An env entry has no lifecycle, so both purposes see it.
+ */
+export type DoseSpotConfigPurpose = "operate" | "setup";
+
 export interface DoseSpotTenantConfigResolver {
-  /** `true` when at least one tenant has a complete configuration. */
+  /** `true` when at least one tenant is known to have a complete configuration WITHOUT a lookup (the env fallback). */
   isConfigured(): boolean;
-  /** Does THIS tenant have a complete configuration (⇒ e-prescribing is bound for it)? */
-  isConfiguredFor(organizationId: string): boolean;
-  /** The tenant's configuration, or `null` ⇒ the adapter fails closed for it. */
-  configFor(organizationId: string): DoseSpotTenantConfig | null;
-  /** Tenants with a complete configuration (boot log + the transmit sweep's candidate set). */
+  /** Does THIS tenant have a live configuration (⇒ e-prescribing is bound for it)? Never opens a sealed credential. */
+  isConfiguredFor(organizationId: string): Promise<boolean>;
+  /** The tenant's configuration for `purpose` (default `operate`), or `null` ⇒ the adapter fails closed for it. */
+  configFor(
+    organizationId: string,
+    purpose?: DoseSpotConfigPurpose,
+  ): Promise<DoseSpotTenantConfig | null>;
+  /** Tenants named without a lookup (the env fallback): boot log only. A database-backed source names none. */
   configuredOrganizationIds(): readonly string[];
+}
+
+/** What a database-backed source knows about one org for one purpose. */
+export type DoseSpotConfigLookup =
+  | { readonly kind: "absent" }
+  | {
+      readonly kind: "present";
+      /** Is the row in a state the purpose may use? Answered WITHOUT opening the sealed credential. */
+      readonly usable: boolean;
+      /** Opens the sealed credential. Only called when `usable`; throws when it cannot be opened. */
+      readonly load: () => Promise<DoseSpotTenantConfig>;
+    };
+
+export interface DoseSpotTenantConfigSource {
+  lookup(organizationId: string, purpose: DoseSpotConfigPurpose): Promise<DoseSpotConfigLookup>;
+}
+
+/**
+ * Database in front of env: an org with a row is served by the row alone; an org with none falls through to `fallback`.
+ * This is what keeps an env credential from silently serving a tenant that rotated or deactivated its own.
+ */
+export function createLayeredTenantConfigResolver(deps: {
+  readonly source: DoseSpotTenantConfigSource;
+  readonly fallback: DoseSpotTenantConfigResolver;
+}): DoseSpotTenantConfigResolver {
+  const { source, fallback } = deps;
+  return {
+    isConfigured: () => fallback.isConfigured(),
+    async isConfiguredFor(organizationId) {
+      const found = await source.lookup(organizationId, "operate");
+      return found.kind === "absent" ? fallback.isConfiguredFor(organizationId) : found.usable;
+    },
+    async configFor(organizationId, purpose = "operate") {
+      const found = await source.lookup(organizationId, purpose);
+      if (found.kind === "absent") return fallback.configFor(organizationId, purpose);
+      return found.usable ? found.load() : null;
+    },
+    configuredOrganizationIds: () => fallback.configuredOrganizationIds(),
+  };
 }
 
 const NONE: DoseSpotTenantConfigResolver = {
   isConfigured: () => false,
-  isConfiguredFor: () => false,
-  configFor: () => null,
+  isConfiguredFor: async () => false,
+  configFor: async () => null,
   configuredOrganizationIds: () => [],
 };
 
@@ -98,8 +158,8 @@ export function createEnvTenantConfigResolver(
   if (map.size === 0) return NONE;
   return {
     isConfigured: () => true,
-    isConfiguredFor: (org) => map.has(org.toLowerCase()),
-    configFor: (org) => map.get(org.toLowerCase()) ?? null,
+    isConfiguredFor: async (org) => map.has(org.toLowerCase()),
+    configFor: async (org) => map.get(org.toLowerCase()) ?? null,
     configuredOrganizationIds: () => [...map.keys()],
   };
 }

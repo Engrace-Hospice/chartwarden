@@ -51,7 +51,12 @@ import {
   toPatientBody,
 } from "./mappers";
 import { DOSESPOT_RETRY_CONFIG, classifyRetryableStatus, computeBackoffDelays } from "./retry";
-import type { DoseSpotTenantConfig, DoseSpotTenantConfigResolver } from "./tenant-config";
+import type {
+  DoseSpotConfigPurpose,
+  DoseSpotTenantConfig,
+  DoseSpotTenantConfigResolver,
+} from "./tenant-config";
+import { buildTokenRequest } from "./token-request";
 
 /** Minimal fetch surface (the global `fetch` satisfies it; tests inject a recorded fake). */
 export type DoseSpotFetch = (
@@ -117,12 +122,18 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     correlationId: string,
   ) => new DegradedError("dosespot", op, retryable, message, correlationId);
 
-  function configOrDeny(
+  /**
+   * The tenant's config for `purpose`, or a non-retryable denial. The resolver is awaited on EVERY call (a database-backed one
+   * re-reads the row), so a deactivation or rotation takes effect on the very next call. A resolver that THROWS (a sealed
+   * credential that cannot be opened) propagates unchanged: that is a fault to retry loudly, never "not configured".
+   */
+  async function configOrDeny(
     op: DoseSpotOperation,
     orgId: string,
     correlationId: string,
-  ): DoseSpotTenantConfig {
-    const cfg = deps.resolver.configFor(orgId);
+    purpose: DoseSpotConfigPurpose = "operate",
+  ): Promise<DoseSpotTenantConfig> {
+    const cfg = await deps.resolver.configFor(orgId, purpose);
     if (cfg === null) {
       throw degraded(
         op,
@@ -160,6 +171,10 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     }
   }
 
+  /** A token belongs to ONE credential generation: a rotated config (new `version`) never reuses the old key's token. */
+  const tokenKey = (orgId: string, clinicianId: string, cfg: DoseSpotTenantConfig): string =>
+    `${orgId}|${clinicianId}|${cfg.version ?? 0}`;
+
   async function mintToken(
     op: DoseSpotOperation,
     orgId: string,
@@ -167,24 +182,13 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     clinicianId: string,
     correlationId: string,
   ): Promise<string> {
-    const basic = Buffer.from(`${cfg.clinicId}:${cfg.clinicKey}`, "utf8").toString("base64");
-    const form = new URLSearchParams({
-      grant_type: "password",
-      Username: clinicianId,
-      Password: cfg.clinicKey,
-      scope: "api",
-    }).toString();
+    const request = buildTokenRequest(cfg, clinicianId);
     const res = await exchange(
       cfg,
       TOKEN_ENDPOINT,
       TOKEN_ENDPOINT.path,
-      {
-        "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${basic}`,
-        "Subscription-Key": cfg.subscriptionKey,
-        Accept: "application/json",
-      },
-      form,
+      request.headers,
+      request.body,
     );
     const retryable = classifyRetryableStatus(res.status);
     if (retryable) throw retryable;
@@ -209,7 +213,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     }
     const expiresIn = Number(pick(parsed, "expires_in"));
     const ttlMs = (Number.isFinite(expiresIn) && expiresIn > 0 ? expiresIn : 600) * 1000;
-    tokens.set(`${orgId}|${clinicianId}`, {
+    tokens.set(tokenKey(orgId, clinicianId, cfg), {
       token: accessToken,
       expiresAtMs: now().getTime() + ttlMs,
     });
@@ -224,7 +228,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     correlationId: string,
     forceFresh: boolean,
   ): Promise<string> {
-    const cached = tokens.get(`${orgId}|${clinicianId}`);
+    const cached = tokens.get(tokenKey(orgId, clinicianId, cfg));
     if (!forceFresh && cached && cached.expiresAtMs - TOKEN_REFRESH_SKEW_MS > now().getTime()) {
       return cached.token;
     }
@@ -261,7 +265,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
         body === undefined ? undefined : JSON.stringify(body),
       );
       if (res.status === 401 && auth === 0) {
-        tokens.delete(`${orgId}|${clinicianId}`);
+        tokens.delete(tokenKey(orgId, clinicianId, cfg));
         forceFresh = true;
         continue;
       }
@@ -309,12 +313,13 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     params: Record<string, string>,
     body?: unknown,
     idempotencyKey?: string,
+    purpose: DoseSpotConfigPurpose = "operate",
   ): Promise<unknown> {
     const correlationId = newCorrelationId();
     const endpoint: DoseSpotEndpoint = DOSESPOT_ENDPOINTS[name];
     if (endpoint.verification === "none")
       throw degraded(op, false, UNSUPPORTED_MESSAGE, correlationId);
-    const cfg = configOrDeny(op, orgId, correlationId);
+    const cfg = await configOrDeny(op, orgId, correlationId, purpose);
     const gate = evaluateBreaker(
       breakers.get(orgId) ?? INITIAL_BREAKER_SNAPSHOT,
       now().toISOString(),
@@ -355,21 +360,20 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
     throw degraded(op, true, "E-prescribe retry budget exhausted.", correlationId);
   }
 
-  const unsupported = (op: DoseSpotOperation, orgId: string): Promise<never> =>
-    Promise.reject(
-      deps.resolver.configFor(orgId) === null
-        ? degraded(
-            op,
-            false,
-            "E-prescribe is not enabled for this organization; DoseSpot credentials are not configured.",
-            newCorrelationId(),
-          )
-        : degraded(op, false, UNSUPPORTED_MESSAGE, newCorrelationId()),
-    );
+  const unsupported = async (op: DoseSpotOperation, orgId: string): Promise<never> => {
+    throw (await deps.resolver.configFor(orgId)) === null
+      ? degraded(
+          op,
+          false,
+          "E-prescribe is not enabled for this organization; DoseSpot credentials are not configured.",
+          newCorrelationId(),
+        )
+      : degraded(op, false, UNSUPPORTED_MESSAGE, newCorrelationId());
+  };
 
   return {
     async upsertPatient(orgId, payload, idempotencyKey): Promise<DoseSpotPatientResponse> {
-      configOrDeny("upsertPatient", orgId, newCorrelationId()); // fail closed BEFORE touching the payload
+      await configOrDeny("upsertPatient", orgId, newCorrelationId()); // fail closed BEFORE touching the payload
       const body = toPatientBody(payload);
       const existing = payload.existingDosespotPatientId;
       const out =
@@ -409,6 +413,8 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
           NPINumber: payload.npi,
           ...(payload.deaNumber ? { DEANumber: payload.deaNumber } : {}),
         },
+        undefined,
+        "setup", // a verified (not yet active) config may enrol its prescribers
       );
       const id = identifierOf(out);
       if (id === undefined) {
@@ -427,7 +433,7 @@ export function createHttpDoseSpotClient(deps: HttpDoseSpotClientDeps): DoseSpot
 
     async transmitNewRx(orgId, payload, idempotencyKey): Promise<DoseSpotNewRxResponse> {
       const correlationId = newCorrelationId();
-      const cfg = configOrDeny("transmitNewRx", orgId, correlationId);
+      const cfg = await configOrDeny("transmitNewRx", orgId, correlationId);
       if (payload.deaSchedule !== undefined && !cfg.epcsCertified) {
         // 21 CFR 1311: a controlled substance never leaves through a non-certified tenant (D18).
         throw degraded(
