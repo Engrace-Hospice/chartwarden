@@ -11,6 +11,7 @@ import { transitionForAck } from "../domain/ack-transition";
 import type { CommercialContextPort } from "../eligibility/service";
 import { withOrgBinding } from "../services/org-binding";
 import type { CommercialOutboxPort, CommercialTx } from "../services/types";
+import type { UnboundAlertPort } from "./unbound-alert";
 
 /** A sent claim older than this is no longer polled for; a held answer past it is asked about once (claim status), then abandoned. */
 export const ACK_POLL_MAX_AGE_DAYS = 45;
@@ -56,6 +57,8 @@ export interface AckWorkerDeps {
   readonly activeOrgs: {
     listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
   };
+  /** One alert per org per window when an org awaits acknowledgments and has no live clearinghouse (the tick still carries on). */
+  readonly alerts?: UnboundAlertPort;
   readonly now?: () => Date;
   /** PHI-free log sink (ids, codes and counts only). */
   readonly log?: (event: {

@@ -9600,9 +9600,43 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
       jobId: M41_PLATFORM_JOB_ID,
       reason: "M41 commercial submission drain (active-org enumeration)",
     });
+    // One alert per org per window when an org has work waiting and no live clearinghouse (the shared tick carries on).
+    const m41AlertPort = {
+      dispatch: async ({
+        alertCode,
+        severity,
+        organizationId,
+        payload,
+      }: {
+        alertCode: string;
+        severity: string;
+        organizationId: string;
+        payload: Record<string, unknown>;
+      }) => {
+        await (
+          getSeam("AlertEmitter") as {
+            emit(
+              orgId: string,
+              input: {
+                eventType: string;
+                payload: Record<string, unknown>;
+                severity: string;
+                correlationId: string;
+              },
+            ): Promise<unknown>;
+          }
+        ).emit(organizationId, {
+          eventType: alertCode,
+          payload,
+          severity,
+          correlationId: cronAlertCorrelationId("m41-cron", alertCode, payload),
+        });
+      },
+    };
     const m41SubmissionWorker = registerM41SubmissionWorker(queueConnection, {
       db: dbHandle.db,
       binding: clearinghouseBinding,
+      alerts: m41AlertPort,
       contexts: buildCommercialContextPort({
         env: process.env,
         providerNpi: m25PayeeNpi,
@@ -9629,6 +9663,7 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
     const m41AckWorker = registerM41AckWorker(queueConnection, {
       db: dbHandle.db,
       binding: clearinghouseBinding,
+      alerts: m41AlertPort,
       contexts: buildCommercialContextPort({
         env: process.env,
         providerNpi: m25PayeeNpi,

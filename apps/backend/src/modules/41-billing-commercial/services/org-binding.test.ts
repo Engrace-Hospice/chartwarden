@@ -1,3 +1,4 @@
+import { ChartWardenError } from "@chartwarden/types";
 import { describe, expect, it } from "vitest";
 import { type PerOrgBinding, resolveBinding, withOrgBinding } from "./org-binding";
 
@@ -38,14 +39,38 @@ describe("org-binding", () => {
     expect(deps.binding).toBe(perOrg);
   });
 
-  it("lets a resolution failure reach the caller (each loop turns it into that org's failure)", async () => {
+  // A route that resolves the binding must answer a typed 503, never a bare 500, when the org's clearinghouse cannot be resolved.
+  it("passes a typed resolver refusal through unchanged (the unreadable credential stays a 503 with its own code)", async () => {
+    const unreadable = new ChartWardenError(
+      "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+      "this organization's clearinghouse credential could not be opened",
+      503,
+    );
     const perOrg: Binding = {
       vendor: null,
       forOrg: async () => {
-        throw new Error("config unreadable");
+        throw unreadable;
       },
     };
+    await expect(resolveBinding(perOrg, "org-1")).rejects.toBe(unreadable);
+    await expect(withOrgBinding({ binding: perOrg }, "org-1")).rejects.toBe(unreadable);
+  });
 
-    await expect(resolveBinding(perOrg, "org-1")).rejects.toThrow("config unreadable");
+  it("turns any other resolution failure into a typed 503 that names nothing of the cause", async () => {
+    const perOrg: Binding = {
+      vendor: null,
+      forOrg: async () => {
+        throw new Error("connection refused while reading config for key sk_live_DO_NOT_LEAK");
+      },
+    };
+    for (const attempt of [
+      resolveBinding(perOrg, "org-1"),
+      withOrgBinding({ binding: perOrg }, "org-1"),
+    ]) {
+      const err = await attempt.catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ChartWardenError);
+      expect(err).toMatchObject({ code: "CLEARINGHOUSE_UNAVAILABLE", statusCode: 503 });
+      expect((err as Error).message).not.toContain("sk_live");
+    }
   });
 });
