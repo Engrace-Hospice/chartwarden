@@ -31,7 +31,9 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { repositories } from "@chartwarden/billing";
 import { createDbClient } from "@chartwarden/db";
+import { withOrgContext } from "@chartwarden/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
@@ -58,9 +60,11 @@ import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
 import { M22_OUTBOX_EVENTS } from "../src/modules/22-documents/index";
 import {
   M23_OUTBOX_EVENTS,
+  buildDrizzleM23WriteService,
   buildM23NotrDraftConsumer,
   notrWindowTargetAt,
 } from "../src/modules/23-billing-medicare/index";
+import { parkNoticeForExternalFiling } from "../src/modules/23-billing-medicare/jobs/notice-external-filing";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
@@ -519,5 +523,225 @@ describe.skipIf(!DB_URL)(
       // the publisher `Value.Check`s it and rolls the insert back on a mismatch.
       expect(announced[0].payload.terminationEffectiveDate).toBe(notrsA[0].effective_end_date);
     });
+    // ── an organization that bills outside ChartWarden files its NOTR itself (owner decision D4; migration 1353) ──
+    // The NOTR twin of the NOE cases in `m23-noe-draft.live.test.ts`: the CHECKs, the same-state patch under RLS as
+    // `chartwarden_app`, the audit trigger and the two deadline-tracker scans. The pure rules are unit-tested.
+
+    const todayIso = () => new Date().toISOString().slice(0, 10);
+    const addDays = (iso: string, n: number) =>
+      new Date(Date.parse(`${iso}T00:00:00.000Z`) + n * 86_400_000).toISOString().slice(0, 10);
+    const actorOf = (org: string) =>
+      ({
+        organizationId: org,
+        userId: USER,
+        membershipId: USER,
+        roles: ["billing_specialist"],
+        actorKind: "user",
+        stepUpRecent: true,
+      }) as never;
+
+    /** A bare NOTR row (discharge). The ids that point at other modules are logical FKs, so none has to exist. */
+    async function seedNotr(
+      org: string,
+      over: { state?: string; ended?: string; status?: "pending" | "filed" | null } = {},
+    ): Promise<string> {
+      const ended = over.ended ?? addDays(todayIso(), -1);
+      const filed = over.status === "filed";
+      const { rows } = await admin.query(
+        `INSERT INTO notr_record (organization_id, provider_entity_id, patient_id, admission_id, trigger_kind, discharge_event_id,
+                effective_end_date, window_target_at, state, notr_control_number, external_filing_status,
+                filed_externally_on, filed_externally_recorded_at, filed_externally_by_membership_id)
+         VALUES ($1,$2,$3,$4,'discharge',$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+        [
+          org,
+          providerOf[org],
+          randomUUID(),
+          randomUUID(),
+          randomUUID(),
+          ended,
+          addDays(ended, 5),
+          over.state ?? "READY",
+          `EXT-${randomUUID().slice(0, 12)}`,
+          over.status ?? null,
+          filed ? ended : null,
+          filed ? new Date() : null,
+          filed ? USER : null,
+        ],
+      );
+      return rows[0].id as string;
+    }
+    const notrRow = async (id: string) =>
+      (
+        await admin.query(
+          `SELECT state, version, external_filing_status, filed_externally_on::text AS filed_on,
+                  filed_externally_by_membership_id AS by, window_breached_at::text AS breached
+             FROM notr_record WHERE id=$1`,
+          [id],
+        )
+      ).rows[0] as Record<string, unknown>;
+
+    function externalFilingService(outside: boolean) {
+      const enqueued: unknown[] = [];
+      const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M23_OUTBOX_EVENTS]));
+      const service = buildDrizzleM23WriteService(handle.db as never, {
+        outbox: {
+          publish: (tx: unknown, e: Record<string, unknown>) =>
+            publisher.publish(tx as never, { ...e, callerModule: "m23" } as never),
+        } as never,
+        jobs: {
+          enqueue: async (...args: unknown[]) => {
+            enqueued.push(args);
+            return { jobId: randomUUID() };
+          },
+        },
+        providerCcn: {
+          ccnForProviderEntity: async (_tx, organizationId) => ccnOf[organizationId] as string,
+        },
+        billsOutside: async () => outside,
+      });
+      return { service, enqueued };
+    }
+
+    it("migration 1353: external_filing_status is pending | filed, and the three filed_* columns move with `filed` (all set, or all NULL)", async () => {
+      const id = await seedNotr(ORG_A);
+      expect(await notrRow(id)).toMatchObject({ external_filing_status: null, filed_on: null });
+      const set = (sql: string) => admin.query(`UPDATE notr_record SET ${sql} WHERE id=$1`, [id]);
+      await expect(set("external_filing_status='done'")).rejects.toMatchObject({ code: "23514" });
+      await expect(set("external_filing_status='filed'")).rejects.toMatchObject({ code: "23514" });
+      await expect(
+        set("external_filing_status='pending', filed_externally_on=CURRENT_DATE"),
+      ).rejects.toMatchObject({ code: "23514" });
+      await expect(set("filed_externally_on=CURRENT_DATE")).rejects.toMatchObject({
+        code: "23514",
+      });
+      await set("external_filing_status='pending'");
+      await set(
+        `external_filing_status='filed', filed_externally_on=CURRENT_DATE, filed_externally_recorded_at=now(),
+         filed_externally_by_membership_id='${USER}'`,
+      );
+      expect(await notrRow(id)).toMatchObject({ external_filing_status: "filed", by: USER });
+    });
+
+    it("the deadline tracker keeps counting for a parked or unmarked NOTR of an outside org, and drops one recorded as filed", async () => {
+      const ended = addDays(todayIso(), -12); // due 7 days ago: past due, not yet stamped
+      const unmarked = await seedNotr(ORG_A, { ended });
+      const parked = await seedNotr(ORG_A, { ended, status: "pending" });
+      const filed = await seedNotr(ORG_A, { ended, status: "filed" });
+      const mine = new Set([unmarked, parked, filed]);
+      const scan = (
+        fn: (
+          r: InstanceType<typeof repositories.NotrRepository>,
+        ) => Promise<readonly { id: string }[]>,
+      ) =>
+        withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, async (tx) =>
+          fn(new repositories.NotrRepository(tx as never)),
+        ).then((rows) =>
+          rows
+            .map((r) => r.id)
+            .filter((id) => mine.has(id))
+            .sort(),
+        );
+
+      const expected = [unmarked, parked].sort();
+      expect(await scan((r) => r.listWindowWatchCandidates(ORG_A, todayIso()))).toEqual(expected);
+      expect(await scan((r) => r.listDdeWatchCandidates(ORG_A, addDays(todayIso(), 7)))).toEqual(
+        expected,
+      );
+    });
+
+    it("an outside org: submit parks the NOTR (nothing queued, sent or announced), the tenant records the date (a late one stamps the breach), and it is write-audited", async () => {
+      const { service, enqueued } = externalFilingService(true);
+      const ended = addDays(todayIso(), -12);
+      const id = await seedNotr(ORG_A, { state: "DRAFT", ended });
+
+      const parkedView = await service.submitNotr(actorOf(ORG_A), id);
+
+      expect(parkedView).toEqual({
+        submissionId: null,
+        jobId: null,
+        kind: "notr",
+        externalFiling: "pending",
+      });
+      expect(await notrRow(id)).toMatchObject({
+        state: "READY",
+        external_filing_status: "pending",
+      });
+      expect(enqueued).toEqual([]);
+      expect(
+        (
+          await admin.query("SELECT count(*)::int AS n FROM claim_submission WHERE notr_id=$1", [
+            id,
+          ])
+        ).rows[0].n,
+      ).toBe(0);
+      const { rows: requested } = await admin.query(
+        "SELECT 1 FROM outbox_event WHERE event_type='m23.notr.submit_requested' AND payload->>'notrId'=$1",
+        [id],
+      );
+      expect(requested).toHaveLength(0);
+
+      const filedOn = addDays(ended, 8); // due on +5: three days late
+      const recorded = await service.recordNotrExternalFiling(actorOf(ORG_A), id, { filedOn });
+      expect(recorded.externalFiling).toMatchObject({ status: "filed_externally", filedOn });
+      const row = await notrRow(id);
+      expect(row).toMatchObject({
+        external_filing_status: "filed",
+        filed_on: filedOn,
+        by: USER,
+        breached: filedOn,
+      });
+      await service.recordNotrExternalFiling(actorOf(ORG_A), id, { filedOn });
+      expect((await notrRow(id)).version).toBe(row.version);
+      await expect(
+        service.recordNotrExternalFiling(actorOf(ORG_A), id, { filedOn: addDays(filedOn, 1) }),
+      ).rejects.toMatchObject({ code: "NOTICE_ALREADY_FILED_EXTERNALLY", statusCode: 409 });
+      await expect(
+        externalFilingService(false).service.submitNotr(actorOf(ORG_A), id),
+      ).rejects.toMatchObject({ code: "NOTICE_FILED_EXTERNALLY" });
+
+      const { rows: audit } = await admin.query(
+        `SELECT actor_user_id, before->>'external_filing_status' AS before_status, after->>'external_filing_status' AS after_status
+           FROM audit_event WHERE resource_kind='notr_record' AND resource_id=$1 AND event_type='notr_record.update'
+            AND after->>'external_filing_status'='filed'`,
+        [id],
+      );
+      expect(audit).toEqual([
+        { actor_user_id: USER, before_status: "pending", after_status: "filed" },
+      ]);
+    }, 60_000);
+
+    it("cross-tenant: org B cannot record (or park) org A's NOTR; the worker's park is scoped to the job's own org; a parked NOTR goes the normal way once the org transmits again", async () => {
+      const { service } = externalFilingService(true);
+      const id = await seedNotr(ORG_A);
+      await expect(
+        service.recordNotrExternalFiling(actorOf(ORG_B), id, { filedOn: todayIso() }),
+      ).rejects.toMatchObject({ statusCode: 404 });
+      await expect(service.submitNotr(actorOf(ORG_B), id)).rejects.toMatchObject({
+        statusCode: 404,
+      });
+      await parkNoticeForExternalFiling(
+        { db: handle.db as never },
+        { organizationId: ORG_B, kind: "notr", noticeId: id },
+      );
+      expect(await notrRow(id)).toMatchObject({ external_filing_status: null, version: 0 });
+
+      await parkNoticeForExternalFiling(
+        { db: handle.db as never },
+        { organizationId: ORG_A, kind: "notr", noticeId: id },
+      );
+      expect(await notrRow(id)).toMatchObject({
+        state: "READY",
+        external_filing_status: "pending",
+      });
+
+      const transmits = externalFilingService(false);
+      await expect(
+        transmits.service.recordNotrExternalFiling(actorOf(ORG_A), id, { filedOn: todayIso() }),
+      ).rejects.toMatchObject({ code: "ORG_NOT_BILLING_OUTSIDE", statusCode: 409 });
+      const queued = await transmits.service.submitNotr(actorOf(ORG_A), id);
+      expect(queued.submissionId).toEqual(expect.any(String));
+      expect(transmits.enqueued).toHaveLength(1);
+      expect(await notrRow(id)).toMatchObject({ external_filing_status: null });
+    }, 60_000);
   },
 );

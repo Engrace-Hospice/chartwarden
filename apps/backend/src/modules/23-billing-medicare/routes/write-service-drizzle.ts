@@ -43,6 +43,14 @@ import { ChartWardenError, ConflictError, DegradedError, NotFoundError } from "@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { assertTxScopedToOrg } from "../../../bootstrap/onboarding-credential-port";
 import { M23_QUEUES } from "../jobs/queues";
+import {
+  UNPARK_PATCH,
+  buildExternalNoticeFilingService,
+  noticeFiledExternally,
+  orgBillsOutside,
+  parkNotice,
+  patchExternalFiling,
+} from "../services/external-notice-filing";
 import { buildNoticeCorrectionService } from "../services/notice-correction-service";
 import {
   PriorElectionNotClosedError,
@@ -79,6 +87,7 @@ import type {
   NoticeSubmissionAcceptedView,
   OverrideValidationResultArgs,
   ProviderCcnPort,
+  RecordExternalFilingArgs,
   ReplaceClaimArgs,
   SecretCipherPort,
   UpdateDraftClaimArgs,
@@ -392,6 +401,12 @@ export function buildDrizzleM23WriteService(
     outbox: ports.outbox,
     ccnFor: (tx, organizationId, providerEntityId) =>
       providerCcn.ccnForProviderEntity(tx, organizationId, providerEntityId),
+    now,
+  });
+
+  // The tenant that bills outside ChartWarden files its notices itself (owner decision D4): record the date it did.
+  const externalFiling = buildExternalNoticeFilingService(db, {
+    billsOutside: ports.billsOutside,
     now,
   });
 
@@ -1118,6 +1133,9 @@ export function buildDrizzleM23WriteService(
 
     // ── NOE / NOTR fast path ──
     async submitNoe(actor, noeId): Promise<NoticeSubmissionAcceptedView> {
+      // Owner decision D4: an org that bills outside ChartWarden files the NOE itself, so it is parked, never queued. Read
+      // before the transaction (the seam opens its own org context); a failed read is a typed 503, never a guess.
+      const outside = await orgBillsOutside(ports.billsOutside, actor.organizationId);
       // Readmission — the prior election must be closed out first (the M6 lookup opens its own org context, so it
       // runs before this method's transaction rather than holding two connections).
       const priorStay = await priorLiveEndedStayFor(actor, noeId);
@@ -1131,6 +1149,7 @@ export function buildDrizzleM23WriteService(
         const repo = new repositories.NoeRepository(tx);
         let noe = await repo.findById(noeId);
         if (!noe || noe.organizationId !== actor.organizationId) throw new NotFoundError("noe");
+        if (noe.externalFilingStatus === "filed") throw noticeFiledExternally("noe");
         if (noe.state === "draft") {
           const stepped = noeMachine.reduce(noe.state, "assemble");
           if (stepped.error) throw reduceError(stepped.error, "assemble");
@@ -1140,6 +1159,14 @@ export function buildDrizzleM23WriteService(
         }
         if (noe.state !== "ready") {
           throw new ConflictError(`a NOE in state '${noe.state}' cannot be submitted`);
+        }
+        if (outside) {
+          await parkNotice(repo, noe);
+          return { submissionId: null, jobId: null, kind: "noe", externalFiling: "pending" };
+        }
+        // ChartWarden transmits for this org (again): a notice parked earlier goes the normal way and its marker clears.
+        if (noe.externalFilingStatus === "pending") {
+          noe = await patchExternalFiling(repo, noe, UNPARK_PATCH);
         }
         const submission = await new repositories.ClaimSubmissionRepository(tx).append({
           organizationId: actor.organizationId,
@@ -1186,10 +1213,13 @@ export function buildDrizzleM23WriteService(
     },
 
     async submitNotr(actor, notrId): Promise<NoticeSubmissionAcceptedView> {
+      // Owner decision D4 (see submitNoe): an org that bills outside ChartWarden files the NOTR itself.
+      const outside = await orgBillsOutside(ports.billsOutside, actor.organizationId);
       return inOrgCtx(actor, async (tx) => {
         const repo = new repositories.NotrRepository(tx);
         let notr = await repo.findById(notrId);
         if (!notr || notr.organizationId !== actor.organizationId) throw new NotFoundError("notr");
+        if (notr.externalFilingStatus === "filed") throw noticeFiledExternally("notr");
         if (notr.state === "draft") {
           const stepped = notrMachine.reduce(notr.state, "assemble");
           if (stepped.error) throw reduceError(stepped.error, "assemble");
@@ -1199,6 +1229,13 @@ export function buildDrizzleM23WriteService(
         }
         if (notr.state !== "ready") {
           throw new ConflictError(`a NOTR in state '${notr.state}' cannot be submitted`);
+        }
+        if (outside) {
+          await parkNotice(repo, notr);
+          return { submissionId: null, jobId: null, kind: "notr", externalFiling: "pending" };
+        }
+        if (notr.externalFilingStatus === "pending") {
+          notr = await patchExternalFiling(repo, notr, UNPARK_PATCH);
         }
         const submission = await new repositories.ClaimSubmissionRepository(tx).append({
           organizationId: actor.organizationId,
@@ -1242,6 +1279,18 @@ export function buildDrizzleM23WriteService(
         if (!res.ok) throw conflict412(res.currentVersion);
         return mapNotr(res.row);
       });
+    },
+
+    async recordNoeExternalFiling(actor, noeId, args: RecordExternalFilingArgs): Promise<NoeView> {
+      return mapNoe(await externalFiling.recordNoe(actor, noeId, args.filedOn));
+    },
+
+    async recordNotrExternalFiling(
+      actor,
+      notrId,
+      args: RecordExternalFilingArgs,
+    ): Promise<NotrView> {
+      return mapNotr(await externalFiling.recordNotr(actor, notrId, args.filedOn));
     },
 
     async correctNoe(actor, noeId, args: CorrectNoticeArgs) {

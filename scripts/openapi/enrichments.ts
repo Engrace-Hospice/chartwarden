@@ -440,6 +440,7 @@ import {
   NoeListQuerySchema,
   NotrListQuerySchema,
   OverrideValidationResultBodySchema,
+  RecordExternalFilingBodySchema,
   RuleConfigListQuerySchema,
   UpdateRuleConfigBodySchema,
   UpsertMacCredentialBodySchema,
@@ -13044,6 +13045,19 @@ const M23NoticeAckAndCorrection = {
     Type.Object({ noticeId: Type.String(), state: M23NoticeState }),
     Type.Null(),
   ]),
+  // A tenant that bills outside ChartWarden files the notice itself (owner decision D4): parked = "file with your biller",
+  // recorded = the date the tenant filed. Null on ChartWarden's own path.
+  externalFiling: Type.Union([
+    Type.Object({
+      status: Type.Union([
+        Type.Literal("filed_externally_pending"),
+        Type.Literal("filed_externally"),
+      ]),
+      filedOn: Type.Union([Type.String(), Type.Null()]),
+      recordedAt: Type.Union([Type.String(), Type.Null()]),
+    }),
+    Type.Null(),
+  ]),
 };
 const M23NoeView = Type.Object({
   ...M23NoticeAckAndCorrection,
@@ -13528,6 +13542,20 @@ Object.assign(ROUTE_ENRICHMENTS, {
     headers: IDEMPOTENCY_KEY_HEADER,
     response: Type.Object({ created: Type.Boolean(), notice: M23NotrView }),
     status: 201,
+  },
+  "POST /api/v1/noe-records/:id/record-external-filing": {
+    summary:
+      "Record the date an organization that bills outside ChartWarden filed the NOE itself (step-up; 200, idempotent for the same date, 409 for another). Nothing is transmitted; the notice leaves the deadline tracker",
+    body: RecordExternalFilingBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M23NoeView,
+  },
+  "POST /api/v1/notr-records/:id/record-external-filing": {
+    summary:
+      "Record the date an organization that bills outside ChartWarden filed the NOTR itself (step-up; 200, idempotent for the same date, 409 for another). Nothing is transmitted; the notice leaves the deadline tracker",
+    body: RecordExternalFilingBodySchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    response: M23NotrView,
   },
 });
 

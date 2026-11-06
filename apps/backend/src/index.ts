@@ -6521,6 +6521,12 @@ export async function bootChartWarden(requestedRole: ProcessRole = "all"): Promi
                 }),
                 writeService: buildDrizzleM23WriteService(dbHandle.db, {
                   outbox: m23OutboxPublisher,
+                  // Owner decision D4: an org that bills outside ChartWarden files its NOE / NOTR itself, so submit parks the
+                  // notice and the tenant records the date. Read lazily per call (the reader seam registers after this is built);
+                  // a throw fails closed with a typed 503, never a transmission.
+                  billsOutside: async (organizationId) =>
+                    (await getSeam("TenantClearinghouseReader").choiceForOrg(organizationId))
+                      .vendor === "outside",
                   // Readmission — a new NOE waits for the prior election's NOTR / final claim (M6's prior-stay facts).
                   priorLiveEndedStay: {
                     async latestPriorLiveEndedAdmission(organizationId, q) {

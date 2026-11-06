@@ -67,6 +67,14 @@ export const noeRecord = pgTable(
     correctsNoticeId: uuid("corrects_notice_id").references((): AnyPgColumn => noeRecord.id),
     correctionReason: text("correction_reason"),
 
+    // Migration 1353 — a tenant that bills outside ChartWarden files this notice itself. `pending` = parked for the tenant to
+    // file with its biller (still on the deadline tracker); `filed` = the tenant recorded the date it filed (the three
+    // filed_* columns are then all set, else all NULL — a CHECK). No state change: a parked notice stays draft / ready.
+    externalFilingStatus: text("external_filing_status").$type<"pending" | "filed">(),
+    filedExternallyOn: date("filed_externally_on"),
+    filedExternallyRecordedAt: timestamp("filed_externally_recorded_at", { withTimezone: true }),
+    filedExternallyByMembershipId: uuid("filed_externally_by_membership_id"), // logical FK → M2
+
     // Submission / acknowledgment pointers (latest):
     latestSubmissionId: uuid("latest_submission_id"),
     latestAcknowledgmentId: uuid("latest_acknowledgment_id"),
