@@ -346,7 +346,7 @@ for the global search route, because search is an oracle and a decrypt-cost ampl
    - **Under-fill:** access filtering, step 8.5 and collisions can leave a page short of `limit` (default 20, max 50, as 2.7a). The
      response then carries a `nextCursor` whenever more candidates remain beyond the last one examined, plus `scanCapped`, so the UI
      offers "load more" instead of showing a silently truncated page. A short page with no `nextCursor` is the true end.
-   - **Cursor:** a keyset on `(created_at, message_id)` of the last **examined** candidate (the same `message-cursor` codec as 2.7a).
+   - **Cursor:** a keyset on `(created_at, message_id)` of the last **examined** candidate (the same keyset as 2.7a; codec `packages/messaging/src/search/global/cursor.ts`).
      It **never encodes a tag, a token, a query hash or any value derived from the query**; the client re-sends `q` and the server
      re-derives the tags on every page. A leaked cursor therefore reveals a timestamp and a message id the holder could already read.
 10. **Operational leakage hygiene.** Tags are always bound parameters; database statement logging, `pg_stat_statements` parameter

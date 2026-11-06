@@ -19,6 +19,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -492,6 +493,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -499,15 +509,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "type": "string"
             }
           }
         ],
@@ -2116,6 +2117,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -2123,15 +2133,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "type": "string"
             }
           }
         ],
@@ -2633,6 +2634,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -2640,15 +2650,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "type": "string"
             }
           }
         ],
@@ -2983,6 +2984,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -2990,15 +3000,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "type": "string"
             }
           }
         ],
@@ -3489,6 +3490,15 @@
         "summary": "List NPPES sync-run history (§4.1.4)",
         "parameters": [
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -3496,15 +3506,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "type": "string"
             }
           }
         ],
@@ -5863,6 +5864,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -6915,6 +6917,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -7124,6 +7127,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -8791,6 +8795,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -9000,6 +9005,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -9007,15 +9021,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "type": "string"
             }
           }
         ],
@@ -9552,6 +9557,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -9559,15 +9573,6 @@
               "minimum": 1,
               "maximum": 200,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "maxLength": 200,
-              "type": "string"
             }
           }
         ],
@@ -15170,6 +15175,15 @@
             }
           },
           {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "maxLength": 512,
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "required": false,
@@ -15177,14 +15191,6 @@
               "minimum": 1,
               "maximum": 500,
               "type": "integer"
-            }
-          },
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
             }
           }
         ],
@@ -106499,7 +106505,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -109909,7 +109915,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -166606,6 +166612,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -187535,7 +187542,7 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "name": {
@@ -187699,7 +187706,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "name": {
@@ -187945,7 +187952,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "name": {
@@ -188117,7 +188124,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "name": {
@@ -189694,7 +189701,7 @@
                 ],
                 "properties": {
                   "channelId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "fileName": {
@@ -189750,11 +189757,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelKind": {
@@ -189838,7 +189845,7 @@
                 ],
                 "properties": {
                   "channelId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "reasonCode": {
@@ -189914,11 +189921,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelKind": {
@@ -190025,11 +190032,11 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "channelId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "channelKind": {
@@ -190184,15 +190191,15 @@
                         ],
                         "properties": {
                           "reviewId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "grantId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "granteeUserId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "granteeName": {
@@ -190206,7 +190213,7 @@
                             ]
                           },
                           "channelId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "channelKind": {
@@ -190225,7 +190232,7 @@
                           "patientId": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -190313,7 +190320,7 @@
                           "reviewerUserId": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -190405,15 +190412,15 @@
                   ],
                   "properties": {
                     "reviewId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "grantId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "granteeUserId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "granteeName": {
@@ -190427,7 +190434,7 @@
                       ]
                     },
                     "channelId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelKind": {
@@ -190446,7 +190453,7 @@
                     "patientId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -190534,7 +190541,7 @@
                     "reviewerUserId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -190611,7 +190618,7 @@
                           "resourceId": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -190701,15 +190708,15 @@
                   ],
                   "properties": {
                     "reviewId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "grantId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "granteeUserId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "granteeName": {
@@ -190723,7 +190730,7 @@
                       ]
                     },
                     "channelId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelKind": {
@@ -190742,7 +190749,7 @@
                     "patientId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -190830,7 +190837,7 @@
                     "reviewerUserId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -190907,7 +190914,7 @@
                           "resourceId": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -191574,7 +191581,7 @@
                 ],
                 "properties": {
                   "invocation_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "invoked_at": {
@@ -191656,7 +191663,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -191693,7 +191700,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -192070,7 +192077,7 @@
                 ],
                 "properties": {
                   "parentMessageId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "body": {
@@ -192240,7 +192247,7 @@
                       "type": "string"
                     },
                     "invocation_id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "invoked_at": {
@@ -192288,7 +192295,7 @@
                 "type": "object",
                 "properties": {
                   "thread_root_message_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -193341,18 +193348,18 @@
                     "type": "string"
                   },
                   "medication_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "assignee_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "allow_unrouted": {
                     "type": "boolean"
                   },
                   "client_message_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -193907,6 +193914,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -194541,7 +194549,7 @@
                     "type": "string"
                   },
                   "clientMessageId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "attachments": {
@@ -194554,7 +194562,7 @@
                       ],
                       "properties": {
                         "attachmentId": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         }
                       }
@@ -195193,7 +195201,7 @@
                     ]
                   },
                   "suggested_target_ref": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -195681,7 +195689,7 @@
                 ],
                 "properties": {
                   "optionId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -196155,7 +196163,7 @@
                 ],
                 "properties": {
                   "assignee_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "due_at": {
@@ -196209,6 +196217,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -197984,11 +197993,11 @@
                     ]
                   },
                   "patient_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "recipient_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "body_doc": {
@@ -198023,7 +198032,7 @@
                     }
                   },
                   "client_message_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -198071,7 +198080,7 @@
             "in": "query",
             "required": true,
             "schema": {
-              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -198358,7 +198367,7 @@
                     "type": "string"
                   },
                   "parentMessageId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "scheduledFor": {
@@ -198371,7 +198380,7 @@
                     "type": "string"
                   },
                   "clientMessageId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -198446,7 +198455,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -199175,7 +199184,7 @@
                     "invocation_id": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -199249,7 +199258,7 @@
                                   "type": "integer"
                                 },
                                 "message_id": {
-                                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                  "format": "uuid",
                                   "type": "string"
                                 },
                                 "sent_at": {
@@ -199298,7 +199307,7 @@
                 "type": "object",
                 "properties": {
                   "thread_root_message_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -199455,11 +199464,11 @@
                     }
                   },
                   "recipient_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "client_message_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -200556,7 +200565,7 @@
                       ],
                       "properties": {
                         "id": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "item_key": {
@@ -200603,7 +200612,7 @@
                           ]
                         },
                         "owner_user_id": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "owner_display_name": {
@@ -200640,7 +200649,7 @@
                         "completed_by_user_id": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -200723,7 +200732,7 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "event_type": {
@@ -200761,7 +200770,7 @@
                           "actor_user_id": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -200772,7 +200781,7 @@
                           "from_owner_user_id": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -200783,7 +200792,7 @@
                           "to_owner_user_id": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -200889,7 +200898,7 @@
                       ],
                       "properties": {
                         "id": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "item_key": {
@@ -200936,7 +200945,7 @@
                           ]
                         },
                         "owner_user_id": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "owner_display_name": {
@@ -200973,7 +200982,7 @@
                         "completed_by_user_id": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -201022,7 +201031,7 @@
                 ],
                 "properties": {
                   "to_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -201081,11 +201090,11 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "patient_id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "patient_display_name": {
@@ -201135,7 +201144,7 @@
                               ],
                               "properties": {
                                 "id": {
-                                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                  "format": "uuid",
                                   "type": "string"
                                 },
                                 "item_key": {
@@ -201182,7 +201191,7 @@
                                   ]
                                 },
                                 "owner_user_id": {
-                                  "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                  "format": "uuid",
                                   "type": "string"
                                 },
                                 "owner_display_name": {
@@ -201219,7 +201228,7 @@
                                 "completed_by_user_id": {
                                   "anyOf": [
                                     {
-                                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                      "format": "uuid",
                                       "type": "string"
                                     },
                                     {
@@ -201303,11 +201312,11 @@
                       ],
                       "properties": {
                         "id": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "patient_id": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "patient_display_name": {
@@ -201357,7 +201366,7 @@
                             ],
                             "properties": {
                               "id": {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               "item_key": {
@@ -201404,7 +201413,7 @@
                                 ]
                               },
                               "owner_user_id": {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               "owner_display_name": {
@@ -201441,7 +201450,7 @@
                               "completed_by_user_id": {
                                 "anyOf": [
                                   {
-                                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                    "format": "uuid",
                                     "type": "string"
                                   },
                                   {
@@ -201608,7 +201617,7 @@
                     ]
                   },
                   "subjectId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "title": {
@@ -202242,11 +202251,11 @@
                 ],
                 "properties": {
                   "message_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "assigned_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -203290,7 +203299,7 @@
                 ],
                 "properties": {
                   "assigned_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -203724,7 +203733,7 @@
                 ],
                 "properties": {
                   "assigned_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "reason_code": {
@@ -203836,7 +203845,7 @@
         "tags": [
           "36-messaging"
         ],
-        "summary": "The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses",
+        "summary": "The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 422 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses",
         "parameters": [
           {
             "name": "status",
@@ -203872,8 +203881,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
-              "maxLength": 200,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -204214,7 +204222,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -204254,7 +204262,7 @@
                       ]
                     },
                     "requestedBy": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "requestedByName": {
@@ -204295,7 +204303,7 @@
                         "channelId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -204306,7 +204314,7 @@
                         "patientId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -204339,7 +204347,7 @@
                     "decidedBy": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -204508,11 +204516,11 @@
                     ]
                   },
                   "channelId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "patientId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "dateFrom": {
@@ -204584,7 +204592,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -204624,7 +204632,7 @@
                       ]
                     },
                     "requestedBy": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "requestedByName": {
@@ -204665,7 +204673,7 @@
                         "channelId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -204676,7 +204684,7 @@
                         "patientId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -204709,7 +204717,7 @@
                     "decidedBy": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -204904,7 +204912,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -204944,7 +204952,7 @@
                       ]
                     },
                     "requestedBy": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "requestedByName": {
@@ -204985,7 +204993,7 @@
                         "channelId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -204996,7 +205004,7 @@
                         "patientId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -205029,7 +205037,7 @@
                     "decidedBy": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -205241,7 +205249,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -205281,7 +205289,7 @@
                       ]
                     },
                     "requestedBy": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "requestedByName": {
@@ -205322,7 +205330,7 @@
                         "channelId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -205333,7 +205341,7 @@
                         "patientId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -205366,7 +205374,7 @@
                     "decidedBy": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -205591,7 +205599,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -205631,7 +205639,7 @@
                       ]
                     },
                     "requestedBy": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "requestedByName": {
@@ -205672,7 +205680,7 @@
                         "channelId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -205683,7 +205691,7 @@
                         "patientId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -205716,7 +205724,7 @@
                     "decidedBy": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -205921,7 +205929,7 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "status": {
@@ -205961,7 +205969,7 @@
                             ]
                           },
                           "requestedBy": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "requestedByName": {
@@ -206002,7 +206010,7 @@
                               "channelId": {
                                 "anyOf": [
                                   {
-                                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                    "format": "uuid",
                                     "type": "string"
                                   },
                                   {
@@ -206013,7 +206021,7 @@
                               "patientId": {
                                 "anyOf": [
                                   {
-                                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                    "format": "uuid",
                                     "type": "string"
                                   },
                                   {
@@ -206046,7 +206054,7 @@
                           "decidedBy": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -206190,7 +206198,7 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "status": {
@@ -206230,7 +206238,7 @@
                             ]
                           },
                           "requestedBy": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "requestedByName": {
@@ -206271,7 +206279,7 @@
                               "channelId": {
                                 "anyOf": [
                                   {
-                                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                    "format": "uuid",
                                     "type": "string"
                                   },
                                   {
@@ -206282,7 +206290,7 @@
                               "patientId": {
                                 "anyOf": [
                                   {
-                                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                    "format": "uuid",
                                     "type": "string"
                                   },
                                   {
@@ -206315,7 +206323,7 @@
                           "decidedBy": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -206457,11 +206465,11 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "channelId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "channelTitle": {
@@ -206522,7 +206530,7 @@
                             "type": "string"
                           },
                           "createdBy": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "revokedAt": {
@@ -206592,11 +206600,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelTitle": {
@@ -206657,7 +206665,7 @@
                       "type": "string"
                     },
                     "createdBy": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "revokedAt": {
@@ -206678,7 +206686,7 @@
                       "type": "boolean"
                     },
                     "organizationId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "inviteToken": {
@@ -206715,7 +206723,7 @@
                 ],
                 "properties": {
                   "channelId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "partnerName": {
@@ -206801,11 +206809,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelTitle": {
@@ -206866,7 +206874,7 @@
                       "type": "string"
                     },
                     "createdBy": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "revokedAt": {
@@ -206944,11 +206952,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "channelTitle": {
@@ -207009,7 +207017,7 @@
                       "type": "string"
                     },
                     "createdBy": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "revokedAt": {
@@ -207030,7 +207038,7 @@
                       "type": "boolean"
                     },
                     "organizationId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "inviteToken": {
@@ -207086,7 +207094,7 @@
                         ],
                         "properties": {
                           "messageId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "from": {
@@ -207157,7 +207165,7 @@
                   ],
                   "properties": {
                     "messageId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "createdAt": {
@@ -207255,7 +207263,7 @@
                 ],
                 "properties": {
                   "organizationId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "token": {
@@ -207565,15 +207573,15 @@
                         ],
                         "properties": {
                           "contactId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "patientId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "patientCaregiverId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "patientName": {
@@ -207680,7 +207688,7 @@
                           "channelId": {
                             "anyOf": [
                               {
-                                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                                "format": "uuid",
                                 "type": "string"
                               },
                               {
@@ -207774,15 +207782,15 @@
                   ],
                   "properties": {
                     "contactId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientCaregiverId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientName": {
@@ -207889,7 +207897,7 @@
                     "channelId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -207980,15 +207988,15 @@
                   ],
                   "properties": {
                     "contactId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientCaregiverId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientName": {
@@ -208095,7 +208103,7 @@
                     "channelId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -208186,15 +208194,15 @@
                   ],
                   "properties": {
                     "contactId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientCaregiverId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientName": {
@@ -208301,7 +208309,7 @@
                     "channelId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -208392,15 +208400,15 @@
                   ],
                   "properties": {
                     "contactId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientCaregiverId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientName": {
@@ -208507,7 +208515,7 @@
                     "channelId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -208587,7 +208595,7 @@
                   ],
                   "properties": {
                     "messageId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "from": {
@@ -208697,15 +208705,15 @@
                       ],
                       "properties": {
                         "contactId": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "patientId": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "patientCaregiverId": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "patientName": {
@@ -208812,7 +208820,7 @@
                         "channelId": {
                           "anyOf": [
                             {
-                              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                              "format": "uuid",
                               "type": "string"
                             },
                             {
@@ -208860,7 +208868,7 @@
                         ],
                         "properties": {
                           "messageId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "from": {
@@ -208953,15 +208961,15 @@
                   ],
                   "properties": {
                     "contactId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientCaregiverId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "patientName": {
@@ -209068,7 +209076,7 @@
                     "channelId": {
                       "anyOf": [
                         {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         {
@@ -209140,11 +209148,11 @@
                   ],
                   "properties": {
                     "contactId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "organizationId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "inviteToken": {
@@ -209186,11 +209194,11 @@
                 ],
                 "properties": {
                   "patientId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "patientCaregiverId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "expiresInDays": {
@@ -209252,7 +209260,7 @@
                         ],
                         "properties": {
                           "patientCaregiverId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "displayName": {
@@ -209996,7 +210004,7 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "name": {
@@ -210119,7 +210127,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "name": {
@@ -210237,7 +210245,7 @@
                     "maxItems": 200,
                     "type": "array",
                     "items": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     }
                   },
@@ -210245,7 +210253,7 @@
                     "maxItems": 200,
                     "type": "array",
                     "items": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     }
                   },
@@ -210253,7 +210261,7 @@
                     "maxItems": 200,
                     "type": "array",
                     "items": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     }
                   },
@@ -210304,7 +210312,7 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "name": {
@@ -210455,7 +210463,7 @@
                   ],
                   "properties": {
                     "hold_id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "held_messages": {
@@ -210952,11 +210960,11 @@
                         ],
                         "properties": {
                           "id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "message_id": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "status": {
@@ -211112,11 +211120,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "message_id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -211246,7 +211254,7 @@
                 ],
                 "properties": {
                   "message_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "reason": {
@@ -211303,11 +211311,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "message_id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -211468,11 +211476,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "message_id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -211633,11 +211641,11 @@
                   ],
                   "properties": {
                     "id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "message_id": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "status": {
@@ -211921,7 +211929,7 @@
             "in": "query",
             "required": true,
             "schema": {
-              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -212102,7 +212110,7 @@
                     "uniqueItems": true,
                     "type": "array",
                     "items": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     }
                   }
@@ -212976,7 +212984,7 @@
                 ],
                 "properties": {
                   "to_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "items": {
@@ -213016,11 +213024,11 @@
                           ]
                         },
                         "ref_id": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         },
                         "patient_id": {
-                          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                          "format": "uuid",
                           "type": "string"
                         }
                       }
@@ -213859,7 +213867,7 @@
                     "maxItems": 250,
                     "type": "array",
                     "items": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     }
                   }
@@ -214693,7 +214701,7 @@
                     "maxItems": 250,
                     "type": "array",
                     "items": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     }
                   }
@@ -214948,7 +214956,7 @@
                     "maxItems": 50,
                     "type": "array",
                     "items": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     }
                   }
@@ -215851,7 +215859,7 @@
             "in": "query",
             "required": true,
             "schema": {
-              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -216025,7 +216033,7 @@
                       "type": "string"
                     },
                     "shareId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "stage": {
@@ -216061,7 +216069,7 @@
                 ],
                 "properties": {
                   "organizationId": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   },
                   "token": {
@@ -216107,7 +216115,7 @@
                   ],
                   "properties": {
                     "shareId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "stage": {
@@ -216185,7 +216193,7 @@
                         ],
                         "properties": {
                           "messageId": {
-                            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                            "format": "uuid",
                             "type": "string"
                           },
                           "authorName": {
@@ -216268,7 +216276,7 @@
                   ],
                   "properties": {
                     "shareId": {
-                      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                      "format": "uuid",
                       "type": "string"
                     },
                     "stage": {
@@ -218039,7 +218047,7 @@
                 ],
                 "properties": {
                   "to_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -218154,7 +218162,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "format": "uuid",
               "type": "string"
             }
           }
@@ -218488,7 +218496,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -220659,7 +220667,7 @@
                 ],
                 "properties": {
                   "assignee_user_id": {
-                    "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "format": "uuid",
                     "type": "string"
                   }
                 }
@@ -249325,7 +249333,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "minLength": 1,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -254985,7 +254993,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -255784,7 +255792,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -255950,7 +255958,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -256461,7 +256469,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -256812,7 +256820,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -257176,7 +257184,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -257519,7 +257527,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -257693,7 +257701,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -257964,7 +257972,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -258254,7 +258262,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -261704,6 +261712,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -282768,7 +282777,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -282983,7 +282992,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -283269,7 +283278,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -283651,7 +283660,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -283923,7 +283932,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -284807,7 +284816,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -285962,7 +285971,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -286280,7 +286289,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -287442,7 +287451,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -288083,7 +288092,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -323076,7 +323085,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -323422,7 +323431,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -324572,7 +324581,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -325206,7 +325215,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -325620,7 +325629,7 @@
             "in": "query",
             "required": false,
             "schema": {
-              "maxLength": 256,
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -327154,6 +327163,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },
@@ -347326,6 +347336,7 @@
             "in": "query",
             "required": false,
             "schema": {
+              "maxLength": 512,
               "type": "string"
             }
           },

@@ -16923,7 +16923,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 400 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses */
+        /** The supervisor's queue of every acknowledgment request that still waits for a human (WP 4.9, ADR-0076; messaging.read + messaging.review, otherwise 403). Lists the organisation's pending, escalated and failed_unreachable requests, oldest deadline first (overdue longest first); acknowledged, resolved and cancelled requests are not listed. The default view is everything. The only filters are `status` and `overdue`, and they only narrow: the response always states `counts.unfiltered` (every waiting request in the organisation), `counts.matching`, whether a filter was applied and whether this page ends the list (`complete`, `next_cursor`); an unknown query key or an out-of-range value is a 422 and a malformed cursor a 422 INVALID_CURSOR, never ignored. A request whose thread the caller cannot open (not a member of the channel, or a Part 2 patient they are not released to) is still listed and counted as a `restricted` row: the request, channel, message, patient and assignee ids are withheld, while the assignee's display name, class, status, times, tier and note stay so the supervisor can chase it. Each visible row has ids, class, status, assignee (id and display name), the sender's display name (`requester_display_name`, also on a restricted row, ADR-0078), `request_ref` (the request's own id, the handle the supervisor reassign acts on, also on a restricted row), requested_at, deadline_at, overdue and overdue_seconds, tier, the escalation note (route_unavailable / ladder_exhausted) and delivery_failed. No message text and no patient name or label. Read-only: it never acknowledges, reassigns or resolves. Read-audited with one event per distinct patient the page discloses */
         get: operations["getApiV1MessagingEscalationsUnacknowledged"];
         put?: never;
         post?: never;
@@ -28865,8 +28865,8 @@ export interface operations {
             query?: {
                 kind?: "adt_inbound" | "lab_inbound" | "orm_outbound";
                 status?: "proposed" | "pending_approval" | "active" | "suspended" | "revoked" | "rejected";
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -29308,8 +29308,8 @@ export interface operations {
                 ownerModule?: "m5" | "m6";
                 feedId?: string;
                 proposedForPatientId?: string;
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -29482,8 +29482,8 @@ export interface operations {
                 messageType?: string;
                 messageControlId?: string;
                 parseStatus?: "in_progress" | "parsed" | "parse_error" | "rejected";
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -29607,8 +29607,8 @@ export interface operations {
                 feedId?: string;
                 placerOrderNumber?: string;
                 status?: "queued" | "in_flight" | "acked" | "naked" | "failed" | "dlq";
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -29780,8 +29780,8 @@ export interface operations {
     getApiAdminExternalinterfacesNppesSyncruns: {
         parameters: {
             query?: {
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -31226,8 +31226,8 @@ export interface operations {
                 patientId?: string;
                 loincCode?: string;
                 abnormalFlag?: "H" | "L" | "HH" | "LL" | "A" | "N";
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -31400,8 +31400,8 @@ export interface operations {
                 patientId?: string;
                 loincCode?: string;
                 abnormalFlag?: "H" | "L" | "HH" | "LL" | "A" | "N";
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -33289,8 +33289,8 @@ export interface operations {
                 valueSetId?: string;
                 organizationId?: string;
                 includeRemoved?: boolean;
-                limit?: number;
                 cursor?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -74832,6 +74832,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         sources: {
+                            /** Format: uuid */
                             id: string;
                             name: string;
                             enabled: boolean;
@@ -74887,6 +74888,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         name: string;
                         enabled: boolean;
@@ -74934,6 +74936,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         name: string;
                         enabled: boolean;
@@ -74979,6 +74982,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         name: string;
                         enabled: boolean;
@@ -75422,6 +75426,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     channelId: string;
                     fileName: string;
                     contentType: string;
@@ -75475,6 +75480,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     channelId: string;
                     reasonCode: "patient_safety" | "covering_colleague" | "record_correction" | "other";
                     justification: string;
@@ -75490,7 +75496,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         channelId: string;
                         channelKind: string;
                         reasonCode: "patient_safety" | "covering_colleague" | "record_correction" | "other";
@@ -75523,7 +75531,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         channelId: string;
                         channelKind: string;
                         reasonCode: "patient_safety" | "covering_colleague" | "record_correction" | "other";
@@ -75555,7 +75565,9 @@ export interface operations {
                 content: {
                     "application/json": {
                         grants: {
+                            /** Format: uuid */
                             id: string;
+                            /** Format: uuid */
                             channelId: string;
                             channelKind: string;
                             reasonCode: "patient_safety" | "covering_colleague" | "record_correction" | "other";
@@ -75591,10 +75603,14 @@ export interface operations {
                 content: {
                     "application/json": {
                         reviews: {
+                            /** Format: uuid */
                             reviewId: string;
+                            /** Format: uuid */
                             grantId: string;
+                            /** Format: uuid */
                             granteeUserId: string;
                             granteeName: string | null;
+                            /** Format: uuid */
                             channelId: string;
                             channelKind: string;
                             channelTitle: string | null;
@@ -75638,10 +75654,14 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         reviewId: string;
+                        /** Format: uuid */
                         grantId: string;
+                        /** Format: uuid */
                         granteeUserId: string;
                         granteeName: string | null;
+                        /** Format: uuid */
                         channelId: string;
                         channelKind: string;
                         channelTitle: string | null;
@@ -75698,10 +75718,14 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         reviewId: string;
+                        /** Format: uuid */
                         grantId: string;
+                        /** Format: uuid */
                         granteeUserId: string;
                         granteeName: string | null;
+                        /** Format: uuid */
                         channelId: string;
                         channelKind: string;
                         channelTitle: string | null;
@@ -75872,6 +75896,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     invocation_id: string;
                     invoked_at: string;
                     outcome: "accepted" | "edited" | "rejected";
@@ -75974,6 +75999,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     parentMessageId?: string;
                     body: string;
                     references?: {
@@ -76070,6 +76096,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     thread_root_message_id?: string;
                 };
             };
@@ -76084,6 +76111,7 @@ export interface operations {
                     "application/json": {
                         /** @constant */
                         label: "AI draft - edit before sending";
+                        /** Format: uuid */
                         invocation_id: string;
                         /** Format: date-time */
                         invoked_at: string;
@@ -76274,9 +76302,12 @@ export interface operations {
             content: {
                 "application/json": {
                     text: string;
+                    /** Format: uuid */
                     medication_id?: string;
+                    /** Format: uuid */
                     assignee_user_id?: string;
                     allow_unrouted?: boolean;
+                    /** Format: uuid */
                     client_message_id: string;
                 };
             };
@@ -76652,8 +76683,10 @@ export interface operations {
                     };
                     parentMessageId?: string;
                     quotedMessageId?: string;
+                    /** Format: uuid */
                     clientMessageId?: string;
                     attachments?: {
+                        /** Format: uuid */
                         attachmentId: string;
                     }[];
                     references?: {
@@ -76753,6 +76786,7 @@ export interface operations {
                 "application/json": {
                     target_module: "m8" | "m14";
                     target_kind: "encounter_addendum" | "idg_agenda_item";
+                    /** Format: uuid */
                     suggested_target_ref?: string;
                 };
             };
@@ -76948,6 +76982,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     optionId: string;
                 };
             };
@@ -77057,6 +77092,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     assignee_user_id: string;
                     due_at?: string | null;
                     clinical_concern?: boolean;
@@ -77496,7 +77532,9 @@ export interface operations {
             content: {
                 "application/json": {
                     role: "rn" | "physician";
+                    /** Format: uuid */
                     patient_id: string;
+                    /** Format: uuid */
                     recipient_user_id: string;
                     body_doc: {
                         /** @constant */
@@ -77507,6 +77545,7 @@ export interface operations {
                             content: unknown[];
                         };
                     };
+                    /** Format: uuid */
                     client_message_id: string;
                 };
             };
@@ -77593,9 +77632,11 @@ export interface operations {
             content: {
                 "application/json": {
                     body: string;
+                    /** Format: uuid */
                     parentMessageId?: string;
                     scheduledFor: string;
                     timeZone?: string;
+                    /** Format: uuid */
                     clientMessageId?: string;
                 };
             };
@@ -77835,6 +77876,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     thread_root_message_id?: string;
                 };
             };
@@ -77857,6 +77899,7 @@ export interface operations {
                             confidence: "high" | "medium" | "low";
                             sources: {
                                 n: number;
+                                /** Format: uuid */
                                 message_id: string;
                                 /** Format: date-time */
                                 sent_at: string;
@@ -77919,7 +77962,9 @@ export interface operations {
                             content: unknown[];
                         };
                     };
+                    /** Format: uuid */
                     recipient_user_id: string;
+                    /** Format: uuid */
                     client_message_id: string;
                 };
             };
@@ -78205,10 +78250,12 @@ export interface operations {
                 content: {
                     "application/json": {
                         item: {
+                            /** Format: uuid */
                             id: string;
                             item_key: "pronouncement" | "family_notification" | "dme_pickup" | "medication_disposal" | "m4_record_tasks" | "m22_document_tasks";
                             label: string;
                             status: "open" | "done";
+                            /** Format: uuid */
                             owner_user_id: string;
                             owner_display_name: string | null;
                             needs_owner: boolean;
@@ -78245,6 +78292,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         events: {
+                            /** Format: uuid */
                             id: string;
                             event_type: "created" | "reassigned" | "completed" | "needs_owner";
                             actor_kind: "user" | "system";
@@ -78274,6 +78322,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     to_user_id: string;
                 };
             };
@@ -78287,10 +78336,12 @@ export interface operations {
                 content: {
                     "application/json": {
                         item: {
+                            /** Format: uuid */
                             id: string;
                             item_key: "pronouncement" | "family_notification" | "dme_pickup" | "medication_disposal" | "m4_record_tasks" | "m22_document_tasks";
                             label: string;
                             status: "open" | "done";
+                            /** Format: uuid */
                             owner_user_id: string;
                             owner_display_name: string | null;
                             needs_owner: boolean;
@@ -78328,7 +78379,9 @@ export interface operations {
                     "application/json": {
                         enabled: boolean;
                         boards: {
+                            /** Format: uuid */
                             id: string;
+                            /** Format: uuid */
                             patient_id: string;
                             patient_display_name: string | null;
                             mrn_suffix: string | null;
@@ -78336,10 +78389,12 @@ export interface operations {
                             created_at: string;
                             open_count: number;
                             items: {
+                                /** Format: uuid */
                                 id: string;
                                 item_key: "pronouncement" | "family_notification" | "dme_pickup" | "medication_disposal" | "m4_record_tasks" | "m22_document_tasks";
                                 label: string;
                                 status: "open" | "done";
+                                /** Format: uuid */
                                 owner_user_id: string;
                                 owner_display_name: string | null;
                                 needs_owner: boolean;
@@ -78377,7 +78432,9 @@ export interface operations {
                 content: {
                     "application/json": {
                         board: {
+                            /** Format: uuid */
                             id: string;
+                            /** Format: uuid */
                             patient_id: string;
                             patient_display_name: string | null;
                             mrn_suffix: string | null;
@@ -78385,10 +78442,12 @@ export interface operations {
                             created_at: string;
                             open_count: number;
                             items: {
+                                /** Format: uuid */
                                 id: string;
                                 item_key: "pronouncement" | "family_notification" | "dme_pickup" | "medication_disposal" | "m4_record_tasks" | "m22_document_tasks";
                                 label: string;
                                 status: "open" | "done";
+                                /** Format: uuid */
                                 owner_user_id: string;
                                 owner_display_name: string | null;
                                 needs_owner: boolean;
@@ -78448,6 +78507,7 @@ export interface operations {
             content: {
                 "application/json": {
                     kind: "discipline" | "location";
+                    /** Format: uuid */
                     subjectId: string;
                     title?: string;
                 };
@@ -78639,7 +78699,9 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     message_id: string;
+                    /** Format: uuid */
                     assigned_user_id: string;
                 };
             };
@@ -78848,6 +78910,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     assigned_user_id: string;
                 };
             };
@@ -79013,6 +79076,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     assigned_user_id: string;
                     reason_code: "assignee_unreachable" | "assignee_unable_to_sign_in" | "assignee_off_shift" | "coverage_change" | "workload" | "other_operational";
                 };
@@ -79145,7 +79209,9 @@ export interface operations {
             content: {
                 "application/json": {
                     scopeKind: "channel" | "patient";
+                    /** Format: uuid */
                     channelId?: string;
+                    /** Format: uuid */
                     patientId?: string;
                     dateFrom?: string;
                     dateTo?: string;
@@ -79161,8 +79227,10 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                        /** Format: uuid */
                         requestedBy: string;
                         requestedByName: string | null;
                         requestedAt: string;
@@ -79213,8 +79281,10 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                        /** Format: uuid */
                         requestedBy: string;
                         requestedByName: string | null;
                         requestedAt: string;
@@ -79271,8 +79341,10 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                        /** Format: uuid */
                         requestedBy: string;
                         requestedByName: string | null;
                         requestedAt: string;
@@ -79323,8 +79395,10 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                        /** Format: uuid */
                         requestedBy: string;
                         requestedByName: string | null;
                         requestedAt: string;
@@ -79403,8 +79477,10 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                        /** Format: uuid */
                         requestedBy: string;
                         requestedByName: string | null;
                         requestedAt: string;
@@ -79454,8 +79530,10 @@ export interface operations {
                 content: {
                     "application/json": {
                         jobs: {
+                            /** Format: uuid */
                             id: string;
                             status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                            /** Format: uuid */
                             requestedBy: string;
                             requestedByName: string | null;
                             requestedAt: string;
@@ -79500,8 +79578,10 @@ export interface operations {
                 content: {
                     "application/json": {
                         jobs: {
+                            /** Format: uuid */
                             id: string;
                             status: "pending_approval" | "approved" | "rejected" | "cancelled" | "building" | "ready" | "failed" | "expired";
+                            /** Format: uuid */
                             requestedBy: string;
                             requestedByName: string | null;
                             requestedAt: string;
@@ -79546,7 +79626,9 @@ export interface operations {
                 content: {
                     "application/json": {
                         shares: {
+                            /** Format: uuid */
                             id: string;
+                            /** Format: uuid */
                             channelId: string;
                             channelTitle: string | null;
                             partnerName: string;
@@ -79558,6 +79640,7 @@ export interface operations {
                             expiresAt: string;
                             /** Format: date-time */
                             createdAt: string;
+                            /** Format: uuid */
                             createdBy: string;
                             revokedAt: string | null;
                             redeemed: boolean;
@@ -79580,6 +79663,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     channelId: string;
                     partnerName: string;
                     partnerKind: "pharmacy" | "dme" | "other";
@@ -79598,7 +79682,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         channelId: string;
                         channelTitle: string | null;
                         partnerName: string;
@@ -79610,10 +79696,12 @@ export interface operations {
                         expiresAt: string;
                         /** Format: date-time */
                         createdAt: string;
+                        /** Format: uuid */
                         createdBy: string;
                         revokedAt: string | null;
                         redeemed: boolean;
                         codeLocked: boolean;
+                        /** Format: uuid */
                         organizationId: string;
                         inviteToken: string;
                         verificationCode: string;
@@ -79642,7 +79730,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         channelId: string;
                         channelTitle: string | null;
                         partnerName: string;
@@ -79654,6 +79744,7 @@ export interface operations {
                         expiresAt: string;
                         /** Format: date-time */
                         createdAt: string;
+                        /** Format: uuid */
                         createdBy: string;
                         revokedAt: string | null;
                         redeemed: boolean;
@@ -79683,7 +79774,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         channelId: string;
                         channelTitle: string | null;
                         partnerName: string;
@@ -79695,10 +79788,12 @@ export interface operations {
                         expiresAt: string;
                         /** Format: date-time */
                         createdAt: string;
+                        /** Format: uuid */
                         createdBy: string;
                         revokedAt: string | null;
                         redeemed: boolean;
                         codeLocked: boolean;
+                        /** Format: uuid */
                         organizationId: string;
                         inviteToken: string;
                         verificationCode: string;
@@ -79726,6 +79821,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         messages: {
+                            /** Format: uuid */
                             messageId: string;
                             from: "you" | "care_team";
                             body: string;
@@ -79763,6 +79859,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         messageId: string;
                         /** Format: date-time */
                         createdAt: string;
@@ -79783,6 +79880,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     organizationId: string;
                     token: string;
                 };
@@ -79896,8 +79994,11 @@ export interface operations {
                 content: {
                     "application/json": {
                         contacts: {
+                            /** Format: uuid */
                             contactId: string;
+                            /** Format: uuid */
                             patientId: string;
+                            /** Format: uuid */
                             patientCaregiverId: string;
                             patientName: string;
                             displayName: string;
@@ -79938,8 +80039,11 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         contactId: string;
+                        /** Format: uuid */
                         patientId: string;
+                        /** Format: uuid */
                         patientCaregiverId: string;
                         patientName: string;
                         displayName: string;
@@ -79979,8 +80083,11 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         contactId: string;
+                        /** Format: uuid */
                         patientId: string;
+                        /** Format: uuid */
                         patientCaregiverId: string;
                         patientName: string;
                         displayName: string;
@@ -80020,8 +80127,11 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         contactId: string;
+                        /** Format: uuid */
                         patientId: string;
+                        /** Format: uuid */
                         patientCaregiverId: string;
                         patientName: string;
                         displayName: string;
@@ -80061,8 +80171,11 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         contactId: string;
+                        /** Format: uuid */
                         patientId: string;
+                        /** Format: uuid */
                         patientCaregiverId: string;
                         patientName: string;
                         displayName: string;
@@ -80108,6 +80221,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         messageId: string;
                         /** @constant */
                         from: "staff";
@@ -80141,8 +80255,11 @@ export interface operations {
                 content: {
                     "application/json": {
                         contact: {
+                            /** Format: uuid */
                             contactId: string;
+                            /** Format: uuid */
                             patientId: string;
+                            /** Format: uuid */
                             patientCaregiverId: string;
                             patientName: string;
                             displayName: string;
@@ -80159,6 +80276,7 @@ export interface operations {
                             highVolume: boolean;
                         };
                         messages: {
+                            /** Format: uuid */
                             messageId: string;
                             from: "contact" | "staff";
                             authorName: string | null;
@@ -80191,8 +80309,11 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         contactId: string;
+                        /** Format: uuid */
                         patientId: string;
+                        /** Format: uuid */
                         patientCaregiverId: string;
                         patientName: string;
                         displayName: string;
@@ -80224,7 +80345,9 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     patientId: string;
+                    /** Format: uuid */
                     patientCaregiverId: string;
                     expiresInDays?: number;
                     /** @constant */
@@ -80240,7 +80363,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         contactId: string;
+                        /** Format: uuid */
                         organizationId: string;
                         inviteToken: string;
                         verificationCode: string;
@@ -80273,6 +80398,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         caregivers: {
+                            /** Format: uuid */
                             patientCaregiverId: string;
                             displayName: string;
                             relationship: string;
@@ -80476,6 +80602,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         holds: {
+                            /** Format: uuid */
                             id: string;
                             name: string;
                             status: "active" | "released";
@@ -80525,6 +80652,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         name: string;
                         status: "active" | "released";
@@ -80571,6 +80699,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
                         name: string;
                         status: "active" | "released";
@@ -80610,6 +80739,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         hold_id: string;
                         held_messages: number;
                         eligible_on_release: number;
@@ -80711,7 +80841,9 @@ export interface operations {
                 content: {
                     "application/json": {
                         redactions: {
+                            /** Format: uuid */
                             id: string;
+                            /** Format: uuid */
                             message_id: string;
                             status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
                             requested_by: string;
@@ -80744,6 +80876,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     message_id: string;
                     reason: string;
                 };
@@ -80757,7 +80890,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         message_id: string;
                         status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
                         requested_by: string;
@@ -80796,7 +80931,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         message_id: string;
                         status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
                         requested_by: string;
@@ -80835,7 +80972,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         message_id: string;
                         status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
                         requested_by: string;
@@ -80874,7 +81013,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         id: string;
+                        /** Format: uuid */
                         message_id: string;
                         status: "requested" | "awaiting_countersign" | "approved" | "lapsed";
                         requested_by: string;
@@ -81114,10 +81255,13 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     to_user_id: string;
                     items: {
                         kind: "patient" | "visit" | "refill_request" | "symptom_followup" | "task";
+                        /** Format: uuid */
                         ref_id: string;
+                        /** Format: uuid */
                         patient_id: string;
                     }[];
                 };
@@ -81931,6 +82075,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     organizationId: string;
                     token: string;
                 };
@@ -81945,6 +82090,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         sessionToken: string;
+                        /** Format: uuid */
                         shareId: string;
                         /** @constant */
                         stage: "enrolment";
@@ -81975,6 +82121,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         shareId: string;
                         stage: "enrolment" | "active";
                         partnerName: string;
@@ -82006,6 +82153,7 @@ export interface operations {
                 content: {
                     "application/json": {
                         messages: {
+                            /** Format: uuid */
                             messageId: string;
                             authorName: string | null;
                             body: string;
@@ -82045,6 +82193,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** Format: uuid */
                         shareId: string;
                         stage: "enrolment" | "active";
                         partnerName: string;
@@ -82370,6 +82519,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     to_user_id: string;
                 };
             };
@@ -82977,6 +83127,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
+                    /** Format: uuid */
                     assignee_user_id: string;
                 };
             };
