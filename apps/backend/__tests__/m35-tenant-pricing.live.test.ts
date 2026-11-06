@@ -189,6 +189,7 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
     membershipId: string,
     key: string,
     category: string,
+    systemDefault = false,
   ): Promise<void> {
     const found = await q<{ id: string }>(
       "SELECT id FROM role WHERE organization_id=$1 AND key=$2",
@@ -198,8 +199,8 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       found[0]?.id ??
       (
         await q<{ id: string }>(
-          "INSERT INTO role (organization_id,key,name,category,enabled) VALUES ($1,$2,$2,$3::role_category,true) RETURNING id",
-          [org, key, category],
+          "INSERT INTO role (organization_id,key,name,category,enabled,system_default) VALUES ($1,$2,$2,$3::role_category,true,$4) RETURNING id",
+          [org, key, category, systemDefault],
         )
       )[0]?.id;
     await admin.query(
@@ -1170,7 +1171,8 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       for (const m of [nurse1, nurse3, neverIn])
         await grantOrgRole(ORG_A, m, "registered_nurse", "clinical_staff");
       await grantOrgRole(ORG_A, admin2, "org_admin", "admin_executive");
-      await grantOrgRole(ORG_A, auditor, "external_auditor", "external_auditor");
+      // the SYSTEM auditor role, the row M3's auditor grant creates (system_default)
+      await grantOrgRole(ORG_A, auditor, "external_auditor", "external_auditor", true);
       await grantPlatformRole(ORG_A, operatorM);
 
       // sign-ins through the real consumer (membership resolved from the user, pseudonymized, tenant pool)
@@ -1215,6 +1217,42 @@ describe.skipIf(!DB_URL)("slice 2 tenant pricing — LIVE Postgres", () => {
       expect(
         await platformRunner((tx) => countActiveStaffForMonth(tx, keyProvider, ORG_A, DEC)),
       ).toEqual({ count: 0, basis: "identity_filtered" });
+    });
+
+    it("an auditor who ALSO holds a staff role is staff (counted); a tenant's look-alike external_auditor role hides nobody", async () => {
+      const win = NOV;
+      const count = () =>
+        platformRunner((tx) => countActiveStaffForMonth(tx, keyProvider, ORG_E, win));
+      expect(await count()).toEqual({ count: 0, basis: "identity_filtered" });
+
+      // the system auditor alone: excluded
+      const auditorUser = await seedUser("e-auditor");
+      const auditorM = await seedMembership(ORG_E, auditorUser);
+      await grantOrgRole(ORG_E, auditorM, "external_auditor", "external_auditor", true);
+      await signIn(ORG_E, auditorUser, "2026-11-04T09:00:00Z");
+      expect(await count()).toEqual({ count: 0, basis: "identity_filtered" });
+
+      // the DUAL-ROLE case: the same membership also holds a staff role -> it is staff
+      await grantOrgRole(ORG_E, auditorM, "registered_nurse", "clinical_staff");
+      expect(await count()).toEqual({ count: 1, basis: "identity_filtered" });
+
+      // the FAKE-KEY case: a tenant admin creates its own `external_auditor`-keyed role (never system_default) and attaches it
+      // to a nurse to shrink the bill. Another org, because a key is unique per org.
+      await admin.query("DELETE FROM membership_role WHERE membership_id=$1", [auditorM]);
+      await admin.query("DELETE FROM role WHERE organization_id=$1 AND key='external_auditor'", [
+        ORG_E,
+      ]);
+      const fakeUser = await seedUser("e-fake");
+      const fakeM = await seedMembership(ORG_E, fakeUser);
+      await grantOrgRole(ORG_E, fakeM, "external_auditor", "external_auditor", false);
+      await signIn(ORG_E, fakeUser, "2026-11-04T09:00:00Z");
+      // auditorM now holds no grant at all (still signed in, still live): counted too
+      expect(await count()).toEqual({ count: 2, basis: "identity_filtered" });
+      await admin.query("DELETE FROM membership_role WHERE organization_id=$1", [ORG_E]);
+      await admin.query(
+        "DELETE FROM role WHERE organization_id=$1 AND key IN ('external_auditor','registered_nurse')",
+        [ORG_E],
+      );
     });
 
     it("net collections: posted remittances by payment date, every payer kind, never another org's, pending counted not dropped", async () => {

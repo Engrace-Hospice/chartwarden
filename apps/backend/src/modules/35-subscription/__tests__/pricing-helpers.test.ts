@@ -6,7 +6,7 @@ import { addMonthsIso } from "../pricing/contract-service";
 import type { PricingPlanView } from "../pricing/plan-service";
 import { buildPricePreview } from "../pricing/preview";
 import { PricePreviewBody, parseStrict } from "../pricing/pricing-typebox";
-import { isNonStaffRole } from "../pricing/staff-meter";
+import { type RoleFacts, isNonStaffRole, nonStaffMembershipIds } from "../pricing/staff-meter";
 import {
   STATEMENT_FINALIZE_GRACE_DAYS,
   calendarMonthOf,
@@ -67,25 +67,100 @@ describe("addMonthsIso", () => {
 });
 
 describe("isNonStaffRole: who is not tenant staff", () => {
-  it("excludes the org's external_auditor role", () => {
-    expect(isNonStaffRole({ key: "external_auditor", organizationId: "org-1" })).toBe(true);
+  const role = (over: Partial<RoleFacts>): RoleFacts => ({
+    key: "registered_nurse",
+    organizationId: "org-1",
+    category: "clinical_staff",
+    systemDefault: false,
+    ...over,
+  });
+  const systemAuditor = role({
+    key: "external_auditor",
+    category: "external_auditor",
+    systemDefault: true,
+  });
+
+  it("excludes the org's SYSTEM external_auditor role (the one M3's auditor grant creates)", () => {
+    expect(isNonStaffRole(systemAuditor)).toBe(true);
+  });
+
+  it("does NOT exclude a tenant-made role that merely carries the key, with or without the auditor category (a tenant cannot write system_default)", () => {
+    expect(isNonStaffRole(role({ key: "external_auditor" }))).toBe(false);
+    expect(isNonStaffRole(role({ key: "external_auditor", category: "external_auditor" }))).toBe(
+      false,
+    );
+    expect(isNonStaffRole(role({ category: "external_auditor", systemDefault: true }))).toBe(false);
   });
 
   it("excludes any platform-owned reserved role (an operator bound into a tenant for alerts)", () => {
-    expect(isNonStaffRole({ key: "platform_alert_audience", organizationId: null })).toBe(true);
-    expect(isNonStaffRole({ key: "platform_ops", organizationId: null })).toBe(true);
-    expect(isNonStaffRole({ key: "ai_safety_owner", organizationId: null })).toBe(true);
+    for (const key of ["platform_alert_audience", "platform_ops", "ai_safety_owner"]) {
+      expect(isNonStaffRole(role({ key, organizationId: null }))).toBe(true);
+    }
   });
 
   it("does not exclude ordinary clinical and administrative roles", () => {
     for (const key of ["org_admin", "registered_nurse", "medical_director", "billing_specialist"]) {
-      expect(isNonStaffRole({ key, organizationId: "org-1" })).toBe(false);
-      expect(isNonStaffRole({ key, organizationId: null })).toBe(false);
+      expect(isNonStaffRole(role({ key }))).toBe(false);
+      expect(isNonStaffRole(role({ key, organizationId: null }))).toBe(false);
     }
   });
 
   it("a tenant-owned role that merely LOOKS like platform authority confers nothing and does not exclude (reserved keys are platform-owned only)", () => {
-    expect(isNonStaffRole({ key: "platform_admin", organizationId: "org-1" })).toBe(false);
+    expect(isNonStaffRole(role({ key: "platform_admin" }))).toBe(false);
+  });
+});
+
+describe("nonStaffMembershipIds: a membership is excluded only when ALL its grants are non-staff", () => {
+  const platform: RoleFacts = {
+    key: "platform_alert_audience",
+    organizationId: null,
+    category: "platform_staff",
+    systemDefault: true,
+  };
+  const auditor: RoleFacts = {
+    key: "external_auditor",
+    organizationId: "org-1",
+    category: "external_auditor",
+    systemDefault: true,
+  };
+  const nurse: RoleFacts = {
+    key: "registered_nurse",
+    organizationId: "org-1",
+    category: "clinical_staff",
+    systemDefault: false,
+  };
+  const lookAlike: RoleFacts = { ...auditor, systemDefault: false };
+
+  it("excludes an auditor-only and a platform-only membership", () => {
+    const out = nonStaffMembershipIds([
+      { membershipId: "m-auditor", ...auditor },
+      { membershipId: "m-operator", ...platform },
+    ]);
+    expect([...out].sort()).toEqual(["m-auditor", "m-operator"]);
+  });
+
+  it("the DUAL-ROLE case: the system auditor role plus a staff role is staff (it counts)", () => {
+    const out = nonStaffMembershipIds([
+      { membershipId: "m-dual", ...auditor },
+      { membershipId: "m-dual", ...nurse },
+      { membershipId: "m-dual-platform", ...platform },
+      { membershipId: "m-dual-platform", ...nurse },
+    ]);
+    expect(out.size).toBe(0);
+  });
+
+  it("the FAKE-KEY case: a tenant's look-alike external_auditor role does not hide its holder", () => {
+    expect(nonStaffMembershipIds([{ membershipId: "m-fake", ...lookAlike }]).size).toBe(0);
+    expect(
+      nonStaffMembershipIds([
+        { membershipId: "m-fake", ...lookAlike },
+        { membershipId: "m-fake", ...auditor },
+      ]).size,
+    ).toBe(0);
+  });
+
+  it("a membership with no grants at all is not excluded (it is simply absent from the grants)", () => {
+    expect(nonStaffMembershipIds([]).size).toBe(0);
   });
 });
 

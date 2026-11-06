@@ -402,7 +402,7 @@ async function main(): Promise<void> {
         'GRANT SELECT ("membership_id", "role_id", "organization_id", "expires_at") ON "membership_role" TO chartwarden_platform;',
       );
       await run(
-        'GRANT SELECT ("id", "key", "enabled", "organization_id") ON "role" TO chartwarden_platform;',
+        'GRANT SELECT ("id", "key", "enabled", "organization_id", "category", "system_default") ON "role" TO chartwarden_platform;',
       );
       await run(
         'GRANT SELECT ("organization_id", "provider_entity_id", "usage", "control_number", "status") ON "clearinghouse_submission_attempt" TO chartwarden_platform;',
