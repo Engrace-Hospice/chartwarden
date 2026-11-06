@@ -10,6 +10,8 @@ import {
   averageDailyCensusHundredths,
   billingFeeCents,
   computeStatementAmounts,
+  lateCollectionsCents,
+  prorateCents,
   selectCensusBand,
   validatePlanPricing,
 } from "../src/pricing";
@@ -20,6 +22,7 @@ const BANDS: readonly CensusBand[] = [
   { minAdc: 10, monthlyFeeCents: 200_000 },
   { minAdc: 17, monthlyFeeCents: 300_000 },
   { minAdc: 26, monthlyFeeCents: 400_000 },
+  { minAdc: 30, monthlyFeeCents: 500_000 },
 ];
 const PLAN: PlanPricing = {
   perUserPriceCents: 10_000,
@@ -40,8 +43,15 @@ const price = (over: Partial<Parameters<typeof computeStatementAmounts>[1]> = {}
   });
 
 describe("DEFAULT_CENSUS_BAND_THRESHOLDS", () => {
-  it("are the owner's 0-9, 10-16, 17-25 and 26+ (26 closes the owner's 25-to-30 gap and is editable data)", () => {
-    expect(DEFAULT_CENSUS_BAND_THRESHOLDS).toEqual([0, 10, 17, 26]);
+  it("are the owner's FIVE bands: 0-9, 10-16, 17-25, 26-29 and 30+ ADC (a starting point for a form, editable data)", () => {
+    expect(DEFAULT_CENSUS_BAND_THRESHOLDS).toEqual([0, 10, 17, 26, 30]);
+  });
+
+  it("leave no gap: every whole census from 0 to 40 lands in exactly the band the owner named", () => {
+    const owner = (n: number) => (n < 10 ? 0 : n < 17 ? 10 : n < 26 ? 17 : n < 30 ? 26 : 30);
+    for (let n = 0; n <= 40; n++) {
+      expect(selectCensusBand(BANDS, adc(n)).minAdc, `ADC ${n}`).toBe(owner(n));
+    }
   });
 });
 
@@ -56,8 +66,11 @@ describe("selectCensusBand", () => {
     ["17 starts the third band", 17, 17],
     ["25 stays in the third band", 25, 17],
     ["25.99 is still below 26", 25.99, 17],
-    ["26 starts the last band", 26, 26],
-    ["a very large census stays in the last band", 5_000, 26],
+    ["26 starts the fourth band", 26, 26],
+    ["29 stays in the fourth band", 29, 26],
+    ["29.99 is still below 30", 29.99, 26],
+    ["30 starts the last band", 30, 30],
+    ["a very large census stays in the last band", 5_000, 30],
   ];
   for (const [name, patients, expectedMin] of cases) {
     it(name, () => {
@@ -120,10 +133,10 @@ describe("computeStatementAmounts: the greater-of rule", () => {
     });
   });
 
-  it("a band edge moves the flat fee: ADC 9 vs 10 and 16 vs 17 and 25 vs 26", () => {
+  it("a band edge moves the flat fee: ADC 9 vs 10, 16 vs 17, 25 vs 26 and 29 vs 30", () => {
     const fee = (patients: number) => price({ adcHundredths: adc(patients) }).platformFeeCents;
-    expect([fee(9), fee(10), fee(16), fee(17), fee(25), fee(26)]).toEqual([
-      100_000, 200_000, 200_000, 300_000, 300_000, 400_000,
+    expect([fee(9), fee(10), fee(16), fee(17), fee(25), fee(26), fee(29), fee(30)]).toEqual([
+      100_000, 200_000, 200_000, 300_000, 300_000, 400_000, 400_000, 500_000,
     ]);
   });
 });
@@ -157,9 +170,17 @@ describe("billingFeeCents", () => {
     expect(price({ mode: "billing_software", netCollectionsCents: -1 }).billingFeeCents).toBe(0);
   });
 
-  it("is 0 on zero collections and stays exact on very large ones (no float drift)", () => {
+  it("is 0 on zero collections", () => {
     expect(billingFeeCents(0, 300)).toBe(0);
-    expect(billingFeeCents(9_007_199_254_740_000, 1)).toBe(900_719_925_474);
+  });
+
+  it("stays exact at the top of the safe-integer range, where a float product loses digits (BigInt, no drift)", () => {
+    // 9_007_199_254_740_991 x 9_999 = 90_062_985_348_155_173_009 needs 67 bits; the float product rounds it, so a Number
+    // implementation answers 9_006_298_534_815_518 (or worse). Exact: (product + 5_000) / 10_000, truncated.
+    const exact = 9_006_298_534_815_517;
+    expect(billingFeeCents(9_007_199_254_740_991, 9_999)).toBe(exact);
+    const floatAnswer = Math.floor((9_007_199_254_740_991 * 9_999 + 5_000) / 10_000);
+    expect(floatAnswer).not.toBe(exact); // the test discriminates: the naive float formula is wrong here
   });
 });
 
@@ -205,11 +226,171 @@ describe("computeStatementAmounts: minimum, one-time fee, total", () => {
     expect(r.totalCents).toBe(125_000);
   });
 
+  it("staff x per-user price stays exact at the plan caps (1,000,000 staff x 1,000,000,000 cents = 10^15) and refuses a product a double cannot hold", () => {
+    const heavy: PlanPricing = { ...PLAN, perUserPriceCents: 1_000_000_000 };
+    const run = (staffCount: number, perUserPriceCents = heavy.perUserPriceCents) =>
+      computeStatementAmounts(
+        { ...heavy, perUserPriceCents },
+        { staffCount, adcHundredths: 0, netCollectionsCents: 0, mode: "none", oneTimeFeeCents: 0 },
+      );
+    expect(run(1_000_000).perUserSubtotalCents).toBe(1_000_000_000_000_000);
+    expect(run(1_000_000).totalCents).toBe(1_000_000_000_000_000);
+    // 10^16 is beyond 2^53: a silent float product would be rounded, so the math refuses it
+    expect(() => run(10_000_000)).toThrow(RangeError);
+    expect(() => run(1_000_000, 10_000_000_000)).toThrow(RangeError);
+  });
+
   it("rejects counts that are negative or fractional rather than pricing them", () => {
     expect(() => price({ staffCount: -1 })).toThrow();
     expect(() => price({ staffCount: 1.5 })).toThrow();
     expect(() => price({ adcHundredths: -1 })).toThrow();
     expect(() => price({ netCollectionsCents: 1.5 })).toThrow();
+  });
+});
+
+describe("prorateCents: the first month is charged by the days live (half-up to the cent)", () => {
+  it("is the amount unchanged for a whole month and 0 for no live days", () => {
+    expect(prorateCents(200_000, 30, 30)).toBe(200_000);
+    expect(prorateCents(200_000, 0, 30)).toBe(0);
+  });
+
+  it("a mid-month go-live: 11 live days of a 30-day month on a $2,000 fee = $733.33", () => {
+    expect(prorateCents(200_000, 11, 30)).toBe(73_333); // 73,333.33 -> 73,333
+  });
+
+  it("a go-live on the LAST day is one day of the month: $2,000 / 30 = $66.67 (66.666 half-up)", () => {
+    expect(prorateCents(200_000, 1, 30)).toBe(6_667);
+  });
+
+  it("rounds a half cent up", () => {
+    expect(prorateCents(1, 1, 2)).toBe(1); // 0.5
+    expect(prorateCents(3, 1, 2)).toBe(2); // 1.5
+    expect(prorateCents(1, 1, 3)).toBe(0); // 0.33
+    expect(prorateCents(5, 1, 3)).toBe(2); // 1.67
+  });
+
+  it("stays exact where a float product loses digits (BigInt, no drift)", () => {
+    // 9_007_199_254_740_991 x 13 / 30 = 3_903_119_677_054_429.4 -> ...429; the float formula lands on ...430
+    expect(prorateCents(9_007_199_254_740_991, 13, 30)).toBe(3_903_119_677_054_429);
+    expect(Math.floor((9_007_199_254_740_991 * 13 * 2 + 30) / 60)).not.toBe(3_903_119_677_054_429);
+  });
+
+  it("refuses days that cannot exist rather than pricing them", () => {
+    expect(() => prorateCents(100, 31, 30)).toThrow(RangeError);
+    expect(() => prorateCents(100, -1, 30)).toThrow(RangeError);
+    expect(() => prorateCents(100, 1.5, 30)).toThrow(RangeError);
+    expect(() => prorateCents(100, 1, 0)).toThrow(RangeError);
+    expect(() => prorateCents(-1, 1, 30)).toThrow(RangeError);
+  });
+});
+
+describe("computeStatementAmounts: proration (D2) and the minimum floors the PLATFORM FEE only (D3)", () => {
+  const november = (daysLive: number) => ({ daysLive, daysInPeriod: 30 });
+  const base = {
+    staffCount: 0,
+    adcHundredths: adc(12),
+    netCollectionsCents: 0,
+    mode: "none" as const,
+    oneTimeFeeCents: 0,
+  };
+
+  it("prorates the platform fee of the band: go-live Nov 20 (11 live days) on the $2,000 band = $733.33; the full-month sides stay full", () => {
+    const r = computeStatementAmounts(PLAN, { ...base, proration: november(11) });
+    expect(r).toMatchObject({
+      bandFeeCents: 200_000, // the full-month side is shown whole
+      perUserSubtotalCents: 0,
+      platformFeeCents: 73_333,
+      platformFeeBasis: "census_band",
+      totalCents: 73_333,
+    });
+  });
+
+  it("a go-live on the 1st is a whole month; a go-live on the last day is one day", () => {
+    expect(
+      computeStatementAmounts(PLAN, { ...base, proration: november(30) }).platformFeeCents,
+    ).toBe(200_000);
+    expect(
+      computeStatementAmounts(PLAN, { ...base, proration: november(1) }).platformFeeCents,
+    ).toBe(6_667);
+  });
+
+  it("prorates the per-user side when it wins: 30 staff x $100 = $3,000, 11 of 30 days = $1,100", () => {
+    const r = computeStatementAmounts(PLAN, { ...base, staffCount: 30, proration: november(11) });
+    expect(r).toMatchObject({ platformFeeBasis: "per_user", platformFeeCents: 110_000 });
+  });
+
+  it("the billing fee is NOT prorated (it is on what was collected); the one-time fee is not either", () => {
+    const r = computeStatementAmounts(PLAN, {
+      ...base,
+      mode: "billing_software",
+      netCollectionsCents: 1_500_050,
+      oneTimeFeeCents: 250_000,
+      proration: november(11),
+    });
+    expect(r.billingFeeCents).toBe(15_001); // 1% of $15,000.50, half up
+    expect(r.totalCents).toBe(73_333 + 15_001 + 250_000);
+  });
+
+  it("the minimum floors the platform fee and the billing fee is added ON TOP: a $1,500 minimum under a $1,000 band tops up $500 although the 1% billing fee ($1,000) would have cleared it under the old recurring-charge rule", () => {
+    const withMin: PlanPricing = { ...PLAN, minimumMonthlyCents: 150_000 };
+    const r = computeStatementAmounts(withMin, {
+      ...base,
+      adcHundredths: adc(1),
+      mode: "billing_software",
+      netCollectionsCents: 10_000_000,
+    });
+    expect(r).toMatchObject({
+      platformFeeCents: 100_000,
+      minimumAdjustmentCents: 50_000,
+      billingFeeCents: 100_000,
+      totalCents: 100_000 + 50_000 + 100_000,
+    });
+  });
+
+  it("the minimum is prorated the same way in a first month: $1,500 x 11/30 = $550 floors a $333.33 prorated band fee", () => {
+    const withMin: PlanPricing = { ...PLAN, minimumMonthlyCents: 150_000 };
+    const r = computeStatementAmounts(withMin, {
+      ...base,
+      adcHundredths: adc(1),
+      proration: november(11),
+    });
+    // band $1,000 x 11/30 = 36,666.67 -> 36,667; minimum 150,000 x 11/30 = 55,000
+    expect(r.platformFeeCents).toBe(36_667);
+    expect(r.minimumAdjustmentCents).toBe(18_333);
+    expect(r.totalCents).toBe(55_000);
+  });
+
+  it("a prior-period billing fee is added to the total and never touches the platform fee or the minimum", () => {
+    const withMin: PlanPricing = { ...PLAN, minimumMonthlyCents: 150_000 };
+    const r = computeStatementAmounts(withMin, {
+      ...base,
+      adcHundredths: adc(1),
+      priorPeriodFeeCents: 40_000,
+    });
+    expect(r.minimumAdjustmentCents).toBe(50_000);
+    expect(r.priorPeriodFeeCents).toBe(40_000);
+    expect(r.totalCents).toBe(100_000 + 50_000 + 40_000);
+  });
+});
+
+describe("lateCollectionsCents: money that posted after its month closed (D4)", () => {
+  it("is what the month collected now, less what its statement billed and what was already carried", () => {
+    // November was finalized on $16,500.50; $40,000.00 dated Nov 29 posted on Dec 8
+    expect(lateCollectionsCents(5_650_050, 1_650_050, 0)).toBe(4_000_000);
+    // carried once already: the same $40,000 is not carried again
+    expect(lateCollectionsCents(5_650_050, 1_650_050, 4_000_000)).toBe(0);
+    // a further $100.00 posts later
+    expect(lateCollectionsCents(5_660_050, 1_650_050, 4_000_000)).toBe(10_000);
+  });
+
+  it("is never negative: a correction downward is not a credit on a later statement", () => {
+    expect(lateCollectionsCents(1_000_000, 1_650_050, 0)).toBe(0);
+    expect(lateCollectionsCents(0, 0, 0)).toBe(0);
+  });
+
+  it("refuses a fractional or unsafe cent figure", () => {
+    expect(() => lateCollectionsCents(1.5, 0, 0)).toThrow(RangeError);
+    expect(() => lateCollectionsCents(Number.MAX_SAFE_INTEGER + 2, 0, 0)).toThrow(RangeError);
   });
 });
 
