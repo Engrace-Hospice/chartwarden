@@ -66,6 +66,7 @@ export const GENERIC_ALLOWLIST: Readonly<Record<string, string>> = {
   supply_bill_of_lading: `m21.supply_request.document_requested carries {supplyRequestId, dispatchId, documentKind}; the bill of lading needs the dispatch manifest from M21's rows: ${ID_ONLY}`,
   bereavement_letter: `m16.bereavement.outreach_artifact_requested ships payloadJsonb {outreachKind, anniversaryMark, deathDate, dueAt} only: no decedent name, no recipient (bereaved_contact.display_name is plaintext but is not on the wire), no counselor or hospice name, so a letter has no addressee; and ${BEREAVEMENT_WORDING} (seven outreach kinds).`,
   bereavement_welcome_packet: `the plan-open request ships payloadJsonb {deathDate} only: no decedent or recipient name, no counselor, no hospice contact details, and ${BEREAVEMENT_WORDING}.`,
+  bereavement_physician_condolence_letter: `the approved-letter request ships payloadJsonb {deathDate, personalNote} only: no decedent name, no recipient name (attending_user_id is a user id and M16 reads no user directory), no hospice name or signatory, so the letter has no addressee; and ${BEREAVEMENT_WORDING}.`,
   report_export: TABULAR_BY_DESIGN,
   scheduled_report: TABULAR_BY_DESIGN,
 };

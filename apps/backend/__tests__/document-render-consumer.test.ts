@@ -666,6 +666,8 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       // F-099 — six that were emitted from production write paths and drained by nothing.
       "m10.hope.summary_requested",
       "m16.bereavement.outreach_artifact_requested",
+      // ADR-0109 D6 / D9 — the approved physician condolence letter and the internal discharge summary.
+      "m16.bereavement.document_requested",
       "m20.safety.incident_report_requested",
       "m25.appeal_packet.render_requested",
       "m25.adr_packet.render_requested",

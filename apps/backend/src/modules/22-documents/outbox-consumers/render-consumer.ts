@@ -173,6 +173,15 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     templateKeyField: "templateKey",
     contentField: "payloadJsonb",
   },
+  // ADR-0109 D6 / D9 — M16's two plan-level documents behind ONE event. The aggregate is `aggregateId` (the letter, or the
+  // closure) — the body field the catalog pins, and the row M16's back-ref consumer stamps. The payload names its own template
+  // (`bereavement_physician_condolence_letter` | `bereavement_discharge_summary_internal`), and `payloadJsonb` is the typed render
+  // payload; both templates are internal-only, so their aggregate types are never patient-facing.
+  "m16.bereavement.document_requested": {
+    aggregateIdFields: ["aggregateId"],
+    templateKeyField: "templateKey",
+    contentField: "payloadJsonb",
+  },
   // M20 §4.10 — "M22's renderer consumes it; M20 ships no PDF code". `renderTargetKind` is a literal
   // `"pdf"`, so it discriminates nothing and the key is fixed.
   "m20.safety.incident_report_requested": {

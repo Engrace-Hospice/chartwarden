@@ -84,6 +84,8 @@ export interface DocumentReaderStore {
     readonly documentId: DocumentId;
     readonly patientId: PatientId | null;
     readonly patientFacing: boolean;
+    /** ADR-0109 — the document's aggregate type; an internal-only one is refused to the portal whatever `patientFacing` says. */
+    readonly aggregateType: DocumentAggregateType;
     /** F-197 (#248) — §7.16, `document.metadata.sudRedacted`. Read off this same row rather than a
      *  separately-injected `isSudVersion` lookup function (the portal mint's PRIOR shape) — that function
      *  had no real implementation anywhere and was never actually passed at the one production call site;
@@ -235,6 +237,7 @@ export function createInMemoryDocumentReaderStore(seed: DocumentReaderSeed = {})
               documentId: d.documentId,
               patientId: d.patientId,
               patientFacing: d.patientFacing,
+              aggregateType: d.aggregateType,
               // F-197 (#248) — the seed's own `retentionClass` is the SUD signal here (no separate
               // metadata field on `DocumentDigest`); a test seeds `compliance_42cfr_part2` to simulate one.
               isSudClass: d.retentionClass === "compliance_42cfr_part2",

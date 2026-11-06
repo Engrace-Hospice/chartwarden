@@ -67,6 +67,8 @@ describe("M22-T06 — §4.11 outbox subscriptions catalog", () => {
       // group reads as a decision covering all of it.
       "m10.hope.summary_requested",
       "m16.bereavement.outreach_artifact_requested",
+      // ADR-0109 D6 / D9 — the approved physician condolence letter and the internal discharge summary.
+      "m16.bereavement.document_requested",
       "m20.safety.incident_report_requested",
       "m25.appeal_packet.render_requested",
       "m25.adr_packet.render_requested",

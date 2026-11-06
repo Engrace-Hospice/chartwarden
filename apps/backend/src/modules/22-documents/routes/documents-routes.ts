@@ -23,6 +23,11 @@ import {
 } from "@chartwarden/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
+import { canReadInternalDocuments } from "../abac-predicates";
+import {
+  INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES,
+  isInternalOnlyAggregateType,
+} from "../internal-documents";
 import {
   RECORDS_REQUEST_FILEABLE,
   type RecordsRequestService,
@@ -285,6 +290,11 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
       }
       return;
     }
+    // ADR-0109 — an internal-only document (M16's physician letter / discharge summary) is read by ROLE, never by caseload.
+    if (isInternalOnlyAggregateType(doc.aggregateType)) {
+      if (canReadInternalDocuments(actorOf(request).roles)) return;
+      throw new NotFoundError("document");
+    }
     const scope = await metadataScopeOf(request, purpose);
     if (scope === null) return;
     if (doc.patientId !== null && scope.includes(doc.patientId)) return;
@@ -459,7 +469,7 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     "/api/v1/documents",
     { preHandler: [READ], config: { auditRead: { resourceKind: "document", list: true } } },
     async (request) => {
-      const { organizationId, actor } = actorOf(request);
+      const { organizationId, actor, roles } = actorOf(request);
       const q = parse(DocumentListQuerySchema, request.query);
       await assertReferralReadAllowed(organizationId, actor.userId, q.aggregateType, q.aggregateId);
       // F-023 — `documents.read` alone listed the whole org to a clinician; narrow to the caseload.
@@ -472,6 +482,10 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
           patientScope,
           patientId: q.patientId,
           aggregateType: q.aggregateType,
+          // ADR-0109 — internal-only documents are listed to the roles that may read them, and to nobody else.
+          ...(canReadInternalDocuments(roles)
+            ? {}
+            : { excludeAggregateTypes: [...INTERNAL_ONLY_DOCUMENT_AGGREGATE_TYPES] }),
           aggregateId: q.aggregateId,
           retentionClass: q.retentionClass,
           tagKey: q.tagKey,

@@ -28,8 +28,10 @@ import {
   buildM16DocumentRenderedConsumer,
 } from "../src/modules/16-bereavement/index";
 import {
+  type M16LetterService,
   type M16ReadService,
   type M16WriteActor,
+  buildDrizzleM16LetterService,
   buildDrizzleM16WriteService,
 } from "../src/modules/16-bereavement/routes/index";
 import {
@@ -59,6 +61,7 @@ describe.skipIf(!DB_URL)("GAP-130 — M16 ↔ M22 outreach artifact back-ref —
   let counselor: string;
   let svc: ReturnType<typeof buildDrizzleM16WriteService>;
   let consumer: ReturnType<typeof buildM16DocumentRenderedConsumer>;
+  let letters: M16LetterService;
 
   const actor = (): M16WriteActor => ({
     organizationId: ORG_A,
@@ -215,6 +218,7 @@ describe.skipIf(!DB_URL)("GAP-130 — M16 ↔ M22 outreach artifact back-ref —
     const readStub = { getPlan: async () => ({}) } as unknown as M16ReadService;
     svc = buildDrizzleM16WriteService(handle.db, readStub, { outbox: outboxM16 });
     consumer = buildM16DocumentRenderedConsumer({ db: handle.db, outbox: outboxM16 });
+    letters = buildDrizzleM16LetterService(handle.db, { outbox: outboxM16 });
   }, 180_000);
 
   afterAll(async () => {
@@ -310,6 +314,138 @@ describe.skipIf(!DB_URL)("GAP-130 — M16 ↔ M22 outreach artifact back-ref —
     await svc.startOutreach(actor(), outreachId);
     expect((await outreachRow(outreachId)).m22_render_requested_at).toBeNull();
     expect(await outbox("m16.bereavement.outreach_artifact_requested", outreachId)).toHaveLength(0);
+  });
+
+  // ADR-0109 D6 — the physician letter: approve -> the request names the LETTER -> M22 files it under its internal aggregate
+  // type -> the back-ref moves the letter to `rendered` and stamps the document, once.
+  it("approve → M22 render → the physician letter is stamped rendered, once (ADR-0109 D6)", async () => {
+    const { planId, patientId } = await seedOutreach("phone_call");
+    const letterId = (
+      await admin.query(
+        `INSERT INTO bereavement_physician_letter (organization_id, provider_entity_id, plan_id, patient_id,
+           attending_user_id, due_at)
+         VALUES ($1,$2,$3,$4,$5, now() + interval '2 days') RETURNING id`,
+        [ORG_A, providerA, planId, patientId, counselor],
+      )
+    ).rows[0].id as string;
+
+    const approved = await letters.approveLetter(actor(), letterId, { expectedVersion: 0 });
+    expect(approved.status).toBe("approved");
+    const { rows: requests } = await admin.query(
+      `SELECT id, organization_id, event_type, aggregate_kind, aggregate_id, payload, attempt_count, created_at
+         FROM outbox_event WHERE event_type = 'm16.bereavement.document_requested' AND payload->>'aggregateId' = $1`,
+      [letterId],
+    );
+    expect(requests).toHaveLength(1);
+
+    const announced = await renderThroughM22(requests[0]);
+    expect(announced).toHaveLength(1);
+    const rendered = announced[0] as Record<string, unknown>;
+    expect(rendered).toMatchObject({
+      aggregateType: "bereavement_physician_letter",
+      aggregateId: letterId,
+      templateKey: "bereavement_physician_condolence_letter",
+      retentionClass: "bereavement",
+      sourceModule: "m16",
+      sourceEvent: "m16.bereavement.document_requested",
+    });
+    const { organizationId: _org, ...wire } = rendered;
+    expect(RENDERED_SCHEMA && Value.Check(RENDERED_SCHEMA, wire)).toBe(true);
+
+    await consumer.handle({ organizationId: ORG_A, payload: wire });
+    const stamped = (
+      await admin.query(
+        "SELECT status, rendered_document_id, m22_rendered_at, version FROM bereavement_physician_letter WHERE id=$1",
+        [letterId],
+      )
+    ).rows[0];
+    expect(stamped).toMatchObject({
+      status: "rendered",
+      rendered_document_id: rendered.documentId,
+      version: 2,
+    });
+    expect(stamped.m22_rendered_at).not.toBeNull();
+
+    // a redelivery changes nothing (version stays 2), and another tenant's delivery stamps nothing
+    await consumer.handle({ organizationId: ORG_A, payload: wire });
+    expect(
+      (
+        await admin.query("SELECT version FROM bereavement_physician_letter WHERE id=$1", [
+          letterId,
+        ])
+      ).rows[0].version,
+    ).toBe(2);
+  });
+
+  it("never stamps a physician letter that was not approved, nor one in another tenant", async () => {
+    const { planId, patientId } = await seedOutreach("phone_call");
+    const letterId = (
+      await admin.query(
+        `INSERT INTO bereavement_physician_letter (organization_id, provider_entity_id, plan_id, patient_id, due_at)
+         VALUES ($1,$2,$3,$4, now() + interval '2 days') RETURNING id`,
+        [ORG_A, providerA, planId, patientId],
+      )
+    ).rows[0].id as string;
+    const payload = (documentId: string) => ({
+      documentId,
+      aggregateType: "bereavement_physician_letter",
+      aggregateId: letterId,
+      templateKey: "bereavement_physician_condolence_letter",
+      sourceEvent: "m16.bereavement.document_requested",
+      sourceModule: "m16",
+      renderedAt: new Date().toISOString(),
+    });
+    await consumer.handle({ organizationId: ORG_A, payload: payload(randomUUID()) }); // still pending_review
+    await consumer.handle({ organizationId: ORG_B, payload: payload(randomUUID()) }); // another tenant
+    const row = (
+      await admin.query(
+        "SELECT status, rendered_document_id FROM bereavement_physician_letter WHERE id=$1",
+        [letterId],
+      )
+    ).rows[0];
+    expect(row).toMatchObject({ status: "pending_review", rendered_document_id: null });
+  });
+
+  // ADR-0109 D9 — the internal discharge summary stamps the closure it was requested for, once.
+  it("stamps the closure's discharge_summary_document_id once, and only in its own tenant", async () => {
+    const { planId } = await seedOutreach("phone_call");
+    const closureId = (
+      await admin.query(
+        `INSERT INTO bereavement_plan_closure (organization_id, provider_entity_id, plan_id, reason, close_kind,
+           outreach_completed_count, outreach_missed_count, contacts_active_count, contacts_opted_out_count)
+         VALUES ($1,$2,$3,'thirteen_month_completion','auto',0,0,1,0) RETURNING id`,
+        [ORG_A, providerA, planId],
+      )
+    ).rows[0].id as string;
+    const first = randomUUID();
+    const payload = (documentId: string) => ({
+      documentId,
+      aggregateType: "bereavement_discharge_summary",
+      aggregateId: closureId,
+      templateKey: "bereavement_discharge_summary_internal",
+      sourceEvent: "m16.bereavement.document_requested",
+      sourceModule: "m16",
+      renderedAt: new Date().toISOString(),
+    });
+    await consumer.handle({ organizationId: ORG_B, payload: payload(randomUUID()) });
+    expect(
+      (
+        await admin.query(
+          "SELECT discharge_summary_document_id FROM bereavement_plan_closure WHERE id=$1",
+          [closureId],
+        )
+      ).rows[0].discharge_summary_document_id,
+    ).toBeNull();
+    await consumer.handle({ organizationId: ORG_A, payload: payload(first) });
+    await consumer.handle({ organizationId: ORG_A, payload: payload(randomUUID()) }); // a redelivery / re-render never overwrites
+    expect(
+      (
+        await admin.query(
+          "SELECT discharge_summary_document_id FROM bereavement_plan_closure WHERE id=$1",
+          [closureId],
+        )
+      ).rows[0].discharge_summary_document_id,
+    ).toBe(first);
   });
 
   it("RLS — an org-B delivery naming org A's outreach stamps nothing", async () => {
