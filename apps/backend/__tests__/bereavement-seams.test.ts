@@ -606,6 +606,33 @@ describe("BereavedPortalScopeProvider — the M31 bereaved-family scope (§4.6 /
     );
     expect(scopes.map((s) => s.contactId)).toEqual([CONTACT]);
   });
+
+  it("isWindowOpen answers M31's predicate: own account, that patient, plan in window", async () => {
+    const ask = (store: ReturnType<typeof createInMemoryBereavementSeamStore>["store"], over = {}) =>
+      createBereavedPortalScopeProvider(store, clock).isWindowOpen({
+        organizationId: ORG,
+        portalAccountId: PORTAL_ACCOUNT,
+        patientId: PATIENT,
+        asOf: NOW,
+        ...over,
+      });
+    const open = createInMemoryBereavementSeamStore({ plans: [plan()], contacts: [contact()] }).store;
+    expect(await ask(open)).toBe(true);
+    // An opted-out contact still reaches the rescind route while the plan's window is open.
+    const optedOut = createInMemoryBereavementSeamStore({
+      plans: [plan()],
+      contacts: [contact({ status: "opted_out", optedOutAt: NOW })],
+    }).store;
+    expect(await ask(optedOut)).toBe(true);
+    expect(await ask(open, { patientId: ADMISSION })).toBe(false);
+    expect(await ask(open, { portalAccountId: CONTACT_B })).toBe(false);
+    const closed = createInMemoryBereavementSeamStore({
+      plans: [plan({ status: "closed_completed", closedAt: daysAfterDeath(30) })],
+      contacts: [contact()],
+    }).store;
+    expect(await ask(closed)).toBe(false);
+    expect(await ask(open, { asOf: daysAfterDeath(400) })).toBe(false);
+  });
 });
 
 describe("BereavementComplianceProvider — rollups as counts (§4.6 / D17)", () => {
