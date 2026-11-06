@@ -1,9 +1,13 @@
 import { randomBytes } from "node:crypto";
 import type { DbClient } from "@chartwarden/db";
 import {
+  CH,
   InMemoryAttemptStore,
   NOT_WIRED_TRANSPORT,
   UNBOUND_BINDING,
+  UNBOUND_NOT_ACTIVE,
+  UNBOUND_NOT_CHOSEN,
+  UNBOUND_OUTSIDE,
 } from "@chartwarden/x12-837-client";
 import type { ClearinghouseBinding } from "@chartwarden/x12-837-client";
 import { createInMemoryHarness } from "@chartwarden/x12-837-client/testing";
@@ -86,15 +90,26 @@ describe("per-organization clearinghouse binding", () => {
     await put(ORG_A, { vendor: "outside", mode: null });
     await put(ORG_B, { vendor: "stedi", mode: "test", status: "verified", secret: KEY });
     for (const org of [ORG_A, ORG_B, "99999999-9999-4999-8999-999999999999"]) {
-      expect(await runtime.binding.forOrg?.(org)).toBe(UNBOUND_BINDING);
+      expect((await runtime.binding.forOrg?.(org))?.vendor).toBeNull();
     }
+  });
+
+  it("says WHY an org is unbound: outside, a config that is not live yet, nothing chosen", async () => {
+    const { runtime, put } = await setup();
+    await put(ORG_A, { vendor: "outside", mode: null });
+    await put(ORG_B, { vendor: "stedi", mode: "test", status: "verified", secret: KEY });
+    expect(await runtime.binding.forOrg?.(ORG_A)).toBe(UNBOUND_OUTSIDE);
+    expect(await runtime.binding.forOrg?.(ORG_B)).toBe(UNBOUND_NOT_ACTIVE);
+    expect(await runtime.binding.forOrg?.("99999999-9999-4999-8999-999999999999")).toBe(
+      UNBOUND_NOT_CHOSEN,
+    );
   });
 
   it("serves the platform env binding only to an org named in the fallback list that has no row", async () => {
     const { runtime, put, platformBinding } = await setup();
     expect(await runtime.binding.forOrg?.(ORG_C)).toBe(platformBinding);
     await put(ORG_C, { vendor: "outside", mode: null });
-    expect(await runtime.binding.forOrg?.(ORG_C)).toBe(UNBOUND_BINDING);
+    expect(await runtime.binding.forOrg?.(ORG_C)).toBe(UNBOUND_OUTSIDE);
   });
 
   it("opens the credential once per version and rebuilds when the config changes", async () => {
@@ -115,7 +130,7 @@ describe("per-organization clearinghouse binding", () => {
     await put(ORG_A, { vendor: "stedi", mode: "test", secret: KEY });
     expect((await runtime.binding.forOrg?.(ORG_A))?.vendor).toBe("stedi");
     await put(ORG_A, { vendor: "stedi", mode: "test", secret: KEY, status: "draft", version: 2 });
-    expect(await runtime.binding.forOrg?.(ORG_A)).toBe(UNBOUND_BINDING);
+    expect(await runtime.binding.forOrg?.(ORG_A)).toBe(UNBOUND_NOT_ACTIVE);
   });
 
   it("throws, rather than going unbound, when a live credential cannot be opened", async () => {
@@ -123,9 +138,42 @@ describe("per-organization clearinghouse binding", () => {
     await put(ORG_A, { vendor: "stedi", mode: "test", secret: KEY });
     const row = rows.get(ORG_A) as ConfigRow;
     rows.set(ORG_A, { ...row, secretCipher: "AAAA" });
-    await expect(runtime.binding.forOrg?.(ORG_A)).rejects.toThrow(/did not open/);
+    // A typed 503 (never a bare Error, which surfaces as a 500 on a route that resolves the binding).
+    const unreadable = { code: "CLEARINGHOUSE_CREDENTIAL_UNREADABLE", statusCode: 503 };
+    await expect(runtime.binding.forOrg?.(ORG_A)).rejects.toMatchObject(unreadable);
     rows.set(ORG_A, { ...row, secretCipher: null });
-    await expect(runtime.binding.forOrg?.(ORG_A)).rejects.toThrow(/no usable credential/);
+    await expect(runtime.binding.forOrg?.(ORG_A)).rejects.toMatchObject(unreadable);
+  });
+
+  it("binds each org's transport to that org: a call naming another org is refused before the vendor", async () => {
+    const { runtime, put } = await setup();
+    await put(ORG_A, { vendor: "claimmd", mode: "test", secret: KEY });
+    await put(ORG_B, { vendor: "claimmd", mode: "test", secret: KEY });
+    const a = await runtime.binding.forOrg?.(ORG_A);
+    const ctxFor = (organizationId: string) => ({
+      organizationId,
+      providerEntityId: "44444444-4444-4444-8444-444444444444",
+      payerId: "PAYER",
+      correlationId: "c-1",
+      usage: "test" as const,
+    });
+    const submission = {
+      kind: "claim" as const,
+      controlNumber: "CTRL1",
+      idempotencyKey: "k1",
+      payload: { format: "x12" as const, x12: "ISA*00~" },
+    };
+    const calls = [
+      await a?.transport.submitClaim(ctxFor(ORG_B), submission),
+      await a?.transport.submitNotice(ctxFor(ORG_B), { ...submission, kind: "noe" as const }),
+      await a?.transport.fetchAcknowledgments(ctxFor(ORG_B), null),
+      await a?.transport.fetchRemittances(ctxFor(ORG_B), null),
+      await a?.transport.fetchClaimStatus(ctxFor(ORG_B), "CTRL1"),
+    ];
+    for (const result of calls) {
+      expect(result && !result.ok && result.degraded.code).toBe(CH.INVALID_REQUEST);
+      expect(result && !result.ok && result.degraded.reason).toMatch(/belongs to another organization/);
+    }
   });
 
   it("reports an org's live mode, and nothing for a config that is not live", async () => {

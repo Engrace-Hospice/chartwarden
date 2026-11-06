@@ -3,9 +3,10 @@
 // returns a binding whose `forOrg(orgId)` hands every consumer THAT ORGANIZATION'S transport, built from its own sealed
 // credential:
 //   a row, `active`, stedi | claimmd   the vendor's transport over the tenant's own credential and mode;
-//   a row, anything else               UNBOUND (nothing is sent: `outside`, or a draft / verified config that is not live yet);
+//   a row, `outside`                   UNBOUND (`unboundReason: outside`: the tenant bills elsewhere, nothing is ever sent);
+//   a row, draft / verified            UNBOUND (`not_active`: not live yet; workers HOLD until the tenant finishes setup);
 //   no row, named in the env fallback  the platform's own env binding (the demo tenant), exactly as before;
-//   no row otherwise                   UNBOUND.
+//   no row otherwise                   UNBOUND (`not_chosen`: workers HOLD until the tenant chooses).
 // The top-level `vendor` / `transport` are UNBOUND on purpose: they say nothing about any organization, so a consumer that
 // forgot to resolve per org fails closed (CH_NOT_WIRED), never sends through someone else's account.
 //
@@ -15,7 +16,7 @@
 // credential cannot be opened THROWS (the job fails and retries, loudly) rather than going unbound silently.
 import { type DbClient, schema } from "@chartwarden/db";
 import { withOrgContext } from "@chartwarden/tenancy";
-import type { TenantClearinghouseMode } from "@chartwarden/types";
+import { ChartWardenError, type TenantClearinghouseMode } from "@chartwarden/types";
 import {
   type ClaimMdAnomaly,
   type ClaimMdRequestCounter,
@@ -23,13 +24,24 @@ import {
   NOT_WIRED_TRANSPORT,
   type StediAnomaly,
   type SubmissionAttemptStore,
-  UNBOUND_BINDING,
+  UNBOUND_NOT_ACTIVE,
+  UNBOUND_NOT_CHOSEN,
+  UNBOUND_OUTSIDE,
   createClaimMdTransportFromEnv,
   createStediTransportFromEnv,
 } from "@chartwarden/x12-837-client";
 import { eq } from "drizzle-orm";
 import type { ConfigRow } from "./config-store";
+import { bindTransportToOrg } from "./org-bound-transport";
 import type { ClearinghouseSecretCipher } from "./secret-cipher";
+
+/** The one typed refusal for a stored credential that cannot be used: a route surfaces it as 503, never a bare 500. */
+const credentialUnreadable = (): ChartWardenError =>
+  new ChartWardenError(
+    "CLEARINGHOUSE_CREDENTIAL_UNREADABLE",
+    "this organization's clearinghouse credential could not be opened; it must be entered again",
+    503,
+  );
 
 export interface TenantBindingDeps {
   /** The TENANT pool (NOBYPASSRLS): the read is bound by the org's own RLS scope. */
@@ -91,18 +103,15 @@ export function createTenantClearinghouseRuntime(
       (vendor !== "stedi" && vendor !== "claimmd") ||
       (mode !== "test" && mode !== "production")
     ) {
-      return UNBOUND_BINDING;
+      return UNBOUND_OUTSIDE;
     }
-    if (!deps.cipher || !row.secretCipher) {
-      throw new Error(
-        `tenant clearinghouse for org ${row.organizationId} has no usable credential`,
-      );
+    if (!deps.cipher || !row.secretCipher) throw credentialUnreadable();
+    let secret: string;
+    try {
+      secret = await deps.cipher.decrypt(row.organizationId, { vendor, mode }, row.secretCipher);
+    } catch {
+      throw credentialUnreadable(); // the cause is the cipher's generic refusal; nothing about the key leaks
     }
-    const secret = await deps.cipher.decrypt(
-      row.organizationId,
-      { vendor, mode },
-      row.secretCipher,
-    );
     const onAnomaly = deps.onAnomaly ? { onAnomaly: deps.onAnomaly } : {};
     const transport =
       vendor === "stedi"
@@ -117,7 +126,8 @@ export function createTenantClearinghouseRuntime(
                 : {}),
             },
           );
-    return { vendor, transport };
+    // Bound to this organization: a call naming another one is refused before it reaches the vendor.
+    return { vendor, transport: bindTransportToOrg(transport, row.organizationId) };
   }
 
   async function forOrg(organizationId: string): Promise<ClearinghouseBinding> {
@@ -126,11 +136,11 @@ export function createTenantClearinghouseRuntime(
       built.delete(organizationId);
       return deps.fallbackOrgIds.has(organizationId.toLowerCase())
         ? deps.platformBinding
-        : UNBOUND_BINDING;
+        : UNBOUND_NOT_CHOSEN;
     }
     if (row.status !== "active") {
       built.delete(organizationId);
-      return UNBOUND_BINDING;
+      return UNBOUND_NOT_ACTIVE;
     }
     const cached = built.get(organizationId);
     if (cached && cached.version === row.version) return cached.binding;

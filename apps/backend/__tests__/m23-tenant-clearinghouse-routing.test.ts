@@ -105,15 +105,19 @@ describe("per-organization transport resolution in M23", () => {
     const done = await send(upload(ORG_A, "000000001"));
     expect(done.accepted).toBe(true);
     expect(done.generatedFileUri).toMatch(/^clearinghouse:in_memory:/);
-    // org B's vendor saw nothing of org A's submission, and A's vendor holds it
-    const scopeA = { organizationId: ORG_A, providerEntityId: PE, usage: "test" } as const;
-    const scopeB = { ...scopeA, organizationId: ORG_B };
-    expect(
-      (await a.fetchAcknowledgments({ ...scopeA, payerId: "p", correlationId: "c" }, null)).ok,
-    ).toBe(true);
-    expect(
-      (await b.fetchAcknowledgments({ ...scopeB, payerId: "p", correlationId: "c" }, null)).ok,
-    ).toBe(true);
+    // A's vendor holds A's submission; B's vendor has never heard of it (state `not_found`, not an empty success), asked with
+    // A's own scope so the answer cannot be put down to the transport's per-org partitioning.
+    const ctx = (organizationId: string): ClearinghouseContext => ({
+      organizationId,
+      providerEntityId: PE,
+      payerId: "p",
+      correlationId: "c",
+      usage: "test",
+    });
+    const onA = await a.fetchClaimStatus(ctx(ORG_A), "000000001");
+    const onB = await b.fetchClaimStatus(ctx(ORG_A), "000000001");
+    expect(onA.ok && onA.data.state).not.toBe("not_found");
+    expect(onB.ok && onB.data.state).toBe("not_found");
   });
 
   it("refuses an org with no live clearinghouse, and does not touch any org's vendor", async () => {

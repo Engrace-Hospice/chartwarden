@@ -30,10 +30,19 @@ export type ClearinghouseTransportFactories = Partial<
   Record<ClearinghouseVendor, ClearinghouseTransportFactory>
 >;
 
+/**
+ * Why an organization has no usable clearinghouse (nothing is sent for it either way; the reason decides what a worker does):
+ * `not_chosen` (nothing chosen yet) and `not_active` (a draft / verified config) HOLD work until the tenant finishes setup;
+ * `outside` (the tenant bills outside ChartWarden) never transmits at all.
+ */
+export type UnboundReason = "not_chosen" | "not_active" | "outside";
+
 export interface ClearinghouseBinding {
   /** The configured vendor, or null when the platform has not bound one. */
   readonly vendor: ClearinghouseVendor | null;
   readonly transport: ClearinghouseTransport;
+  /** Set on an UNBOUND per-organization binding (`vendor` null): why it is unbound. Absent on a bound one. */
+  readonly unboundReason?: UnboundReason;
   /**
    * Per-organization binding (tenant clearinghouse, ADR-0053 amendment 2026-11-06). When present, `vendor` and
    * `transport` above are the UNBOUND platform default and say nothing about any organization: a consumer that acts for
@@ -91,11 +100,17 @@ export const NOT_WIRED_TRANSPORT: ClearinghouseTransport = {
   verifyAndParseEvent: notWired,
 };
 
-/** The binding of an organization with no usable clearinghouse: nothing is sent, every call answers CH_NOT_WIRED. */
-export const UNBOUND_BINDING: ClearinghouseBinding = Object.freeze({
-  vendor: null,
-  transport: NOT_WIRED_TRANSPORT,
-});
+const unbound = (unboundReason: UnboundReason): ClearinghouseBinding =>
+  Object.freeze({ vendor: null, transport: NOT_WIRED_TRANSPORT, unboundReason });
+
+/** The binding of an organization that has chosen nothing: nothing is sent, every call answers CH_NOT_WIRED. */
+export const UNBOUND_NOT_CHOSEN: ClearinghouseBinding = unbound("not_chosen");
+/** The binding of an organization whose config is a draft or verified (not live yet). */
+export const UNBOUND_NOT_ACTIVE: ClearinghouseBinding = unbound("not_active");
+/** The binding of an organization that bills outside ChartWarden. */
+export const UNBOUND_OUTSIDE: ClearinghouseBinding = unbound("outside");
+/** The generic unbound binding (= nothing chosen). */
+export const UNBOUND_BINDING: ClearinghouseBinding = UNBOUND_NOT_CHOSEN;
 
 export function bindClearinghouseTransport(
   env: EnvMap,
