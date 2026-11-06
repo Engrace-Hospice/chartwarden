@@ -65,23 +65,35 @@ describe("route-kit concurrency", () => {
     await expect(
       requireIdempotencyKey()(headers({ "idempotency-key": "x".repeat(129) })),
     ).rejects.toMatchObject({ code: "IDEMPOTENCY_KEY_REQUIRED" });
-    await expect(requireIdempotencyKey()(headers({ "idempotency-key": "k" }))).resolves.toBeUndefined();
+    await expect(
+      requireIdempotencyKey()(headers({ "idempotency-key": "k" })),
+    ).resolves.toBeUndefined();
   });
 });
 
 describe("route-kit actor", () => {
   it("reads the actor from the server context and 401s without one", () => {
-    expect(actorOf(ctx())).toMatchObject({ organizationId: ORG_A, userId: "user-1", membershipId: "m-1" });
+    expect(actorOf(ctx())).toMatchObject({
+      organizationId: ORG_A,
+      userId: "user-1",
+      membershipId: "m-1",
+    });
     expect(() => actorOf({})).toThrow(UnauthorizedError);
   });
 
   it("requires a membership for a write and maps it to userId for membership-attributed services", () => {
     expect(() => writeActorOf(ctx({ attributes: {} }))).toThrow(UnauthorizedError);
-    expect(membershipActorOf(ctx())).toEqual({ organizationId: ORG_A, userId: "m-1", roles: ["rn"] });
+    expect(membershipActorOf(ctx())).toEqual({
+      organizationId: ORG_A,
+      userId: "m-1",
+      roles: ["rn"],
+    });
   });
 
   it("refuses an ai_* principal", async () => {
-    await expect(rejectAiActor()(ctx({ attributes: { actorKind: "ai_scribe" } }))).rejects.toMatchObject({
+    await expect(
+      rejectAiActor()(ctx({ attributes: { actorKind: "ai_scribe" } })),
+    ).rejects.toMatchObject({
       statusCode: 403,
     });
     await expect(rejectAiActor()(ctx())).resolves.toBeUndefined();

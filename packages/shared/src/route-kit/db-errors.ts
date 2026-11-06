@@ -38,11 +38,7 @@ export function mapUniqueViolation(
  * The first row of a `RETURNING`/`SELECT`. Empty is `onEmpty()` when given, otherwise a 500 (the row was
  * just written, so its absence is a bug, not a client error).
  */
-export function firstOrThrow<T>(
-  rows: readonly T[],
-  message: string,
-  onEmpty?: () => Error,
-): T {
+export function firstOrThrow<T>(rows: readonly T[], message: string, onEmpty?: () => Error): T {
   const row = rows[0];
   if (row !== undefined) return row;
   throw onEmpty ? onEmpty() : new ChartWardenError("INTERNAL_ERROR", message, 500);
