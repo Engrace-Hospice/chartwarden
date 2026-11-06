@@ -1,3 +1,5 @@
+import { AUTO_COMPLETE_ON_RENDER_KINDS } from "@chartwarden/bereavement";
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/16-bereavement/outbox-consumers/m22-document-rendered.ts — GAP-130, the §4.5
 // `m22.document.rendered` → `handleDocumentRendered` binding (D14, §7.6): the downstream half of the M22
 // render handshake for bereavement outreach artifacts.
@@ -31,8 +33,7 @@
 // `approved` letter to `rendered` and stamps `rendered_document_id` / `m22_rendered_at`; `bereavement_discharge_summary` (aggregate = the
 // closure) stamps `bereavement_plan_closure.discharge_summary_document_id`. Both stamps are `WHERE ... IS NULL`, so a redelivery writes
 // nothing; a row that is not in the state the render was requested from (a letter that is not `approved`) is left alone.
-import { AUTO_COMPLETE_ON_RENDER_KINDS } from "@chartwarden/bereavement";
-import { type DbClient, schema } from "@chartwarden/db";
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { BereavementOutreachKind, IsoInstant } from "@chartwarden/types";
 import { and, eq, isNull, sql } from "drizzle-orm";
@@ -45,8 +46,6 @@ const OUTREACH = schema.bereavementOutreach;
 const LOG = schema.bereavementContactLog;
 const LETTER = schema.bereavementPhysicianLetter;
 const CLOSURE = schema.bereavementPlanClosure;
-
-const CONSUMER_USER_ID = "";
 
 /** The request event this consumer answers, and the module that emits it (M22's routing fields). */
 const SOURCE_EVENT = "m16.bereavement.outreach_artifact_requested";
@@ -208,7 +207,7 @@ export function buildM16DocumentRenderedConsumer(deps: DocumentRenderedDeps) {
               renderedDocumentId: facts.documentId,
               m22RenderedAt: renderedAt,
               // §2.5 (GAP-194) — every outreach write bumps the row version, so a counselor holding the
-              // pre-render version gets 412 instead of overwriting the stamp / completion.
+              // pre-render version gets 409 STALE_VERSION instead of overwriting the stamp / completion.
               version: sql`${OUTREACH.version} + 1`,
               updatedAt: new Date(),
               ...(decision.complete

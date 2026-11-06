@@ -22,9 +22,13 @@
 // supervisor's row in place, which is the `all_subscriptions_deactivated` failure one step earlier — a
 // configuration that LOOKS complete and pages a membership that will not answer. The DON learns at the
 // only moment the gap is cheap to fix, and the §7.8 watchdog wakes them anyway if they ignored it.
+import {
+  optionalIfMatchVersionOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
 import { actorOf, writeActorOf } from "./actor";
-import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import { ABAC_IN_ORG, ABAC_SUPERVISOR, P, STEP_UP } from "./guards";
 import {
   AreaIdParams,
@@ -95,7 +99,7 @@ export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps):
       const body = parse(PatchPolicyBody, request.body);
       return writeService.patchPolicy(writeActorOf(request), {
         ...body,
-        expectedVersion: ifMatchVersion(request),
+        expectedVersion: optionalIfMatchVersionOf(request),
       });
     },
   );

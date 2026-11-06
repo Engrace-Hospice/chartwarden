@@ -18,6 +18,7 @@
 //      (M19-T05's `redactSudMedications`), the count and the category ride the response. A clinician who
 //      does not know the list is incomplete reads "no opioid on file" as a clinical fact — which is the
 //      one failure mode redaction-without-notice creates that no-redaction does not.
+import type { CursorPage } from "@chartwarden/shared/route-kit";
 import type {
   IsoInstant,
   OnCallActor,
@@ -42,7 +43,6 @@ import type {
 import type { TriageMedicationContext } from "../clinical/medication-context";
 import type { SelectableDisposition } from "../lifecycle/disposition";
 import type { M19ReadActor } from "./actor";
-import type { CursorPage } from "./concurrency";
 
 /** A confidentiality category an M19 read may withhold (§8.2 / §7.13's M16 precedent). */
 export type TriageRedactedCategory = "sud" | "ai_advisory" | "caller_free_text";

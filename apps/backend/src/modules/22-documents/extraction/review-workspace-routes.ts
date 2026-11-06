@@ -1,3 +1,4 @@
+import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
 // apps/backend/src/modules/22-documents/extraction/review-workspace-routes.ts — the DocLens review screen's
 // routes (§5.1 INTAKE.ReviewSideBySide; F-237).
 //
@@ -12,16 +13,19 @@
 // values or decides; the SUD resolution additionally needs the high-risk licence (the
 // `extraction_reviewer_eligible` predicate's `sudReview` arm) and refuses AI principals. Every PHI read
 // carries an `auditRead` declaration, so the host's read-audit hook records who looked at which batch.
-import { type GuardRequest, requireAbac, requirePermission } from "@chartwarden/auth";
+import {
+  type PreHandler,
+  pageQuery,
+  rejectAiActor,
+  requireIdempotencyKey,
+  writeActorOf,
+} from "@chartwarden/shared/route-kit";
 import { UnauthorizedError } from "@chartwarden/types";
 import { type Static, Type } from "@sinclair/typebox";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { rejectAiActor, requireIdempotencyKey } from "../routes/concurrency";
 import { parse } from "../routes/documents-typebox";
 import type { ReviewWorkspaceService } from "./review-workspace";
 import type { SudContentAccess } from "./sud-content-gate";
-
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 const Box = Type.Tuple([Type.Number(), Type.Number(), Type.Number(), Type.Number()]);
 const SudStatus = Type.Union([
@@ -58,8 +62,7 @@ export const RecordsRequestConflictSchema = Type.Union([
 
 export const ReviewQueueQuerySchema = Type.Object({
   view: Type.Optional(Type.Union([Type.Literal("open"), Type.Literal("done")])),
-  cursor: Type.Optional(Type.String()),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
   patientId: Type.Optional(Type.String({ format: "uuid" })),
   sudStatus: Type.Optional(SudStatus),
 });
@@ -274,7 +277,9 @@ type _Workspace = Conforms<
 
 const INTAKE_READ = requirePermission("intake.read") as PreHandler;
 const INTAKE_REVIEW = requirePermission("intake.review") as PreHandler;
-const REJECT_AI = rejectAiActor() as PreHandler;
+const REJECT_AI = rejectAiActor(
+  "AI principals cannot commit a WardenLens extraction review",
+) as PreHandler;
 const IDEMPOTENT = requireIdempotencyKey() as PreHandler;
 // §7.4 W4 — confirming or rejecting a Part 2 detection is a high-risk act: RN-or-above, like a
 // medication field. The target is a constant flag; nothing about it comes from the request.
@@ -318,24 +323,6 @@ function sudContentAccessOf(request: FastifyRequest): SudContentAccess {
   };
 }
 
-function actorOf(request: FastifyRequest): {
-  organizationId: string;
-  userId: string;
-  membershipId: string;
-} {
-  const ctx = request.context;
-  const membershipId = ctx?.attributes.membershipId;
-  if (
-    !ctx?.organizationId ||
-    typeof ctx.userId !== "string" ||
-    ctx.userId.length === 0 ||
-    typeof membershipId !== "string"
-  ) {
-    throw new UnauthorizedError();
-  }
-  return { organizationId: ctx.organizationId, userId: ctx.userId, membershipId };
-}
-
 export function registerDocLensReviewWorkspaceRoutes(
   app: FastifyInstance,
   service: ReviewWorkspaceService,
@@ -347,7 +334,7 @@ export function registerDocLensReviewWorkspaceRoutes(
       config: { auditRead: { resourceKind: "intake_batch", list: true } },
     },
     async (request) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = writeActorOf(request);
       const q = parse(ReviewQueueQuerySchema, request.query ?? {});
       return service.listQueue(organizationId, {
         view: q.view ?? "open",
@@ -366,7 +353,7 @@ export function registerDocLensReviewWorkspaceRoutes(
       config: { auditRead: { resourceKind: "intake_review_workspace", resourceIdParam: "id" } },
     },
     async (request) => {
-      const { organizationId, membershipId } = actorOf(request);
+      const { organizationId, membershipId } = writeActorOf(request);
       const { id } = parse(BatchParams, request.params);
       return service.getWorkspace(organizationId, id, membershipId, sudContentAccessOf(request));
     },
@@ -379,7 +366,7 @@ export function registerDocLensReviewWorkspaceRoutes(
       config: { auditRead: { resourceKind: "intake_page_image", resourceIdParam: "id" } },
     },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId } = writeActorOf(request);
       const { id, page } = parse(PageParams, {
         ...(request.params as Record<string, unknown>),
         page: Number((request.params as { page?: string }).page),
@@ -404,7 +391,7 @@ export function registerDocLensReviewWorkspaceRoutes(
     "/api/v1/intake/uploads/:id/sud-review",
     { preHandler: [REJECT_AI, INTAKE_REVIEW, ABAC_SUD_REVIEWER, IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId, membershipId } = actorOf(request);
+      const { organizationId, userId, membershipId } = writeActorOf(request);
       const { id } = parse(BatchParams, request.params);
       const body = parse(SudReviewRequest, request.body);
       return service.resolveSud(
@@ -421,7 +408,7 @@ export function registerDocLensReviewWorkspaceRoutes(
     "/api/v1/intake/uploads/:id/identity-review",
     { preHandler: [REJECT_AI, INTAKE_REVIEW, IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId, membershipId } = actorOf(request);
+      const { organizationId, userId, membershipId } = writeActorOf(request);
       const { id } = parse(BatchParams, request.params);
       const body = parse(IdentityReviewRequest, request.body);
       return service.resolveIdentity(
@@ -439,7 +426,7 @@ export function registerDocLensReviewWorkspaceRoutes(
     "/api/v1/intake/uploads/:id/relink",
     { preHandler: [REJECT_AI, INTAKE_REVIEW, IDEMPOTENT] },
     async (request) => {
-      const { organizationId, userId, membershipId } = actorOf(request);
+      const { organizationId, userId, membershipId } = writeActorOf(request);
       const { id } = parse(BatchParams, request.params);
       const body = parse(RelinkRequest, request.body);
       return service.relink(

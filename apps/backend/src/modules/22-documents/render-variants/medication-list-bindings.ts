@@ -1,3 +1,4 @@
+import { CONSUMER_USER_ID } from "@chartwarden/shared/route-kit";
 import { runWithRequestContext } from "@chartwarden/tenancy";
 // apps/backend/src/modules/22-documents/render-variants/medication-list-bindings.ts — F-171 (#248) the
 // LIVE `m12.medication_order.list_changed` → `patient_medication_list` render binding. Unlike
@@ -61,7 +62,6 @@ function parsePayload(raw: unknown): MedicationListChangedPayload {
 
 /** The dispatcher's own system-attribution convention (F-102) for a consumer-driven seam read with no
  *  human actor. */
-const CONSUMER_USER_ID = "";
 
 /** Mirrors M12's own (private) `layInstructions` (`12-dosespot/seams/providers.ts`) — the lay-language sig
  * summary every M12 read projection derives the same way. Duplicated rather than imported: M22 `dependsOn`

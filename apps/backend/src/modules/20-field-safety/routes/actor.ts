@@ -22,11 +22,12 @@
 // `staff` on all twenty-nine rows) and §5.3 leaves the portal variants to M31. A session class field would
 // be a branch nothing takes, and the M19 shape — where the class picks the ABAC predicate — would invite
 // one to be added without the predicate that makes it safe.
-import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
-import type { FastifyReply, FastifyRequest } from "fastify";
-
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+import {
+  actorOf as routeActorOf,
+  writeActorOf as routeWriteActorOf,
+} from "@chartwarden/shared/route-kit";
+import { ForbiddenError } from "@chartwarden/types";
+import type { FastifyRequest } from "fastify";
 
 /** The READ-route actor: org + user + roles + the scope facts the §4.7 predicates compare against. */
 export interface M20ReadActor {
@@ -39,48 +40,28 @@ export interface M20ReadActor {
   readonly locationIds: readonly string[];
 }
 
-const str = (value: unknown): string | null =>
-  typeof value === "string" && value.length > 0 ? value : null;
-
-/** Extract the org-scoped read actor from `request.context` (server-assembled), or 401. */
+/** M20's view of the route-kit actor: plus the PE scope the write anchor needs, or 401. */
 export function actorOf(request: FastifyRequest): M20ReadActor {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
+  const { organizationId, userId, membershipId, roles, locationIds } = routeActorOf(request);
   return {
-    organizationId: ctx.organizationId,
-    userId: ctx.userId,
-    membershipId: str(ctx.attributes?.membershipId),
-    roles: ctx.roles,
-    providerEntityIds: ctx.providerEntityIds,
-    locationIds: ctx.locationIds,
+    organizationId,
+    userId,
+    membershipId,
+    roles,
+    providerEntityIds: request.context?.providerEntityIds ?? [],
+    locationIds,
   };
 }
 
-/**
- * The MUTATING-route actor: the read actor PLUS the server-verified recent step-up flag
- * (`context.attributes.stepUpRecent`). `membershipId` stays nullable here; the write routes go through
- * {@link writeActorOf}, which narrows it.
- */
-export interface M20MutatingActor extends M20ReadActor {
+/** The write actor: the read actor plus a guaranteed membership and the step-up flag. */
+export interface M20WriteActor extends M20ReadActor {
+  readonly membershipId: string;
   /** True iff the session carries a recent (server-verified) step-up auth (M2 SESSION_POLICY). */
   readonly stepUpRecent: boolean;
 }
 
-/** The write actor — same as {@link M20MutatingActor} but with a guaranteed membership. */
-export interface M20WriteActor extends M20MutatingActor {
-  readonly membershipId: string;
-}
-
-/** Extract the mutating actor (membership still nullable — see {@link writeActorOf}). */
-export function mutatingActorOf(request: FastifyRequest): M20MutatingActor {
-  return {
-    ...actorOf(request),
-    stepUpRecent: request.context?.attributes?.stepUpRecent === true,
-  };
-}
-
 /**
- * Extract the WRITE actor (org + user + membership + roles + step-up), or 401/403.
+ * Extract the WRITE actor: 401 without a session, 403 without a membership.
  *
  * EVERY M20 route mutation goes through this. There is no anonymous or system-principal write path on the
  * HTTP surface: the §4.8 crons and the consumers reach M20 through their own workers, and those attribute
@@ -89,13 +70,8 @@ export function mutatingActorOf(request: FastifyRequest): M20MutatingActor {
  * clinician attestation nobody made, or a supervisor acknowledgment nobody gave.
  */
 export function writeActorOf(request: FastifyRequest): M20WriteActor {
-  const actor = mutatingActorOf(request);
-  if (actor.membershipId === null) {
-    throw new ForbiddenError(
-      "an M20 field-safety mutation must be attributed to an active membership; this session carries none",
-    );
-  }
-  return { ...actor, membershipId: actor.membershipId };
+  const { membershipId, stepUpRecent } = routeWriteActorOf(request);
+  return { ...actorOf(request), membershipId, stepUpRecent };
 }
 
 /**

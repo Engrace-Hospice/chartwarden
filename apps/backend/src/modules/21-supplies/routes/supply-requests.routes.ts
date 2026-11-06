@@ -11,9 +11,13 @@
 // kind=comfort_kit_deploy)". {@link ABAC_DISPATCHER_ON_KIND} reads the raw `kindPayload.kind` off the body
 // and short-circuits to allow for `dme` / `supply`. See routes/guards.ts rule 1 for why binding it
 // unconditionally would have been strictly wrong rather than merely strict.
+import {
+  actorOf,
+  rejectOffsetPagination,
+  requireIdempotencyKey,
+  writeActorOf,
+} from "@chartwarden/shared/route-kit";
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
-import { ifMatchStamp, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import { ABAC_DISPATCHER_ON_KIND, P } from "./guards";
 import {
   AssignVendorBody,
@@ -33,6 +37,7 @@ import {
   parseQuery,
 } from "./m21-typebox";
 import type { M21ReadService } from "./read-service";
+import { ifMatchStamp } from "./route-policy";
 import type { M21WriteService } from "./write-service";
 
 export interface SupplyRequestRouteDeps {
@@ -116,7 +121,7 @@ export function registerSupplyRequestRoutes(
       const { supplyRequestId } = parse(RequestIdParams, request.params);
       const body = parse(AssignVendorBody, request.body);
       return writeService.assignVendor(writeActorOf(request), supplyRequestId, {
-        expectedUpdatedAt: ifMatchStamp(request, true),
+        expectedUpdatedAt: ifMatchStamp(request),
         ...body,
       });
     },
@@ -130,7 +135,7 @@ export function registerSupplyRequestRoutes(
       const { supplyRequestId } = parse(RequestIdParams, request.params);
       const body = parse(MarkOrderedBody, request.body);
       return writeService.markOrdered(writeActorOf(request), supplyRequestId, {
-        expectedUpdatedAt: ifMatchStamp(request, true),
+        expectedUpdatedAt: ifMatchStamp(request),
         ...body,
       });
     },
@@ -145,7 +150,7 @@ export function registerSupplyRequestRoutes(
       const { supplyRequestId } = parse(RequestIdParams, request.params);
       const body = parse(RecordVendorInvoiceBody, request.body);
       return writeService.recordVendorInvoice(writeActorOf(request), supplyRequestId, {
-        expectedUpdatedAt: ifMatchStamp(request, true),
+        expectedUpdatedAt: ifMatchStamp(request),
         invoiceTotalCents: body.invoiceTotalCents,
       });
     },
@@ -159,7 +164,7 @@ export function registerSupplyRequestRoutes(
       const { supplyRequestId } = parse(RequestIdParams, request.params);
       const body = parse(MarkInTransitBody, request.body);
       return writeService.markInTransit(writeActorOf(request), supplyRequestId, {
-        expectedUpdatedAt: ifMatchStamp(request, true),
+        expectedUpdatedAt: ifMatchStamp(request),
         ...body,
       });
     },
@@ -174,7 +179,7 @@ export function registerSupplyRequestRoutes(
       const { supplyRequestId } = parse(RequestIdParams, request.params);
       const body = parse(MarkDeliveredBody, request.body);
       return writeService.markDelivered(writeActorOf(request), supplyRequestId, {
-        expectedUpdatedAt: ifMatchStamp(request, true),
+        expectedUpdatedAt: ifMatchStamp(request),
         ...body,
       });
     },
@@ -193,7 +198,7 @@ export function registerSupplyRequestRoutes(
       const { supplyRequestId } = parse(RequestIdParams, request.params);
       const body = parse(CaptureCaregiverSignatureBody, request.body);
       return writeService.captureCaregiverSignature(writeActorOf(request), supplyRequestId, {
-        expectedUpdatedAt: ifMatchStamp(request, true),
+        expectedUpdatedAt: ifMatchStamp(request),
         ...body,
       });
     },
@@ -210,7 +215,7 @@ export function registerSupplyRequestRoutes(
       const { supplyRequestId } = parse(RequestIdParams, request.params);
       const body = parse(SetCoverageDeterminationBody, request.body);
       return writeService.setCoverageDetermination(writeActorOf(request), supplyRequestId, {
-        expectedUpdatedAt: ifMatchStamp(request, true),
+        expectedUpdatedAt: ifMatchStamp(request),
         hospiceCoverage: body.hospiceCoverage,
         reason: body.reason ?? null,
       });
@@ -227,7 +232,7 @@ export function registerSupplyRequestRoutes(
       const { supplyRequestId } = parse(RequestIdParams, request.params);
       const body = parse(ConfirmReceivedBody, request.body);
       return writeService.confirmReceived(writeActorOf(request), supplyRequestId, {
-        expectedUpdatedAt: ifMatchStamp(request, true),
+        expectedUpdatedAt: ifMatchStamp(request),
         ...body,
       });
     },
@@ -243,7 +248,7 @@ export function registerSupplyRequestRoutes(
       const { supplyRequestId } = parse(RequestIdParams, request.params);
       const body = parse(CancelRequestBody, request.body);
       return writeService.cancelSupplyRequest(writeActorOf(request), supplyRequestId, {
-        expectedUpdatedAt: ifMatchStamp(request, true),
+        expectedUpdatedAt: ifMatchStamp(request),
         ...body,
       });
     },
@@ -257,7 +262,7 @@ export function registerSupplyRequestRoutes(
       const { supplyRequestId } = parse(RequestIdParams, request.params);
       const body = parse(ReturnRequestBody, request.body);
       return writeService.returnSupplyRequest(writeActorOf(request), supplyRequestId, {
-        expectedUpdatedAt: ifMatchStamp(request, true),
+        expectedUpdatedAt: ifMatchStamp(request),
         ...body,
       });
     },

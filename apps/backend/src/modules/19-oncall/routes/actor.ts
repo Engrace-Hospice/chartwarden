@@ -22,8 +22,13 @@
 //   discipline    — the §3.2 band the §7.3 / D6 disposition matrix is keyed on, DERIVED from the role keys
 //                   M2 assembled. Not a claim, not a query param, and not a column: see
 //                   `../abac-predicates.ts` for why the platform has no workforce-discipline read.
-import { ForbiddenError, UnauthorizedError } from "@chartwarden/types";
-import type { FastifyReply, FastifyRequest } from "fastify";
+import {
+  type PreHandler,
+  actorOf as routeActorOf,
+  rejectAiActor as routeRejectAiActor,
+  writeActorOf as routeWriteActorOf,
+} from "@chartwarden/shared/route-kit";
+import type { FastifyRequest } from "fastify";
 import {
   PORTAL_SESSION_CLASSES,
   VENDOR_SESSION_CLASSES,
@@ -31,9 +36,6 @@ import {
 } from "../abac-predicates";
 import { require_ } from "../lifecycle/errors";
 import type { TriageActorDiscipline } from "../lifecycle/protocol";
-
-/** A @chartwarden/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
 /** The READ-route actor: org + user + roles + the scope facts the §4.7 predicates compare against. */
 export interface M19ReadActor {
@@ -53,37 +55,25 @@ export interface M19ReadActor {
 const str = (value: unknown): string | null =>
   typeof value === "string" && value.length > 0 ? value : null;
 
-/** Extract the org-scoped read actor from `request.context` (server-assembled), or 401. */
+/** M19's view of the route-kit actor: plus the PE scope and the vendor binding, or 401. */
 export function actorOf(request: FastifyRequest): M19ReadActor {
-  const ctx = request.context;
-  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
+  const { organizationId, userId, membershipId, roles, locationIds, sessionClass } =
+    routeActorOf(request);
   return {
-    organizationId: ctx.organizationId,
-    userId: ctx.userId,
-    membershipId: str(ctx.attributes?.membershipId),
-    roles: ctx.roles,
-    providerEntityIds: ctx.providerEntityIds,
-    locationIds: ctx.locationIds,
-    sessionClass: str(ctx.attributes?.sessionClass) ?? "staff",
-    externalActorId: str(ctx.attributes?.externalActorId),
+    organizationId,
+    userId,
+    membershipId,
+    roles,
+    providerEntityIds: request.context?.providerEntityIds ?? [],
+    locationIds,
+    sessionClass,
+    externalActorId: str(request.context?.attributes?.externalActorId),
   };
 }
 
-/**
- * F-224 — the D13 AI-BLOCK preHandler (the M24 `rejectAiActor` shape): refuse any request whose
- * server-assembled `actor_kind` is an `ai_*` principal. `authenticate.ts` stamps `actorKind` on every
- * interactive session (`"user"`), so absence is not the "allowed" path it once was.
- */
-export function rejectAiActor(): PreHandler {
-  return async (request) => {
-    const kind = request.context?.attributes?.actorKind;
-    if (typeof kind === "string" && kind.startsWith("ai_")) {
-      throw new ForbiddenError(
-        "AI principals cannot request a caregiver/attending triage summary (D13)",
-      );
-    }
-  };
-}
+/** The F-224 / D13 AI-BLOCK preHandler for the caregiver/attending summary routes. */
+export const rejectAiActor = (): PreHandler =>
+  routeRejectAiActor("AI principals cannot request a caregiver/attending triage summary (D13)");
 
 /** Is this an external triage VENDOR operator's session (§7.5 / D13)? */
 export function isVendorActor(actor: M19ReadActor): boolean {
@@ -95,31 +85,16 @@ export function isPortalActor(actor: M19ReadActor): boolean {
   return (PORTAL_SESSION_CLASSES as readonly string[]).includes(actor.sessionClass);
 }
 
-/**
- * The MUTATING-route actor: the read actor PLUS the server-verified recent step-up flag
- * (`context.attributes.stepUpRecent`). `membershipId` stays nullable here; the staff-only routes go
- * through {@link writeActorOf}, which narrows it.
- */
-export interface M19MutatingActor extends M19ReadActor {
+/** The staff/vendor write actor: the read actor plus a guaranteed membership and the step-up flag. */
+export interface M19WriteActor extends M19ReadActor {
+  readonly membershipId: string;
   /** True iff the session carries a recent (server-verified) step-up auth (M2 SESSION_POLICY). */
   readonly stepUpRecent: boolean;
 }
 
-/** The staff/vendor write actor — same as {@link M19MutatingActor} but with a guaranteed membership. */
-export interface M19WriteActor extends M19MutatingActor {
-  readonly membershipId: string;
-}
-
-/** Extract the mutating actor (membership still nullable — see {@link writeActorOf}). */
-export function mutatingActorOf(request: FastifyRequest): M19MutatingActor {
-  return {
-    ...actorOf(request),
-    stepUpRecent: request.context?.attributes?.stepUpRecent === true,
-  };
-}
-
 /**
- * Extract the WRITE actor (org + user + membership + roles + step-up), or 401/403.
+ * Extract the WRITE actor (org + user + membership + roles + step-up): 401 without a session, 403 without
+ * a membership.
  *
  * EVERY M19 route mutation goes through this. There is no anonymous or system-principal write path on the
  * HTTP surface: the §4.8 workers and the D10 inbound cascades reach M19 through their consumers, and those
@@ -133,13 +108,8 @@ export function mutatingActorOf(request: FastifyRequest): M19MutatingActor {
  * to let it author an M8 encounter (`ENCOUNTER_ACTOR_CANNOT_AUTHOR`).
  */
 export function writeActorOf(request: FastifyRequest): M19WriteActor {
-  const actor = mutatingActorOf(request);
-  if (actor.membershipId === null) {
-    throw new ForbiddenError(
-      "an M19 triage mutation must be attributed to an active membership; this session carries none",
-    );
-  }
-  return { ...actor, membershipId: actor.membershipId };
+  const { membershipId, stepUpRecent } = routeWriteActorOf(request);
+  return { ...actorOf(request), membershipId, stepUpRecent };
 }
 
 /**

@@ -370,8 +370,8 @@ describe("mailing run — generate and the poll", () => {
     );
   });
 
-  it("a 412 says the run moved and reloads it", async () => {
-    const { calls } = mount(server({ write: () => refused(412, "STALE_VERSION") }));
+  it("a 409 STALE_VERSION says the run moved and reloads it", async () => {
+    const { calls } = mount(server({ write: () => refused(409, "STALE_VERSION") }));
     fireEvent.click(await screen.findByRole("button", { name: "Generate" }));
     expect((await screen.findByRole("alert")).textContent).toContain(
       "changed while you were working",
@@ -571,7 +571,7 @@ describe("mailing run — download, confirm and cancel", () => {
     let moved = false;
     const base = server({
       run: () => ok(run({ status: "ready", version: moved ? 5 : 4 })),
-      write: () => refused(412, "STALE_VERSION"),
+      write: () => refused(409, "STALE_VERSION"),
     });
     mount(base);
     fireEvent.click(await screen.findByRole("button", { name: "Download" }));
@@ -580,7 +580,7 @@ describe("mailing run — download, confirm and cancel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm mailed" }));
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm mailed" }));
-    // the 412 reloads the run at version 5: the link minted for version 4 goes
+    // the STALE_VERSION reloads the run at version 5: the link minted for version 4 goes
     await waitFor(() => expect(screen.queryByRole("link", { name: "Open batch" })).toBeNull());
   });
 
@@ -588,7 +588,7 @@ describe("mailing run — download, confirm and cancel", () => {
     let moved = false;
     const base = server({
       run: () => ok(run({ status: "ready", version: moved ? 5 : 4 })),
-      write: () => refused(412, "STALE_VERSION"),
+      write: () => refused(409, "STALE_VERSION"),
     });
     mount((req) =>
       req.path.endsWith("/download") ? refused(409, "MAILING_RUN_STALE", "stale") : base(req),
@@ -866,7 +866,7 @@ describe("mailing run — editing the wording and the items list", () => {
     expect(await screen.findByText("Holiday greetings")).toBeTruthy();
   });
 
-  it("a 412 on the wording shows THEIR newer wording and blocks Save until the reader picks one", async () => {
+  it("a 409 STALE_VERSION on the wording shows THEIR newer wording and blocks Save until the reader picks one", async () => {
     let saved = false;
     const theirs = { en: { ...WORDING.en, title: "Their title" } };
     const { calls } = mount(
@@ -875,7 +875,7 @@ describe("mailing run — editing the wording and the items list", () => {
         write: (req) => {
           if (calls.filter((c) => c.method === "PATCH").length === 1) {
             saved = true;
-            return refused(412, "STALE_VERSION");
+            return refused(409, "STALE_VERSION");
           }
           return ok(run({ version: 6, content: { en: { ...WORDING.en, title: "Mine" } } }));
         },
@@ -901,7 +901,7 @@ describe("mailing run — editing the wording and the items list", () => {
     expect(calls.filter((c) => c.method === "PATCH").map((c) => c.ifMatch)).toEqual(["4", "5"]);
   });
 
-  it("a 412 whose reload fails does not dead-end: the dialog says so, keeps the typed wording and Try again loads theirs", async () => {
+  it("a 409 STALE_VERSION whose reload fails does not dead-end: the dialog says so, keeps the typed wording and Try again loads theirs", async () => {
     let refusedOnce = false;
     let failReads = true;
     const theirs = { en: { ...WORDING.en, title: "Their title" } };
@@ -915,7 +915,7 @@ describe("mailing run — editing the wording and the items list", () => {
               : ok(run({ version: 5, content: theirs })),
         write: () => {
           refusedOnce = true;
-          return refused(412, "STALE_VERSION");
+          return refused(409, "STALE_VERSION");
         },
       }),
     );
@@ -948,7 +948,7 @@ describe("mailing run — editing the wording and the items list", () => {
         run: () => ok(saved ? run({ version: 5, content: theirs }) : run()),
         write: () => {
           saved = true;
-          return refused(412, "STALE_VERSION");
+          return refused(409, "STALE_VERSION");
         },
       }),
     );

@@ -29,6 +29,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@chartwarden/db";
+import type { WriteActor } from "@chartwarden/shared/route-kit";
 import { NotFoundError } from "@chartwarden/types";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -36,7 +37,6 @@ import {
   buildDrizzleM21ReadService,
   buildDrizzleM21WriteService,
 } from "../src/modules/21-supplies/index";
-import type { M21WriteActor } from "../src/modules/21-supplies/routes/actor";
 import { LIVE_APP_ROLE_PASSWORD, LIVE_DROP_ROLES, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.CHARTWARDEN_TEST_DATABASE_URL;
@@ -78,13 +78,15 @@ describe.skipIf(!DB_URL)("F-193 — M21's caregiver-signature capture — LIVE P
     }
   }
 
-  function actorFor(organizationId: string, userId: string, membershipId: string): M21WriteActor {
+  function actorFor(organizationId: string, userId: string, membershipId: string): WriteActor {
     return {
       organizationId,
       userId,
       membershipId,
       roles: ["supply_coordinator"],
       locationIds: [],
+      sessionClass: "staff",
+      actorKind: "user",
       stepUpRecent: true,
     };
   }

@@ -14,7 +14,7 @@
 //   • ADR-0021 — a mutating route requires an `Idempotency-Key`. Every helper mints a fresh one per attempt.
 //   • §7.2 — a state transition requires `If-Match`, and M21's ETag is the row's **`updated_at` as an ISO
 //     string**, NOT an integer version: §3.1 gives M21's tables `updated_at` and no counter (unlike M16's
-//     `bereavement_plan.version`). A 412 means the row moved under you — reload, never retry blind.
+//     `bereavement_plan.version`). A 409 STALE_VERSION means the row moved under you — reload, never retry blind.
 //   • §4.2 — every quantity that reaches a `numeric` column travels as a decimal STRING. A 0.1 mL of a CII
 //     solution that round-trips through a JS float is not the quantity the DEA perpetual log recorded, so
 //     nothing in this file types a dispatched / returned / disposed quantity as `number`.
@@ -195,7 +195,7 @@ export function writeHeaders(updatedAt?: string | null): Record<string, string> 
 
 /**
  * Turn a failed response into the sentence a coordinator can act on. The server's problem+json body is the
- * source of truth; the status-derived fallbacks name the contracts a screen can actually violate (412 = the
+ * source of truth; the status-derived fallbacks name the contracts a screen can actually violate (409 STALE_VERSION = the
  * row moved, 428 = a blind write, 403 = a §4.4 predicate refused) rather than a generic failure.
  */
 export function errorMessage(error: unknown, fallback: string): string {
@@ -204,7 +204,7 @@ export function errorMessage(error: unknown, fallback: string): string {
   if (serverMessage) return serverMessage;
   if (body?.detail) return body.detail;
   if (body?.title) return body.title;
-  if (body?.status === 412)
+  if (body?.code === "STALE_VERSION" || body?.status === 409)
     return "This record changed while you were working on it. Reload and re-apply your edit.";
   if (body?.status === 428)
     return "This edit is missing its version stamp. Reload the record and try again.";

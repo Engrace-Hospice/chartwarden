@@ -1,3 +1,4 @@
+import { type DbClient, schema } from "@chartwarden/db";
 // apps/backend/src/modules/19-oncall/routes/read-service-drizzle.ts — the Drizzle-backed M19 READ service.
 //
 // Every method opens its own `withOrgContext` so RLS scopes each statement to `app.org_id`; no query
@@ -20,7 +21,13 @@
 //      has no field for the AI advisory, the vendor handoff or any clinician free text (D11/D13), and the
 //      query below never selects those columns — so a future edit to the DTO cannot start leaking them by
 //      accident.
-import { type DbClient, schema } from "@chartwarden/db";
+import {
+  type CursorPage,
+  clampLimit,
+  decodeCursor,
+  isKeysetCursor,
+  toCursorPage,
+} from "@chartwarden/shared/route-kit";
 import { withOrgContext } from "@chartwarden/tenancy";
 import type { IsoInstant, OnCallActor, PortalTriageSummary } from "@chartwarden/types";
 import { type SQL, and, asc, desc, eq, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
@@ -34,13 +41,7 @@ import { createOnCallProvider } from "../seams/providers";
 import { buildDrizzleOncallSeamStore } from "../seams/store-drizzle";
 import { triageVendorAdapters } from "../vendor/registry";
 import { type M19ReadActor, disciplineOf, isVendorActor } from "./actor";
-import {
-  type CursorPage,
-  M19_PAGE_SIZES,
-  clampLimit,
-  decodeCursor,
-  toCursorPage,
-} from "./concurrency";
+import { M19_PAGE_SIZES } from "./page-sizes";
 import type {
   CurrentOnCallView,
   EscalationFilters,
@@ -239,7 +240,7 @@ export function buildDrizzleM19ReadService(db: DbClient, deps: M19ReadDeps = {})
   return {
     async listTriageCalls(actor, filters, scope): Promise<CursorPage<TriageCallListItem>> {
       const limit = clampLimit(filters.limit, M19_PAGE_SIZES.triageCalls);
-      const cursor = decodeCursor(actor.organizationId, filters.cursor);
+      const cursor = decodeCursor(actor.organizationId, filters.cursor, isKeysetCursor);
       return withOrgContext(db, ctx(actor), async (tx) => {
         const rows = await tx
           .select({
@@ -585,7 +586,7 @@ export function buildDrizzleM19ReadService(db: DbClient, deps: M19ReadDeps = {})
 
     async listEscalations(actor, filters): Promise<CursorPage<EscalationInboxItem>> {
       const limit = clampLimit(filters.limit, M19_PAGE_SIZES.escalations);
-      const cursor = decodeCursor(actor.organizationId, filters.cursor);
+      const cursor = decodeCursor(actor.organizationId, filters.cursor, isKeysetCursor);
       const openOnly = filters.openOnly ?? true; // an inbox shows what is outstanding
       const nowMs = now().getTime();
       return withOrgContext(db, ctx(actor), async (tx) => {
@@ -654,7 +655,7 @@ export function buildDrizzleM19ReadService(db: DbClient, deps: M19ReadDeps = {})
 
     async listShifts(actor, filters): Promise<CursorPage<OnCallShiftView>> {
       const limit = clampLimit(filters.limit, M19_PAGE_SIZES.shifts);
-      const cursor = decodeCursor(actor.organizationId, filters.cursor);
+      const cursor = decodeCursor(actor.organizationId, filters.cursor, isKeysetCursor);
       return withOrgContext(db, ctx(actor), async (tx) => {
         const rows = await tx
           .select()
@@ -782,7 +783,7 @@ export function buildDrizzleM19ReadService(db: DbClient, deps: M19ReadDeps = {})
 
     async listProtocols(actor, filters): Promise<CursorPage<TriageProtocolView>> {
       const limit = clampLimit(filters.limit, M19_PAGE_SIZES.protocols);
-      const cursor = decodeCursor(actor.organizationId, filters.cursor);
+      const cursor = decodeCursor(actor.organizationId, filters.cursor, isKeysetCursor);
       const at = now();
       return withOrgContext(db, ctx(actor), async (tx) => {
         const rows = await tx
@@ -919,7 +920,7 @@ export function buildDrizzleM19ReadService(db: DbClient, deps: M19ReadDeps = {})
      */
     async listPortalRecent(actor, patientId, filters): Promise<CursorPage<PortalTriageSummary>> {
       const limit = clampLimit(filters.limit, M19_PAGE_SIZES.portalRecent);
-      const cursor = decodeCursor(actor.organizationId, filters.cursor);
+      const cursor = decodeCursor(actor.organizationId, filters.cursor, isKeysetCursor);
       const since = new Date(now().getTime() - (filters.sinceDays ?? 30) * 86_400_000);
       return withOrgContext(db, ctx(actor), async (tx) => {
         const rows = await tx

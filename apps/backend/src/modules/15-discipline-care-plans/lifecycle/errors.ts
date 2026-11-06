@@ -62,7 +62,7 @@ export const M15_ERROR_STATUS = {
   HOUR_ADJUSTMENT_REASON_REQUIRED: 422,
   HOUR_ENTRY_SOURCE_MISMATCH: 422,
   // Optimistic concurrency (§2.5 / §7.10)
-  STALE_VERSION: 412,
+  STALE_VERSION: 409,
   // Structural — an event dispatched from a state that does not accept it (§2.2 graph).
   ILLEGAL_TRANSITION: 409,
 } as const;

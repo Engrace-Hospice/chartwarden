@@ -91,9 +91,8 @@ function mount(opts: {
       }
       if (opts.holdAction && calls.length === 1) await held;
       const r = opts.actionResponse ?? { status: 200, body: letter({ status: "approved" }) };
-      // a decided letter (by us, or by someone else: 409/412/404) is no longer pending
-      if (r.status === 200 || r.status === 409 || r.status === 412 || r.status === 404)
-        pending = [];
+      // a decided letter (by us, or by someone else: 409/404) is no longer pending
+      if (r.status === 200 || r.status === 409 || r.status === 404) pending = [];
       return json(r.status, r.body);
     }
     gets.push(path);
@@ -423,10 +422,10 @@ describe("physician letter review — stale, held and lost writes", () => {
 
   it.each([
     [409, "PHYSICIAN_LETTER_NOT_PENDING"],
-    [412, "STALE_VERSION"],
+    [409, "STALE_VERSION"],
     [404, "PHYSICIAN_LETTER_NOT_FOUND"],
   ])(
-    "a %i on approve says someone else decided it, closes the dialog and reloads the list",
+    "a %i %s on approve says someone else decided it, closes the dialog and reloads the list",
     async (status, code) => {
       const { gets } = mount({
         letters: [letter()],

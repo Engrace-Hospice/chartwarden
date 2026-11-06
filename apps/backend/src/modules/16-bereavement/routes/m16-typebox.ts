@@ -1,3 +1,4 @@
+import { pageLimit, pageQuery } from "@chartwarden/shared/route-kit";
 import { ValidationError } from "@chartwarden/types";
 // apps/backend/src/modules/16-bereavement/routes/m16-typebox.ts — M16 (§4.2) request schemas.
 //
@@ -12,20 +13,8 @@ import { ValidationError } from "@chartwarden/types";
 // server-side (`request.context`): no body or query carries an org id or an acting membership id, which is
 // the §6.1 spoofing control at the boundary.
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
-import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { CARE_GOALS_MAX, CARE_GOAL_MAX_CHARS } from "../care-goals";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-if (!FormatRegistry.Has("uuid")) {
-  FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
-}
-if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
-}
-if (!FormatRegistry.Has("email")) {
-  FormatRegistry.Set("email", (v) => typeof v === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v));
-}
 
 function check<T extends TSchema>(schema: T, value: unknown): Static<T> {
   if (!Value.Check(schema, value)) {
@@ -230,8 +219,7 @@ export const PlanListQuerySchema = Type.Object({
   status: Type.Optional(PlanStatus),
   counselorUserId: Type.Optional(Uuid),
   riskTier: Type.Optional(RiskTier),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ...pageQuery({ max: 100 }),
 });
 
 /** Route 19 — the §4.6 `OutreachFilters` set, as a query. */
@@ -241,21 +229,19 @@ export const OutreachListQuerySchema = Type.Object({
   kind: Type.Optional(OutreachKind),
   dueFrom: Type.Optional(Instant),
   dueTo: Type.Optional(Instant),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  ...pageQuery(),
 });
 
 /** Route 29 — per-contact + plan-level score history (the append-only ledger, newest first). */
 export const RiskScoreListQuerySchema = Type.Object({
   contactId: Type.Optional(Uuid),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ...pageQuery({ max: 100 }),
 });
 
 /** Route 30 — "own caseload + due in N days". */
 export const CounselorDashboardQuerySchema = Type.Object({
   dueWithinDays: Type.Optional(Type.Integer({ minimum: 0, maximum: 90 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
+  limit: pageLimit(),
 });
 
 /** Route 31 — full-tenant rollups, optionally narrowed to one CCN / location. */
@@ -458,8 +444,7 @@ export const PhysicianLetterStatus = Type.Union([
 /** Route 38 — the physician-letter review queue (cursor-paged; `offset` is refused by the preHandler). */
 export const PhysicianLetterListQuerySchema = Type.Object({
   status: Type.Optional(PhysicianLetterStatus),
-  cursor: Type.Optional(Type.String({ maxLength: 512 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  ...pageQuery({ max: 100 }),
 });
 
 /** Route 39 — approve a pending letter (ADR-0109 D6): an optional personal note (at most 1000 characters, sealed at rest) and,
@@ -892,7 +877,7 @@ export const SupervisorDashboardViewResponseSchema = Type.Object({
   externalSourceCosignPendingCount: Int,
 });
 
-/** The §2.5 cursor page envelope (`concurrency.ts` `CursorPage<T>`). */
+/** The §2.5 cursor page envelope (the route kit `CursorPage<T>`). */
 const pageOf = <T extends TSchema>(item: T) =>
   Type.Object({
     data: Type.Array(item),

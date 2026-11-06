@@ -86,6 +86,7 @@ const actor = (membershipId: string, roles: readonly string[]): M15WriteActor =>
   membershipId,
   roles,
   sessionClass: "staff",
+  actorKind: "user",
   locationIds: [],
   stepUpRecent: true,
 });
