@@ -21,7 +21,8 @@ const fakes = vi.hoisted(() => ({
   noes: new Map<string, Record<string, unknown>>(),
   notrs: new Map<string, Record<string, unknown>>(),
   processors: new Map<string, (job: unknown, token?: string) => Promise<unknown>>(),
-  attempts: new Map<string, Record<string, unknown>>(),
+  /** The `claim_submission` attempt log (append-only: a row only ever leaves `queued`). */
+  attempts: [] as Record<string, unknown>[],
 }));
 
 vi.mock("bullmq", async (importOriginal) => {
@@ -63,13 +64,34 @@ vi.mock("@chartwarden/billing", async (importOriginal) => {
       NoeRepository: notice(fakes.noes),
       NotrRepository: notice(fakes.notrs),
       ClaimSubmissionRepository: class {
+        findById = async (id: string) => fakes.attempts.find((r) => r.id === id) ?? null;
         findLatestAttempt = async (providerEntityId: string, controlNumber: string) =>
-          fakes.attempts.get(`${providerEntityId}:${controlNumber}`) ?? null;
+          fakes.attempts
+            .filter(
+              (r) =>
+                r.providerEntityId === providerEntityId && r.claimControlNumber === controlNumber,
+            )
+            .sort((a, b) => (b.attemptIndex as number) - (a.attemptIndex as number))[0] ?? null;
+        append = async (values: Row) => {
+          const existing = fakes.attempts.find(
+            (r) =>
+              r.providerEntityId === values.providerEntityId &&
+              r.claimControlNumber === values.claimControlNumber &&
+              r.attemptIndex === values.attemptIndex,
+          );
+          if (existing) return existing;
+          const row = { id: `appended-${fakes.attempts.length + 1}`, ...values };
+          fakes.attempts.push(row);
+          return row;
+        };
         terminalize = async (id: string, patch: Row) => {
-          for (const [key, row] of fakes.attempts) {
-            if (row.id === id) fakes.attempts.set(key, { ...row, ...patch });
-          }
-          return { id, ...patch };
+          const at = fakes.attempts.findIndex((r) => r.id === id);
+          const row = fakes.attempts[at];
+          if (!row) throw new Error(`claim_submission ${id} not found`);
+          if (row.outcome !== "queued") return row;
+          const updated = { ...row, ...patch };
+          fakes.attempts[at] = updated;
+          return updated;
         };
       },
     },
@@ -118,7 +140,22 @@ const notr = (over: Row = {}): Row => ({
   ...over,
 });
 
-function depsFor(binding: ClearinghouseBinding | null) {
+/** An attempt row of notice `row` (`pe-1`, its control number), by default attempt 0, QUEUED. */
+function seedAttempt(row: Row, over: Row = {}): Row {
+  const attempt = {
+    id: `att-${fakes.attempts.length}`,
+    providerEntityId: "pe-1",
+    claimControlNumber: (row.noeControlNumber ?? row.notrControlNumber) as string,
+    attemptIndex: 0,
+    outcome: "queued",
+    ...over,
+  };
+  fakes.attempts.push(attempt);
+  return attempt;
+}
+const attemptById = (id: string) => fakes.attempts.find((r) => r.id === id);
+
+function depsFor(binding: ClearinghouseBinding | null, opts: { transmits?: boolean } = {}) {
   const alerts: { alertCode: string; organizationId: string }[] = [];
   const generated: string[] = [];
   const transport: M23TransportDeps | undefined = binding
@@ -135,14 +172,18 @@ function depsFor(binding: ClearinghouseBinding | null) {
     x12: {
       generateNoe: async () => {
         generated.push("noe");
+        if (opts.transmits) return { x12: "ISA*~", correlationId: "corr-1" };
         throw new Error("stop after generate");
       },
       generateNotr: async () => {
         generated.push("notr");
+        if (opts.transmits) return { x12: "ISA*~", correlationId: "corr-1" };
         throw new Error("stop after generate");
       },
     },
-    macPortal: {},
+    macPortal: {
+      upload: async () => ({ accepted: true, generatedFileUri: "s3://notices/x.x12" }),
+    },
     outbox: { publish: async () => undefined },
     jurisdictions: { listJurisdictions: async () => [] },
     claim837i: {},
@@ -165,7 +206,7 @@ beforeEach(() => {
   fakes.noes.clear();
   fakes.notrs.clear();
   fakes.processors.clear();
-  fakes.attempts.clear();
+  fakes.attempts.length = 0;
 });
 
 describe.each([
@@ -210,22 +251,63 @@ describe.each([
     await expect(pre(deps, queue, data, jobOf().job)).resolves.toBe("parked");
   });
 
-  it("closes the notice's QUEUED attempt when it parks (failed_worker, a stable reason), so nothing is left reading as in flight; a settled attempt is left alone", async () => {
+  it("closes the job's OWN queued attempt when it parks (failed_worker, a stable reason), so nothing is left reading as in flight; a settled attempt is left alone", async () => {
     const { deps } = depsFor(UNBOUND_OUTSIDE);
-    const row = make();
-    const key = `pe-1:${(row.noeControlNumber ?? row.notrControlNumber) as string}`;
-    table.set(id, row);
-    fakes.attempts.set(key, { id: "att-1", outcome: "queued" });
-    await expect(pre(deps, queue, data, jobOf().job)).resolves.toBe("parked");
-    expect(fakes.attempts.get(key)).toMatchObject({
+    table.set(id, make());
+    const own = seedAttempt(make(), { id: "att-1" });
+    await expect(pre(deps, queue, { ...data, submissionId: own.id }, jobOf().job)).resolves.toBe(
+      "parked",
+    );
+    expect(attemptById("att-1")).toMatchObject({
       outcome: "failed_worker",
       outcomeReason: "PARKED_FOR_EXTERNAL_FILING",
     });
 
+    fakes.attempts.length = 0;
     table.set(id, make());
-    fakes.attempts.set(key, { id: "att-2", outcome: "submitted" });
+    seedAttempt(make(), { id: "att-2", outcome: "submitted" });
+    await expect(pre(deps, queue, { ...data, submissionId: "att-2" }, jobOf().job)).resolves.toBe(
+      "parked",
+    );
+    expect(attemptById("att-2")).toMatchObject({ outcome: "submitted" });
+    expect(attemptById("att-2")).not.toHaveProperty("outcomeReason");
+  });
+
+  it("still closes the job's own attempt when the notice already carries the marker (the tenant recorded it filed, or the route parked it, while the job waited): nothing is orphaned", async () => {
+    const { deps } = depsFor(UNBOUND_OUTSIDE);
+    for (const externalFilingStatus of ["pending", "filed"] as const) {
+      fakes.attempts.length = 0;
+      table.set(id, make({ externalFilingStatus }));
+      seedAttempt(make(), { id: "att-own" });
+      await expect(
+        pre(deps, queue, { ...data, submissionId: "att-own" }, jobOf().job),
+      ).resolves.toBe("parked");
+      expect(attemptById("att-own"), externalFilingStatus).toMatchObject({
+        outcome: "failed_worker",
+        outcomeReason: "PARKED_FOR_EXTERNAL_FILING",
+      });
+      // the marker itself is left exactly as the tenant / route set it
+      expect(table.get(id)).toMatchObject({ externalFilingStatus });
+    }
+  });
+
+  it("closes ONLY the job's own attempt: a stale job whose attempt was long closed never closes the newer live attempt of a resubmit", async () => {
+    const { deps } = depsFor(UNBOUND_OUTSIDE);
+    table.set(id, make({ externalFilingStatus: "pending" }));
+    seedAttempt(make(), { id: "att-old", outcome: "failed_worker", outcomeReason: "PARKED" });
+    seedAttempt(make(), { id: "att-new", attemptIndex: 1 });
+    await expect(pre(deps, queue, { ...data, submissionId: "att-old" }, jobOf().job)).resolves.toBe(
+      "parked",
+    );
+    expect(attemptById("att-new")).toMatchObject({ outcome: "queued" });
+  });
+
+  it("a job without a submissionId (enqueued before the attempt was carried) falls back to the notice's latest QUEUED attempt", async () => {
+    const { deps } = depsFor(UNBOUND_OUTSIDE);
+    table.set(id, make());
+    seedAttempt(make(), { id: "att-1" });
     await expect(pre(deps, queue, data, jobOf().job)).resolves.toBe("parked");
-    expect(fakes.attempts.get(key)).toEqual({ id: "att-2", outcome: "submitted" });
+    expect(attemptById("att-1")).toMatchObject({ outcome: "failed_worker" });
   });
 
   it("HOLDS the job (delayed, no attempt spent) with ONE alert per organization and reason, whatever the notice", async () => {
@@ -365,6 +447,74 @@ describe("runNoeSubmit / runNotrSubmit: the defensive guard (the org may switch 
         ).rejects.toThrow(/clearinghouse is not live/);
         expect(generated).toEqual([]);
       }
+    },
+  );
+
+  it.each(cases)(
+    "%s: refuses to transmit a notice the tenant recorded as filed outside ChartWarden: the job ends (no throw, so the close commits) and its own attempt is closed",
+    async (_k, run, data, table, id, make) => {
+      table.set(id, make({ externalFilingStatus: "filed" }));
+      seedAttempt(make(), { id: "att-own" });
+      const { deps, generated } = depsFor(LIVE);
+      await expect(
+        run({} as never, deps, { organizationId: ORG, ...data, submissionId: "att-own" } as never),
+      ).resolves.toBeUndefined();
+      expect(generated).toEqual([]);
+      expect(attemptById("att-own")).toMatchObject({
+        outcome: "failed_worker",
+        outcomeReason: "NOTICE_FILED_EXTERNALLY",
+      });
+      expect(table.get(id)).toMatchObject({ externalFilingStatus: "filed", state: "ready" });
+    },
+  );
+
+  it.each(cases)(
+    "%s: a job whose own attempt was already closed transmits nothing (its mandate ended; the notice's live attempt has its own job)",
+    async (_k, run, data, table, id, make) => {
+      table.set(id, make());
+      seedAttempt(make(), { id: "att-0", outcome: "failed_worker", outcomeReason: "PARKED" });
+      const { deps, generated } = depsFor(LIVE);
+      await expect(
+        run({} as never, deps, { organizationId: ORG, ...data, submissionId: "att-0" } as never),
+      ).resolves.toBeUndefined();
+      expect(generated).toEqual([]);
+      expect(table.get(id)).toMatchObject({ state: "ready", version: 4 });
+    },
+  );
+
+  it.each(cases)(
+    "%s: records the transmission on the job's OWN attempt (a resubmit's attempt 1), never on a closed attempt 0",
+    async (_k, run, data, table, id, make, kind) => {
+      table.set(id, make());
+      seedAttempt(make(), { id: "att-0", outcome: "failed_worker", outcomeReason: "PARKED" });
+      seedAttempt(make(), { id: "att-1", attemptIndex: 1 });
+      const { deps, generated } = depsFor(LIVE, { transmits: true });
+      await run({} as never, deps, {
+        organizationId: ORG,
+        ...data,
+        submissionId: "att-1",
+      } as never);
+      expect(generated).toEqual([kind]);
+      expect(attemptById("att-1")).toMatchObject({ outcome: "submitted" });
+      expect(attemptById("att-0")).toMatchObject({
+        outcome: "failed_worker",
+        outcomeReason: "PARKED",
+      });
+      expect(fakes.attempts).toHaveLength(2); // nothing appended
+      expect(table.get(id)).toMatchObject({ state: "submitted", latestSubmissionId: "att-1" });
+    },
+  );
+
+  it.each(cases)(
+    "%s: without a submissionId and without a queued attempt it appends a NEW attempt after the latest terminal one",
+    async (_k, run, data, table, id, make) => {
+      table.set(id, make());
+      seedAttempt(make(), { id: "att-0", outcome: "failed_worker", outcomeReason: "PARKED" });
+      const { deps } = depsFor(LIVE, { transmits: true });
+      await run({} as never, deps, { organizationId: ORG, ...data } as never);
+      const appended = fakes.attempts.find((r) => String(r.id).startsWith("appended-"));
+      expect(appended).toMatchObject({ attemptIndex: 1, outcome: "submitted" });
+      expect(table.get(id)).toMatchObject({ state: "submitted", latestSubmissionId: appended?.id });
     },
   );
 

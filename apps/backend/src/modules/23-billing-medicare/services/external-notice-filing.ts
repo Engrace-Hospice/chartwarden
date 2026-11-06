@@ -130,27 +130,60 @@ export const noticeFiledExternally = (
 
 /** The reason a parked notice's leftover queued attempt is closed with (a stable code: no free text). */
 export const PARKED_ATTEMPT_REASON = "PARKED_FOR_EXTERNAL_FILING";
+/** The reason a job's queued attempt is closed with when the notice it would have sent is already on file outside ChartWarden. */
+export const FILED_EXTERNALLY_ATTEMPT_REASON = "NOTICE_FILED_EXTERNALLY";
+
+type Submissions = InstanceType<typeof repositories.ClaimSubmissionRepository>;
+type NoticeAttempt = Awaited<ReturnType<Submissions["findById"]>>;
 
 /**
- * Close the `queued` transmission attempt a notice may still hold from before its org switched to `outside` (the submit route
- * appended it, the job never ran). Left open it would sit `queued` forever and read as a submission in flight. The attempt log is
- * append-only, so it ends `failed_worker` with a stable reason. No queued attempt (or an already settled one) is left as is.
+ * The attempt row a NOE / NOTR job OWNS: the one it was enqueued for (`submissionId`), else (a job from before the id was
+ * carried) the notice's latest attempt when that one is still queued. Never "whatever is latest": a stale job must not touch the
+ * live attempt of a resubmit.
  */
-export async function closeQueuedAttempt(
-  tx: BillingDb,
-  providerEntityId: string,
-  controlNumber: string,
+export async function ownedNoticeAttempt(
+  submissions: Submissions,
+  input: { submissionId?: string; providerEntityId: string; controlNumber: string },
+): Promise<NoticeAttempt> {
+  if (input.submissionId) return submissions.findById(input.submissionId);
+  const latest = await submissions.findLatestAttempt(input.providerEntityId, input.controlNumber);
+  return latest?.outcome === "queued" ? latest : null;
+}
+
+/**
+ * End a still-`queued` attempt a job will never run (the attempt log is append-only: it ends `failed_worker` with a stable
+ * reason). Only the OWNING JOB calls this, from inside its own turn: closing a queued attempt from anywhere else can race a
+ * worker that is uploading it. No attempt, or one already settled, is left as is.
+ */
+export async function closeNoticeAttempt(
+  submissions: Submissions,
+  attempt: NoticeAttempt,
+  reason: string,
 ): Promise<void> {
-  const submissions = new repositories.ClaimSubmissionRepository(tx);
-  const latest = await submissions.findLatestAttempt(providerEntityId, controlNumber);
-  if (!latest || latest.outcome !== "queued") return;
-  await submissions.terminalize(latest.id, {
+  if (!attempt || attempt.outcome !== "queued") return;
+  await submissions.terminalize(attempt.id, {
     outcome: "failed_worker",
-    outcomeReason: PARKED_ATTEMPT_REASON,
+    outcomeReason: reason,
     generatedFileUri: null,
     submittedAt: null,
     workerCorrelationId: null,
   });
+}
+
+/**
+ * The attempt index a NEW dispatch of this notice takes. The attempt log is append-only and idempotent on
+ * `(provider entity, control number, attempt index)`, so reusing the index of a CLOSED attempt (parked, failed) would hand back
+ * that closed row: the next index is one past the latest terminal attempt, the latest's own while it is still queued (a repeated
+ * submit collapses onto the live attempt), 0 for the first.
+ */
+export async function nextNoticeAttemptIndex(
+  submissions: Pick<Submissions, "findLatestAttempt">,
+  providerEntityId: string,
+  controlNumber: string,
+): Promise<number> {
+  const latest = await submissions.findLatestAttempt(providerEntityId, controlNumber);
+  if (!latest) return 0;
+  return latest.outcome === "queued" ? latest.attemptIndex : latest.attemptIndex + 1;
 }
 
 export interface ExternalNoticeFilingPorts {

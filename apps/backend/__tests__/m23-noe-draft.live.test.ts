@@ -1385,6 +1385,111 @@ describe.skipIf(!DB_URL)("F-106 — M23 drafts the Notice of Election, LIVE Post
     expect(await eventRows("m23.noe.submit_requested", "noeId", id)).toHaveLength(1);
   }, 60_000);
 
+  /** A notice's transmission attempts, oldest first. */
+  const attemptsOf = async (noeId: string) =>
+    (
+      await admin.query(
+        `SELECT id, attempt_index, outcome, outcome_reason, submitted_at IS NOT NULL AS sent
+           FROM claim_submission WHERE noe_id=$1 ORDER BY attempt_index`,
+        [noeId],
+      )
+    ).rows as {
+      id: string;
+      attempt_index: number;
+      outcome: string;
+      outcome_reason: string | null;
+      sent: boolean;
+    }[];
+
+  it("park, switch back to a vendor, resubmit: the new transmission is recorded on a NEW attempt and the parked attempt stays closed", async () => {
+    const id = await seedNoe(ORG_A, { state: "DRAFT" });
+    const vendor = externalFilingService(false);
+
+    // vendor era: submit appends attempt 0 (queued) and enqueues a job carrying it
+    const first = await vendor.service.submitNoe(actorOf(ORG_A), id);
+    expect(await attemptsOf(id)).toMatchObject([{ attempt_index: 0, outcome: "queued" }]);
+
+    // the org switches to outside before the job runs: the worker pre-flight parks the notice and closes ITS attempt
+    await parkNoticeForExternalFiling(
+      { db: handle.db as never },
+      { organizationId: ORG_A, kind: "noe", noticeId: id, submissionId: first.submissionId },
+    );
+    expect(await noeRow(id)).toMatchObject({ state: "READY", external_filing_status: "pending" });
+    expect(await attemptsOf(id)).toMatchObject([
+      { attempt_index: 0, outcome: "failed_worker", outcome_reason: "PARKED_FOR_EXTERNAL_FILING" },
+    ]);
+
+    // the org switches back to a vendor and the tenant resubmits: a NEW attempt, never the closed row handed back
+    const second = await vendor.service.submitNoe(actorOf(ORG_A), id);
+    expect(second.submissionId).not.toBe(first.submissionId);
+    expect(await noeRow(id)).toMatchObject({ external_filing_status: null });
+    expect(await attemptsOf(id)).toMatchObject([
+      { attempt_index: 0, outcome: "failed_worker" },
+      { attempt_index: 1, outcome: "queued", id: second.submissionId },
+    ]);
+
+    // the worker records the transmission on THAT attempt
+    await withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, (tx) =>
+      runNoeSubmit(tx as never, workerDeps, {
+        organizationId: ORG_A,
+        noeId: id,
+        submissionId: second.submissionId as string,
+      }),
+    );
+    expect(await attemptsOf(id)).toMatchObject([
+      { attempt_index: 0, outcome: "failed_worker", outcome_reason: "PARKED_FOR_EXTERNAL_FILING" },
+      { attempt_index: 1, outcome: "submitted", id: second.submissionId, sent: true },
+    ]);
+    const { rows } = await admin.query(
+      "SELECT state, latest_submission_id FROM noe_record WHERE id=$1",
+      [id],
+    );
+    expect(rows[0]).toMatchObject({
+      state: "SUBMITTED",
+      latest_submission_id: second.submissionId,
+    });
+  }, 60_000);
+
+  it("a notice recorded as filed while a vendor-era attempt is queued: the job (outside: the park; vendor again: the submit worker) ends without transmitting and closes its OWN attempt", async () => {
+    const outside = externalFilingService(true);
+    const vendor = externalFilingService(false);
+    for (const org of ["outside", "vendor"] as const) {
+      const id = await seedNoe(ORG_A, { state: "DRAFT" });
+      const queued = await vendor.service.submitNoe(actorOf(ORG_A), id);
+      // the org goes outside and the tenant records the filing; the queued attempt is NOT closed from the request path
+      await outside.service.recordNoeExternalFiling(actorOf(ORG_A), id, { filedOn: todayIso() });
+      expect(await attemptsOf(id)).toMatchObject([{ attempt_index: 0, outcome: "queued" }]);
+      const submitted = (name: string) => eventRows(name, "noeId", id);
+
+      if (org === "outside") {
+        await parkNoticeForExternalFiling(
+          { db: handle.db as never },
+          { organizationId: ORG_A, kind: "noe", noticeId: id, submissionId: queued.submissionId },
+        );
+      } else {
+        await withOrgContext(handle.db as never, { organizationId: ORG_A, userId: "" }, (tx) =>
+          runNoeSubmit(tx as never, workerDeps, {
+            organizationId: ORG_A,
+            noeId: id,
+            submissionId: queued.submissionId as string,
+          }),
+        );
+      }
+      expect(await attemptsOf(id)).toMatchObject([
+        {
+          attempt_index: 0,
+          outcome: "failed_worker",
+          outcome_reason:
+            org === "outside" ? "PARKED_FOR_EXTERNAL_FILING" : "NOTICE_FILED_EXTERNALLY",
+          sent: false,
+        },
+      ]);
+      // never transmitted: the notice is still the tenant's recorded filing, and nothing was announced as submitted
+      expect(await noeRow(id)).toMatchObject({ state: "READY", external_filing_status: "filed" });
+      expect(await submitted("m23.noe.submitted")).toHaveLength(0);
+    }
+  }, 60_000);
+
   it("cross-tenant: org B cannot record (or park) org A's NOE; the worker's park of a job enqueued before the org switched is org-scoped too", async () => {
     const { service } = externalFilingService(true);
     const id = await seedNoe(ORG_A);

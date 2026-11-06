@@ -11,7 +11,10 @@ import { EXTERNALLY_FILEABLE_STATES, repositories } from "@chartwarden/billing";
 import { withOrgContext } from "@chartwarden/tenancy";
 import {
   type ExternalNoticeKind,
-  closeQueuedAttempt,
+  FILED_EXTERNALLY_ATTEMPT_REASON,
+  PARKED_ATTEMPT_REASON,
+  closeNoticeAttempt,
+  ownedNoticeAttempt,
   parkNotice,
 } from "../services/external-notice-filing";
 import type { M23TransportDeps } from "./clearinghouse-submission";
@@ -29,6 +32,10 @@ export const M23_NOTICE_PARK_QUEUES: ReadonlyMap<string, ExternalNoticeKind> = n
   [M23_QUEUES.notrSubmit, "notr"],
 ]);
 
+const controlNumberOf = (
+  notice: { noeControlNumber: string } | { notrControlNumber: string },
+): string => ("noeControlNumber" in notice ? notice.noeControlNumber : notice.notrControlNumber);
+
 /** The notice id a notice job carries (`noeId` / `notrId`). A job without it is malformed: it fails loudly, never silently parks. */
 export function noticeIdOfJob(
   kind: ExternalNoticeKind,
@@ -42,9 +49,12 @@ export function noticeIdOfJob(
 }
 
 /**
- * Park the job's notice for the tenant to file, in its own org-scoped transaction. Only a notice still waiting to be filed
- * (draft / ready) and not yet marked is touched (and its leftover QUEUED attempt closed); one already pending or filed, already settled by ChartWarden or Medicare, another
- * org's, or gone is left alone (the job is simply done). Idempotent, so a redelivered job is harmless.
+ * Park the job's notice for the tenant to file, in its own org-scoped transaction, and close the job's OWN queued attempt (this
+ * job will never transmit it). Only a notice still waiting to be filed (draft / ready) and not yet marked is parked; one already
+ * pending or filed, or already settled by ChartWarden or Medicare, keeps its marker and state, but the job's attempt is closed all
+ * the same (the route may have parked it, or the tenant recorded it filed, while this job waited: nothing is left reading as in
+ * flight). Another org's notice, or a missing one, is left alone (the job is simply done). Idempotent, so a redelivered job is
+ * harmless.
  */
 export async function parkNoticeForExternalFiling(
   deps: { readonly db: BillingDb },
@@ -52,9 +62,11 @@ export async function parkNoticeForExternalFiling(
     readonly organizationId: string;
     readonly kind: ExternalNoticeKind;
     readonly noticeId: string;
+    /** The attempt the job was enqueued for. A job without one falls back to the notice's latest QUEUED attempt. */
+    readonly submissionId?: string;
   },
 ): Promise<void> {
-  const { organizationId, kind, noticeId } = input;
+  const { organizationId, kind, noticeId, submissionId } = input;
   await withOrgContext<BillingDb, void>(
     deps.db,
     { organizationId, userId: WORKER_SYSTEM_USER_ID },
@@ -63,15 +75,20 @@ export async function parkNoticeForExternalFiling(
         kind === "noe" ? new repositories.NoeRepository(tx) : new repositories.NotrRepository(tx);
       const notice = await repo.findById(noticeId);
       if (!notice || notice.organizationId !== organizationId) return;
-      if (notice.externalFilingStatus !== null) return;
-      if (!EXTERNALLY_FILEABLE_STATES.includes(notice.state)) return;
-      await parkNotice(repo, notice);
+      if (
+        notice.externalFilingStatus === null &&
+        EXTERNALLY_FILEABLE_STATES.includes(notice.state)
+      ) {
+        await parkNotice(repo, notice);
+      }
       // The submit that enqueued this job appended a QUEUED attempt that will now never run: close it, or it reads as in flight forever.
-      await closeQueuedAttempt(
-        tx,
-        notice.providerEntityId,
-        "noeControlNumber" in notice ? notice.noeControlNumber : notice.notrControlNumber,
-      );
+      const submissions = new repositories.ClaimSubmissionRepository(tx);
+      const attempt = await ownedNoticeAttempt(submissions, {
+        submissionId,
+        providerEntityId: notice.providerEntityId,
+        controlNumber: controlNumberOf(notice),
+      });
+      await closeNoticeAttempt(submissions, attempt, PARKED_ATTEMPT_REASON);
     },
   );
 }
@@ -92,4 +109,38 @@ export async function assertNoticeMayTransmit(
       `${kind.toUpperCase()} submit refused: the organization's clearinghouse is not live (${state.reason})`,
     );
   }
+}
+
+/**
+ * What a NOE / NOTR submit worker settles BEFORE it generates or uploads anything, in its own transaction: which attempt row is its
+ * own, and whether it may transmit at all.
+ *   - A notice the tenant recorded as filed outside ChartWarden is on file with Medicare: it is never transmitted a second time.
+ *     The job ENDS (returns; a throw would roll back the close) and its own queued attempt is closed.
+ *   - A job whose own attempt is already settled or closed (parked, or long done) has nothing to transmit: the notice's live
+ *     attempt has its own job.
+ * Otherwise `attempt` is the queued row the transmission terminalizes (null: no queued attempt, the worker appends one).
+ */
+export async function settleNoticeJobAttempt(
+  tx: BillingDb,
+  input: {
+    readonly submissionId?: string;
+    readonly providerEntityId: string;
+    readonly controlNumber: string;
+    readonly externalFilingStatus: "pending" | "filed" | null;
+  },
+): Promise<
+  | { readonly proceed: false }
+  | {
+      readonly proceed: true;
+      readonly attempt: Awaited<ReturnType<repositories.ClaimSubmissionRepository["findById"]>>;
+    }
+> {
+  const submissions = new repositories.ClaimSubmissionRepository(tx);
+  const attempt = await ownedNoticeAttempt(submissions, input);
+  if (input.externalFilingStatus === "filed") {
+    await closeNoticeAttempt(submissions, attempt, FILED_EXTERNALLY_ATTEMPT_REASON);
+    return { proceed: false };
+  }
+  if (input.submissionId && attempt && attempt.outcome !== "queued") return { proceed: false };
+  return { proceed: true, attempt };
 }

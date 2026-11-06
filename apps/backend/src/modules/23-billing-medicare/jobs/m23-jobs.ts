@@ -64,6 +64,7 @@ import {
 } from "../../../bootstrap/claims-billing-gate";
 import { type Claim837iSubmitDeps, renderClaimForTransport } from "../services/claim-837i-submit";
 import type { DdeWatchdogPort } from "../services/dde-watchdog";
+import { nextNoticeAttemptIndex } from "../services/external-notice-filing";
 import { isVoidM23Claim } from "../void-claim";
 import { CLEARINGHOUSE_PAYER_ID_ENV } from "./clearinghouse-context";
 import {
@@ -86,6 +87,7 @@ import {
   assertNoticeMayTransmit,
   noticeIdOfJob,
   parkNoticeForExternalFiling,
+  settleNoticeJobAttempt,
 } from "./notice-external-filing";
 import {
   type M23CronQueueName,
@@ -161,10 +163,14 @@ export interface ClaimSubmitRetryJob {
 export interface NoeSubmitJob {
   readonly organizationId: string;
   readonly noeId: string;
+  /** The `claim_submission` attempt this job was enqueued for (the submit route appended it QUEUED). Absent on a job from before it was carried. */
+  readonly submissionId?: string;
 }
 export interface NotrSubmitJob {
   readonly organizationId: string;
   readonly notrId: string;
+  /** See {@link NoeSubmitJob.submissionId}. */
+  readonly submissionId?: string;
 }
 export interface EligibilityRefreshJob {
   readonly organizationId: string;
@@ -1273,23 +1279,35 @@ export async function runClaimSubmitRetry(
 }
 
 /**
- * Record a NOE / NOTR transmission attempt. The submit route already appended the attempt as QUEUED (same
- * `(provider_entity, control_number, attempt 0)` key), so the idempotent append collapses onto that row and
- * returns it unchanged: terminalize it with this transmission's outcome (the transfer-notice precedent) instead of
- * leaving a transmitted notice's attempt QUEUED forever.
+ * Record a NOE / NOTR transmission attempt. The submit route already appended the job's attempt as QUEUED: terminalize THAT row
+ * (the one the job owns, `settleNoticeJobAttempt`) with this transmission's outcome (the transfer-notice precedent) instead of
+ * leaving a transmitted notice's attempt QUEUED forever. A job with no queued attempt appends a new one at the next free index:
+ * never at a hard-coded 0, which would hand back an attempt a park already closed.
  */
 async function recordNoticeTransmission(
   submissions: InstanceType<typeof ClaimSubmissionRepository>,
-  values: Parameters<InstanceType<typeof ClaimSubmissionRepository>["append"]>[0],
+  attempt: Awaited<ReturnType<InstanceType<typeof ClaimSubmissionRepository>["findById"]>>,
+  values: Omit<
+    Parameters<InstanceType<typeof ClaimSubmissionRepository>["append"]>[0],
+    "attemptIndex"
+  >,
 ): Promise<Awaited<ReturnType<InstanceType<typeof ClaimSubmissionRepository>["append"]>>> {
-  const appended = await submissions.append(values);
-  if (appended.outcome !== "queued") return appended;
-  return submissions.terminalize(appended.id, {
-    outcome: values.outcome,
-    outcomeReason: null,
-    generatedFileUri: values.generatedFileUri ?? null,
-    submittedAt: values.submittedAt ?? null,
-    workerCorrelationId: values.workerCorrelationId ?? null,
+  if (attempt?.outcome === "queued") {
+    return submissions.terminalize(attempt.id, {
+      outcome: values.outcome,
+      outcomeReason: null,
+      generatedFileUri: values.generatedFileUri ?? null,
+      submittedAt: values.submittedAt ?? null,
+      workerCorrelationId: values.workerCorrelationId ?? null,
+    });
+  }
+  return submissions.append({
+    ...values,
+    attemptIndex: await nextNoticeAttemptIndex(
+      submissions,
+      values.providerEntityId,
+      values.claimControlNumber,
+    ),
   });
 }
 
@@ -1312,6 +1330,13 @@ export async function runNoeSubmit(
   await assertNoticeMayTransmit(deps, job.organizationId, "noe");
   const noe = await noes.findById(job.noeId);
   if (!noe) throw new Error(`noe_record ${job.noeId} not found`);
+  const settled = await settleNoticeJobAttempt(tx, {
+    submissionId: job.submissionId,
+    providerEntityId: noe.providerEntityId,
+    controlNumber: noe.noeControlNumber,
+    externalFilingStatus: noe.externalFilingStatus,
+  });
+  if (!settled.proceed) return;
 
   const generated = await x12Of(deps).generateNoe({
     organizationId: job.organizationId,
@@ -1325,13 +1350,12 @@ export async function runNoeSubmit(
     x12: generated.x12,
     controlNumber: noe.noeControlNumber,
   });
-  const submission = await recordNoticeTransmission(submissions, {
+  const submission = await recordNoticeTransmission(submissions, settled.attempt, {
     organizationId: job.organizationId,
     providerEntityId: noe.providerEntityId,
     kind: "noe",
     noeId: job.noeId,
     claimControlNumber: noe.noeControlNumber,
-    attemptIndex: 0,
     outcome: uploaded.accepted ? "submitted" : "failed_portal",
     generatedFileUri: uploaded.generatedFileUri,
     submittedAt: uploaded.accepted ? now : null,
@@ -1374,6 +1398,13 @@ export async function runNotrSubmit(
   await assertNoticeMayTransmit(deps, job.organizationId, "notr");
   const notr = await notrs.findById(job.notrId);
   if (!notr) throw new Error(`notr_record ${job.notrId} not found`);
+  const settled = await settleNoticeJobAttempt(tx, {
+    submissionId: job.submissionId,
+    providerEntityId: notr.providerEntityId,
+    controlNumber: notr.notrControlNumber,
+    externalFilingStatus: notr.externalFilingStatus,
+  });
+  if (!settled.proceed) return;
 
   const generated = await x12Of(deps).generateNotr({
     organizationId: job.organizationId,
@@ -1387,13 +1418,12 @@ export async function runNotrSubmit(
     x12: generated.x12,
     controlNumber: notr.notrControlNumber,
   });
-  const submission = await recordNoticeTransmission(submissions, {
+  const submission = await recordNoticeTransmission(submissions, settled.attempt, {
     organizationId: job.organizationId,
     providerEntityId: notr.providerEntityId,
     kind: "notr",
     notrId: job.notrId,
     claimControlNumber: notr.notrControlNumber,
-    attemptIndex: 0,
     outcome: uploaded.accepted ? "submitted" : "failed_portal",
     generatedFileUri: uploaded.generatedFileUri,
     submittedAt: uploaded.accepted ? now : null,
@@ -2603,6 +2633,7 @@ export async function holdBeforeRun(
     readonly claimId?: unknown;
     readonly noeId?: unknown;
     readonly notrId?: unknown;
+    readonly submissionId?: unknown;
   },
 ): Promise<"parked" | undefined> {
   await holdNewClaimsWork(deps, job, token, queue, data);
@@ -2615,6 +2646,7 @@ export async function holdBeforeRun(
       organizationId: data.organizationId,
       kind: noticeKind,
       noticeId: noticeIdOfJob(noticeKind, data),
+      submissionId: typeof data.submissionId === "string" ? data.submissionId : undefined,
     });
     return "parked";
   }
