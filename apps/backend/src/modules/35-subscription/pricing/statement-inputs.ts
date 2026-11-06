@@ -32,9 +32,12 @@ export interface Lifetime {
 /**
  * Paused intervals and the cancel instant of a subscription, from its transition ledger and its own row. PURE.
  *
- * A pause opens on a transition into `paused` and closes on the next transition out of it. A pause that is still open although the
- * subscription is NOT paused any more (it was resumed by a path that wrote no history row) is closed at the row's `updated_at`, the
- * instant of that last write, rather than staying open forever: an open pause bills nothing, so a stale one would stop the bill for good.
+ * A pause opens on a transition into `paused` and closes on the next transition out of it. A pause that is still open when a later
+ * transition arrives that does not keep the subscription paused (a resume that wrote no history row of its own, then a cancel or a new
+ * pause) is closed at that transition, the earliest instant the ledger proves it was over. Only the LAST pause has nothing after it: if
+ * the subscription is NOT paused any more it falls back to the row's `updated_at`, the instant of the last write, rather than staying
+ * open forever (an open pause bills nothing, so a stale one would stop the bill for good). `updated_at` drifts on unrelated writes, which
+ * is why it is only the fallback.
  */
 export function lifetimeFromTransitions(
   transitions: readonly Transition[],
@@ -43,8 +46,9 @@ export function lifetimeFromTransitions(
   const pauses: { from: Date; to: Date | null }[] = [];
   for (const t of transitions) {
     const open = pauses[pauses.length - 1];
+    const keepsPaused = t.from === "paused" && t.to === "paused";
+    if (open && open.to === null && !keepsPaused) open.to = t.at;
     if (t.to === "paused" && t.from !== "paused") pauses.push({ from: t.at, to: null });
-    else if (t.from === "paused" && t.to !== "paused" && open && open.to === null) open.to = t.at;
   }
   const last = pauses[pauses.length - 1];
   if (last && last.to === null && sub.status !== "paused") last.to = sub.updatedAt;

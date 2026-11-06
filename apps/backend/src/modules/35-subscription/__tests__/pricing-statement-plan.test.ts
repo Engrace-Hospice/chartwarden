@@ -660,6 +660,39 @@ describe("lifetimeFromTransitions: the pauses and the end of a subscription", ()
     expect(daysLiveInMonth(NOV, windows)).toBe(30 - 4);
   });
 
+  it("an open pause is closed at the NEXT transition after it, not at updated_at, which drifts on unrelated writes", () => {
+    // paused 11-10, then a later row that does not leave `paused` through the ledger (the resume wrote none); the row's own
+    // updated_at (11-28) moved on for an unrelated reason and must not decide when the pause ended
+    const life = lifetimeFromTransitions(
+      [
+        t("active", "paused", "2026-11-10T09:00:00Z"),
+        t("active", "canceled", "2026-11-20T10:00:00Z"),
+      ],
+      sub("canceled", "2026-11-28T00:00:00Z", "2026-11-20T10:00:00Z"),
+    );
+    expect(life.pauses).toEqual([
+      { from: at("2026-11-10T09:00:00Z"), to: at("2026-11-20T10:00:00Z") },
+    ]);
+  });
+
+  it("every stale open pause is repaired: one followed by another pause closes where the next pause starts", () => {
+    const life = lifetimeFromTransitions(
+      [
+        t("active", "paused", "2026-11-05T09:00:00Z"),
+        t("active", "paused", "2026-11-12T09:00:00Z"), // the first was resumed by a path that wrote no row
+        t("paused", "active", "2026-11-14T09:00:00Z"),
+        t("active", "paused", "2026-11-18T09:00:00Z"),
+      ],
+      sub("active", "2026-11-25T00:00:00Z"),
+    );
+    expect(life.pauses).toEqual([
+      { from: at("2026-11-05T09:00:00Z"), to: at("2026-11-12T09:00:00Z") },
+      { from: at("2026-11-12T09:00:00Z"), to: at("2026-11-14T09:00:00Z") },
+      // the LAST open pause has nothing after it: it still falls back to the row's updated_at
+      { from: at("2026-11-18T09:00:00Z"), to: at("2026-11-25T00:00:00Z") },
+    ]);
+  });
+
   it("the end is canceled_at, else the cancel transition, else the last write; none while the subscription runs", () => {
     expect(
       lifetimeFromTransitions([], sub("canceled", "2026-11-25T00:00:00Z", "2026-11-20T14:00:00Z"))
