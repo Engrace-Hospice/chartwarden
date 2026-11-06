@@ -100,12 +100,13 @@ export function buildPlatformAuditPort(
         outcome: "success",
         severity: "warn",
         correlationId: `m35-pricing:${entry.eventType}:${entry.resourceId}:${randomUUID()}`,
+        // `detail` FIRST: it can add facts but never overwrite the operator, the tenant or the reason that follow it.
         context: {
+          ...entry.detail,
           ...(entry.organizationId ? { organizationId: entry.organizationId } : {}),
           operatorUserId: entry.operator.userId,
           operatorMembershipId: entry.operator.membershipId,
           reason: entry.reason,
-          ...entry.detail,
         },
       });
     },

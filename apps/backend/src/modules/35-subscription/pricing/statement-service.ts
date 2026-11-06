@@ -57,6 +57,7 @@ export {
 } from "./statement-view";
 
 const SS = schema.subscriptionStatement;
+const SSR = schema.subscriptionStatementReview;
 const NO_COLLECTIONS: NetCollections = { netCents: 0, remittanceCount: 0, pendingCount: 0 };
 const NO_STAFF: StaffCount = { count: 0, basis: "identity_filtered" };
 
@@ -151,6 +152,34 @@ interface MonthResult {
   readonly written?: StatementRow;
 }
 
+/**
+ * A closed month of a live subscription with no census day: record it ONCE (the table is unique on subscription, month, reason) and
+ * log it once, with the organisation, when the row is new. A rerun every hour finds the row and says nothing.
+ */
+async function flagNoCensus(
+  tx: WriteTx,
+  deps: StatementDeps,
+  contract: ContractFacts,
+  periodYearMonth: string,
+): Promise<void> {
+  const inserted = await tx
+    .insert(SSR)
+    .values({
+      subjectOrganizationId: contract.organizationId,
+      subscriptionId: contract.subscriptionId,
+      periodYearMonth,
+      reason: "no_census",
+    })
+    .onConflictDoNothing()
+    .returning({ id: SSR.id });
+  if (inserted.length === 0) return;
+  deps.log?.("m35 statement month closed with no census day; not billed, flagged for review", {
+    organizationId: contract.organizationId,
+    subscriptionId: contract.subscriptionId,
+    periodYearMonth,
+  });
+}
+
 /** One month of one contract: meters, prior-period lines, figures; then skip, leave alone, or write. */
 async function runMonth(
   tx: WriteTx,
@@ -167,12 +196,15 @@ async function runMonth(
     ? { daily: [], staff: NO_STAFF, collections: NO_COLLECTIONS }
     : await readMeters(tx, deps, contract, work.period, net);
   if (!work.settlement && meters.daily.length === 0) {
-    // The org was live and swept none of the month: not billed (a missing census is not a census of zero). A closed month is a data hole.
-    if (work.finalize) deps.log?.("m35 statement month has no census day; not billed", { key });
+    // The org was live and swept none of the month: not billed (a missing census is not a census of zero). A CLOSED month is a data
+    // hole an operator must see: flagged once per subscription-month, not logged every hour.
+    if (work.finalize) await flagNoCensus(tx, deps, contract, key);
     return { outcome: { outcome: "skipped", periodYearMonth: key, reason: "no_census" } };
   }
   const priorLines = priorPeriodLinesFor(work.period, statements, net);
-  if (work.settlement && priorLines.length === 0) {
+  const stored = statements.find((s) => s.periodYearMonth === key);
+  // A settlement month is written only when it has late money to carry, or when it is already a stored draft that must now finalize.
+  if (work.settlement && priorLines.length === 0 && !stored) {
     return { outcome: { outcome: "skipped", periodYearMonth: key, reason: "no_prior_period" } };
   }
   const values = buildStatementValues({
@@ -183,7 +215,6 @@ async function runMonth(
     isFirstStatement: !statements.some((s) => s.periodYearMonth < key),
     at,
   });
-  const stored = statements.find((s) => s.periodYearMonth === key);
   if (stored?.status === "draft" && stored.figures === figuresOf(values)) {
     return { outcome: { outcome: "unchanged", periodYearMonth: key } };
   }

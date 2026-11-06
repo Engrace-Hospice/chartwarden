@@ -44,6 +44,7 @@ export * from "./subscription-addon";
 export * from "./subscription-contract";
 export * from "./subscription-state-history";
 export * from "./subscription-statement";
+export * from "./subscription-statement-review";
 export * from "./usage-event";
 export * from "./usage-period-aggregate";
 export * from "./user-active-period";

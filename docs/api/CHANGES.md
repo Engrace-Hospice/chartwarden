@@ -78,6 +78,26 @@ its latest statement on `GET /api/v1/subscription/pricing`; it never carries the
 - New fields on the statement and contract views: `inputs.daysLive`, `priorPeriodLines`, `priorPeriodFeeCents`, `needsReview`,
   `pendingBillingServiceMode`; the price preview takes an optional `plannedGoLiveOn` and returns `firstMonthDaysLive` / `firstMonthDaysInPeriod`.
 
+### 4. Later changes to the same release
+
+- `POST /api/v1/subscription/resume` and `POST /api/v1/subscription` answer `403 PLAN_ASSIGNED_BY_OPERATIONS` for a tenant that holds a
+  contracted subscription (resuming one, or starting another beside a paused one): a contracted subscription is paused and resumed by ChartWarden
+  operations. A pause that was left open (the subscription was resumed by a path that wrote no history row) now closes at the subscription's last
+  write instead of billing nothing for ever.
+- `POST /api/v1/roles` answers `422 RESERVED_ROLE` for the key `external_auditor` (whatever the category): that role is created by the system on the
+  first auditor redemption, and an auditor is only ever attached to it. The database refuses the same for any other writer.
+- A platform operator's pause, resume and cancel of a subscription no longer write the operator into the tenant-readable state history (or its
+  audit copy); they write a platform-scoped audit row (`m35.subscription.platform_paused|resumed|canceled`) that names the operator and the tenant.
+- The onboarding evidence note for step 2 (tenant-readable) no longer carries the order-form reference.
+- A settlement statement (`daysLive` 0, carrying late money after a cancel or pause) now finalizes after its grace like any other, and prior-period
+  money rides the EARLIEST open statement only (a later draft does not carry it again).
+- A closed month with no census day is recorded once per subscription-month for review (platform-only) instead of being logged every hour.
+- The staff count excludes an auditor or platform operator by what they WERE when they signed in (recorded in the staff ledger), not by their roles at
+  statement time, so changing a member's roles afterwards cannot move them on or off the bill.
+- The band is chosen on the exact mean (patient-days against threshold x days), not the rounded ADC shown.
+- A published plan version and a final statement cannot be deleted; a tenant reads its contract's identity and start only (not who signed, why, or the
+  order form).
+
 ---
 
 ## 2026-11-05 — Onboarding wizard v2, pre-PR review fixes (go-live integrity)

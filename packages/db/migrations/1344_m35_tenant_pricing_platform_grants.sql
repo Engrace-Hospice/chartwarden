@@ -12,7 +12,7 @@
 --   subscription_contract_mode        INSERT only: the billing service mode history is append-only (a change is a new row, effective-dated)
 --   patient_census_daily              the daily census snapshot (INSERT, UPDATE: the latest observation of a day wins)
 --   subscription_statement            the monthly statement (INSERT, UPDATE: a draft is recomputed; a final row is frozen by its trigger)
---   role (columns category, system_default)  the staff meter tells the SYSTEM auditor role (system_default) from a tenant's look-alike
+--   subscription_statement_review     SELECT, INSERT: one row per subscription-month the run could not bill (platform-only; the app role has no grant)
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'chartwarden_platform') THEN
     GRANT SELECT ON "plan_census_band", "subscription_contract", "subscription_contract_mode", "patient_census_daily", "subscription_statement" TO chartwarden_platform;
@@ -24,6 +24,6 @@ DO $$ BEGIN
     GRANT INSERT, DELETE ON "plan_census_band" TO chartwarden_platform;
     GRANT INSERT ON "subscription", "subscription_state_history", "subscription_contract", "subscription_contract_mode" TO chartwarden_platform;
     GRANT INSERT, UPDATE ON "patient_census_daily", "subscription_statement" TO chartwarden_platform;
-    GRANT SELECT ("category", "system_default") ON "role" TO chartwarden_platform;
+    GRANT SELECT, INSERT ON "subscription_statement_review" TO chartwarden_platform;
   END IF;
 END $$;
